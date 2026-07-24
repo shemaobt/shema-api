@@ -63,27 +63,35 @@ async def test_admin_sets_the_level_and_everyone_reads_it(client, admin, alice, 
     assert res.json()["bead_sec"] is None
     assert res.json()["updated_at"] is not None
 
-    # A facilitator does not decide it, but every screen needs to read it.
     read = await client.get(f"{SN}/projects/{project.id}/settings", headers=alice_headers)
     assert read.status_code == 200
     assert read.json()["granularity_level"] == "small"
 
 
-async def test_admin_may_change_the_level_while_nothing_is_cut(client, admin, project):
+async def test_confirming_is_what_freezes_it_even_before_anything_is_cut(client, admin, project):
+    """The button says "this does not change afterwards"; this is what makes it true.
+
+    The freeze does not wait for a session. A project can be confirmed and frozen having
+    cut nothing, which is exactly the state the settings screen produces.
+    """
     _admin, headers = admin
-    await client.put(
+    first = await client.put(
         f"{SN}/projects/{project.id}/settings",
         headers=headers,
         json={"granularity_level": "small"},
     )
+    assert first.json()["locked"] is True
+
     res = await client.put(
         f"{SN}/projects/{project.id}/settings",
         headers=headers,
         json={"granularity_level": "large"},
     )
 
-    assert res.status_code == 200, res.text
-    assert res.json()["granularity_level"] == "large"
+    assert res.status_code == 409, res.text
+    assert res.json()["code"] == "PROJECT_GRANULARITY_LOCKED"
+    read = await client.get(f"{SN}/projects/{project.id}/settings", headers=headers)
+    assert read.json()["granularity_level"] == "small"
 
 
 async def test_facilitator_may_not_decide_the_granularity(client, alice, project):
@@ -171,23 +179,17 @@ async def test_a_session_on_an_unconfigured_project_stamps_both(client, db_sessi
     assert row.bead_sec == pytest.approx(0.5)
 
 
-async def test_the_level_is_frozen_once_the_project_has_cut_something(
+async def test_a_grandfathered_project_is_frozen_by_the_session_that_made_its_row(
     client, admin, alice, project
 ):
-    """The one rule that makes the setting mean anything.
+    """A project that never saw the settings screen is frozen all the same.
 
-    Moving the level after a session exists either contradicts the stamped ``bead_sec``
-    — leaving the project unable to open another session at all — or splits the corpus
-    across two grids. Re-cutting a project is a migration, not a setting.
+    Its row was written by ``create_session`` at the level that session was cut with, and
+    a row IS the lock — so the level cannot be moved out from under audio already cut.
     """
     _admin, admin_headers = admin
     _alice, alice_headers = alice
-    await client.put(
-        f"{SN}/projects/{project.id}/settings",
-        headers=admin_headers,
-        json={"granularity_level": "medium"},
-    )
-    await new_session(client, alice_headers, project.id)
+    await new_session(client, alice_headers, project.id)  # medium
 
     res = await client.put(
         f"{SN}/projects/{project.id}/settings",

@@ -487,10 +487,12 @@ class SnProjectSettings(Base):
     later audio has to agree with — the SPA refuses one whose acousteme would resolve
     differently rather than cutting it on a second grid.
 
-    The level is settable only while the project has no sessions. That is not caution, it
-    is the only arrangement where the invariant holds: changing it afterwards would either
-    contradict the ``bead_sec`` already stamped — leaving the project unable to open
-    another session at all — or split the corpus across two grids, which is the exact
+    The row IS the lock. ``granularity_level`` is NOT NULL, so a row existing means an
+    admin confirmed a level, and confirming is what freezes it — the settings screen says
+    as much on the button before the write happens. That is not caution, it is the only
+    arrangement where the invariant holds: a level that could move afterwards would either
+    contradict the ``bead_sec`` a session already stamped — leaving the project unable to
+    open another session at all — or split the corpus across two grids, which is the exact
     thing this table exists to prevent. Re-cutting a project at a new granularity means
     re-deriving every ``manifest_id`` it has already exported, and that is a migration,
     not a setting.
