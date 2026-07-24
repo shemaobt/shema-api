@@ -94,7 +94,33 @@ docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv
 docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv run pytest tests"
 ```
 
-> Use a Neon dev branch for local work to avoid touching production data.
+Dev and test run against the `db` container, never against Neon. An empty database is
+migrated to head on startup, so the stack comes up usable with no extra step.
+
+### Populating the local database
+
+To work with realistic data, restore the newest production dump:
+
+```bash
+./scripts/restore_local_db.sh
+```
+
+This drops and recreates the local `tripod` database, restores the dump, and applies any
+migrations written since it was taken. It touches nothing remote.
+
+Dumps live in `gs://tripod-db-dumps`, which carries real user data and is readable only by
+named accounts — there is no group or domain-wide grant. To add someone:
+
+```bash
+./scripts/provision_dump_bucket.sh alice@shemaywam.com
+```
+
+The same script creates the bucket on first run (uniform access, public access prevention,
+versioning, 30-day expiry). To refresh the dump — reads production, writes nothing to it:
+
+```bash
+./scripts/dump_prod_db.sh
+```
 
 ### BHSA (Hebrew text data)
 
