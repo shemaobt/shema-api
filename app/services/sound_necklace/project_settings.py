@@ -1,26 +1,60 @@
+import math
+from dataclasses import dataclass
+from datetime import datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ProjectGranularityLocked
 from app.db.models.sound_necklace import GranularityLevel, SnProjectSettings
+from app.services.sound_necklace.get_lock_status import as_utc
 
 
-async def get_project_settings(
-    db: AsyncSession, project_id: str
-) -> tuple[SnProjectSettings | None, bool]:
-    """The project's granularity row (or None), and whether the level is frozen.
+@dataclass(frozen=True)
+class GranularitySettings:
+    """A project's bead grid, as the SPA reads it back.
+
+    Both values are nullable and say different things when absent: no ``granularity_level``
+    is a project nobody confirmed yet, no ``bead_sec`` is a confirmed project that has not
+    cut anything, so no audio has fixed the duration the level resolves to.
+    """
+
+    project_id: str
+    granularity_level: GranularityLevel | None = None
+    bead_sec: float | None = None
+    locked: bool = False
+    updated_at: datetime | None = None
+
+
+def _settings(project_id: str, row: SnProjectSettings | None) -> GranularitySettings:
+    """Read a settings row out as the API's own shape, so no ORM object leaves the layer.
+
+    ``locked`` is the row existing, not a stored column: the row IS the lock.
+    """
+    if row is None:
+        return GranularitySettings(project_id=project_id)
+    return GranularitySettings(
+        project_id=project_id,
+        granularity_level=row.granularity_level,
+        bead_sec=row.bead_sec,
+        locked=True,
+        updated_at=as_utc(row.updated_at),
+    )
+
+
+async def get_project_settings(db: AsyncSession, project_id: str) -> GranularitySettings:
+    """The project's granularity, and whether the level is frozen.
 
     The row IS the lock: ``granularity_level`` is NOT NULL, so a row existing means an
     admin confirmed a level, and confirming is what freezes it. No session count is
     consulted — a project can be frozen before it has cut anything, which is exactly the
     state the settings screen exists to produce.
     """
-    row = await db.get(SnProjectSettings, project_id)
-    return row, row is not None
+    return _settings(project_id, await db.get(SnProjectSettings, project_id))
 
 
 async def set_project_granularity(
     db: AsyncSession, project_id: str, level: GranularityLevel, updated_by: str
-) -> tuple[SnProjectSettings, bool]:
+) -> GranularitySettings:
     """Confirm the project's bead granularity — once, permanently.
 
     Confirming is the freeze. The screen says so on the button ("this does not change
@@ -36,7 +70,7 @@ async def set_project_granularity(
     row = await db.get(SnProjectSettings, project_id)
     if row is not None:
         if row.granularity_level == level:
-            return row, True
+            return _settings(project_id, row)
         raise ProjectGranularityLocked(
             "This project's bead granularity is already confirmed, so the level cannot "
             "change. Re-cutting it means re-deriving every manifest_id already exported."
@@ -46,31 +80,46 @@ async def set_project_granularity(
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return row, True
+    return _settings(project_id, row)
 
 
 async def stamp_resolved_bead_sec(
     db: AsyncSession, project_id: str, level: GranularityLevel, bead_sec: float
 ) -> None:
-    """Record the grid the project's first session landed on.
+    """Hold a session to the project's grid, and record that grid when it is the first.
 
     ``bead_sec`` is ``granularity_frames[level] * hop_sec`` off the audio's own acousteme,
     so nothing knows it before an audio is cut — the admin confirms a level, the first
-    session resolves it. From then on it is the value later audios have to agree with,
-    and the SPA refuses one whose acousteme would resolve differently.
+    session resolves it. From then on it is the value later audios have to agree with, and
+    one that does not is refused here rather than trusted. The SPA already declines to cut
+    on a second grid, but a stale tab or a client that never ran that check would commit
+    the corpus split this table exists to prevent.
 
     Writes the level too when no row exists. Sessions predate this table, and a project
     grandfathered in that way still needs its grid written down; the level it was cut at
     IS the project's level, and writing it freezes the project exactly as confirming
-    would have. It never overwrites a level already confirmed — a session disagreeing
-    with its project would be a bug to surface, not to enshrine.
+    would have.
 
     Called inside ``create_session``'s transaction and does not commit: that call site
-    owns the commit that lands the session, its state row and its consent together.
+    owns the commit that lands the session, its state row and its consent together — and
+    owns the rollback that discards them when this refuses one.
     """
     row = await db.get(SnProjectSettings, project_id)
     if row is None:
-        row = SnProjectSettings(project_id=project_id, granularity_level=level)
-        db.add(row)
+        db.add(SnProjectSettings(project_id=project_id, granularity_level=level, bead_sec=bead_sec))
+        return
+
+    if row.granularity_level != level:
+        raise ProjectGranularityLocked(
+            f"This project is cut at granularity '{row.granularity_level.value}' and this "
+            f"session was cut at '{level.value}'. Two grids in one project is the thing "
+            "the project setting exists to prevent."
+        )
     if row.bead_sec is None:
         row.bead_sec = bead_sec
+    elif not math.isclose(row.bead_sec, bead_sec, rel_tol=1e-9):
+        raise ProjectGranularityLocked(
+            f"This project's bead grid is {row.bead_sec}s and this audio resolves to "
+            f"{bead_sec}s. Its acousteme does not agree with the grid the project is "
+            "already cut on."
+        )

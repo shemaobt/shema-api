@@ -16,14 +16,13 @@ from fastapi import APIRouter, status
 
 from app.api.projects._deps import assert_project_access
 from app.api.sound_necklace._deps import CurrentUser, Db, ProjectAdmin
-from app.db.models.sound_necklace import SnProjectSettings
 from app.models.sound_necklace import (
     ProjectGranularityLockedResponse,
     ProjectSettingsResponse,
     ProjectSettingsUpdate,
 )
 from app.services import sound_necklace_service as sn_service
-from app.services.sound_necklace.get_lock_status import as_utc
+from app.services.sound_necklace.project_settings import GranularitySettings
 
 router = APIRouter()
 
@@ -39,17 +38,13 @@ LOCKED_RESPONSE: dict[int | str, dict[str, Any]] = {
 }
 
 
-def _response(
-    project_id: str, row: SnProjectSettings | None, locked: bool
-) -> ProjectSettingsResponse:
-    if row is None:
-        return ProjectSettingsResponse(project_id=project_id, locked=locked)
+def _response(settings: GranularitySettings) -> ProjectSettingsResponse:
     return ProjectSettingsResponse(
-        project_id=project_id,
-        granularity_level=row.granularity_level,
-        bead_sec=row.bead_sec,
-        locked=locked,
-        updated_at=as_utc(row.updated_at).isoformat(),
+        project_id=settings.project_id,
+        granularity_level=settings.granularity_level,
+        bead_sec=settings.bead_sec,
+        locked=settings.locked,
+        updated_at=settings.updated_at.isoformat() if settings.updated_at else None,
     )
 
 
@@ -59,8 +54,7 @@ async def get_project_settings(
 ) -> ProjectSettingsResponse:
     """The granularity this project cuts at, and whether it can still change."""
     await assert_project_access(db, user, project_id)
-    row, locked = await sn_service.get_project_settings(db, project_id)
-    return _response(project_id, row, locked)
+    return _response(await sn_service.get_project_settings(db, project_id))
 
 
 @router.put(
@@ -81,7 +75,6 @@ async def set_project_settings(
     until an audio is cut — the project's first session stamps it.
     """
     await assert_project_access(db, user, project_id)
-    row, locked = await sn_service.set_project_granularity(
-        db, project_id, payload.granularity_level, user.id
+    return _response(
+        await sn_service.set_project_granularity(db, project_id, payload.granularity_level, user.id)
     )
-    return _response(project_id, row, locked)
