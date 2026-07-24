@@ -16,7 +16,13 @@ from sqlalchemy import select
 
 from app.db.models.sound_necklace import SnProjectSettings
 from tests.baker import make_project_user_access, make_user
-from tests.test_sound_necklace.conftest import auth_header, grant_role, new_session
+from tests.test_sound_necklace.conftest import (
+    audio_of,
+    auth_header,
+    give_project_an_audio,
+    grant_role,
+    new_session,
+)
 
 SN = "/api/sound-necklace"
 
@@ -256,7 +262,7 @@ async def test_a_session_on_another_level_is_refused(client, admin, alice, proje
         f"{SN}/sessions",
         headers=alice_headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of(project.id),
             "project_id": project.id,
             "story_name": "O Conto do Boto",
             "story_slug": "conto-do-boto",
@@ -271,7 +277,7 @@ async def test_a_session_on_another_level_is_refused(client, admin, alice, proje
     assert res.json()["code"] == "PROJECT_GRANULARITY_LOCKED"
 
 
-async def test_a_second_audio_on_a_different_grid_is_refused(client, alice, project):
+async def test_a_second_audio_on_a_different_grid_is_refused(client, db_session, alice, project):
     """Same level, different ``bead_sec``: an acousteme that does not agree with the grid.
 
     Nothing knows ``beadSec`` until an audio is cut, so the first session fixes it — and
@@ -279,12 +285,13 @@ async def test_a_second_audio_on_a_different_grid_is_refused(client, alice, proj
     """
     _alice, headers = alice
     await new_session(client, headers, project.id)  # medium, bead_sec 0.5
+    second = await give_project_an_audio(db_session, project.id, "aud_2")
 
     res = await client.post(
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_2",
+            "audio_id": second,
             "project_id": project.id,
             "story_name": "Outro Conto",
             "story_slug": "outro-conto",
@@ -299,16 +306,17 @@ async def test_a_second_audio_on_a_different_grid_is_refused(client, alice, proj
     assert res.json()["code"] == "PROJECT_GRANULARITY_LOCKED"
 
 
-async def test_a_second_audio_on_the_same_grid_is_cut(client, alice, project):
+async def test_a_second_audio_on_the_same_grid_is_cut(client, db_session, alice, project):
     """The guard refuses a different grid, not a second audio."""
     _alice, headers = alice
     await new_session(client, headers, project.id)
+    second = await give_project_an_audio(db_session, project.id, "aud_2")
 
     res = await client.post(
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_2",
+            "audio_id": second,
             "project_id": project.id,
             "story_name": "Outro Conto",
             "story_slug": "outro-conto",

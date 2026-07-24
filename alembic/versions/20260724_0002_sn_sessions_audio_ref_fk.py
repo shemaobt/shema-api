@@ -32,7 +32,7 @@ finding — a session whose audio cannot be identified is not something a migrat
 guess its way past.
 
 Revision ID: 20260724_0002
-Revises: 20260723_0001
+Revises: 20260724_0001
 Create Date: 2026-07-24 12:00:00.000000
 """
 
@@ -43,7 +43,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260724_0002"
-down_revision: str | None = "20260723_0001"
+down_revision: str | None = "20260724_0001"
 branch_labels = None
 depends_on = None
 
