@@ -9,7 +9,7 @@ This file defines backend-specific conventions for agents working in this reposi
 - **Framework**: FastAPI
 - **Server**: Uvicorn (dev) / Gunicorn (production)
 - **Package manager**: `uv` (`pyproject.toml` + `uv.lock`)
-- **Database**: PostgreSQL via SQLAlchemy 2 async engine + `asyncpg` — Neon in production, the local `db` container in dev/test
+- **Database**: PostgreSQL via SQLAlchemy 2 async engine + `asyncpg` — Neon in production, the local `db` container for Compose. `pytest` runs on SQLite and touches neither.
 - **Migrations**: Alembic
 - **Validation / schemas**: Pydantic v2
 - **Auth**: JWT (`python-jose`) + passlib (`pbkdf2_sha256`)
@@ -103,7 +103,7 @@ tripod-backend/
   - Cloud Run via `--set-secrets` in deploy workflow
 - Required secrets:
   - **Local (docker-compose):** `tripod_backend_jwt_secret`. The database is the local `db`
-    container, not a secret — dev and test never point at Neon.
+    container, not a secret — Compose never points at Neon.
   - **Production (Cloud Run):** `tripod_backend_neon_database_url`, `tripod_backend_jwt_secret`
 - Production dumps live in `gs://tripod-db-dumps`, readable only by explicitly named
   accounts. See `scripts/provision_dump_bucket.sh`, `dump_prod_db.sh`, `restore_local_db.sh`.

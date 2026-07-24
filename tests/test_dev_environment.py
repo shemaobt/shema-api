@@ -4,13 +4,15 @@ Nothing here touches the app: it pins the contract of docker-compose.yml, which 
 what actually decides where a developer's data lives.
 """
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
 yaml = pytest.importorskip("yaml")
 
-COMPOSE = Path(__file__).resolve().parent.parent / "docker-compose.yml"
+ROOT = Path(__file__).resolve().parent.parent
+COMPOSE = ROOT / "docker-compose.yml"
 NEON_LOCAL_SECRET = "tripod_backend_neon_database_url_local"
 
 
@@ -57,3 +59,28 @@ def test_secrets_container_still_provides_the_remaining_secrets(compose: dict) -
 
     assert "tripod_backend_jwt_secret" in command
     assert "DATABASE_URL" not in command
+
+
+def test_signing_key_never_reaches_the_image() -> None:
+    """Dockerfile.dev ends in `COPY . .`, so a service account key in the working
+    directory would be baked into every layer. Compose mounts it at runtime instead."""
+    ignored = (ROOT / ".dockerignore").read_text().split()
+
+    assert "gcs-signing-key.json" in ignored
+    assert ".env" in ignored
+
+
+@pytest.mark.parametrize("script", ["dump_prod_db.sh", "restore_local_db.sh"])
+def test_production_data_scripts_refuse_without_confirmation(script: str) -> None:
+    """Both move real user data. Declining at the prompt has to stop them before
+    they reach gcloud, so a stray run cannot copy production anywhere."""
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts" / script)],
+        input="no\n",
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "aborted" in result.stdout + result.stderr

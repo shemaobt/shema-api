@@ -9,3 +9,9 @@ __pycache__
 *.db
 *.dump
 node_modules
+
+# Credentials. Dockerfile.dev ends in `COPY . .`, and compose mounts these at
+# runtime, so nothing needs them in a layer.
+.env
+.env.*
+gcs-signing-key.json

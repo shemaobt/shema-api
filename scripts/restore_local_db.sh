@@ -9,9 +9,23 @@ set -euo pipefail
 
 BUCKET="${DUMP_BUCKET:-tripod-db-dumps}"
 PROJECT_ID="${SECRETS_PROJECT_ID:-shemaobt-secrets}"
-DB_NAME="${LOCAL_DB_NAME:-tripod}"
+# Hardcoded to match the DATABASE_URL compose hands the backend. An override here
+# would restore one database while the application reads another.
+DB_NAME="tripod"
 
 cd "$(dirname "$0")/.."
+
+# Ask before the download, not after: the dump holds real user data, and once it is
+# on the disk the bucket permissions no longer protect it.
+if [ "${1:-}" = "--yes" ]; then
+  shift
+else
+  echo "This puts a copy of PRODUCTION data on this machine — real emails, password"
+  echo "hashes and user content. Do not run it on a shared or unencrypted machine."
+  printf "Type 'yes' to continue: "
+  read -r reply
+  [ "$reply" = "yes" ] || { echo "aborted"; exit 1; }
+fi
 
 FILE="${1:-}"
 if [ -z "$FILE" ]; then
@@ -22,8 +36,9 @@ else
   FILE="gs://$BUCKET/$(basename "$FILE")"
 fi
 
+umask 077
 LOCAL_FILE=$(mktemp -t tripod-dump)
-trap 'rm -f "$LOCAL_FILE"' EXIT
+trap 'rm -f "$LOCAL_FILE"' EXIT INT TERM
 
 echo "==> downloading $FILE"
 gcloud storage cp "$FILE" "$LOCAL_FILE" --project="$PROJECT_ID"

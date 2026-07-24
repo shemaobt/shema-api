@@ -94,22 +94,29 @@ docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv
 docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv run pytest tests"
 ```
 
-Dev and test run against the `db` container, never against Neon. An empty database is
-migrated to head on startup, so the stack comes up usable with no extra step.
+Compose services run against the `db` container, never against Neon. An empty database is
+migrated to head on startup, so the stack comes up usable with no extra step. (`pytest` is
+separate: it runs on SQLite and reaches neither database.)
 
 ### Populating the local database
 
-To work with realistic data, restore the newest production dump:
+Only if you need realistic data — an empty database is enough for most work:
 
 ```bash
 ./scripts/restore_local_db.sh
 ```
 
-This drops and recreates the local `tripod` database, restores the dump, and applies any
-migrations written since it was taken. It touches nothing remote.
+This drops and recreates the local `tripod` database, restores the newest dump, and applies
+any migrations written since it was taken. It touches nothing remote.
 
-Dumps live in `gs://tripod-db-dumps`, which carries real user data and is readable only by
-named accounts — there is no group or domain-wide grant. To add someone:
+**The dump is not anonymized.** It carries real emails, password hashes and user content,
+and once restored it lives unencrypted in a Docker volume on your machine — the bucket
+permissions no longer protect it. The script asks for confirmation before downloading. Do
+not run it on a shared machine, and remove the volume (`docker compose down -v`) when you
+no longer need the data.
+
+Dumps live in `gs://tripod-db-dumps`, readable only by named accounts — no group and no
+domain-wide grant, and the provisioning script fails if it finds one. To add someone:
 
 ```bash
 ./scripts/provision_dump_bucket.sh alice@shemaywam.com

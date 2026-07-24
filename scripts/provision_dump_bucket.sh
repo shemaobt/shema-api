@@ -51,6 +51,28 @@ for email in "$@"; do
 done
 
 echo
-echo "Readers on gs://$BUCKET:"
-gcloud storage buckets get-iam-policy "gs://$BUCKET" --project="$PROJECT_ID" \
-  --format="table(bindings.role, bindings.members)"
+echo "==> verifying nothing reaches these dumps except named accounts"
+# Adding readers proves nothing on its own: a bucket keeps whatever grants it already
+# had, and a new one is created with legacy project bindings (projectViewer and
+# friends) that hand read access to every viewer on the project. Anything broader
+# than a named user or service account fails the run.
+members=$(gcloud storage buckets get-iam-policy "gs://$BUCKET" --project="$PROJECT_ID" \
+  --flatten="bindings[].members" --format="value(bindings.members)")
+wide=$(printf '%s\n' "$members" | grep -Ev '^(user:|serviceAccount:)' | sort -u || true)
+
+printf '%s\n' "$members" | sort -u | sed 's/^/  /'
+
+if [ -n "$wide" ]; then
+  echo >&2
+  echo "REFUSING: these principals can read the dumps but are not named accounts:" >&2
+  printf '%s\n' "$wide" | sed 's/^/  /' >&2
+  echo >&2
+  echo "Remove each one before treating this bucket as restricted, e.g.:" >&2
+  echo "  gcloud storage buckets remove-iam-policy-binding gs://$BUCKET \\" >&2
+  echo "    --project=$PROJECT_ID --member=<principal> --role=<role>" >&2
+  echo "Roles per principal: gcloud storage buckets get-iam-policy gs://$BUCKET" >&2
+  exit 1
+fi
+
+echo
+echo "gs://$BUCKET is readable only by the accounts listed above."
