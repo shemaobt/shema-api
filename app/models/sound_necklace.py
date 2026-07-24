@@ -97,7 +97,7 @@ class SessionCreate(BaseModel):
 
     # The text lengths mirror their columns: unbounded here, an over-long value would
     # reach Postgres and fail the insert instead of failing validation.
-    audio_id: str = Field(max_length=255)
+    audio_id: str = Field(max_length=128)
     project_id: str
     story_name: str = Field(max_length=255)
     story_slug: str = Field(max_length=255)

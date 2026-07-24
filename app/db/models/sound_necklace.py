@@ -141,6 +141,20 @@ _AUDIT_EVENT_TYPE = Enum(
 
 
 class SnSession(Base):
+    """One facilitator's pass over one recorded story.
+
+    ``audio_ref`` is a real foreign key rather than a remembered string, and that is
+    load-bearing: it is the only link from a bucket audio to the artifacts cut from it,
+    so a session naming an audio nobody has would be an export nothing could ever trace
+    back — the row would survive and the one field saying where it came from would be
+    wrong. NO ACTION on delete, never CASCADE: removing an audio must fail while a
+    session points at it, because the alternative is destroying somebody's finished work
+    to satisfy a delete they did not ask for. Deleting the PROJECT still works, since
+    both rows cascade from it in the same statement. Its width matches
+    ``sn_audio_refs.audio_id``; a wider column could hold a value the referenced one
+    cannot store.
+    """
+
     __tablename__ = "sn_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -150,7 +164,9 @@ class SnSession(Base):
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    audio_ref: Mapped[str] = mapped_column(String(255))
+    audio_ref: Mapped[str] = mapped_column(
+        String(128), ForeignKey("sn_audio_refs.audio_id"), index=True
+    )
     story_name: Mapped[str] = mapped_column(String(255))
     slug: Mapped[str] = mapped_column(String(255))
     manifest_id: Mapped[str] = mapped_column(String(64))

@@ -17,6 +17,7 @@ from tests.baker import make_language, make_project
 from tests.test_sound_necklace.conftest import (
     SN,
     expire_lease,
+    give_project_an_audio,
     make_facilitator,
     new_session,
     set_lease_expiry,
@@ -203,6 +204,7 @@ async def test_a_session_in_an_unreachable_project_is_closed_on_every_lock_route
     _user, headers = alice
     language = await make_language(db_session, name="Outra", code="oth")
     foreign_project = await make_project(db_session, language.id, name="Projeto B")
+    await give_project_an_audio(db_session, foreign_project.id)
     _owner, owner_headers = await make_facilitator(
         db_session, sound_necklace_app, foreign_project, "owner@example.com", "Owner"
     )

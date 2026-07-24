@@ -97,10 +97,43 @@ async def make_facilitator(db_session, sound_necklace_app, project, email: str, 
     return user, await auth_header(db_session, user)
 
 
+def audio_of(project_id: str) -> str:
+    """The audio id a project's fixture bucket holds.
+
+    Derived from the project rather than fixed, because ``audio_id`` is a global primary
+    key: any test that sets up two projects would collide on a shared literal, and the
+    "another project is denied" cases all set up two.
+    """
+    return f"aud-{project_id}"
+
+
+async def give_project_an_audio(db_session, project_id: str, audio_id: str | None = None) -> str:
+    """Put an audio in a project's bucket, so a session can be opened on it.
+
+    Every session names an audio, and since ENG-362 that name is a foreign key the
+    service checks besides. A project with an empty bucket is a project no session can
+    open — not the state these tests mean to set up, so this is fixture plumbing rather
+    than something a test asserts on.
+    """
+    audio_id = audio_id or audio_of(project_id)
+    db_session.add(SnAudioRef(audio_id=audio_id, project_id=project_id, consent_present=True))
+    await db_session.commit()
+    return audio_id
+
+
 @pytest.fixture()
 async def project(db_session):
+    """A project with one audio in its bucket — the audio ``new_session`` cuts.
+
+    The audio is part of the fixture because a session cannot name one the project does
+    not have: ``audio_ref`` is a foreign key, and create_session checks it besides. A
+    project without audios is a project no session can open, which is not the state any
+    of these tests mean to set up.
+    """
     language = await make_language(db_session, name="Nheengatu", code="yrl")
-    return await make_project(db_session, language.id, name="Projeto A")
+    project = await make_project(db_session, language.id, name="Projeto A")
+    await give_project_an_audio(db_session, project.id)
+    return project
 
 
 @pytest.fixture()
@@ -121,7 +154,7 @@ async def new_session(client, headers, project_id: str) -> str:
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of(project_id),
             "project_id": project_id,
             "story_name": "O Conto do Boto",
             "story_slug": "conto-do-boto",
