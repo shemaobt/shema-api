@@ -11,7 +11,9 @@ set -euo pipefail
 BUCKET="${DUMP_BUCKET:-tripod-db-dumps}"
 PROJECT_ID="${SECRETS_PROJECT_ID:-shemaobt-secrets}"
 LOCATION="${DUMP_BUCKET_LOCATION:-us-central1}"
-RETENTION_DAYS="${DUMP_RETENTION_DAYS:-30}"
+# Dumps are taken by hand, so this has to outlive the gaps between them: a shorter
+# window empties the bucket and breaks restore_local_db.sh for everyone.
+RETENTION_DAYS="${DUMP_RETENTION_DAYS:-180}"
 
 if [ "$#" -eq 0 ]; then
   echo "usage: $0 <email> [email...]" >&2

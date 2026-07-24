@@ -123,11 +123,18 @@ domain-wide grant, and the provisioning script fails if it finds one. To add som
 ```
 
 The same script creates the bucket on first run (uniform access, public access prevention,
-versioning, 30-day expiry). To refresh the dump — reads production, writes nothing to it:
+versioning, 180-day expiry) and fails if it finds any principal that is not a named user or
+service account.
+
+Dumps are taken by hand, whenever the data on the bucket has aged past what you can work
+with. Nothing schedules this, and nothing takes one automatically:
 
 ```bash
-./scripts/dump_prod_db.sh
+./scripts/dump_prod_db.sh   # reads production, writes nothing to it
 ```
+
+Restoring is likewise opt-in — `docker compose up` gives you an empty database migrated to
+head, and never reads the bucket.
 
 ### BHSA (Hebrew text data)
 
