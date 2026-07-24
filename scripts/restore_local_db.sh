@@ -42,7 +42,7 @@ FILE="${1:-}"
 if [ -z "$FILE" ]; then
   echo "==> finding the newest dump in gs://$BUCKET"
   FILE=$(gcloud storage ls "gs://$BUCKET/*.dump" --project="$PROJECT_ID" | sort | tail -1)
-  [ -n "$FILE" ] || { echo "no dumps in gs://$BUCKET — run scripts/dump_prod_db.sh" >&2; exit 1; }
+  [ -n "$FILE" ] || { echo "no dumps in gs://$BUCKET — ask an admin to take one" >&2; exit 1; }
 else
   FILE="gs://$BUCKET/$(basename "$FILE")"
 fi

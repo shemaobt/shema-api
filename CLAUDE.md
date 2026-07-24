@@ -108,7 +108,8 @@ tripod-backend/
 - Production dumps live in `gs://tripod-db-dumps`, readable only by explicitly named
   accounts. `restore_local_db.sh` downloads one to `.local-dump/`, which the `db` service
   mounts: a from-scratch database then seeds itself from it, with `SEED_FROM_DUMP=0` to opt
-  out. See `scripts/dump_prod_db.sh`, `restore_local_db.sh`, `seed_local_db.sh`.
+  out. See `scripts/restore_local_db.sh` and `seed_local_db.sh`. Taking a dump is a manual
+  admin procedure documented in the README, deliberately not a script in the repository.
 
 ---
 

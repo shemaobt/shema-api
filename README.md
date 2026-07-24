@@ -132,11 +132,27 @@ volume. Do not do this on a shared machine. Delete `.local-dump/latest.dump` and
 
 ### The dump bucket
 
-Dumps live in `gs://tripod-db-dumps` and are taken by hand — nothing schedules this:
+Dumps live in `gs://tripod-db-dumps` and are taken by hand by an admin — nothing schedules
+this, and there is no script in the repository for it. Reads production, writes nothing
+to it:
 
 ```bash
-./scripts/dump_prod_db.sh   # reads production, writes nothing to it
+umask 077                                    # the file below is production data
+FILE="tripod-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+PGURL="$(gcloud secrets versions access latest \
+  --secret=tripod_backend_neon_database_url --project=shemaobt-secrets)" \
+  docker compose run --rm --no-deps -T -e PGURL --entrypoint sh db \
+  -c 'pg_dump --format=custom --no-owner --no-privileges "$PGURL"' > "$FILE"
+
+gcloud storage cp "$FILE" "gs://tripod-db-dumps/$FILE" --project=shemaobt-secrets
+rm "$FILE"
 ```
+
+Two details that matter. The connection string goes through the environment rather than as
+an argument, because argv is readable by any local process and it carries the production
+password. And `--no-owner --no-privileges` because the Neon roles do not exist in the local
+container, so without them a restore fails on every object.
 
 The bucket already exists. Grant a new developer access by adding their email as
 **Storage Object Viewer** in the Cloud Console. Its configuration, if it ever has to be

@@ -96,17 +96,6 @@ def test_the_local_dump_stays_out_of_git() -> None:
     assert f"!{DUMP_DIR}/.gitkeep" in ignored
 
 
-def test_the_production_uri_never_reaches_a_command_line() -> None:
-    """argv is readable by any local process, and the string carries the production
-    password, so it goes to the container through the environment."""
-    script = (ROOT / "scripts" / "dump_prod_db.sh").read_text().replace("\\\n", " ")
-    invocation = next(line for line in script.splitlines() if "docker compose run" in line)
-    arguments = invocation.split("docker compose run", 1)[1]
-
-    assert "$DB_URL" not in arguments
-    assert "-e PGURL" in arguments
-
-
 def test_signing_key_never_reaches_the_image() -> None:
     """Dockerfile.dev ends in `COPY . .`, so a service account key in the working
     directory would be baked into every layer. Compose mounts it at runtime instead."""
@@ -116,12 +105,11 @@ def test_signing_key_never_reaches_the_image() -> None:
     assert ".env" in ignored
 
 
-@pytest.mark.parametrize("script", ["dump_prod_db.sh", "restore_local_db.sh"])
-def test_production_data_scripts_refuse_without_confirmation(script: str) -> None:
-    """Both move real user data. Declining at the prompt has to stop them before
-    they reach gcloud, so a stray run cannot copy production anywhere."""
+def test_restore_refuses_without_confirmation() -> None:
+    """It puts real user data on the machine. Declining at the prompt has to stop it
+    before it reaches gcloud, so a stray run cannot copy production anywhere."""
     result = subprocess.run(
-        ["bash", str(ROOT / "scripts" / script)],
+        ["bash", str(ROOT / "scripts" / "restore_local_db.sh")],
         input="no\n",
         capture_output=True,
         text=True,
