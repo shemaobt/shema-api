@@ -1,0 +1,11 @@
+.git
+.worktrees
+.venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+__pycache__
+*.pyc
+*.db
+*.dump
+node_modules
