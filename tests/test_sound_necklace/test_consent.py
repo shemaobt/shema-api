@@ -17,7 +17,12 @@ from sqlalchemy import delete, select, text
 from app.db.models.auth import User
 from app.db.models.sound_necklace import ConsentType, SnConsent, SnSession
 from tests.baker import make_language, make_project, make_project_user_access, make_user
-from tests.test_sound_necklace.conftest import auth_header, grant_role
+from tests.test_sound_necklace.conftest import (
+    audio_of,
+    auth_header,
+    give_project_an_audio,
+    grant_role,
+)
 
 SN = "/api/sound-necklace"
 
@@ -27,7 +32,7 @@ async def new_session(client, headers, project_id: str, *, consent: bool = True)
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of(project_id),
             "project_id": project_id,
             "story_name": "O Conto do Boto",
             "story_slug": "conto-do-boto",
@@ -48,6 +53,7 @@ async def facilitator(db_session, sound_necklace_app):
     await grant_role(db_session, sound_necklace_app.id, user.id, "facilitator")
     language = await make_language(db_session, name="Nheengatu", code="yrl")
     project = await make_project(db_session, language.id, name="Projeto A")
+    await give_project_an_audio(db_session, project.id)
     await make_project_user_access(db_session, project.id, user.id)
     headers = await auth_header(db_session, user)
     return user, project, headers

@@ -12,7 +12,12 @@ from __future__ import annotations
 import pytest
 
 from tests.baker import make_language, make_project, make_project_user_access, make_user
-from tests.test_sound_necklace.conftest import auth_header, grant_role
+from tests.test_sound_necklace.conftest import (
+    audio_of,
+    auth_header,
+    give_project_an_audio,
+    grant_role,
+)
 
 SN = "/api/sound-necklace"
 
@@ -35,7 +40,7 @@ async def new_session(client, headers, project_id: str, *, name: str = "O Conto 
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of(project_id),
             "project_id": project_id,
             "story_name": name,
             "story_slug": "conto-do-boto",
@@ -56,6 +61,7 @@ async def facilitator(db_session, sound_necklace_app):
     await grant_role(db_session, sound_necklace_app.id, user.id, "facilitator")
     language = await make_language(db_session, name="Nheengatu", code="yrl")
     project = await make_project(db_session, language.id, name="Projeto A")
+    await give_project_an_audio(db_session, project.id)
     await make_project_user_access(db_session, project.id, user.id)
     headers = await auth_header(db_session, user)
     return user, project, headers
@@ -71,7 +77,7 @@ async def test_create_opens_the_session_at_the_first_station(client, facilitator
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of(project.id),
             "project_id": project.id,
             "story_name": "O Conto do Boto",
             "story_slug": "conto-do-boto",
@@ -96,12 +102,13 @@ async def test_create_in_a_project_the_user_cannot_reach_is_forbidden(
     _user, _project, headers = facilitator
     language = await make_language(db_session, name="Outra", code="oth")
     foreign = await make_project(db_session, language.id, name="Projeto B")
+    await give_project_an_audio(db_session, foreign.id)
 
     res = await client.post(
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of(foreign.id),
             "project_id": foreign.id,
             "story_name": "Alheia",
             "story_slug": "alheia",
@@ -125,7 +132,7 @@ async def test_create_with_a_nonexistent_project_is_not_found_for_an_admin(clien
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of("proj_missing"),
             "project_id": "proj_missing",
             "story_name": "Fantasma",
             "story_slug": "fantasma",
@@ -286,7 +293,7 @@ async def test_a_story_name_longer_than_the_column_is_refused_not_truncated(clie
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "aud_1",
+            "audio_id": audio_of(project.id),
             "project_id": project.id,
             "story_name": "b" * 300,
             "story_slug": "conto-do-boto",
@@ -379,6 +386,7 @@ async def test_the_list_only_shows_sessions_of_projects_the_user_can_reach(
     await grant_role(db_session, sound_necklace_app.id, stranger.id, "facilitator")
     other_language = await make_language(db_session, name="Outra", code="oth")
     other_project = await make_project(db_session, other_language.id, name="Projeto B")
+    await give_project_an_audio(db_session, other_project.id)
     await make_project_user_access(db_session, other_project.id, stranger.id)
     stranger_headers = await auth_header(db_session, stranger)
     await new_session(client, stranger_headers, other_project.id, name="Alheia")
@@ -398,6 +406,7 @@ async def test_reading_a_session_of_another_project_is_forbidden(
     await grant_role(db_session, sound_necklace_app.id, stranger.id, "facilitator")
     other_language = await make_language(db_session, name="Outra", code="oth")
     other_project = await make_project(db_session, other_language.id, name="Projeto B")
+    await give_project_an_audio(db_session, other_project.id)
     await make_project_user_access(db_session, other_project.id, stranger.id)
     stranger_headers = await auth_header(db_session, stranger)
     foreign_id = await new_session(client, stranger_headers, other_project.id, name="Alheia")
@@ -429,3 +438,65 @@ async def test_the_list_is_paginated(client, facilitator):
     assert len(ids1) == 2
     assert len(ids2) == 1
     assert len(set(ids1 + ids2)) == 3, "pages must not overlap and must cover every session"
+
+
+async def test_a_session_cannot_name_an_audio_the_project_does_not_have(client, facilitator):
+    """The link from audio to artifacts is checked, not trusted (ENG-362).
+
+    ``audio_ref`` is the only thing tying a bucket audio to the artifacts cut from it. A
+    session naming an audio nobody has would export files that could never be traced
+    back: the row survives, and the one field saying where it came from is wrong.
+    """
+    _user, project, headers = facilitator
+
+    res = await client.post(
+        f"{SN}/sessions",
+        headers=headers,
+        json={
+            "audio_id": "aud_que_nao_existe",
+            "project_id": project.id,
+            "story_name": "Fantasma",
+            "story_slug": "fantasma",
+            "granularity_level": "medium",
+            "bead_sec": 0.5,
+            "manifest_id": "fnv1a32:d31a8419",
+            "pipeline_consent": True,
+        },
+    )
+
+    assert res.status_code == 404, res.text
+    assert (await db_sessions(client, headers)) == []
+
+
+async def test_a_session_cannot_borrow_an_audio_from_another_project(
+    client, db_session, facilitator
+):
+    """An audio belongs to one project. Cutting somebody else's is a miss, not a loan."""
+    _user, project, headers = facilitator
+    language = await make_language(db_session, name="Outra", code="oth")
+    foreign = await make_project(db_session, language.id, name="Projeto B")
+    foreign_audio = await give_project_an_audio(db_session, foreign.id)
+
+    res = await client.post(
+        f"{SN}/sessions",
+        headers=headers,
+        json={
+            "audio_id": foreign_audio,
+            "project_id": project.id,
+            "story_name": "Emprestada",
+            "story_slug": "emprestada",
+            "granularity_level": "medium",
+            "bead_sec": 0.5,
+            "manifest_id": "fnv1a32:d31a8419",
+            "pipeline_consent": True,
+        },
+    )
+
+    assert res.status_code == 404, res.text
+
+
+async def db_sessions(client, headers) -> list[dict]:
+    """The caller's sessions, as the listing reports them."""
+    res = await client.get(f"{SN}/sessions", headers=headers)
+    assert res.status_code == 200, res.text
+    return list(res.json()["sessions"])
