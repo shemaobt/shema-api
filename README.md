@@ -98,43 +98,49 @@ Compose services run against the `db` container, never against Neon. An empty da
 migrated to head on startup, so the stack comes up usable with no extra step. (`pytest` is
 separate: it runs on SQLite and reaches neither database.)
 
-### Populating the local database
+### Data in the local database
 
-Only if you need realistic data — an empty database is enough for most work:
+The first `docker compose up` on a machine restores the newest production dump into the
+new database automatically. Postgres runs the seed only while creating its data directory,
+so this happens once — an existing database is never overwritten. To skip it and work
+against an empty database:
+
+```bash
+SEED_FROM_DUMP=0 docker compose up backend
+```
+
+Seeding never blocks the stack. No bucket access, no dumps, or expired credentials all end
+the same way: an empty database migrated to head, which is enough for most work.
+
+**The dump is not anonymized.** It carries real emails, password hashes and user content,
+and once restored it lives unencrypted in a Docker volume on your machine, where the bucket
+permissions no longer protect it. Do not do this on a shared machine, and run
+`docker compose down -v` when you no longer need the data.
+
+To refresh an existing local database with a newer dump:
 
 ```bash
 ./scripts/restore_local_db.sh
 ```
 
-This drops and recreates the local `tripod` database, restores the newest dump, and applies
-any migrations written since it was taken. It touches nothing remote.
+This stops the backend and worker, recreates the local `tripod` database, restores, applies
+any migrations written since the dump was taken, and starts back what it stopped.
 
-**The dump is not anonymized.** It carries real emails, password hashes and user content,
-and once restored it lives unencrypted in a Docker volume on your machine — the bucket
-permissions no longer protect it. The script asks for confirmation before downloading. Do
-not run it on a shared machine, and remove the volume (`docker compose down -v`) when you
-no longer need the data.
+### The dump bucket
 
-Dumps live in `gs://tripod-db-dumps`, readable only by named accounts — no group and no
-domain-wide grant, and the provisioning script fails if it finds one. To add someone:
-
-```bash
-./scripts/provision_dump_bucket.sh alice@shemaywam.com
-```
-
-The same script creates the bucket on first run (uniform access, public access prevention,
-versioning, 180-day expiry) and fails if it finds any principal that is not a named user or
-service account.
-
-Dumps are taken by hand, whenever the data on the bucket has aged past what you can work
-with. Nothing schedules this, and nothing takes one automatically:
+Dumps live in `gs://tripod-db-dumps` and are taken by hand — nothing schedules this:
 
 ```bash
 ./scripts/dump_prod_db.sh   # reads production, writes nothing to it
 ```
 
-Restoring is likewise opt-in — `docker compose up` gives you an empty database migrated to
-head, and never reads the bucket.
+The bucket already exists. Grant a new developer access by adding their email as
+**Storage Object Viewer** in the Cloud Console. Its configuration, if it ever has to be
+rebuilt: uniform bucket-level access (so object ACLs cannot widen it), public access
+prevention enabled, versioning on, and a 180-day lifecycle rule. Access is granted per
+named account — never to a group, a domain, `allUsers` or `allAuthenticatedUsers`, and
+the legacy `projectViewer`/`projectEditor` bindings a new bucket is created with have to
+be removed, since they hand read access to every viewer on the project.
 
 ### BHSA (Hebrew text data)
 

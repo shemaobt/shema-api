@@ -61,6 +61,36 @@ def test_secrets_container_still_provides_the_remaining_secrets(compose: dict) -
     assert "DATABASE_URL" not in command
 
 
+def test_a_fresh_database_seeds_itself_from_the_newest_dump(compose: dict) -> None:
+    """Postgres runs /docker-entrypoint-initdb.d only when it creates the cluster, so
+    the restore happens on a from-scratch database and never on an existing one."""
+    db = compose["services"]["db"]
+
+    assert "./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro" in db["volumes"]
+    assert "db_seed:/seed:ro" in db["volumes"]
+    assert db["depends_on"]["db-seed"]["condition"] == "service_completed_successfully"
+
+
+def test_seeding_can_be_turned_off(compose: dict) -> None:
+    """Both halves have to honour it: db-seed skips the download, but a dump left in
+    the volume by an earlier run would otherwise still be restored by the db service."""
+    seed = compose["services"]["db-seed"]
+
+    assert "${SEED_FROM_DUMP:-1}" in seed["environment"]["SEED_FROM_DUMP"]
+    assert 'SEED_FROM_DUMP" = "0"' in "".join(seed["command"])
+    assert "${SEED_FROM_DUMP:-1}" in compose["services"]["db"]["environment"]["SEED_FROM_DUMP"]
+    assert 'SEED_FROM_DUMP" = "0"' in (ROOT / "scripts" / "seed_local_db.sh").read_text()
+
+
+def test_seeding_never_blocks_the_stack(compose: dict) -> None:
+    """A developer without bucket access, or an empty bucket, still gets an empty
+    database rather than a stack that refuses to start."""
+    command = "".join(compose["services"]["db-seed"]["command"])
+
+    assert "no dumps in" in command
+    assert command.count("exit 0") >= 4
+
+
 def test_signing_key_never_reaches_the_image() -> None:
     """Dockerfile.dev ends in `COPY . .`, so a service account key in the working
     directory would be baked into every layer. Compose mounts it at runtime instead."""
