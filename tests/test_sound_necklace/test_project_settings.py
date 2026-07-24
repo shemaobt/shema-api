@@ -80,6 +80,7 @@ async def test_confirming_is_what_freezes_it_even_before_anything_is_cut(client,
         headers=headers,
         json={"granularity_level": "small"},
     )
+    assert first.status_code == 200, first.text
     assert first.json()["locked"] is True
 
     res = await client.put(
@@ -148,11 +149,12 @@ async def test_the_first_session_stamps_the_resolved_bead_sec(
     """
     _admin, admin_headers = admin
     _alice, alice_headers = alice
-    await client.put(
+    confirmed = await client.put(
         f"{SN}/projects/{project.id}/settings",
         headers=admin_headers,
         json={"granularity_level": "medium"},
     )
+    assert confirmed.status_code == 200, confirmed.text
 
     await new_session(client, alice_headers, project.id)  # bead_sec 0.5
 
@@ -201,15 +203,102 @@ async def test_a_grandfathered_project_is_frozen_by_the_session_that_made_its_ro
     assert res.json()["code"] == "PROJECT_GRANULARITY_LOCKED"
 
 
+async def test_a_session_on_another_level_is_refused(client, admin, alice, project):
+    """The grid is enforced here, not only on the screen that draws it.
+
+    The SPA declines to cut an audio whose acousteme resolves elsewhere, but a stale tab
+    or a hand-rolled client would otherwise commit the very corpus split this table
+    exists to prevent.
+    """
+    _admin, admin_headers = admin
+    _alice, alice_headers = alice
+    confirmed = await client.put(
+        f"{SN}/projects/{project.id}/settings",
+        headers=admin_headers,
+        json={"granularity_level": "small"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    res = await client.post(
+        f"{SN}/sessions",
+        headers=alice_headers,
+        json={
+            "audio_id": "aud_1",
+            "project_id": project.id,
+            "story_name": "O Conto do Boto",
+            "story_slug": "conto-do-boto",
+            "granularity_level": "medium",
+            "bead_sec": 0.5,
+            "manifest_id": "fnv1a32:d31a8419",
+            "pipeline_consent": True,
+        },
+    )
+
+    assert res.status_code == 409, res.text
+    assert res.json()["code"] == "PROJECT_GRANULARITY_LOCKED"
+
+
+async def test_a_second_audio_on_a_different_grid_is_refused(client, alice, project):
+    """Same level, different ``bead_sec``: an acousteme that does not agree with the grid.
+
+    Nothing knows ``beadSec`` until an audio is cut, so the first session fixes it — and
+    what the first session fixed is what the second has to match.
+    """
+    _alice, headers = alice
+    await new_session(client, headers, project.id)  # medium, bead_sec 0.5
+
+    res = await client.post(
+        f"{SN}/sessions",
+        headers=headers,
+        json={
+            "audio_id": "aud_2",
+            "project_id": project.id,
+            "story_name": "Outro Conto",
+            "story_slug": "outro-conto",
+            "granularity_level": "medium",
+            "bead_sec": 0.64,
+            "manifest_id": "fnv1a32:d31a8420",
+            "pipeline_consent": True,
+        },
+    )
+
+    assert res.status_code == 409, res.text
+    assert res.json()["code"] == "PROJECT_GRANULARITY_LOCKED"
+
+
+async def test_a_second_audio_on_the_same_grid_is_cut(client, alice, project):
+    """The guard refuses a different grid, not a second audio."""
+    _alice, headers = alice
+    await new_session(client, headers, project.id)
+
+    res = await client.post(
+        f"{SN}/sessions",
+        headers=headers,
+        json={
+            "audio_id": "aud_2",
+            "project_id": project.id,
+            "story_name": "Outro Conto",
+            "story_slug": "outro-conto",
+            "granularity_level": "medium",
+            "bead_sec": 0.5,
+            "manifest_id": "fnv1a32:d31a8420",
+            "pipeline_consent": True,
+        },
+    )
+
+    assert res.status_code == 201, res.text
+
+
 async def test_re_sending_the_same_level_is_not_a_conflict(client, admin, alice, project):
     """A no-op write is not a change. The settings screen may save what is already there."""
     _admin, admin_headers = admin
     _alice, alice_headers = alice
-    await client.put(
+    confirmed = await client.put(
         f"{SN}/projects/{project.id}/settings",
         headers=admin_headers,
         json={"granularity_level": "medium"},
     )
+    assert confirmed.status_code == 200, confirmed.text
     await new_session(client, alice_headers, project.id)
 
     res = await client.put(
@@ -229,11 +318,12 @@ async def test_the_setting_outlives_the_admin_who_chose_it(client, db_session, a
     from app.db.models.auth import User
 
     admin_user, headers = admin
-    await client.put(
+    confirmed = await client.put(
         f"{SN}/projects/{project.id}/settings",
         headers=headers,
         json={"granularity_level": "large"},
     )
+    assert confirmed.status_code == 200, confirmed.text
 
     await db_session.execute(delete(User).where(User.id == admin_user.id))
     await db_session.commit()
