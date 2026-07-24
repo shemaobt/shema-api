@@ -46,6 +46,16 @@ gcloud storage cp "$FILE" "$LOCAL_FILE" --project="$PROJECT_ID"
 echo "==> starting the local database"
 docker compose up -d --wait db
 
+# DROP DATABASE ... FORCE only kills the sessions open right now. The backend runs with
+# --reload and pool_pre_ping, so it reconnects within seconds and would serve requests
+# off a half-restored schema. Stop the consumers, then put back what was running.
+RUNNING=$(docker compose ps --services --filter status=running | grep -E '^(backend|worker)$' || true)
+if [ -n "$RUNNING" ]; then
+  echo "==> stopping $(echo "$RUNNING" | tr '\n' ' ')while the database is replaced"
+  # shellcheck disable=SC2086
+  docker compose stop $RUNNING
+fi
+
 echo "==> recreating $DB_NAME"
 # FORCE drops the open connections a running backend holds; without it the DROP
 # blocks until every session goes away.
@@ -59,6 +69,12 @@ docker compose exec -T db pg_restore -U postgres -d "$DB_NAME" --no-owner --no-p
 echo "==> applying migrations written since the dump"
 docker compose run --rm --entrypoint sh backend \
   -c 'set -a && . /run/secrets/.env && set +a && uv run alembic upgrade head'
+
+if [ -n "$RUNNING" ]; then
+  echo "==> restarting $(echo "$RUNNING" | tr '\n' ' ')"
+  # shellcheck disable=SC2086
+  docker compose start $RUNNING
+fi
 
 echo
 echo "Local database restored from $(basename "$FILE")."
