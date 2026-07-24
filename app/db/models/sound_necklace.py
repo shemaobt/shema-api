@@ -494,6 +494,11 @@ class SnProjectSettings(Base):
     thing this table exists to prevent. Re-cutting a project at a new granularity means
     re-deriving every ``manifest_id`` it has already exported, and that is a migration,
     not a setting.
+
+    ``updated_by`` is SET NULL, never CASCADE: the account that chose the granularity is
+    not the setting, so deleting that user must not take a project's grid with it, and
+    RESTRICT would make a row here the reason a user cannot be deleted in an app that
+    shares this database.
     """
 
     __tablename__ = "sn_project_settings"
@@ -502,12 +507,7 @@ class SnProjectSettings(Base):
         String(36), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
     )
     granularity_level: Mapped[GranularityLevel] = mapped_column(_GRANULARITY_TYPE)
-    # Stamped by the project's first session, never sent by the admin. Null means the
-    # project has not cut anything yet, so nothing has to agree with anything.
     bead_sec: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # SET NULL, never CASCADE: the account that chose the granularity is not the setting.
-    # Deleting that user must not take a project's grid with it, and RESTRICT would make a
-    # row here the reason a user cannot be deleted in an app that shares this database.
     updated_by: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

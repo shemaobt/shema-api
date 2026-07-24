@@ -21,9 +21,6 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 # current_version these routes do not have, and SESSION_LOCKED promises a holder that no
 # longer exists. Just try again.
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
-# The project already cut something at its granularity, so the level cannot move. Its own
-# code because the client's answer is neither "reload and retry" (CONFLICT) nor "somebody
-# else holds it" (SESSION_LOCKED): there is nothing to retry, the decision is spent.
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 ERROR_CODE_NOT_FOUND = "NOT_FOUND"

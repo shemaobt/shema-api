@@ -43,17 +43,12 @@ def _response(
     project_id: str, row: SnProjectSettings | None, locked: bool
 ) -> ProjectSettingsResponse:
     if row is None:
-        # Nobody has configured this project. Nulls, not a 404: "not decided yet" is a
-        # state the setup screen renders, not an error it has to branch around.
         return ProjectSettingsResponse(project_id=project_id, locked=locked)
     return ProjectSettingsResponse(
         project_id=project_id,
         granularity_level=row.granularity_level,
         bead_sec=row.bead_sec,
         locked=locked,
-        # Through as_utc for the reason the consent record uses it: Postgres reads a
-        # timestamptz back aware and SQLite naive, so a bare isoformat() would carry an
-        # offset in production and none under test.
         updated_at=as_utc(row.updated_at).isoformat(),
     )
 

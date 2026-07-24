@@ -38,8 +38,6 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-# Declared once, and through postgresql.ENUM: sa.Enum would drop create_type silently
-# (it takes **kw) and emit a CREATE TYPE for a type sn_sessions already created.
 _GRANULARITY_ENUM = postgresql.ENUM(
     "small",
     "medium",
@@ -59,9 +57,7 @@ def upgrade() -> None:
         "sn_project_settings",
         sa.Column("project_id", sa.String(length=36), nullable=False),
         sa.Column("granularity_level", _GRANULARITY_ENUM, nullable=False),
-        # Null until the project cuts its first audio: no grid yet, nothing to agree with.
         sa.Column("bead_sec", sa.Float(), nullable=True),
-        # Nullable, and SET NULL below: the setting outlives the account that chose it.
         sa.Column("updated_by", sa.String(length=36), nullable=True),
         sa.Column(
             "updated_at",
@@ -70,16 +66,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
-        # SET NULL, never CASCADE: deleting the admin who chose the granularity must not
-        # take a project's grid with it. RESTRICT is not the answer either — `users` is
-        # shared with every other Tripod app, and a row here must not be what makes
-        # deleting a user fail over there.
         sa.ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="SET NULL"),
-        # One decision per project. The whole point of the table.
         sa.PrimaryKeyConstraint("project_id"),
     )
 
 
 def downgrade() -> None:
     op.drop_table("sn_project_settings")
-    # sn_granularity_level_enum is NOT dropped: sn_sessions created it and still uses it.

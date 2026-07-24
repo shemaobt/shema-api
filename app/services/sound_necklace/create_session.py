@@ -37,11 +37,6 @@ async def create_session(db: AsyncSession, user: User, payload: SessionCreate) -
     db.add(session)
     await db.flush()
     db.add(SnSessionState(session_id=session.id))
-    # The grid this project cuts at. The admin picks a level; the resolved duration comes
-    # from the audio's acousteme, so the first session is what fixes it — and from then on
-    # it is what a later audio has to agree with. Writes the level too when the project has
-    # no settings row: sessions predate that table, and one grandfathered in still needs
-    # its grid written down.
     await stamp_resolved_bead_sec(
         db, payload.project_id, payload.granularity_level, payload.bead_sec
     )
