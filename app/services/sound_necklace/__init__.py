@@ -19,6 +19,11 @@ from app.services.sound_necklace.list_sessions import list_sessions
 from app.services.sound_necklace.list_voice_answers import list_voice_answers
 from app.services.sound_necklace.load_state import load_state
 from app.services.sound_necklace.lock_fence import SessionLockedByOther
+from app.services.sound_necklace.project_settings import (
+    get_project_settings,
+    set_project_granularity,
+    stamp_resolved_bead_sec,
+)
 from app.services.sound_necklace.record_audit_event import record_audit_event
 from app.services.sound_necklace.record_consent import record_consent
 from app.services.sound_necklace.release_lock import release_lock
@@ -48,6 +53,7 @@ __all__ = [
     "delete_voice_answer",
     "get_audio_project_id",
     "get_lock_status",
+    "get_project_settings",
     "get_session",
     "list_audit_events",
     "list_consents",
@@ -61,6 +67,8 @@ __all__ = [
     "reopen_session",
     "request_transcription",
     "run_pending",
+    "set_project_granularity",
+    "stamp_resolved_bead_sec",
     "start_transcription",
     "step_for",
     "store_artifacts",

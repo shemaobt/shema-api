@@ -15,6 +15,7 @@ from app.api.sound_necklace import (
     lock,
     resources,
     sessions,
+    settings,
     transcriptions,
 )
 
@@ -26,4 +27,5 @@ router.include_router(resources.router)
 router.include_router(lock.router)
 router.include_router(consent.router)
 router.include_router(audit.router)
+router.include_router(settings.router)
 router.include_router(transcriptions.router)

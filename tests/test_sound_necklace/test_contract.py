@@ -34,6 +34,8 @@ IMPLEMENTED_OPERATIONS = {
     ("/projects/{project_id}/audit", "get"),
     ("/sessions/{session_id}/transcriptions", "post"),
     ("/sessions/{session_id}/transcriptions", "get"),
+    ("/projects/{project_id}/settings", "get"),
+    ("/projects/{project_id}/settings", "put"),
 }
 
 

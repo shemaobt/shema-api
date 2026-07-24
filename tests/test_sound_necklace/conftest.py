@@ -13,6 +13,7 @@ from app.db.models.sound_necklace import (  # noqa: F401 (create_all)
     SnArtifact,
     SnAudioRef,
     SnConsent,
+    SnProjectSettings,
     SnSession,
     SnSessionState,
     SnVoiceAnswer,

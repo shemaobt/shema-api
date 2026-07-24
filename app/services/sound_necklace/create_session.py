@@ -4,6 +4,7 @@ from app.db.models.auth import User
 from app.db.models.sound_necklace import ConsentType, SnSession, SnSessionState
 from app.models.sound_necklace import SessionCreate
 from app.services.project.get_project_or_404 import get_project_or_404
+from app.services.sound_necklace.project_settings import stamp_resolved_bead_sec
 from app.services.sound_necklace.record_consent import record_consent
 
 
@@ -36,6 +37,9 @@ async def create_session(db: AsyncSession, user: User, payload: SessionCreate) -
     db.add(session)
     await db.flush()
     db.add(SnSessionState(session_id=session.id))
+    await stamp_resolved_bead_sec(
+        db, payload.project_id, payload.granularity_level, payload.bead_sec
+    )
     if payload.pipeline_consent:
         # record_consent commits — the session, its state row and the consent land
         # together in that one transaction.

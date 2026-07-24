@@ -15,6 +15,7 @@ from app.core.exceptions import ERROR_CODE_CONFLICT, ValidationError
 from app.db.models.sound_necklace import SessionStatus, SessionStep, SnSession
 from app.models.sound_necklace import (
     AutosaveResponse,
+    ProjectGranularityLockedResponse,
     SessionCreate,
     SessionListResponse,
     SessionProgress,
@@ -34,6 +35,18 @@ _CONFLICT_RESPONSE: dict[int | str, dict[str, Any]] = {
             "and the body carries holder_name and expires_at — stop writing and open in "
             "review mode."
         )
+    }
+}
+
+
+_GRID_MISMATCH_RESPONSE: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {
+        "model": ProjectGranularityLockedResponse,
+        "description": (
+            "The grid parameters do not agree with the project's. Nothing to retry: this "
+            "audio cannot be cut on this project without splitting its corpus across two "
+            "coordinate systems."
+        ),
     }
 }
 
@@ -87,9 +100,19 @@ def _document(body: bytes) -> str:
         raise ValidationError("The state document must be UTF-8 encoded JSON") from None
 
 
-@router.post("/sessions", response_model=SessionSummary, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions",
+    response_model=SessionSummary,
+    status_code=status.HTTP_201_CREATED,
+    responses=_GRID_MISMATCH_RESPONSE,
+)
 async def create_session(payload: SessionCreate, db: Db, user: CurrentUser) -> SessionSummary:
-    """Create a session from a bucket audio and grid parameters."""
+    """Create a session from a bucket audio and grid parameters.
+
+    The grid parameters are checked against the project's own before anything lands: a
+    project cuts on one grid, and an audio whose acousteme resolves elsewhere is refused
+    rather than cut on a second one.
+    """
     await assert_project_access(db, user, payload.project_id)
     session = await sn_service.create_session(db, user, payload)
     return _summary(session)
