@@ -1,4 +1,23 @@
 services:
+  db:
+    image: postgres:16
+    container_name: tripod_db
+    environment:
+      POSTGRES_DB: tripod
+      # No password at all, rather than a fake one: a credential in the repo is a
+      # credential to scan, rotate and mistake for a real one. The port below is
+      # bound to the loopback, so nothing off this machine reaches the database.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d tripod" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   gcp-secrets:
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
     container_name: tripod_backend_gcp_secrets
@@ -11,16 +30,17 @@ services:
       - sh
       - -c
       - |
+        rm -rf /tmp/gcloud
         cp -r /host-gcloud /tmp/gcloud
         export CLOUDSDK_CONFIG=/tmp/gcloud
-        DB_URL=$$(gcloud secrets versions access latest --secret=tripod_backend_neon_database_url_local --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         JWT=$$(gcloud secrets versions access latest --secret=tripod_backend_jwt_secret --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         QDRANT_URL=$$(gcloud secrets versions access latest --secret=tripod_backend_qdrant_url --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         QDRANT_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_qdrant_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         GOOGLE_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         GOOGLE_MAPS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_maps_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         ELEVENLABS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_elevenlabs_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
-        printf "DATABASE_URL='%s'\nJWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nGOOGLE_MAPS_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\n" "$$DB_URL" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$GOOGLE_MAPS_API_KEY" "$$ELEVENLABS_API_KEY" > /secrets/.env
+        [ -n "$$JWT" ] || { echo "gcp-secrets: failed to read secrets, run 'gcloud auth login' on the host"; exit 1; }
+        printf "JWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nGOOGLE_MAPS_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\n" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$GOOGLE_MAPS_API_KEY" "$$ELEVENLABS_API_KEY" > /secrets/.env
     restart: "no"
 
   backend:
@@ -39,6 +59,9 @@ services:
       - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
       - ./gcs-signing-key.json:/etc/gcs/signing-key.json:ro
     environment:
+      # Dev and test run against the local container, never against Neon. Populate it
+      # from a production dump with scripts/restore_local_db.sh.
+      DATABASE_URL: postgresql://postgres@db:5432/tripod
       GOOGLE_APPLICATION_CREDENTIALS: /etc/gcs/signing-key.json
       INNGEST_DEV: "http://inngest:8288/"
       # Bucket generico da plataforma (cache de TTS). Nome, nao credencial: env comum.
@@ -47,6 +70,8 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     depends_on:
+      db:
+        condition: service_healthy
       gcp-secrets:
         condition: service_completed_successfully
     healthcheck:
@@ -94,10 +119,14 @@ services:
       - backend_venv:/opt/venv
       - tf_data:/root/text-fabric-data
       - gcp_secrets_env:/run/secrets:ro
+    environment:
+      DATABASE_URL: postgresql://postgres@db:5432/tripod
     dns:
       - 8.8.8.8
       - 8.8.4.4
     depends_on:
+      db:
+        condition: service_healthy
       gcp-secrets:
         condition: service_completed_successfully
       backend:
@@ -134,5 +163,6 @@ services:
 
 volumes:
   backend_venv:
+  db_data:
   gcp_secrets_env:
   tf_data:
