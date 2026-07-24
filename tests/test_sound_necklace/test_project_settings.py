@@ -129,6 +129,39 @@ async def test_unknown_project_is_not_found(client, admin):
     assert res.status_code in (403, 404), res.text
 
 
+@pytest.fixture()
+async def platform_admin(db_session, sound_necklace_app):
+    """The one caller ``assert_project_access`` waves through without looking at projects."""
+    user = await make_user(db_session, email="platform@example.com", is_platform_admin=True)
+    await grant_role(db_session, sound_necklace_app.id, user.id, "project_admin")
+    return user, await auth_header(db_session, user)
+
+
+async def test_a_platform_admin_reading_a_project_that_does_not_exist_gets_404(
+    client, platform_admin
+):
+    """Access checks let a platform admin past, so existence has to be checked here.
+
+    Otherwise a typo in the id reads back as a perfectly ordinary unconfigured project.
+    """
+    _admin, headers = platform_admin
+    res = await client.get(f"{SN}/projects/does-not-exist/settings", headers=headers)
+    assert res.status_code == 404, res.text
+
+
+async def test_a_platform_admin_writing_a_project_that_does_not_exist_gets_404(
+    client, platform_admin
+):
+    """A missing project is a 404, not a foreign key violation surfacing as a 500."""
+    _admin, headers = platform_admin
+    res = await client.put(
+        f"{SN}/projects/does-not-exist/settings",
+        headers=headers,
+        json={"granularity_level": "small"},
+    )
+    assert res.status_code == 404, res.text
+
+
 async def test_an_invented_level_is_refused(client, admin, project):
     _admin, headers = admin
     res = await client.put(

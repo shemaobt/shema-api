@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ProjectGranularityLocked
 from app.db.models.sound_necklace import GranularityLevel, SnProjectSettings
+from app.services.project.get_project_or_404 import get_project_or_404
 from app.services.sound_necklace.get_lock_status import as_utc
 
 
@@ -48,7 +49,12 @@ async def get_project_settings(db: AsyncSession, project_id: str) -> Granularity
     admin confirmed a level, and confirming is what freezes it. No session count is
     consulted — a project can be frozen before it has cut anything, which is exactly the
     state the settings screen exists to produce.
+
+    404s an unknown project rather than answering nulls for it: a platform admin is waved
+    past ``assert_project_access`` without a project being looked at, so a typo in the id
+    would otherwise read back as a perfectly ordinary unconfigured project.
     """
+    await get_project_or_404(db, project_id)
     return _settings(project_id, await db.get(SnProjectSettings, project_id))
 
 
@@ -66,7 +72,14 @@ async def set_project_granularity(
 
     Re-sending the level a project already confirmed is not a change and is allowed
     through, so a double submit or a retry is harmless.
+
+    Takes the project row FOR UPDATE first, which does two jobs: an unknown project is a
+    404 rather than a foreign key violation surfacing as a 500, and every writer of this
+    table queues behind that one row. The read and the write are separate statements, so
+    without it two first callers both find no row and both insert — and the primary key
+    turns the loser into a 500 instead of the answer its conflict was owed.
     """
+    await get_project_or_404(db, project_id, for_update=True)
     row = await db.get(SnProjectSettings, project_id)
     if row is not None:
         if row.granularity_level == level:
@@ -103,7 +116,12 @@ async def stamp_resolved_bead_sec(
     Called inside ``create_session``'s transaction and does not commit: that call site
     owns the commit that lands the session, its state row and its consent together — and
     owns the rollback that discards them when this refuses one.
+
+    Takes the same project row FOR UPDATE that ``set_project_granularity`` takes, for the
+    same reason. The lock lives here rather than in the caller because it is the read
+    below that it protects.
     """
+    await get_project_or_404(db, project_id, for_update=True)
     row = await db.get(SnProjectSettings, project_id)
     if row is None:
         db.add(SnProjectSettings(project_id=project_id, granularity_level=level, bead_sec=bead_sec))

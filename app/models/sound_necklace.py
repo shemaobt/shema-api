@@ -387,10 +387,10 @@ class ProjectSettingsResponse(BaseModel):
     renders that as "not decided", never as an error. A null ``bead_sec`` is a project
     that has not cut anything yet, so no audio has a grid to agree with.
 
-    ``locked`` is derived, not stored: it says the project already has a session, which
-    is what freezes the level. The client needs it to decide whether the settings screen
-    offers a control or an explanation, and deriving it there from a session list would
-    make every screen fetch sessions to render one field.
+    ``locked`` is derived, not stored: it says the project's level has been confirmed,
+    and confirming is what freezes it — no session needs to exist. The client needs it to
+    decide whether the settings screen offers a control or an explanation, and deriving it
+    there would make every screen fetch what the server already knows.
     """
 
     model_config = ConfigDict(from_attributes=True, json_schema_extra=_EXPERIMENTAL)
