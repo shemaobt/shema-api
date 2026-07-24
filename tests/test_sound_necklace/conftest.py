@@ -104,7 +104,7 @@ def audio_of(project_id: str) -> str:
     key: any test that sets up two projects would collide on a shared literal, and the
     "another project is denied" cases all set up two.
     """
-    return f"aud-{project_id[:8]}"
+    return f"aud-{project_id}"
 
 
 async def give_project_an_audio(db_session, project_id: str, audio_id: str | None = None) -> str:

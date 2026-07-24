@@ -21,11 +21,15 @@ Three changes, in the order Postgres needs them:
    NO ACTION is checked at statement end, so both rows go together. Verified against
    PostgreSQL 14, not assumed.
 
+The preflight also refuses a session pointing at another project's audio. The foreign key
+would accept one — it only asks that the audio exist — but create_session no longer will,
+so such a row is the ownership invariant already broken and is worth naming here.
+
 No backfill and no cleanup: nothing today writes a dangling audio_ref (the SPA only
 offers ids from GET /projects/{id}/audios), so this migration makes an invariant explicit
-rather than repairing one. If it fails on the widening or the constraint, that failure is
-the finding — a session whose audio cannot be identified is not something a migration
-should guess its way past.
+rather than repairing one. If a preflight or the constraint fails, that failure is the
+finding — a session whose audio cannot be identified is not something a migration should
+guess its way past.
 
 Revision ID: 20260724_0002
 Revises: 20260723_0001
@@ -68,6 +72,20 @@ def upgrade() -> None:
                 f"{orphans} session(s) reference an audio that does not exist. "
                 "Each one is an export that cannot be traced to its audio — decide what "
                 "they belong to before the foreign key is added."
+            )
+        foreign = bind.execute(
+            sa.text(
+                "SELECT count(*) FROM sn_sessions s "
+                "JOIN sn_audio_refs a ON a.audio_id = s.audio_ref "
+                "WHERE a.project_id IS DISTINCT FROM s.project_id"
+            )
+        ).scalar_one()
+        if foreign:
+            raise RuntimeError(
+                f"{foreign} session(s) reference an audio belonging to another project. "
+                "The foreign key would accept them — it only asks that the audio exist — "
+                "but create_session no longer would, so they are the invariant already "
+                "broken. Resolve them before this runs."
             )
 
     op.alter_column(

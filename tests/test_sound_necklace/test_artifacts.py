@@ -150,14 +150,7 @@ async def other_project(db_session):
     return other
 
 
-async def new_session(
-    client,
-    headers,
-    project_id: str,
-    *,
-    slug: str = "a-historia-de-rute",
-    audio_id: str = "ruth-a-historia-de-rute",
-) -> str:
+async def new_session(client, headers, project_id: str, *, slug: str = "a-historia-de-rute") -> str:
     res = await client.post(
         f"{SN}/sessions",
         headers=headers,
@@ -369,12 +362,7 @@ async def test_uploading_into_another_projects_session_is_denied(
     outsider = await make_user(db_session, email="outsider@example.com")
     await grant_role(db_session, sound_necklace_app.id, outsider.id, "facilitator")
     await make_project_user_access(db_session, other_project.id, outsider.id)
-    theirs = await new_session(
-        client,
-        await auth_header(db_session, outsider),
-        other_project.id,
-        audio_id="ruth-a-historia-de-rute-b",
-    )
+    theirs = await new_session(client, await auth_header(db_session, outsider), other_project.id)
 
     res = await upload(client, headers, theirs)
 
