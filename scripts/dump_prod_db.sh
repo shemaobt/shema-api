@@ -10,6 +10,9 @@
 # The umask and cleanup trap are armed before the file exists, so a dump that dies
 # halfway leaves no world-readable production data behind. --no-owner/--no-privileges
 # because the Neon roles do not exist locally and a restore would fail on every object.
+#
+# The connection string reaches the container through the environment rather than as an
+# argument: argv is readable by any local process, and it carries the production password.
 set -euo pipefail
 
 BUCKET="${DUMP_BUCKET:-tripod-db-dumps}"
@@ -34,8 +37,8 @@ DB_URL=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PR
 echo "==> dumping to $FILE"
 umask 077
 trap 'rm -f "$FILE"' EXIT INT TERM
-docker compose run --rm --no-deps -T --entrypoint pg_dump db \
-  --format=custom --no-owner --no-privileges "$DB_URL" > "$FILE"
+PGURL="$DB_URL" docker compose run --rm --no-deps -T -e PGURL --entrypoint sh db \
+  -c 'pg_dump --format=custom --no-owner --no-privileges "$PGURL"' > "$FILE"
 
 echo "==> uploading to gs://$BUCKET/$FILE"
 gcloud storage cp "$FILE" "gs://$BUCKET/$FILE" --project="$PROJECT_ID"
