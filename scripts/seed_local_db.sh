@@ -6,12 +6,13 @@
 # The dump is placed at /seed/latest.dump by the db-seed service. No dump means no
 # data: the backend migrates an empty database to head on startup, which is enough
 # for most work.
+#
+# SEED_FROM_DUMP is checked here as well as in db-seed: that service skips the download,
+# but a dump pulled by an earlier run stays in the volume, and opting out covers it too.
 set -e
 
 DUMP=/seed/latest.dump
 
-# Checked here as well as in db-seed: the download is skipped either way, but a dump
-# pulled by an earlier run stays in the volume, and opting out has to hold for it too.
 if [ "$SEED_FROM_DUMP" = "0" ]; then
   echo "seed: SEED_FROM_DUMP=0, starting with an empty database"
   exit 0

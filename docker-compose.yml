@@ -4,9 +4,6 @@ services:
     container_name: tripod_db
     environment:
       POSTGRES_DB: tripod
-      # No password at all, rather than a fake one: a credential in the repo is a
-      # credential to scan, rotate and mistake for a real one. The port below is
-      # bound to the loopback, so nothing off this machine reaches the database.
       POSTGRES_HOST_AUTH_METHOD: trust
       SEED_FROM_DUMP: ${SEED_FROM_DUMP:-1}
     ports:
@@ -14,8 +11,6 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
       - db_seed:/seed:ro
-      # The entrypoint runs this only when it creates the data directory, so the
-      # restore happens on a from-scratch database and never on an existing one.
       - ./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro
     depends_on:
       db-seed:
@@ -35,15 +30,12 @@ services:
       SEED_FROM_DUMP: ${SEED_FROM_DUMP:-1}
     volumes:
       - db_seed:/seed
-      # Read-only, and only to answer "does a database already exist?" — a developer
-      # who already has one should not wait for a download they will not use.
       - db_data:/dbdata:ro
       - ${HOME}/.config/gcloud:/host-gcloud:ro
     command:
       - sh
       - -c
       - |
-        # This holds production data. Opt out with SEED_FROM_DUMP=0 docker compose up.
         if [ "$$SEED_FROM_DUMP" = "0" ]; then
           echo "seed: SEED_FROM_DUMP=0, starting with an empty database"
           exit 0
@@ -61,8 +53,6 @@ services:
         export CLOUDSDK_CONFIG=/tmp/gcloud
         NEWEST=$$(gcloud storage ls "gs://$$DUMP_BUCKET/*.dump" --project=$$SECRETS_PROJECT_ID 2>/dev/null | sort | tail -1)
         if [ -z "$$NEWEST" ]; then
-          # No bucket access, no dumps in it, or expired credentials. None of these are
-          # worth blocking the stack over — an empty database still works.
           echo "seed: no dumps in gs://$$DUMP_BUCKET, starting with an empty database"
           exit 0
         fi
@@ -115,8 +105,6 @@ services:
       - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
       - ./gcs-signing-key.json:/etc/gcs/signing-key.json:ro
     environment:
-      # Dev and test run against the local container, never against Neon. Populate it
-      # from a production dump with scripts/restore_local_db.sh.
       DATABASE_URL: postgresql://postgres@db:5432/tripod
       GOOGLE_APPLICATION_CREDENTIALS: /etc/gcs/signing-key.json
       INNGEST_DEV: "http://inngest:8288/"

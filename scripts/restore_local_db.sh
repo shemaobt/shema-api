@@ -5,18 +5,19 @@
 #   ./scripts/restore_local_db.sh tripod-2026....dump  # a specific one
 #
 # Destroys whatever is in the local container. It touches nothing remote.
+#
+# Confirmation comes before the download: once the dump is on the disk, the bucket
+# permissions no longer protect it. The backend and worker are stopped for the swap,
+# since DROP DATABASE ... FORCE only kills the sessions open at that moment and they
+# reconnect within seconds onto a half-restored schema.
 set -euo pipefail
 
 BUCKET="${DUMP_BUCKET:-tripod-db-dumps}"
 PROJECT_ID="${SECRETS_PROJECT_ID:-shemaobt-secrets}"
-# Hardcoded to match the DATABASE_URL compose hands the backend. An override here
-# would restore one database while the application reads another.
 DB_NAME="tripod"
 
 cd "$(dirname "$0")/.."
 
-# Ask before the download, not after: the dump holds real user data, and once it is
-# on the disk the bucket permissions no longer protect it.
 if [ "${1:-}" = "--yes" ]; then
   shift
 else
@@ -46,9 +47,6 @@ gcloud storage cp "$FILE" "$LOCAL_FILE" --project="$PROJECT_ID"
 echo "==> starting the local database"
 docker compose up -d --wait db
 
-# DROP DATABASE ... FORCE only kills the sessions open right now. The backend runs with
-# --reload and pool_pre_ping, so it reconnects within seconds and would serve requests
-# off a half-restored schema. Stop the consumers, then put back what was running.
 RUNNING=$(docker compose ps --services --filter status=running | grep -E '^(backend|worker)$' || true)
 if [ -n "$RUNNING" ]; then
   echo "==> stopping $(echo "$RUNNING" | tr '\n' ' ')while the database is replaced"
@@ -57,8 +55,6 @@ if [ -n "$RUNNING" ]; then
 fi
 
 echo "==> recreating $DB_NAME"
-# FORCE drops the open connections a running backend holds; without it the DROP
-# blocks until every session goes away.
 docker compose exec -T db psql -U postgres -d postgres \
   -c "DROP DATABASE IF EXISTS $DB_NAME WITH (FORCE)" \
   -c "CREATE DATABASE $DB_NAME"

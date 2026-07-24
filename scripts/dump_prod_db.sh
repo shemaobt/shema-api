@@ -6,6 +6,10 @@
 #
 # Reads production, writes nothing to it. pg_dump runs inside the compose postgres
 # image, so the host needs docker and gcloud but no local postgres client.
+#
+# The umask and cleanup trap are armed before the file exists, so a dump that dies
+# halfway leaves no world-readable production data behind. --no-owner/--no-privileges
+# because the Neon roles do not exist locally and a restore would fail on every object.
 set -euo pipefail
 
 BUCKET="${DUMP_BUCKET:-tripod-db-dumps}"
@@ -28,12 +32,8 @@ DB_URL=$(gcloud secrets versions access latest --secret="$SECRET" --project="$PR
 [ -n "$DB_URL" ] || { echo "could not read $SECRET — run 'gcloud auth login'" >&2; exit 1; }
 
 echo "==> dumping to $FILE"
-# Arm the cleanup and tighten the mode before the file exists: a dump that dies
-# halfway would otherwise leave world-readable production data behind.
 umask 077
 trap 'rm -f "$FILE"' EXIT INT TERM
-# --no-owner/--no-privileges: the roles on Neon do not exist in the local container,
-# and a restore that tries to reassign them fails on every object.
 docker compose run --rm --no-deps -T --entrypoint pg_dump db \
   --format=custom --no-owner --no-privileges "$DB_URL" > "$FILE"
 
