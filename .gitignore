@@ -14,3 +14,8 @@ scripts/seed_initial_users.py
 scripts/grant-secret-access.sh
 gcs-signing-key.json
 .worktrees/
+
+# Production dump for seeding the local database. Real user data — the db service
+# mounts this directory, so it never belongs in the repository.
+.local-dump/*
+!.local-dump/.gitkeep

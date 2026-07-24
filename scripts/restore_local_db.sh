@@ -6,6 +6,15 @@
 #
 # Destroys whatever is in the local container. It touches nothing remote.
 #
+# The dump is kept at .local-dump/latest.dump rather than in a temporary file: the db
+# service mounts that directory, so every later rebuild of the database restores from
+# it with no download. Delete the file to stop that.
+#
+# It is chmod 644 because postgres reads it as its own uid through the bind mount, and
+# a developer with a restrictive umask would otherwise get a seed that fails. That does
+# leave production data readable by other local accounts — one more reason this does
+# not belong on a shared machine.
+#
 # Confirmation comes before the download: once the dump is on the disk, the bucket
 # permissions no longer protect it. The backend and worker are stopped for the swap,
 # since DROP DATABASE ... FORCE only kills the sessions open at that moment and they
@@ -15,6 +24,7 @@ set -euo pipefail
 BUCKET="${DUMP_BUCKET:-tripod-db-dumps}"
 PROJECT_ID="${SECRETS_PROJECT_ID:-shemaobt-secrets}"
 DB_NAME="tripod"
+DUMP_DIR=".local-dump"
 
 cd "$(dirname "$0")/.."
 
@@ -37,12 +47,14 @@ else
   FILE="gs://$BUCKET/$(basename "$FILE")"
 fi
 
-umask 077
-LOCAL_FILE=$(mktemp -t tripod-dump)
-trap 'rm -f "$LOCAL_FILE"' EXIT INT TERM
+mkdir -p "$DUMP_DIR"
+LOCAL_FILE="$DUMP_DIR/latest.dump"
+trap 'rm -f "$LOCAL_FILE.partial"' EXIT INT TERM
 
-echo "==> downloading $FILE"
-gcloud storage cp "$FILE" "$LOCAL_FILE" --project="$PROJECT_ID"
+echo "==> downloading $FILE to $LOCAL_FILE"
+gcloud storage cp "$FILE" "$LOCAL_FILE.partial" --project="$PROJECT_ID"
+mv "$LOCAL_FILE.partial" "$LOCAL_FILE"
+chmod 644 "$LOCAL_FILE"
 
 echo "==> starting the local database"
 docker compose up -d --wait db

@@ -106,8 +106,9 @@ tripod-backend/
     container, not a secret — Compose never points at Neon.
   - **Production (Cloud Run):** `tripod_backend_neon_database_url`, `tripod_backend_jwt_secret`
 - Production dumps live in `gs://tripod-db-dumps`, readable only by explicitly named
-  accounts. A fresh local database seeds itself from the newest dump; `SEED_FROM_DUMP=0`
-  opts out. See `scripts/dump_prod_db.sh`, `restore_local_db.sh`, `seed_local_db.sh`.
+  accounts. `restore_local_db.sh` downloads one to `.local-dump/`, which the `db` service
+  mounts: a from-scratch database then seeds itself from it, with `SEED_FROM_DUMP=0` to opt
+  out. See `scripts/dump_prod_db.sh`, `restore_local_db.sh`, `seed_local_db.sh`.
 
 ---
 

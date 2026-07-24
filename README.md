@@ -100,31 +100,35 @@ separate: it runs on SQLite and reaches neither database.)
 
 ### Data in the local database
 
-The first `docker compose up` on a machine restores the newest production dump into the
-new database automatically. Postgres runs the seed only while creating its data directory,
-so this happens once — an existing database is never overwritten. To skip it and work
-against an empty database:
-
-```bash
-SEED_FROM_DUMP=0 docker compose up backend
-```
-
-Seeding never blocks the stack. No bucket access, no dumps, or expired credentials all end
-the same way: an empty database migrated to head, which is enough for most work.
-
-**The dump is not anonymized.** It carries real emails, password hashes and user content,
-and once restored it lives unencrypted in a Docker volume on your machine, where the bucket
-permissions no longer protect it. Do not do this on a shared machine, and run
-`docker compose down -v` when you no longer need the data.
-
-To refresh an existing local database with a newer dump:
+`docker compose up` gives you an empty database migrated to head, which is enough for most
+work. To work with real data instead:
 
 ```bash
 ./scripts/restore_local_db.sh
 ```
 
-This stops the backend and worker, recreates the local `tripod` database, restores, applies
-any migrations written since the dump was taken, and starts back what it stopped.
+That downloads the newest dump to `.local-dump/latest.dump`, stops the backend and worker,
+recreates the local `tripod` database, restores, applies any migrations written since the
+dump was taken, and starts back what it stopped.
+
+The file then stays put, and the `db` service mounts that directory. Every later rebuild of
+the database — `docker compose down -v`, `docker volume rm tripod-api_db_data` — restores
+from it automatically, with no download and no network. Postgres runs the seed only while
+creating its data directory, so an existing database is never overwritten.
+
+To stop that, delete `.local-dump/latest.dump`, or start once with seeding off:
+
+```bash
+SEED_FROM_DUMP=0 docker compose up backend
+```
+
+A missing dump never blocks the stack: you get the empty database and a line in the logs.
+
+**The dump is not anonymized.** It carries real emails, password hashes and user content.
+On disk it is `chmod 644` — postgres reads it through the bind mount as its own uid — so
+any local account can read it, and restoring puts the same data unencrypted in a Docker
+volume. Do not do this on a shared machine. Delete `.local-dump/latest.dump` and run
+`docker compose down -v` when you no longer need the data.
 
 ### The dump bucket
 

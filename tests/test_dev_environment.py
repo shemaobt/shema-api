@@ -14,6 +14,7 @@ yaml = pytest.importorskip("yaml")
 ROOT = Path(__file__).resolve().parent.parent
 COMPOSE = ROOT / "docker-compose.yml"
 NEON_LOCAL_SECRET = "tripod_backend_neon_database_url_local"
+DUMP_DIR = ".local-dump"
 
 
 @pytest.fixture(scope="module")
@@ -61,34 +62,38 @@ def test_secrets_container_still_provides_the_remaining_secrets(compose: dict) -
     assert "DATABASE_URL" not in command
 
 
-def test_a_fresh_database_seeds_itself_from_the_newest_dump(compose: dict) -> None:
+def test_a_fresh_database_seeds_itself_from_the_local_dump(compose: dict) -> None:
     """Postgres runs /docker-entrypoint-initdb.d only when it creates the cluster, so
-    the restore happens on a from-scratch database and never on an existing one."""
+    the restore happens on a from-scratch database and never on an existing one. The
+    dump comes off the host directory restore_local_db.sh writes to, which needs no
+    sidecar and no network."""
     db = compose["services"]["db"]
 
     assert "./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro" in db["volumes"]
-    assert "db_seed:/seed:ro" in db["volumes"]
-    assert db["depends_on"]["db-seed"]["condition"] == "service_completed_successfully"
+    assert f"./{DUMP_DIR}:/seed:ro" in db["volumes"]
+    assert "db-seed" not in compose["services"]
 
 
 def test_seeding_can_be_turned_off(compose: dict) -> None:
-    """Both halves have to honour it: db-seed skips the download, but a dump left in
-    the volume by an earlier run would otherwise still be restored by the db service."""
-    seed = compose["services"]["db-seed"]
-
-    assert "${SEED_FROM_DUMP:-1}" in seed["environment"]["SEED_FROM_DUMP"]
-    assert 'SEED_FROM_DUMP" = "0"' in "".join(seed["command"])
     assert "${SEED_FROM_DUMP:-1}" in compose["services"]["db"]["environment"]["SEED_FROM_DUMP"]
     assert 'SEED_FROM_DUMP" = "0"' in (ROOT / "scripts" / "seed_local_db.sh").read_text()
 
 
-def test_seeding_never_blocks_the_stack(compose: dict) -> None:
-    """A developer without bucket access, or an empty bucket, still gets an empty
-    database rather than a stack that refuses to start."""
-    command = "".join(compose["services"]["db-seed"]["command"])
+def test_seeding_never_blocks_the_stack() -> None:
+    """No dump on the machine still has to give a working stack: the seed script exits
+    clean and the backend migrates an empty database."""
+    script = (ROOT / "scripts" / "seed_local_db.sh").read_text()
 
-    assert "no dumps in" in command
-    assert command.count("exit 0") >= 4
+    assert 'if [ ! -f "$DUMP" ]; then' in script
+    assert script.count("exit 0") >= 2
+
+
+def test_the_local_dump_stays_out_of_git() -> None:
+    """It is production data sitting in the working tree."""
+    ignored = (ROOT / ".gitignore").read_text()
+
+    assert f"{DUMP_DIR}/*" in ignored
+    assert f"!{DUMP_DIR}/.gitkeep" in ignored
 
 
 def test_signing_key_never_reaches_the_image() -> None:

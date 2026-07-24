@@ -10,59 +10,13 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
-      - db_seed:/seed:ro
+      - ./.local-dump:/seed:ro
       - ./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro
-    depends_on:
-      db-seed:
-        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres -d tripod" ]
       interval: 5s
       timeout: 3s
       retries: 10
-
-  db-seed:
-    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
-    container_name: tripod_db_seed
-    environment:
-      SECRETS_PROJECT_ID: ${SECRETS_PROJECT_ID:-shemaobt-secrets}
-      DUMP_BUCKET: ${DUMP_BUCKET:-tripod-db-dumps}
-      SEED_FROM_DUMP: ${SEED_FROM_DUMP:-1}
-    volumes:
-      - db_seed:/seed
-      - db_data:/dbdata:ro
-      - ${HOME}/.config/gcloud:/host-gcloud:ro
-    command:
-      - sh
-      - -c
-      - |
-        if [ "$$SEED_FROM_DUMP" = "0" ]; then
-          echo "seed: SEED_FROM_DUMP=0, starting with an empty database"
-          exit 0
-        fi
-        if [ -n "$$(ls -A /dbdata 2>/dev/null)" ]; then
-          echo "seed: local database already exists, leaving it alone"
-          exit 0
-        fi
-        if [ -f /seed/latest.dump ]; then
-          echo "seed: dump already downloaded"
-          exit 0
-        fi
-        rm -rf /tmp/gcloud
-        cp -r /host-gcloud /tmp/gcloud
-        export CLOUDSDK_CONFIG=/tmp/gcloud
-        NEWEST=$$(gcloud storage ls "gs://$$DUMP_BUCKET/*.dump" --project=$$SECRETS_PROJECT_ID 2>/dev/null | sort | tail -1)
-        if [ -z "$$NEWEST" ]; then
-          echo "seed: no dumps in gs://$$DUMP_BUCKET, starting with an empty database"
-          exit 0
-        fi
-        echo "seed: downloading $$NEWEST — this is production data"
-        gcloud storage cp "$$NEWEST" /seed/latest.dump --project=$$SECRETS_PROJECT_ID || {
-          echo "seed: download failed, starting with an empty database"
-          rm -f /seed/latest.dump
-          exit 0
-        }
-    restart: "no"
 
   gcp-secrets:
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
@@ -208,6 +162,5 @@ services:
 volumes:
   backend_venv:
   db_data:
-  db_seed:
   gcp_secrets_env:
   tf_data:
