@@ -41,7 +41,7 @@ class ProjectLocationUpdate(BaseModel):
 
 class ProjectGrantUserAccess(BaseModel):
     user_id: str
-    role: str = Field(default="member", max_length=30)
+    role: Literal["member", "manager"] = "member"
 
 
 class ProjectUserAccessRoleUpdate(BaseModel):

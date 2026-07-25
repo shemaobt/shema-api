@@ -15,6 +15,7 @@ from app.models.project import (
     ProjectUserAccessRoleUpdate,
 )
 from app.services import project_service
+from app.services.project import assert_can_grant_access, assert_can_modify_member_role
 
 router = APIRouter()
 
@@ -30,7 +31,7 @@ async def grant_user_access(
     actor: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectUserAccessResponse:
-    await assert_project_access(db, actor, project_id)
+    await assert_can_grant_access(db, actor, project_id)
     await project_service.get_project_or_404(db, project_id)
     access = await project_service.grant_user_access(db, project_id, payload.user_id, payload.role)
     return ProjectUserAccessResponse.model_validate(access)
@@ -118,7 +119,7 @@ async def update_user_access_role(
     actor: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectUserAccessResponse:
-    await assert_project_access(db, actor, project_id)
+    await assert_can_modify_member_role(db, actor, project_id, user_id)
     access = await project_service.update_user_access_role(db, project_id, user_id, payload.role)
     return ProjectUserAccessResponse.model_validate(access)
 
@@ -133,7 +134,7 @@ async def revoke_user_access(
     actor: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await assert_project_access(db, actor, project_id)
+    await assert_can_modify_member_role(db, actor, project_id, user_id)
     await project_service.revoke_user_access(db, project_id, user_id)
 
 
