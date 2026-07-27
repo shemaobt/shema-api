@@ -140,19 +140,27 @@ to it:
 umask 077                                    # the file below is production data
 FILE="tripod-$(date -u +%Y%m%dT%H%M%SZ).dump"
 
-PGURL="$(gcloud secrets versions access latest \
+# Stage as .partial and upload only on success: a redirect writes whatever the command
+# produced before it failed, so an aborted dump would otherwise publish a truncated file.
+if PGURL="$(gcloud secrets versions access latest \
   --secret=tripod_backend_neon_database_url --project=shemaobt-secrets)" \
   docker compose run --rm --no-deps -T -e PGURL --entrypoint sh db \
-  -c 'pg_dump --format=custom --no-owner --no-privileges "$PGURL"' > "$FILE"
-
-gcloud storage cp "$FILE" "gs://tripod-db-dumps/$FILE" --project=shemaobt-secrets
-rm "$FILE"
+  -c 'pg_dump --format=custom --no-owner --no-privileges "$PGURL"' > "$FILE.partial" \
+  && [ -s "$FILE.partial" ]; then
+  mv "$FILE.partial" "$FILE"
+  gcloud storage cp "$FILE" "gs://tripod-db-dumps/$FILE" --project=shemaobt-secrets
+  rm "$FILE"
+else
+  echo "dump failed — nothing uploaded"; rm -f "$FILE.partial"
+fi
 ```
 
-Two details that matter. The connection string goes through the environment rather than as
-an argument, because argv is readable by any local process and it carries the production
-password. And `--no-owner --no-privileges` because the Neon roles do not exist in the local
-container, so without them a restore fails on every object.
+Three details that matter. The connection string goes through the environment rather than
+as an argument, because argv is readable by any local process and it carries the production
+password. `--no-owner --no-privileges` because the Neon roles do not exist in the local
+container, so without them a restore fails on every object. And the dump runs through the
+`db` container so its `pg_dump` major matches production — pg_dump refuses a server newer
+than itself, so a mismatched client aborts with an empty file.
 
 The bucket already exists. Grant a new developer access by adding their email as
 **Storage Object Viewer** in the Cloud Console. Its configuration, if it ever has to be
