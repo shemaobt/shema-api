@@ -18,7 +18,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.exceptions import ERROR_CODE_SESSION_LOCK_CHANGED, ERROR_CODE_SESSION_LOCKED
+from app.core.exceptions import (
+    ERROR_CODE_PROJECT_GRANULARITY_LOCKED,
+    ERROR_CODE_SESSION_LOCK_CHANGED,
+    ERROR_CODE_SESSION_LOCKED,
+)
 from app.db.models.sound_necklace import (
     ArtifactKind,
     AuditEvent,
@@ -93,7 +97,7 @@ class SessionCreate(BaseModel):
 
     # The text lengths mirror their columns: unbounded here, an over-long value would
     # reach Postgres and fail the insert instead of failing validation.
-    audio_id: str = Field(max_length=255)
+    audio_id: str = Field(max_length=128)
     project_id: str
     story_name: str = Field(max_length=255)
     story_slug: str = Field(max_length=255)
@@ -370,3 +374,52 @@ class TranscriptionProgressResponse(BaseModel):
     failed: int
     pending: int
     answers: list[AnswerTranscript]
+
+
+# ── Project settings (ENG-352) ───────────────────────────────────────────────
+
+
+class ProjectSettingsResponse(BaseModel):
+    """The project's bead granularity, as every screen reads it.
+
+    Both values are nullable and mean different things when absent. A null
+    ``granularity_level`` is a project nobody has configured yet — the setup screen
+    renders that as "not decided", never as an error. A null ``bead_sec`` is a project
+    that has not cut anything yet, so no audio has a grid to agree with.
+
+    ``locked`` is derived, not stored: it says the project's level has been confirmed,
+    and confirming is what freezes it — no session needs to exist. The client needs it to
+    decide whether the settings screen offers a control or an explanation, and deriving it
+    there would make every screen fetch what the server already knows.
+    """
+
+    model_config = ConfigDict(from_attributes=True, json_schema_extra=_EXPERIMENTAL)
+
+    project_id: str
+    granularity_level: GranularityLevel | None = None
+    bead_sec: float | None = None
+    locked: bool = False
+    updated_at: str | None = None
+
+
+class ProjectSettingsUpdate(BaseModel):
+    """What a project admin decides: a LEVEL, and nothing else.
+
+    ``bead_sec`` is deliberately not settable. It is ``granularity_frames[level] *
+    hop_sec`` off each audio's own acousteme (the O8 rule), so a client that sent one
+    would be asserting a grid rather than resolving it — and a wrong assertion here is
+    a corpus cut on two coordinate systems. The project's first session stamps it.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    granularity_level: GranularityLevel
+
+
+class ProjectGranularityLockedResponse(BaseModel):
+    """The 409 the PUT answers with once the project has cut something."""
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    detail: str
+    code: Literal["PROJECT_GRANULARITY_LOCKED"] = ERROR_CODE_PROJECT_GRANULARITY_LOCKED

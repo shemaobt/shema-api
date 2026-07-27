@@ -18,7 +18,12 @@ import pytest
 
 from app.services.oral_collector import gcs_utils
 from tests.baker import make_language, make_project, make_project_user_access, make_user
-from tests.test_sound_necklace.conftest import auth_header, grant_role
+from tests.test_sound_necklace.conftest import (
+    audio_of,
+    auth_header,
+    give_project_an_audio,
+    grant_role,
+)
 
 SN = "/api/sound-necklace"
 
@@ -65,6 +70,7 @@ async def facilitator(db_session, sound_necklace_app):
     await grant_role(db_session, sound_necklace_app.id, user.id, "facilitator")
     language = await make_language(db_session, name="Terena", code="ter")
     project = await make_project(db_session, language.id, name="Projeto A")
+    await give_project_an_audio(db_session, project.id)
     await make_project_user_access(db_session, project.id, user.id)
     headers = await auth_header(db_session, user)
     return user, project, headers
@@ -73,7 +79,9 @@ async def facilitator(db_session, sound_necklace_app):
 @pytest.fixture()
 async def other_project(db_session):
     language = await make_language(db_session, name="Nheengatu", code="yrl")
-    return await make_project(db_session, language.id, name="Projeto B")
+    other = await make_project(db_session, language.id, name="Projeto B")
+    await give_project_an_audio(db_session, other.id)
+    return other
 
 
 async def new_session(client, headers, project_id: str) -> str:
@@ -81,7 +89,7 @@ async def new_session(client, headers, project_id: str) -> str:
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "ruth-a-historia-de-rute",
+            "audio_id": audio_of(project_id),
             "project_id": project_id,
             "story_name": "A História de Rute",
             "story_slug": "a-historia-de-rute",

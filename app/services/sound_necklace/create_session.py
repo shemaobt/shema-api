@@ -1,9 +1,12 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.db.models.sound_necklace import ConsentType, SnSession, SnSessionState
 from app.models.sound_necklace import SessionCreate
 from app.services.project.get_project_or_404 import get_project_or_404
+from app.services.sound_necklace.get_audio_project_id import get_audio_project_id
+from app.services.sound_necklace.project_settings import stamp_resolved_bead_sec
 from app.services.sound_necklace.record_consent import record_consent
 
 
@@ -18,10 +21,19 @@ async def create_session(db: AsyncSession, user: User, payload: SessionCreate) -
     route would have no caller and the boolean below would go on being the only truth.
     A false records nothing at all — the table holds consents that were given, and absent
     is not the same claim as refused.
+
+    The audio is checked as strictly as the project, and for a reason the foreign key
+    alone does not cover: ``audio_ref`` is the only link from a bucket audio to the
+    artifacts cut from it, so a session naming an audio this project does not have would
+    export files nothing could ever trace back. An audio belonging to somebody else's
+    project is a miss here, not a forbidden — the same reading ``get_audio_project_id``
+    already takes, since an audio no ref claims is one this API never offered.
     """
     # A platform admin skips assert_project_access, so a nonexistent project_id would
     # otherwise reach the FK as a 500 instead of a 404.
     await get_project_or_404(db, payload.project_id)
+    if await get_audio_project_id(db, payload.audio_id) != payload.project_id:
+        raise NotFoundError("Audio not found in this project")
     session = SnSession(
         project_id=payload.project_id,
         created_by=user.id,
@@ -36,6 +48,9 @@ async def create_session(db: AsyncSession, user: User, payload: SessionCreate) -
     db.add(session)
     await db.flush()
     db.add(SnSessionState(session_id=session.id))
+    await stamp_resolved_bead_sec(
+        db, payload.project_id, payload.granularity_level, payload.bead_sec
+    )
     if payload.pipeline_consent:
         # record_consent commits — the session, its state row and the consent land
         # together in that one transaction.
