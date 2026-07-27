@@ -30,6 +30,21 @@ def test_local_database_service_exists(compose: dict) -> None:
     assert "healthcheck" in db
 
 
+def test_local_postgres_major_matches_production(compose: dict) -> None:
+    """Production runs Postgres 17. A lower local major cannot restore a production
+    dump — pg_dump refuses a newer server outright — so the two have to track."""
+    db_major = compose["services"]["db"]["image"].split(":")[1].split(".")[0]
+    ci_major = (
+        yaml.safe_load((ROOT / ".github/workflows/migrations.yml").read_text())
+        ["jobs"]["migrations"]["services"]["postgres"]["image"]
+        .split(":")[1]
+        .split(".")[0]
+    )
+
+    assert db_major == "17"
+    assert ci_major == "17"
+
+
 def test_local_database_is_not_reachable_from_outside_the_machine(compose: dict) -> None:
     """A production dump gets restored here, so the port stays on the loopback."""
     for mapping in compose["services"]["db"]["ports"]:
