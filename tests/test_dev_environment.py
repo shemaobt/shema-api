@@ -35,8 +35,9 @@ def test_local_postgres_major_matches_production(compose: dict) -> None:
     dump — pg_dump refuses a newer server outright — so the two have to track."""
     db_major = compose["services"]["db"]["image"].split(":")[1].split(".")[0]
     ci_major = (
-        yaml.safe_load((ROOT / ".github/workflows/migrations.yml").read_text())
-        ["jobs"]["migrations"]["services"]["postgres"]["image"]
+        yaml.safe_load((ROOT / ".github/workflows/migrations.yml").read_text())["jobs"][
+            "migrations"
+        ]["services"]["postgres"]["image"]
         .split(":")[1]
         .split(".")[0]
     )
