@@ -91,7 +91,7 @@ class InvalidCleaningStatusError(ValidationError):
         )
 
 
-class GenreConflictError(ValidationError):
+class SecondaryClassificationConflictError(ValidationError):
     def __init__(self) -> None:
         super().__init__(
             "secondary classification must differ from the primary in at least "

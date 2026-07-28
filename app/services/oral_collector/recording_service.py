@@ -16,9 +16,9 @@ from app.core.enums import (
 )
 from app.core.exceptions import (
     AuthorizationError,
-    GenreConflictError,
     InvalidCleaningStatusError,
     NotFoundError,
+    SecondaryClassificationConflictError,
     ValidationError,
 )
 from app.core.inngest_client import inngest_client
@@ -178,7 +178,7 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         secondary_genre_id=data.secondary_genre_id,
         secondary_subcategory_id=data.secondary_subcategory_id,
     ):
-        raise GenreConflictError
+        raise SecondaryClassificationConflictError
 
     if data.title:
         stmt = select(OC_Recording).where(
@@ -224,26 +224,25 @@ async def update_recording(
     update_fields = data.model_dump(exclude_unset=True)
     if data.storyteller_id is not None:
         await _validate_storyteller_in_project(db, data.storyteller_id, recording.project_id)
-    effective_register = (
-        data.register_id if "register_id" in update_fields else recording.register_id
-    )
-    effective_genre = data.genre_id if "genre_id" in update_fields else recording.genre_id
+    provided = data.model_fields_set
+    effective_register = data.register_id if "register_id" in provided else recording.register_id
+    effective_genre = data.genre_id if "genre_id" in provided else recording.genre_id
     effective_sub = (
-        data.subcategory_id if "subcategory_id" in update_fields else recording.subcategory_id
+        data.subcategory_id if "subcategory_id" in provided else recording.subcategory_id
     )
     effective_sec_register = (
         data.secondary_register_id
-        if "secondary_register_id" in update_fields
+        if "secondary_register_id" in provided
         else recording.secondary_register_id
     )
     effective_sec_genre = (
         data.secondary_genre_id
-        if "secondary_genre_id" in update_fields
+        if "secondary_genre_id" in provided
         else recording.secondary_genre_id
     )
     effective_sec_sub = (
         data.secondary_subcategory_id
-        if "secondary_subcategory_id" in update_fields
+        if "secondary_subcategory_id" in provided
         else recording.secondary_subcategory_id
     )
     if secondary_equals_primary(
@@ -254,7 +253,7 @@ async def update_recording(
         secondary_genre_id=effective_sec_genre,
         secondary_subcategory_id=effective_sec_sub,
     ):
-        raise GenreConflictError
+        raise SecondaryClassificationConflictError
     if data.cleaning_status is not None:
         new_status = data.cleaning_status
         if new_status not in USER_SETTABLE_CLEANING_STATUSES:

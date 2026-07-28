@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import CleaningStatus, UploadStatus
 from app.core.exceptions import (
     AuthorizationError,
-    GenreConflictError,
     InvalidCleaningStatusError,
     NotFoundError,
+    SecondaryClassificationConflictError,
     ValidationError,
 )
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
@@ -550,7 +550,7 @@ async def test_create_recording_rejects_identical_secondary_triple(
         format="m4a",
         recorded_at=datetime.now(UTC),
     )
-    with pytest.raises(GenreConflictError):
+    with pytest.raises(SecondaryClassificationConflictError):
         await rs.create_recording(db_session, data, user.id)
 
 
@@ -588,7 +588,7 @@ async def test_update_recording_rejects_when_merged_triple_collapses_to_identica
     await db_session.commit()
     await db_session.refresh(rec)
 
-    with pytest.raises(GenreConflictError):
+    with pytest.raises(SecondaryClassificationConflictError):
         await rs.update_recording(
             db_session,
             rec.id,
@@ -598,6 +598,54 @@ async def test_update_recording_rejects_when_merged_triple_collapses_to_identica
                 secondary_register_id="formal",
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_update_recording_rejects_a_primary_only_update_that_lands_on_the_secondary(
+    db_session: AsyncSession,
+) -> None:
+    """The direction the old genre-only rule could not see: the payload carries no
+    secondary field at all, and the primary moves onto the stored secondary."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec.register_id = "formal"
+    rec.secondary_genre_id = genre.id
+    rec.secondary_subcategory_id = sub.id
+    rec.secondary_register_id = "ceremonial"
+    await db_session.commit()
+    await db_session.refresh(rec)
+
+    with pytest.raises(SecondaryClassificationConflictError):
+        await rs.update_recording(db_session, rec.id, RecordingUpdate(register_id="ceremonial"))
+
+
+@pytest.mark.asyncio
+async def test_update_recording_allows_a_secondary_left_partly_unset(
+    db_session: AsyncSession,
+) -> None:
+    """ENG-72 defines the comparison as `==` over all three fields, `None` included, so a
+    secondary that matches on two fields and is unset on the third is not identical and
+    stays allowed. The old genre-only rule rejected this; loosening it is the point."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec.register_id = "formal"
+    await db_session.commit()
+    await db_session.refresh(rec)
+
+    updated = await rs.update_recording(
+        db_session,
+        rec.id,
+        RecordingUpdate(secondary_genre_id=genre.id, secondary_subcategory_id=sub.id),
+    )
+
+    assert updated.secondary_register_id is None
+    assert updated.secondary_subcategory_id == sub.id
 
 
 @pytest.mark.asyncio
