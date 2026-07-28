@@ -4,12 +4,12 @@ Nothing here touches the app: it pins the contract of docker-compose.yml, which 
 what actually decides where a developer's data lives.
 """
 
+import re
 import subprocess
 from pathlib import Path
 
 import pytest
-
-yaml = pytest.importorskip("yaml")
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 COMPOSE = ROOT / "docker-compose.yml"
@@ -88,6 +88,7 @@ def test_a_fresh_database_seeds_itself_from_the_local_dump(compose: dict) -> Non
     assert "./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro" in db["volumes"]
     assert f"./{DUMP_DIR}:/seed:ro" in db["volumes"]
     assert "db-seed" not in compose["services"]
+    assert "db-seed" not in (ROOT / "scripts" / "seed_local_db.sh").read_text()
 
 
 def test_seeding_can_be_turned_off(compose: dict) -> None:
@@ -102,6 +103,17 @@ def test_seeding_never_blocks_the_stack() -> None:
 
     assert 'if [ ! -f "$DUMP" ]; then' in script
     assert script.count("exit 0") >= 2
+
+
+def test_a_failing_restore_never_blocks_the_stack() -> None:
+    """pg_restore exits nonzero whenever it ignores an error, and a production dump
+    carries plenty of those — extensions and comments owned by Neon roles. Both scripts
+    run under `set -e`, where that would abort the restore: initdb would fail and the
+    database never go healthy, so backend and worker would never start at all."""
+    for name in ("seed_local_db.sh", "restore_local_db.sh"):
+        script = (ROOT / "scripts" / name).read_text()
+
+        assert re.search(r"if ! .*pg_restore", script), name
 
 
 def test_the_local_dump_stays_out_of_git() -> None:
@@ -119,6 +131,15 @@ def test_signing_key_never_reaches_the_image() -> None:
 
     assert "gcs-signing-key.json" in ignored
     assert ".env" in ignored
+
+
+def test_the_local_dump_never_reaches_the_image() -> None:
+    """`.dockerignore` matches against the whole path and `*` does not cross a `/`, so a
+    bare `*.dump` only covers the repository root and leaves `.local-dump/latest.dump` in
+    the build context — where `COPY . .` bakes production data into every layer."""
+    ignored = (ROOT / ".dockerignore").read_text().split()
+
+    assert "**/*.dump" in ignored
 
 
 def test_restore_refuses_without_confirmation() -> None:
