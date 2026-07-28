@@ -1,0 +1,73 @@
+name: Migrations
+
+# Deploy runs `alembic upgrade head` against the database six production apps
+# share, and nothing until now checked the migration graph. Alembic does not fail
+# on a duplicate revision id — it warns and carries on, leaving two heads — so a
+# green PR could take a broken graph straight to production.
+
+on:
+  pull_request:
+
+env:
+  # Opt JavaScript-based actions into Node.js 24 ahead of the 2026-06-02
+  # forced switch. Remove once the runner default is Node 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # No password at all, rather than a fake one: this container is reachable
+          # only from this job, and a credential in the repo is a credential to scan,
+          # rotate and mistake for a real one.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      JWT_SECRET_KEY: test-secret-for-ci-only
+      DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: The graph has one head and no duplicate revision ids
+        run: |
+          set -euo pipefail
+          # A duplicate revision id is only a UserWarning, and `alembic heads`
+          # still exits 0 while printing two heads. Make the warning fatal.
+          heads=$(PYTHONWARNINGS=error::UserWarning uv run alembic heads)
+          echo "$heads"
+          count=$(printf '%s\n' "$heads" | grep -c '(head)')
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected a single head, found $count — the migration graph has branched"
+            exit 1
+          fi
+
+      - name: Upgrade and downgrade on a clean database
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade head
+          # The newest migration has to undo exactly what it did: a downgrade that
+          # leaves the schema dirty fails the next upgrade.
+          uv run alembic downgrade -1
+          uv run alembic upgrade head

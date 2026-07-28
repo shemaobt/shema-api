@@ -1,0 +1,272 @@
+@baseUrl = http://localhost:8000
+@accessToken = {{login.response.body.access_token}}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sound Necklace — /api/sound-necklace
+#
+# Every resource is implemented: sessions, the audio bucket, the artifacts, the voice
+# answers and the advisory editor lock. Nothing answers 501 any more. The emitted OpenAPI
+# is the contract the SPA generates its TypeScript types from:
+#
+#   # with the app running (uvicorn app.main:app):
+#   npx openapi-typescript@7 http://localhost:8000/openapi.json -o sound-necklace-types.ts
+#
+#   # or straight from a dumped schema, no server needed:
+#   uv run python -c "import json; from app.main import app; print(json.dumps(app.openapi()))" > openapi.json
+#   npx openapi-typescript@7 openapi.json -o sound-necklace-types.ts
+#
+# Every schema in this module is marked `x-stability: experimental` (provisional
+# until each resource finalizes its shape). The acousteme envelope is now concrete:
+# `{codebook_version, hop_sec, granularity_frames}`, and beadSec = frames[level] × hop_sec.
+# It is null for an audio with no servable grid — a fallback, not an error (PRD §6.1).
+# ─────────────────────────────────────────────────────────────────────────────
+
+### Login (sets the bearer token for the requests below)
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "facilitator@example.com",
+  "password": "password123"
+}
+
+### Sessions: list
+GET {{baseUrl}}/api/sound-necklace/sessions
+Authorization: Bearer {{accessToken}}
+
+### Sessions: create
+POST {{baseUrl}}/api/sound-necklace/sessions
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "audio_id": "aud_1",
+  "project_id": "prj_1",
+  "story_name": "O Conto do Boto",
+  "story_slug": "conto-do-boto",
+  "granularity_level": "medium",
+  "bead_sec": 0.5,
+  "manifest_id": "fnv1a32:d31a8419",
+  "pipeline_consent": true
+}
+
+### Sessions: fetch one (meta only — the state has its own route below)
+GET {{baseUrl}}/api/sound-necklace/sessions/sess_1
+Authorization: Bearer {{accessToken}}
+
+### Sessions: autosave the state envelope (unconditional — what the SPA's autosaver does)
+# The request body IS the state document. It is stored as the exact bytes sent and
+# served back unchanged: the SPA re-validates it under a strict schema, so anything
+# the API re-serialized would come back as an unresumable session.
+# The response carries the new version in `ETag`.
+PUT {{baseUrl}}/api/sound-necklace/sessions/sess_1/state
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "schema_version": 1,
+  "mode": "triagem",
+  "beadSec": 0.5,
+  "whole": { "id": "S1", "span": { "s": 0, "e": 23 }, "confirmed": true }
+}
+
+### Sessions: autosave with the version guard (two machines on the same session)
+# `If-Match` is the version from the last ETag. If someone else saved in the meantime
+# the write is refused with 409 and the body carries `current_version` to reload from.
+PUT {{baseUrl}}/api/sound-necklace/sessions/sess_1/state
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+If-Match: "3"
+
+{
+  "schema_version": 1,
+  "mode": "mapeamento",
+  "beadSec": 0.5,
+  "whole": { "id": "S1", "span": { "s": 0, "e": 23 }, "confirmed": true }
+}
+
+### Sessions: resume — the saved document, byte for byte (ETag = current version)
+GET {{baseUrl}}/api/sound-necklace/sessions/sess_1/state
+Authorization: Bearer {{accessToken}}
+
+### Sessions: complete (no body — the artifacts go to the artifacts route)
+POST {{baseUrl}}/api/sound-necklace/sessions/sess_1/complete
+Authorization: Bearer {{accessToken}}
+
+### Sessions: reopen a completed session
+POST {{baseUrl}}/api/sound-necklace/sessions/sess_1/reopen
+Authorization: Bearer {{accessToken}}
+
+### Lock: acquire / renew (one route — they are the same operation)
+# The client heartbeats this every 15s against a 60s lease. Idempotent for the holder.
+# Losing is NOT an error: a session held by someone else answers 200 with THEIR name, and
+# the SPA opens in review mode off it —
+#   {"held": true, "holder": {"user_id": "u_2", "display_name": "Alice"},
+#    "expires_at": "2026-07-17T10:31:00+00:00"}
+# Exactly those three keys, always. The SPA parses this under z.strictObject, so a fourth
+# key throws on the client — and the app shell swallows that throw together with the
+# autosave wiring behind it. The fencing counter is server-side only for this reason.
+PUT {{baseUrl}}/api/sound-necklace/sessions/sess_1/lock
+Authorization: Bearer {{accessToken}}
+
+### Lock: who holds it (the review-mode gate reads this on open)
+# Unheld, or held by a lease that has lapsed, both read as:
+#   {"held": false, "holder": null, "expires_at": null}
+GET {{baseUrl}}/api/sound-necklace/sessions/sess_1/lock
+Authorization: Bearer {{accessToken}}
+
+### Lock: release (the SPA calls this on unload)
+# 204 always: releasing a lease that lapsed, that another tab took, or that never existed
+# is a no-op. Only ever releases your own — a stale tab cannot unlock the current holder.
+DELETE {{baseUrl}}/api/sound-necklace/sessions/sess_1/lock
+Authorization: Bearer {{accessToken}}
+
+### Lock: what a fenced write looks like (by a non-holder)
+# Fenced: PUT /state, POST /complete, POST /reopen, POST /artifacts. NOT fenced: the
+# voice /resources routes — ENG-264 left that guard out deliberately and tightening it is
+# its own issue.
+# The holder is the bearer's user, not a per-tab token — the SPA sends no token anywhere.
+# So this only bites while somebody ELSE holds a live lease; an unlocked session autosaves
+# exactly as it always did. 409 with:
+#   {"detail": "This session is being edited by Alice.", "code": "SESSION_LOCKED",
+#    "holder_name": "Alice", "expires_at": "2026-07-17T10:31:00+00:00"}
+#
+# Two different 409s live on PUT /state and `code` is what tells them apart:
+#   CONFLICT       → your copy is stale; body carries current_version; reload and retry
+#   SESSION_LOCKED → someone else is editing; stop writing and open in review
+# A caller who is both locked out AND stale gets SESSION_LOCKED: telling them to reload
+# and retry would loop forever.
+
+### Consent: record one, or re-confirm it (§12 / O6)
+# The record is the authoritative evidence of the lawful basis. The `pipeline_consent`
+# boolean on the session is write-only — the SPA sends it on create and then reads its own
+# copy out of the state document; no response carries it. Recording a consent keeps that
+# boolean in step so the two cannot disagree, but the record is what to read.
+#
+# `type` is the whole body. Who confirmed it is the bearer and when is the server's clock
+# — neither is the client's to assert. Idempotent per (session, type): re-confirming
+# updates the record and its timestamp instead of opening a second one, and 201 either way.
+#
+# Two types, and they are two different speakers:
+#   pipeline_use  → the facilitator attests the story may be processed
+#   voice_answers → the listener consents to their own voice being recorded (§8.7 records
+#                   21+ files of it). The listener holds no account, so `confirmed_by` is
+#                   the facilitator who WITNESSED it — the witness, never the subject.
+#
+# Creating a session with `pipeline_consent: true` already records the pipeline_use one,
+# in the same transaction. `false` records nothing at all: absent, denied and granted are
+# three different claims and only the last is a consent.
+POST {{baseUrl}}/api/sound-necklace/sessions/sess_1/consent
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "type": "pipeline_use"
+}
+
+### Consent: what is held for this session
+# An empty list is not an error — it is a session for which no consent was recorded.
+# The oral form §12 admits (a consent audio for a speaker who cannot sign) will read back
+# here once an upload route fills it — it is a nullable column on our own table, added with
+# that route rather than shipped empty ahead of it.
+GET {{baseUrl}}/api/sound-necklace/sessions/sess_1/consent
+Authorization: Bearer {{accessToken}}
+
+### Audit: who reached whose voice, and when (§12)
+# project_admin only (platform admin bypasses), AND project membership on top — the role
+# alone would let an admin of one project read another's trail. A facilitator gets 403:
+# reading who reached what is not part of doing the work.
+#
+# Every URL event says ISSUED, and that is all this API can honestly claim. The bytes are
+# served by storage against a short-lived signed URL and never pass through here, so it
+# never sees a download: the URL may be used once, ten times, shared, or never opened.
+#   audio_url_issued | artifact_url_issued | voice_url_issued  → a URL was minted
+#   artifact_uploaded → the ONLY event that claims a real transfer; those bytes do come
+#                       through the API. One event for the triple: the upload is atomic.
+#   session_completed | session_reopened | consent_recorded    → lifecycle acts
+#
+# NOT logged, ever: the listener's behaviour (§14). Reading a session, autosaving, listing
+# the bucket — none of them write a row. Those are someone doing their job, not a reach
+# for protected voice.
+#
+# `resource_ref` is the logical ref, never the storage key: the audio id, the artifact
+# kind, the answer's respostas/… path. With session_id it is the resource's identity.
+# `ip` is always null — behind Cloud Run's proxy there is no address this API can
+# honestly attribute to the caller, and a number that reads like one and is not is worse
+# than none in an evidence log.
+#
+# `since` and `until` are ISO instants bounding the window as [since, until) — `until` is
+# what lets an auditor reach a PAST window (the March pilot), not only the newest events;
+# raising `since` alone only ever strips older rows. Any offset is normalised to UTC. An
+# empty list is an answer, not an error.
+GET {{baseUrl}}/api/sound-necklace/projects/prj_1/audit?since=2026-07-01T00:00:00Z&until=2026-08-01T00:00:00Z&event=voice_url_issued&limit=100
+Authorization: Bearer {{accessToken}}
+
+### Artifacts: upload the three on completion (RAW bytes — byte-identical custody)
+POST {{baseUrl}}/api/sound-necklace/sessions/sess_1/artifacts
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=----boundary
+
+------boundary
+Content-Disposition: form-data; name="manifest"; filename="manifesto-contas.json"
+Content-Type: application/json
+
+< ./manifesto-contas.json
+------boundary
+Content-Disposition: form-data; name="anchoring"; filename="retorno-ancoragem.json"
+Content-Type: application/json
+
+< ./retorno-ancoragem.json
+------boundary
+Content-Disposition: form-data; name="report"; filename="relatorio-mapeamento.md"
+Content-Type: text/markdown
+
+< ./relatorio-mapeamento.md
+------boundary--
+
+### Artifacts: download one (redirects to a signed URL — audit point)
+# 307 to a short-TTL signed GET; storage serves the bytes verbatim and the API never
+# proxies them, which is what keeps the download byte-identical to the upload. The
+# frozen filename (PRD §10) rides in the object key, so the browser saves
+# `retorno-ancoragem.json` without the API touching a byte. ENG-266 hooks here.
+GET {{baseUrl}}/api/sound-necklace/sessions/sess_1/artifacts/anchoring
+Authorization: Bearer {{accessToken}}
+
+### Bucket: list a project's audios
+# The audios a project may see, each with its acousteme envelope and collection consent.
+# The bindings are seeded per project:
+#   uv run python scripts/seed_sn_audio_refs.py --project-id <uuid> [--consent]
+GET {{baseUrl}}/api/sound-necklace/projects/prj_1/audios
+Authorization: Bearer {{accessToken}}
+
+### Bucket: short-TTL signed URL for an audio (audit point)
+# The bytes live in a private bucket and are never proxied, so this is where the Sound
+# Necklace reaches them — and where ENG-266 will hook its audit log.
+#
+# The only path in this API — but only since ENG-290. GET /api/oc/acoustemes/{id}/audio
+# used to mint the same signed URL for the same object behind nothing but
+# get_current_user (no app role, no project scoping); it is retired.
+GET {{baseUrl}}/api/sound-necklace/audios/ruth-a-historia-de-rute/url
+Authorization: Bearer {{accessToken}}
+
+### Voice answers: upload one to its canonical path (raw WebM bytes, replace on re-record)
+# The path is a fixed allowlist — respostas/level{1,2,3}/…/<k>.webm — validated before it
+# names the object, so no traversal and no free-form key can reach storage.
+PUT {{baseUrl}}/api/sound-necklace/sessions/sess_1/resources?path=respostas/level1/recontar.webm
+Authorization: Bearer {{accessToken}}
+Content-Type: audio/webm
+
+< ./recontar.webm
+
+### Voice answers: which questions are answered (the Mapeamento screen reads this)
+GET {{baseUrl}}/api/sound-necklace/sessions/sess_1/resources
+Authorization: Bearer {{accessToken}}
+
+### Voice answers: short-TTL signed URL to play one back (audit point)
+GET {{baseUrl}}/api/sound-necklace/sessions/sess_1/resources/url?path=respostas/level1/recontar.webm
+Authorization: Bearer {{accessToken}}
+
+### Voice answers: delete one (object + row; a path never recorded is a no-op)
+DELETE {{baseUrl}}/api/sound-necklace/sessions/sess_1/resources?path=respostas/level1/recontar.webm
+Authorization: Bearer {{accessToken}}
