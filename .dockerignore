@@ -7,7 +7,10 @@
 __pycache__
 *.pyc
 *.db
-*.dump
+
+# `**/` because a pattern is matched against the whole path and `*` does not cross a `/`:
+# a bare `*.dump` would miss `.local-dump/latest.dump`, which is production data.
+**/*.dump
 node_modules
 
 # Credentials. Dockerfile.dev ends in `COPY . .`, and compose mounts these at
