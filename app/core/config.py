@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_minutes: int = 60 * 24 * 7
 
-    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com,https://translationhelper.shemaywam.com"
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com,https://translationhelper.shemaywam.com,https://annotationstudio.shemaywam.com,https://soundnecklace.shemaywam.com"
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     ph_elevenlabs_api_key: str = ""
 
     gcs_bucket_name: str = ""
+    # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it
+    # needs neither CORS nor public access.
+    gcs_platform_bucket: str = ""
     bhsa_data_path: str = ""
 
     cleaning_api_url: str = ""

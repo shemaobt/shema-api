@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://soundnecklace.shemaywam.com"
+    ],
+    "method": ["GET", "HEAD", "PUT", "OPTIONS"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": [
+      "Content-Type",
+      "Content-Length",
+      "Content-Range",
+      "Range",
+      "x-goog-resumable"
+    ]
+  }
+]

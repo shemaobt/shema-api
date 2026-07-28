@@ -18,8 +18,9 @@ services:
         QDRANT_URL=$$(gcloud secrets versions access latest --secret=tripod_backend_qdrant_url --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         QDRANT_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_qdrant_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         GOOGLE_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
+        GOOGLE_MAPS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_maps_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         ELEVENLABS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_elevenlabs_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
-        printf "DATABASE_URL='%s'\nJWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\n" "$$DB_URL" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$ELEVENLABS_API_KEY" > /secrets/.env
+        printf "DATABASE_URL='%s'\nJWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nGOOGLE_MAPS_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\n" "$$DB_URL" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$GOOGLE_MAPS_API_KEY" "$$ELEVENLABS_API_KEY" > /secrets/.env
     restart: "no"
 
   backend:
@@ -40,6 +41,8 @@ services:
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /etc/gcs/signing-key.json
       INNGEST_DEV: "http://inngest:8288/"
+      # Bucket generico da plataforma (cache de TTS). Nome, nao credencial: env comum.
+      GCS_PLATFORM_BUCKET: ${GCS_PLATFORM_BUCKET:-tripod-platform}
     dns:
       - 8.8.8.8
       - 8.8.4.4

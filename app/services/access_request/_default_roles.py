@@ -1,6 +1,7 @@
 DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
     "translation-helper": "user",
     "meaning-map-generator": "analyst",
+    "annotation-studio": "facilitator",
 }
 
 LEGACY_DEFAULT_ROLE = "analyst"

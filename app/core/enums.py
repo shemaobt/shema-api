@@ -33,10 +33,20 @@ class SplittingStatus(StrEnum):
     ARCHIVED_AFTER_SPLIT = "archived_after_split"
 
 
+class AcoustemeStatus(StrEnum):
+    PENDING = "pending"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class OCRecordingEvent(StrEnum):
     UPLOAD_CONFIRMED = "oc/recording.upload-confirmed"
     CLEAN_REQUESTED = "oc/recording.clean-requested"
     SPLIT_REQUESTED = "oc/recording.split-requested"
+
+
+class SnTranscriptionEvent(StrEnum):
+    REQUESTED = "sn/transcription.requested"
 
 
 class OCNotificationEvent(StrEnum):

@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-for-pytest-only")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+# The inngest client picks its mode when it is constructed, so this has to be set
+# before anything imports it — otherwise importing app.main needs a signing key.
+os.environ.setdefault("INNGEST_DEV", "1")
 
 from app.core.database import Base
 
