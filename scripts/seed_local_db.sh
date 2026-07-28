@@ -3,12 +3,13 @@
 # entrypoint executes only when it initialises a new data directory. A database that
 # already exists is never touched.
 #
-# The dump is placed at /seed/latest.dump by the db-seed service. No dump means no
-# data: the backend migrates an empty database to head on startup, which is enough
-# for most work.
+# The dump comes off the host directory restore_local_db.sh writes to, mounted at /seed.
+# No dump means no data: the backend migrates an empty database to head on startup, which
+# is enough for most work.
 #
-# SEED_FROM_DUMP is checked here as well as in db-seed: that service skips the download,
-# but a dump pulled by an earlier run stays in the volume, and opting out covers it too.
+# Nothing here may exit nonzero. The entrypoint aborts initdb on a failing script and the
+# container never goes healthy, so backend and worker never start — a worse outcome than
+# any restore problem this can hit.
 set -e
 
 DUMP=/seed/latest.dump
@@ -24,6 +25,10 @@ if [ ! -f "$DUMP" ]; then
 fi
 
 echo "seed: restoring $DUMP into $POSTGRES_DB"
-pg_restore --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
-  --no-owner --no-privileges "$DUMP"
+if ! pg_restore --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  --no-owner --no-privileges "$DUMP"; then
+  echo "seed: pg_restore reported errors — see above for which objects were skipped."
+  echo "seed: for a clean start, 'docker compose down -v' and bring the stack back up"
+  echo "seed: with SEED_FROM_DUMP=0."
+fi
 echo "seed: done"

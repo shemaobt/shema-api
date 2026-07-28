@@ -72,7 +72,12 @@ docker compose exec -T db psql -U postgres -d postgres \
   -c "CREATE DATABASE $DB_NAME"
 
 echo "==> restoring"
-docker compose exec -T db pg_restore -U postgres -d "$DB_NAME" --no-owner --no-privileges < "$LOCAL_FILE"
+if ! docker compose exec -T db pg_restore -U postgres -d "$DB_NAME" \
+  --no-owner --no-privileges < "$LOCAL_FILE"; then
+  echo "!!! pg_restore reported errors — see above for which objects were skipped."
+  echo "!!! Continuing so the migrations and the stack come back up; re-run this script"
+  echo "!!! if the database looks wrong."
+fi
 
 echo "==> applying migrations written since the dump"
 docker compose run --rm --entrypoint sh backend \
