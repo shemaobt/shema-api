@@ -155,6 +155,26 @@ def _normalize_title(value: str | None) -> str | None:
     return (value or "").strip() or None
 
 
+TITLE_UNIQUE_INDEX = "uq_oc_recordings_project_title"
+
+
+def _is_exempt_from_title_uniqueness(recording: OC_Recording) -> bool:
+    """Mirror of the partial index predicate: split segments and archived split parents
+    sit outside it, so they may carry a title another recording already holds."""
+    return (
+        recording.split_from_id is not None
+        or recording.splitting_status == SplittingStatus.ARCHIVED_AFTER_SPLIT
+    )
+
+
+def _is_duplicate_title(exc: IntegrityError) -> bool:
+    """Postgres names the violated index; SQLite only names its columns. Everything else
+    reaching this commit — the project, genre, subcategory and storyteller foreign keys —
+    is not a title conflict and must not be reported as one."""
+    detail = str(exc.orig)
+    return TITLE_UNIQUE_INDEX in detail or "oc_recordings.title" in detail
+
+
 async def _ensure_title_available(
     db: AsyncSession,
     project_id: str,
@@ -205,6 +225,8 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if not _is_duplicate_title(exc):
+            raise
         raise ConflictError(f"A recording titled '{title}' already exists in this project") from exc
     await db.refresh(recording)
     return recording
@@ -229,7 +251,7 @@ async def update_recording(
             raise InvalidCleaningStatusError(new_status)
     if "title" in update_fields:
         normalized_title = _normalize_title(update_fields["title"])
-        if normalized_title:
+        if normalized_title and not _is_exempt_from_title_uniqueness(recording):
             await _ensure_title_available(
                 db, recording.project_id, normalized_title, exclude_id=recording_id
             )
@@ -240,6 +262,8 @@ async def update_recording(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if not _is_duplicate_title(exc):
+            raise
         raise ConflictError("A recording with this title already exists in this project") from exc
     await db.refresh(recording)
     return recording

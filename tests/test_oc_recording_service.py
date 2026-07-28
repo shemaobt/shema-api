@@ -981,3 +981,112 @@ async def test_db_unique_index_allows_repeated_null_titles(
     second = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title=None)
 
     assert first.id != second.id
+
+
+@pytest.mark.asyncio
+async def test_update_recording_lets_a_split_child_take_a_used_title(
+    db_session: AsyncSession,
+) -> None:
+    """The unique index exempts split-derived rows, so the pre-check must exempt them on
+    the way in as well — otherwise renaming one is a 409 for a title the database accepts."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+
+    await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title="Genesis 1")
+    split_child = OC_Recording(
+        project_id=project_id,
+        genre_id=genre.id,
+        subcategory_id=sub.id,
+        user_id=user.id,
+        title="Genesis 1 part two",
+        split_from_id="parent-id",
+        duration_seconds=5.0,
+        file_size_bytes=512,
+        format="m4a",
+        recorded_at=datetime.now(UTC),
+    )
+    db_session.add(split_child)
+    await db_session.commit()
+    await db_session.refresh(split_child)
+
+    updated = await rs.update_recording(
+        db_session, split_child.id, RecordingUpdate(title="Genesis 1")
+    )
+
+    assert updated.title == "Genesis 1"
+
+
+@pytest.mark.asyncio
+async def test_update_recording_lets_an_archived_split_parent_take_a_used_title(
+    db_session: AsyncSession,
+) -> None:
+    """Same exemption, other half of the index predicate."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+
+    await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title="Genesis 1")
+    archived_parent = OC_Recording(
+        project_id=project_id,
+        genre_id=genre.id,
+        subcategory_id=sub.id,
+        user_id=user.id,
+        title="Genesis 1 whole",
+        splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+        duration_seconds=5.0,
+        file_size_bytes=512,
+        format="m4a",
+        recorded_at=datetime.now(UTC),
+    )
+    db_session.add(archived_parent)
+    await db_session.commit()
+    await db_session.refresh(archived_parent)
+
+    updated = await rs.update_recording(
+        db_session, archived_parent.id, RecordingUpdate(title="Genesis 1")
+    )
+
+    assert updated.title == "Genesis 1"
+
+
+@pytest.mark.asyncio
+async def test_create_recording_does_not_report_a_bad_genre_as_a_title_conflict(
+    db_session: AsyncSession,
+) -> None:
+    """The insert carries four foreign keys. Only the title index may answer 409."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    _, sub = await _seed_genre(db_session)
+
+    data = RecordingCreate(
+        project_id=project_id,
+        genre_id="no-such-genre",
+        subcategory_id=sub.id,
+        title="Genesis 1",
+        duration_seconds=10.0,
+        file_size_bytes=1024,
+        format="m4a",
+        recorded_at=datetime.now(UTC),
+    )
+
+    with pytest.raises(IntegrityError):
+        await rs.create_recording(db_session, data, user.id)
+
+
+@pytest.mark.asyncio
+async def test_update_recording_does_not_report_a_bad_genre_as_a_title_conflict(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+
+    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+
+    with pytest.raises(IntegrityError):
+        await rs.update_recording(db_session, rec.id, RecordingUpdate(genre_id="no-such-genre"))
