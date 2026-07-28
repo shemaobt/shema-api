@@ -1,7 +1,7 @@
 """add partial unique index on oc_recordings (project_id, title)
 
 Revision ID: 20260601_0001
-Revises: 20260519_0001
+Revises: 20260724_0002
 Create Date: 2026-06-01 00:00:00.000000
 
 Enforces per-project title uniqueness for user-created recordings (ENG-71),
@@ -29,7 +29,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260601_0001"
-down_revision: str | None = "20260519_0001"
+down_revision: str | None = "20260724_0002"
 branch_labels: str | None = None
 depends_on: str | None = None
 
