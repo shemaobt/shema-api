@@ -12,6 +12,7 @@ services:
       - db_data:/var/lib/postgresql/data
       - ./.local-dump:/seed:ro
       - ./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro
+      - ./scripts/seed_sn_pilot.sql:/pilot/sn-pilot.sql:ro
     depends_on:
       db-seed:
         condition: service_completed_successfully

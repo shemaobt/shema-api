@@ -17,6 +17,7 @@
 set -e
 
 DUMP=/seed/latest.dump
+PILOT=/pilot/sn-pilot.sql
 
 if [ "$SEED_FROM_DUMP" = "0" ]; then
   echo "seed: SEED_FROM_DUMP=0, starting with an empty database"
@@ -34,5 +35,14 @@ if ! pg_restore --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   echo "seed: pg_restore reported errors — see above for which objects were skipped."
   echo "seed: for a clean start, 'docker compose down -v' and bring the stack back up"
   echo "seed: with SEED_FROM_DUMP=0."
+fi
+
+if [ -f "$PILOT" ]; then
+  echo "seed: replaying the Sound Necklace pilot"
+  if ! psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --quiet \
+    --set ON_ERROR_STOP=1 --file "$PILOT"; then
+    echo "seed: the pilot overlay did not apply — the Sound Necklace will have no audios."
+    echo "seed: the rest of the database is fine."
+  fi
 fi
 echo "seed: done"

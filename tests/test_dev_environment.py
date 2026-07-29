@@ -111,6 +111,31 @@ def test_seeding_can_be_turned_off(compose: dict) -> None:
         assert 'SEED_FROM_DUMP" = "0"' in (ROOT / "scripts" / name).read_text()
 
 
+def test_the_sound_necklace_pilot_is_replayed_on_top_of_the_dump(compose: dict) -> None:
+    """Production carries the 49 Ruth acousteme artifacts but none of the sn_audio_refs
+    that bind them to a project, because those rows were only ever created in the dev
+    database. No production dump will ever carry them, so they are replayed from a file
+    — along with the pilot project and its language, which production also lacks."""
+    db = compose["services"]["db"]
+    overlay = ROOT / "scripts" / "seed_sn_pilot.sql"
+
+    assert "./scripts/seed_sn_pilot.sql:/pilot/sn-pilot.sql:ro" in db["volumes"]
+    assert overlay.read_text().count("INSERT INTO sn_audio_refs") == 49
+    assert "INSERT INTO projects" in overlay.read_text()
+    assert "INSERT INTO languages" in overlay.read_text()
+
+
+def test_the_pilot_overlay_is_replayable(compose: dict) -> None:
+    """It runs on every from-scratch database, and a developer may also apply it by hand
+    against one that already has some of it."""
+    statements = (ROOT / "scripts" / "seed_sn_pilot.sql").read_text()
+    inserts = [line for line in statements.splitlines() if line.startswith("INSERT INTO")]
+
+    assert inserts
+    for line in inserts:
+        assert "ON CONFLICT" in line or "NOT EXISTS" in statements
+
+
 def test_a_failed_download_never_blocks_the_stack() -> None:
     """db-seed gates db through service_completed_successfully, so a nonzero exit takes
     the whole stack down. No gcloud credentials and an unreachable bucket are ordinary
@@ -128,6 +153,8 @@ def test_seeding_never_blocks_the_stack() -> None:
 
     assert 'if [ ! -f "$DUMP" ]; then' in script
     assert script.count("exit 0") >= 2
+    assert "PILOT=/pilot/sn-pilot.sql" in script
+    assert re.search(r"if ! psql", script)
 
 
 def test_a_failing_restore_never_blocks_the_stack() -> None:
