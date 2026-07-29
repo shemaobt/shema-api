@@ -112,6 +112,9 @@ tripod-backend/
   See `scripts/fetch_local_dump.sh`, `seed_local_db.sh` and `restore_local_db.sh`. Taking a
   dump is a manual admin procedure documented in the README, deliberately not a script in
   the repository.
+- The Sound Necklace pilot is not in any production dump: `scripts/seed_sn_pilot.sql`
+  replays its `sn_audio_refs` (and the project and language they depend on) after the
+  restore. Written against the production schema, not dev's.
 
 ---
 

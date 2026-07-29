@@ -133,6 +133,28 @@ Nothing in this path can block the stack. No gcloud credentials, no access to th
 failed download, a `pg_restore` that skips objects — each one logs a line and leaves you
 with an empty database. `db-seed` gates the `db` service, so it always exits clean.
 
+#### The Sound Necklace pilot
+
+Production carries the 49 acousteme artifacts of the Ruth pilot but none of the
+`sn_audio_refs` that bind them to a project, and `sn_audio_refs` is the only thing a
+project gate can stand on. Those rows were only ever created in the dev database, so no
+production dump will ever have them. `scripts/seed_sn_pilot.sql` replays them — plus the
+pilot project and its language, which production also lacks — right after the restore.
+
+It is `ON CONFLICT DO NOTHING` throughout, so applying it twice is a no-op, and it is
+written against the **production** schema rather than dev's, which carries columns from
+unmerged branches. To refresh it after the pilot changes in dev:
+
+```bash
+DEV="$(gcloud secrets versions access latest \
+  --secret=tripod_backend_neon_database_url_local --project=shemaobt-secrets)" \
+  docker compose run --rm --no-deps -T -e DEV --entrypoint sh db \
+  -c 'psql "$DEV" -tAc "SELECT ... FROM sn_audio_refs"'
+```
+
+Emit `INSERT` statements for `sn_audio_refs`, the pilot row of `projects` and its
+`languages` row, and name only columns that exist in a restored production dump.
+
 **The dump is not anonymized.** It carries real emails, password hashes and user content.
 On disk it is `chmod 644` — postgres reads it through the bind mount as its own uid — so
 any local account can read it, and restoring puts the same data unencrypted in a Docker
