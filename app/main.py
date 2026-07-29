@@ -37,6 +37,7 @@ from app.api.project_health import router as project_health_router
 from app.api.projects import router as projects_router
 from app.api.rag import router as rag_router
 from app.api.roles import router as roles_router
+from app.api.shema import router as shema_router
 from app.api.sound_necklace import router as sound_necklace_router
 from app.api.translation_helper import router as translation_helper_router
 from app.api.uploads import router as uploads_router
@@ -164,6 +165,7 @@ def create_app() -> FastAPI:
         prefix="/api/book-context",
         tags=["book-context"],
     )
+    app.include_router(shema_router, prefix="/api/shema", tags=["shema"])
 
     app.include_router(oc_genres_router, prefix="/api/oc/genres", tags=["oc-genres"])
     app.include_router(
