@@ -5,6 +5,7 @@ import google.auth
 import google.auth.transport.requests
 import inngest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import (
@@ -16,6 +17,7 @@ from app.core.enums import (
 )
 from app.core.exceptions import (
     AuthorizationError,
+    ConflictError,
     InvalidCleaningStatusError,
     NotFoundError,
     SecondaryClassificationConflictError,
@@ -110,6 +112,7 @@ async def list_recordings(
     cleaning_status: str | None = None,
     user_id: str | None = None,
     storyteller_id: str | None = None,
+    title: str | None = None,
     offset: int = 0,
     limit: int = 50,
 ) -> list[OC_Recording]:
@@ -134,6 +137,8 @@ async def list_recordings(
         stmt = stmt.where(OC_Recording.user_id == user_id)
     if storyteller_id:
         stmt = stmt.where(OC_Recording.storyteller_id == storyteller_id)
+    if title:
+        stmt = stmt.where(OC_Recording.title == title.strip())
     stmt = stmt.offset(offset).limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -169,6 +174,49 @@ async def check_recording_access(db: AsyncSession, recording: OC_Recording, user
         )
 
 
+def _normalize_title(value: str | None) -> str | None:
+    return (value or "").strip() or None
+
+
+TITLE_UNIQUE_INDEX = "uq_oc_recordings_project_title"
+
+
+def _is_exempt_from_title_uniqueness(recording: OC_Recording) -> bool:
+    """Mirror of the partial index predicate: split segments and archived split parents
+    sit outside it, so they may carry a title another recording already holds."""
+    return (
+        recording.split_from_id is not None
+        or recording.splitting_status == SplittingStatus.ARCHIVED_AFTER_SPLIT
+    )
+
+
+def _is_duplicate_title(exc: IntegrityError) -> bool:
+    """Postgres names the violated index; SQLite only names its columns. Everything else
+    reaching this commit — the project, genre, subcategory and storyteller foreign keys —
+    is not a title conflict and must not be reported as one."""
+    detail = str(exc.orig)
+    return TITLE_UNIQUE_INDEX in detail or "oc_recordings.title" in detail
+
+
+async def _ensure_title_available(
+    db: AsyncSession,
+    project_id: str,
+    title: str,
+    *,
+    exclude_id: str | None = None,
+) -> None:
+    stmt = select(OC_Recording.id).where(
+        OC_Recording.project_id == project_id,
+        OC_Recording.title == title,
+        OC_Recording.split_from_id.is_(None),
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(OC_Recording.id != exclude_id)
+    if (await db.execute(stmt)).first() is not None:
+        raise ConflictError(f"A recording titled '{title}' already exists in this project")
+
+
 async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str) -> OC_Recording:
     if secondary_equals_primary(
         primary_register_id=data.register_id,
@@ -180,15 +228,9 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
     ):
         raise SecondaryClassificationConflictError
 
-    if data.title:
-        stmt = select(OC_Recording).where(
-            OC_Recording.project_id == data.project_id,
-            OC_Recording.title == data.title,
-        )
-        result = await db.execute(stmt)
-        existing = result.scalar_one_or_none()
-        if existing is not None:
-            return existing
+    title = _normalize_title(data.title)
+    if title:
+        await _ensure_title_available(db, data.project_id, title)
 
     if data.storyteller_id:
         await _validate_storyteller_in_project(db, data.storyteller_id, data.project_id)
@@ -203,7 +245,7 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         secondary_register_id=data.secondary_register_id,
         storyteller_id=data.storyteller_id,
         user_id=user_id,
-        title=data.title,
+        title=title,
         description=data.description,
         duration_seconds=data.duration_seconds,
         file_size_bytes=data.file_size_bytes,
@@ -211,7 +253,13 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         recorded_at=data.recorded_at,
     )
     db.add(recording)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if not _is_duplicate_title(exc):
+            raise
+        raise ConflictError(f"A recording titled '{title}' already exists in this project") from exc
     await db.refresh(recording)
     return recording
 
@@ -258,9 +306,22 @@ async def update_recording(
         new_status = data.cleaning_status
         if new_status not in USER_SETTABLE_CLEANING_STATUSES:
             raise InvalidCleaningStatusError(new_status)
+    if "title" in update_fields:
+        normalized_title = _normalize_title(update_fields["title"])
+        if normalized_title and not _is_exempt_from_title_uniqueness(recording):
+            await _ensure_title_available(
+                db, recording.project_id, normalized_title, exclude_id=recording_id
+            )
+        update_fields["title"] = normalized_title
     for field, value in update_fields.items():
         setattr(recording, field, value)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if not _is_duplicate_title(exc):
+            raise
+        raise ConflictError("A recording with this title already exists in this project") from exc
     await db.refresh(recording)
     return recording
 

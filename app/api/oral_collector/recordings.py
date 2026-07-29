@@ -31,6 +31,7 @@ async def list_recordings(
     cleaning_status: str | None = Query(None),
     user_id: str | None = Query(None, description="Filter by recording author"),
     storyteller_id: str | None = Query(None, description="Filter by storyteller"),
+    title: str | None = Query(None, description="Filter by exact (trimmed) title"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     _: User = Depends(get_current_user),
@@ -46,6 +47,7 @@ async def list_recordings(
         cleaning_status=cleaning_status,
         user_id=user_id,
         storyteller_id=storyteller_id,
+        title=title,
         offset=offset,
         limit=limit,
     )
