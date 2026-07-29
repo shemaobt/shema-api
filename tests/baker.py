@@ -242,8 +242,9 @@ async def make_project_user_access(
     db: AsyncSession,
     project_id: str,
     user_id: str,
+    role: str = "member",
 ) -> ProjectUserAccess:
-    access = ProjectUserAccess(project_id=project_id, user_id=user_id)
+    access = ProjectUserAccess(project_id=project_id, user_id=user_id, role=role)
     db.add(access)
     await db.commit()
     await db.refresh(access)
@@ -596,7 +597,6 @@ async def grant_app_role(
     role_key: str = "user",
     label: str | None = None,
 ) -> UserAppRole:
-    """Convenience: ensure a role with `role_key` exists for `app` and assign it to `user`."""
     role = await make_role(
         db,
         app.id,

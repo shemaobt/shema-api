@@ -8,6 +8,14 @@ from app.db.models.auth import User
 from app.db.models.org import MemberRole, Organization, OrganizationMember
 
 
+async def get_managed_project_ids(db: AsyncSession, user_id: str) -> list[str]:
+    from app.services.project.get_managed_project_ids import (
+        get_managed_project_ids as _get_managed_project_ids,
+    )
+
+    return await _get_managed_project_ids(db, user_id)
+
+
 async def get_managed_org_ids(db: AsyncSession, user_id: str) -> list[str]:
     from_members = select(OrganizationMember.organization_id.label("org_id")).where(
         OrganizationMember.user_id == user_id,

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
+from app.core.org_scope import get_managed_project_ids
 from app.db.models.auth import User
 from app.models.phase import (
     DependencyCreate,
@@ -33,12 +34,14 @@ async def list_phases(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PhaseResponse]:
-    phases = await phase_service.list_phases(db, project_id=project_id)
-    result = []
-    for phase in phases:
-        data = PhaseResponse.model_validate(phase)
-        result.append(data)
-    return result
+    if user.is_platform_admin:
+        phases = await phase_service.list_phases(db, project_id=project_id)
+    else:
+        managed_project_ids = await get_managed_project_ids(db, user.id)
+        phases = await phase_service.list_phases_by_projects(
+            db, managed_project_ids, project_id=project_id
+        )
+    return [PhaseResponse.model_validate(phase) for phase in phases]
 
 
 @router.get("/with-dependencies", response_model=PhasesWithDepsResponse)
@@ -46,7 +49,10 @@ async def list_phases_with_dependencies(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> PhasesWithDepsResponse:
-    return await phase_service.list_all_phases_with_deps(db)
+    if user.is_platform_admin:
+        return await phase_service.list_all_phases_with_deps(db)
+    managed_project_ids = await get_managed_project_ids(db, user.id)
+    return await phase_service.list_phases_with_deps_by_projects(db, managed_project_ids)
 
 
 @router.get("/{phase_id}", response_model=PhaseResponse)

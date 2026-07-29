@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.projects._deps import assert_project_access
-from app.core.auth_middleware import get_current_user
+from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.db.models.auth import User
 from app.models.project import (
@@ -115,10 +115,9 @@ async def update_user_access_role(
     project_id: str,
     user_id: str,
     payload: ProjectUserAccessRoleUpdate,
-    actor: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectUserAccessResponse:
-    await assert_project_access(db, actor, project_id)
     access = await project_service.update_user_access_role(db, project_id, user_id, payload.role)
     return ProjectUserAccessResponse.model_validate(access)
 

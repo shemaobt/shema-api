@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
+from app.core.org_scope import get_managed_project_ids
 from app.db.models.auth import User
 from app.models.language import LanguageCreate, LanguageResponse
 from app.services import language_service
@@ -14,9 +15,13 @@ router = APIRouter()
 @router.get("", response_model=list[LanguageResponse])
 async def list_languages(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> list[LanguageResponse]:
-    languages = await language_service.list_languages(db)
+    if user.is_platform_admin:
+        languages = await language_service.list_languages(db)
+    else:
+        managed_project_ids = await get_managed_project_ids(db, user.id)
+        languages = await language_service.list_languages_by_projects(db, managed_project_ids)
     return [LanguageResponse.model_validate(lang) for lang in languages]
 
 
