@@ -10,6 +10,7 @@ __pycache__/
 htmlcov/
 alembic/__pycache__/
 test.db
+test.db-journal
 scripts/seed_initial_users.py
 scripts/grant-secret-access.sh
 gcs-signing-key.json
