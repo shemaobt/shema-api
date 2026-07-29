@@ -21,6 +21,7 @@ from app.core.exceptions import (
     InvalidCleaningStatusError,
     NotFoundError,
     SecondaryClassificationConflictError,
+    UnknownReferenceError,
     ValidationError,
 )
 from app.core.inngest_client import inngest_client
@@ -190,6 +191,18 @@ def _is_exempt_from_title_uniqueness(recording: OC_Recording) -> bool:
     )
 
 
+def _is_missing_reference(exc: IntegrityError) -> bool:
+    """Postgres names the violated foreign key, SQLite only says which kind failed."""
+    detail = str(exc.orig)
+    return "foreign key constraint" in detail.lower()
+
+
+UNKNOWN_REFERENCE_MESSAGE = (
+    "This recording points at a record that does not exist — check project_id, genre_id, "
+    "subcategory_id, secondary_genre_id, secondary_subcategory_id and storyteller_id"
+)
+
+
 def _is_duplicate_title(exc: IntegrityError) -> bool:
     """Postgres names the violated index; SQLite only names its columns. Everything else
     reaching this commit — the project, genre, subcategory and storyteller foreign keys —
@@ -257,6 +270,8 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if _is_missing_reference(exc):
+            raise UnknownReferenceError(UNKNOWN_REFERENCE_MESSAGE) from exc
         if not _is_duplicate_title(exc):
             raise
         raise ConflictError(f"A recording titled '{title}' already exists in this project") from exc
@@ -319,6 +334,8 @@ async def update_recording(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if _is_missing_reference(exc):
+            raise UnknownReferenceError(UNKNOWN_REFERENCE_MESSAGE) from exc
         if not _is_duplicate_title(exc):
             raise
         raise ConflictError("A recording with this title already exists in this project") from exc

@@ -11,6 +11,7 @@ from app.core.exceptions import (
     InvalidCleaningStatusError,
     NotFoundError,
     SecondaryClassificationConflictError,
+    UnknownReferenceError,
     ValidationError,
 )
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
@@ -1170,10 +1171,12 @@ async def test_update_recording_lets_an_archived_split_parent_take_a_used_title(
 
 
 @pytest.mark.asyncio
-async def test_create_recording_does_not_report_a_bad_genre_as_a_title_conflict(
+async def test_create_recording_answers_422_for_a_genre_that_does_not_exist(
     db_session: AsyncSession,
 ) -> None:
-    """The insert carries four foreign keys. Only the title index may answer 409."""
+    """The insert carries several foreign keys. A payload naming a row that is not there
+    is the caller's mistake, not an internal fault, and only the title index may answer
+    409."""
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1190,12 +1193,12 @@ async def test_create_recording_does_not_report_a_bad_genre_as_a_title_conflict(
         recorded_at=datetime.now(UTC),
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(UnknownReferenceError):
         await rs.create_recording(db_session, data, user.id)
 
 
 @pytest.mark.asyncio
-async def test_update_recording_does_not_report_a_bad_genre_as_a_title_conflict(
+async def test_update_recording_answers_422_for_a_genre_that_does_not_exist(
     db_session: AsyncSession,
 ) -> None:
     rs = _import_service()
@@ -1205,5 +1208,31 @@ async def test_update_recording_does_not_report_a_bad_genre_as_a_title_conflict(
 
     rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(UnknownReferenceError):
         await rs.update_recording(db_session, rec.id, RecordingUpdate(genre_id="no-such-genre"))
+
+
+@pytest.mark.asyncio
+async def test_unknown_reference_is_served_as_422() -> None:
+    """422 rather than 400: the payload parsed fine and every field is well formed, it
+    just names a row that is not there. That is the same class of problem FastAPI already
+    answers 422 for, and it is the caller's to fix — a 500 would claim otherwise."""
+    import httpx
+    from fastapi import FastAPI
+    from httpx import ASGITransport
+
+    from app.core.exceptions import register_exception_handlers
+
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/boom")
+    async def _boom() -> None:
+        raise UnknownReferenceError("no such genre")
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/boom")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "no such genre"
