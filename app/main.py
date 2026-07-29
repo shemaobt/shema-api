@@ -47,6 +47,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.qdrant import close_qdrant, init_qdrant
 from app.core.rate_limit import limiter
+from app.core.version import get_app_version
 from app.services.bhsa import loader
 from app.services.meaning_map.seed_books import seed_books
 from app.services.project_health.prompts.seed_prompts import seed_default_prompts
@@ -94,7 +95,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Tripod Backend", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Tripod Backend", version=get_app_version(), lifespan=lifespan)
 
     app.state.limiter = limiter
     from slowapi import _rate_limit_exceeded_handler
