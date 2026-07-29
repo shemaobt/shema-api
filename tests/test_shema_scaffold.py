@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from importlib import import_module
+
 import httpx
 import pytest
 from httpx import ASGITransport
@@ -71,6 +74,21 @@ async def test_shema_health_degrades_when_the_database_is_unreachable():
             raise SQLAlchemyError("connection refused")
 
     status = await get_module_status(_UnreachableSession())
+
+    assert status.database == "unavailable"
+    assert status.status == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_shema_health_degrades_when_the_database_probe_hangs(monkeypatch):
+    service = import_module("app.services.shema.get_module_status")
+    monkeypatch.setattr(service, "PROBE_TIMEOUT_SECONDS", 0.05)
+
+    class _HangingSession:
+        async def execute(self, *_args, **_kwargs):
+            await asyncio.sleep(30)
+
+    status = await service.get_module_status(_HangingSession())
 
     assert status.database == "unavailable"
     assert status.status == "degraded"
