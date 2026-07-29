@@ -100,29 +100,38 @@ separate: it runs on SQLite and reaches neither database.)
 
 ### Data in the local database
 
-`docker compose up` gives you an empty database migrated to head, which is enough for most
-work. To work with real data instead:
+`docker compose up` populates the database for you. On a database that does not exist yet,
+the `db-seed` container downloads the newest dump from `gs://tripod-db-dumps` into
+`.local-dump/latest.dump`, and postgres restores it while it creates the cluster. No script
+to run first — real data is the default.
+
+The download happens once. `db-seed` reuses a dump that is already in the directory, so
+later rebuilds — `docker compose down -v`, `docker volume rm tripod-api_db_data` — restore
+from disk with no network. Delete the file to pull a fresh one. Postgres runs the seed only
+while creating its data directory, so an existing database is never overwritten.
+
+To replace the data in a database you already have, which the seed path will not touch:
 
 ```bash
 ./scripts/restore_local_db.sh
 ```
 
-That downloads the newest dump to `.local-dump/latest.dump`, stops the backend and worker,
-recreates the local `tripod` database, restores, applies any migrations written since the
-dump was taken, and starts back what it stopped.
+That stops the backend and worker, recreates the local `tripod` database, restores, applies
+any migrations written since the dump was taken, and starts back what it stopped.
 
-The file then stays put, and the `db` service mounts that directory. Every later rebuild of
-the database — `docker compose down -v`, `docker volume rm tripod-api_db_data` — restores
-from it automatically, with no download and no network. Postgres runs the seed only while
-creating its data directory, so an existing database is never overwritten.
-
-To stop that, delete `.local-dump/latest.dump`, or start once with seeding off:
+To skip the production data entirely:
 
 ```bash
 SEED_FROM_DUMP=0 docker compose up backend
 ```
 
-A missing dump never blocks the stack: you get the empty database and a line in the logs.
+That covers both halves — `db-seed` does not download, and the seed script ignores a dump
+an earlier run already left behind. You get an empty database migrated to head, which is
+enough for most work.
+
+Nothing in this path can block the stack. No gcloud credentials, no access to the bucket, a
+failed download, a `pg_restore` that skips objects — each one logs a line and leaves you
+with an empty database. `db-seed` gates the `db` service, so it always exits clean.
 
 **The dump is not anonymized.** It carries real emails, password hashes and user content.
 On disk it is `chmod 644` — postgres reads it through the bind mount as its own uid — so
