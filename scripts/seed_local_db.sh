@@ -3,9 +3,13 @@
 # entrypoint executes only when it initialises a new data directory. A database that
 # already exists is never touched.
 #
-# The dump comes off the host directory restore_local_db.sh writes to, mounted at /seed.
-# No dump means no data: the backend migrates an empty database to head on startup, which
-# is enough for most work.
+# The dump is at /seed/latest.dump, put there by the db-seed container or by
+# restore_local_db.sh. No dump means no data: the backend migrates an empty database to
+# head on startup, which is enough for most work.
+#
+# SEED_FROM_DUMP is read here as well as in db-seed. That container skips the download, but
+# a dump an earlier run already left in the directory would still be restored, so opting
+# out has to cover this half too.
 #
 # Nothing here may exit nonzero. The entrypoint aborts initdb on a failing script and the
 # container never goes healthy, so backend and worker never start — a worse outcome than

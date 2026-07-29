@@ -80,20 +80,45 @@ def test_secrets_container_still_provides_the_remaining_secrets(compose: dict) -
 
 def test_a_fresh_database_seeds_itself_from_the_local_dump(compose: dict) -> None:
     """Postgres runs /docker-entrypoint-initdb.d only when it creates the cluster, so
-    the restore happens on a from-scratch database and never on an existing one. The
-    dump comes off the host directory restore_local_db.sh writes to, which needs no
-    sidecar and no network."""
+    the restore happens on a from-scratch database and never on an existing one."""
     db = compose["services"]["db"]
 
     assert "./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro" in db["volumes"]
     assert f"./{DUMP_DIR}:/seed:ro" in db["volumes"]
-    assert "db-seed" not in compose["services"]
-    assert "db-seed" not in (ROOT / "scripts" / "seed_local_db.sh").read_text()
+
+
+def test_the_dump_is_fetched_without_a_manual_step(compose: dict) -> None:
+    """`docker compose up` on a machine with no dump has to end up with one: db-seed
+    downloads it into the directory db mounts, and db waits for that to finish before it
+    initialises the cluster. Same one-shot shape as bhsa-fetcher."""
+    seed = compose["services"]["db-seed"]
+
+    assert seed["restart"] == "no"
+    assert f"./{DUMP_DIR}:/seed" in seed["volumes"]
+    assert compose["services"]["db"]["depends_on"]["db-seed"]["condition"] == (
+        "service_completed_successfully"
+    )
 
 
 def test_seeding_can_be_turned_off(compose: dict) -> None:
-    assert "${SEED_FROM_DUMP:-1}" in compose["services"]["db"]["environment"]["SEED_FROM_DUMP"]
-    assert 'SEED_FROM_DUMP" = "0"' in (ROOT / "scripts" / "seed_local_db.sh").read_text()
+    """One switch covers both halves: db-seed skips the download, and the seed script
+    skips a dump an earlier run already left in the directory."""
+    for service in ("db", "db-seed"):
+        assert (
+            "${SEED_FROM_DUMP:-1}" in compose["services"][service]["environment"]["SEED_FROM_DUMP"]
+        )
+    for name in ("seed_local_db.sh", "fetch_local_dump.sh"):
+        assert 'SEED_FROM_DUMP" = "0"' in (ROOT / "scripts" / name).read_text()
+
+
+def test_a_failed_download_never_blocks_the_stack() -> None:
+    """db-seed gates db through service_completed_successfully, so a nonzero exit takes
+    the whole stack down. No gcloud credentials and an unreachable bucket are ordinary
+    states on a fresh machine — they have to degrade to an empty database."""
+    script = (ROOT / "scripts" / "fetch_local_dump.sh").read_text()
+
+    assert "set -e" not in script
+    assert script.count("exit 0") >= 3
 
 
 def test_seeding_never_blocks_the_stack() -> None:
