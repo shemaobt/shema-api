@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.core.enums import CleaningStatus, SplittingStatus
 
@@ -21,12 +21,6 @@ class RecordingCreate(BaseModel):
     format: str = Field(min_length=1, max_length=20)
     recorded_at: datetime
 
-    @model_validator(mode="after")
-    def _check_secondary_not_equal_primary(self) -> "RecordingCreate":
-        if self.secondary_genre_id is not None and self.secondary_genre_id == self.genre_id:
-            raise ValueError("secondary_genre_id must differ from primary genre_id")
-        return self
-
 
 class RecordingUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=500)
@@ -41,16 +35,6 @@ class RecordingUpdate(BaseModel):
     duration_seconds: float | None = Field(default=None, ge=0)
     file_size_bytes: int | None = Field(default=None, ge=0)
     cleaning_status: CleaningStatus | None = None
-
-    @model_validator(mode="after")
-    def _check_secondary_not_equal_primary(self) -> "RecordingUpdate":
-        if (
-            self.secondary_genre_id is not None
-            and self.genre_id is not None
-            and self.secondary_genre_id == self.genre_id
-        ):
-            raise ValueError("secondary_genre_id must differ from primary genre_id")
-        return self
 
 
 class RecordingResponse(BaseModel):
