@@ -8,8 +8,8 @@ Shared API backend for Tripod — a platform powering multiple language and tran
 
 ```
 app/
-├── api/           # FastAPI routers (auth, languages, orgs, projects, phases, roles, rag, bhsa)
-├── core/          # Config, database engine, middleware, exceptions
+├── api/           # FastAPI routers (auth, languages, orgs, projects, phases, roles, rag, bhsa, shema)
+├── core/          # Config, database engine, middleware, exceptions, app version
 ├── db/
 │   └── models/    # SQLAlchemy ORM models (auth · language · org · phase · project)
 ├── models/        # Pydantic request/response schemas
@@ -17,6 +17,7 @@ app/
                    #   auth/ · authorization/ · language/ · org/ · phase/ · project/
                    #   rag/ (document upload, query, embeddings)
                    #   bhsa/ (Hebrew text-fabric passage extraction)
+                   #   shema/ (Ecossistema Shemá project management)
 alembic/           # Database migrations
 scripts/           # One-off scripts (e.g. seed_apps_roles.py)
 tests/             # Async pytest suite, one file per service domain
@@ -24,6 +25,33 @@ http/              # .http request examples (VS Code REST Client / JetBrains)
 ```
 
 Each layer has a single responsibility: routers call services, services use db models, Pydantic models handle serialization. No business logic lives in routers; no DB calls live outside services.
+
+## Configuration
+
+Settings are read from the environment by `app/core/config.py`. [`.env.example`](.env.example) lists every variable the app reads; the first two are required and the app refuses to start without them:
+
+| Variable | Why it is required |
+|---|---|
+| `DATABASE_URL` | There is no fallback DSN — a default would silently point the app at the wrong database. |
+| `JWT_SECRET_KEY` | An empty signing key would sign every access and refresh token with `""`. |
+
+Everything else has a working default or is inert when unset. Runtime secrets come from GCP Secret Manager (see [Local development](#local-development)) — `.env.example` is a reference, not a file to fill in with real values.
+
+## Shemá module
+
+`Ecossistema Shemá` — project management for the network of multimodal Bible-translation projects run by YWAM/JOCUM field teams — is built inside this backend rather than as a separate service, so it reuses the existing auth, roles, projects, storage and notification infrastructure.
+
+| Layer | Home |
+|---|---|
+| Routers | `app/api/shema/`, mounted at `/api/shema` |
+| Business logic and data access | `app/services/shema/`, one file per operation |
+| Request/response schemas | `app/models/shema.py` |
+| SQLAlchemy tables | `app/db/models/shema.py` |
+| Migrations | `alembic/versions/`, shared with the rest of the platform |
+
+`GET /api/shema/health` reports the module name, the app version and whether the module can reach the database.
+
+> The existing `project_health` module is a different instrument from Shemá's health assessment (SHM-08) — read it before assuming reuse, and keep the two data models apart.
 
 ## CI/CD (GitHub Actions)
 
