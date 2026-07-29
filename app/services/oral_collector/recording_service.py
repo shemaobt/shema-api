@@ -16,9 +16,9 @@ from app.core.enums import (
 )
 from app.core.exceptions import (
     AuthorizationError,
-    GenreConflictError,
     InvalidCleaningStatusError,
     NotFoundError,
+    SecondaryClassificationConflictError,
     ValidationError,
 )
 from app.core.inngest_client import inngest_client
@@ -42,6 +42,29 @@ _gcs_client = None
 _signing_credentials = None
 
 RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024
+
+
+def secondary_equals_primary(
+    *,
+    primary_register_id: str | None,
+    primary_genre_id: str | None,
+    primary_subcategory_id: str | None,
+    secondary_register_id: str | None,
+    secondary_genre_id: str | None,
+    secondary_subcategory_id: str | None,
+) -> bool:
+    has_any_secondary = (
+        secondary_register_id is not None
+        or secondary_genre_id is not None
+        or secondary_subcategory_id is not None
+    )
+    if not has_any_secondary:
+        return False
+    return (
+        primary_register_id == secondary_register_id
+        and primary_genre_id == secondary_genre_id
+        and primary_subcategory_id == secondary_subcategory_id
+    )
 
 
 def _get_gcs_client():  # type: ignore[no-untyped-def]
@@ -147,6 +170,15 @@ async def check_recording_access(db: AsyncSession, recording: OC_Recording, user
 
 
 async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str) -> OC_Recording:
+    if secondary_equals_primary(
+        primary_register_id=data.register_id,
+        primary_genre_id=data.genre_id,
+        primary_subcategory_id=data.subcategory_id,
+        secondary_register_id=data.secondary_register_id,
+        secondary_genre_id=data.secondary_genre_id,
+        secondary_subcategory_id=data.secondary_subcategory_id,
+    ):
+        raise SecondaryClassificationConflictError
 
     if data.title:
         stmt = select(OC_Recording).where(
@@ -192,11 +224,36 @@ async def update_recording(
     update_fields = data.model_dump(exclude_unset=True)
     if data.storyteller_id is not None:
         await _validate_storyteller_in_project(db, data.storyteller_id, recording.project_id)
-    if data.secondary_genre_id is not None:
-        effective_primary = data.genre_id if data.genre_id is not None else recording.genre_id
-        new_secondary = data.secondary_genre_id
-        if new_secondary is not None and new_secondary == effective_primary:
-            raise GenreConflictError
+    provided = data.model_fields_set
+    effective_register = data.register_id if "register_id" in provided else recording.register_id
+    effective_genre = data.genre_id if "genre_id" in provided else recording.genre_id
+    effective_sub = (
+        data.subcategory_id if "subcategory_id" in provided else recording.subcategory_id
+    )
+    effective_sec_register = (
+        data.secondary_register_id
+        if "secondary_register_id" in provided
+        else recording.secondary_register_id
+    )
+    effective_sec_genre = (
+        data.secondary_genre_id
+        if "secondary_genre_id" in provided
+        else recording.secondary_genre_id
+    )
+    effective_sec_sub = (
+        data.secondary_subcategory_id
+        if "secondary_subcategory_id" in provided
+        else recording.secondary_subcategory_id
+    )
+    if secondary_equals_primary(
+        primary_register_id=effective_register,
+        primary_genre_id=effective_genre,
+        primary_subcategory_id=effective_sub,
+        secondary_register_id=effective_sec_register,
+        secondary_genre_id=effective_sec_genre,
+        secondary_subcategory_id=effective_sec_sub,
+    ):
+        raise SecondaryClassificationConflictError
     if data.cleaning_status is not None:
         new_status = data.cleaning_status
         if new_status not in USER_SETTABLE_CLEANING_STATUSES:

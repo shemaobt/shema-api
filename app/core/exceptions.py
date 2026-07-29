@@ -91,9 +91,20 @@ class InvalidCleaningStatusError(ValidationError):
         )
 
 
-class GenreConflictError(ValidationError):
+class SecondaryClassificationConflictError(ValidationError):
     def __init__(self) -> None:
-        super().__init__("secondary_genre_id must differ from primary genre_id")
+        super().__init__(
+            "secondary classification must differ from the primary in at least "
+            "one of register, genre, or subcategory"
+        )
+
+
+class SegmentClassificationConflictError(ValidationError):
+    def __init__(self, segment_index: int) -> None:
+        super().__init__(
+            f"Segment {segment_index} primary classification would equal the "
+            "parent recording's secondary classification."
+        )
 
 
 def _error_body(detail: str, code: str) -> dict[str, str]:

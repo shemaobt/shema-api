@@ -432,6 +432,106 @@ async def test_request_split_snapshots_parent_metadata_into_payload(
     assert event.data["secondary_register_id"] == "casual"
 
 
+@pytest.mark.asyncio
+async def test_request_split_rejects_segment_whose_effective_triple_matches_parent_secondary(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.exceptions import SegmentClassificationConflictError
+
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    pg, ps, sg, ss = await _seed_two_genres(db_session)
+    storyteller = await _seed_storyteller(db_session, project.id)
+    parent = await _seed_parent_with_full_metadata(
+        db_session,
+        user_id=user.id,
+        project_id=project.id,
+        primary_genre_id=pg.id,
+        primary_subcategory_id=ps.id,
+        primary_register_id="formal",
+        secondary_genre_id=sg.id,
+        secondary_subcategory_id=ss.id,
+        secondary_register_id="ceremonial",
+        storyteller_id=storyteller.id,
+    )
+
+    captured: list[inngest.Event] = []
+
+    async def fake_send(event: inngest.Event) -> list[str]:
+        captured.append(event)
+        return []
+
+    monkeypatch.setattr(split_service.inngest_client, "send", fake_send)
+
+    with pytest.raises(SegmentClassificationConflictError):
+        await request_split(
+            db_session,
+            parent.id,
+            [
+                SplitSegment(
+                    start_seconds=0.0,
+                    end_seconds=10.0,
+                    genre_id=sg.id,
+                    subcategory_id=ss.id,
+                    register_id="ceremonial",
+                ),
+            ],
+            user.id,
+        )
+
+    assert captured == []
+
+
+@pytest.mark.asyncio
+async def test_request_split_allows_segment_with_single_field_overlap_with_parent_secondary(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    pg, ps, sg, ss = await _seed_two_genres(db_session)
+    storyteller = await _seed_storyteller(db_session, project.id)
+    parent = await _seed_parent_with_full_metadata(
+        db_session,
+        user_id=user.id,
+        project_id=project.id,
+        primary_genre_id=pg.id,
+        primary_subcategory_id=ps.id,
+        primary_register_id="formal",
+        secondary_genre_id=sg.id,
+        secondary_subcategory_id=ss.id,
+        secondary_register_id="ceremonial",
+        storyteller_id=storyteller.id,
+    )
+
+    captured: list[inngest.Event] = []
+
+    async def fake_send(event: inngest.Event) -> list[str]:
+        captured.append(event)
+        return []
+
+    monkeypatch.setattr(split_service.inngest_client, "send", fake_send)
+
+    result = await request_split(
+        db_session,
+        parent.id,
+        [
+            SplitSegment(
+                start_seconds=0.0,
+                end_seconds=10.0,
+                register_id="ceremonial",
+            ),
+        ],
+        user.id,
+    )
+
+    assert result.id == parent.id
+    assert len(captured) == 1
+
+
 def test_split_requested_payload_round_trips_inherited_metadata_fields() -> None:
     payload = SplitRequestedPayload(
         recording_id="rec-1",

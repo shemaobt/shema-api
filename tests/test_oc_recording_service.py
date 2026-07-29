@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import CleaningStatus, UploadStatus
 from app.core.exceptions import (
     AuthorizationError,
-    GenreConflictError,
     InvalidCleaningStatusError,
     NotFoundError,
+    SecondaryClassificationConflictError,
     ValidationError,
 )
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
@@ -497,24 +497,65 @@ async def test_create_recording_with_secondary_classification(
     assert rec.secondary_register_id == "consultative"
 
 
-def test_recording_create_rejects_secondary_equal_to_primary() -> None:
-    from pydantic import ValidationError as PydanticValidationError
+@pytest.mark.asyncio
+async def test_create_recording_allows_secondary_with_only_genre_matching_primary(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
 
-    with pytest.raises(PydanticValidationError):
-        RecordingCreate(
-            project_id="p",
-            genre_id="g1",
-            subcategory_id="s1",
-            secondary_genre_id="g1",
-            duration_seconds=1.0,
-            file_size_bytes=1,
-            format="m4a",
-            recorded_at=datetime.now(UTC),
-        )
+    other_sub = OC_Subcategory(genre_id=genre.id, name="other", sort_order=1)
+    db_session.add(other_sub)
+    await db_session.commit()
+    await db_session.refresh(other_sub)
+
+    data = RecordingCreate(
+        project_id=project_id,
+        genre_id=genre.id,
+        subcategory_id=sub.id,
+        register_id="formal",
+        secondary_genre_id=genre.id,
+        secondary_subcategory_id=other_sub.id,
+        secondary_register_id="ceremonial",
+        duration_seconds=1.0,
+        file_size_bytes=1,
+        format="m4a",
+        recorded_at=datetime.now(UTC),
+    )
+    rec = await rs.create_recording(db_session, data, user.id)
+    assert rec.secondary_genre_id == genre.id
 
 
 @pytest.mark.asyncio
-async def test_update_recording_rejects_secondary_equal_to_primary(
+async def test_create_recording_rejects_identical_secondary_triple(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+
+    data = RecordingCreate(
+        project_id=project_id,
+        genre_id=genre.id,
+        subcategory_id=sub.id,
+        register_id="formal",
+        secondary_genre_id=genre.id,
+        secondary_subcategory_id=sub.id,
+        secondary_register_id="formal",
+        duration_seconds=1.0,
+        file_size_bytes=1,
+        format="m4a",
+        recorded_at=datetime.now(UTC),
+    )
+    with pytest.raises(SecondaryClassificationConflictError):
+        await rs.create_recording(db_session, data, user.id)
+
+
+@pytest.mark.asyncio
+async def test_update_recording_allows_single_field_overlap_when_merged_triple_differs(
     db_session: AsyncSession,
 ) -> None:
     rs = _import_service()
@@ -522,13 +563,89 @@ async def test_update_recording_rejects_secondary_equal_to_primary(
     project_id = await _seed_project(db_session)
     genre, sub = await _seed_genre(db_session)
     rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec.register_id = "formal"
+    await db_session.commit()
+    await db_session.refresh(rec)
 
-    with pytest.raises(GenreConflictError):
+    updated = await rs.update_recording(
+        db_session,
+        rec.id,
+        RecordingUpdate(secondary_genre_id=genre.id),
+    )
+    assert updated.secondary_genre_id == genre.id
+
+
+@pytest.mark.asyncio
+async def test_update_recording_rejects_when_merged_triple_collapses_to_identical(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec.register_id = "formal"
+    await db_session.commit()
+    await db_session.refresh(rec)
+
+    with pytest.raises(SecondaryClassificationConflictError):
         await rs.update_recording(
             db_session,
             rec.id,
-            RecordingUpdate(secondary_genre_id=genre.id),
+            RecordingUpdate(
+                secondary_genre_id=genre.id,
+                secondary_subcategory_id=sub.id,
+                secondary_register_id="formal",
+            ),
         )
+
+
+@pytest.mark.asyncio
+async def test_update_recording_rejects_a_primary_only_update_that_lands_on_the_secondary(
+    db_session: AsyncSession,
+) -> None:
+    """The direction the old genre-only rule could not see: the payload carries no
+    secondary field at all, and the primary moves onto the stored secondary."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec.register_id = "formal"
+    rec.secondary_genre_id = genre.id
+    rec.secondary_subcategory_id = sub.id
+    rec.secondary_register_id = "ceremonial"
+    await db_session.commit()
+    await db_session.refresh(rec)
+
+    with pytest.raises(SecondaryClassificationConflictError):
+        await rs.update_recording(db_session, rec.id, RecordingUpdate(register_id="ceremonial"))
+
+
+@pytest.mark.asyncio
+async def test_update_recording_allows_a_secondary_left_partly_unset(
+    db_session: AsyncSession,
+) -> None:
+    """ENG-72 defines the comparison as `==` over all three fields, `None` included, so a
+    secondary that matches on two fields and is unset on the third is not identical and
+    stays allowed. The old genre-only rule rejected this; loosening it is the point."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_genre(db_session)
+    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec.register_id = "formal"
+    await db_session.commit()
+    await db_session.refresh(rec)
+
+    updated = await rs.update_recording(
+        db_session,
+        rec.id,
+        RecordingUpdate(secondary_genre_id=genre.id, secondary_subcategory_id=sub.id),
+    )
+
+    assert updated.secondary_register_id is None
+    assert updated.secondary_subcategory_id == sub.id
 
 
 @pytest.mark.asyncio
