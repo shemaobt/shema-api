@@ -142,3 +142,24 @@ Use `gh` CLI for all GitHub operations (push, PR creation). Never force-push or 
 - [ ] Keep runtime secrets in GCP Secret Manager.
 - [ ] Keep backend commands running inside Docker Compose.
 - [ ] Keep strong typing and concise service docstrings.
+
+---
+
+## 10. Quality Gates
+
+Static quality gates run in CI (on every PR) and locally via `make quality`.
+Before opening a PR, run `make quality` and treat any violation as blocking. The
+machine-readable reports are written to `reports/quality/`.
+
+- **Architecture/dependencies** (`import-linter`, config in `pyproject.toml [tool.importlinter]`):
+  no new cross-layer cycles; layers respected (`api > services > models > db > core`); routers must not import
+  ORM directly; services must not import `fastapi`/`inngest`. Current violations are baselined via
+  `ignore_imports` — **any new violation fails the PR**. To pay down the debt, remove the matching
+  `ignore_imports` line when you fix it.
+- **Complexity/size** (`ruff` `C901` + `PLR0915`, plus `scripts/check_module_size.py` for file
+  length): Phase 0 calibrated to the current worst value. Prompt text must live in dedicated
+  `*_default_prompts.py` files, which are exempt from the file-length gate.
+- **Coverage** (`pytest-cov`, `fail_under` in `pyproject.toml`): Phase 0 = 66%.
+- **Mutation** (`cosmic-ray`, scope `app/utils`): nightly job, **non-blocking**.
+
+The ratchet (progressive tightening of the limits) is documented in `obt/.claude/quality-gates-plan.md`.

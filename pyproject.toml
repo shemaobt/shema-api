@@ -51,6 +51,9 @@ dev = [
     "aiosqlite>=0.20.0",
     "ruff>=0.8.0",
     "mypy>=1.19.1",
+    "import-linter>=2.11",
+    "pytest-cov>=7.1.0",
+    "cosmic-ray>=8.4.6",
 ]
 
 [tool.ruff]
@@ -59,8 +62,16 @@ line-length = 100
 exclude = [".venv", ".git", "alembic/versions"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "C4", "SIM", "PIE", "PGH", "RUF"]
+select = ["E", "F", "I", "B", "UP", "C4", "SIM", "PIE", "PGH", "RUF", "C901", "PLR0915"]
 ignore = ["B008"]
+
+# Complexity/size quality gate. Phase 0 = current worst value (CI green without
+# touching code); ratchet documented in obt/.claude/quality-gates-plan.md.
+[tool.ruff.lint.mccabe]
+max-complexity = 22  # Phase 0 (current worst). Ratchet -> 15 -> 10.
+
+[tool.ruff.lint.pylint]
+max-statements = 54  # Phase 0 (current worst, function size). Ratchet -> 50 -> 40.
 
 [tool.ruff.format]
 quote-style = "double"
@@ -77,3 +88,129 @@ exclude = ["alembic/", "tests/"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+# Coverage quality gate. Phase 0 = current (68%) - 2. Ratchet -> 75 -> 80.
+[tool.coverage.run]
+source = ["app"]
+
+[tool.coverage.report]
+fail_under = 66
+show_missing = true
+
+[tool.coverage.json]
+output = "reports/quality/coverage.json"
+
+[tool.coverage.lcov]
+output = "reports/quality/coverage.lcov"
+
+# Architecture / dependency rule (Uncle Bob): layer ordering + forbidden imports.
+# Cross-layer cycles are caught by the layers contract. Current violations are
+# baselined via ignore_imports; new violations fail the PR.
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers: api > services > models > db > core"
+type = "layers"
+layers = [
+    "app.api",
+    "app.services",
+    "app.models",
+    "app.db",
+    "app.core",
+]
+# Baseline 2026-06-09: known debt (core should be the innermost layer but today
+# imports db/services). New layer violations fail the PR.
+ignore_imports = [
+    "app.core.access_control -> app.db.models.auth",
+    "app.core.access_control -> app.services",
+    "app.core.auth_middleware -> app.db.models.auth",
+    "app.core.auth_middleware -> app.services",
+    "app.core.org_scope -> app.db.models.auth",
+    "app.core.org_scope -> app.db.models.org",
+]
+
+# Documented rule (CLAUDE.md): routers never import ORM models directly.
+# allow_indirect_imports = true -> only the DIRECT import is blocked; the
+# legitimate api -> services -> db path stays allowed.
+[[tool.importlinter.contracts]]
+name = "Routers (api) must not import ORM directly (app.db)"
+type = "forbidden"
+source_modules = ["app.api"]
+forbidden_modules = ["app.db"]
+allow_indirect_imports = true
+# Baseline 2026-06-09: 45 direct ORM imports in routers (mostly the User type
+# from the auth dependency). New ORM imports in app/api fail the PR.
+ignore_imports = [
+    "app.api.access_requests -> app.db.models.auth",
+    "app.api.annotation_studio._deps -> app.db.models.auth",
+    "app.api.annotation_studio.results -> app.db.models.as_analysis_result",
+    "app.api.apps -> app.db.models.auth",
+    "app.api.auth -> app.db.models.auth",
+    "app.api.book_context.crud -> app.db.models.auth",
+    "app.api.book_context.feedback -> app.db.models.auth",
+    "app.api.book_context.sections -> app.db.models.auth",
+    "app.api.book_context.workflow -> app.db.models.auth",
+    "app.api.languages -> app.db.models.auth",
+    "app.api.meaning_maps.crud -> app.db.models.auth",
+    "app.api.meaning_maps.crud -> app.db.models.meaning_map",
+    "app.api.meaning_maps.export -> app.db.models.auth",
+    "app.api.meaning_maps.export -> app.db.models.meaning_map",
+    "app.api.meaning_maps.feedback -> app.db.models.auth",
+    "app.api.meaning_maps.generation -> app.db.models.auth",
+    "app.api.meaning_maps.generation -> app.db.models.meaning_map",
+    "app.api.notifications -> app.db.models.auth",
+    "app.api.oral_collector.genres -> app.db.models.auth",
+    "app.api.oral_collector.invites -> app.db.models.auth",
+    "app.api.oral_collector.projects -> app.db.models.auth",
+    "app.api.oral_collector.recordings -> app.db.models.auth",
+    "app.api.oral_collector.stats -> app.db.models.auth",
+    "app.api.oral_collector.storytellers -> app.db.models.auth",
+    "app.api.organizations -> app.db.models.auth",
+    "app.api.pericopes -> app.db.models.auth",
+    "app.api.phases -> app.db.models.auth",
+    "app.api.places -> app.db.models.auth",
+    "app.api.project_health.admin -> app.db.models.auth",
+    "app.api.project_health.prompts -> app.db.models.auth",
+    "app.api.project_health.prompts -> app.db.models.project_health",
+    "app.api.project_health.reports -> app.db.models.auth",
+    "app.api.project_health.voice -> app.db.models.project_health",
+    "app.api.projects._deps -> app.db.models.auth",
+    "app.api.projects.access -> app.db.models.auth",
+    "app.api.projects.core -> app.db.models.auth",
+    "app.api.projects.phases -> app.db.models.auth",
+    "app.api.rag -> app.db.models.auth",
+    "app.api.roles -> app.db.models.auth",
+    "app.api.translation_helper.agents -> app.db.models.translation_helper",
+    "app.api.translation_helper.chats -> app.db.models.auth",
+    "app.api.translation_helper.prompts -> app.db.models.auth",
+    "app.api.translation_helper.prompts -> app.db.models.translation_helper",
+    "app.api.uploads -> app.db.models.auth",
+    "app.api.users -> app.db.models.auth",
+]
+
+[[tool.importlinter.contracts]]
+name = "Services must not import the web framework (fastapi)"
+type = "forbidden"
+source_modules = ["app.services"]
+forbidden_modules = ["fastapi"]
+allow_indirect_imports = true
+# Baseline 2026-06-09: 1 use of fastapi.UploadFile (a type, not HTTPException).
+ignore_imports = [
+    "app.services.storage.upload -> fastapi",
+]
+
+[[tool.importlinter.contracts]]
+name = "Services must not import the background driver (inngest)"
+type = "forbidden"
+source_modules = ["app.services"]
+forbidden_modules = ["app.inngest"]
+allow_indirect_imports = true
+# Baseline 2026-06-09: 3 imports of app.inngest.schemas in services (leg of the
+# inngest <-> services cycle).
+ignore_imports = [
+    "app.services.oral_collector.cleaning_service -> app.inngest.schemas",
+    "app.services.oral_collector.recording_service -> app.inngest.schemas",
+    "app.services.oral_collector.split_service -> app.inngest.schemas",
+]

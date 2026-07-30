@@ -1,0 +1,11 @@
+# Mutation testing (nightly, non-blocking). Initial scope: app/utils (jwt.py).
+# Keep test-command scoped to the tests that exercise module-path so each mutant
+# runs fast and a timeout is not misreported as a kill. Grow both together.
+[cosmic-ray]
+module-path = "app/utils"
+timeout = 60.0
+excluded-modules = []
+test-command = "pytest tests/test_auth_service.py -x -q"
+
+[cosmic-ray.distributor]
+name = "local"

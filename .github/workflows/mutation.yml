@@ -1,16 +1,17 @@
-name: Test
+name: Mutation (nightly)
 
 on:
-  pull_request:
+  schedule:
+    - cron: "0 4 * * 1" # Monday 04:00 UTC
+  workflow_dispatch:
 
 env:
-  # Opt JavaScript-based actions into Node.js 24 ahead of the 2026-06-02
-  # forced switch. Remove once the runner default is Node 24.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  test:
+  mutation:
     runs-on: ubuntu-latest
+    continue-on-error: true # informational: never blocks
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,20 +25,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
-      - name: Run tests with coverage gate
-        run: |
-          mkdir -p reports/quality
-          uv run pytest tests/ -v \
-            --cov=app --cov-report=term-missing \
-            --cov-report=json:reports/quality/coverage.json \
-            --cov-report=lcov:reports/quality/coverage.lcov
+      - name: Run mutation testing (scope: app/utils)
+        run: make mutation
         env:
           JWT_SECRET_KEY: test-secret-for-pytest-only
           DATABASE_URL: sqlite+aiosqlite:///./test.db
 
-      - name: Upload coverage report
+      - name: Upload mutation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
+          name: mutation-report
           path: reports/quality/
