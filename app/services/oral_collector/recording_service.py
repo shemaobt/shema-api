@@ -201,10 +201,8 @@ CALLER_REFERENCE_FIELDS = (
     "project_id",
     "genre_id",
     "subcategory_id",
-    "register_id",
     "secondary_genre_id",
     "secondary_subcategory_id",
-    "secondary_register_id",
     "storyteller_id",
 )
 
