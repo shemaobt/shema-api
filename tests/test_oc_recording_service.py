@@ -11,6 +11,7 @@ from app.core.exceptions import (
     InvalidCleaningStatusError,
     NotFoundError,
     SecondaryClassificationConflictError,
+    UnknownReferenceError,
     ValidationError,
 )
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
@@ -1170,10 +1171,12 @@ async def test_update_recording_lets_an_archived_split_parent_take_a_used_title(
 
 
 @pytest.mark.asyncio
-async def test_create_recording_does_not_report_a_bad_genre_as_a_title_conflict(
+async def test_create_recording_answers_422_for_a_genre_that_does_not_exist(
     db_session: AsyncSession,
 ) -> None:
-    """The insert carries four foreign keys. Only the title index may answer 409."""
+    """The insert carries several foreign keys. A payload naming a row that is not there
+    is the caller's mistake, not an internal fault, and only the title index may answer
+    409."""
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1190,12 +1193,12 @@ async def test_create_recording_does_not_report_a_bad_genre_as_a_title_conflict(
         recorded_at=datetime.now(UTC),
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(UnknownReferenceError):
         await rs.create_recording(db_session, data, user.id)
 
 
 @pytest.mark.asyncio
-async def test_update_recording_does_not_report_a_bad_genre_as_a_title_conflict(
+async def test_update_recording_answers_422_for_a_genre_that_does_not_exist(
     db_session: AsyncSession,
 ) -> None:
     rs = _import_service()
@@ -1205,5 +1208,112 @@ async def test_update_recording_does_not_report_a_bad_genre_as_a_title_conflict(
 
     rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(UnknownReferenceError):
         await rs.update_recording(db_session, rec.id, RecordingUpdate(genre_id="no-such-genre"))
+
+
+def _postgres_fk_violation(constraint: str) -> IntegrityError:
+    """A foreign key violation shaped the way asyncpg reports one.
+
+    The suite runs on SQLite, which says only that some foreign key failed. Postgres
+    names the constraint, and naming the offending field depends on reading it, so the
+    message has to come from somewhere.
+    """
+    return IntegrityError(
+        "INSERT INTO oc_recordings ...",
+        {},
+        Exception(
+            'insert or update on table "oc_recordings" violates '
+            f'foreign key constraint "{constraint}"'
+        ),
+    )
+
+
+def test_a_violation_names_the_one_field_that_is_wrong() -> None:
+    """Listing six ids and asking the caller which one they got wrong is work they
+    cannot do: they hold every value and none of them looks different."""
+    rs = _import_service()
+
+    error = rs._unknown_reference_error(_postgres_fk_violation("oc_recordings_genre_id_fkey"))
+
+    assert error is not None
+    assert "genre_id" in str(error)
+    assert "storyteller_id" not in str(error)
+
+
+def test_a_secondary_field_is_not_reported_as_its_primary() -> None:
+    """`oc_recordings_secondary_genre_id_fkey` contains `genre_id`, so a substring test
+    would send the caller to a field that is fine."""
+    rs = _import_service()
+
+    error = rs._unknown_reference_error(
+        _postgres_fk_violation("oc_recordings_secondary_genre_id_fkey")
+    )
+
+    assert error is not None
+    assert "secondary_genre_id" in str(error)
+
+
+def test_a_missing_account_is_not_the_callers_fault() -> None:
+    """`user_id` comes from the authenticated token, never from the payload. A violation
+    on it means the account behind a valid token is gone — answering 422 would tell the
+    caller to fix ids that are all correct, and would hide a real fault behind a 4xx that
+    pages nobody."""
+    rs = _import_service()
+
+    assert rs._unknown_reference_error(_postgres_fk_violation("oc_recordings_user_id_fkey")) is None
+
+
+def test_a_database_that_names_nothing_still_answers_the_caller() -> None:
+    """SQLite reports only that some foreign key failed. The full list is the honest
+    answer there — a wrong single field would be worse than an unspecific one."""
+    rs = _import_service()
+
+    error = rs._unknown_reference_error(
+        IntegrityError(
+            "INSERT INTO oc_recordings ...", {}, Exception("FOREIGN KEY constraint failed")
+        )
+    )
+
+    assert error is not None
+    assert "project_id" in str(error)
+    assert "storyteller_id" in str(error)
+
+
+def test_a_conflict_that_is_not_a_foreign_key_is_left_alone() -> None:
+    rs = _import_service()
+
+    assert (
+        rs._unknown_reference_error(
+            IntegrityError(
+                "INSERT ...", {}, Exception("duplicate key value violates unique constraint")
+            )
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_unknown_reference_is_served_as_422() -> None:
+    """422 rather than 400: the payload parsed fine and every field is well formed, it
+    just names a row that is not there. That is the same class of problem FastAPI already
+    answers 422 for, and it is the caller's to fix — a 500 would claim otherwise."""
+    import httpx
+    from fastapi import FastAPI
+    from httpx import ASGITransport
+
+    from app.core.exceptions import register_exception_handlers
+
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/boom")
+    async def _boom() -> None:
+        raise UnknownReferenceError("no such genre")
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/boom")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "no such genre"
