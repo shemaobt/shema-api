@@ -116,8 +116,9 @@ To replace the data in a database you already have, which the seed path will not
 ./scripts/restore_local_db.sh
 ```
 
-That stops the backend and worker, recreates the local `tripod` database, restores, applies
-any migrations written since the dump was taken, and starts back what it stopped.
+That stops the backend and worker, recreates the local `tripod` database, restores, replays
+the Sound Necklace pilot, applies any migrations written since the dump was taken, and
+starts back what it stopped.
 
 To skip the production data entirely:
 
@@ -139,11 +140,25 @@ Production carries the 49 acousteme artifacts of the Ruth pilot but none of the
 `sn_audio_refs` that bind them to a project, and `sn_audio_refs` is the only thing a
 project gate can stand on. Those rows were only ever created in the dev database, so no
 production dump will ever have them. `scripts/seed_sn_pilot.sql` replays them — plus the
-pilot project and its language, which production also lacks — right after the restore.
+pilot project and its language, which production also lacks — right after the restore. Both
+routes apply it: the initdb hook on a from-scratch cluster, and `restore_local_db.sh`, which
+drops and recreates the database on a cluster that already exists and so never reaches that
+hook.
 
-It is `ON CONFLICT DO NOTHING` throughout, so applying it twice is a no-op, and it is
-written against the **production** schema rather than dev's, which carries columns from
-unmerged branches. To refresh it after the pilot changes in dev:
+Every statement guards itself, so applying it twice is a no-op, and it is written against
+the **production** schema rather than dev's, which carries columns from unmerged branches.
+Two things it deliberately does not assert:
+
+- `consent_present` is `false` on every binding. That column is the collection consent of
+  PRD §12/O6, which a human asserts by hand through
+  `scripts/seed_sn_audio_refs.py --consent`. Nobody recorded it for the pilot rows, and a
+  seed file must not put an agreement into your database that never happened.
+- The project grant is keyed on `is_platform_admin`, not on a person. `list_user_projects`
+  has no admin bypass, so the pilot needs a `project_user_access` row to appear in any
+  project list at all — but naming one address would leave every other developer with a
+  project they cannot open.
+
+To refresh it after the pilot changes in dev:
 
 ```bash
 DEV="$(gcloud secrets versions access latest \
@@ -160,6 +175,11 @@ On disk it is `chmod 644` — postgres reads it through the bind mount as its ow
 any local account can read it, and restoring puts the same data unencrypted in a Docker
 volume. Do not do this on a shared machine. Delete `.local-dump/latest.dump` and run
 `docker compose down -v` when you no longer need the data.
+
+The database itself asks for a password — `POSTGRES_PASSWORD`, `tripod-local` unless you
+override it — so the published port is not an open door onto that data for every account on
+the machine. Socket connections inside the container stay trusted, which is what
+`docker compose exec db psql` and the initdb hook use, so nothing in this README needs it.
 
 ### The dump bucket
 
