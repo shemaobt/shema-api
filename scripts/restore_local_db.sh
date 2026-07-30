@@ -15,6 +15,10 @@
 # leave production data readable by other local accounts — one more reason this does
 # not belong on a shared machine.
 #
+# The Sound Necklace pilot is replayed here as well as from the initdb hook: this path
+# drops and recreates the database on a cluster that already exists, so that hook never
+# runs and the overlay would be missed on every restore after the first.
+#
 # Confirmation comes before the download: once the dump is on the disk, the bucket
 # permissions no longer protect it. The backend and worker are stopped for the swap,
 # since DROP DATABASE ... FORCE only kills the sessions open at that moment and they
@@ -77,6 +81,13 @@ if ! docker compose exec -T db pg_restore -U postgres -d "$DB_NAME" \
   echo "!!! pg_restore reported errors — see above for which objects were skipped."
   echo "!!! Continuing so the migrations and the stack come back up; re-run this script"
   echo "!!! if the database looks wrong."
+fi
+
+echo "==> replaying the Sound Necklace pilot"
+if ! docker compose exec -T db psql -U postgres -d "$DB_NAME" --quiet \
+  --set ON_ERROR_STOP=1 < scripts/seed_sn_pilot.sql; then
+  echo "!!! the pilot overlay did not apply — the Sound Necklace will have no audios."
+  echo "!!! The rest of the database is fine."
 fi
 
 echo "==> applying migrations written since the dump"
