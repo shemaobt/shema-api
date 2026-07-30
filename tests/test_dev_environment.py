@@ -127,13 +127,67 @@ def test_the_sound_necklace_pilot_is_replayed_on_top_of_the_dump(compose: dict) 
 
 def test_the_pilot_overlay_is_replayable(compose: dict) -> None:
     """It runs on every from-scratch database, and a developer may also apply it by hand
-    against one that already has some of it."""
+    against one that already has some of it. Each statement carries its own guard: a
+    file-wide search would keep passing after every guard but one had been dropped."""
     statements = (ROOT / "scripts" / "seed_sn_pilot.sql").read_text()
-    inserts = [line for line in statements.splitlines() if line.startswith("INSERT INTO")]
 
-    assert inserts
-    for line in inserts:
-        assert "ON CONFLICT" in line or "NOT EXISTS" in statements
+    guarded = [
+        block
+        for block in statements.split(";")
+        if "INSERT INTO" in block and not block.lstrip().startswith("--")
+    ]
+
+    assert guarded
+    for block in guarded:
+        assert "ON CONFLICT" in block or "NOT EXISTS" in block, block
+
+
+def test_the_pilot_asserts_no_consent(compose: dict) -> None:
+    """``consent_present`` is the §12/O6 collection consent, which a human asserts by
+    hand through scripts/seed_sn_audio_refs.py --consent. Nobody recorded it for the
+    pilot rows, so the overlay must not put an agreement into every developer's database
+    that never happened. The column is NOT NULL with no server default, so the honest
+    value has to be written out rather than omitted."""
+    refs = [
+        line
+        for line in (ROOT / "scripts" / "seed_sn_pilot.sql").read_text().splitlines()
+        if line.startswith("INSERT INTO sn_audio_refs")
+    ]
+
+    assert refs
+    for line in refs:
+        assert ", false, " in line, line
+
+
+def test_the_pilot_names_no_individual(compose: dict) -> None:
+    """Every developer runs this file. A grant keyed on one person's address gives
+    everyone else a project they cannot open, and puts a real address in the repository."""
+    overlay = (ROOT / "scripts" / "seed_sn_pilot.sql").read_text()
+
+    assert not re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", overlay)
+    assert "is_platform_admin" in overlay
+
+
+def test_the_restore_script_replays_the_pilot_too() -> None:
+    """restore_local_db.sh drops and recreates the database, so the initdb hook that
+    normally applies the overlay never runs on that path. Without this the documented
+    promise — the pilot is replayed right after the restore — holds on one route only,
+    and the other leaves the Sound Necklace with no audios."""
+    script = (ROOT / "scripts" / "restore_local_db.sh").read_text()
+
+    assert "seed_sn_pilot.sql" in script
+
+
+def test_the_local_database_requires_a_password(compose: dict) -> None:
+    """The dump lands on the machine without anyone typing anything now, so an open
+    `trust` on a published port would hand production data to any local account."""
+    db = compose["services"]["db"]
+
+    assert "POSTGRES_HOST_AUTH_METHOD" not in db["environment"]
+    assert db["environment"]["POSTGRES_PASSWORD"]
+    for service in ("backend", "worker"):
+        url = compose["services"][service]["environment"]["DATABASE_URL"]
+        assert "postgresql://postgres:" in url
 
 
 def test_a_failed_download_never_blocks_the_stack() -> None:
