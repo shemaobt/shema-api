@@ -82,6 +82,14 @@ class UnknownReferenceError(Exception):
     malformed, so 422 is the honest status — the same one FastAPI already gives for a
     body it could parse but not accept. Before this existed the database raised, the
     error escaped the service, and the caller got a 500 for their own bad id.
+
+    Sharing the status with FastAPI means sharing it with a different body: FastAPI puts
+    a list of field errors in ``detail`` and nothing here registers a handler for
+    ``RequestValidationError``, so a client meets two shapes on 422. ``code`` is what
+    tells them apart — FastAPI's 422 carries no ``code`` at all, so a client that reads
+    ``detail`` as a string only after matching ``code`` never meets the list. Unifying
+    the two would mean rewriting the body of every validation error the API returns,
+    which breaks existing clients and is not this exception's to do.
     """
 
 
