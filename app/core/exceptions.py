@@ -23,6 +23,10 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
+# Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
+# names a row that is not there. The client fixes it by picking a different id, not by
+# reshaping the request.
+ERROR_CODE_UNKNOWN_REFERENCE: Final = "UNKNOWN_REFERENCE"
 ERROR_CODE_NOT_FOUND = "NOT_FOUND"
 ERROR_CODE_INTERNAL = "INTERNAL_ERROR"
 ERROR_CODE_UPSTREAM = "UPSTREAM_ERROR"
@@ -69,6 +73,24 @@ class InvalidTokenError(Exception):
 
 class NotFoundError(Exception):
     pass
+
+
+class UnknownReferenceError(Exception):
+    """A write named a foreign key that does not exist.
+
+    Kept apart from ValidationError, which answers 400: nothing about the request is
+    malformed, so 422 is the honest status — the same one FastAPI already gives for a
+    body it could parse but not accept. Before this existed the database raised, the
+    error escaped the service, and the caller got a 500 for their own bad id.
+
+    Sharing the status with FastAPI means sharing it with a different body: FastAPI puts
+    a list of field errors in ``detail`` and nothing here registers a handler for
+    ``RequestValidationError``, so a client meets two shapes on 422. ``code`` is what
+    tells them apart — FastAPI's 422 carries no ``code`` at all, so a client that reads
+    ``detail`` as a string only after matching ``code`` never meets the list. Unifying
+    the two would mean rewriting the body of every validation error the API returns,
+    which breaks existing clients and is not this exception's to do.
+    """
 
 
 class ValidationError(Exception):
@@ -162,6 +184,13 @@ async def handle_invalid_token(_request: Request, exc: InvalidTokenError) -> JSO
     )
 
 
+async def handle_unknown_reference(_request: Request, exc: UnknownReferenceError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_UNKNOWN_REFERENCE),
+    )
+
+
 async def handle_validation_error(_request: Request, exc: ValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -233,6 +262,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
+    app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)

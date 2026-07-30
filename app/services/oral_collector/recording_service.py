@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 import google.auth
@@ -21,6 +22,7 @@ from app.core.exceptions import (
     InvalidCleaningStatusError,
     NotFoundError,
     SecondaryClassificationConflictError,
+    UnknownReferenceError,
     ValidationError,
 )
 from app.core.inngest_client import inngest_client
@@ -190,6 +192,61 @@ def _is_exempt_from_title_uniqueness(recording: OC_Recording) -> bool:
     )
 
 
+UNKNOWN_REFERENCE_MESSAGE = (
+    "This recording points at a record that does not exist — check project_id, genre_id, "
+    "subcategory_id, secondary_genre_id, secondary_subcategory_id and storyteller_id"
+)
+
+CALLER_REFERENCE_FIELDS = (
+    "project_id",
+    "genre_id",
+    "subcategory_id",
+    "secondary_genre_id",
+    "secondary_subcategory_id",
+    "storyteller_id",
+)
+
+_FOREIGN_KEY_CONSTRAINT = re.compile(r'foreign key constraint "([^"]+)"', re.IGNORECASE)
+
+
+def _violated_reference_field(exc: IntegrityError) -> str | None:
+    """The column behind a foreign key violation, or None when the error names none.
+
+    Postgres puts the constraint in the message and constraints are named after their
+    column, so the field falls out of it. SQLite says only that some foreign key failed.
+    The longest match wins: ``oc_recordings_secondary_genre_id_fkey`` contains
+    ``genre_id`` too, and reporting the primary would send the caller to a field that is
+    fine.
+    """
+    match = _FOREIGN_KEY_CONSTRAINT.search(str(exc.orig))
+    if match is None:
+        return None
+    constraint = match.group(1)
+    candidates = [f for f in (*CALLER_REFERENCE_FIELDS, "user_id") if f in constraint]
+    return max(candidates, key=len) if candidates else None
+
+
+def _unknown_reference_error(exc: IntegrityError) -> UnknownReferenceError | None:
+    """The 422 a foreign key violation deserves, or None when it is not the caller's.
+
+    ``user_id`` is the one reference on this table the caller never supplies — it comes
+    from the authenticated token. A violation on it means the account behind a valid
+    token is gone, which is a fault on our side; answering 422 would tell the caller to
+    fix ids that are all correct and would hide the real problem behind a status that
+    pages nobody. Every other reference is theirs, and where the database names which one
+    the answer names it too.
+    """
+    if "foreign key constraint" not in str(exc.orig).lower():
+        return None
+
+    field = _violated_reference_field(exc)
+    if field is None:
+        return UnknownReferenceError(UNKNOWN_REFERENCE_MESSAGE)
+    if field not in CALLER_REFERENCE_FIELDS:
+        return None
+    return UnknownReferenceError(f"This recording points at a {field} that does not exist")
+
+
 def _is_duplicate_title(exc: IntegrityError) -> bool:
     """Postgres names the violated index; SQLite only names its columns. Everything else
     reaching this commit — the project, genre, subcategory and storyteller foreign keys —
@@ -257,6 +314,8 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if (unknown := _unknown_reference_error(exc)) is not None:
+            raise unknown from exc
         if not _is_duplicate_title(exc):
             raise
         raise ConflictError(f"A recording titled '{title}' already exists in this project") from exc
@@ -319,6 +378,8 @@ async def update_recording(
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
+        if (unknown := _unknown_reference_error(exc)) is not None:
+            raise unknown from exc
         if not _is_duplicate_title(exc):
             raise
         raise ConflictError("A recording with this title already exists in this project") from exc
