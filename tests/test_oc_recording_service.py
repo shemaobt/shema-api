@@ -91,6 +91,7 @@ async def test_create_recording(db_session: AsyncSession) -> None:
     genre, sub = await _seed_genre(db_session)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -144,13 +145,9 @@ async def test_update_recording_sets_description(db_session: AsyncSession) -> No
     genre, sub = await _seed_genre(db_session)
     rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
 
-    updated = await rs.update_recording(
-        db_session, rec.id, RecordingUpdate(description="A new story")
-    )
-    assert updated.description == "A new story"
-
-    cleared = await rs.update_recording(db_session, rec.id, RecordingUpdate(description=None))
-    assert cleared.description is None
+    story = "A new story, told at length enough to be worth keeping"
+    updated = await rs.update_recording(db_session, rec.id, RecordingUpdate(description=story))
+    assert updated.description == story
 
 
 @pytest.mark.asyncio
@@ -402,6 +399,7 @@ async def test_create_recording_with_storyteller(db_session: AsyncSession) -> No
     storyteller = await _seed_storyteller(db_session, project_id)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -431,6 +429,7 @@ async def test_create_recording_rejects_cross_project_storyteller(
 
     genre, sub = await _seed_genre(db_session)
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id_a,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -485,6 +484,7 @@ async def test_create_recording_with_secondary_classification(
     await db_session.refresh(sub_b)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -517,6 +517,7 @@ async def test_create_recording_allows_secondary_with_only_genre_matching_primar
     await db_session.refresh(other_sub)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -543,6 +544,7 @@ async def test_create_recording_rejects_identical_secondary_triple(
     genre, sub = await _seed_genre(db_session)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -702,6 +704,7 @@ async def test_create_recording_rejects_duplicate_title(db_session: AsyncSession
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -729,6 +732,7 @@ async def test_create_recording_normalizes_and_rejects_trimmed_duplicate(
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -755,6 +759,7 @@ async def test_create_recording_title_match_is_case_sensitive(db_session: AsyncS
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -783,6 +788,7 @@ async def test_create_recording_blank_titles_do_not_collide(db_session: AsyncSes
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -826,6 +832,7 @@ async def test_create_recording_ignores_split_children_for_uniqueness(
     await db_session.commit()
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -944,6 +951,7 @@ async def test_create_recording_duplicate_title_allowed_across_projects(
 
     def _data(project_id: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -986,6 +994,7 @@ async def test_create_recording_allowed_when_title_held_by_archived_split_parent
     await db_session.commit()
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -1180,6 +1189,7 @@ async def test_create_recording_does_not_report_a_bad_genre_as_a_title_conflict(
     _, sub = await _seed_genre(db_session)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id="no-such-genre",
         subcategory_id=sub.id,
