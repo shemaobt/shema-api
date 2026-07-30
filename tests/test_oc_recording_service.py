@@ -1212,6 +1212,87 @@ async def test_update_recording_answers_422_for_a_genre_that_does_not_exist(
         await rs.update_recording(db_session, rec.id, RecordingUpdate(genre_id="no-such-genre"))
 
 
+def _postgres_fk_violation(constraint: str) -> IntegrityError:
+    """A foreign key violation shaped the way asyncpg reports one.
+
+    The suite runs on SQLite, which says only that some foreign key failed. Postgres
+    names the constraint, and naming the offending field depends on reading it, so the
+    message has to come from somewhere.
+    """
+    return IntegrityError(
+        "INSERT INTO oc_recordings ...",
+        {},
+        Exception(
+            'insert or update on table "oc_recordings" violates '
+            f'foreign key constraint "{constraint}"'
+        ),
+    )
+
+
+def test_a_violation_names_the_one_field_that_is_wrong() -> None:
+    """Listing six ids and asking the caller which one they got wrong is work they
+    cannot do: they hold every value and none of them looks different."""
+    rs = _import_service()
+
+    error = rs._unknown_reference_error(_postgres_fk_violation("oc_recordings_genre_id_fkey"))
+
+    assert error is not None
+    assert "genre_id" in str(error)
+    assert "storyteller_id" not in str(error)
+
+
+def test_a_secondary_field_is_not_reported_as_its_primary() -> None:
+    """`oc_recordings_secondary_genre_id_fkey` contains `genre_id`, so a substring test
+    would send the caller to a field that is fine."""
+    rs = _import_service()
+
+    error = rs._unknown_reference_error(
+        _postgres_fk_violation("oc_recordings_secondary_genre_id_fkey")
+    )
+
+    assert error is not None
+    assert "secondary_genre_id" in str(error)
+
+
+def test_a_missing_account_is_not_the_callers_fault() -> None:
+    """`user_id` comes from the authenticated token, never from the payload. A violation
+    on it means the account behind a valid token is gone — answering 422 would tell the
+    caller to fix ids that are all correct, and would hide a real fault behind a 4xx that
+    pages nobody."""
+    rs = _import_service()
+
+    assert rs._unknown_reference_error(_postgres_fk_violation("oc_recordings_user_id_fkey")) is None
+
+
+def test_a_database_that_names_nothing_still_answers_the_caller() -> None:
+    """SQLite reports only that some foreign key failed. The full list is the honest
+    answer there — a wrong single field would be worse than an unspecific one."""
+    rs = _import_service()
+
+    error = rs._unknown_reference_error(
+        IntegrityError(
+            "INSERT INTO oc_recordings ...", {}, Exception("FOREIGN KEY constraint failed")
+        )
+    )
+
+    assert error is not None
+    assert "project_id" in str(error)
+    assert "storyteller_id" in str(error)
+
+
+def test_a_conflict_that_is_not_a_foreign_key_is_left_alone() -> None:
+    rs = _import_service()
+
+    assert (
+        rs._unknown_reference_error(
+            IntegrityError(
+                "INSERT ...", {}, Exception("duplicate key value violates unique constraint")
+            )
+        )
+        is None
+    )
+
+
 @pytest.mark.asyncio
 async def test_unknown_reference_is_served_as_422() -> None:
     """422 rather than 400: the payload parsed fine and every field is well formed, it
