@@ -35,6 +35,7 @@ dependencies = [
     "inngest>=0.4.22",
     "langdetect>=1.0.9",
     "slowapi>=0.1.9",
+    "regex>=2026.7.19",
 ]
 
 [build-system]
