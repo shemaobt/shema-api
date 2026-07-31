@@ -21,7 +21,10 @@ services:
       db-seed:
         condition: service_completed_successfully
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d tripod" ]
+      # Over TCP on purpose. The entrypoint runs the initdb scripts against a temporary
+      # server with `listen_addresses=''`, so a socket probe goes green while the dump is
+      # still restoring and backend starts into a refused connection on 5432.
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d tripod" ]
       interval: 5s
       timeout: 3s
       retries: 10
