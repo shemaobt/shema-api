@@ -28,6 +28,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      # The restore runs while this probe is failing, so without a start_period
+      # `interval * retries` would be a 50s ceiling on how large a dump may be — and
+      # hitting it takes the whole stack down through service_healthy. Measured: 5.6 MB
+      # restores in 0.51s, so 5m is roughly three orders of magnitude of headroom, while
+      # a database that never comes up still fails rather than hanging forever.
+      start_period: 5m
 
   db-seed:
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
