@@ -33,6 +33,16 @@ class SplittingStatus(StrEnum):
     ARCHIVED_AFTER_SPLIT = "archived_after_split"
 
 
+class ReviewFlagCode(StrEnum):
+    MISSING_CLASSIFICATION = "missing_classification"
+    INSUFFICIENT_DESCRIPTION = "insufficient_description"
+    MISSING_STORYTELLER = "missing_storyteller"
+
+
+class ReviewFlagOrigin(StrEnum):
+    SYSTEM = "system"
+
+
 class AcoustemeStatus(StrEnum):
     PENDING = "pending"
     READY = "ready"

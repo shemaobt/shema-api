@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -64,6 +65,9 @@ class OC_Recording(Base):
     split_from_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     split_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     split_segment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_flags: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON(none_as_null=True), nullable=False, server_default=text("'[]'"), default=list
+    )
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
