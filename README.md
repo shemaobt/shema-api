@@ -173,8 +173,19 @@ Emit `INSERT` statements for `sn_audio_refs`, the pilot row of `projects` and it
 **The dump is not anonymized.** It carries real emails, password hashes and user content.
 On disk it is `chmod 644` — postgres reads it through the bind mount as its own uid — so
 any local account can read it, and restoring puts the same data unencrypted in a Docker
-volume. Do not do this on a shared machine. Delete `.local-dump/latest.dump` and run
-`docker compose down -v` when you no longer need the data.
+volume. Do not do this on a shared machine. When you no longer need the data:
+
+```bash
+docker compose down -v
+rm .local-dump/latest.dump
+SEED_FROM_DUMP=0 docker compose up backend
+```
+
+`SEED_FROM_DUMP=0` is not optional here. Deleting the file is precisely what makes
+`db-seed` fetch a fresh copy — it decides on whether the dump is present, never on whether
+you want it — so the first two lines on their own arm the next `docker compose up` to pull
+production straight back down. Keep the variable set for as long as you want the machine
+clean.
 
 The database itself asks for a password — `POSTGRES_PASSWORD`, `tripod-local` unless you
 override it — so the published port is not an open door onto that data for every account on
