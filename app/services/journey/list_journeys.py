@@ -16,18 +16,14 @@ async def list_journeys(db: AsyncSession) -> list[JourneyResponse]:
         .where(Phase.journey_id.is_not(None))
         .group_by(Phase.journey_id)
     )
-    phase_counts: dict[str | None, int] = {
-        journey_id: count for journey_id, count in phase_counts_result.all()
-    }
+    phase_counts: dict[str | None, int] = dict(phase_counts_result.tuples().all())
 
     project_counts_result = await db.execute(
         select(Project.journey_id, func.count(Project.id))
         .where(Project.journey_id.is_not(None))
         .group_by(Project.journey_id)
     )
-    project_counts: dict[str | None, int] = {
-        journey_id: count for journey_id, count in project_counts_result.all()
-    }
+    project_counts: dict[str | None, int] = dict(project_counts_result.tuples().all())
 
     return [
         JourneyResponse(

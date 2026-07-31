@@ -121,7 +121,7 @@ async def test_assign_journey_null_clears_and_prunes_all(client, db_session):
     assert links == []
 
 
-async def test_assign_unknown_journey_not_found(client, db_session):
+async def test_assign_unknown_journey_unknown_reference(client, db_session):
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id)
@@ -131,7 +131,30 @@ async def test_assign_unknown_journey_not_found(client, db_session):
         json={"journey_id": "missing"},
         headers=headers,
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "UNKNOWN_REFERENCE"
+
+
+async def test_assign_journey_empty_body_rejected(client, db_session):
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    journey = await make_journey(db_session)
+    phase = await make_phase(db_session, journey_id=journey.id)
+    lang = await make_language(db_session, code="tst")
+    project = await make_project(db_session, language_id=lang.id, journey_id=journey.id)
+    link = await make_project_phase(db_session, project.id, phase.id, status="in_progress")
+    headers = await auth_header(db_session, admin)
+    resp = await client.put(f"/api/projects/{project.id}/journey", json={}, headers=headers)
+    assert resp.status_code == 422
+    refreshed = (
+        (
+            await db_session.execute(
+                select(ProjectPhase).where(ProjectPhase.project_id == project.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.id for row in refreshed] == [link.id]
 
 
 async def test_project_response_includes_journey_id(client, db_session):

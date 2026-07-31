@@ -1,17 +1,18 @@
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import UnknownReferenceError
 from app.db.models.phase import Phase, ProjectPhase
 from app.db.models.project import Project
 from app.services.project.get_project_or_404 import get_project_or_404
 
 
 async def assign_journey(db: AsyncSession, project_id: str, journey_id: str | None) -> Project:
-    from app.services.journey.get_journey_or_404 import get_journey_or_404
+    from app.services.journey.get_journey_by_id import get_journey_by_id
 
     project = await get_project_or_404(db, project_id)
-    if journey_id is not None:
-        await get_journey_or_404(db, journey_id)
+    if journey_id is not None and await get_journey_by_id(db, journey_id) is None:
+        raise UnknownReferenceError("This assignment points at a journey that does not exist")
     project.journey_id = journey_id
     if journey_id is None:
         await db.execute(delete(ProjectPhase).where(ProjectPhase.project_id == project_id))

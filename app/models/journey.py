@@ -101,4 +101,4 @@ class PhaseStatusLogResponse(BaseModel):
 
 
 class ProjectJourneyAssign(BaseModel):
-    journey_id: str | None = None
+    journey_id: str | None

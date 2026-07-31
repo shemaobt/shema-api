@@ -149,6 +149,18 @@ async def test_reorder_phases_mismatched_set(client, db_session):
     assert resp.status_code == 422
 
 
+async def test_reorder_phases_unknown_journey_unknown_reference(client, db_session):
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    headers = await auth_header(db_session, admin)
+    resp = await client.post(
+        "/api/phases/reorder",
+        json={"journey_id": "missing-journey", "phase_ids": []},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "UNKNOWN_REFERENCE"
+
+
 async def test_reorder_phases_as_non_admin_forbidden(client, db_session):
     user = await make_user(db_session, email="user@example.com")
     journey = await make_journey(db_session)

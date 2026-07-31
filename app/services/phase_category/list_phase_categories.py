@@ -16,9 +16,7 @@ async def list_phase_categories(db: AsyncSession) -> list[PhaseCategoryResponse]
         .where(Phase.category_id.is_not(None))
         .group_by(Phase.category_id)
     )
-    counts: dict[str | None, int] = {
-        category_id: count for category_id, count in counts_result.all()
-    }
+    counts: dict[str | None, int] = dict(counts_result.tuples().all())
 
     return [
         PhaseCategoryResponse(
