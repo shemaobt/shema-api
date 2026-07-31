@@ -39,6 +39,7 @@ from app.models.oc_recording import (
 )
 from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE, content_type_for_format
+from app.services.oral_collector.review_flags import recompute_review_flags
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +310,7 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         format=data.format,
         recorded_at=data.recorded_at,
     )
+    recompute_review_flags(recording)
     db.add(recording)
     try:
         await db.commit()
@@ -374,6 +376,7 @@ async def update_recording(
         update_fields["title"] = normalized_title
     for field, value in update_fields.items():
         setattr(recording, field, value)
+    recompute_review_flags(recording)
     try:
         await db.commit()
     except IntegrityError as exc:

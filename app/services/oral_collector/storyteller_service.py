@@ -5,10 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.db.models.auth import User
+from app.db.models.oc_recording import OC_Recording
 from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.project import ProjectUserAccess
 from app.models.oc_storyteller import StorytellerCreate, StorytellerUpdate
 from app.services.oral_collector.require_access import require_project_access
+from app.services.oral_collector.review_flags import recompute_review_flags
 
 
 async def list_project_storytellers(db: AsyncSession, project_id: str) -> list[OC_Storyteller]:
@@ -111,8 +113,20 @@ async def delete_storyteller(
     storyteller_id: str,
     user_id: str,
 ) -> None:
-    """Delete a storyteller. Linked recordings keep their data; storyteller_id is set to NULL."""
+    """Delete a storyteller. Linked recordings keep their data; storyteller_id is set to NULL.
+
+    The foreign key would already do the nulling, but it does it inside the database with no
+    ORM object loaded, leaving the recordings' review flags claiming a storyteller that no
+    longer exists. Applying the NULL here first makes the loss observable to the recompute.
+    """
     storyteller = await get_storyteller(db, storyteller_id)
     await check_storyteller_access(db, storyteller, user_id)
+
+    stmt = select(OC_Recording).where(OC_Recording.storyteller_id == storyteller_id)
+    result = await db.execute(stmt)
+    for recording in result.scalars().all():
+        recording.storyteller_id = None
+        recompute_review_flags(recording)
+
     await db.delete(storyteller)
     await db.commit()
