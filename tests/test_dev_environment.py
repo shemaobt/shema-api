@@ -22,6 +22,15 @@ def compose() -> dict:
     return yaml.safe_load(COMPOSE.read_text())
 
 
+def _seconds(duration: str | int) -> float:
+    """Compose durations (`5s`, `10m`) as seconds."""
+    text = str(duration).strip()
+    units = {"s": 1, "m": 60, "h": 3600}
+    if text[-1] in units:
+        return float(text[:-1]) * units[text[-1]]
+    return float(text)
+
+
 def _pilot_statements(sql: str) -> list[str]:
     """The INSERT statements of the pilot overlay, with comments removed first.
 
@@ -55,8 +64,9 @@ def test_the_healthcheck_waits_for_the_seed_to_finish(compose: dict) -> None:
     server started with `listen_addresses=''` — reachable over the unix socket and not
     over TCP. A socket probe therefore reports healthy while the restore is still
     running, `backend` starts on `service_healthy`, and its `alembic upgrade head` meets
-    a refused connection on 5432. On an empty database that window is a blink; on a
-    production dump it is minutes.
+    a refused connection on 5432. The window is however long the restore takes: measured
+    at 0.51s for the 5.6 MB dump in the bucket, which is small but not zero, and grows
+    with the dump.
 
     Probing TCP is what makes the healthcheck mean what `depends_on` reads it to mean,
     because 5432 only starts listening once the real server replaces the temporary one.
@@ -65,6 +75,24 @@ def test_the_healthcheck_waits_for_the_seed_to_finish(compose: dict) -> None:
 
     assert "pg_isready" in probe
     assert "-h 127.0.0.1" in probe
+
+
+def test_the_restore_is_not_capped_by_the_retry_budget(compose: dict) -> None:
+    """An honest probe has a cost the socket probe did not: the restore now happens while
+    the healthcheck is failing, so `interval * retries` becomes a deadline on how big a
+    dump may be. Reaching it marks the container unhealthy, and `service_healthy` turns
+    that into `container tripod_db is unhealthy` — the whole stack down, which is exactly
+    what the README promises this path can never do.
+
+    `start_period` is the answer rather than a bigger `retries`: failures inside it do not
+    count, so a slow restore waits instead of failing, and a database that never comes up
+    still fails afterwards rather than never.
+    """
+    health = compose["services"]["db"]["healthcheck"]
+
+    assert "start_period" in health
+    budget = _seconds(health["start_period"])
+    assert budget > _seconds(health["interval"]) * health["retries"]
 
 
 def test_local_postgres_major_matches_production(compose: dict) -> None:
@@ -283,6 +311,19 @@ def test_a_failing_restore_never_blocks_the_stack() -> None:
         script = (ROOT / "scripts" / name).read_text()
 
         assert re.search(r"if ! .*pg_restore", script), name
+
+
+def test_the_cleanup_instruction_is_not_undone_by_the_next_up() -> None:
+    """Deleting the dump is what *triggers* a fresh download: `fetch_local_dump.sh` reads
+    only whether the file is there, never whether the developer wants the data. So the
+    cleanup step, on its own, arms the next `docker compose up` to pull production back
+    down — the opposite of what someone following it is asking for."""
+    readme = (ROOT / "README.md").read_text()
+    warning = readme[readme.index("**The dump is not anonymized.**") :][:1200]
+
+    assert "down -v" in warning
+    assert f"rm {DUMP_DIR}/latest.dump" in warning
+    assert "SEED_FROM_DUMP=0" in warning
 
 
 def test_the_local_dump_stays_out_of_git() -> None:
