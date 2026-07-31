@@ -58,6 +58,49 @@ OAuth/Pro-Max billing has no per-token dashboard, so each Claude run reports its
 
 Costs are computed at public API list pricing as a stable comparison metric — actual billing under OAuth is your Pro/Max subscription's quota.
 
+## Bucket CORS
+
+`gcs-cors.json` and `sound-necklace-cors.json` are **applied by hand and by nobody else** —
+no workflow, script or startup path reads them. They can drift from the live buckets
+silently, and one of them already did. Read the bucket before trusting the file:
+
+```sh
+gcloud storage buckets describe gs://sound-necklace-private --format="json(cors_config)"
+gcloud storage buckets update  gs://sound-necklace-private --cors-file=sound-necklace-cors.json
+```
+
+The Sound Necklace SPA only ever issues signed **GET** against GCS — uploads go through
+`PUT /api/sound-necklace/sessions/{id}/resources`, not a signed URL — so `PUT` and
+`x-goog-resumable` do not belong in its allowlist.
+
+`Range` stays in `responseHeader`, but not for the reason first written here. It **is** a
+CORS-safelisted request header: the Fetch standard safelists `range` when the value parses
+as a single range with a non-null start, which is what an ordinary seek sends
+(`bytes=1048576-`). Those do not preflight. What is not safelisted is a suffix range —
+`bytes=-500`, the tail of a file — because browsers historically never emitted them; those
+still preflight, and GCS answers preflights with `responseHeader` in
+`Access-Control-Allow-Headers`. The same field also becomes `Access-Control-Expose-Headers`
+on simple requests, which is what lets a player read `Content-Range` and `Content-Length`
+back. Keeping all four costs nothing and covers both paths.
+
+Sources: [Fetch, CORS-safelisted request-header](https://fetch.spec.whatwg.org/#cors-safelisted-request-header) ·
+[Cloud Storage CORS](https://docs.cloud.google.com/storage/docs/cross-origin)
+
+### The Cloud Run origins
+
+`sound-necklace-718681737495.us-central1.run.app` is the **deterministic** URL —
+`SERVICE-PROJECTNUMBER.REGION.run.app` — which can be written down before the service
+exists. The form is confirmed live: the same pattern for `tripod-backend` answers `200` on
+`/health`.
+
+`sound-necklace-f7ssqjozfq-uc.a.run.app` is the legacy form, whose second field is a random
+hash Cloud Run assigns **at creation**. The `sound-necklace` service does not exist yet
+(both URLs 404 exactly as an invented one does), so that hash cannot have been read off a
+deployment — it does not identify anything. Cloud Run still gives every service a
+hash-based URL alongside the deterministic one, so once the service is deployed, read the
+real URL and replace this entry rather than deleting the line and assuming the deterministic
+one is enough.
+
 ## Local development
 
 Secrets are stored in GCP Secret Manager (project `shemaobt-secrets`) and fetched at startup by a Docker Compose sidecar.

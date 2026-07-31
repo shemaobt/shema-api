@@ -1,18 +1,13 @@
 [
   {
     "origin": [
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "https://soundnecklace.shemaywam.com"
+      "https://soundnecklace.shemaywam.com",
+      "https://sound-necklace-f7ssqjozfq-uc.a.run.app",
+      "https://sound-necklace-718681737495.us-central1.run.app",
+      "http://localhost:5173"
     ],
-    "method": ["GET", "HEAD", "PUT", "OPTIONS"],
+    "method": ["GET", "HEAD"],
     "maxAgeSeconds": 3600,
-    "responseHeader": [
-      "Content-Type",
-      "Content-Length",
-      "Content-Range",
-      "Range",
-      "x-goog-resumable"
-    ]
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Range"]
   }
 ]
