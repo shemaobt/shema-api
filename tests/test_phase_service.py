@@ -4,6 +4,7 @@ from app.core.exceptions import ConflictError, NotFoundError
 from app.models.phase import PhaseCreate, PhaseUpdate
 from app.services import phase_service
 from tests.baker import (
+    make_journey,
     make_language,
     make_phase,
     make_phase_dependency,
@@ -14,10 +15,13 @@ from tests.baker import (
 
 @pytest.mark.asyncio
 async def test_create_phase_without_project(db_session) -> None:
-    payload = PhaseCreate(name="Acoustemes Training", description="Phase 1")
+    journey = await make_journey(db_session)
+    payload = PhaseCreate(name="Acoustemes Training", description="Phase 1", journey_id=journey.id)
     phase = await phase_service.create_phase(db_session, payload)
     assert phase.name == "Acoustemes Training"
     assert phase.description == "Phase 1"
+    assert phase.journey_id == journey.id
+    assert phase.sort_order == 0
     assert phase.id is not None
 
 
