@@ -7,11 +7,13 @@ from app.services.phase.get_phase_by_id import get_phase_by_id
 from app.services.phase.get_phase_or_404 import get_phase_or_404
 from app.services.phase.list_all_phases_with_deps import list_all_phases_with_deps
 from app.services.phase.list_dependencies import list_dependencies
+from app.services.phase.list_phase_status_logs import list_phase_status_logs
 from app.services.phase.list_phases import list_phases
 from app.services.phase.list_project_phases_with_deps import list_project_phases_with_deps
 from app.services.phase.list_project_phases_with_details import list_project_phases_with_details
 from app.services.phase.list_projects_for_phase import list_projects_for_phase
 from app.services.phase.remove_dependency import remove_dependency
+from app.services.phase.reorder_phases import reorder_phases
 from app.services.phase.update_phase import update_phase
 from app.services.phase.update_project_phase_status import update_project_phase_status
 
@@ -25,11 +27,13 @@ __all__ = [
     "get_phase_or_404",
     "list_all_phases_with_deps",
     "list_dependencies",
+    "list_phase_status_logs",
     "list_phases",
     "list_project_phases_with_deps",
     "list_project_phases_with_details",
     "list_projects_for_phase",
     "remove_dependency",
+    "reorder_phases",
     "update_phase",
     "update_project_phase_status",
 ]

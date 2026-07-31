@@ -22,6 +22,22 @@ async def add_dependency(
     result = await db.execute(existing)
     if result.scalar_one_or_none():
         raise ConflictError("Dependency already exists")
+    all_deps_result = await db.execute(
+        select(PhaseDependency.phase_id, PhaseDependency.depends_on_id)
+    )
+    edges: dict[str, list[str]] = {}
+    for from_id, to_id in all_deps_result.all():
+        edges.setdefault(from_id, []).append(to_id)
+    stack = [depends_on_id]
+    seen: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current == phase_id:
+            raise ConflictError("Dependency would create a cycle")
+        if current in seen:
+            continue
+        seen.add(current)
+        stack.extend(edges.get(current, []))
     dep = PhaseDependency(phase_id=phase_id, depends_on_id=depends_on_id)
     db.add(dep)
     await db.commit()
