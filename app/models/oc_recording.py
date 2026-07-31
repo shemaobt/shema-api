@@ -47,7 +47,10 @@ class RecordingCreate(BaseModel):
 
 class RecordingUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=500)
-    description: str | None = Field(default=None, max_length=5000)
+    #: Optional but not nullable: omitting it is how a grandfathered recording gets
+    #: edited without touching the field, while null is the one value the rule refuses.
+    #: The default is never written — the service dumps with `exclude_unset=True`.
+    description: str = Field(default="", max_length=5000)
     genre_id: str | None = None
     subcategory_id: str | None = None
     register_id: str | None = None
