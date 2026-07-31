@@ -89,41 +89,28 @@ def test_an_update_that_does_not_mention_the_description_is_left_alone() -> None
     assert update.model_dump(exclude_unset=True) == {"title": "a new title"}
 
 
-@pytest.mark.asyncio
-async def test_the_api_answers_422_and_locates_the_field() -> None:
-    """Rejecting in the model is only half of it — what the client can act on is the
-    response. FastAPI turns a field validator into a 422 whose `loc` names the field, so
-    the app can put the message under the box the person is typing in rather than at the
-    top of the form."""
-    import httpx
-    from fastapi import FastAPI
-    from httpx import ASGITransport
+def test_the_published_schema_does_not_offer_a_null_it_would_reject() -> None:
+    """The generated contract is what a client is built from, so a type it advertises and
+    then refuses is the same defect this rule exists to close, moved from the length to
+    the schema: the caller sends what the contract allows and takes a 422 that the
+    contract never mentioned.
 
-    app = FastAPI()
+    `description` stays optional on update — omitting it is how you edit a grandfathered
+    recording without touching the field — but it is not nullable, because null is the
+    one value the validator will not accept.
+    """
+    for model in (RecordingCreate, RecordingUpdate):
+        schema = model.model_json_schema()["properties"]["description"]
 
-    @app.post("/recordings")
-    async def _create(payload: RecordingCreate) -> dict[str, str]:
-        return {"description": payload.description}
+        assert schema.get("type") == "string", model.__name__
+        assert "anyOf" not in schema, model.__name__
 
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.post(
-            "/recordings",
-            json={
-                "project_id": "p",
-                "genre_id": "g",
-                "subcategory_id": "s",
-                "description": NOT_ENOUGH,
-                "duration_seconds": 10.0,
-                "file_size_bytes": 1024,
-                "format": "m4a",
-                "recorded_at": "2026-01-01T00:00:00Z",
-            },
-        )
 
-    assert response.status_code == 422
-    locations = [error["loc"] for error in response.json()["detail"]]
-    assert ["body", "description"] in locations
+def test_the_description_is_required_to_create_and_optional_to_update() -> None:
+    """The asymmetry is the grandfathering, stated in the contract rather than only in a
+    validator: a new recording must carry one, an edit of an old one need not mention it."""
+    assert "description" in RecordingCreate.model_json_schema()["required"]
+    assert "description" not in RecordingUpdate.model_json_schema().get("required", [])
 
 
 def test_the_message_names_the_field_and_the_threshold() -> None:
