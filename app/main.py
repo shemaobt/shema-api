@@ -13,6 +13,7 @@ from app.api.bhsa import router as bhsa_router
 from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
 from app.api.health import router as health_router
+from app.api.journeys import router as journeys_router
 from app.api.languages import router as languages_router
 from app.api.meaning_maps import router as meaning_maps_router
 from app.api.notifications import router as notifications_router
@@ -30,6 +31,7 @@ from app.api.oral_collector.storytellers import (
 )
 from app.api.organizations import router as organizations_router
 from app.api.pericopes import router as pericopes_router
+from app.api.phase_categories import router as phase_categories_router
 from app.api.phases import router as phases_router
 from app.api.places import router as places_router
 from app.api.platform import router as platform_router
@@ -133,7 +135,11 @@ def create_app() -> FastAPI:
     app.include_router(organizations_router, prefix="/api/organizations", tags=["organizations"])
     app.include_router(places_router, prefix="/api/places", tags=["places"])
     app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
+    app.include_router(journeys_router, prefix="/api/journeys", tags=["journeys"])
     app.include_router(phases_router, prefix="/api/phases", tags=["phases"])
+    app.include_router(
+        phase_categories_router, prefix="/api/phase-categories", tags=["phase-categories"]
+    )
     app.include_router(books_router, prefix="/api/books", tags=["books"])
     app.include_router(pericopes_router, prefix="/api/pericopes", tags=["pericopes"])
     app.include_router(meaning_maps_router, prefix="/api/meaning-maps", tags=["meaning-maps"])
