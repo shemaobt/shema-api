@@ -58,6 +58,22 @@ OAuth/Pro-Max billing has no per-token dashboard, so each Claude run reports its
 
 Costs are computed at public API list pricing as a stable comparison metric — actual billing under OAuth is your Pro/Max subscription's quota.
 
+## Bucket CORS
+
+`gcs-cors.json` and `sound-necklace-cors.json` are **applied by hand and by nobody else** —
+no workflow, script or startup path reads them. They can drift from the live buckets
+silently, and one of them already did. Read the bucket before trusting the file:
+
+```sh
+gcloud storage buckets describe gs://sound-necklace-private --format="json(cors_config)"
+gcloud storage buckets update  gs://sound-necklace-private --cors-file=sound-necklace-cors.json
+```
+
+The Sound Necklace SPA only ever issues signed **GET** against GCS — uploads go through
+`PUT /api/sound-necklace/sessions/{id}/resources`, not a signed URL — so `PUT` and
+`x-goog-resumable` do not belong in its allowlist. `Range` must stay in `responseHeader`:
+it is not a CORS-safelisted request header, so seeking inside a long recording preflights.
+
 ## Local development
 
 Secrets are stored in GCP Secret Manager (project `shemaobt-secrets`) and fetched at startup by a Docker Compose sidecar.
