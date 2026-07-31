@@ -22,12 +22,49 @@ def compose() -> dict:
     return yaml.safe_load(COMPOSE.read_text())
 
 
+def _pilot_statements(sql: str) -> list[str]:
+    """The INSERT statements of the pilot overlay, with comments removed first.
+
+    Splitting raw text on `;` mixes prose into the statements: the header is a paragraph
+    of English whose punctuation decides where the first block ends. Stripping the `--`
+    lines makes the split depend on the SQL alone.
+    """
+    code = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
+    return [block for block in code.split(";") if "INSERT INTO" in block]
+
+
+def _tables_touched(statements: list[str]) -> set[str]:
+    return {
+        line.split()[2]
+        for block in statements
+        for line in block.splitlines()
+        if line.lstrip().startswith("INSERT INTO")
+    }
+
+
 def test_local_database_service_exists(compose: dict) -> None:
     db = compose["services"]["db"]
 
     assert db["image"].startswith("postgres:")
     assert "db_data:/var/lib/postgresql/data" in db["volumes"]
     assert "healthcheck" in db
+
+
+def test_the_healthcheck_waits_for_the_seed_to_finish(compose: dict) -> None:
+    """The postgres entrypoint runs /docker-entrypoint-initdb.d against a temporary
+    server started with `listen_addresses=''` — reachable over the unix socket and not
+    over TCP. A socket probe therefore reports healthy while the restore is still
+    running, `backend` starts on `service_healthy`, and its `alembic upgrade head` meets
+    a refused connection on 5432. On an empty database that window is a blink; on a
+    production dump it is minutes.
+
+    Probing TCP is what makes the healthcheck mean what `depends_on` reads it to mean,
+    because 5432 only starts listening once the real server replaces the temporary one.
+    """
+    probe = " ".join(compose["services"]["db"]["healthcheck"]["test"])
+
+    assert "pg_isready" in probe
+    assert "-h 127.0.0.1" in probe
 
 
 def test_local_postgres_major_matches_production(compose: dict) -> None:
@@ -129,17 +166,43 @@ def test_the_pilot_overlay_is_replayable(compose: dict) -> None:
     """It runs on every from-scratch database, and a developer may also apply it by hand
     against one that already has some of it. Each statement carries its own guard: a
     file-wide search would keep passing after every guard but one had been dropped."""
-    statements = (ROOT / "scripts" / "seed_sn_pilot.sql").read_text()
-
-    guarded = [
-        block
-        for block in statements.split(";")
-        if "INSERT INTO" in block and not block.lstrip().startswith("--")
-    ]
+    guarded = _pilot_statements((ROOT / "scripts" / "seed_sn_pilot.sql").read_text())
 
     assert guarded
     for block in guarded:
         assert "ON CONFLICT" in block or "NOT EXISTS" in block, block
+
+
+def test_the_guard_check_survives_rewording_the_header(compose: dict) -> None:
+    """The split is on `;` and the header is prose that happens to contain two of them.
+    Take those away — an ordinary reword, no SQL touched — and the block holding
+    `INSERT INTO languages` begins with `--`. A filter that skipped blocks by their
+    leading `--` would drop the statement it most wants to check and still report green,
+    so the comments come out before the split rather than being reasoned around."""
+    sql = (ROOT / "scripts" / "seed_sn_pilot.sql").read_text()
+    reworded = "\n".join(
+        line.replace(";", ",") if line.lstrip().startswith("--") else line
+        for line in sql.splitlines()
+    )
+
+    assert _tables_touched(_pilot_statements(reworded)) == _tables_touched(_pilot_statements(sql))
+    assert "languages" in _tables_touched(_pilot_statements(reworded))
+
+
+def test_every_insert_in_the_pilot_is_checked(compose: dict) -> None:
+    """The guard assertion is only worth as much as its coverage: a statement the split
+    loses is a statement that passes by never being looked at."""
+    sql = (ROOT / "scripts" / "seed_sn_pilot.sql").read_text()
+
+    written = sum(1 for line in sql.splitlines() if line.lstrip().startswith("INSERT INTO"))
+    checked = sum(
+        1
+        for block in _pilot_statements(sql)
+        for line in block.splitlines()
+        if line.lstrip().startswith("INSERT INTO")
+    )
+
+    assert checked == written
 
 
 def test_the_pilot_asserts_no_consent(compose: dict) -> None:
@@ -246,6 +309,17 @@ def test_the_local_dump_never_reaches_the_image() -> None:
     ignored = (ROOT / ".dockerignore").read_text().split()
 
     assert "**/*.dump" in ignored
+
+
+def test_the_half_downloaded_dump_never_reaches_the_image() -> None:
+    """Both scripts download to `latest.dump.partial` and rename on success, so for the
+    length of the transfer — minutes, on a real dump — the production bytes sit under a
+    name `**/*.dump` does not match. A `docker compose build` in another terminal during
+    that window is all it takes. The directory is excluded rather than a second suffix
+    pattern: nothing in `.local-dump/` belongs in an image under any name."""
+    ignored = (ROOT / ".dockerignore").read_text().split()
+
+    assert f"{DUMP_DIR}/" in ignored
 
 
 def test_restore_refuses_without_confirmation() -> None:
