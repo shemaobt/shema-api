@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
 
     database_url: str
 
-    jwt_secret_key: str = ""
+    jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_minutes: int = 60 * 24 * 7
@@ -57,6 +58,16 @@ class Settings(BaseSettings):
     azure_client_id: str = ""
     azure_client_secret: str = ""
     email_from_address: str = "support@shemaywam.com"
+
+    @field_validator("database_url", "jwt_secret_key")
+    @classmethod
+    def _reject_blank(cls, value: str, info: ValidationInfo) -> str:
+        if not value.strip():
+            raise ValueError(
+                f"{str(info.field_name).upper()} is required and must not be empty — "
+                "see .env.example"
+            )
+        return value
 
     @property
     def cors_origin_list(self) -> list[str]:

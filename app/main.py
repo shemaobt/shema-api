@@ -37,6 +37,7 @@ from app.api.project_health import router as project_health_router
 from app.api.projects import router as projects_router
 from app.api.rag import router as rag_router
 from app.api.roles import router as roles_router
+from app.api.shema import router as shema_router
 from app.api.sound_necklace import router as sound_necklace_router
 from app.api.translation_helper import router as translation_helper_router
 from app.api.uploads import router as uploads_router
@@ -47,6 +48,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.qdrant import close_qdrant, init_qdrant
 from app.core.rate_limit import limiter
+from app.core.version import get_app_version
 from app.services.bhsa import loader
 from app.services.meaning_map.seed_books import seed_books
 from app.services.project_health.prompts.seed_prompts import seed_default_prompts
@@ -94,7 +96,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="Tripod Backend", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Tripod Backend", version=get_app_version(), lifespan=lifespan)
 
     app.state.limiter = limiter
     from slowapi import _rate_limit_exceeded_handler
@@ -163,6 +165,7 @@ def create_app() -> FastAPI:
         prefix="/api/book-context",
         tags=["book-context"],
     )
+    app.include_router(shema_router, prefix="/api/shema", tags=["shema"])
 
     app.include_router(oc_genres_router, prefix="/api/oc/genres", tags=["oc-genres"])
     app.include_router(
