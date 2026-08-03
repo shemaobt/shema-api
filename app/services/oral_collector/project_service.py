@@ -110,11 +110,11 @@ async def remove_member(db: AsyncSession, project_id: str, user_id: str) -> None
 
 
 async def _count_review_flags(db: AsyncSession, project_id: str) -> tuple[dict[str, int], int]:
-    """Per-code counts and the number of flagged recordings, over the listing's rows.
+    """Per-code counts and the number of flagged recordings.
 
-    The universe has to be the one `recording_service.list_recordings` shows — active
-    uploads, archived split parents excluded — or the counter on the review chip disagrees
-    with the rows behind it.
+    Every number this module publishes describes the rows `recording_service.list_recordings`
+    shows — active uploads, archived split parents excluded — so a count and the rows behind
+    it can never disagree.
 
     The flags live in a JSON column that neither Postgres nor SQLite can filter or group on
     portably, so only the column itself is read and the tally happens in Python.
@@ -144,6 +144,7 @@ async def get_project_stats(db: AsyncSession, project_id: str) -> OCProjectStats
     ).where(
         OC_Recording.project_id == project_id,
         OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
     )
     rec_row = (await db.execute(rec_stmt)).one()
 
@@ -179,6 +180,7 @@ async def get_projects_batch_stats(
         .where(
             OC_Recording.project_id.in_(project_ids),
             OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
+            OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
         )
         .group_by(OC_Recording.project_id)
     )

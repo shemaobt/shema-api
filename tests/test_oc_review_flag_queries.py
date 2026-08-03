@@ -460,3 +460,80 @@ async def test_an_archived_recording_never_reaches_the_flag_filter(
     )
 
     assert found == []
+
+
+# --- the published totals describe the same rows the list does -------------------------
+
+
+async def test_the_totals_ignore_the_archived_parent_of_a_split(db_session: AsyncSession) -> None:
+    genre, sub = await _seed_taxonomy(db_session)
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    parent = await _seed_recording(
+        db_session,
+        project_id=project.id,
+        genre_id=genre.id,
+        subcategory_id=sub.id,
+        user_id=user.id,
+        register_id="formal",
+        description=SUFFICIENT,
+        title="parent",
+        splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    )
+    parent.duration_seconds = 30.0
+    parent.file_size_bytes = 3072
+    await db_session.commit()
+    for index in range(3):
+        await _seed_recording(
+            db_session,
+            project_id=project.id,
+            genre_id=genre.id,
+            subcategory_id=sub.id,
+            user_id=user.id,
+            register_id="formal",
+            description=SUFFICIENT,
+            title=f"segment {index}",
+        )
+
+    stats = await _project_service().get_project_stats(db_session, project.id)
+    listed = await _recording_service().list_recordings(db_session, project.id)
+
+    assert stats.total_recordings == len(listed) == 3
+    assert stats.total_duration_seconds == 30.0
+    assert stats.total_file_size_bytes == 3072
+
+
+async def test_the_batch_totals_ignore_the_archived_parent_of_a_split(
+    db_session: AsyncSession,
+) -> None:
+    genre, sub = await _seed_taxonomy(db_session)
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    await _seed_recording(
+        db_session,
+        project_id=project.id,
+        genre_id=genre.id,
+        subcategory_id=sub.id,
+        user_id=user.id,
+        register_id="formal",
+        description=SUFFICIENT,
+        title="parent",
+        splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    )
+    await _seed_recording(
+        db_session,
+        project_id=project.id,
+        genre_id=genre.id,
+        subcategory_id=sub.id,
+        user_id=user.id,
+        register_id="formal",
+        description=SUFFICIENT,
+        title="segment",
+    )
+
+    batch = await _project_service().get_projects_batch_stats(db_session, [project.id])
+
+    assert batch[project.id]["recordings"] == 1
+    assert batch[project.id]["duration"] == 10.0
