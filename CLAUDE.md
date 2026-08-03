@@ -9,7 +9,7 @@ This file defines backend-specific conventions for agents working in this reposi
 - **Framework**: FastAPI
 - **Server**: Uvicorn (dev) / Gunicorn (production)
 - **Package manager**: `uv` (`pyproject.toml` + `uv.lock`)
-- **Database**: PostgreSQL (Neon) via SQLAlchemy 2 async engine + `asyncpg`
+- **Database**: PostgreSQL via SQLAlchemy 2 async engine + `asyncpg` — Neon in production, the local `db` container for Compose. `pytest` runs on SQLite and touches neither.
 - **Migrations**: Alembic
 - **Validation / schemas**: Pydantic v2
 - **Auth**: JWT (`python-jose`) + passlib (`pbkdf2_sha256`)
@@ -102,8 +102,19 @@ tripod-backend/
   - local Docker Compose via `gcp-secrets` service
   - Cloud Run via `--set-secrets` in deploy workflow
 - Required secrets:
-  - **Local (docker-compose):** `tripod_backend_neon_database_url_local` (Neon DB for dev/test), `tripod_backend_jwt_secret`
+  - **Local (docker-compose):** `tripod_backend_jwt_secret`. The database is the local `db`
+    container, not a secret — Compose never points at Neon.
   - **Production (Cloud Run):** `tripod_backend_neon_database_url`, `tripod_backend_jwt_secret`
+- Production dumps live in `gs://tripod-db-dumps`, readable only by explicitly named
+  accounts. The `db-seed` container downloads one to `.local-dump/` before `db` starts, and
+  a from-scratch database seeds itself from it — no manual step. `restore_local_db.sh`
+  replaces the data in a database that already exists. `SEED_FROM_DUMP=0` opts out of both.
+  See `scripts/fetch_local_dump.sh`, `seed_local_db.sh` and `restore_local_db.sh`. Taking a
+  dump is a manual admin procedure documented in the README, deliberately not a script in
+  the repository.
+- The Sound Necklace pilot is not in any production dump: `scripts/seed_sn_pilot.sql`
+  replays its `sn_audio_refs` (and the project and language they depend on) after the
+  restore. Written against the production schema, not dev's.
 
 ---
 

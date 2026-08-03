@@ -19,7 +19,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           # No password at all, rather than a fake one: this container is reachable
           # only from this job, and a credential in the repo is a credential to scan,

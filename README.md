@@ -137,7 +137,143 @@ docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv
 docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv run pytest tests"
 ```
 
-> Use a Neon dev branch for local work to avoid touching production data.
+Compose services run against the `db` container, never against Neon. An empty database is
+migrated to head on startup, so the stack comes up usable with no extra step. (`pytest` is
+separate: it runs on SQLite and reaches neither database.)
+
+### Data in the local database
+
+`docker compose up` populates the database for you. On a database that does not exist yet,
+the `db-seed` container downloads the newest dump from `gs://tripod-db-dumps` into
+`.local-dump/latest.dump`, and postgres restores it while it creates the cluster. No script
+to run first — real data is the default.
+
+The download happens once. `db-seed` reuses a dump that is already in the directory, so
+later rebuilds — `docker compose down -v`, `docker volume rm tripod-api_db_data` — restore
+from disk with no network. Delete the file to pull a fresh one. Postgres runs the seed only
+while creating its data directory, so an existing database is never overwritten.
+
+To replace the data in a database you already have, which the seed path will not touch:
+
+```bash
+./scripts/restore_local_db.sh
+```
+
+That stops the backend and worker, recreates the local `tripod` database, restores, replays
+the Sound Necklace pilot, applies any migrations written since the dump was taken, and
+starts back what it stopped.
+
+To skip the production data entirely:
+
+```bash
+SEED_FROM_DUMP=0 docker compose up backend
+```
+
+That covers both halves — `db-seed` does not download, and the seed script ignores a dump
+an earlier run already left behind. You get an empty database migrated to head, which is
+enough for most work.
+
+Nothing in this path can block the stack. No gcloud credentials, no access to the bucket, a
+failed download, a `pg_restore` that skips objects — each one logs a line and leaves you
+with an empty database. `db-seed` gates the `db` service, so it always exits clean.
+
+#### The Sound Necklace pilot
+
+Production carries the 49 acousteme artifacts of the Ruth pilot but none of the
+`sn_audio_refs` that bind them to a project, and `sn_audio_refs` is the only thing a
+project gate can stand on. Those rows were only ever created in the dev database, so no
+production dump will ever have them. `scripts/seed_sn_pilot.sql` replays them — plus the
+pilot project and its language, which production also lacks — right after the restore. Both
+routes apply it: the initdb hook on a from-scratch cluster, and `restore_local_db.sh`, which
+drops and recreates the database on a cluster that already exists and so never reaches that
+hook.
+
+Every statement guards itself, so applying it twice is a no-op, and it is written against
+the **production** schema rather than dev's, which carries columns from unmerged branches.
+Two things it deliberately does not assert:
+
+- `consent_present` is `false` on every binding. That column is the collection consent of
+  PRD §12/O6, which a human asserts by hand through
+  `scripts/seed_sn_audio_refs.py --consent`. Nobody recorded it for the pilot rows, and a
+  seed file must not put an agreement into your database that never happened.
+- The project grant is keyed on `is_platform_admin`, not on a person. `list_user_projects`
+  has no admin bypass, so the pilot needs a `project_user_access` row to appear in any
+  project list at all — but naming one address would leave every other developer with a
+  project they cannot open.
+
+To refresh it after the pilot changes in dev:
+
+```bash
+DEV="$(gcloud secrets versions access latest \
+  --secret=tripod_backend_neon_database_url_local --project=shemaobt-secrets)" \
+  docker compose run --rm --no-deps -T -e DEV --entrypoint sh db \
+  -c 'psql "$DEV" -tAc "SELECT ... FROM sn_audio_refs"'
+```
+
+Emit `INSERT` statements for `sn_audio_refs`, the pilot row of `projects` and its
+`languages` row, and name only columns that exist in a restored production dump.
+
+**The dump is not anonymized.** It carries real emails, password hashes and user content.
+On disk it is `chmod 644` — postgres reads it through the bind mount as its own uid — so
+any local account can read it, and restoring puts the same data unencrypted in a Docker
+volume. Do not do this on a shared machine. When you no longer need the data:
+
+```bash
+docker compose down -v
+rm .local-dump/latest.dump
+SEED_FROM_DUMP=0 docker compose up backend
+```
+
+`SEED_FROM_DUMP=0` is not optional here. Deleting the file is precisely what makes
+`db-seed` fetch a fresh copy — it decides on whether the dump is present, never on whether
+you want it — so the first two lines on their own arm the next `docker compose up` to pull
+production straight back down. Keep the variable set for as long as you want the machine
+clean.
+
+The database itself asks for a password — `POSTGRES_PASSWORD`, `tripod-local` unless you
+override it — so the published port is not an open door onto that data for every account on
+the machine. Socket connections inside the container stay trusted, which is what
+`docker compose exec db psql` and the initdb hook use, so nothing in this README needs it.
+
+### The dump bucket
+
+Dumps live in `gs://tripod-db-dumps` and are taken by hand by an admin — nothing schedules
+this, and there is no script in the repository for it. Reads production, writes nothing
+to it:
+
+```bash
+umask 077                                    # the file below is production data
+FILE="tripod-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+# Stage as .partial and upload only on success: a redirect writes whatever the command
+# produced before it failed, so an aborted dump would otherwise publish a truncated file.
+if PGURL="$(gcloud secrets versions access latest \
+  --secret=tripod_backend_neon_database_url --project=shemaobt-secrets)" \
+  docker compose run --rm --no-deps -T -e PGURL --entrypoint sh db \
+  -c 'pg_dump --format=custom --no-owner --no-privileges "$PGURL"' > "$FILE.partial" \
+  && [ -s "$FILE.partial" ]; then
+  mv "$FILE.partial" "$FILE"
+  gcloud storage cp "$FILE" "gs://tripod-db-dumps/$FILE" --project=shemaobt-secrets
+  rm "$FILE"
+else
+  echo "dump failed — nothing uploaded"; rm -f "$FILE.partial"
+fi
+```
+
+Three details that matter. The connection string goes through the environment rather than
+as an argument, because argv is readable by any local process and it carries the production
+password. `--no-owner --no-privileges` because the Neon roles do not exist in the local
+container, so without them a restore fails on every object. And the dump runs through the
+`db` container so its `pg_dump` major matches production — pg_dump refuses a server newer
+than itself, so a mismatched client aborts with an empty file.
+
+The bucket already exists. Grant a new developer access by adding their email as
+**Storage Object Viewer** in the Cloud Console. Its configuration, if it ever has to be
+rebuilt: uniform bucket-level access (so object ACLs cannot widen it), public access
+prevention enabled, versioning on, and a 180-day lifecycle rule. Access is granted per
+named account — never to a group, a domain, `allUsers` or `allAuthenticatedUsers`, and
+the legacy `projectViewer`/`projectEditor` bindings a new bucket is created with have to
+be removed, since they hand read access to every viewer on the project.
 
 ### BHSA (Hebrew text data)
 
