@@ -182,3 +182,49 @@ async def test_listing_recordings_returns_each_ones_flags(
         ReviewFlagCode.MISSING_STORYTELLER,
     }
     assert by_id[complete.id] == []
+
+
+async def test_an_unknown_review_flag_is_refused(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    await _seed_taxonomy(db_session)
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+
+    response = await client.get(
+        RECORDINGS_PREFIX,
+        params={"project_id": project.id, "review_flag": "missing_storytellers"},
+        headers=await _auth_header(db_session, user),
+    )
+
+    assert response.status_code == 422
+
+
+async def test_a_known_review_flag_is_accepted(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    await _seed_taxonomy(db_session)
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    recording = await _seed_recording(
+        db_session,
+        project_id=project.id,
+        genre_id=UNCLASSIFIED,
+        subcategory_id=UNCLASSIFIED,
+        user_id=user.id,
+        description=SUFFICIENT,
+    )
+
+    response = await client.get(
+        RECORDINGS_PREFIX,
+        params={
+            "project_id": project.id,
+            "review_flag": ReviewFlagCode.MISSING_STORYTELLER,
+        },
+        headers=await _auth_header(db_session, user),
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [recording.id]

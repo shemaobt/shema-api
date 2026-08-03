@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import google.auth
 import google.auth.transport.requests
 import inngest
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -105,6 +105,79 @@ FORMAT_EXTENSIONS: dict[str, str] = {
 SIGNED_URL_EXPIRY_MINUTES = 15
 
 
+def _listing_conditions(
+    project_id: str,
+    *,
+    genre_id: str | None,
+    subcategory_id: str | None,
+    upload_status: str | None,
+    cleaning_status: str | None,
+    user_id: str | None,
+    storyteller_id: str | None,
+    title: str | None,
+) -> list[ColumnElement[bool]]:
+    conditions: list[ColumnElement[bool]] = [
+        OC_Recording.project_id == project_id,
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    ]
+    if genre_id:
+        conditions.append(OC_Recording.genre_id == genre_id)
+    if subcategory_id:
+        conditions.append(OC_Recording.subcategory_id == subcategory_id)
+    if upload_status:
+        conditions.append(OC_Recording.upload_status == upload_status)
+    else:
+        conditions.append(OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES))
+    if cleaning_status:
+        conditions.append(OC_Recording.cleaning_status == cleaning_status)
+    if user_id:
+        conditions.append(OC_Recording.user_id == user_id)
+    if storyteller_id:
+        conditions.append(OC_Recording.storyteller_id == storyteller_id)
+    if title:
+        conditions.append(OC_Recording.title == title.strip())
+    return conditions
+
+
+async def _list_recordings_with_review_flag(
+    db: AsyncSession,
+    conditions: list[ColumnElement[bool]],
+    review_flag: str,
+    *,
+    offset: int,
+    limit: int,
+) -> list[OC_Recording]:
+    """The requested page of the recordings carrying ``review_flag``, newest first.
+
+    The flags sit in a JSON column that neither Postgres nor SQLite can filter on portably,
+    so the match runs in Python, which forces the order of the steps: the whole ordered set
+    of candidates is matched first and only then sliced. Slicing in SQL would cut the page
+    out of the unfiltered list, and every match past its end would be lost.
+
+    ``IN`` does not preserve the order of its values, so the fetched page is put back in the
+    order of the ids it was sliced from.
+    """
+    candidate_stmt = (
+        select(OC_Recording.id, OC_Recording.review_flags)
+        .where(*conditions)
+        .order_by(OC_Recording.recorded_at.desc())
+    )
+    candidates = (await db.execute(candidate_stmt)).all()
+    matching_ids = [
+        row.id
+        for row in candidates
+        if any(flag["code"] == review_flag for flag in row.review_flags or [])
+    ]
+
+    page_ids = matching_ids[offset : offset + limit]
+    if not page_ids:
+        return []
+
+    page_stmt = select(OC_Recording).where(OC_Recording.id.in_(page_ids))
+    by_id = {r.id: r for r in (await db.execute(page_stmt)).scalars().all()}
+    return [by_id[recording_id] for recording_id in page_ids]
+
+
 async def list_recordings(
     db: AsyncSession,
     project_id: str,
@@ -116,33 +189,33 @@ async def list_recordings(
     user_id: str | None = None,
     storyteller_id: str | None = None,
     title: str | None = None,
+    review_flag: str | None = None,
     offset: int = 0,
     limit: int = 50,
 ) -> list[OC_Recording]:
 
+    conditions = _listing_conditions(
+        project_id,
+        genre_id=genre_id,
+        subcategory_id=subcategory_id,
+        upload_status=upload_status,
+        cleaning_status=cleaning_status,
+        user_id=user_id,
+        storyteller_id=storyteller_id,
+        title=title,
+    )
+    if review_flag:
+        return await _list_recordings_with_review_flag(
+            db, conditions, review_flag, offset=offset, limit=limit
+        )
+
     stmt = (
         select(OC_Recording)
-        .where(OC_Recording.project_id == project_id)
-        .where(OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT)
+        .where(*conditions)
         .order_by(OC_Recording.recorded_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
-    if genre_id:
-        stmt = stmt.where(OC_Recording.genre_id == genre_id)
-    if subcategory_id:
-        stmt = stmt.where(OC_Recording.subcategory_id == subcategory_id)
-    if upload_status:
-        stmt = stmt.where(OC_Recording.upload_status == upload_status)
-    else:
-        stmt = stmt.where(OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES))
-    if cleaning_status:
-        stmt = stmt.where(OC_Recording.cleaning_status == cleaning_status)
-    if user_id:
-        stmt = stmt.where(OC_Recording.user_id == user_id)
-    if storyteller_id:
-        stmt = stmt.where(OC_Recording.storyteller_id == storyteller_id)
-    if title:
-        stmt = stmt.where(OC_Recording.title == title.strip())
-    stmt = stmt.offset(offset).limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
