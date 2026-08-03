@@ -1,4 +1,54 @@
 services:
+  db:
+    image: postgres:17
+    container_name: tripod_db
+    environment:
+      POSTGRES_DB: tripod
+      # The port is on the loopback, but a production dump restores into this cluster
+      # without anyone typing anything, so it does not sit open to every local account.
+      # Socket connections stay trusted, which is what `compose exec psql` and the initdb
+      # hook use.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tripod-local}
+      SEED_FROM_DUMP: ${SEED_FROM_DUMP:-1}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./.local-dump:/seed:ro
+      - ./scripts/seed_local_db.sh:/docker-entrypoint-initdb.d/10-seed.sh:ro
+      - ./scripts/seed_sn_pilot.sql:/pilot/sn-pilot.sql:ro
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      # Over TCP on purpose. The entrypoint runs the initdb scripts against a temporary
+      # server with `listen_addresses=''`, so a socket probe goes green while the dump is
+      # still restoring and backend starts into a refused connection on 5432.
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d tripod" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      # The restore runs while this probe is failing, so without a start_period
+      # `interval * retries` would be a 50s ceiling on how large a dump may be — and
+      # hitting it takes the whole stack down through service_healthy. Measured: 5.6 MB
+      # restores in 0.51s, so 5m is roughly three orders of magnitude of headroom, while
+      # a database that never comes up still fails rather than hanging forever.
+      start_period: 5m
+
+  db-seed:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
+    container_name: tripod_db_seed
+    environment:
+      SECRETS_PROJECT_ID: ${SECRETS_PROJECT_ID:-shemaobt-secrets}
+      DUMP_BUCKET: ${DUMP_BUCKET:-tripod-db-dumps}
+      SEED_FROM_DUMP: ${SEED_FROM_DUMP:-1}
+    volumes:
+      - ./.local-dump:/seed
+      - ${HOME}/.config/gcloud:/host-gcloud:ro
+      - ./scripts/fetch_local_dump.sh:/fetch_local_dump.sh:ro
+    command: [ "sh", "/fetch_local_dump.sh" ]
+    restart: "no"
+
   gcp-secrets:
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:alpine
     container_name: tripod_backend_gcp_secrets
@@ -11,16 +61,17 @@ services:
       - sh
       - -c
       - |
+        rm -rf /tmp/gcloud
         cp -r /host-gcloud /tmp/gcloud
         export CLOUDSDK_CONFIG=/tmp/gcloud
-        DB_URL=$$(gcloud secrets versions access latest --secret=tripod_backend_neon_database_url_local --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         JWT=$$(gcloud secrets versions access latest --secret=tripod_backend_jwt_secret --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         QDRANT_URL=$$(gcloud secrets versions access latest --secret=tripod_backend_qdrant_url --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         QDRANT_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_qdrant_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         GOOGLE_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         GOOGLE_MAPS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_maps_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         ELEVENLABS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_elevenlabs_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
-        printf "DATABASE_URL='%s'\nJWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nGOOGLE_MAPS_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\n" "$$DB_URL" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$GOOGLE_MAPS_API_KEY" "$$ELEVENLABS_API_KEY" > /secrets/.env
+        [ -n "$$JWT" ] || { echo "gcp-secrets: failed to read secrets, run 'gcloud auth login' on the host"; exit 1; }
+        printf "JWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nGOOGLE_MAPS_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\n" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$GOOGLE_MAPS_API_KEY" "$$ELEVENLABS_API_KEY" > /secrets/.env
     restart: "no"
 
   backend:
@@ -39,6 +90,7 @@ services:
       - ${HOME}/.config/gcloud:/root/.config/gcloud:ro
       - ./gcs-signing-key.json:/etc/gcs/signing-key.json:ro
     environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-tripod-local}@db:5432/tripod
       GOOGLE_APPLICATION_CREDENTIALS: /etc/gcs/signing-key.json
       INNGEST_DEV: "http://inngest:8288/"
       # Bucket generico da plataforma (cache de TTS). Nome, nao credencial: env comum.
@@ -47,6 +99,8 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     depends_on:
+      db:
+        condition: service_healthy
       gcp-secrets:
         condition: service_completed_successfully
     healthcheck:
@@ -94,10 +148,14 @@ services:
       - backend_venv:/opt/venv
       - tf_data:/root/text-fabric-data
       - gcp_secrets_env:/run/secrets:ro
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-tripod-local}@db:5432/tripod
     dns:
       - 8.8.8.8
       - 8.8.4.4
     depends_on:
+      db:
+        condition: service_healthy
       gcp-secrets:
         condition: service_completed_successfully
       backend:
@@ -134,5 +192,6 @@ services:
 
 volumes:
   backend_venv:
+  db_data:
   gcp_secrets_env:
   tf_data:
