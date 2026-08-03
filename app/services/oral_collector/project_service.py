@@ -10,6 +10,7 @@ from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.org import OrganizationMember
 from app.db.models.project import Project, ProjectOrganizationAccess, ProjectUserAccess
 from app.models.oc_project import OCProjectStatsResponse
+from app.services.oral_collector.review_flags import flag_codes
 
 
 async def get_user_project_role(db: AsyncSession, user_id: str, project_id: str) -> str | None:
@@ -127,7 +128,7 @@ async def _count_review_flags(db: AsyncSession, project_id: str) -> tuple[dict[s
     counts: Counter[str] = Counter()
     flagged_recordings = 0
     for (flags,) in (await db.execute(stmt)).all():
-        codes = {flag["code"] for flag in flags or []}
+        codes = flag_codes(flags)
         if not codes:
             continue
         flagged_recordings += 1

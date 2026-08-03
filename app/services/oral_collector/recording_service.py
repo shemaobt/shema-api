@@ -39,7 +39,7 @@ from app.models.oc_recording import (
 )
 from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE, content_type_for_format
-from app.services.oral_collector.review_flags import recompute_review_flags
+from app.services.oral_collector.review_flags import flag_codes, recompute_review_flags
 
 logger = logging.getLogger(__name__)
 
@@ -163,11 +163,7 @@ async def _list_recordings_with_review_flag(
         .order_by(OC_Recording.recorded_at.desc())
     )
     candidates = (await db.execute(candidate_stmt)).all()
-    matching_ids = [
-        row.id
-        for row in candidates
-        if any(flag["code"] == review_flag for flag in row.review_flags or [])
-    ]
+    matching_ids = [row.id for row in candidates if review_flag in flag_codes(row.review_flags)]
 
     page_ids = matching_ids[offset : offset + limit]
     if not page_ids:

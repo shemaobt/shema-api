@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TypedDict
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -8,6 +8,18 @@ from sqlalchemy.sql import func
 
 from app.core.database import Base
 from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
+
+
+class ReviewFlag(TypedDict):
+    """One flag as it is stored and served.
+
+    A TypedDict rather than a model because the value has to stay a plain dict: it is
+    written straight into a JSON column and read back out of one, so anything with a
+    constructor would have to be converted on both sides for no gain in what is checked.
+    """
+
+    code: str
+    origin: str
 
 
 class OC_Recording(Base):
@@ -65,7 +77,7 @@ class OC_Recording(Base):
     split_from_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     split_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     split_segment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    review_flags: Mapped[list[dict[str, Any]]] = mapped_column(
+    review_flags: Mapped[list[ReviewFlag]] = mapped_column(
         JSON(none_as_null=True), nullable=False, server_default=text("'[]'"), default=list
     )
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
