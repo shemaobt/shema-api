@@ -1,8 +1,29 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.enums import CleaningStatus, SplittingStatus
+from app.utils.description_rule import MINIMUM_DESCRIPTION_CLUSTERS, is_sufficient_description
+
+DESCRIPTION_TOO_SHORT = (
+    f"description must be at least {MINIMUM_DESCRIPTION_CLUSTERS} characters, counted as "
+    "extended grapheme clusters, ignoring leading and trailing whitespace"
+)
+
+
+def _reject_insufficient_description(value: str | None) -> str | None:
+    """Enforce the ENG-354 threshold on a description the request actually carries.
+
+    Attached as a field validator, so on an update it runs only when the payload mentions
+    the field. That is the whole of the grandfathering: there is no migration and no NOT
+    NULL, so recordings written before the rule keep short or absent descriptions until
+    someone edits that field, and editing anything else about them still works. Explicit
+    null is not a way out — it would put a recording back into the state the rule exists
+    to prevent.
+    """
+    if not is_sufficient_description(value):
+        raise ValueError(DESCRIPTION_TOO_SHORT)
+    return value
 
 
 class RecordingCreate(BaseModel):
@@ -15,22 +36,21 @@ class RecordingCreate(BaseModel):
     secondary_register_id: str | None = None
     storyteller_id: str | None = None
     title: str | None = Field(default=None, max_length=500)
-    description: str | None = Field(default=None, max_length=5000)
+    description: str = Field(max_length=5000)
     duration_seconds: float = Field(ge=0)
     file_size_bytes: int = Field(ge=0)
     format: str = Field(min_length=1, max_length=20)
     recorded_at: datetime
 
-    @model_validator(mode="after")
-    def _check_secondary_not_equal_primary(self) -> "RecordingCreate":
-        if self.secondary_genre_id is not None and self.secondary_genre_id == self.genre_id:
-            raise ValueError("secondary_genre_id must differ from primary genre_id")
-        return self
+    _check_description = field_validator("description")(_reject_insufficient_description)
 
 
 class RecordingUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=500)
-    description: str | None = Field(default=None, max_length=5000)
+    #: Optional but not nullable: omitting it is how a grandfathered recording gets
+    #: edited without touching the field, while null is the one value the rule refuses.
+    #: The default is never written — the service dumps with `exclude_unset=True`.
+    description: str = Field(default="", max_length=5000)
     genre_id: str | None = None
     subcategory_id: str | None = None
     register_id: str | None = None
@@ -42,15 +62,7 @@ class RecordingUpdate(BaseModel):
     file_size_bytes: int | None = Field(default=None, ge=0)
     cleaning_status: CleaningStatus | None = None
 
-    @model_validator(mode="after")
-    def _check_secondary_not_equal_primary(self) -> "RecordingUpdate":
-        if (
-            self.secondary_genre_id is not None
-            and self.genre_id is not None
-            and self.secondary_genre_id == self.genre_id
-        ):
-            raise ValueError("secondary_genre_id must differ from primary genre_id")
-        return self
+    _check_description = field_validator("description")(_reject_insufficient_description)
 
 
 class RecordingResponse(BaseModel):

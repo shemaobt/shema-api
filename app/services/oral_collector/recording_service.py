@@ -1,10 +1,12 @@
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 import google.auth
 import google.auth.transport.requests
 import inngest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import (
@@ -16,9 +18,11 @@ from app.core.enums import (
 )
 from app.core.exceptions import (
     AuthorizationError,
-    GenreConflictError,
+    ConflictError,
     InvalidCleaningStatusError,
     NotFoundError,
+    SecondaryClassificationConflictError,
+    UnknownReferenceError,
     ValidationError,
 )
 from app.core.inngest_client import inngest_client
@@ -42,6 +46,29 @@ _gcs_client = None
 _signing_credentials = None
 
 RESUMABLE_CHUNK_SIZE = 8 * 1024 * 1024
+
+
+def secondary_equals_primary(
+    *,
+    primary_register_id: str | None,
+    primary_genre_id: str | None,
+    primary_subcategory_id: str | None,
+    secondary_register_id: str | None,
+    secondary_genre_id: str | None,
+    secondary_subcategory_id: str | None,
+) -> bool:
+    has_any_secondary = (
+        secondary_register_id is not None
+        or secondary_genre_id is not None
+        or secondary_subcategory_id is not None
+    )
+    if not has_any_secondary:
+        return False
+    return (
+        primary_register_id == secondary_register_id
+        and primary_genre_id == secondary_genre_id
+        and primary_subcategory_id == secondary_subcategory_id
+    )
 
 
 def _get_gcs_client():  # type: ignore[no-untyped-def]
@@ -87,6 +114,7 @@ async def list_recordings(
     cleaning_status: str | None = None,
     user_id: str | None = None,
     storyteller_id: str | None = None,
+    title: str | None = None,
     offset: int = 0,
     limit: int = 50,
 ) -> list[OC_Recording]:
@@ -111,6 +139,8 @@ async def list_recordings(
         stmt = stmt.where(OC_Recording.user_id == user_id)
     if storyteller_id:
         stmt = stmt.where(OC_Recording.storyteller_id == storyteller_id)
+    if title:
+        stmt = stmt.where(OC_Recording.title == title.strip())
     stmt = stmt.offset(offset).limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -146,17 +176,118 @@ async def check_recording_access(db: AsyncSession, recording: OC_Recording, user
         )
 
 
-async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str) -> OC_Recording:
+def _normalize_title(value: str | None) -> str | None:
+    return (value or "").strip() or None
 
-    if data.title:
-        stmt = select(OC_Recording).where(
-            OC_Recording.project_id == data.project_id,
-            OC_Recording.title == data.title,
-        )
-        result = await db.execute(stmt)
-        existing = result.scalar_one_or_none()
-        if existing is not None:
-            return existing
+
+TITLE_UNIQUE_INDEX = "uq_oc_recordings_project_title"
+
+
+def _is_exempt_from_title_uniqueness(recording: OC_Recording) -> bool:
+    """Mirror of the partial index predicate: split segments and archived split parents
+    sit outside it, so they may carry a title another recording already holds."""
+    return (
+        recording.split_from_id is not None
+        or recording.splitting_status == SplittingStatus.ARCHIVED_AFTER_SPLIT
+    )
+
+
+UNKNOWN_REFERENCE_MESSAGE = (
+    "This recording points at a record that does not exist — check project_id, genre_id, "
+    "subcategory_id, secondary_genre_id, secondary_subcategory_id and storyteller_id"
+)
+
+CALLER_REFERENCE_FIELDS = (
+    "project_id",
+    "genre_id",
+    "subcategory_id",
+    "secondary_genre_id",
+    "secondary_subcategory_id",
+    "storyteller_id",
+)
+
+_FOREIGN_KEY_CONSTRAINT = re.compile(r'foreign key constraint "([^"]+)"', re.IGNORECASE)
+
+
+def _violated_reference_field(exc: IntegrityError) -> str | None:
+    """The column behind a foreign key violation, or None when the error names none.
+
+    Postgres puts the constraint in the message and constraints are named after their
+    column, so the field falls out of it. SQLite says only that some foreign key failed.
+    The longest match wins: ``oc_recordings_secondary_genre_id_fkey`` contains
+    ``genre_id`` too, and reporting the primary would send the caller to a field that is
+    fine.
+    """
+    match = _FOREIGN_KEY_CONSTRAINT.search(str(exc.orig))
+    if match is None:
+        return None
+    constraint = match.group(1)
+    candidates = [f for f in (*CALLER_REFERENCE_FIELDS, "user_id") if f in constraint]
+    return max(candidates, key=len) if candidates else None
+
+
+def _unknown_reference_error(exc: IntegrityError) -> UnknownReferenceError | None:
+    """The 422 a foreign key violation deserves, or None when it is not the caller's.
+
+    ``user_id`` is the one reference on this table the caller never supplies — it comes
+    from the authenticated token. A violation on it means the account behind a valid
+    token is gone, which is a fault on our side; answering 422 would tell the caller to
+    fix ids that are all correct and would hide the real problem behind a status that
+    pages nobody. Every other reference is theirs, and where the database names which one
+    the answer names it too.
+    """
+    if "foreign key constraint" not in str(exc.orig).lower():
+        return None
+
+    field = _violated_reference_field(exc)
+    if field is None:
+        return UnknownReferenceError(UNKNOWN_REFERENCE_MESSAGE)
+    if field not in CALLER_REFERENCE_FIELDS:
+        return None
+    return UnknownReferenceError(f"This recording points at a {field} that does not exist")
+
+
+def _is_duplicate_title(exc: IntegrityError) -> bool:
+    """Postgres names the violated index; SQLite only names its columns. Everything else
+    reaching this commit — the project, genre, subcategory and storyteller foreign keys —
+    is not a title conflict and must not be reported as one."""
+    detail = str(exc.orig)
+    return TITLE_UNIQUE_INDEX in detail or "oc_recordings.title" in detail
+
+
+async def _ensure_title_available(
+    db: AsyncSession,
+    project_id: str,
+    title: str,
+    *,
+    exclude_id: str | None = None,
+) -> None:
+    stmt = select(OC_Recording.id).where(
+        OC_Recording.project_id == project_id,
+        OC_Recording.title == title,
+        OC_Recording.split_from_id.is_(None),
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    )
+    if exclude_id is not None:
+        stmt = stmt.where(OC_Recording.id != exclude_id)
+    if (await db.execute(stmt)).first() is not None:
+        raise ConflictError(f"A recording titled '{title}' already exists in this project")
+
+
+async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str) -> OC_Recording:
+    if secondary_equals_primary(
+        primary_register_id=data.register_id,
+        primary_genre_id=data.genre_id,
+        primary_subcategory_id=data.subcategory_id,
+        secondary_register_id=data.secondary_register_id,
+        secondary_genre_id=data.secondary_genre_id,
+        secondary_subcategory_id=data.secondary_subcategory_id,
+    ):
+        raise SecondaryClassificationConflictError
+
+    title = _normalize_title(data.title)
+    if title:
+        await _ensure_title_available(db, data.project_id, title)
 
     if data.storyteller_id:
         await _validate_storyteller_in_project(db, data.storyteller_id, data.project_id)
@@ -171,7 +302,7 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         secondary_register_id=data.secondary_register_id,
         storyteller_id=data.storyteller_id,
         user_id=user_id,
-        title=data.title,
+        title=title,
         description=data.description,
         duration_seconds=data.duration_seconds,
         file_size_bytes=data.file_size_bytes,
@@ -179,7 +310,15 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         recorded_at=data.recorded_at,
     )
     db.add(recording)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if (unknown := _unknown_reference_error(exc)) is not None:
+            raise unknown from exc
+        if not _is_duplicate_title(exc):
+            raise
+        raise ConflictError(f"A recording titled '{title}' already exists in this project") from exc
     await db.refresh(recording)
     return recording
 
@@ -192,18 +331,58 @@ async def update_recording(
     update_fields = data.model_dump(exclude_unset=True)
     if data.storyteller_id is not None:
         await _validate_storyteller_in_project(db, data.storyteller_id, recording.project_id)
-    if data.secondary_genre_id is not None:
-        effective_primary = data.genre_id if data.genre_id is not None else recording.genre_id
-        new_secondary = data.secondary_genre_id
-        if new_secondary is not None and new_secondary == effective_primary:
-            raise GenreConflictError
+    provided = data.model_fields_set
+    effective_register = data.register_id if "register_id" in provided else recording.register_id
+    effective_genre = data.genre_id if "genre_id" in provided else recording.genre_id
+    effective_sub = (
+        data.subcategory_id if "subcategory_id" in provided else recording.subcategory_id
+    )
+    effective_sec_register = (
+        data.secondary_register_id
+        if "secondary_register_id" in provided
+        else recording.secondary_register_id
+    )
+    effective_sec_genre = (
+        data.secondary_genre_id
+        if "secondary_genre_id" in provided
+        else recording.secondary_genre_id
+    )
+    effective_sec_sub = (
+        data.secondary_subcategory_id
+        if "secondary_subcategory_id" in provided
+        else recording.secondary_subcategory_id
+    )
+    if secondary_equals_primary(
+        primary_register_id=effective_register,
+        primary_genre_id=effective_genre,
+        primary_subcategory_id=effective_sub,
+        secondary_register_id=effective_sec_register,
+        secondary_genre_id=effective_sec_genre,
+        secondary_subcategory_id=effective_sec_sub,
+    ):
+        raise SecondaryClassificationConflictError
     if data.cleaning_status is not None:
         new_status = data.cleaning_status
         if new_status not in USER_SETTABLE_CLEANING_STATUSES:
             raise InvalidCleaningStatusError(new_status)
+    if "title" in update_fields:
+        normalized_title = _normalize_title(update_fields["title"])
+        if normalized_title and not _is_exempt_from_title_uniqueness(recording):
+            await _ensure_title_available(
+                db, recording.project_id, normalized_title, exclude_id=recording_id
+            )
+        update_fields["title"] = normalized_title
     for field, value in update_fields.items():
         setattr(recording, field, value)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if (unknown := _unknown_reference_error(exc)) is not None:
+            raise unknown from exc
+        if not _is_duplicate_title(exc):
+            raise
+        raise ConflictError("A recording with this title already exists in this project") from exc
     await db.refresh(recording)
     return recording
 

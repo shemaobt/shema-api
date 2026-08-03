@@ -358,6 +358,7 @@ def test_recording_create_rejects_split_lineage_fields() -> None:
             "project_id": "p",
             "genre_id": "g",
             "subcategory_id": "s",
+            "description": "a description long enough to satisfy the rule",
             "duration_seconds": 1.0,
             "file_size_bytes": 1,
             "format": "m4a",
