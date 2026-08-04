@@ -8,21 +8,30 @@ flagged, a count reported, and a second run that honestly reports having changed
 The suite never runs Alembic — it builds its schema from `Base.metadata` — so the
 migration's callable is imported from the revision file by path and driven against the
 test connection, the same way Alembic drives it against a real one.
+
+Every row here is seeded with `make_oc_recording`'s default `recompute_flags=False`: real
+metadata, empty flags, nothing has recomputed it. That is the row this backfill exists for,
+so seeding one that already carries flags would leave it with nothing to find.
 """
 
 import importlib.util
-from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import ReviewFlagCode, UploadStatus
-from app.db.models.oc_genre import OC_Genre, OC_Subcategory
+from app.core.enums import ReviewFlagCode
 from app.db.models.oc_recording import OC_Recording
-from tests.baker import make_language, make_project, make_user
+from app.services.oral_collector.review_flags import UNCLASSIFIED_GENRE_ID
+from tests.baker import (
+    make_language,
+    make_oc_recording,
+    make_oc_storyteller,
+    make_oc_taxonomy_with_sentinel,
+    make_project,
+    make_user,
+)
 
-UNCLASSIFIED = "unclassified"
 SUFFICIENT = "a description long enough to satisfy the rule"
 INSUFFICIENT = "too short"
 
@@ -50,71 +59,21 @@ async def _run_backfill(db: AsyncSession, *, batch_size: int | None = None):
     return await connection.run_sync(lambda sync_conn: backfill(sync_conn, batch_size=batch_size))
 
 
-async def _seed_taxonomy(db: AsyncSession) -> tuple[OC_Genre, OC_Subcategory]:
-    sentinel_genre = OC_Genre(id=UNCLASSIFIED, name="Unclassified", sort_order=9999)
-    genre = OC_Genre(name="narrative", sort_order=0)
-    db.add_all([sentinel_genre, genre])
-    await db.flush()
-
-    sentinel_sub = OC_Subcategory(
-        id=UNCLASSIFIED, genre_id=UNCLASSIFIED, name="Unclassified", sort_order=9999
-    )
-    sub = OC_Subcategory(genre_id=genre.id, name="folktale", sort_order=0)
-    db.add_all([sentinel_sub, sub])
-    await db.commit()
-    await db.refresh(genre)
-    await db.refresh(sub)
-    return genre, sub
-
-
-async def _seed_unflagged_recording(
-    db: AsyncSession,
-    *,
-    project_id: str,
-    genre_id: str,
-    subcategory_id: str,
-    user_id: str,
-    register_id: str | None = None,
-    storyteller_id: str | None = None,
-    description: str | None = None,
-    title: str = "legacy recording",
-) -> OC_Recording:
-    """A row as it exists today: real metadata, empty flags, nothing has recomputed it."""
-    recording = OC_Recording(
-        project_id=project_id,
-        genre_id=genre_id,
-        subcategory_id=subcategory_id,
-        register_id=register_id,
-        storyteller_id=storyteller_id,
-        user_id=user_id,
-        title=title,
-        description=description,
-        duration_seconds=10.0,
-        file_size_bytes=1024,
-        format="m4a",
-        upload_status=UploadStatus.VERIFIED,
-        recorded_at=datetime.now(UTC),
-    )
-    db.add(recording)
-    await db.commit()
-    await db.refresh(recording)
-    return recording
-
-
 async def test_the_backfill_flags_rows_that_were_never_reviewed(
     db_session: AsyncSession,
 ) -> None:
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    recording = await _seed_unflagged_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=INSUFFICIENT,
+        title="legacy recording",
     )
     assert recording.review_flags == []
 
@@ -136,34 +95,28 @@ async def test_the_backfill_counts_only_the_rows_it_actually_rewrote(
     The table holds three rows needing flags and two that are already right, so a report
     that simply echoes the row count is wrong in a way a same-shaped fixture would hide.
     """
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    from app.db.models.oc_storyteller import OC_Storyteller
-
-    storyteller = OC_Storyteller(
-        project_id=project.id, name="Ana", sex="female", created_by_user_id=user.id
-    )
-    db_session.add(storyteller)
-    await db_session.commit()
+    storyteller = await make_oc_storyteller(db_session, project.id, created_by_user_id=user.id)
 
     for index in range(3):
-        await _seed_unflagged_recording(
+        await make_oc_recording(
             db_session,
-            project_id=project.id,
-            genre_id=UNCLASSIFIED,
-            subcategory_id=UNCLASSIFIED,
+            project.id,
+            UNCLASSIFIED_GENRE_ID,
+            UNCLASSIFIED_GENRE_ID,
             user_id=user.id,
             description=INSUFFICIENT,
             title=f"legacy {index}",
         )
     for index in range(2):
-        await _seed_unflagged_recording(
+        await make_oc_recording(
             db_session,
-            project_id=project.id,
-            genre_id=genre.id,
-            subcategory_id=sub.id,
+            project.id,
+            genre.id,
+            sub.id,
             user_id=user.id,
             register_id="formal",
             storyteller_id=storyteller.id,
@@ -180,17 +133,18 @@ async def test_the_backfill_counts_only_the_rows_it_actually_rewrote(
 async def test_running_the_backfill_twice_changes_nothing_the_second_time(
     db_session: AsyncSession,
 ) -> None:
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    recording = await _seed_unflagged_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=INSUFFICIENT,
+        title="legacy recording",
     )
 
     first = await _run_backfill(db_session)
@@ -214,17 +168,18 @@ async def test_the_backfill_corrects_flags_that_are_stale_rather_than_absent(
     A row that already carries flags, but the wrong ones, has to end up with the right
     ones — an implementation that only fills in rows it finds empty would leave it lying.
     """
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    recording = await _seed_unflagged_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=INSUFFICIENT,
+        title="legacy recording",
     )
     recording.review_flags = [{"code": ReviewFlagCode.MISSING_STORYTELLER, "origin": "system"}]
     await db_session.commit()
@@ -249,16 +204,16 @@ async def test_the_backfill_crosses_more_rows_than_fit_in_one_batch(
     production batch size no test could seed enough rows to notice.
     """
     row_count = 7
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     for index in range(row_count):
-        await _seed_unflagged_recording(
+        await make_oc_recording(
             db_session,
-            project_id=project.id,
-            genre_id=UNCLASSIFIED,
-            subcategory_id=UNCLASSIFIED,
+            project.id,
+            UNCLASSIFIED_GENRE_ID,
+            UNCLASSIFIED_GENRE_ID,
             user_id=user.id,
             description=INSUFFICIENT,
             title=f"legacy {index}",

@@ -7,27 +7,23 @@ from app.core.enums import UploadStatus
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
 from app.services.oral_collector import stats_service
-from tests.baker import make_language, make_project, make_user
+from tests.baker import (
+    make_language,
+    make_oc_genre,
+    make_oc_recording,
+    make_oc_subcategory,
+    make_project,
+    make_user,
+)
 
 
 async def _seed_two_genres(
     db: AsyncSession,
 ) -> tuple[OC_Genre, OC_Subcategory, OC_Genre, OC_Subcategory]:
-    genre_a = OC_Genre(name="narrative", sort_order=0)
-    genre_b = OC_Genre(name="wisdom", sort_order=1)
-    db.add(genre_a)
-    db.add(genre_b)
-    await db.flush()
-
-    sub_a = OC_Subcategory(genre_id=genre_a.id, name="folktale", sort_order=0)
-    sub_b = OC_Subcategory(genre_id=genre_b.id, name="proverb", sort_order=0)
-    db.add(sub_a)
-    db.add(sub_b)
-    await db.commit()
-    await db.refresh(genre_a)
-    await db.refresh(genre_b)
-    await db.refresh(sub_a)
-    await db.refresh(sub_b)
+    genre_a = await make_oc_genre(db, name="narrative", sort_order=0)
+    genre_b = await make_oc_genre(db, name="wisdom", sort_order=1)
+    sub_a = await make_oc_subcategory(db, genre_a.id, name="folktale", sort_order=0)
+    sub_b = await make_oc_subcategory(db, genre_b.id, name="proverb", sort_order=0)
     return genre_a, sub_a, genre_b, sub_b
 
 
@@ -45,23 +41,19 @@ async def test_genre_stats_counts_primary_only_ignores_secondary(
     project_id = await _seed_project(db_session)
     genre_a, sub_a, genre_b, sub_b = await _seed_two_genres(db_session)
 
-    rec = OC_Recording(
-        project_id=project_id,
-        genre_id=genre_a.id,
-        subcategory_id=sub_a.id,
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre_a.id,
+        sub_a.id,
         secondary_genre_id=genre_b.id,
         secondary_subcategory_id=sub_b.id,
         secondary_register_id="consultative",
         user_id=user.id,
         title="ambiguous recording",
         duration_seconds=3600.0,
-        file_size_bytes=1024,
-        format="m4a",
         upload_status=UploadStatus.UPLOADED,
-        recorded_at=datetime.now(UTC),
     )
-    db_session.add(rec)
-    await db_session.commit()
 
     response = await stats_service.get_genre_stats(db_session, project_id)
 
