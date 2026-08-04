@@ -3,7 +3,7 @@ from collections import Counter
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import ACTIVE_UPLOAD_STATUSES, SplittingStatus
+from app.core.enums import ACTIVE_UPLOAD_STATUSES, ReviewFlagCode, SplittingStatus
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.oc_storyteller import OC_Storyteller
@@ -119,13 +119,17 @@ async def _count_review_flags(db: AsyncSession, project_id: str) -> tuple[dict[s
 
     The flags live in a JSON column that neither Postgres nor SQLite can filter or group on
     portably, so only the column itself is read and the tally happens in Python.
+
+    Every `ReviewFlagCode` is seeded at zero, so a project with nothing pending reports each
+    code as zero rather than an empty map. A client rendering one row per code then needs no
+    list of its own to know which rows exist.
     """
     stmt = select(OC_Recording.review_flags).where(
         OC_Recording.project_id == project_id,
         OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
         OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
     )
-    counts: Counter[str] = Counter()
+    counts: Counter[str] = Counter({code.value: 0 for code in ReviewFlagCode})
     flagged_recordings = 0
     for (flags,) in (await db.execute(stmt)).all():
         codes = flag_codes(flags)

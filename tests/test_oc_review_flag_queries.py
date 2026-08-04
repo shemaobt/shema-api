@@ -26,6 +26,13 @@ pytest.importorskip("app.inngest")
 SUFFICIENT = "a description long enough to satisfy the rule"
 INSUFFICIENT = "too short"
 
+NOTHING_PENDING = dict.fromkeys(ReviewFlagCode, 0)
+"""For tests whose subject is which recordings were counted, not which codes exist.
+
+The two tests that pin the zero-filled shape itself spell the codes out, so that contract
+still fails loudly when it changes.
+"""
+
 
 def _project_service():
     from app.services.oral_collector import project_service
@@ -142,8 +149,39 @@ async def test_a_project_with_nothing_pending_reports_zeros(db_session: AsyncSes
 
     stats = await _project_service().get_project_stats(db_session, project.id)
 
-    assert stats.review_flag_counts == {}
+    assert stats.review_flag_counts == {
+        ReviewFlagCode.MISSING_CLASSIFICATION: 0,
+        ReviewFlagCode.INSUFFICIENT_DESCRIPTION: 0,
+        ReviewFlagCode.MISSING_STORYTELLER: 0,
+    }
     assert stats.recordings_with_review_flags == 0
+
+
+async def test_a_code_no_recording_carries_is_reported_as_zero(db_session: AsyncSession) -> None:
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    await make_oc_recording(
+        db_session,
+        project.id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        register_id="formal",
+        description=SUFFICIENT,
+        title="no storyteller",
+        recompute_flags=True,
+    )
+
+    stats = await _project_service().get_project_stats(db_session, project.id)
+
+    assert stats.review_flag_counts == {
+        ReviewFlagCode.MISSING_CLASSIFICATION: 0,
+        ReviewFlagCode.INSUFFICIENT_DESCRIPTION: 0,
+        ReviewFlagCode.MISSING_STORYTELLER: 1,
+    }
+    assert stats.recordings_with_review_flags == 1
 
 
 async def test_the_counts_ignore_recordings_the_list_never_shows(db_session: AsyncSession) -> None:
@@ -176,7 +214,7 @@ async def test_the_counts_ignore_recordings_the_list_never_shows(db_session: Asy
 
     stats = await _project_service().get_project_stats(db_session, project.id)
 
-    assert stats.review_flag_counts == {}
+    assert stats.review_flag_counts == NOTHING_PENDING
     assert stats.recordings_with_review_flags == 0
 
 
@@ -199,7 +237,7 @@ async def test_the_counts_stay_inside_the_project(db_session: AsyncSession) -> N
 
     stats = await _project_service().get_project_stats(db_session, mine.id)
 
-    assert stats.review_flag_counts == {}
+    assert stats.review_flag_counts == NOTHING_PENDING
 
 
 # --- the list filter -------------------------------------------------------------------
