@@ -8,15 +8,15 @@ Shared API backend for Tripod — a platform powering multiple language and tran
 
 ```
 app/
-├── api/           # FastAPI routers (auth, languages, orgs, projects, phases, roles, rag, bhsa)
+├── api/           # FastAPI routers, one module per domain area
 ├── core/          # Config, database engine, middleware, exceptions
 ├── db/
-│   └── models/    # SQLAlchemy ORM models (auth · language · org · phase · project)
+│   └── models/    # SQLAlchemy ORM models, grouped by domain
 ├── models/        # Pydantic request/response schemas
-└── services/      # Business logic, one package per domain:
-                   #   auth/ · authorization/ · language/ · org/ · phase/ · project/
+└── services/      # Business logic and all data access, one package per domain. Among them:
                    #   rag/ (document upload, query, embeddings)
                    #   bhsa/ (Hebrew text-fabric passage extraction)
+                   #   oral_collector/ (field recordings, storytellers, review flags)
 alembic/           # Database migrations
 scripts/           # One-off scripts (e.g. seed_apps_roles.py)
 tests/             # Async pytest suite, one file per service domain

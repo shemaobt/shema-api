@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
+from app.core.enums import ReviewFlagCode
 from app.db.models.auth import User
 from app.models.oc_recording import (
     CleaningStatusResponse,
@@ -32,6 +33,7 @@ async def list_recordings(
     user_id: str | None = Query(None, description="Filter by recording author"),
     storyteller_id: str | None = Query(None, description="Filter by storyteller"),
     title: str | None = Query(None, description="Filter by exact (trimmed) title"),
+    review_flag: ReviewFlagCode | None = Query(None, description="Filter by review flag code"),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     _: User = Depends(get_current_user),
@@ -48,6 +50,7 @@ async def list_recordings(
         user_id=user_id,
         storyteller_id=storyteller_id,
         title=title,
+        review_flag=review_flag,
         offset=offset,
         limit=limit,
     )

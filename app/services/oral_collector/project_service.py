@@ -1,13 +1,16 @@
+from collections import Counter
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import ACTIVE_UPLOAD_STATUSES
+from app.core.enums import ACTIVE_UPLOAD_STATUSES, SplittingStatus
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.org import OrganizationMember
 from app.db.models.project import Project, ProjectOrganizationAccess, ProjectUserAccess
 from app.models.oc_project import OCProjectStatsResponse
+from app.services.oral_collector.review_flags import flag_codes
 
 
 async def get_user_project_role(db: AsyncSession, user_id: str, project_id: str) -> str | None:
@@ -107,6 +110,32 @@ async def remove_member(db: AsyncSession, project_id: str, user_id: str) -> None
     await db.commit()
 
 
+async def _count_review_flags(db: AsyncSession, project_id: str) -> tuple[dict[str, int], int]:
+    """Per-code counts and the number of flagged recordings.
+
+    Every number this module publishes describes the rows `recording_service.list_recordings`
+    shows — active uploads, archived split parents excluded — so a count and the rows behind
+    it can never disagree.
+
+    The flags live in a JSON column that neither Postgres nor SQLite can filter or group on
+    portably, so only the column itself is read and the tally happens in Python.
+    """
+    stmt = select(OC_Recording.review_flags).where(
+        OC_Recording.project_id == project_id,
+        OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    )
+    counts: Counter[str] = Counter()
+    flagged_recordings = 0
+    for (flags,) in (await db.execute(stmt)).all():
+        codes = flag_codes(flags)
+        if not codes:
+            continue
+        flagged_recordings += 1
+        counts.update(codes)
+    return dict(counts), flagged_recordings
+
+
 async def get_project_stats(db: AsyncSession, project_id: str) -> OCProjectStatsResponse:
 
     rec_stmt = select(
@@ -116,11 +145,14 @@ async def get_project_stats(db: AsyncSession, project_id: str) -> OCProjectStats
     ).where(
         OC_Recording.project_id == project_id,
         OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
     )
     rec_row = (await db.execute(rec_stmt)).one()
 
     st_stmt = select(func.count(OC_Storyteller.id)).where(OC_Storyteller.project_id == project_id)
     storyteller_count = (await db.execute(st_stmt)).scalar() or 0
+
+    review_flag_counts, flagged_recordings = await _count_review_flags(db, project_id)
 
     return OCProjectStatsResponse(
         project_id=project_id,
@@ -128,6 +160,8 @@ async def get_project_stats(db: AsyncSession, project_id: str) -> OCProjectStats
         total_duration_seconds=float(rec_row.total_duration_seconds),
         total_file_size_bytes=int(rec_row.total_file_size_bytes),
         total_storytellers=int(storyteller_count),
+        review_flag_counts=review_flag_counts,
+        recordings_with_review_flags=flagged_recordings,
     )
 
 
@@ -147,6 +181,7 @@ async def get_projects_batch_stats(
         .where(
             OC_Recording.project_id.in_(project_ids),
             OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
+            OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
         )
         .group_by(OC_Recording.project_id)
     )

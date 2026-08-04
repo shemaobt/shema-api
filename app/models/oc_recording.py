@@ -65,6 +65,20 @@ class RecordingUpdate(BaseModel):
     _check_description = field_validator("description")(_reject_insufficient_description)
 
 
+class ReviewFlagResponse(BaseModel):
+    """A single review flag on the wire.
+
+    `code` and `origin` are plain strings rather than `ReviewFlagCode` and
+    `ReviewFlagOrigin` on purpose. Typing them as the enums would publish a closed set in
+    OpenAPI, and a fourth flag code added later would then fail to parse in every client
+    generated against today's schema — including the Flutter client of ENG-374, which is
+    about to depend on this contract and ships on its own release cycle.
+    """
+
+    code: str
+    origin: str
+
+
 class RecordingResponse(BaseModel):
     id: str
     project_id: str
@@ -90,6 +104,7 @@ class RecordingResponse(BaseModel):
     split_from_id: str | None = None
     split_index: int | None = None
     split_segment_count: int | None = None
+    review_flags: list[ReviewFlagResponse] = []
     recorded_at: datetime
     uploaded_at: datetime | None
     created_at: datetime
