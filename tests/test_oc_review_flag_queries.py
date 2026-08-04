@@ -11,15 +11,18 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ReviewFlagCode, SplittingStatus, UploadStatus
-from app.db.models.oc_genre import OC_Genre, OC_Subcategory
-from app.db.models.oc_recording import OC_Recording
-from app.db.models.oc_storyteller import OC_Storyteller
-from app.services.oral_collector.review_flags import recompute_review_flags
-from tests.baker import make_language, make_project, make_user
+from app.services.oral_collector.review_flags import UNCLASSIFIED_GENRE_ID
+from tests.baker import (
+    make_language,
+    make_oc_recording,
+    make_oc_storyteller,
+    make_oc_taxonomy_with_sentinel,
+    make_project,
+    make_user,
+)
 
 pytest.importorskip("app.inngest")
 
-UNCLASSIFIED = "unclassified"
 SUFFICIENT = "a description long enough to satisfy the rule"
 INSUFFICIENT = "too short"
 
@@ -36,105 +39,49 @@ def _recording_service():
     return recording_service
 
 
-async def _seed_taxonomy(db: AsyncSession) -> tuple[OC_Genre, OC_Subcategory]:
-    sentinel_genre = OC_Genre(id=UNCLASSIFIED, name="Unclassified", sort_order=9999)
-    genre = OC_Genre(name="narrative", sort_order=0)
-    db.add_all([sentinel_genre, genre])
-    await db.flush()
-
-    sentinel_sub = OC_Subcategory(
-        id=UNCLASSIFIED, genre_id=UNCLASSIFIED, name="Unclassified", sort_order=9999
-    )
-    sub = OC_Subcategory(genre_id=genre.id, name="folktale", sort_order=0)
-    db.add_all([sentinel_sub, sub])
-    await db.commit()
-    await db.refresh(genre)
-    await db.refresh(sub)
-    return genre, sub
-
-
-async def _seed_recording(
-    db: AsyncSession,
-    *,
-    project_id: str,
-    genre_id: str,
-    subcategory_id: str,
-    user_id: str,
-    register_id: str | None = None,
-    storyteller_id: str | None = None,
-    description: str | None = None,
-    title: str = "recording",
-    upload_status: str = UploadStatus.VERIFIED,
-    splitting_status: str = SplittingStatus.NONE,
-    recorded_at: datetime | None = None,
-) -> OC_Recording:
-    recording = OC_Recording(
-        project_id=project_id,
-        genre_id=genre_id,
-        subcategory_id=subcategory_id,
-        register_id=register_id,
-        storyteller_id=storyteller_id,
-        user_id=user_id,
-        title=title,
-        description=description,
-        duration_seconds=10.0,
-        file_size_bytes=1024,
-        format="m4a",
-        upload_status=upload_status,
-        splitting_status=splitting_status,
-        recorded_at=recorded_at or datetime.now(UTC),
-    )
-    recompute_review_flags(recording)
-    db.add(recording)
-    await db.commit()
-    await db.refresh(recording)
-    return recording
-
-
 # --- counts for the project screen -----------------------------------------------------
 
 
 async def test_the_stats_count_each_flag_code_separately(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    storyteller = OC_Storyteller(
-        project_id=project.id, name="Ana", sex="female", created_by_user_id=user.id
-    )
-    db_session.add(storyteller)
-    await db_session.commit()
+    storyteller = await make_oc_storyteller(db_session, project.id, created_by_user_id=user.id)
 
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         storyteller_id=storyteller.id,
         description=SUFFICIENT,
         title="no classification",
+        recompute_flags=True,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         storyteller_id=storyteller.id,
         description=INSUFFICIENT,
         title="weak description",
+        recompute_flags=True,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="no storyteller",
+        recompute_flags=True,
     )
 
     stats = await _project_service().get_project_stats(db_session, project.id)
@@ -149,17 +96,19 @@ async def test_the_stats_count_each_flag_code_separately(db_session: AsyncSessio
 async def test_a_recording_with_three_flags_is_one_recording_but_three_counts(
     db_session: AsyncSession,
 ) -> None:
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=INSUFFICIENT,
+        title="recording",
+        recompute_flags=True,
     )
 
     stats = await _project_service().get_project_stats(db_session, project.id)
@@ -173,24 +122,22 @@ async def test_a_recording_with_three_flags_is_one_recording_but_three_counts(
 
 
 async def test_a_project_with_nothing_pending_reports_zeros(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    storyteller = OC_Storyteller(
-        project_id=project.id, name="Ana", sex="female", created_by_user_id=user.id
-    )
-    db_session.add(storyteller)
-    await db_session.commit()
-    await _seed_recording(
+    storyteller = await make_oc_storyteller(db_session, project.id, created_by_user_id=user.id)
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         storyteller_id=storyteller.id,
         description=SUFFICIENT,
+        title="recording",
+        recompute_flags=True,
     )
 
     stats = await _project_service().get_project_stats(db_session, project.id)
@@ -200,29 +147,31 @@ async def test_a_project_with_nothing_pending_reports_zeros(db_session: AsyncSes
 
 
 async def test_the_counts_ignore_recordings_the_list_never_shows(db_session: AsyncSession) -> None:
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=SUFFICIENT,
         title="archived after split",
         splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+        recompute_flags=True,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=SUFFICIENT,
         title="still on the device",
         upload_status=UploadStatus.LOCAL,
+        recompute_flags=True,
     )
 
     stats = await _project_service().get_project_stats(db_session, project.id)
@@ -232,18 +181,20 @@ async def test_the_counts_ignore_recordings_the_list_never_shows(db_session: Asy
 
 
 async def test_the_counts_stay_inside_the_project(db_session: AsyncSession) -> None:
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     mine = await make_project(db_session, lang.id, name="mine")
     other = await make_project(db_session, lang.id, name="other")
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=other.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        other.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=SUFFICIENT,
+        title="recording",
+        recompute_flags=True,
     )
 
     stats = await _project_service().get_project_stats(db_session, mine.id)
@@ -257,30 +208,32 @@ async def test_the_counts_stay_inside_the_project(db_session: AsyncSession) -> N
 async def test_filtering_by_flag_returns_only_the_recordings_that_carry_it(
     db_session: AsyncSession,
 ) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    wanted = await _seed_recording(
+    wanted = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="no storyteller",
+        recompute_flags=True,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project.id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="unclassified but has a storyteller",
         storyteller_id=None,
+        recompute_flags=True,
     )
 
     found = await _recording_service().list_recordings(
@@ -299,41 +252,39 @@ async def test_filtering_by_flag_returns_only_the_recordings_that_carry_it(
 async def test_the_flag_filter_paginates_over_the_matches_not_the_page(
     db_session: AsyncSession,
 ) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    storyteller = OC_Storyteller(
-        project_id=project.id, name="Ana", sex="female", created_by_user_id=user.id
-    )
-    db_session.add(storyteller)
-    await db_session.commit()
+    storyteller = await make_oc_storyteller(db_session, project.id, created_by_user_id=user.id)
 
     # Five without a storyteller, each preceded by one that has one, so a filter applied
     # after the page was cut would return two or three instead of five.
     for index in range(5):
-        await _seed_recording(
+        await make_oc_recording(
             db_session,
-            project_id=project.id,
-            genre_id=genre.id,
-            subcategory_id=sub.id,
+            project.id,
+            genre.id,
+            sub.id,
             user_id=user.id,
             register_id="formal",
             storyteller_id=storyteller.id,
             description=SUFFICIENT,
             title=f"complete {index}",
             recorded_at=datetime(2026, 1, 1, 12, index * 2, tzinfo=UTC),
+            recompute_flags=True,
         )
-        await _seed_recording(
+        await make_oc_recording(
             db_session,
-            project_id=project.id,
-            genre_id=genre.id,
-            subcategory_id=sub.id,
+            project.id,
+            genre.id,
+            sub.id,
             user_id=user.id,
             register_id="formal",
             description=SUFFICIENT,
             title=f"pending {index}",
             recorded_at=datetime(2026, 1, 1, 12, index * 2 + 1, tzinfo=UTC),
+            recompute_flags=True,
         )
 
     first = await _recording_service().list_recordings(
@@ -365,31 +316,33 @@ async def test_the_flag_filter_paginates_over_the_matches_not_the_page(
 
 
 async def test_the_flag_filter_keeps_the_list_ordering(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    older = await _seed_recording(
+    older = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="older",
         recorded_at=datetime(2026, 1, 1, tzinfo=UTC),
+        recompute_flags=True,
     )
-    newer = await _seed_recording(
+    newer = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="newer",
         recorded_at=datetime(2026, 6, 1, tzinfo=UTC),
+        recompute_flags=True,
     )
 
     found = await _recording_service().list_recordings(
@@ -400,30 +353,32 @@ async def test_the_flag_filter_keeps_the_list_ordering(db_session: AsyncSession)
 
 
 async def test_the_flag_filter_composes_with_the_other_filters(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     other_user = await make_user(db_session, email="other@example.com")
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    mine = await _seed_recording(
+    mine = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="mine",
+        recompute_flags=True,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=other_user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="theirs",
+        recompute_flags=True,
     )
 
     found = await _recording_service().list_recordings(
@@ -439,20 +394,21 @@ async def test_the_flag_filter_composes_with_the_other_filters(db_session: Async
 async def test_an_archived_recording_never_reaches_the_flag_filter(
     db_session: AsyncSession,
 ) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="archived",
         splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+        recompute_flags=True,
     )
 
     found = await _recording_service().list_recordings(
@@ -466,34 +422,36 @@ async def test_an_archived_recording_never_reaches_the_flag_filter(
 
 
 async def test_the_totals_ignore_the_archived_parent_of_a_split(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    parent = await _seed_recording(
+    parent = await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="parent",
         splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+        recompute_flags=True,
     )
     parent.duration_seconds = 30.0
     parent.file_size_bytes = 3072
     await db_session.commit()
     for index in range(3):
-        await _seed_recording(
+        await make_oc_recording(
             db_session,
-            project_id=project.id,
-            genre_id=genre.id,
-            subcategory_id=sub.id,
+            project.id,
+            genre.id,
+            sub.id,
             user_id=user.id,
             register_id="formal",
             description=SUFFICIENT,
             title=f"segment {index}",
+            recompute_flags=True,
         )
 
     stats = await _project_service().get_project_stats(db_session, project.id)
@@ -507,30 +465,32 @@ async def test_the_totals_ignore_the_archived_parent_of_a_split(db_session: Asyn
 async def test_the_batch_totals_ignore_the_archived_parent_of_a_split(
     db_session: AsyncSession,
 ) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="parent",
         splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+        recompute_flags=True,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        project_id=project.id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project.id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
         title="segment",
+        recompute_flags=True,
     )
 
     batch = await _project_service().get_projects_batch_stats(db_session, [project.id])

@@ -5,28 +5,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
-from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
 from app.inngest.audio_splitting import persist_split_segments
 from app.inngest.schemas import SegmentResult, SplitRequestedPayload, SplitSegmentData
 from app.models.oc_recording import RecordingCreate, RecordingResponse, RecordingUpdate
 from app.services.oral_collector.recording_service import list_recordings
 from app.services.oral_collector.split_service import backfill_split_indices, get_split_status
-from tests.baker import make_language, make_project, make_user
+from tests.baker import (
+    make_language,
+    make_oc_recording,
+    make_oc_taxonomy,
+    make_project,
+    make_user,
+)
 
 pytest.importorskip("app.inngest")
-
-
-async def _seed_genre(db: AsyncSession) -> tuple[OC_Genre, OC_Subcategory]:
-    genre = OC_Genre(name="narrative", sort_order=0)
-    db.add(genre)
-    await db.flush()
-    sub = OC_Subcategory(genre_id=genre.id, name="folktale", sort_order=0)
-    db.add(sub)
-    await db.commit()
-    await db.refresh(genre)
-    await db.refresh(sub)
-    return genre, sub
 
 
 async def _seed_project(db: AsyncSession) -> str:
@@ -44,25 +37,20 @@ async def _seed_parent(
     subcategory_id: str,
     gcs_url: str = "https://example.com/parent.m4a",
 ) -> OC_Recording:
-    parent = OC_Recording(
-        project_id=project_id,
-        genre_id=genre_id,
-        subcategory_id=subcategory_id,
+    """A recording mid-split: verified, sitting in GCS, already marked `splitting`."""
+    return await make_oc_recording(
+        db,
+        project_id,
+        genre_id,
+        subcategory_id,
         user_id=user_id,
         title="Parent story",
         duration_seconds=60.0,
         file_size_bytes=100_000,
-        format="m4a",
         gcs_url=gcs_url,
         upload_status=UploadStatus.VERIFIED,
-        cleaning_status=CleaningStatus.NONE,
         splitting_status=SplittingStatus.SPLITTING,
-        recorded_at=datetime.now(UTC),
     )
-    db.add(parent)
-    await db.commit()
-    await db.refresh(parent)
-    return parent
 
 
 def _make_payload(
@@ -112,7 +100,7 @@ async def test_persist_split_segments_sets_lineage_on_every_child(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
     parent = await _seed_parent(
         db_session,
         user_id=user.id,
@@ -148,7 +136,7 @@ async def test_persist_split_segments_archives_parent_instead_of_deleting(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
     parent = await _seed_parent(
         db_session,
         user_id=user.id,
@@ -178,7 +166,7 @@ async def test_list_recordings_excludes_archived_parents(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     archived = await _seed_parent(
         db_session,
@@ -210,7 +198,7 @@ async def test_get_split_status_orders_children_by_split_index(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
     parent = await _seed_parent(
         db_session,
         user_id=user.id,
@@ -260,7 +248,7 @@ async def test_get_split_status_falls_back_to_created_at_for_legacy_rows(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
     parent = await _seed_parent(
         db_session,
         user_id=user.id,
@@ -309,7 +297,7 @@ async def test_get_split_status_empty_when_not_split(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
     parent = await _seed_parent(
         db_session,
         user_id=user.id,
@@ -393,7 +381,7 @@ async def test_backfill_populates_legacy_split_groups(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     base_time = datetime.now(UTC)
     parent_a = "parent-A"
@@ -446,7 +434,7 @@ async def test_backfill_populates_legacy_split_groups(
 async def test_backfill_is_idempotent(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     base_time = datetime.now(UTC)
     db_session.add(
@@ -483,7 +471,7 @@ async def test_backfill_is_idempotent(db_session: AsyncSession) -> None:
 async def test_backfill_ignores_non_split_rows(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     base_time = datetime.now(UTC)
     db_session.add(

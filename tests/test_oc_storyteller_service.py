@@ -1,17 +1,21 @@
-from datetime import UTC, datetime
-
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import UploadStatus
 from app.core.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.db.models.auth import User
-from app.db.models.oc_recording import OC_Recording
 from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.project import ProjectUserAccess
 from app.models.oc_storyteller import StorytellerCreate, StorytellerUpdate
-from tests.baker import make_language, make_project, make_user
+from tests.baker import (
+    make_language,
+    make_oc_recording,
+    make_oc_taxonomy,
+    make_project,
+    make_user,
+)
 
 
 async def _seed_project_with_manager(db: AsyncSession) -> tuple[str, User]:
@@ -326,30 +330,18 @@ async def test_delete_storyteller_nulls_recording_link(
         manager,
     )
 
-    from app.db.models.oc_genre import OC_Genre, OC_Subcategory
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    genre = OC_Genre(name="narrative", sort_order=0)
-    db_session.add(genre)
-    await db_session.flush()
-    sub = OC_Subcategory(genre_id=genre.id, name="folktale", sort_order=0)
-    db_session.add(sub)
-    await db_session.commit()
-
-    rec = OC_Recording(
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
         storyteller_id=st.id,
         user_id=manager.id,
         title="test",
-        duration_seconds=10.0,
-        file_size_bytes=1024,
-        format="m4a",
-        recorded_at=datetime.now(UTC),
+        upload_status=UploadStatus.LOCAL,
     )
-    db_session.add(rec)
-    await db_session.commit()
-    await db_session.refresh(rec)
     assert rec.storyteller_id == st.id
 
     await ss.delete_storyteller(db_session, st.id, manager.id)

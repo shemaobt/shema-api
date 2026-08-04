@@ -11,102 +11,33 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import ReviewFlagCode, UploadStatus
-from app.db.models.oc_genre import OC_Genre, OC_Subcategory
+from app.core.enums import ReviewFlagCode
 from app.db.models.oc_recording import OC_Recording
-from app.db.models.oc_storyteller import OC_Storyteller
 from app.models.oc_recording import RecordingCreate, RecordingUpdate
-from app.services.oral_collector.review_flags import recompute_review_flags
-from tests.baker import make_language, make_project, make_user
+from app.services.oral_collector.review_flags import (
+    UNCLASSIFIED_GENRE_ID,
+    recompute_review_flags,
+)
+from tests.baker import (
+    make_language,
+    make_oc_recording,
+    make_oc_storyteller,
+    make_oc_taxonomy_with_sentinel,
+    make_project,
+    make_user,
+)
 from tests.test_oc_recording_description_rule import SHARED_VECTOR
 
 pytest.importorskip("app.inngest")
 
-UNCLASSIFIED = "unclassified"
 SUFFICIENT = "a description long enough to satisfy the rule"
 INSUFFICIENT = "too short"
-
-
-async def _seed_taxonomy(db: AsyncSession) -> tuple[OC_Genre, OC_Subcategory]:
-    """A real genre plus the `unclassified` sentinel.
-
-    The sentinel exists in production because a seed migration inserts it, and the test
-    database is built from `Base.metadata` without ever running migrations — so a test
-    that needs it has to put it there itself.
-    """
-    sentinel_genre = OC_Genre(id=UNCLASSIFIED, name="Unclassified", sort_order=9999)
-    genre = OC_Genre(name="narrative", sort_order=0)
-    db.add_all([sentinel_genre, genre])
-    await db.flush()
-
-    sentinel_sub = OC_Subcategory(
-        id=UNCLASSIFIED, genre_id=UNCLASSIFIED, name="Unclassified", sort_order=9999
-    )
-    sub = OC_Subcategory(genre_id=genre.id, name="folktale", sort_order=0)
-    db.add_all([sentinel_sub, sub])
-    await db.commit()
-    await db.refresh(genre)
-    await db.refresh(sub)
-    return genre, sub
 
 
 async def _seed_project(db: AsyncSession) -> str:
     lang = await make_language(db)
     project = await make_project(db, lang.id)
     return project.id
-
-
-async def _seed_storyteller(db: AsyncSession, project_id: str, user_id: str) -> OC_Storyteller:
-    storyteller = OC_Storyteller(
-        project_id=project_id,
-        name="Ana",
-        sex="female",
-        external_acceptance_confirmed=True,
-        created_by_user_id=user_id,
-    )
-    db.add(storyteller)
-    await db.commit()
-    await db.refresh(storyteller)
-    return storyteller
-
-
-async def _seed_recording(
-    db: AsyncSession,
-    *,
-    project_id: str,
-    genre_id: str,
-    subcategory_id: str,
-    user_id: str,
-    register_id: str | None = None,
-    storyteller_id: str | None = None,
-    description: str | None = None,
-    title: str | None = "test recording",
-) -> OC_Recording:
-    """A recording written straight to the table.
-
-    Deliberately not via `create_recording`: ENG-354 rejects an insufficient description
-    at that boundary, so the rows this issue exists to flag can only be built directly —
-    which is exactly the shape of the rows already in production.
-    """
-    recording = OC_Recording(
-        project_id=project_id,
-        genre_id=genre_id,
-        subcategory_id=subcategory_id,
-        register_id=register_id,
-        storyteller_id=storyteller_id,
-        user_id=user_id,
-        title=title,
-        description=description,
-        duration_seconds=10.0,
-        file_size_bytes=1024,
-        format="m4a",
-        upload_status=UploadStatus.VERIFIED,
-        recorded_at=datetime.now(UTC),
-    )
-    db.add(recording)
-    await db.commit()
-    await db.refresh(recording)
-    return recording
 
 
 def _codes(recording: OC_Recording) -> set[str]:
@@ -119,14 +50,14 @@ def _codes(recording: OC_Recording) -> set[str]:
 async def test_the_unclassified_sentinel_genre_counts_as_missing_classification(
     db_session: AsyncSession,
 ) -> None:
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project_id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         register_id="formal",
     )
@@ -137,14 +68,14 @@ async def test_the_unclassified_sentinel_genre_counts_as_missing_classification(
 
 
 async def test_a_null_register_counts_as_missing_classification(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id=None,
     )
@@ -160,14 +91,14 @@ async def test_an_empty_register_counts_as_missing_classification(db_session: As
     Null and empty fail it for different reasons, and a server that accepted the empty
     string as classified would disagree with the app about the same recording.
     """
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="",
     )
@@ -178,14 +109,14 @@ async def test_an_empty_register_counts_as_missing_classification(db_session: As
 
 
 async def test_a_short_description_is_flagged(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         description=INSUFFICIENT,
     )
@@ -205,14 +136,14 @@ async def test_the_shared_vector_clears_the_description_flag(
     the boundary. On its own it is weak — a count that over-counts also passes — which is
     what the companion test below exists to catch.
     """
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         description=text,
     )
@@ -236,14 +167,14 @@ JUST_BELOW_THRESHOLD = [
 async def test_a_description_just_under_the_threshold_is_flagged(
     db_session: AsyncSession, name: str, text: str
 ) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         description=text,
     )
@@ -261,14 +192,14 @@ async def test_a_recording_missing_everything_carries_all_three_flags(
     That migration decides whether to rewrite a row by comparing the computed list against
     the stored one, so flags emitted in a different order would rewrite every row it reads.
     """
-    await _seed_taxonomy(db_session)
+    await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project_id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         register_id=None,
         storyteller_id=None,
@@ -285,15 +216,20 @@ async def test_a_recording_missing_everything_carries_all_three_flags(
 
 
 async def test_a_complete_recording_carries_no_flags(db_session: AsyncSession) -> None:
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    storyteller = await _seed_storyteller(db_session, project_id, user.id)
-    recording = await _seed_recording(
+    storyteller = await make_oc_storyteller(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        external_acceptance_confirmed=True,
+        created_by_user_id=user.id,
+    )
+    recording = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         storyteller_id=storyteller.id,
@@ -311,7 +247,7 @@ async def test_a_complete_recording_carries_no_flags(db_session: AsyncSession) -
 async def test_creating_a_recording_computes_its_flags(db_session: AsyncSession) -> None:
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
 
@@ -345,10 +281,15 @@ async def test_creating_a_fully_specified_recording_carries_no_flags(
     """
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    storyteller = await _seed_storyteller(db_session, project_id, user.id)
+    storyteller = await make_oc_storyteller(
+        db_session,
+        project_id,
+        external_acceptance_confirmed=True,
+        created_by_user_id=user.id,
+    )
 
     recording = await recording_service.create_recording(
         db_session,
@@ -376,14 +317,14 @@ async def test_classifying_a_recording_clears_its_classification_flag(
 ) -> None:
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=UNCLASSIFIED,
-        subcategory_id=UNCLASSIFIED,
+        project_id,
+        UNCLASSIFIED_GENRE_ID,
+        UNCLASSIFIED_GENRE_ID,
         user_id=user.id,
         description=SUFFICIENT,
     )
@@ -403,15 +344,20 @@ async def test_classifying_a_recording_clears_its_classification_flag(
 async def test_assigning_a_storyteller_clears_its_flag(db_session: AsyncSession) -> None:
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    storyteller = await _seed_storyteller(db_session, project_id, user.id)
-    recording = await _seed_recording(
+    storyteller = await make_oc_storyteller(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        external_acceptance_confirmed=True,
+        created_by_user_id=user.id,
+    )
+    recording = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
@@ -430,14 +376,14 @@ async def test_assigning_a_storyteller_clears_its_flag(db_session: AsyncSession)
 async def test_improving_the_description_clears_its_flag(db_session: AsyncSession) -> None:
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=INSUFFICIENT,
@@ -457,15 +403,20 @@ async def test_dropping_the_storyteller_raises_the_flag_again(db_session: AsyncS
     """A flag that only ever clears is half a feature."""
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    storyteller = await _seed_storyteller(db_session, project_id, user.id)
-    recording = await _seed_recording(
+    storyteller = await make_oc_storyteller(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        external_acceptance_confirmed=True,
+        created_by_user_id=user.id,
+    )
+    recording = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         storyteller_id=storyteller.id,
@@ -487,15 +438,20 @@ async def test_clearing_the_register_raises_the_classification_flag_again(
 ) -> None:
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    storyteller = await _seed_storyteller(db_session, project_id, user.id)
-    recording = await _seed_recording(
+    storyteller = await make_oc_storyteller(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        external_acceptance_confirmed=True,
+        created_by_user_id=user.id,
+    )
+    recording = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         storyteller_id=storyteller.id,
@@ -522,14 +478,14 @@ async def test_an_unrelated_update_leaves_the_flags_telling_the_truth(
     """
     from app.services.oral_collector import recording_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    recording = await _seed_recording(
+    recording = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id=None,
         description=SUFFICIENT,
@@ -557,15 +513,20 @@ async def test_deleting_a_storyteller_flags_the_recordings_it_leaves_behind(
     """
     from app.services.oral_collector import storyteller_service
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    storyteller = await _seed_storyteller(db_session, project_id, user.id)
-    recording = await _seed_recording(
+    storyteller = await make_oc_storyteller(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        external_acceptance_confirmed=True,
+        created_by_user_id=user.id,
+    )
+    recording = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         storyteller_id=storyteller.id,
@@ -587,14 +548,14 @@ async def test_split_segments_carry_flags_of_their_own(db_session: AsyncSession)
     from app.inngest.audio_splitting import persist_split_segments
     from app.inngest.schemas import SegmentResult, SplitRequestedPayload, SplitSegmentData
 
-    genre, sub = await _seed_taxonomy(db_session)
+    genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    parent = await _seed_recording(
+    parent = await make_oc_recording(
         db_session,
-        project_id=project_id,
-        genre_id=genre.id,
-        subcategory_id=sub.id,
+        project_id,
+        genre.id,
+        sub.id,
         user_id=user.id,
         register_id="formal",
         description=SUFFICIENT,
@@ -608,8 +569,8 @@ async def test_split_segments_carry_flags_of_their_own(db_session: AsyncSession)
             SplitSegmentData(
                 start_seconds=0.0,
                 end_seconds=5.0,
-                genre_id=UNCLASSIFIED,
-                subcategory_id=UNCLASSIFIED,
+                genre_id=UNCLASSIFIED_GENRE_ID,
+                subcategory_id=UNCLASSIFIED_GENRE_ID,
                 register_id=None,
             )
         ],

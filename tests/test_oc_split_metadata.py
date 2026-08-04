@@ -9,13 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import CleaningStatus, OCRecordingEvent, SplittingStatus, UploadStatus
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
-from app.db.models.oc_storyteller import OC_Storyteller
 from app.inngest.audio_splitting import persist_split_segments
 from app.inngest.schemas import SegmentResult, SplitRequestedPayload, SplitSegmentData
 from app.models.oc_recording import SplitSegment
 from app.services.oral_collector import split_service
 from app.services.oral_collector.split_service import request_split
-from tests.baker import make_language, make_project, make_user
+from tests.baker import (
+    make_language,
+    make_oc_genre,
+    make_oc_recording,
+    make_oc_storyteller,
+    make_oc_subcategory,
+    make_project,
+    make_user,
+)
 
 pytest.importorskip("app.inngest")
 
@@ -23,25 +30,11 @@ pytest.importorskip("app.inngest")
 async def _seed_two_genres(
     db: AsyncSession,
 ) -> tuple[OC_Genre, OC_Subcategory, OC_Genre, OC_Subcategory]:
-    primary_genre = OC_Genre(name="narrative", sort_order=0)
-    secondary_genre = OC_Genre(name="proverb", sort_order=1)
-    db.add_all([primary_genre, secondary_genre])
-    await db.flush()
-    primary_sub = OC_Subcategory(genre_id=primary_genre.id, name="folktale", sort_order=0)
-    secondary_sub = OC_Subcategory(genre_id=secondary_genre.id, name="riddle", sort_order=0)
-    db.add_all([primary_sub, secondary_sub])
-    await db.commit()
-    for obj in (primary_genre, primary_sub, secondary_genre, secondary_sub):
-        await db.refresh(obj)
+    primary_genre = await make_oc_genre(db, name="narrative", sort_order=0)
+    secondary_genre = await make_oc_genre(db, name="proverb", sort_order=1)
+    primary_sub = await make_oc_subcategory(db, primary_genre.id, name="folktale", sort_order=0)
+    secondary_sub = await make_oc_subcategory(db, secondary_genre.id, name="riddle", sort_order=0)
     return primary_genre, primary_sub, secondary_genre, secondary_sub
-
-
-async def _seed_storyteller(db: AsyncSession, project_id: str) -> OC_Storyteller:
-    storyteller = OC_Storyteller(project_id=project_id, name="Maria", sex="female", age=70)
-    db.add(storyteller)
-    await db.commit()
-    await db.refresh(storyteller)
-    return storyteller
 
 
 async def _seed_parent_with_full_metadata(
@@ -59,31 +52,27 @@ async def _seed_parent_with_full_metadata(
     description: str = "An old story about the river",
     cleaning_status: str = CleaningStatus.CLEANED,
 ) -> OC_Recording:
-    parent = OC_Recording(
-        project_id=project_id,
-        genre_id=primary_genre_id,
-        subcategory_id=primary_subcategory_id,
+    """A parent carrying every field a split child can inherit, primary and secondary."""
+    return await make_oc_recording(
+        db,
+        project_id,
+        primary_genre_id,
+        primary_subcategory_id,
+        user_id=user_id,
         register_id=primary_register_id,
         secondary_genre_id=secondary_genre_id,
         secondary_subcategory_id=secondary_subcategory_id,
         secondary_register_id=secondary_register_id,
-        user_id=user_id,
         storyteller_id=storyteller_id,
         title="Parent story",
         description=description,
         duration_seconds=60.0,
         file_size_bytes=100_000,
-        format="m4a",
         gcs_url="https://example.com/parent.m4a",
         upload_status=UploadStatus.VERIFIED,
         cleaning_status=cleaning_status,
         splitting_status=SplittingStatus.SPLITTING,
-        recorded_at=datetime.now(UTC),
     )
-    db.add(parent)
-    await db.commit()
-    await db.refresh(parent)
-    return parent
 
 
 def _payload_with_inheritance(
@@ -147,7 +136,7 @@ async def test_persist_split_segments_propagates_inherited_metadata_to_every_chi
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     pg, ps, sg, ss = await _seed_two_genres(db_session)
-    storyteller = await _seed_storyteller(db_session, project.id)
+    storyteller = await make_oc_storyteller(db_session, project.id, name="Maria", age=70)
     parent = await _seed_parent_with_full_metadata(
         db_session,
         user_id=user.id,
@@ -198,7 +187,7 @@ async def test_persist_split_segments_resets_cleaning_status_to_none_on_every_ch
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     pg, ps, sg, ss = await _seed_two_genres(db_session)
-    storyteller = await _seed_storyteller(db_session, project.id)
+    storyteller = await make_oc_storyteller(db_session, project.id, name="Maria", age=70)
     parent = await _seed_parent_with_full_metadata(
         db_session,
         user_id=user.id,
@@ -243,7 +232,7 @@ async def test_persist_split_segments_keeps_lineage_fields_intact(
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     pg, ps, sg, ss = await _seed_two_genres(db_session)
-    storyteller = await _seed_storyteller(db_session, project.id)
+    storyteller = await make_oc_storyteller(db_session, project.id, name="Maria", age=70)
     parent = await _seed_parent_with_full_metadata(
         db_session,
         user_id=user.id,
@@ -289,7 +278,7 @@ async def test_persist_split_segments_archives_parent_after_split(
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     pg, ps, sg, ss = await _seed_two_genres(db_session)
-    storyteller = await _seed_storyteller(db_session, project.id)
+    storyteller = await make_oc_storyteller(db_session, project.id, name="Maria", age=70)
     parent = await _seed_parent_with_full_metadata(
         db_session,
         user_id=user.id,
@@ -385,7 +374,7 @@ async def test_request_split_snapshots_parent_metadata_into_payload(
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     pg, ps, sg, ss = await _seed_two_genres(db_session)
-    storyteller = await _seed_storyteller(db_session, project.id)
+    storyteller = await make_oc_storyteller(db_session, project.id, name="Maria", age=70)
     parent = await _seed_parent_with_full_metadata(
         db_session,
         user_id=user.id,
@@ -443,7 +432,7 @@ async def test_request_split_rejects_segment_whose_effective_triple_matches_pare
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     pg, ps, sg, ss = await _seed_two_genres(db_session)
-    storyteller = await _seed_storyteller(db_session, project.id)
+    storyteller = await make_oc_storyteller(db_session, project.id, name="Maria", age=70)
     parent = await _seed_parent_with_full_metadata(
         db_session,
         user_id=user.id,
@@ -493,7 +482,7 @@ async def test_request_split_allows_segment_with_single_field_overlap_with_paren
     lang = await make_language(db_session)
     project = await make_project(db_session, lang.id)
     pg, ps, sg, ss = await _seed_two_genres(db_session)
-    storyteller = await _seed_storyteller(db_session, project.id)
+    storyteller = await make_oc_storyteller(db_session, project.id, name="Maria", age=70)
     parent = await _seed_parent_with_full_metadata(
         db_session,
         user_id=user.id,
