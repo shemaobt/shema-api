@@ -21,6 +21,7 @@ class ProjectResponse(BaseModel):
     latitude: float | None
     longitude: float | None
     location_display_name: str | None
+    journey_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -10,6 +10,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.journey import Journey
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -21,7 +22,13 @@ from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.org import Organization, OrganizationMember
-from app.db.models.phase import Phase, PhaseDependency, ProjectPhase
+from app.db.models.phase import (
+    Phase,
+    PhaseCategory,
+    PhaseDependency,
+    PhaseStatusLog,
+    ProjectPhase,
+)
 from app.db.models.project import (
     Project,
     ProjectOrganizationAccess,
@@ -231,6 +238,7 @@ async def make_project(
     latitude: float | None = None,
     longitude: float | None = None,
     location_display_name: str | None = None,
+    journey_id: str | None = None,
 ) -> Project:
     project = Project(
         name=name,
@@ -239,6 +247,7 @@ async def make_project(
         latitude=latitude,
         longitude=longitude,
         location_display_name=location_display_name,
+        journey_id=journey_id,
     )
     db.add(project)
     await db.commit()
@@ -250,8 +259,10 @@ async def make_project_user_access(
     db: AsyncSession,
     project_id: str,
     user_id: str,
+    *,
+    role: str = "member",
 ) -> ProjectUserAccess:
-    access = ProjectUserAccess(project_id=project_id, user_id=user_id)
+    access = ProjectUserAccess(project_id=project_id, user_id=user_id, role=role)
     db.add(access)
     await db.commit()
     await db.refresh(access)
@@ -273,13 +284,52 @@ async def make_project_organization_access(
     return access
 
 
+async def make_journey(
+    db: AsyncSession,
+    *,
+    name: str = "Test Journey",
+    description: str | None = None,
+    created_by: str | None = None,
+) -> Journey:
+    journey = Journey(name=name, description=description, created_by=created_by)
+    db.add(journey)
+    await db.commit()
+    await db.refresh(journey)
+    return journey
+
+
+async def make_phase_category(
+    db: AsyncSession,
+    *,
+    name: str = "Test Category",
+    color: str = "#BE4A01",
+    icon: str = "compass",
+) -> PhaseCategory:
+    category = PhaseCategory(name=name, color=color, icon=icon)
+    db.add(category)
+    await db.commit()
+    await db.refresh(category)
+    return category
+
+
 async def make_phase(
     db: AsyncSession,
     *,
     name: str = "Test Phase",
     description: str | None = None,
+    journey_id: str | None = None,
+    category_id: str | None = None,
+    sort_order: int = 0,
+    icon_url: str | None = None,
 ) -> Phase:
-    phase = Phase(name=name, description=description)
+    phase = Phase(
+        name=name,
+        description=description,
+        journey_id=journey_id,
+        category_id=category_id,
+        sort_order=sort_order,
+        icon_url=icon_url,
+    )
     db.add(phase)
     await db.commit()
     await db.refresh(phase)
@@ -290,12 +340,38 @@ async def make_project_phase(
     db: AsyncSession,
     project_id: str,
     phase_id: str,
+    *,
+    status: str = "not_started",
 ) -> ProjectPhase:
-    link = ProjectPhase(project_id=project_id, phase_id=phase_id)
+    link = ProjectPhase(project_id=project_id, phase_id=phase_id, status=status)
     db.add(link)
     await db.commit()
     await db.refresh(link)
     return link
+
+
+async def make_phase_status_log(
+    db: AsyncSession,
+    project_id: str,
+    phase_id: str,
+    *,
+    from_status: str = "not_started",
+    to_status: str = "in_progress",
+    note: str | None = None,
+    changed_by: str | None = None,
+) -> PhaseStatusLog:
+    log = PhaseStatusLog(
+        project_id=project_id,
+        phase_id=phase_id,
+        from_status=from_status,
+        to_status=to_status,
+        note=note,
+        changed_by=changed_by,
+    )
+    db.add(log)
+    await db.commit()
+    await db.refresh(log)
+    return log
 
 
 async def make_phase_dependency(

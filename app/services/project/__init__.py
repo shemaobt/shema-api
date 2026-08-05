@@ -1,3 +1,4 @@
+from app.services.project.assign_journey import assign_journey
 from app.services.project.can_access_project import can_access_project
 from app.services.project.create_project import create_project
 from app.services.project.get_project_by_id import get_project_by_id
@@ -24,6 +25,7 @@ from app.services.project.update_project_location import update_project_location
 from app.services.project.update_user_access_role import update_user_access_role
 
 __all__ = [
+    "assign_journey",
     "can_access_project",
     "create_project",
     "get_project_by_id",
