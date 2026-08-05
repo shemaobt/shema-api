@@ -48,6 +48,7 @@ from app.db.models.project_health import (
     PHLanguage,
     PHReport,
 )
+from app.db.models.public_request import PublicRequest
 from app.db.models.sound_necklace import (
     GranularityLevel,
     SessionStatus,
@@ -110,6 +111,7 @@ __all__ = [
     "ProjectOrganizationAccess",
     "ProjectPhase",
     "ProjectUserAccess",
+    "PublicRequest",
     "RefreshToken",
     "Role",
     "RolePermission",

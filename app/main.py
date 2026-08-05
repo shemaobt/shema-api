@@ -35,6 +35,8 @@ from app.api.places import router as places_router
 from app.api.platform import router as platform_router
 from app.api.project_health import router as project_health_router
 from app.api.projects import router as projects_router
+from app.api.public import router as public_router
+from app.api.public_requests import router as public_requests_router
 from app.api.rag import router as rag_router
 from app.api.roles import router as roles_router
 from app.api.sound_necklace import router as sound_necklace_router
@@ -133,6 +135,12 @@ def create_app() -> FastAPI:
     app.include_router(organizations_router, prefix="/api/organizations", tags=["organizations"])
     app.include_router(places_router, prefix="/api/places", tags=["places"])
     app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
+    app.include_router(public_router, prefix="/api/public", tags=["public"])
+    app.include_router(
+        public_requests_router,
+        prefix="/api/public-requests",
+        tags=["public-requests"],
+    )
     app.include_router(phases_router, prefix="/api/phases", tags=["phases"])
     app.include_router(books_router, prefix="/api/books", tags=["books"])
     app.include_router(pericopes_router, prefix="/api/pericopes", tags=["pericopes"])
