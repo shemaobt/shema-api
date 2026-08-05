@@ -86,11 +86,6 @@ async def test_a_null_register_counts_as_missing_classification(db_session: Asyn
 
 
 async def test_an_empty_register_counts_as_missing_classification(db_session: AsyncSession) -> None:
-    """The client's predicate is `registerId != null && registerId.isNotEmpty`.
-
-    Null and empty fail it for different reasons, and a server that accepted the empty
-    string as classified would disagree with the app about the same recording.
-    """
     genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -130,12 +125,6 @@ async def test_a_short_description_is_flagged(db_session: AsyncSession) -> None:
 async def test_the_shared_vector_clears_the_description_flag(
     db_session: AsyncSession, name: str, text: str, _expected: int
 ) -> None:
-    """ENG-354's cross-language vector decides this, not this issue.
-
-    Every row sits exactly on the 20-cluster threshold, so this pins the accepting side of
-    the boundary. On its own it is weak — a count that over-counts also passes — which is
-    what the companion test below exists to catch.
-    """
     genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -187,11 +176,6 @@ async def test_a_description_just_under_the_threshold_is_flagged(
 async def test_a_recording_missing_everything_carries_all_three_flags(
     db_session: AsyncSession,
 ) -> None:
-    """Asserted as an ordered list, because the order is what makes the backfill idempotent.
-
-    That migration decides whether to rewrite a row by comparing the computed list against
-    the stored one, so flags emitted in a different order would rewrite every row it reads.
-    """
     await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -274,11 +258,6 @@ async def test_creating_a_recording_computes_its_flags(db_session: AsyncSession)
 async def test_creating_a_fully_specified_recording_carries_no_flags(
     db_session: AsyncSession,
 ) -> None:
-    """The one path a field worker who fills everything in actually takes.
-
-    Every other creation test leaves something out, so without this the clean case is only
-    ever proven by calling the rule directly, never through the service that persists it.
-    """
     from app.services.oral_collector import recording_service
 
     genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
@@ -400,7 +379,6 @@ async def test_improving_the_description_clears_its_flag(db_session: AsyncSessio
 
 
 async def test_dropping_the_storyteller_raises_the_flag_again(db_session: AsyncSession) -> None:
-    """A flag that only ever clears is half a feature."""
     from app.services.oral_collector import recording_service
 
     genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
@@ -471,11 +449,6 @@ async def test_clearing_the_register_raises_the_classification_flag_again(
 async def test_an_unrelated_update_leaves_the_flags_telling_the_truth(
     db_session: AsyncSession,
 ) -> None:
-    """The likeliest regression is a write path that changes something else and forgets.
-
-    Renaming a recording touches none of the four inputs, so the flags must come back
-    unchanged rather than empty — an update that skipped the recompute would wipe them.
-    """
     from app.services.oral_collector import recording_service
 
     genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
@@ -506,11 +479,6 @@ async def test_an_unrelated_update_leaves_the_flags_telling_the_truth(
 async def test_deleting_a_storyteller_flags_the_recordings_it_leaves_behind(
     db_session: AsyncSession,
 ) -> None:
-    """The FK is `ON DELETE SET NULL`, so the column changes inside the database.
-
-    Nothing loads the recording and nothing calls a recording service, so without an
-    explicit fix the row keeps reporting that it has a storyteller after losing one.
-    """
     from app.services.oral_collector import storyteller_service
 
     genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
@@ -544,7 +512,6 @@ async def test_deleting_a_storyteller_flags_the_recordings_it_leaves_behind(
 
 
 async def test_split_segments_carry_flags_of_their_own(db_session: AsyncSession) -> None:
-    """Split children are built directly, not through `create_recording`."""
     from app.inngest.audio_splitting import persist_split_segments
     from app.inngest.schemas import SegmentResult, SplitRequestedPayload, SplitSegmentData
 

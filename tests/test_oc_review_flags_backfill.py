@@ -90,11 +90,6 @@ async def test_the_backfill_flags_rows_that_were_never_reviewed(
 async def test_the_backfill_counts_only_the_rows_it_actually_rewrote(
     db_session: AsyncSession,
 ) -> None:
-    """Marking zero rows in silence is a failure, not a success — and so is inflating it.
-
-    The table holds three rows needing flags and two that are already right, so a report
-    that simply echoes the row count is wrong in a way a same-shaped fixture would hide.
-    """
     genre, sub = await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
@@ -163,11 +158,6 @@ async def test_running_the_backfill_twice_changes_nothing_the_second_time(
 async def test_the_backfill_corrects_flags_that_are_stale_rather_than_absent(
     db_session: AsyncSession,
 ) -> None:
-    """The empty-to-populated direction is the easy one.
-
-    A row that already carries flags, but the wrong ones, has to end up with the right
-    ones — an implementation that only fills in rows it finds empty would leave it lying.
-    """
     await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
     lang = await make_language(db_session)
@@ -198,11 +188,6 @@ async def test_the_backfill_corrects_flags_that_are_stale_rather_than_absent(
 async def test_the_backfill_crosses_more_rows_than_fit_in_one_batch(
     db_session: AsyncSession,
 ) -> None:
-    """Keyset pagination that mishandles its cursor stops after the first page.
-
-    Driven with a deliberately tiny batch so seven rows span four of them; at the
-    production batch size no test could seed enough rows to notice.
-    """
     row_count = 7
     await make_oc_taxonomy_with_sentinel(db_session)
     user = await make_user(db_session)
