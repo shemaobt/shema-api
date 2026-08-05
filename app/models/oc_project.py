@@ -15,14 +15,17 @@ class OCProjectListResponse(ProjectResponse):
 class OCProjectStatsResponse(BaseModel):
     """Project totals for the dashboard, including the review-flag counters of ENG-373.
 
-    `review_flag_counts` holds one entry per flag code carried by at least one recording;
-    a code nobody carries is absent rather than present with a zero. Its values do not sum
-    to `recordings_with_review_flags`: a recording carrying three flags adds one to each of
-    three codes but only one to the distinct count.
+    `review_flag_counts` holds an entry for every `ReviewFlagCode`, including the codes no
+    recording carries, which report zero, plus any code a stored row still carries after
+    being dropped from the enum. A project with nothing pending therefore returns every
+    code at zero and never an empty map, so "nothing pending" is `recordings_with_review_flags
+    == 0` rather than an empty-map check. Its values do not sum to that count: a recording
+    carrying three flags adds one to each of three codes but only one to the distinct count.
 
     `review_flag_counts` is keyed by plain strings for the same reason `ReviewFlagResponse`
     types its `code` that way — a fourth flag code must not break clients generated against
-    today's schema.
+    today's schema. Zero-filling raises the stakes on that: a new code now appears in every
+    project's response the moment it deploys, rather than once some recording carries it.
     """
 
     project_id: str
@@ -30,7 +33,7 @@ class OCProjectStatsResponse(BaseModel):
     total_duration_seconds: float
     total_file_size_bytes: int
     total_storytellers: int = 0
-    review_flag_counts: dict[str, int] = {}
+    review_flag_counts: dict[str, int]
     recordings_with_review_flags: int = 0
 
 
