@@ -14,6 +14,8 @@ async def create_project(
     location_display_name: str | None = None,
     creator_user_id: str | None = None,
 ) -> Project:
+    from app.services.phase.attach_all_phases_to_project import attach_all_phases_to_project
+
     project = Project(
         name=name,
         language_id=language_id,
@@ -23,6 +25,8 @@ async def create_project(
         location_display_name=location_display_name,
     )
     db.add(project)
+    await db.flush()
+    await attach_all_phases_to_project(db, project.id)
     await db.commit()
     await db.refresh(project)
 
