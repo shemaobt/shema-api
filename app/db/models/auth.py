@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -36,7 +36,7 @@ class App(Base):
     app_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ios_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     android_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    platform: Mapped[str] = mapped_column(String(20), default="web")
+    platforms: Mapped[list[str]] = mapped_column(JSON, default=lambda: ["web"])
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_approve: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
