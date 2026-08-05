@@ -13,7 +13,13 @@ class ProjectCreate(BaseModel):
     location_display_name: str | None = Field(default=None, max_length=500)
 
 
-class ProjectResponse(BaseModel):
+class ProjectMemberPreview(BaseModel):
+    user_id: str
+    display_name: str | None
+    avatar_url: str | None
+
+
+class ProjectBaseResponse(BaseModel):
     id: str
     name: str
     description: str | None
@@ -21,16 +27,25 @@ class ProjectResponse(BaseModel):
     latitude: float | None
     longitude: float | None
     location_display_name: str | None
+    image_url: str | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
+class ProjectResponse(ProjectBaseResponse):
+    team_size: int = 0
+    phases_completed: int = 0
+    phases_total: int = 0
+    members_preview: list[ProjectMemberPreview] = Field(default_factory=list)
+
+
 class ProjectUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=10000)
     language_id: str | None = None
+    image_url: str | None = Field(default=None, max_length=500)
 
 
 class ProjectLocationUpdate(BaseModel):
