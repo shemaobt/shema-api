@@ -45,7 +45,12 @@ class TranscriptionProgress:
 
 
 async def start_transcription(
-    db: AsyncSession, session_id: str, *, language: str, force: bool = False
+    db: AsyncSession,
+    session_id: str,
+    *,
+    language: str,
+    force: bool = False,
+    paths: list[str] | None = None,
 ) -> TranscriptionProgress:
     """Queue the drafts that are missing, and return the progress right away.
 
@@ -57,6 +62,14 @@ async def start_transcription(
     of a take that no longer exists is worse than no draft at all. It is also the only
     thing that touches a draft already queued: a plain re-trigger leaves ``pending`` alone,
     so a pass in flight is not made to throw away an answer it has already paid for.
+
+    ``paths`` scopes that force to the answers that actually changed. Session-wide is the
+    right default for the report, which asks once and knows nothing finer; it is the wrong
+    one for the interview, where going back to redo a single take would otherwise discard
+    — and pay again for — every draft already made. ``None`` keeps the session-wide
+    meaning every existing caller relies on; a list that matches no answer resets nothing,
+    because reading "nothing matched" as "match everything" would turn the cheapest
+    mistake a client can make into the most expensive outcome available.
 
     Two queries, never one per answer: a session carries a draft for every question of
     every scene and every phrase, and this runs on the request the report is waiting for.
@@ -78,6 +91,7 @@ async def start_transcription(
     )
 
     existing = await _existing_drafts(db, session_id)
+    scope = None if paths is None else set(paths)
 
     for answer in answers:
         draft = existing.get(answer.resource_path)
@@ -88,7 +102,8 @@ async def start_transcription(
                 )
             )
             continue
-        if draft.status != TranscriptStatus.FAILED and not force:
+        forced = force and (scope is None or answer.resource_path in scope)
+        if draft.status != TranscriptStatus.FAILED and not forced:
             continue
 
         draft.language = language

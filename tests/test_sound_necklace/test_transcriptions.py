@@ -291,6 +291,78 @@ async def test_force_re_transcribes_everything_because_a_take_was_re_recorded(
     assert len(providers.transcribed) == 6
 
 
+async def test_force_with_paths_spares_the_drafts_that_did_not_change(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    """One take re-recorded costs one transcription, not the whole session.
+
+    Without the scoping a `force` resets every draft the session has, so going back to
+    fix a single answer threw away — and paid again for — the forty that were already
+    reviewed. The SPA now names the answer it re-recorded.
+    """
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+    first_pass = len(providers.transcribed)
+
+    listed = await progress(client, headers, session_id)
+    re_recorded = str(listed["answers"][0]["path"])
+
+    forced = await start(client, headers, session_id, force=True, paths=[re_recorded])
+
+    body = forced.json()
+    assert body["pending"] == 1
+    assert body["ready"] == len(body["answers"]) - 1
+    reset = next(a for a in body["answers"] if a["path"] == re_recorded)
+    assert reset["transcript_source"] is None
+
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+    assert len(providers.transcribed) == first_pass + 1
+
+
+async def test_force_without_paths_still_resets_the_whole_session(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    """The un-scoped force is the contract every existing caller already relies on."""
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+
+    forced = await start(client, headers, session_id, force=True, paths=None)
+
+    assert forced.json()["pending"] == 3
+
+
+async def test_a_path_that_belongs_to_no_answer_resets_nothing(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    """A stale path from a client that fell behind must not become an empty force.
+
+    Treating "nothing matched" as "match everything" would turn the cheapest possible
+    mistake into the most expensive outcome there is.
+    """
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+
+    forced = await start(
+        client, headers, session_id, force=True, paths=["respostas/level1/inexistente.webm"]
+    )
+
+    assert forced.json()["pending"] == 0
+
+
 async def test_deleting_the_recording_takes_its_draft_with_it(
     client, db_session, session_with_answers, no_background
 ) -> None:
