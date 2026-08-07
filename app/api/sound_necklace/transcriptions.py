@@ -64,7 +64,7 @@ async def start_transcriptions(
     await assert_project_access(db, user, session.project_id)
 
     progress = await sn_service.start_transcription(
-        db, session_id, language=payload.language, force=payload.force
+        db, session_id, language=payload.language, force=payload.force, paths=payload.paths
     )
     if progress.pending:
         await sn_service.request_transcription(session_id)

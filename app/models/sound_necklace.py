@@ -345,6 +345,11 @@ class TranscriptionRequest(BaseModel):
     language: str = Field(min_length=2, max_length=16)
     #: Throw the existing drafts away and transcribe again — the re-record case.
     force: bool = False
+    #: Which answers ``force`` applies to. Omitted (or null) means the whole session,
+    #: which is what the report's own trigger still asks for. Naming the re-recorded
+    #: answer is what keeps one repeated take from costing a whole session of
+    #: transcriptions.
+    paths: list[str] | None = None
 
 
 class AnswerTranscript(BaseModel):
