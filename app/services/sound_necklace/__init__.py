@@ -28,6 +28,10 @@ from app.services.sound_necklace.record_audit_event import record_audit_event
 from app.services.sound_necklace.record_consent import record_consent
 from app.services.sound_necklace.release_lock import release_lock
 from app.services.sound_necklace.reopen_session import reopen_session
+from app.services.sound_necklace.retranslate_answer import (
+    TranscriptConfirmConflict,
+    retranslate_answer,
+)
 from app.services.sound_necklace.store_artifacts import store_artifacts
 from app.services.sound_necklace.store_voice_answer import store_voice_answer
 from app.services.sound_necklace.transcribe_answers import (
@@ -43,6 +47,7 @@ __all__ = [
     "LOCK_TTL",
     "SessionLockedByOther",
     "StateVersionConflict",
+    "TranscriptConfirmConflict",
     "TranscriptionProgress",
     "acquire_lock",
     "artifact_download_url",
@@ -66,6 +71,7 @@ __all__ = [
     "release_lock",
     "reopen_session",
     "request_transcription",
+    "retranslate_answer",
     "run_pending",
     "set_project_granularity",
     "stamp_resolved_bead_sec",
