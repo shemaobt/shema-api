@@ -497,10 +497,11 @@ async def clear_stale_recordings(
         if access_result.scalar_one_or_none() is None:
             raise AuthorizationError("Only a project manager can clear stale recordings")
 
-    stale_statuses = [UploadStatus.UPLOADING, UploadStatus.UPLOAD_FAILED]
+    # UPLOADING is an upload still in flight, not a failure: the client's "clear failures"
+    # action must not destroy the row and the GCS object of a recording being sent right now.
     stmt = select(OC_Recording).where(
         OC_Recording.project_id == project_id,
-        OC_Recording.upload_status.in_(stale_statuses),
+        OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
     )
     result = await db.execute(stmt)
     recordings = list(result.scalars().all())
