@@ -38,8 +38,14 @@ from app.services.sound_necklace.transcribe_answers import (
     transcription_progress,
 )
 from app.services.sound_necklace.voice_answer_url import voice_answer_url
+from app.services.sound_necklace.working_time import (
+    IDLE_GAP,
+    read_working_time,
+    record_working_tick,
+)
 
 __all__ = [
+    "IDLE_GAP",
     "LOCK_TTL",
     "SessionLockedByOther",
     "StateVersionConflict",
@@ -61,8 +67,10 @@ __all__ = [
     "list_sessions",
     "list_voice_answers",
     "load_state",
+    "read_working_time",
     "record_audit_event",
     "record_consent",
+    "record_working_tick",
     "release_lock",
     "reopen_session",
     "request_transcription",
