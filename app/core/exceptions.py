@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 ERROR_CODE_UNAUTHORIZED = "UNAUTHORIZED"
 ERROR_CODE_FORBIDDEN = "FORBIDDEN"
-ERROR_CODE_CONFLICT = "CONFLICT"
+ERROR_CODE_CONFLICT: Final = "CONFLICT"
 # A 409 that means "someone else is editing this", not "your copy is stale". The two
 # land on the same route and demand opposite reactions from the client — reload and
 # retry, versus stop writing and open in review — so they cannot share a code.
