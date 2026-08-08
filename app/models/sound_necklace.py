@@ -423,3 +423,52 @@ class ProjectGranularityLockedResponse(BaseModel):
 
     detail: str
     code: Literal["PROJECT_GRANULARITY_LOCKED"] = ERROR_CODE_PROJECT_GRANULARITY_LOCKED
+
+
+# ── Net working time (ENG-396) ───────────────────────────────────────────────
+
+
+class WorkingTimeTick(BaseModel):
+    """One "still here" heartbeat. Deliberately the smallest thing that can be sent.
+
+    No timestamp, because the server stamps it and a client clock is not a time source
+    an accumulating counter can trust. No description of what the facilitator was doing,
+    because §14 forbids telemetry on listener behaviour and a field for it here is where
+    that would start.
+
+    ``client_tick_id`` is the client's own identifier for the beat, and exists only so a
+    retried or twice-delivered one is not charged twice.
+
+    It is pinned to a UUID rather than left as free text, and that is a privacy control
+    rather than tidiness. A free-form string this API stores verbatim and forever is
+    somewhere a later client could thread ``"cut;played=3;bead=17"`` — per-interaction
+    telemetry smuggled through an idempotency key, arriving in the one table whose whole
+    claim is that it records nothing about what was done. The pattern constrains that
+    rather than preventing it: 122 bits of hex is ample room to encode something, so what
+    this really does is make smuggling deliberate and obvious instead of casual. Anyone
+    who wants the guarantee has to read the clients, not this field.
+
+    The pattern fixes the length at 36, so no separate bound is declared: a second one
+    would only be a number to keep in step with the regex.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    client_tick_id: str = Field(
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+
+
+class WorkingTimeResponse(BaseModel):
+    """The session's accumulated net working time, in whole seconds.
+
+    Seconds rather than a duration string: the SPA already formats this number for
+    display and a second unit on the wire would be a second thing to keep in step.
+
+    Served on every tick and on demand, with no rule about when to look at it — the SPA
+    shows it on completion and not before, and that stays the SPA's decision.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    net_working_seconds: int

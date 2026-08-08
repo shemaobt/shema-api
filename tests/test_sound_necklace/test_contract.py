@@ -8,8 +8,9 @@ PREFIX = "/api/sound-necklace"
 METHODS = {"get", "post", "put", "delete", "patch"}
 
 # Implemented (ENG-260 sessions, ENG-261 audios, ENG-263 artifacts, ENG-264 resources,
-# ENG-262 lock, ENG-265 consent, ENG-266 audit). Nothing answers 501 any more; the set is
-# kept because the check runs both ways and a future stub must still be caught.
+# ENG-262 lock, ENG-265 consent, ENG-266 audit, ENG-396 working time). Nothing answers
+# 501 any more; the set is kept because the check runs both ways and a future stub must
+# still be caught.
 IMPLEMENTED_OPERATIONS = {
     ("/sessions/{session_id}/lock", "put"),
     ("/sessions/{session_id}/lock", "get"),
@@ -21,6 +22,8 @@ IMPLEMENTED_OPERATIONS = {
     ("/sessions/{session_id}/state", "put"),
     ("/sessions/{session_id}/complete", "post"),
     ("/sessions/{session_id}/reopen", "post"),
+    ("/sessions/{session_id}/working-time/ticks", "post"),
+    ("/sessions/{session_id}/working-time", "get"),
     ("/projects/{project_id}/audios", "get"),
     ("/audios/{audio_id}/url", "get"),
     ("/sessions/{session_id}/artifacts", "post"),
@@ -108,6 +111,7 @@ def test_every_fenced_write_advertises_the_lock_conflict_it_can_raise():
         ("/sessions/{session_id}/complete", "post"),
         ("/sessions/{session_id}/reopen", "post"),
         ("/sessions/{session_id}/artifacts", "post"),
+        ("/sessions/{session_id}/working-time/ticks", "post"),
     ]
     silent = [f"{m.upper()} {p}" for p, m in fenced if "409" not in operations[(p, m)]["responses"]]
     assert not silent, f"fenced writes not advertising their 409: {silent}"

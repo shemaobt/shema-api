@@ -40,7 +40,11 @@ async def complete_session(db: AsyncSession, session: SnSession, actor_user_id: 
                 | (SnSession.lock_expires_at <= now)
                 | (SnSession.locked_by == actor_user_id),
             )
-            .values(status=SessionStatus.COMPLETED, completed_at=now)
+            # Clearing the working-time cursor is what freezes the number. Without it the
+            # first heartbeat after a reopen would measure from the last live beat and
+            # charge the whole stretch the session spent closed, which the idle rule only
+            # hides while that stretch happens to exceed five minutes.
+            .values(status=SessionStatus.COMPLETED, completed_at=now, last_working_tick_at=None)
             .returning(SnSession.id)
             .execution_options(synchronize_session=False)
         )
