@@ -1,4 +1,4 @@
-"""Review flags as the Flutter client actually receives them (ENG-373).
+"""The recordings router as the Flutter client actually meets it.
 
 Asserting that `RecordingResponse` declares a field would be a test of a data structure.
 What matters is that a real HTTP response body carries the flags — a field that exists on
@@ -10,12 +10,14 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import ReviewFlagCode, ReviewFlagOrigin
+from app.core.enums import ReviewFlagCode, ReviewFlagOrigin, UploadStatus
+from app.db.models.project import ProjectUserAccess
 from app.services.oral_collector.review_flags import UNCLASSIFIED_GENRE_ID
 from tests.baker import (
     make_language,
     make_oc_recording,
     make_oc_storyteller,
+    make_oc_taxonomy,
     make_oc_taxonomy_with_sentinel,
     make_project,
     make_user,
@@ -178,3 +180,84 @@ async def test_a_known_review_flag_is_accepted(
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [recording.id]
+
+
+async def test_clearing_stale_recordings_deletes_the_failed_upload_and_spares_the_one_in_flight(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    genre, sub = await make_oc_taxonomy(db_session)
+    manager = await make_user(db_session, email="manager@test.com")
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    db_session.add(ProjectUserAccess(project_id=project.id, user_id=manager.id, role="manager"))
+    await db_session.commit()
+
+    in_flight = await make_oc_recording(
+        db_session,
+        project.id,
+        genre.id,
+        sub.id,
+        user_id=manager.id,
+        upload_status=UploadStatus.UPLOADING,
+        title="still uploading",
+    )
+    await make_oc_recording(
+        db_session,
+        project.id,
+        genre.id,
+        sub.id,
+        user_id=manager.id,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+        title="upload failed",
+    )
+
+    headers = await _auth_header(db_session, manager)
+    response = await client.post(
+        f"{RECORDINGS_PREFIX}/clear-stale",
+        params={"project_id": project.id},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": 1}
+
+    survivor = await client.get(f"{RECORDINGS_PREFIX}/{in_flight.id}", headers=headers)
+    assert survivor.status_code == 200
+    assert survivor.json()["id"] == in_flight.id
+
+
+async def test_clearing_stale_recordings_is_forbidden_to_a_non_manager(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    genre, sub = await make_oc_taxonomy(db_session)
+    member = await make_user(db_session, email="member@test.com")
+    lang = await make_language(db_session)
+    project = await make_project(db_session, lang.id)
+    db_session.add(ProjectUserAccess(project_id=project.id, user_id=member.id, role="member"))
+    await db_session.commit()
+
+    failed = await make_oc_recording(
+        db_session,
+        project.id,
+        genre.id,
+        sub.id,
+        user_id=member.id,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+        title="upload failed",
+    )
+
+    headers = await _auth_header(db_session, member)
+    response = await client.post(
+        f"{RECORDINGS_PREFIX}/clear-stale",
+        params={"project_id": project.id},
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Only a project manager can clear stale recordings",
+        "code": "FORBIDDEN",
+    }
+
+    survivor = await client.get(f"{RECORDINGS_PREFIX}/{failed.id}", headers=headers)
+    assert survivor.status_code == 200
