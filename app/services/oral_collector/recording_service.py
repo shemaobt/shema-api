@@ -487,6 +487,25 @@ async def clear_stale_recordings(
     *,
     is_platform_admin: bool = False,
 ) -> int:
+    """Delete the project's failed uploads and report how many rows went.
+
+    On the server "failed" means `UPLOAD_FAILED` and nothing else. Walking the enum
+    settles it: `UPLOADED` and `VERIFIED` are successes; `LOCAL` is a recording that
+    exists but has not started uploading yet, and `UPLOADING` is one whose bytes are
+    still in flight, so deleting either destroys audio nobody has copied anywhere. That
+    leaves one state, and it is the only one anything ever sets on failure —
+    `_on_upload_failure` writes it after `process-upload` exhausts its retries.
+
+    The narrowing buys safety, not agreement. This endpoint is the far half of the app's
+    "clear failed" button, and the near half counts more things as failed than the server
+    ever will: a failure the client hits before or instead of the upload leaves the server
+    row at `UPLOADING`, written back when the upload URL was issued, and that row now
+    survives the button deliberately. So a device listing several failed recordings can
+    get `deleted: 0` here, and that is the intended answer — the server removes only what
+    it recorded as failed itself, and clearing anything else is the client's own business.
+    Promoting a long-stalled `UPLOADING` row to a failure is a separate state transition
+    and deliberately not part of this call.
+    """
     if not is_platform_admin:
         access_stmt = select(ProjectUserAccess).where(
             ProjectUserAccess.project_id == project_id,
@@ -497,10 +516,9 @@ async def clear_stale_recordings(
         if access_result.scalar_one_or_none() is None:
             raise AuthorizationError("Only a project manager can clear stale recordings")
 
-    stale_statuses = [UploadStatus.UPLOADING, UploadStatus.UPLOAD_FAILED]
     stmt = select(OC_Recording).where(
         OC_Recording.project_id == project_id,
-        OC_Recording.upload_status.in_(stale_statuses),
+        OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
     )
     result = await db.execute(stmt)
     recordings = list(result.scalars().all())
