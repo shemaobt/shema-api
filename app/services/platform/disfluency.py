@@ -10,8 +10,13 @@ every language rather than as a rule inside somebody else's prompt.
 is the whole justification for adding a model step. The cleaner never writes an unreviewed
 edit into an artifact: what it produces is the draft the facilitator reads and confirms in
 the SPA, and the confirmed text is what everything downstream — the translation included —
-is built from. A human is still the last word on every sentence. The owner approved the
-step and the placement on those terms.
+is built from. The owner approved the step and the placement on those terms.
+
+The confirmation covers what the cleaner kept, not what it removed, so the caller stores
+the verbatim transcript in a column of its own (`sn_answer_transcripts.transcript_verbatim`,
+ENG-399) beside the cleaned one. A removed sentence is then still on the record and can be
+put back; without it, the only trace of a wrongly dropped sentence would be a model call
+nobody kept.
 
 Nothing raised here is an outage of the answer. This service reports its failures honestly —
 an outage as `UpstreamServiceError`, a missing key as `ValidationError` — and the caller

@@ -350,6 +350,11 @@ class TranscriptionRequest(BaseModel):
 class AnswerTranscript(BaseModel):
     """One answer's draft. Advisory: nothing here reaches an artifact unconfirmed.
 
+    ``transcript_source`` is the cleaned text, which is the one to show and the one the
+    facilitator confirms. ``transcript_verbatim`` is what speech-to-text returned before the
+    disfluency cleanup, carried so the client can diff the two and show what was removed;
+    the two being equal means the cleanup changed nothing or fell back to verbatim.
+
     ``translation_en`` carries the English text whatever the interview language was — for
     an English interview it is the transcript itself — so the report reads one field.
     ``error`` is the answer's own failure, and it never means the job failed.
@@ -359,6 +364,7 @@ class AnswerTranscript(BaseModel):
 
     path: str
     status: TranscriptStatus
+    transcript_verbatim: str | None = None
     transcript_source: str | None = None
     translation_en: str | None = None
     error: str | None = None

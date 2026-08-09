@@ -35,6 +35,7 @@ def _body(progress: TranscriptionProgress) -> TranscriptionProgressResponse:
             AnswerTranscript(
                 path=draft.resource_path,
                 status=draft.status,
+                transcript_verbatim=draft.transcript_verbatim,
                 transcript_source=draft.transcript_source,
                 translation_en=draft.translation_en,
                 error=draft.error,

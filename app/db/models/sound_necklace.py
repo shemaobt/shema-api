@@ -460,6 +460,20 @@ class SnAnswerTranscript(Base):
     the trigger: it is the transcriber's hint and the switch that decides whether a
     translation is needed. ``generation`` backs the compare-and-swap that keeps a pass in
     flight from writing its result over a draft a ``force`` has already reset.
+
+    Two transcripts, not one. ``transcript_source`` is the cleaned text — what the
+    facilitator reads and confirms — and ``transcript_verbatim`` is what speech-to-text
+    returned before the disfluency cleanup touched it. Keeping both is what makes the
+    removal inspectable: a human cannot be the last word on a sentence they were never
+    shown, and without the verbatim column the only record of a dropped sentence would be
+    the model call that dropped it.
+
+    Equality between the two does NOT mean the cleanup failed. A cleanup that fell back to
+    verbatim produces equal texts, and so does a successful cleanup of an answer that had no
+    hesitation in it — equality is the one signal that cannot tell those apart. Selecting
+    ``WHERE transcript_verbatim = transcript_source`` and ``force``-ing the result would
+    re-bill the transcription of every cleanly-processed answer in the session and throw
+    away drafts a facilitator had already confirmed.
     """
 
     __tablename__ = "sn_answer_transcripts"
@@ -471,6 +485,7 @@ class SnAnswerTranscript(Base):
     )
     language: Mapped[str] = mapped_column(String(16))
     generation: Mapped[int] = mapped_column(Integer, default=0)
+    transcript_verbatim: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     translation_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

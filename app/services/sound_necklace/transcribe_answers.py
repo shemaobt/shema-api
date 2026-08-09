@@ -95,6 +95,7 @@ async def start_transcription(
         draft.language = language
         draft.status = TranscriptStatus.PENDING
         draft.generation += 1
+        draft.transcript_verbatim = None
         draft.transcript_source = None
         draft.translation_en = None
         draft.error = None
@@ -155,10 +156,10 @@ async def run_pending(
     Sequential on purpose: one session, one row committed per answer, so progress is
     visible while it runs and a crash costs at most the answer in flight.
 
-    The cleaned text is what is stored and what the translator is fed, so the hesitation is
-    neither shown to the facilitator nor carried into English. Cleaning before the SPA
-    confirmation is what makes the extra model step safe: the human still reads and confirms
-    every word of it.
+    The cleaned text is what the facilitator confirms and what the translator is fed, so the
+    hesitation is neither shown nor carried into English. The verbatim text is stored beside
+    it rather than discarded: what the cleaner removed is then a diff between two columns,
+    which is the only way anyone can check a sentence that never reached the screen.
 
     ponytail: a 200-answer session takes 200 round trips end to end. If that becomes the
     complaint, fan out with one DB session per worker — not with a shared one, which is
@@ -199,6 +200,7 @@ async def run_pending(
             )
             values = {
                 "status": TranscriptStatus.READY,
+                "transcript_verbatim": verbatim,
                 "transcript_source": transcript,
                 "translation_en": translation,
                 "error": None,
@@ -239,12 +241,22 @@ async def _cleaned(
     swapped in. The intent is total — no cleanup failure of any kind costs an answer — and
     the catch says so.
 
-    Known gap, deliberately not fixed here: a fallen-back answer is stored as a plain
-    `READY` draft and nothing on the row records that it is verbatim. `start_transcription`
-    never re-queues a `READY` draft, so a transient outage mid-session leaves those answers
-    uncleaned for good; the only recovery is `force`, which re-bills the ElevenLabs
-    transcription for every answer in the session. Retaining the verbatim text in a column
-    of its own is the real fix and needs a migration.
+    A fallen-back answer is stored as a `READY` draft whose `transcript_verbatim` and
+    `transcript_source` are equal. That implication runs one way only. An answer with no
+    hesitation in it is cleaned successfully and stored equal too, so equality is a set of
+    candidates to look at, never the set of answers an outage damaged — acting on it as if
+    it were exact would `force` a re-transcription of answers that are perfectly fine.
+
+    It does not even hold as a proxy for "the text was not changed". `clean_disfluency`
+    returns `.strip()`ed output where this fallback returns the verbatim string as it came,
+    so a successful cleanup that removed nothing but surrounding whitespace stores the two
+    UNEQUAL. The logs are what actually record a fallback.
+
+    Known gap, deliberately not fixed here: `start_transcription` never re-queues a `READY`
+    draft, so nothing re-cleans those answers on its own. The only recovery is `force`,
+    which re-bills the ElevenLabs transcription for every answer in the session — a cleanup
+    pass that reads the stored verbatim text and skips the transcriber is the fix, and it is
+    a job of its own rather than a branch in this one.
     """
     try:
         return await cleaner(verbatim, language=language)
