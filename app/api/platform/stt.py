@@ -5,6 +5,7 @@ from app.core.exceptions import ValidationError
 from app.core.rate_limit import bearer_token_key, limiter
 from app.db.models.auth import User
 from app.models.platform import SttTranscribeResponse
+from app.services.platform.disfluency import clean_disfluency
 from app.services.platform.stt import WEBM, transcribe_speech
 
 router = APIRouter()
@@ -17,6 +18,12 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: This route bills per second of audio. The cap is sized for a human recording answers one
 #: at a time — a bulk pass over a whole session is the batch job's business, not this one's,
 #: and that one never comes through here.
+#:
+#: `clean=true` adds a second provider call per request and the cap is unchanged: it is a
+#: text-length call on at most a few minutes of speech, next to a transcription billed per
+#: second of audio, so it does not move what this limit was sized against. What the flag
+#: does move is latency, and a caller waiting on two providers in series is self-limiting
+#: long before thirty a minute.
 STT_RATE_LIMIT_PER_MINUTE = 30
 
 
@@ -27,14 +34,29 @@ async def transcribe_endpoint(
     file: UploadFile = File(...),
     language: str = Form(...),
     mime_type: str | None = Form(default=None),
+    clean: bool = Form(default=False),
     _: User = Depends(get_current_user),
 ) -> SttTranscribeResponse:
     """Transcribe one recording. Multipart in, text out.
 
     The single-shot counterpart of `/tts/speak`, and the shape the two existing audio
     endpoints already take, so migrating them here later is a change of URL rather than of
-    client. Transcription only: whoever needs English calls the translator, and no app pays
-    an LLM by accident on a route named `transcribe`.
+    client. Transcription only unless asked otherwise: whoever needs English calls the
+    translator, and no app pays an LLM by accident on a route named `transcribe`.
+
+    `clean` is that asking, and it defaults to off for exactly the reason above. Left alone
+    it is byte-for-byte the old route and the cleanup provider is never reached. Set, the
+    verbatim transcript goes through the same disfluency cleaner the Sound Necklace pass
+    uses, in the request's own language — the step is language-agnostic — and the caller gets
+    a usable draft in one round trip instead of two.
+
+    A cleanup failure is answered with the upstream error, not with the verbatim text. The
+    batch pass falls back to verbatim because there the alternative is a `failed` row and a
+    recording nobody transcribed; here the caller still holds the audio and can retry, or
+    ask again without the flag, and get the verbatim text whenever it wants it. What it
+    cannot do is tell cleaned text from uncleaned in a response that carries only `text`, so
+    a silent fallback would hand back words the speaker did say, mixed in with hesitation the
+    caller asked to have removed, under a 200 that claims the request was honoured.
 
     `language` is required. It is the transcriber's hint, and leaving the engine to guess is
     how a Portuguese answer comes back as phonetic Spanish.
@@ -46,4 +68,6 @@ async def transcribe_endpoint(
     text = await transcribe_speech(
         audio, language=language, mime_type=mime_type or file.content_type or WEBM
     )
+    if clean:
+        text = await clean_disfluency(text, language=language)
     return SttTranscribeResponse(text=text)
