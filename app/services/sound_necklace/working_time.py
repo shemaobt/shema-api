@@ -11,7 +11,8 @@ what that is worth. A client-supplied duration would be a number this API could 
 check nor reproduce, and one skewed or edited clock would put hours of work nobody did
 into a facilitator's record. So the stored seconds on ``sn_sessions`` are only ever a
 running sum of stretches this database measured between instants it stamped itself, and
-the ticks are kept so the sum can be re-derived rather than merely believed.
+the ticks are kept — for as long as the sum can still move — so it can be re-derived
+rather than merely believed. ``complete_session`` deletes them once it is frozen.
 
 They are stored as whole seconds in a plain ``Integer``, never an INTERVAL and never
 SQLAlchemy's ``Interval``: that type is emulated on the SQLite the tests run against and
@@ -21,6 +22,16 @@ thing everywhere.
 
 When it is shown is not decided here. The SPA reveals it on completion and not before;
 this exposes the number and nothing about when to look at it.
+
+``IDLE_GAP`` is five minutes because that is the SPA's already-shipped threshold and the
+industry's default for the same judgement, so moving it here would silently disagree with
+every total the pilot accumulated. ``_MAX_ATTEMPTS`` bounds how many times a heartbeat
+re-derives its stretch after losing the compare-and-swap: each loss means another beat
+moved the cursor forward, so the retry reads a later cursor AND a later clock and measures
+only what is left. That convergence depends entirely on the clock advancing between
+attempts, which is why ``_DatabaseNow`` must not be transaction-scoped. Exhausting the
+attempts returns the stored total rather than erroring — a heartbeat is not worth a 500,
+and the winner has already charged all but a sliver of what this beat was measuring.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -35,18 +46,8 @@ from app.core.exceptions import NotFoundError
 from app.db.models.sound_necklace import SessionStatus, SnSession, SnSessionTick
 from app.services.sound_necklace.lock_fence import raise_if_locked_by_other
 
-# The gap past which a stretch is idle rather than worked. Five minutes is the SPA's
-# already-shipped threshold and the industry's default for the same judgement, so
-# changing it here would silently disagree with every total the pilot accumulated.
 IDLE_GAP = timedelta(minutes=5)
 
-# How many times a heartbeat re-derives its stretch after losing the compare-and-swap.
-# Each loss means another beat moved the cursor forward, so the retry reads a later
-# cursor AND a later clock and measures only what is left. That convergence depends
-# entirely on the clock advancing between attempts, which is why _DatabaseNow must not be
-# transaction-scoped — see the note there. Exhausting the attempts returns the stored
-# total rather than erroring: a heartbeat is not worth a 500, and the winner has already
-# charged all but a sliver of what this beat was measuring.
 _MAX_ATTEMPTS = 3
 
 
@@ -88,9 +89,12 @@ def _database_now_postgresql(element: _DatabaseNow, compiler: object, **kw: obje
 
 @compiles(_DatabaseNow, "sqlite")
 def _database_now_sqlite(element: _DatabaseNow, compiler: object, **kw: object) -> str:
-    # '%f' yields seconds with three decimals; the trailing zeroes pad that to the six
-    # digits SQLAlchemy reads back as microseconds, so a fraction of a second does not
-    # come back a thousand times too small.
+    """SQLite's clock, spelled out to microsecond width.
+
+    ``'%f'`` yields seconds with three decimals; the trailing zeroes pad that to the six
+    digits SQLAlchemy reads back as microseconds, so a fraction of a second does not come
+    back a thousand times too small.
+    """
     return "STRFTIME('%Y-%m-%d %H:%M:%f000', 'now')"
 
 
@@ -128,6 +132,22 @@ async def record_working_tick(
     deriving one. Two tabs of one user are unfenced by design (see ``lock_fence``), and a
     client that times out and retries makes its own requests concurrent, so this is
     reached in ordinary use and its error only ever inflates.
+
+    That UPDATE's predicates are spelled against the target row's own columns rather than
+    the autosave's NOT EXISTS, for the reason ``complete_session`` sets out: a subquery
+    carries its own uncorrelated scan and would re-run under the statement's original
+    snapshot, reporting a session free that has just been taken or in progress that has
+    just been completed. The cursor comparison is null-safe because an untouched session
+    and a freshly reopened one both carry a null cursor and both must match.
+    ``synchronize_session=False`` belongs with them: the guard is the database's to
+    decide and the identity map cannot answer for it, and ``complete_session`` sets the
+    same option on the same table.
+
+    When nothing matches, nothing is pending and no tick has been written. The three
+    predicates could each have refused it and they mean different things to the caller,
+    so completion is asked about first: a finished session answers with its frozen total
+    even while somebody else holds the lease, because the number is settled and a 409
+    would invite a retry that can never succeed.
 
     Completing a session clears the cursor, so the first heartbeat after a reopen has no
     stretch behind it and charges nothing regardless of how long the session was closed.
@@ -171,14 +191,7 @@ async def record_working_tick(
                 update(SnSession)
                 .where(
                     SnSession.id == session_id,
-                    # Predicates on the target row's own columns rather than the
-                    # autosave's NOT EXISTS, for the reason complete_session spells out:
-                    # a subquery carries its own uncorrelated scan and would re-run under
-                    # this statement's original snapshot, reporting a session free that
-                    # has just been taken or in progress that has just been completed.
                     SnSession.status == SessionStatus.IN_PROGRESS,
-                    # The compare-and-swap. Null-safe, because an untouched session and a
-                    # freshly reopened one both carry a null cursor and both must match.
                     SnSession.last_working_tick_at.is_not_distinct_from(cursor),
                     SnSession.lock_expires_at.is_(None)
                     | (SnSession.lock_expires_at <= lease_now)
@@ -189,8 +202,6 @@ async def record_working_tick(
                     last_working_tick_at=advanced,
                 )
                 .returning(SnSession.net_working_seconds)
-                # The guard is the database's to decide, and the identity map cannot
-                # answer for it. complete_session sets the same option on the same table.
                 .execution_options(synchronize_session=False)
             )
         ).scalar_one_or_none()
@@ -202,22 +213,13 @@ async def record_working_tick(
             try:
                 await db.commit()
             except IntegrityError:
-                # The same beat, delivered twice and racing itself. The rollback discards
-                # the charge along with the rejected row, leaving the winner's alone.
                 await db.rollback()
                 return await read_working_time(db, session_id)
             return total
 
-        # Nothing matched, so nothing is pending and no tick has been written. Three
-        # predicates could have refused it, and they mean different things to the caller.
-        # Completion is asked about first: a finished session answers with its frozen
-        # total even while somebody else holds the lease, because the number is settled
-        # and a 409 would invite a retry that can never succeed.
         if await _is_completed(db, session_id):
             return await read_working_time(db, session_id)
         await raise_if_locked_by_other(db, session_id, actor_user_id)
-        # The cursor moved: another beat charged part of this stretch already. Re-derive
-        # against where it moved to, and against a clock that has moved with it.
 
     return await read_working_time(db, session_id)
 

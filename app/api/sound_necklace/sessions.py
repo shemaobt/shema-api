@@ -2,6 +2,12 @@
 
 The state document is the SPA's, not ours: it arrives as bytes, is stored as those
 bytes, and is served back as those bytes. Nothing here parses it to persist it.
+
+``_TICK_LOCKED_RESPONSE`` is fenced like complete and reopen, but the heartbeat can only
+ever refuse for one reason, so it advertises one model rather than reusing
+``LOCKED_RESPONSE``. A heartbeat has no SESSION_LOCK_CHANGED case: where those two must
+report a write that refused and then lost its holder, a heartbeat that finds the lease
+lapsed simply lands.
 """
 
 from typing import Annotated, Any
@@ -42,10 +48,6 @@ _CONFLICT_RESPONSE: dict[int | str, dict[str, Any]] = {
 }
 
 
-# Fenced like complete and reopen, but it can only ever refuse for one reason, so it
-# advertises one model rather than reusing LOCKED_RESPONSE. A heartbeat has no
-# SESSION_LOCK_CHANGED case: where those two must report a write that refused and then
-# lost its holder, a heartbeat that finds the lease lapsed simply lands.
 _TICK_LOCKED_RESPONSE: dict[int | str, dict[str, Any]] = {
     status.HTTP_409_CONFLICT: {
         "model": SessionLockedResponse,
