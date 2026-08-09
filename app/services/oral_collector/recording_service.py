@@ -472,9 +472,25 @@ async def _validate_storyteller_in_project(
 
 
 async def delete_recording(db: AsyncSession, recording_id: str) -> None:
+    """Delete a recording, and its blob if it ever reached the bucket.
 
+    The blob goes whenever `gcs_url` is set, whatever the upload status. Gating that on
+    `ACTIVE_UPLOAD_STATUSES` orphaned the object of a recording that reached the bucket and
+    then failed verification: `process-upload` writes `gcs_url` before it checks size and
+    checksum, so an `UPLOAD_FAILED` row can own a real object. `clear_stale_recordings`
+    deletes that same object, and one row cannot mean two different things about the bucket
+    depending on which button removed it.
+
+    An upload still in flight is deleted rather than refused. The bytes travel straight from
+    the client to GCS over a signed URL, so this API cannot cancel a transfer either way, and
+    refusing would only pin the row until `fail_stalled_uploads` releases it — deliberately
+    weeks away. Deleting one recording on purpose is the owner's call to make, which is not
+    what the bulk sweep behind a button is. The cost is bounded and known: a `PUT` that lands
+    after the row is gone leaves an object nothing points at, and the client's `confirm-upload`
+    then answers 404.
+    """
     recording = await get_recording(db, recording_id)
-    if recording.upload_status in ACTIVE_UPLOAD_STATUSES and recording.gcs_url:
+    if recording.gcs_url:
         _delete_gcs_blob(recording.gcs_url)
     await db.delete(recording)
     await db.commit()
@@ -520,6 +536,52 @@ async def clear_stale_recordings(
 
     await db.commit()
     return len(recordings)
+
+
+STALLED_UPLOAD_DEADLINE = timedelta(days=14)
+
+STALLED_UPLOAD_ERROR = (
+    f"No upload progress for {STALLED_UPLOAD_DEADLINE.days} days. "
+    "Keep the local recording and upload it again."
+)
+
+
+async def fail_stalled_uploads(db: AsyncSession) -> int:
+    """Fail the uploads that stopped making progress `STALLED_UPLOAD_DEADLINE` ago.
+
+    `UPLOADING` is entered when the client asks for an upload URL and left only by
+    `confirm-upload`. An app that dies mid-transfer reaches neither, so without this pass the
+    row stays `UPLOADING` forever — hidden from the default listing, which falls back to
+    `ACTIVE_UPLOAD_STATUSES`, and moved on by nothing else on the server.
+
+    Fourteen days, from two facts. A V4 signed URL and a resumable session URI both last at
+    most seven days, so past a week the transfer the row is waiting on provably cannot resume;
+    everything after that is grace rather than patience. The grace is a second full week
+    because this app is offline first: a facilitator recording in a village can be out of
+    connectivity for days at a stretch, and `UPLOAD_FAILED` is exactly what the manager's bulk
+    clear deletes. A short deadline here does not inconvenience someone, it destroys fieldwork
+    that cannot be recorded twice.
+
+    Staleness is read from `updated_at`, so any edit to the row counts as progress and pushes
+    the deadline out. That errs towards waiting longer, which is the safe direction.
+
+    Nothing is deleted and no blob is touched: the transition only makes a dead upload visible
+    and retryable. Deleting is a separate, deliberate act.
+    """
+    cutoff = datetime.now(UTC) - STALLED_UPLOAD_DEADLINE
+    stmt = select(OC_Recording).where(
+        OC_Recording.upload_status == UploadStatus.UPLOADING,
+        OC_Recording.updated_at < cutoff,
+    )
+    result = await db.execute(stmt)
+    stalled = list(result.scalars().all())
+
+    for recording in stalled:
+        recording.upload_status = UploadStatus.UPLOAD_FAILED
+        recording.upload_error = STALLED_UPLOAD_ERROR
+
+    await db.commit()
+    return len(stalled)
 
 
 def _gcs_blob_path(project_id: str, genre_id: str, recording_id: str, fmt: str) -> str:
