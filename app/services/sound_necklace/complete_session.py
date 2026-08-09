@@ -1,10 +1,10 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import update
+from sqlalchemy import delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SessionLockChanged
-from app.db.models.sound_necklace import AuditEvent, SessionStatus, SnSession
+from app.db.models.sound_necklace import AuditEvent, SessionStatus, SnSession, SnSessionTick
 from app.services.sound_necklace.lock_fence import raise_if_locked_by_other
 from app.services.sound_necklace.record_audit_event import record_audit_event
 
@@ -18,6 +18,21 @@ async def complete_session(db: AsyncSession, session: SnSession, actor_user_id: 
 
     Fenced in the statement, like the autosave: a tab that was paused through a
     takeover must not finish a session somebody else is now editing.
+
+    Clearing ``last_working_tick_at`` is what freezes the net working time. Without it
+    the first heartbeat after a reopen would measure from the last live beat and charge
+    the whole stretch the session spent closed, which the idle rule only hides while that
+    stretch happens to exceed five minutes.
+
+    The session's heartbeat rows are deleted in the same transaction, so a session can
+    never be completed with its ticks still present. While the total can still move the
+    ticks earn their keep: they are what lets the number be re-derived rather than merely
+    believed. Once it is frozen they sustain nothing but a stamped record of when the
+    listener was at work and for how long, which is the §14 surveillance the lock
+    heartbeat is kept out of the audit log to avoid — and auditability over a number that
+    can no longer change does not buy enough to justify keeping one. A fifteen-second
+    beat also leaves around 1,900 rows per eight-hour session, so the volume argument
+    runs the same way, but privacy is the reason.
     """
     if session.status is SessionStatus.COMPLETED:
         return session
@@ -40,10 +55,6 @@ async def complete_session(db: AsyncSession, session: SnSession, actor_user_id: 
                 | (SnSession.lock_expires_at <= now)
                 | (SnSession.locked_by == actor_user_id),
             )
-            # Clearing the working-time cursor is what freezes the number. Without it the
-            # first heartbeat after a reopen would measure from the last live beat and
-            # charge the whole stretch the session spent closed, which the idle rule only
-            # hides while that stretch happens to exceed five minutes.
             .values(status=SessionStatus.COMPLETED, completed_at=now, last_working_tick_at=None)
             .returning(SnSession.id)
             .execution_options(synchronize_session=False)
@@ -59,6 +70,12 @@ async def complete_session(db: AsyncSession, session: SnSession, actor_user_id: 
         # uncompleted session — a no-op reported as success. Say what happened instead;
         # the client's next attempt finds the session free.
         raise SessionLockChanged("The session lock changed hands. Try completing again.")
+
+    await db.execute(
+        delete(SnSessionTick)
+        .where(SnSessionTick.session_id == session.id)
+        .execution_options(synchronize_session=False)
+    )
 
     await record_audit_event(
         db,
