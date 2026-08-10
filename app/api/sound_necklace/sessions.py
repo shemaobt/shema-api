@@ -281,7 +281,7 @@ async def record_working_tick(
     await assert_project_access(db, user, session.project_id)
     try:
         total = await sn_service.record_working_tick(
-            db, session, client_tick_id=payload.client_tick_id, actor_user_id=user.id
+            db, session_id, client_tick_id=payload.client_tick_id, actor_user_id=user.id
         )
     except sn_service.SessionLockedByOther as exc:
         return locked_body(exc)

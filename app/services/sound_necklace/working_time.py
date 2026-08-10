@@ -1,9 +1,5 @@
 """Net working time: heartbeats in, one accumulated total out.
 
-The SPA has computed this number since the pilot and kept it in ``localStorage``, which
-means it dies with the browser profile — a cleared storage, a second machine or a second
-seat all lose it. This is the same number, kept where it survives.
-
 The definition is the SPA's and is not restated differently here: time with the session
 open and the tab visible, with any gap longer than ``IDLE_GAP`` discarded as idle. What
 it deliberately does not measure is keystrokes or clicks. That is not an oversight to be
@@ -16,6 +12,12 @@ check nor reproduce, and one skewed or edited clock would put hours of work nobo
 into a facilitator's record. So the stored seconds on ``sn_sessions`` are only ever a
 running sum of stretches this database measured between instants it stamped itself, and
 the ticks are kept so the sum can be re-derived rather than merely believed.
+
+They are stored as whole seconds in a plain ``Integer``, never an INTERVAL and never
+SQLAlchemy's ``Interval``: that type is emulated on the SQLite the tests run against and
+native on the Postgres production runs, which makes duration the one column shape
+guaranteed to behave differently in the two places. A count of seconds means the same
+thing everywhere.
 
 When it is shown is not decided here. The SPA reveals it on completion and not before;
 this exposes the number and nothing about when to look at it.
@@ -98,8 +100,7 @@ async def read_working_time(db: AsyncSession, session_id: str) -> int:
     Read with a fresh SELECT rather than off a loaded ``SnSession``: every write to this
     column is a Core UPDATE with ``synchronize_session=False``, so an instance the
     identity map is already holding keeps the value it was loaded with. This is also the
-    read that restores the SPA after a cleared ``localStorage``, which is the whole
-    reason the number moved to the server.
+    read that restores a client which has lost its own copy of the number.
     """
     total = (
         await db.execute(select(SnSession.net_working_seconds).where(SnSession.id == session_id))
@@ -110,7 +111,7 @@ async def read_working_time(db: AsyncSession, session_id: str) -> int:
 
 
 async def record_working_tick(
-    db: AsyncSession, session: SnSession, *, client_tick_id: str, actor_user_id: str
+    db: AsyncSession, session_id: str, *, client_tick_id: str, actor_user_id: str
 ) -> int:
     """Record one heartbeat and return the session's total afterwards.
 
@@ -156,13 +157,7 @@ async def record_working_tick(
     The collision is caught rather than avoided with an upsert because ``ON CONFLICT`` is
     not spelled the same on Postgres and on the SQLite the tests run against; the
     constraint is the guard that actually holds, whatever is layered in front of it.
-
-    ``session`` is read once, for its id, and never touched again. A rollback expires
-    every instance in the identity map, so reading an attribute after one would emit a
-    lazy reload from plain Python — outside the greenlet the async driver needs, which is
-    a MissingGreenlet crash rather than the answer the caller expects.
     """
-    session_id = session.id
     if await _already_recorded(db, session_id, client_tick_id):
         return await read_working_time(db, session_id)
 

@@ -197,23 +197,14 @@ class SnSession(Base):
     # Expiry is decided on read; nothing sweeps lapsed leases. A crashed tab therefore
     # frees its session without anyone unlocking it by hand.
     lock_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Whole seconds in a plain Integer, never INTERVAL and never SQLAlchemy's Interval:
-    # that type is emulated on the SQLite the tests run against and native on the Postgres
-    # production runs, which makes duration the one column shape guaranteed to behave
-    # differently in the two places. A count of seconds means the same thing everywhere.
-    # Accumulated by record_working_tick and read straight back; the SPA decides when to
-    # show it, this only decides what it is.
+    # The session's accumulated net working time, as a whole count of seconds: a plain
+    # Integer, never Interval — see working_time, which argues that and does the
+    # accumulating.
     net_working_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    # The instant the last counted heartbeat was stamped, and the compare-and-swap the
-    # accumulation turns on. It lives HERE, on the row the charge updates, rather than
-    # being read back out of sn_session_ticks: a gap derived from a separate SELECT is
-    # derived under a snapshot the UPDATE does not share, so two heartbeats whose reads
-    # both land before either write measure the same stretch and both add it. Holding the
-    # cursor on the target row lets one statement test it and move it together, which is
-    # the only arrangement in which the stretch cannot be charged twice.
-    # Null means "no stretch to measure from" and is how the freeze works: completing a
-    # session clears it, so the first heartbeat after a reopen charges nothing at all and
-    # the closed stretch is never counted, however short it was.
+    # The instant the last counted heartbeat was stamped, and the cursor the accumulation
+    # compare-and-swaps on. Null means "no stretch to measure from": completing a session
+    # clears it, so the first heartbeat after a reopen charges nothing at all and the
+    # closed stretch is never counted, however short it was.
     last_working_tick_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -256,10 +247,8 @@ class SnSessionTick(Base):
     way round. Keeping the rows is what makes the total auditable and recomputable — a
     lone counter could only ever be believed.
 
-    ``occurred_at`` is stamped by the server, never by the client. The client's clock is
-    the one thing an accumulating counter must not trust: a skewed or edited one turns
-    into hours of working time nobody worked, and a facilitator's laptop is not a time
-    source anyone audits.
+    ``occurred_at`` is the database's own clock, never the client's and never the
+    application's; ``working_time`` is where that choice is argued.
 
     ``client_tick_id`` exists only so a retried or twice-delivered heartbeat cannot be
     charged twice. It is the client's own opaque string and means nothing here beyond
