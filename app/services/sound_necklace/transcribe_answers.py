@@ -220,31 +220,16 @@ async def _cleaned(
 ) -> str:
     """The disfluency-free text, or the verbatim one if the cleanup could not be done.
 
-    The cleanup is an optional improvement on top of the transcript; the transcript is the
-    actual work product. Letting the cleanup take the answer down with it would trade a
-    draft a human can tidy in a minute for no draft at all, and would put a recording the
-    storyteller already gave behind a second provider's uptime.
+    The transcript is the work product and the cleanup an improvement on top of it, so a
+    cleanup failure must not take the answer down with it. Missing configuration is absorbed
+    too, not only an outage: transcription runs on ElevenLabs and the cleanup on Google, so
+    an absent `GOOGLE_API_KEY` would otherwise turn every session into `failed` rows. It
+    announces itself at `error` level instead.
 
-    Missing configuration is absorbed for the same reason, not only an outage. Transcription
-    runs on ElevenLabs and the cleanup on Google, so an absent `GOOGLE_API_KEY` would
-    otherwise turn every session — English ones included, which never needed that key at all
-    — into a wall of `failed` rows. A misconfiguration must not destroy real data in order
-    to announce itself; it announces itself at `error` level instead, which is where
-    monitoring can see it.
-
-    `Exception` rather than a list of types, which is the exception to this repo's rule and
-    is meant as one. `DisfluencyCleaner` is a seam: it promises a return type and nothing
-    about what it raises, so naming types here would silently couple this to the one
-    implementation currently behind it and break the guarantee the moment another is
-    swapped in. The intent is total — no cleanup failure of any kind costs an answer — and
-    the catch says so.
-
-    Known gap, deliberately not fixed here: a fallen-back answer is stored as a plain
-    `READY` draft and nothing on the row records that it is verbatim. `start_transcription`
-    never re-queues a `READY` draft, so a transient outage mid-session leaves those answers
-    uncleaned for good; the only recovery is `force`, which re-bills the ElevenLabs
-    transcription for every answer in the session. Retaining the verbatim text in a column
-    of its own is the real fix and needs a migration.
+    `Exception` rather than a list of types, which is this repo's rule broken on purpose.
+    `DisfluencyCleaner` is a seam: it promises a return type and nothing about what it
+    raises, so naming types here would couple this to the one implementation currently
+    behind it.
     """
     try:
         return await cleaner(verbatim, language=language)
