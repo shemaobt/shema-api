@@ -43,7 +43,7 @@ from collections.abc import Awaitable, Callable
 import pytest
 from sqlalchemy import select, text
 
-from app.core.exceptions import UpstreamServiceError
+from app.core.exceptions import SessionLockChanged, UpstreamServiceError
 from app.db.models.sound_necklace import SnAnswerTranscript, TranscriptStatus
 from app.services import sound_necklace_service as sn_service
 from app.services.oral_collector import gcs_utils
@@ -379,6 +379,83 @@ async def test_a_lock_taken_during_the_translation_still_refuses_the_write(
     assert row.generation == 0
 
 
+def lease_lapses_before_the_diagnosis(monkeypatch) -> None:
+    """Let the pre-check run for real, then make the diagnosis read find nobody.
+
+    Nobody is what it finds when the lease expires between the write it refused and the
+    read that asks who refused it — a window microseconds wide that no test can hit by
+    timing. Only the second call is stubbed, so the pre-check still has to pass on its
+    own and the guard inside the statement stays the only thing that can refuse.
+    """
+    diagnose = retranslate_answer_service.raise_if_locked_by_other
+    calls = 0
+
+    async def lapsed(*args, **kwargs) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await diagnose(*args, **kwargs)
+
+    monkeypatch.setattr(retranslate_answer_service, "raise_if_locked_by_other", lapsed)
+
+
+async def test_a_confirm_refused_by_a_lease_that_then_lapsed_is_not_a_stale_draft(
+    db_session, drafted, bob, monkeypatch
+) -> None:
+    session_id, user, _headers = drafted
+    bob_user, _bob_headers = bob
+    lease_lapses_before_the_diagnosis(monkeypatch)
+
+    async def bob_takes_over() -> None:
+        await hand_lease_to(db_session, session_id, bob_user.id)
+
+    translator = FakeTranslator(during=bob_takes_over)
+
+    with pytest.raises(SessionLockChanged):
+        await sn_service.retranslate_answer(
+            db_session,
+            session_id,
+            ANSWER,
+            transcript_source=CONFIRMED_PT,
+            expected_generation=0,
+            actor_user_id=user.id,
+            translator=translator,
+        )
+
+    assert translator.calls == [(CONFIRMED_PT, "pt-BR")]
+    row = await stored(db_session, session_id)
+    assert (row.transcript_source, row.translation_en) == (DRAFT_PT, DRAFT_EN)
+    assert row.generation == 0
+
+
+async def test_a_draft_that_moved_under_a_lapsed_lease_is_still_a_stale_draft(
+    db_session, drafted, bob, monkeypatch
+) -> None:
+    session_id, user, _headers = drafted
+    bob_user, _bob_headers = bob
+    lease_lapses_before_the_diagnosis(monkeypatch)
+
+    async def bob_takes_over_and_confirms() -> None:
+        await hand_lease_to(db_session, session_id, bob_user.id)
+        await win_the_race(db_session, session_id, generation=1)
+
+    translator = FakeTranslator(during=bob_takes_over_and_confirms)
+
+    with pytest.raises(sn_service.TranscriptConfirmConflict):
+        await sn_service.retranslate_answer(
+            db_session,
+            session_id,
+            ANSWER,
+            transcript_source=CONFIRMED_PT,
+            expected_generation=0,
+            actor_user_id=user.id,
+            translator=translator,
+        )
+
+    row = await stored(db_session, session_id)
+    assert row.transcript_source == "o outro facilitador digitou isto"
+
+
 async def test_a_translator_failure_leaves_the_stored_draft_consistent(db_session, drafted) -> None:
     session_id, user, _headers = drafted
     translator = FakeTranslator(raises=UpstreamServiceError("Gemini is down"))
@@ -507,6 +584,31 @@ async def test_a_stale_confirm_is_a_409_the_client_can_tell_from_a_locked_one(
     assert res.status_code == 409, res.text
     assert res.json()["code"] == "CONFLICT"
     assert "holder_name" not in res.json()
+
+
+async def test_a_confirm_the_lease_lost_and_then_lapsed_on_is_a_409_that_says_retry(
+    client, db_session, drafted, bob, monkeypatch
+) -> None:
+    session_id, _user, headers = drafted
+    bob_user, _bob_headers = bob
+    lease_lapses_before_the_diagnosis(monkeypatch)
+
+    async def bob_takes_over() -> None:
+        await hand_lease_to(db_session, session_id, bob_user.id)
+
+    translator = FakeTranslator(during=bob_takes_over)
+    monkeypatch.setattr(retranslate_answer_service, "translate_to_english", translator)
+
+    res = await confirm_over_http(
+        client, headers, session_id, ANSWER, transcript_source=CONFIRMED_PT, generation=0
+    )
+
+    assert res.status_code == 409, res.text
+    assert res.json()["code"] == "SESSION_LOCK_CHANGED"
+    assert "holder_name" not in res.json()
+
+    row = await stored(db_session, session_id)
+    assert (row.transcript_source, row.translation_en) == (DRAFT_PT, DRAFT_EN)
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\n\t "])

@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, SessionLockChanged
 from app.db.models.sound_necklace import SnAnswerTranscript, TranscriptStatus
 from app.services.platform.translation import Translator, translate_to_english
 from app.services.platform.voices import language_hint
@@ -84,9 +84,13 @@ async def retranslate_answer(
     rides in that same WHERE for the same reason: the counter is read before an await long
     enough for another confirm to win, so re-checking it in Python would guard nothing.
 
-    A write that matches nothing was refused by one of those two, and which is only worth
-    deciding on the path that already lost. Nothing matched, so nothing is pending to roll
-    back.
+    A write that matches nothing was refused by one of those two, and which one is worth
+    deciding, on the path that already lost, because the client's three reactions differ.
+    Someone still holds the lease: stop writing. The counter moved: the human's text is an
+    edit of a superseded sentence, so reload. Neither: the lease refused the write and had
+    lapsed by the time we looked, and the confirm the facilitator typed still stands — a
+    reload here would ask them to discard it and retype it against identical text. Nothing
+    matched, so nothing is pending to roll back.
 
     The confirmed row comes back out of the statement that wrote it rather than from a
     read afterwards: between a commit and a re-read another confirm can land, and the
@@ -134,6 +138,16 @@ async def retranslate_answer(
 
     if confirmed is None:
         await raise_if_locked_by_other(db, session_id, actor_user_id)
+        current_generation = (
+            await db.execute(
+                select(SnAnswerTranscript.generation).where(
+                    SnAnswerTranscript.session_id == session_id,
+                    SnAnswerTranscript.resource_path == resource_path,
+                )
+            )
+        ).scalar_one_or_none()
+        if current_generation == draft.generation:
+            raise SessionLockChanged("The session lock changed hands. Try confirming again.")
         raise TranscriptConfirmConflict()
 
     await db.commit()
