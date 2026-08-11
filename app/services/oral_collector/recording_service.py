@@ -1,5 +1,6 @@
 import logging
 import re
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 
 import google.auth
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import (
     ACTIVE_UPLOAD_STATUSES,
     USER_SETTABLE_CLEANING_STATUSES,
+    OCNotificationEvent,
     OCRecordingEvent,
     SplittingStatus,
     UploadStatus,
@@ -37,6 +39,8 @@ from app.models.oc_recording import (
     ResumableUploadUrlResponse,
     UploadUrlResponse,
 )
+from app.services.notifications.create_notification import create_notification
+from app.services.notifications.get_oc_app_id import get_oc_app_id
 from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE, content_type_for_format
 from app.services.oral_collector.review_flags import flag_codes, recompute_review_flags
@@ -472,9 +476,18 @@ async def _validate_storyteller_in_project(
 
 
 async def delete_recording(db: AsyncSession, recording_id: str) -> None:
+    """Delete a recording, and its blob if it ever reached the bucket.
 
+    The blob goes whenever `gcs_url` is set, whatever the upload status: `process-upload`
+    writes `gcs_url` before it checks size and checksum, so an `UPLOAD_FAILED` row can own a
+    real object, and `clear_stale_recordings` deletes that same object.
+
+    An upload still in flight is deleted rather than refused, since the bytes travel from the
+    client to GCS over a signed URL and this API cannot cancel a transfer either way. A `PUT`
+    landing after the row is gone leaves an orphan object and answers `confirm-upload` 404.
+    """
     recording = await get_recording(db, recording_id)
-    if recording.upload_status in ACTIVE_UPLOAD_STATUSES and recording.gcs_url:
+    if recording.gcs_url:
         _delete_gcs_blob(recording.gcs_url)
     await db.delete(recording)
     await db.commit()
@@ -520,6 +533,62 @@ async def clear_stale_recordings(
 
     await db.commit()
     return len(recordings)
+
+
+STALLED_UPLOAD_DEADLINE = timedelta(days=14)
+
+STALLED_UPLOAD_ERROR = (
+    f"No upload progress for {STALLED_UPLOAD_DEADLINE.days} days. "
+    "Keep the local recording and upload it again."
+)
+
+
+async def fail_stalled_uploads(db: AsyncSession) -> int:
+    """Fail the uploads that stopped making progress `STALLED_UPLOAD_DEADLINE` ago.
+
+    `UPLOADING` is entered when the client asks for an upload URL and left only by
+    `confirm-upload`, so an app that dies mid-transfer leaves a row nothing else on the server
+    moves. Fourteen days because a V4 signed URL and a resumable session URI both last at most
+    seven, so past a week the transfer provably cannot resume; the second week is grace for an
+    offline-first client. Staleness reads `updated_at`, so any edit counts as progress.
+
+    Nothing is deleted and no blob is touched, but each owner is told once per sweep: the rows
+    land on the list the manager's bulk clear empties, and the only copy left is on the device
+    of someone who would otherwise never learn the upload died.
+    """
+    cutoff = datetime.now(UTC) - STALLED_UPLOAD_DEADLINE
+    stmt = select(OC_Recording).where(
+        OC_Recording.upload_status == UploadStatus.UPLOADING,
+        OC_Recording.updated_at < cutoff,
+    )
+    result = await db.execute(stmt)
+    stalled = list(result.scalars().all())
+
+    owners = Counter(r.user_id for r in stalled if r.user_id)
+    app_id = await get_oc_app_id(db) if owners else None
+
+    for recording in stalled:
+        recording.upload_status = UploadStatus.UPLOAD_FAILED
+        recording.upload_error = STALLED_UPLOAD_ERROR
+
+    await db.commit()
+
+    if app_id is not None:
+        for user_id, count in owners.items():
+            await create_notification(
+                db,
+                user_id=user_id,
+                app_id=app_id,
+                event_type=OCNotificationEvent.UPLOAD_FAILED,
+                title="Uploads timed out — keep your local recordings",
+                body=(
+                    f"{count} of your recordings stopped uploading more than "
+                    f"{STALLED_UPLOAD_DEADLINE.days} days ago and cannot resume. "
+                    "Keep the local recordings and upload them again."
+                ),
+            )
+
+    return len(stalled)
 
 
 def _gcs_blob_path(project_id: str, genre_id: str, recording_id: str, fmt: str) -> str:
