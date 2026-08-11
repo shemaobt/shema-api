@@ -1,12 +1,16 @@
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 
 from app.core.auth_middleware import get_current_user
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.core.rate_limit import bearer_token_key, limiter
 from app.db.models.auth import User
 from app.models.platform import SttTranscribeResponse
 from app.services.platform.disfluency import clean_disfluency
 from app.services.platform.stt import WEBM, transcribe_speech
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -50,13 +54,15 @@ async def transcribe_endpoint(
     uses, in the request's own language — the step is language-agnostic — and the caller gets
     a usable draft in one round trip instead of two.
 
-    A cleanup failure is answered with the upstream error, not with the verbatim text. The
-    batch pass falls back to verbatim because there the alternative is a `failed` row and a
-    recording nobody transcribed; here the caller still holds the audio and can retry, or
-    ask again without the flag, and get the verbatim text whenever it wants it. What it
-    cannot do is tell cleaned text from uncleaned in a response that carries only `text`, so
-    a silent fallback would hand back words the speaker did say, mixed in with hesitation the
-    caller asked to have removed, under a 200 that claims the request was honoured.
+    A cleanup that cannot be had costs the cleaning and nothing else: the verbatim transcript
+    comes back under `cleaned: false`, so the caller is told which of the two it holds rather
+    than left to guess from the text. Failing instead would throw away a transcription that
+    succeeded and was billed. The cleaner refuses a reply too short to be cleaning as readily
+    as it refuses an outage, and a short, hesitant answer trips that honestly — a 502 there
+    would report a provider failure that never happened. A missing cleanup key lands here
+    too: our misconfiguration, on a provider the transcription never touched.
+
+    Only the cleanup is optional. A transcription failure is still the upstream error it is.
 
     `language` is required. It is the transcriber's hint, and leaving the engine to guess is
     how a Portuguese answer comes back as phonetic Spanish.
@@ -68,6 +74,12 @@ async def transcribe_endpoint(
     text = await transcribe_speech(
         audio, language=language, mime_type=mime_type or file.content_type or WEBM
     )
-    if clean:
-        text = await clean_disfluency(text, language=language)
-    return SttTranscribeResponse(text=text)
+    if not clean:
+        return SttTranscribeResponse(text=text)
+
+    try:
+        cleaned = await clean_disfluency(text, language=language)
+    except (UpstreamServiceError, ValidationError) as exc:
+        logger.warning("stt cleanup skipped, returning the verbatim transcript: %s", exc)
+        return SttTranscribeResponse(text=text)
+    return SttTranscribeResponse(text=cleaned, cleaned=True)
