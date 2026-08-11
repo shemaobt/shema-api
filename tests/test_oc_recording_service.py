@@ -1,11 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
+from app.core.enums import CleaningStatus, OCNotificationEvent, SplittingStatus, UploadStatus
 from app.core.exceptions import (
     AuthorizationError,
     ConflictError,
@@ -15,6 +15,8 @@ from app.core.exceptions import (
     UnknownReferenceError,
     ValidationError,
 )
+from app.db.models.auth import App
+from app.db.models.notification import Notification
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.project import ProjectUserAccess
@@ -25,7 +27,9 @@ from app.models.oc_recording import (
     ResumableUploadUrlRequest,
     ResumableUploadUrlResponse,
 )
+from app.services.notifications.get_oc_app_id import OC_APP_KEY
 from tests.baker import (
+    make_app,
     make_language,
     make_oc_recording,
     make_oc_storyteller,
@@ -1396,6 +1400,20 @@ async def test_unknown_reference_is_served_as_422() -> None:
     assert response.json()["detail"] == "no such genre"
 
 
+async def _seed_oc_app(db: AsyncSession) -> App:
+    """The app row every oral-collector notification is filed under.
+
+    `conftest` seeds the other two apps but not this one, and the sweep notifies the owner of
+    every recording it fails, so any test whose stalled rows have an owner needs it.
+    """
+    return await make_app(db, app_key=OC_APP_KEY, name="Oral Collector")
+
+
+async def _notifications_for(db: AsyncSession, user_id: str) -> list[Notification]:
+    result = await db.execute(select(Notification).where(Notification.user_id == user_id))
+    return list(result.scalars().all())
+
+
 async def _age_recording(db: AsyncSession, recording_id: str, age: timedelta) -> None:
     """Move a recording's `updated_at` back without waiting the clock out.
 
@@ -1416,6 +1434,7 @@ async def test_an_upload_stalled_past_the_deadline_is_marked_failed(
     db_session: AsyncSession,
 ) -> None:
     rs = _import_service()
+    await _seed_oc_app(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
@@ -1505,6 +1524,7 @@ async def test_no_other_upload_state_is_touched_however_old_it_is(
 @pytest.mark.asyncio
 async def test_the_sweep_counts_only_the_uploads_it_failed(db_session: AsyncSession) -> None:
     rs = _import_service()
+    await _seed_oc_app(db_session)
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
@@ -1532,6 +1552,66 @@ async def test_the_sweep_counts_only_the_uploads_it_failed(db_session: AsyncSess
     )
 
     assert await rs.fail_stalled_uploads(db_session) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_tells_each_owner_how_many_of_their_uploads_it_failed(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    oc_app = await _seed_oc_app(db_session)
+    owner = await make_user(db_session, email="stalled-owner@test.com")
+    other = await make_user(db_session, email="stalled-other@test.com")
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    for index, user in enumerate([owner, owner, other]):
+        stalled = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"stalled {index}",
+            upload_status=UploadStatus.UPLOADING,
+        )
+        await _age_recording(db_session, stalled.id, rs.STALLED_UPLOAD_DEADLINE + timedelta(days=1))
+
+    await rs.fail_stalled_uploads(db_session)
+
+    owner_notifications = await _notifications_for(db_session, owner.id)
+    assert len(owner_notifications) == 1
+    assert owner_notifications[0].app_id == oc_app.id
+    assert owner_notifications[0].event_type == OCNotificationEvent.UPLOAD_FAILED
+    assert "2 of your recordings" in owner_notifications[0].body
+
+    other_notifications = await _notifications_for(db_session, other.id)
+    assert len(other_notifications) == 1
+    assert "1 of your recordings" in other_notifications[0].body
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_upload_nobody_owns_is_failed_without_a_notification(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    stalled = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=None,
+        upload_status=UploadStatus.UPLOADING,
+    )
+    await _age_recording(db_session, stalled.id, rs.STALLED_UPLOAD_DEADLINE + timedelta(days=1))
+
+    assert await rs.fail_stalled_uploads(db_session) == 1
+
+    result = await db_session.execute(select(Notification))
+    assert result.scalars().all() == []
 
 
 @pytest.mark.asyncio

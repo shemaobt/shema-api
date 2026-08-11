@@ -1,5 +1,6 @@
 import logging
 import re
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 
 import google.auth
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import (
     ACTIVE_UPLOAD_STATUSES,
     USER_SETTABLE_CLEANING_STATUSES,
+    OCNotificationEvent,
     OCRecordingEvent,
     SplittingStatus,
     UploadStatus,
@@ -37,6 +39,8 @@ from app.models.oc_recording import (
     ResumableUploadUrlResponse,
     UploadUrlResponse,
 )
+from app.services.notifications.create_notification import create_notification
+from app.services.notifications.get_oc_app_id import get_oc_app_id
 from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE, content_type_for_format
 from app.services.oral_collector.review_flags import flag_codes, recompute_review_flags
@@ -474,20 +478,13 @@ async def _validate_storyteller_in_project(
 async def delete_recording(db: AsyncSession, recording_id: str) -> None:
     """Delete a recording, and its blob if it ever reached the bucket.
 
-    The blob goes whenever `gcs_url` is set, whatever the upload status. Gating that on
-    `ACTIVE_UPLOAD_STATUSES` orphaned the object of a recording that reached the bucket and
-    then failed verification: `process-upload` writes `gcs_url` before it checks size and
-    checksum, so an `UPLOAD_FAILED` row can own a real object. `clear_stale_recordings`
-    deletes that same object, and one row cannot mean two different things about the bucket
-    depending on which button removed it.
+    The blob goes whenever `gcs_url` is set, whatever the upload status: `process-upload`
+    writes `gcs_url` before it checks size and checksum, so an `UPLOAD_FAILED` row can own a
+    real object, and `clear_stale_recordings` deletes that same object.
 
-    An upload still in flight is deleted rather than refused. The bytes travel straight from
-    the client to GCS over a signed URL, so this API cannot cancel a transfer either way, and
-    refusing would only pin the row until `fail_stalled_uploads` releases it — deliberately
-    weeks away. Deleting one recording on purpose is the owner's call to make, which is not
-    what the bulk sweep behind a button is. The cost is bounded and known: a `PUT` that lands
-    after the row is gone leaves an object nothing points at, and the client's `confirm-upload`
-    then answers 404.
+    An upload still in flight is deleted rather than refused, since the bytes travel from the
+    client to GCS over a signed URL and this API cannot cancel a transfer either way. A `PUT`
+    landing after the row is gone leaves an orphan object and answers `confirm-upload` 404.
     """
     recording = await get_recording(db, recording_id)
     if recording.gcs_url:
@@ -550,23 +547,14 @@ async def fail_stalled_uploads(db: AsyncSession) -> int:
     """Fail the uploads that stopped making progress `STALLED_UPLOAD_DEADLINE` ago.
 
     `UPLOADING` is entered when the client asks for an upload URL and left only by
-    `confirm-upload`. An app that dies mid-transfer reaches neither, so without this pass the
-    row stays `UPLOADING` forever — hidden from the default listing, which falls back to
-    `ACTIVE_UPLOAD_STATUSES`, and moved on by nothing else on the server.
+    `confirm-upload`, so an app that dies mid-transfer leaves a row nothing else on the server
+    moves. Fourteen days because a V4 signed URL and a resumable session URI both last at most
+    seven, so past a week the transfer provably cannot resume; the second week is grace for an
+    offline-first client. Staleness reads `updated_at`, so any edit counts as progress.
 
-    Fourteen days, from two facts. A V4 signed URL and a resumable session URI both last at
-    most seven days, so past a week the transfer the row is waiting on provably cannot resume;
-    everything after that is grace rather than patience. The grace is a second full week
-    because this app is offline first: a facilitator recording in a village can be out of
-    connectivity for days at a stretch, and `UPLOAD_FAILED` is exactly what the manager's bulk
-    clear deletes. A short deadline here does not inconvenience someone, it destroys fieldwork
-    that cannot be recorded twice.
-
-    Staleness is read from `updated_at`, so any edit to the row counts as progress and pushes
-    the deadline out. That errs towards waiting longer, which is the safe direction.
-
-    Nothing is deleted and no blob is touched: the transition only makes a dead upload visible
-    and retryable. Deleting is a separate, deliberate act.
+    Nothing is deleted and no blob is touched, but each owner is told once per sweep: the rows
+    land on the list the manager's bulk clear empties, and the only copy left is on the device
+    of someone who would otherwise never learn the upload died.
     """
     cutoff = datetime.now(UTC) - STALLED_UPLOAD_DEADLINE
     stmt = select(OC_Recording).where(
@@ -576,11 +564,30 @@ async def fail_stalled_uploads(db: AsyncSession) -> int:
     result = await db.execute(stmt)
     stalled = list(result.scalars().all())
 
+    owners = Counter(r.user_id for r in stalled if r.user_id)
+    app_id = await get_oc_app_id(db) if owners else None
+
     for recording in stalled:
         recording.upload_status = UploadStatus.UPLOAD_FAILED
         recording.upload_error = STALLED_UPLOAD_ERROR
 
     await db.commit()
+
+    if app_id is not None:
+        for user_id, count in owners.items():
+            await create_notification(
+                db,
+                user_id=user_id,
+                app_id=app_id,
+                event_type=OCNotificationEvent.UPLOAD_FAILED,
+                title="Uploads timed out — keep your local recordings",
+                body=(
+                    f"{count} of your recordings stopped uploading more than "
+                    f"{STALLED_UPLOAD_DEADLINE.days} days ago and cannot resume. "
+                    "Keep the local recordings and upload them again."
+                ),
+            )
+
     return len(stalled)
 
 
