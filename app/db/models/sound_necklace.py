@@ -524,9 +524,17 @@ class SnAnswerTranscript(Base):
     shown, and without the verbatim column the only record of a dropped sentence would be
     the model call that dropped it.
 
+    A confirm writes the facilitator's text into ``transcript_source`` and leaves
+    ``transcript_verbatim`` exactly where the transcription pass left it, which is what keeps
+    the spoken words recoverable however often the draft is edited. It also means the gap
+    between the two columns stops being the cleaner's work alone once a human has touched the
+    row: after a confirm it holds the removals and the edits together, and no column here
+    records which of the two a given difference came from.
+
     Equality between the two does NOT mean the cleanup failed. A cleanup that fell back to
-    verbatim produces equal texts, and so does a successful cleanup of an answer that had no
-    hesitation in it — equality is the one signal that cannot tell those apart. Selecting
+    verbatim produces equal texts; so does a successful cleanup of an answer that had no
+    hesitation in it; and so does a facilitator confirming text that happens to match the
+    verbatim. Equality is the one signal that cannot tell those three apart. Selecting
     ``WHERE transcript_verbatim = transcript_source`` and ``force``-ing the result would
     re-bill the transcription of every cleanly-processed answer in the session and throw
     away drafts a facilitator had already confirmed.

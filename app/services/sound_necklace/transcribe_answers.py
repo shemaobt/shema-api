@@ -176,6 +176,12 @@ async def run_pending(
     it rather than discarded: what the cleaner removed is then a diff between two columns,
     which is the only way anyone can check a sentence that never reached the screen.
 
+    That diff is the cleaner's work only until somebody confirms the draft. A confirm writes
+    the facilitator's text into `transcript_source` and leaves `transcript_verbatim` as this
+    pass wrote it, so a confirmed row's two columns differ by the removals and the human's
+    edits together. The verbatim text stays recoverable either way, which is the property
+    worth having; attributing the whole difference to the model is not.
+
     ponytail: a 200-answer session takes 200 round trips end to end. If that becomes the
     complaint, fan out with one DB session per worker — not with a shared one, which is
     not concurrency-safe.
@@ -253,6 +259,12 @@ async def _cleaned(
     hesitation in it is cleaned successfully and stored equal too, so equality is a set of
     candidates to look at, never the set of answers an outage damaged — acting on it as if
     it were exact would `force` a re-transcription of answers that are perfectly fine.
+
+    The confirm path widens that set further, and it widens with use: `retranslate_answer`
+    writes `transcript_source` without touching `transcript_verbatim`, so a facilitator who
+    confirms text matching the verbatim lands on the same equality from a third direction
+    entirely. The candidate set is thus not even stable — a row can join it long after this
+    function last ran.
 
     It does not even hold as a proxy for "the text was not changed". `clean_disfluency`
     returns `.strip()`ed output where this fallback returns the verbatim string as it came,
