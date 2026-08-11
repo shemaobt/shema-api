@@ -3,11 +3,13 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 from app.api.platform.stt import MAX_AUDIO_BYTES, STT_RATE_LIMIT_PER_MINUTE
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from tests.baker import make_user
 from tests.test_platform.conftest import auth_header
 
 WEBM = b"\x1a\x45\xdf\xa3 fake webm/opus bytes"
-TRANSCRIPT = "a história começa no rio"
+TRANSCRIPT = "é… é… a história começa no rio"
+CLEANED = "a história começa no rio"
 
 
 def _upload(audio: bytes = WEBM, language: str = "pt-BR", **data: str) -> dict:
@@ -26,7 +28,7 @@ async def test_transcribes_an_uploaded_recording(db_session, client) -> None:
         res = await client.post("/api/platform/stt/transcribe", headers=headers, **_upload())
 
     assert res.status_code == 200
-    assert res.json() == {"text": TRANSCRIPT}
+    assert res.json() == {"text": TRANSCRIPT, "cleaned": False}
     assert stt.await_args.kwargs["language"] == "pt-BR"
 
 
@@ -112,6 +114,151 @@ async def test_a_missing_language_is_422(db_session, client) -> None:
     )
 
     assert res.status_code == 422
+
+
+async def test_no_flag_returns_the_verbatim_transcript_and_pays_no_second_model(
+    db_session, client
+) -> None:
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    cleaner = AsyncMock(return_value=CLEANED)
+
+    with (
+        patch("app.api.platform.stt.transcribe_speech", AsyncMock(return_value=TRANSCRIPT)),
+        patch("app.api.platform.stt.clean_disfluency", cleaner),
+    ):
+        res = await client.post("/api/platform/stt/transcribe", headers=headers, **_upload())
+
+    assert res.status_code == 200
+    assert res.json() == {"text": TRANSCRIPT, "cleaned": False}
+    cleaner.assert_not_awaited()
+
+
+async def test_an_explicit_false_is_as_untouched_as_no_flag_at_all(db_session, client) -> None:
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    cleaner = AsyncMock(return_value=CLEANED)
+
+    with (
+        patch("app.api.platform.stt.transcribe_speech", AsyncMock(return_value=TRANSCRIPT)),
+        patch("app.api.platform.stt.clean_disfluency", cleaner),
+    ):
+        res = await client.post(
+            "/api/platform/stt/transcribe", headers=headers, **_upload(clean="false")
+        )
+
+    assert res.status_code == 200
+    assert res.json() == {"text": TRANSCRIPT, "cleaned": False}
+    cleaner.assert_not_awaited()
+
+
+async def test_the_clean_flag_returns_the_cleaned_transcript(db_session, client) -> None:
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    cleaner = AsyncMock(return_value=CLEANED)
+
+    with (
+        patch("app.api.platform.stt.transcribe_speech", AsyncMock(return_value=TRANSCRIPT)),
+        patch("app.api.platform.stt.clean_disfluency", cleaner),
+    ):
+        res = await client.post(
+            "/api/platform/stt/transcribe", headers=headers, **_upload(clean="true")
+        )
+
+    assert res.status_code == 200
+    assert res.json() == {"text": CLEANED, "cleaned": True}
+    assert cleaner.await_args.args == (TRANSCRIPT,)
+    assert cleaner.await_args.kwargs["language"] == "pt-BR"
+
+
+async def test_a_short_reply_that_trips_the_length_backstop_still_returns_the_transcription(
+    db_session, client
+) -> None:
+    # The backstop fires on an honestly short answer too, and nothing upstream failed. The
+    # transcription is paid for and correct either way, so it is not the cleanup's to lose.
+    too_short = UpstreamServiceError(
+        "Disfluency cleanup returned 5 chars for 30: too short to be cleaning"
+    )
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+
+    with (
+        patch("app.api.platform.stt.transcribe_speech", AsyncMock(return_value=TRANSCRIPT)),
+        patch("app.api.platform.stt.clean_disfluency", AsyncMock(side_effect=too_short)),
+    ):
+        res = await client.post(
+            "/api/platform/stt/transcribe", headers=headers, **_upload(clean="true")
+        )
+
+    assert res.status_code == 200
+    assert res.json() == {"text": TRANSCRIPT, "cleaned": False}
+
+
+async def test_a_cleanup_outage_costs_the_cleaning_and_not_the_transcription(
+    db_session, client
+) -> None:
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    cleaner = AsyncMock(side_effect=UpstreamServiceError("Disfluency cleanup failed: boom"))
+
+    with (
+        patch("app.api.platform.stt.transcribe_speech", AsyncMock(return_value=TRANSCRIPT)),
+        patch("app.api.platform.stt.clean_disfluency", cleaner),
+    ):
+        res = await client.post(
+            "/api/platform/stt/transcribe", headers=headers, **_upload(clean="true")
+        )
+
+    assert res.status_code == 200
+    assert res.json() == {"text": TRANSCRIPT, "cleaned": False}
+
+
+async def test_an_unconfigured_cleanup_is_not_blamed_on_the_caller(db_session, client) -> None:
+    # A missing GOOGLE_API_KEY is ours, not theirs: transcription runs on a different
+    # provider and had already succeeded when the cleaner refused.
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    cleaner = AsyncMock(side_effect=ValidationError("GOOGLE_API_KEY is not configured"))
+
+    with (
+        patch("app.api.platform.stt.transcribe_speech", AsyncMock(return_value=TRANSCRIPT)),
+        patch("app.api.platform.stt.clean_disfluency", cleaner),
+    ):
+        res = await client.post(
+            "/api/platform/stt/transcribe", headers=headers, **_upload(clean="true")
+        )
+
+    assert res.status_code == 200
+    assert res.json() == {"text": TRANSCRIPT, "cleaned": False}
+
+
+async def test_a_transcription_failure_is_still_reported(db_session, client) -> None:
+    # Only the cleanup is optional. Losing the transcription leaves nothing to hand back.
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    stt = AsyncMock(side_effect=UpstreamServiceError("Speech-to-text failed: boom"))
+
+    with patch("app.api.platform.stt.transcribe_speech", stt):
+        res = await client.post(
+            "/api/platform/stt/transcribe", headers=headers, **_upload(clean="true")
+        )
+
+    assert res.status_code == 502
+    assert res.json()["code"] == "UPSTREAM_ERROR"
+
+
+async def test_a_malformed_clean_flag_is_422(db_session, client) -> None:
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    stt = AsyncMock(return_value=TRANSCRIPT)
+
+    with patch("app.api.platform.stt.transcribe_speech", stt):
+        res = await client.post(
+            "/api/platform/stt/transcribe", headers=headers, **_upload(clean="maybe")
+        )
+
+    assert res.status_code == 422
+    assert stt.await_count == 0
 
 
 async def test_abuse_is_blocked_before_it_pays_elevenlabs(db_session, client) -> None:
