@@ -168,7 +168,12 @@ class SnSession(Base):
     audio_ref: Mapped[str] = mapped_column(
         String(128), ForeignKey("sn_audio_refs.audio_id"), index=True
     )
+    #: The display name. Editable — see ``rename_session``.
     story_name: Mapped[str] = mapped_column(String(255))
+    #: Set once, at creation, and never written again. It names the three artifact files
+    #: a downstream pipeline reads by name (PRD §10.5), so writing it after those objects
+    #: exist would strand them under keys nothing points at. A rename moves
+    #: ``story_name`` alone for exactly this reason.
     slug: Mapped[str] = mapped_column(String(255))
     manifest_id: Mapped[str] = mapped_column(String(64))
     granularity_level: Mapped[GranularityLevel] = mapped_column(_GRANULARITY_TYPE)
