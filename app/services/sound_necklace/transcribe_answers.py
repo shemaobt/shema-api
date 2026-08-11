@@ -46,7 +46,12 @@ class TranscriptionProgress:
 
 
 async def start_transcription(
-    db: AsyncSession, session_id: str, *, language: str, force: bool = False
+    db: AsyncSession,
+    session_id: str,
+    *,
+    language: str,
+    force: bool = False,
+    paths: list[str] | None = None,
 ) -> TranscriptionProgress:
     """Queue the drafts that are missing, and return the progress right away.
 
@@ -58,6 +63,14 @@ async def start_transcription(
     of a take that no longer exists is worse than no draft at all. It is also the only
     thing that touches a draft already queued: a plain re-trigger leaves ``pending`` alone,
     so a pass in flight is not made to throw away an answer it has already paid for.
+
+    ``paths`` scopes that force to the answers that actually changed. Session-wide is the
+    right default for the report, which asks once and knows nothing finer; it is the wrong
+    one for the interview, where going back to redo a single take would otherwise discard
+    — and pay again for — every draft already made. ``None`` keeps the session-wide
+    meaning every existing caller relies on; a list that matches no answer resets nothing,
+    because reading "nothing matched" as "match everything" would turn the cheapest
+    mistake a client can make into the most expensive outcome available.
 
     Two queries, never one per answer: a session carries a draft for every question of
     every scene and every phrase, and this runs on the request the report is waiting for.
@@ -79,6 +92,7 @@ async def start_transcription(
     )
 
     existing = await _existing_drafts(db, session_id)
+    scope = None if paths is None else set(paths)
 
     for answer in answers:
         draft = existing.get(answer.resource_path)
@@ -89,7 +103,8 @@ async def start_transcription(
                 )
             )
             continue
-        if draft.status != TranscriptStatus.FAILED and not force:
+        forced = force and (scope is None or answer.resource_path in scope)
+        if draft.status != TranscriptStatus.FAILED and not forced:
             continue
 
         draft.language = language
@@ -222,24 +237,16 @@ async def _cleaned(
 ) -> str:
     """The disfluency-free text, or the verbatim one if the cleanup could not be done.
 
-    The cleanup is an optional improvement on top of the transcript; the transcript is the
-    actual work product. Letting the cleanup take the answer down with it would trade a
-    draft a human can tidy in a minute for no draft at all, and would put a recording the
-    storyteller already gave behind a second provider's uptime.
+    The transcript is the work product and the cleanup an improvement on top of it, so a
+    cleanup failure must not take the answer down with it. Missing configuration is absorbed
+    too, not only an outage: transcription runs on ElevenLabs and the cleanup on Google, so
+    an absent `GOOGLE_API_KEY` would otherwise turn every session into `failed` rows. It
+    announces itself at `error` level instead.
 
-    Missing configuration is absorbed for the same reason, not only an outage. Transcription
-    runs on ElevenLabs and the cleanup on Google, so an absent `GOOGLE_API_KEY` would
-    otherwise turn every session — English ones included, which never needed that key at all
-    — into a wall of `failed` rows. A misconfiguration must not destroy real data in order
-    to announce itself; it announces itself at `error` level instead, which is where
-    monitoring can see it.
-
-    `Exception` rather than a list of types, which is the exception to this repo's rule and
-    is meant as one. `DisfluencyCleaner` is a seam: it promises a return type and nothing
-    about what it raises, so naming types here would silently couple this to the one
-    implementation currently behind it and break the guarantee the moment another is
-    swapped in. The intent is total — no cleanup failure of any kind costs an answer — and
-    the catch says so.
+    `Exception` rather than a list of types, which is this repo's rule broken on purpose.
+    `DisfluencyCleaner` is a seam: it promises a return type and nothing about what it
+    raises, so naming types here would couple this to the one implementation currently
+    behind it.
 
     A fallen-back answer is stored as a `READY` draft whose `transcript_verbatim` and
     `transcript_source` are equal. That implication runs one way only. An answer with no
@@ -254,9 +261,9 @@ async def _cleaned(
 
     Known gap, deliberately not fixed here: `start_transcription` never re-queues a `READY`
     draft, so nothing re-cleans those answers on its own. The only recovery is `force`,
-    which re-bills the ElevenLabs transcription for every answer in the session — a cleanup
-    pass that reads the stored verbatim text and skips the transcriber is the fix, and it is
-    a job of its own rather than a branch in this one.
+    which re-bills the ElevenLabs transcription of every answer it resets — a cleanup pass
+    that reads the stored verbatim text and skips the transcriber is the fix, and it is a
+    job of its own rather than a branch in this one.
     """
     try:
         return await cleaner(verbatim, language=language)

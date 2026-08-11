@@ -23,10 +23,17 @@ def _settings(**over: Any) -> Settings:
     return Settings(**fields)
 
 
-def _client(*texts: str | Exception) -> SimpleNamespace:
-    """A genai-shaped client: `client.aio.models.generate_content(...)` -> `.text`."""
-    replies: list[Any] = [t if isinstance(t, Exception) else SimpleNamespace(text=t) for t in texts]
-    generate = AsyncMock(side_effect=replies)
+def _reply(text: str, finish: types.FinishReason = types.FinishReason.STOP) -> SimpleNamespace:
+    """A genai-shaped response: `.text`, and the candidate carrying the finish reason."""
+    return SimpleNamespace(text=text, candidates=[SimpleNamespace(finish_reason=finish)])
+
+
+def _client(*replies: str | Exception | SimpleNamespace) -> SimpleNamespace:
+    """A genai-shaped client: `client.aio.models.generate_content(...)` -> a response."""
+    queued: list[Any] = [
+        r if isinstance(r, Exception | SimpleNamespace) else _reply(r) for r in replies
+    ]
+    generate = AsyncMock(side_effect=queued)
     return SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=generate)))
 
 
@@ -115,10 +122,23 @@ async def test_an_empty_reply_is_an_upstream_error_not_an_emptied_answer() -> No
         await clean_disfluency(PT, language="pt-BR", settings=_settings(), client=_client(""))
 
 
+async def test_a_reply_cut_off_by_the_token_cap_is_an_upstream_error() -> None:
+    # A reply cut at 70% is long enough to read as cleaning and would be stored as the whole
+    # of what was said. The finish reason separates it from a genuine short reply exactly.
+    truncated = PT[: int(len(PT) * 0.7)]
+
+    with pytest.raises(UpstreamServiceError):
+        await clean_disfluency(
+            PT,
+            language="pt-BR",
+            settings=_settings(),
+            client=_client(_reply(truncated, types.FinishReason.MAX_TOKENS)),
+        )
+
+
 async def test_a_reply_far_shorter_than_the_answer_is_an_upstream_error() -> None:
-    # A long answer that trips the token cap comes back truncated, non-empty, and would
-    # otherwise be stored as a complete cleaned transcript. Disfluency removal cannot
-    # compress this hard, so the length is the tell.
+    # The model shortening the answer on its own: it stops of its own accord, so no finish
+    # reason reports it. Disfluency removal cannot compress this hard, so length is the tell.
     with pytest.raises(UpstreamServiceError):
         await clean_disfluency(PT, language="pt-BR", settings=_settings(), client=_client("então"))
 

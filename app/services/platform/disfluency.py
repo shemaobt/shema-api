@@ -1,30 +1,21 @@
 """Speech disfluency removal, behind one callable (ENG-395).
 
-Speech-to-text here is verbatim, so every "é… é… então", every false start and every
-stutter repetition reaches `relatorio-mapeamento.md` exactly as it was spoken. Nothing in
-the pipeline used to take them out: the translation prompt is explicitly forbidden to, and
-an English interview never reaches a translator at all. Hence a step of its own, run for
-every language rather than as a rule inside somebody else's prompt.
+A step of its own rather than a rule inside somebody else's prompt: the translation prompt
+is explicitly forbidden to touch disfluency, and an English interview never reaches a
+translator at all. So this runs for every language.
 
-**It runs immediately after transcription and BEFORE the human confirms the draft**, which
-is the whole justification for adding a model step. The cleaner never writes an unreviewed
-edit into an artifact: what it produces is the draft the facilitator reads and confirms in
-the SPA, and the confirmed text is what everything downstream — the translation included —
-is built from. The owner approved the step and the placement on those terms.
+It runs after transcription and before the human confirms the draft, which is what makes an
+extra model step acceptable: the cleaner never writes an unreviewed edit into an artifact.
 
-The confirmation covers what the cleaner kept, not what it removed, so the caller stores
+That confirmation covers what the cleaner kept, not what it removed, so the caller stores
 the verbatim transcript in a column of its own (`sn_answer_transcripts.transcript_verbatim`,
 ENG-399) beside the cleaned one. A removed sentence is then still on the record and can be
 put back; without it, the only trace of a wrongly dropped sentence would be a model call
 nobody kept.
 
-Nothing raised here is an outage of the answer. This service reports its failures honestly —
-an outage as `UpstreamServiceError`, a missing key as `ValidationError` — and the caller
-keeps the verbatim transcript and carries on either way. A slightly messy draft that a human
-can tidy is worth incomparably more than a `failed` row and a recording nobody transcribed.
-
-The provider is the one `translation.py` already uses, so nothing new is installed and
-nothing new has to be paid for.
+Every failure here is reported honestly — an outage as `UpstreamServiceError`, a missing key
+as `ValidationError` — and the caller is expected to keep the verbatim transcript and carry
+on. Nothing raised here is an outage of the answer.
 """
 
 from __future__ import annotations
@@ -43,9 +34,8 @@ logger = logging.getLogger(__name__)
 
 DISFLUENCY_MODEL = "gemini-3-flash-preview"
 
-#: This is near-verbatim editing, not composition. The prohibition list below exists because
-#: models tidy anyway; leaving the sampler at the flash default of 1.0 would invite exactly
-#: the invention that list spends fifteen lines forbidding.
+#: Near-verbatim editing, not composition: the flash default of 1.0 would invite exactly the
+#: invention the prompt below spends fifteen lines forbidding.
 DISFLUENCY_TEMPERATURE = 0
 
 #: The lowest thinking the installed SDK admits. `ThinkingLevel` bottoms out at `MINIMAL` —
@@ -56,37 +46,29 @@ DISFLUENCY_TEMPERATURE = 0
 #: this model's range is an error, and an error here is a silent verbatim fallback. The
 #: enum's own floor cannot be out of range.
 #:
-#: Near-verbatim editing is the clearest case there is for wanting no reasoning budget.
-#: There is nothing to work out — the rules are in the prompt and the words are given — and
-#: thoughts are spent from the same allowance the cleaned answer has to come out of.
+#: Wanted at the floor because thoughts are spent from the same allowance the cleaned answer
+#: has to come out of, and near-verbatim editing has nothing to work out.
 DISFLUENCY_THINKING_LEVEL = types.ThinkingLevel.MINIMAL
 
-#: Deliberately generous, not measured. `MINIMAL` is not zero, and how much of the allowance
-#: this model spends on thoughts before it emits a word is not knowable from here — so the
-#: cap that actually binds the output is unknown, and guessing it tightly is the dangerous
-#: direction. An answer that outruns the cap comes back truncated, is caught by
-#: `MIN_LENGTH_RATIO` and is kept verbatim, which only the log reports: too small a number
-#: would quietly switch cleaning off for exactly the long, rambling answers that need it
-#: most. Headroom on an unused cap costs nothing.
+#: Deliberately generous, not measured: how much of the allowance `MINIMAL` thinking spends
+#: before the first word is not knowable from here, so the cap that actually binds the output
+#: is unknown. Guessing it tightly would switch cleaning off for exactly the long, rambling
+#: answers that need it most; headroom on an unused cap costs nothing.
 DISFLUENCY_MAX_OUTPUT_TOKENS = 16384
 
-#: How much shorter than the answer a cleaned reply may be before it is treated as damage
-#: rather than as cleaning. Removing filler from even very hesitant speech does not halve it;
-#: a truncated reply is far shorter than that, so length separates the two cleanly.
-#:
-#: A short, exceptionally disfluent answer can trip this honestly. That costs the cleanup and
-#: nothing else — the answer is kept verbatim and a human tidies it — which is the direction
-#: this whole module errs in anyway.
+#: Backstop, not the truncation defence — truncation is caught exactly, by the finish reason.
+#: This catches the model shortening the answer of its own accord, which it does under a
+#: normal `STOP` that no status reports. Removing filler does not halve even very hesitant
+#: speech, so a reply this short is not cleaning.
 MIN_LENGTH_RATIO = 0.5
 
 #: Spoken-answer languages we can name for the model. An unlisted code is passed through as
 #: itself rather than refused — naming the language is a prompt nicety, not a gate.
 LANGUAGE_NAMES: dict[str, str] = {"pt": "Brazilian Portuguese", "en": "English"}
 
-#: The prohibitions are itemised, and deliberately over-specified. A single "stay faithful"
-#: line does not hold: asked to clean up speech, models also tidy grammar, finish the
-#: sentence they think was coming and lift the register — and every one of those edits is a
-#: word the storyteller never said.
+#: The prohibitions are itemised and deliberately over-specified: a single "stay faithful"
+#: line does not hold. Asked to clean up speech, models also tidy grammar, finish the
+#: sentence they think was coming and lift the register.
 DISFLUENCY_PROMPT = """\
 You will be given a verbatim transcript of a person speaking {language_name}. Remove the \
 speech disfluency from it and return the same words otherwise untouched.
@@ -161,11 +143,13 @@ async def clean_disfluency(
     Empty text comes straight back: every call is billed, and there is no hesitation in
     silence.
 
-    An empty reply from the model is an upstream failure, not a cleaned answer: on screen an
-    emptied answer and a silent recording are the same thing, and the second would be
-    confirmed as one. A reply that is merely far too short is refused for the same reason
-    one step later — an answer that outruns the token cap comes back truncated rather than
-    empty, and would otherwise be stored as if it were the whole of what was said.
+    A reply the model did not finish is an upstream failure, not a cleaned answer: it would
+    otherwise be stored as if it were the whole of what was said. `MAX_TOKENS` says so
+    exactly; `MIN_LENGTH_RATIO` is the backstop for a model that cuts the answer short
+    without saying so.
+
+    An empty reply is refused for a different reason: on screen an emptied answer and a
+    silent recording are the same thing, and the second would be confirmed as one.
 
     Building the client is inside the `try` on purpose: a credential the provider rejects at
     construction is an upstream failure like any other, and leaving it outside would let it
@@ -199,6 +183,10 @@ async def clean_disfluency(
     except Exception as exc:
         logger.warning("Gemini disfluency cleanup failed: %s", exc)
         raise UpstreamServiceError(f"Disfluency cleanup failed: {exc}") from exc
+
+    finish_reason = response.candidates[0].finish_reason if response.candidates else None
+    if finish_reason == types.FinishReason.MAX_TOKENS:
+        raise UpstreamServiceError("Disfluency cleanup hit the output token cap: reply truncated")
 
     cleaned = str(response.text or "").strip()
     if not cleaned:

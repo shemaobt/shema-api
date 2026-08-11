@@ -92,6 +92,10 @@ tripod-backend/
 - Keep services function-oriented and composable.
 - Keep public service function docstrings present and concise.
 - Keep code self-documenting; avoid comments that restate code.
+- Use docstrings, not inline comments. A `#` comment explaining *why* belongs in the
+  module or function docstring instead, where it is found by someone reading the API
+  rather than only by someone already inside the body. Sphinx `#:` attribute docs are
+  not inline comments.
 
 ---
 
@@ -143,7 +147,35 @@ Use `gh` CLI for all GitHub operations (push, PR creation). Never force-push or 
 
 ---
 
-## 9. Summary Checklist
+## 9. Model Use on the Sound Necklace Answer Path
+
+This section governs one path only: what happens to a storyteller's recorded answer
+between the microphone and `relatorio-mapeamento.md`. Models are used freely elsewhere
+in this codebase (`services/i18n`, `services/project_health`, `services/translation_helper`,
+platform TTS); none of those touch an interview answer, and none are constrained here.
+
+On this path the count is deliberately small, because a model that edits a person's own
+words is a step no reader of the artifact can see afterwards. Each one has to be worth
+defending.
+
+1. **Transcription** — `services/platform/stt.py`. Verbatim, no cleanup.
+2. **Disfluency cleanup** — `services/platform/disfluency.py`. Runs after transcription
+   and before translation.
+3. **Translation to English** — `services/platform/translation.py`. Explicitly forbidden
+   from cleaning, summarising or completing.
+
+The cleanup is the addition (owner decision, 2026-08-08). It is allowed because of
+*where* it sits: it runs before the facilitator confirms the transcript on screen, so a
+human still reads and confirms every sentence that reaches an artifact. Nothing a model
+wrote enters a report unreviewed.
+
+Moving it after the confirmation would break exactly that property, and is not a
+refactor to make casually. Adding a fourth step on this path means adding it here with
+the same argument: what a human sees, and when they see it.
+
+---
+
+## 10. Summary Checklist
 
 - [ ] Keep `app/api` thin and service-driven — **zero database access in routers**.
 - [ ] Keep all database queries in `app/services/` — routers only call service functions.
@@ -151,5 +183,6 @@ Use `gh` CLI for all GitHub operations (push, PR creation). Never force-push or 
 - [ ] Keep SQLAlchemy usage async and session-injected.
 - [ ] Keep schema changes tracked with Alembic migrations.
 - [ ] Keep runtime secrets in GCP Secret Manager.
+- [ ] Keep the Sound Necklace answer path to the three model steps in §9.
 - [ ] Keep backend commands running inside Docker Compose.
 - [ ] Keep strong typing and concise service docstrings.
