@@ -1,7 +1,7 @@
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import ACTIVE_UPLOAD_STATUSES
+from app.core.enums import ACTIVE_UPLOAD_STATUSES, SplittingStatus
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.project import Project, ProjectUserAccess
@@ -11,6 +11,24 @@ from app.models.oc_stats import (
     GenreStatsResponse,
     SubcategoryStatItem,
 )
+
+
+def _counted_conditions(project_id: str) -> list[ColumnElement[bool]]:
+    """The recordings a project's stats describe: the ones its listing returns.
+
+    A split leaves the parent behind as an `ARCHIVED_AFTER_SPLIT` row that keeps its
+    `upload_status` and its full duration, sitting beside the segment rows that replaced it.
+    Counting it reports audio the user cannot open, and reports the segments' audio a second
+    time under the parent.
+
+    Both aggregations below share this so they cannot drift apart from each other, or from
+    `recording_service._listing_conditions`.
+    """
+    return [
+        OC_Recording.project_id == project_id,
+        OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    ]
 
 
 async def get_genre_stats(db: AsyncSession, project_id: str) -> GenreStatsResponse:
@@ -23,8 +41,7 @@ async def get_genre_stats(db: AsyncSession, project_id: str) -> GenreStatsRespon
             func.coalesce(func.sum(OC_Recording.duration_seconds), 0.0).label("duration_seconds"),
         )
         .join(OC_Genre, OC_Genre.id == OC_Recording.genre_id)
-        .where(OC_Recording.project_id == project_id)
-        .where(OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES))
+        .where(*_counted_conditions(project_id))
         .group_by(OC_Recording.genre_id, OC_Genre.name)
         .order_by(OC_Genre.name)
     )
@@ -48,8 +65,7 @@ async def get_genre_stats(db: AsyncSession, project_id: str) -> GenreStatsRespon
             func.coalesce(func.sum(OC_Recording.duration_seconds), 0.0).label("duration_seconds"),
         )
         .join(OC_Subcategory, OC_Subcategory.id == OC_Recording.subcategory_id)
-        .where(OC_Recording.project_id == project_id)
-        .where(OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES))
+        .where(*_counted_conditions(project_id))
         .group_by(
             OC_Recording.subcategory_id,
             OC_Subcategory.name,
