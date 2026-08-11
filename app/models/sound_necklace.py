@@ -16,9 +16,10 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.exceptions import (
+    ERROR_CODE_CONFLICT,
     ERROR_CODE_PROJECT_GRANULARITY_LOCKED,
     ERROR_CODE_SESSION_LOCK_CHANGED,
     ERROR_CODE_SESSION_LOCKED,
@@ -367,6 +368,11 @@ class AnswerTranscript(BaseModel):
     transcript_source: str | None = None
     translation_en: str | None = None
     error: str | None = None
+    #: The draft's revision counter, which the confirm route takes back as its guard.
+    #: Required, not defaulted: an optional field in the generated types invites the client
+    #: to fill a missing one in with 0, which is a valid-looking confirm the guard refuses
+    #: and no reload can fix.
+    generation: int
 
 
 class TranscriptionProgressResponse(BaseModel):
@@ -379,6 +385,61 @@ class TranscriptionProgressResponse(BaseModel):
     failed: int
     pending: int
     answers: list[AnswerTranscript]
+
+
+class TranscriptConfirmRequest(BaseModel):
+    """A transcript as a human confirmed it, once they had corrected it (ENG-394).
+
+    Only the spoken-language text is sent. The English is never the client's to state: it
+    is re-derived here from what was confirmed, which is the whole point of the route —
+    the report reads the English field, so a correction the client alone applied would
+    never reach it.
+
+    ``generation`` is the counter the client last read for this answer, and it makes the
+    confirm a compare-and-swap: a facilitator whose draft was re-transcribed underneath
+    them is refused rather than allowed to write an edit of text that no longer exists.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    #: The spoken-language text as the human confirmed it. Bounded at both ends: an empty
+    #: confirm would store a ``ready`` draft with two blank text fields, which on screen is
+    #: an answer nobody transcribed, and the text is forwarded verbatim to a billed model,
+    #: so the ceiling is a cost limit as much as a validation one. 20k characters is far
+    #: past the longest answer a single question produces.
+    transcript_source: str = Field(min_length=1, max_length=20_000)
+    generation: int = Field(ge=0)
+
+    @field_validator("transcript_source")
+    @classmethod
+    def _must_carry_speech(cls, value: str) -> str:
+        """Refuse a confirm with nothing in it, and store everything else verbatim.
+
+        ``min_length`` alone lets a run of spaces through, which stores a ``ready`` draft
+        whose text is blank on screen — indistinguishable from an answer nobody
+        transcribed, and unlike a real one it carries no ``error`` to explain itself.
+
+        The value comes back unchanged rather than stripped. What is rejected here is an
+        empty confirm, not a badly spaced one, and a human's confirmed text is theirs.
+        """
+        if not value.strip():
+            raise ValueError("transcript_source must contain more than whitespace")
+        return value
+
+
+class TranscriptConfirmConflictResponse(BaseModel):
+    """The 409 of a confirm sent from a draft that has since been rewritten.
+
+    A third arm next to the two lock 409s, and it has to be its own model for the reason
+    those two are separate from each other: the client branches on ``code``, and this one
+    demands the opposite reaction to SESSION_LOCK_CHANGED. Retrying this unchanged replays
+    the same stale generation forever — the only way out is to re-read the draft.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    detail: str
+    code: Literal["CONFLICT"] = ERROR_CODE_CONFLICT
 
 
 # ── Project settings (ENG-352) ───────────────────────────────────────────────

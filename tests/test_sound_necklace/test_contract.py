@@ -34,6 +34,7 @@ IMPLEMENTED_OPERATIONS = {
     ("/projects/{project_id}/audit", "get"),
     ("/sessions/{session_id}/transcriptions", "post"),
     ("/sessions/{session_id}/transcriptions", "get"),
+    ("/sessions/{session_id}/transcriptions/{resource_path}", "put"),
     ("/projects/{project_id}/settings", "get"),
     ("/projects/{project_id}/settings", "put"),
 }
@@ -166,6 +167,11 @@ def test_the_transcription_progress_is_a_schema_the_spa_can_poll_from():
     Per-answer `status` and `error` are what let one dead answer show as one red row
     instead of a failed job — and `translation_en` is the field the report reads whatever
     the interview language was.
+
+    `generation` is checked for being required, not merely for being present, and that is
+    a separate assertion from the property set on purpose. Optional in the generated types
+    is a field a client fills in with 0, and a confirm carrying that is refused with a
+    "reload" the next read cannot satisfy: the reload hands back the same optional field.
     """
     from app.main import app
 
@@ -179,8 +185,40 @@ def test_the_transcription_progress_is_a_schema_the_spa_can_poll_from():
         "transcript_source",
         "translation_en",
         "error",
+        "generation",
     }
+    assert "generation" in draft["required"]
     assert set(schemas["TranscriptStatus"]["enum"]) == {"pending", "ready", "failed"}
+
+
+def test_confirming_a_transcript_takes_the_spoken_text_and_never_the_english():
+    """The English is re-derived from what was confirmed, so a client that sent one would
+    be overruled — and a field the schema advertises but ignores is worse than no field."""
+    operations = {(path, method): operation for path, method, operation in _operations()}
+    confirm = operations[("/sessions/{session_id}/transcriptions/{resource_path}", "put")]
+    body = confirm["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    assert body.endswith("/TranscriptConfirmRequest")
+
+    from app.main import app
+
+    request = app.openapi()["components"]["schemas"]["TranscriptConfirmRequest"]
+    assert set(request["properties"]) == {"transcript_source", "generation"}
+    assert set(request["required"]) == {"transcript_source", "generation"}
+
+
+def test_the_confirm_409_lets_the_client_tell_a_stale_draft_from_a_held_lock():
+    """Three refusals share the status code and demand three different reactions, so the
+    schema has to offer all three arms — a client that cannot see CONFLICT in the union
+    types it as a lock error and retries a generation that can only lose again."""
+    operations = {(path, method): operation for path, method, operation in _operations()}
+    confirm = operations[("/sessions/{session_id}/transcriptions/{resource_path}", "put")]
+    schema = confirm["responses"]["409"]["content"]["application/json"]["schema"]
+    arms = {ref["$ref"].rsplit("/", 1)[-1] for ref in schema["anyOf"]}
+    assert arms == {
+        "SessionLockedResponse",
+        "SessionLockChangedResponse",
+        "TranscriptConfirmConflictResponse",
+    }
 
 
 def test_starting_a_transcription_answers_202_not_200():
