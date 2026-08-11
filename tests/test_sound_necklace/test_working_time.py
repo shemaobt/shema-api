@@ -18,6 +18,9 @@ rather than off by however long the test took to reach its request. Crucially th
 moves the tick rows and the cursor together: a helper that moved only the cursor would
 leave a tick log that no longer described the timeline it is supposed to be the record
 of, and ``test_the_tick_log_reproduces_the_stored_total`` would be checking a fiction.
+
+``BEATS`` holds real UUIDs because the route takes nothing else, and fixed ones rather
+than random because a test that fails should fail the same way twice.
 """
 
 from __future__ import annotations
@@ -38,14 +41,8 @@ from tests.test_sound_necklace.conftest import (
     new_session,
 )
 
-# The route takes a UUID and nothing else, so the beats need real ones. Fixed rather than
-# random: a test that fails should fail the same way twice.
 BEATS = [f"00000000-0000-4000-8000-{n:012d}" for n in range(12)]
 
-# SQLite's own now(), at the resolution the service reads it with, shifted by an offset.
-# Rewinding against Python's clock instead would leave every stretch short by the
-# milliseconds between the two reads, and the exact-second assertions below would be off
-# by one at random.
 _SHIFTED = "STRFTIME('%Y-%m-%d %H:%M:%f000', {column}, :offset)"
 _NOW_SHIFTED = _SHIFTED.format(column="'now'")
 
@@ -101,7 +98,10 @@ async def rewind(db_session, session_id: str, seconds: float) -> None:
     reproduces the total.
 
     A null cursor stays null — that is a reopened or untouched session, and inventing an
-    instant for it would quietly defeat the freeze the null is there to express.
+    instant for it would quietly defeat the freeze the null is there to express. That is
+    also what the closing assertion guards: SQLite answers a malformed modifier with NULL
+    rather than an error, and a null cursor charges nothing, so without it a broken helper
+    would make every test here pass while measuring nothing.
     """
     offset = f"{-seconds:+g} seconds"
     before = await read_cursor(db_session, session_id)
@@ -120,9 +120,6 @@ async def rewind(db_session, session_id: str, seconds: float) -> None:
         {"offset": offset, "sid": session_id},
     )
     after = await read_cursor(db_session, session_id)
-    # SQLite answers a malformed modifier with NULL rather than an error, and a null
-    # cursor charges nothing — so without this a broken helper would make every test here
-    # pass while measuring nothing.
     assert (before is None) == (after is None), "the rewind helper lost the cursor"
 
 
@@ -314,7 +311,9 @@ async def test_a_stretch_is_not_charged_twice_when_two_beats_derive_it_together(
 
     The interleaving is staged by letting the cursor read do what a concurrent beat would
     have done just after it — the same technique as ``hand_lease_to``, which exists
-    because a second request cannot express a turnover landing mid-request.
+    because a second request cannot express a turnover landing mid-request. It races once
+    only: racing every retry as well would model a permanently contended session rather
+    than the collision under test.
     """
     _user, headers = alice
     await post_tick(client, headers, session_id, BEATS[0])
@@ -327,9 +326,6 @@ async def test_a_stretch_is_not_charged_twice_when_two_beats_derive_it_together(
         nonlocal raced
         now, cursor = await real_clock_and_cursor(db, sid)
         if not raced:
-            # Once only: a second beat lands between this read and the write it feeds.
-            # Racing every retry as well would model a permanently contended session
-            # rather than the collision under test.
             raced = True
             await db.execute(
                 text(
@@ -656,6 +652,71 @@ async def test_reopening_resumes_accumulation_without_charging_the_pause(
 
     assert resumed.json()["net_working_seconds"] == 30
     assert working.json()["net_working_seconds"] == 75
+
+
+async def test_completing_a_session_deletes_its_ticks_and_keeps_the_frozen_total(
+    client, db_session, alice, session_id
+):
+    _user, headers = alice
+    await post_tick(client, headers, session_id, BEATS[0])
+    await tick_after(client, db_session, headers, session_id, 30, BEATS[1])
+
+    complete = await client.post(f"{SN}/sessions/{session_id}/complete", headers=headers)
+
+    assert complete.status_code == 200, complete.text
+    assert await stored_tick_count(db_session, session_id) == 0
+    assert await read_total(client, headers, session_id) == 30
+
+
+async def test_completing_one_session_leaves_another_sessions_ticks_alone(
+    client, db_session, alice, project
+):
+    _user, headers = alice
+    finished = await new_session(client, headers, project.id)
+    ongoing = await new_session(client, headers, project.id)
+    await post_tick(client, headers, finished, BEATS[0])
+    await post_tick(client, headers, ongoing, BEATS[0])
+    await tick_after(client, db_session, headers, ongoing, 30, BEATS[1])
+
+    complete = await client.post(f"{SN}/sessions/{finished}/complete", headers=headers)
+
+    assert complete.status_code == 200, complete.text
+    assert await stored_tick_count(db_session, finished) == 0
+    assert await stored_tick_count(db_session, ongoing) == 2
+    assert await read_total(client, headers, ongoing) == 30
+
+
+async def test_a_reopened_session_accumulates_from_an_empty_tick_log(
+    client, db_session, alice, session_id
+):
+    _user, headers = alice
+    await post_tick(client, headers, session_id, BEATS[0])
+    await tick_after(client, db_session, headers, session_id, 30, BEATS[1])
+    await rewind(db_session, session_id, 120)
+    await client.post(f"{SN}/sessions/{session_id}/complete", headers=headers)
+    reopen = await client.post(f"{SN}/sessions/{session_id}/reopen", headers=headers)
+    assert reopen.status_code == 200, reopen.text
+    assert await stored_tick_count(db_session, session_id) == 0
+
+    resumed = await post_tick(client, headers, session_id, BEATS[2])
+    working = await tick_after(client, db_session, headers, session_id, 45, BEATS[3])
+
+    assert resumed.json()["net_working_seconds"] == 30
+    assert working.json()["net_working_seconds"] == 75
+    assert await stored_tick_count(db_session, session_id) == 2
+
+
+async def test_completing_a_session_that_was_never_ticked_is_not_an_error(
+    client, db_session, alice, session_id
+):
+    _user, headers = alice
+
+    complete = await client.post(f"{SN}/sessions/{session_id}/complete", headers=headers)
+
+    assert complete.status_code == 200, complete.text
+    assert complete.json()["status"] == "completed"
+    assert await stored_tick_count(db_session, session_id) == 0
+    assert await read_total(client, headers, session_id) == 0
 
 
 # ── The guards ───────────────────────────────────────────────────────────────

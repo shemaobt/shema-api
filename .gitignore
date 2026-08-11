@@ -19,3 +19,4 @@ gcs-signing-key.json
 # mounts this directory, so it never belongs in the repository.
 .local-dump/*
 !.local-dump/.gitkeep
+test.db-journal

@@ -242,10 +242,11 @@ class SnSessionTick(Base):
     for it is the first step across that line. Session metadata is what is allowed here,
     and a session metadata table with a ``what_happened`` column would not stay one.
 
-    Append-only, like the audit events: a heartbeat is a thing that happened, and the
-    accumulated total on ``sn_sessions`` is derived from these rows rather than the other
-    way round. Keeping the rows is what makes the total auditable and recomputable — a
-    lone counter could only ever be believed.
+    Append-only while the session is open, and dropped when it completes. The total on
+    ``sn_sessions`` is derived from these rows rather than the other way round, so keeping
+    them is what makes it auditable while it can still move; a lone counter could only
+    ever be believed. Completion freezes the total, and from that moment the rows would
+    record nothing but when the facilitator was at their desk.
 
     ``occurred_at`` is the database's own clock, never the client's and never the
     application's; ``working_time`` is where that choice is argued.
@@ -259,11 +260,11 @@ class SnSessionTick(Base):
 
     __tablename__ = "sn_session_ticks"
 
-    # The unique constraint is also the only index this table needs: the duplicate check
-    # is the one query that runs against it, and it looks up exactly this pair. Nothing
-    # reads the beats in time order on any hot path — the running total is kept on the
-    # session — and an index per heartbeat insert that no query reads is a cost paid all
-    # session long for nothing.
+    # The unique constraint is also the only index this table needs. The duplicate check
+    # looks up exactly this pair, and the delete on completion looks up by session alone —
+    # the leading column of that same index. Nothing reads the beats in time order on any
+    # hot path — the running total is kept on the session — and an index per heartbeat
+    # insert that no query reads is a cost paid all session long for nothing.
     __table_args__ = (
         UniqueConstraint("session_id", "client_tick_id", name="uq_sn_session_ticks_session_client"),
     )
