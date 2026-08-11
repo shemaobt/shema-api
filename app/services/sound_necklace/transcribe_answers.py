@@ -1,8 +1,8 @@
 """Transcription + translation drafts for a session's voice answers (ENG-325).
 
-One async pass per answer: transcribe in the language it was spoken, then, if that is not
-English, translate. Both are drafts for a human to confirm — this module never touches an
-artifact.
+One async pass per answer: transcribe in the language it was spoken, take the speech
+disfluency out of it (ENG-395), then, if that is not English, translate. All of it is draft
+for a human to confirm — this module never touches an artifact.
 
 It runs when the SPA enters the Report, not on upload: a take that gets re-recorded before
 the report is never paid for. The per-answer rows carry the whole state of the job, which
@@ -25,6 +25,7 @@ from app.core.enums import SnTranscriptionEvent
 from app.core.inngest_client import inngest_client
 from app.db.models.sound_necklace import SnAnswerTranscript, SnVoiceAnswer, TranscriptStatus
 from app.services.oral_collector import gcs_utils
+from app.services.platform.disfluency import DisfluencyCleaner, clean_disfluency
 from app.services.platform.stt import SpeechToText, transcribe_speech
 from app.services.platform.translation import Translator, translate_to_english
 from app.services.platform.voices import language_hint
@@ -161,12 +162,18 @@ async def run_pending(
     session_id: str,
     *,
     stt: SpeechToText = transcribe_speech,
+    cleaner: DisfluencyCleaner = clean_disfluency,
     translator: Translator = translate_to_english,
 ) -> None:
     """Fill in every pending draft of the session, one answer at a time.
 
     Sequential on purpose: one session, one row committed per answer, so progress is
     visible while it runs and a crash costs at most the answer in flight.
+
+    The cleaned text is what is stored and what the translator is fed, so the hesitation is
+    neither shown to the facilitator nor carried into English. Cleaning before the SPA
+    confirmation is what makes the extra model step safe: the human still reads and confirms
+    every word of it.
 
     ponytail: a 200-answer session takes 200 round trips end to end. If that becomes the
     complaint, fan out with one DB session per worker — not with a shared one, which is
@@ -196,7 +203,10 @@ async def run_pending(
         generation, path, language = draft.generation, draft.resource_path, draft.language
         try:
             audio = await gcs_utils.download_gcs_object(GCS_SN_BUCKET, answer.storage_key)
-            transcript = await stt(audio, language=language, mime_type=answer.content_type)
+            verbatim = await stt(audio, language=language, mime_type=answer.content_type)
+            transcript = await _cleaned(
+                cleaner, verbatim, language=language, session_id=session_id, resource_path=path
+            )
             translation = (
                 transcript
                 if language_hint(language) == "en"
@@ -213,6 +223,39 @@ async def run_pending(
             values = {"status": TranscriptStatus.FAILED, "error": str(exc)}
 
         await _write_draft(db, session_id, path, generation=generation, values=values)
+
+
+async def _cleaned(
+    cleaner: DisfluencyCleaner,
+    verbatim: str,
+    *,
+    language: str,
+    session_id: str,
+    resource_path: str,
+) -> str:
+    """The disfluency-free text, or the verbatim one if the cleanup could not be done.
+
+    The transcript is the work product and the cleanup an improvement on top of it, so a
+    cleanup failure must not take the answer down with it. Missing configuration is absorbed
+    too, not only an outage: transcription runs on ElevenLabs and the cleanup on Google, so
+    an absent `GOOGLE_API_KEY` would otherwise turn every session into `failed` rows. It
+    announces itself at `error` level instead.
+
+    `Exception` rather than a list of types, which is this repo's rule broken on purpose.
+    `DisfluencyCleaner` is a seam: it promises a return type and nothing about what it
+    raises, so naming types here would couple this to the one implementation currently
+    behind it.
+    """
+    try:
+        return await cleaner(verbatim, language=language)
+    except Exception as exc:
+        logger.error(
+            "disfluency cleanup skipped, keeping verbatim transcript session=%s path=%s: %s",
+            session_id,
+            resource_path,
+            exc,
+        )
+        return verbatim
 
 
 async def _write_draft(
