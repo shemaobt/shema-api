@@ -25,6 +25,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -196,6 +197,17 @@ class SnSession(Base):
     # Expiry is decided on read; nothing sweeps lapsed leases. A crashed tab therefore
     # frees its session without anyone unlocking it by hand.
     lock_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The session's accumulated net working time, as a whole count of seconds: a plain
+    # Integer, never Interval — see working_time, which argues that and does the
+    # accumulating.
+    net_working_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # The instant the last counted heartbeat was stamped, and the cursor the accumulation
+    # compare-and-swaps on. Null means "no stretch to measure from": completing a session
+    # clears it, so the first heartbeat after a reopen charges nothing at all and the
+    # closed stretch is never counted, however short it was.
+    last_working_tick_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class SnSessionState(Base):
@@ -219,6 +231,49 @@ class SnSessionState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class SnSessionTick(Base):
+    """One "still here" heartbeat, and nothing else about it.
+
+    The whole table is deliberately impoverished. There is one event — the session was
+    open and the tab was visible — carrying no idea of what was clicked, typed, played or
+    looked at, because §14 forbids telemetry on listener behaviour and a schema with room
+    for it is the first step across that line. Session metadata is what is allowed here,
+    and a session metadata table with a ``what_happened`` column would not stay one.
+
+    Append-only, like the audit events: a heartbeat is a thing that happened, and the
+    accumulated total on ``sn_sessions`` is derived from these rows rather than the other
+    way round. Keeping the rows is what makes the total auditable and recomputable — a
+    lone counter could only ever be believed.
+
+    ``occurred_at`` is the database's own clock, never the client's and never the
+    application's; ``working_time`` is where that choice is argued.
+
+    ``client_tick_id`` exists only so a retried or twice-delivered heartbeat cannot be
+    charged twice. It is the client's own opaque string and means nothing here beyond
+    "the same beat"; the unique constraint with the session is what makes the replay a
+    no-op rather than a second gap. Scoped to the session rather than global because it
+    is minted per session by a client that has no idea what other sessions exist.
+    """
+
+    __tablename__ = "sn_session_ticks"
+
+    # The unique constraint is also the only index this table needs: the duplicate check
+    # is the one query that runs against it, and it looks up exactly this pair. Nothing
+    # reads the beats in time order on any hot path — the running total is kept on the
+    # session — and an index per heartbeat insert that no query reads is a cost paid all
+    # session long for nothing.
+    __table_args__ = (
+        UniqueConstraint("session_id", "client_tick_id", name="uq_sn_session_ticks_session_client"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("sn_sessions.id", ondelete="CASCADE")
+    )
+    client_tick_id: Mapped[str] = mapped_column(String(64))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class SnArtifact(Base):
