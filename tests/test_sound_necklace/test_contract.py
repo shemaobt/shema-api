@@ -170,7 +170,8 @@ def test_the_transcription_progress_is_a_schema_the_spa_can_poll_from():
 
     Per-answer `status` and `error` are what let one dead answer show as one red row
     instead of a failed job — and `translation_en` is the field the report reads whatever
-    the interview language was.
+    the interview language was. `transcript_verbatim` sits beside `transcript_source` so the
+    client can show what the disfluency cleanup removed from the text it is confirming.
 
     `generation` is checked for being required, not merely for being present, and that is
     a separate assertion from the property set on purpose. Optional in the generated types
@@ -186,6 +187,7 @@ def test_the_transcription_progress_is_a_schema_the_spa_can_poll_from():
     assert set(draft["properties"]) == {
         "path",
         "status",
+        "transcript_verbatim",
         "transcript_source",
         "translation_en",
         "error",

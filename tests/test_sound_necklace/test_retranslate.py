@@ -503,6 +503,7 @@ async def test_the_route_answers_the_confirmed_draft(
     assert res.json() == {
         "path": ANSWER,
         "status": "ready",
+        "transcript_verbatim": None,
         "transcript_source": "i saw the pink river dolphin",
         "translation_en": "i saw the pink river dolphin",
         "error": None,

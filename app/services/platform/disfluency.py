@@ -7,6 +7,12 @@ translator at all. So this runs for every language.
 It runs after transcription and before the human confirms the draft, which is what makes an
 extra model step acceptable: the cleaner never writes an unreviewed edit into an artifact.
 
+That confirmation covers what the cleaner kept, not what it removed, so the caller stores
+the verbatim transcript in a column of its own (`sn_answer_transcripts.transcript_verbatim`,
+ENG-399) beside the cleaned one. A removed sentence is then still on the record and can be
+put back; without it, the only trace of a wrongly dropped sentence would be a model call
+nobody kept.
+
 Every failure here is reported honestly — an outage as `UpstreamServiceError`, a missing key
 as `ValidationError` — and the caller is expected to keep the verbatim transcript and carry
 on. Nothing raised here is an outage of the answer.
