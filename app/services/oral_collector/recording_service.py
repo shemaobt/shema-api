@@ -487,6 +487,15 @@ async def clear_stale_recordings(
     *,
     is_platform_admin: bool = False,
 ) -> int:
+    """Delete the project's failed uploads and report how many rows went.
+
+    Only `UPLOAD_FAILED` is cleared, and the client counts more things as failed than the
+    server ever will: a failure it hits before or instead of the upload leaves the server row
+    at `UPLOADING`, written back when the upload URL was issued, and that row survives this
+    call deliberately — its bytes may still be in flight. So a device listing several failed
+    recordings can get `deleted: 0` back, and that is the intended answer, not a bug. Ageing
+    a stalled `UPLOADING` row into a failure is a separate state transition.
+    """
     if not is_platform_admin:
         access_stmt = select(ProjectUserAccess).where(
             ProjectUserAccess.project_id == project_id,
@@ -497,10 +506,9 @@ async def clear_stale_recordings(
         if access_result.scalar_one_or_none() is None:
             raise AuthorizationError("Only a project manager can clear stale recordings")
 
-    stale_statuses = [UploadStatus.UPLOADING, UploadStatus.UPLOAD_FAILED]
     stmt = select(OC_Recording).where(
         OC_Recording.project_id == project_id,
-        OC_Recording.upload_status.in_(stale_statuses),
+        OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
     )
     result = await db.execute(stmt)
     recordings = list(result.scalars().all())
