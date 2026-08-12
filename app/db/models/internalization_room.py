@@ -49,6 +49,8 @@ class IRSession(Base):
     )
     messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     after_panorama: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    prepared_speech: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prepared_audio_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
