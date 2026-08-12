@@ -1,0 +1,159 @@
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.internalization_room._deps import room_key_dep
+from app.core.config import get_settings
+from app.core.database import get_db
+from app.core.exceptions import ValidationError
+from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
+from app.models.internalization_room import (
+    CoverageView,
+    CreateSessionRequest,
+    SessionStateResponse,
+    TurnResponse,
+)
+from app.services import internalization_room as room
+from app.services.internalization_room.background import settle_coverage
+from app.services.internalization_room.canon.book_material import build_book_material
+from app.services.internalization_room.canon.elements import absence_index
+from app.services.internalization_room.coverage import counts, floor_met
+from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.sessions import (
+    DEFAULT_PERICOPE,
+    book_of,
+    is_panorama,
+)
+from app.services.internalization_room.voice_handles import clip_url
+
+router = APIRouter()
+
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def _coverage_view(session: IRSession) -> CoverageView:
+    numbers = counts(session.coverage_state or {})
+    return CoverageView(
+        engaged=numbers["engaged"],
+        surfaced=numbers["surfaced"],
+        total=numbers["total"],
+        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+    )
+
+
+def _state(session: IRSession) -> SessionStateResponse:
+    return SessionStateResponse(
+        session_id=session.id,
+        pericope=session.pericope,
+        status=str(session.status),
+        coverage=_coverage_view(session),
+        done=session.status is IRSessionStatus.DONE,
+    )
+
+
+@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_key_dep])
+async def create_session(
+    payload: CreateSessionRequest,
+    db: AsyncSession = Depends(get_db),
+) -> SessionStateResponse:
+    session = await room.create_session(
+        db,
+        pericope=payload.pericope or DEFAULT_PERICOPE,
+        after_panorama=payload.after_panorama or payload.after_session is not None,
+    )
+    return _state(session)
+
+
+@router.get(
+    "/sessions/{session_id}",
+    response_model=SessionStateResponse,
+    dependencies=[room_key_dep],
+)
+async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
+    session = await room.get_session(db, session_id)
+    return _state(session)
+
+
+@router.post(
+    "/sessions/{session_id}/turns",
+    response_model=TurnResponse,
+    dependencies=[room_key_dep],
+)
+async def take_turn(
+    session_id: str,
+    background: BackgroundTasks,
+    response: Response,
+    file: UploadFile | None = File(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> TurnResponse:
+    session = await room.get_session(db, session_id)
+
+    transcript = ""
+    opening = file is None
+    if file is not None:
+        audio_bytes = await file.read()
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            raise ValidationError("Audio payload exceeds 25 MB limit")
+        transcript = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+
+    validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
+    if is_panorama(session.pericope):
+        book = book_of(session.pericope)
+        outcome = await room.run_panorama_turn(
+            transcript=transcript,
+            messages=session.messages or [],
+            panorama_prompt=await get_prompt_text(db, IRPromptKey.BOOK_PANORAMA),
+            validator_prompt=validator_prompt,
+            book=book,
+            book_material=build_book_material(book),
+            opening=opening,
+            settings=get_settings(),
+        )
+    else:
+        outcome = await room.run_turn(
+            transcript=transcript,
+            coverage_state=session.coverage_state or {},
+            messages=session.messages or [],
+            guide_prompt=await get_prompt_text(db, IRPromptKey.GUIDE),
+            validator_prompt=validator_prompt,
+            pericope_num=session.pericope,
+            opening=opening,
+            already_met=session.after_panorama,
+            settings=get_settings(),
+        )
+
+    voiced = (
+        None
+        if outcome.fixed_line
+        else (await room.synthesize_facilitator_speech(outcome.speech))[0]
+    )
+    session = await room.append_exchange(
+        db,
+        session,
+        team_utterance=outcome.transcript,
+        guide_response=outcome.speech,
+    )
+
+    if not outcome.used_fail_safe and not is_panorama(session.pericope):
+        background.add_task(
+            settle_coverage,
+            session_id=session.id,
+            team_utterance=outcome.transcript,
+            guide_response=outcome.speech,
+            pericope_num=session.pericope,
+        )
+
+    return TurnResponse(
+        session_id=session.id,
+        audio_url=clip_url(voiced.key) if voiced else "",
+        fixed_line=outcome.fixed_line,
+        transcript=outcome.transcript,
+        peer_cue=outcome.peer_cue,
+        used_fail_safe=outcome.used_fail_safe,
+        coverage=_coverage_view(session),
+        done=(
+            False
+            if is_panorama(session.pericope)
+            else floor_met(session.coverage_state or {}, session.pericope)
+        ),
+    )
