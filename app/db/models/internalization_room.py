@@ -71,3 +71,42 @@ class IRPrompt(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class IRQuestionStatus(enum.StrEnum):
+    OPEN = "open"
+    ANSWERED = "answered"
+    RESOLVED = "resolved"
+
+
+_QUESTION_STATUS_TYPE = Enum(
+    IRQuestionStatus,
+    name="ir_question_status_enum",
+    values_callable=lambda enum_cls: [m.value for m in enum_cls],
+)
+
+
+class IRQuestion(Base):
+    """A question the team raised by the hand, addressed to a person rather than the app.
+
+    It belongs to the device, not to the session it was asked in. A facilitator may answer
+    hours later, long after that passage is closed, and the team must still receive it —
+    otherwise the necklace shows a knot for a question that went nowhere.
+    """
+
+    __tablename__ = "ir_questions"
+    __table_args__ = (Index("ix_ir_questions_status_created", "status", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    device_id: Mapped[str] = mapped_column(String(64), index=True)
+    session_id: Mapped[str] = mapped_column(String(36))
+    pericope: Mapped[str] = mapped_column(String(120))
+    audio_key: Mapped[str] = mapped_column(String(512))
+    status: Mapped[IRQuestionStatus] = mapped_column(
+        _QUESTION_STATUS_TYPE, default=IRQuestionStatus.OPEN
+    )
+    reply_audio_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    answered_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    heard_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
