@@ -174,6 +174,10 @@ async def purge_failed_uploads_fn(ctx: inngest.Context, step: inngest.Step) -> i
     already seen it aged, rather than by one racing the same transaction. Daily suits a
     retention measured in months, and the pass is idempotent — a run that finds nothing writes
     nothing and touches no bucket.
+
+    One run is bounded (`FAILED_UPLOAD_PURGE_BATCH`), so a backlog larger than a batch drains
+    over consecutive days rather than in the first run. That is the point: it keeps a single
+    run inside the request timeout this function is executed in.
     """
 
     async def _purge() -> int:
