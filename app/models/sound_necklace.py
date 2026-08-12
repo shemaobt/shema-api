@@ -1,10 +1,11 @@
 """Pydantic schemas for the sound-necklace app module.
 
 The wire contract the SPA generates its TypeScript types from (code-first
-OpenAPI). Provisional: the resources not yet implemented are stubs returning 501, so
-every schema is tagged ``x-stability: experimental`` and mirrors the SPA's provisional
-contracts (sound-necklace ``contracts/``). Artifacts and the session-state envelope are
-opaque — never parsed or re-serialized here.
+OpenAPI). Every resource is implemented; nothing here answers 501 any more (see
+``app/api/sound_necklace/__init__.py``). Every schema is still tagged
+``x-stability: experimental`` — provisional until each resource's shape finalizes —
+and mirrors the SPA's provisional contracts (sound-necklace ``contracts/``). Artifacts
+and the session-state envelope are opaque — never parsed or re-serialized here.
 
 Where this and the SPA's provisional contracts disagree, this wins and the SPA
 regenerates: its ``contracts/bucket.ts`` still types the codebook version as an integer
@@ -14,9 +15,9 @@ actually mints them (ENG-261).
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.core.exceptions import (
     ERROR_CODE_CONFLICT,
@@ -106,6 +107,24 @@ class SessionCreate(BaseModel):
     bead_sec: float = Field(gt=0)
     manifest_id: str = Field(pattern=MANIFEST_ID_PATTERN)
     pipeline_consent: bool
+
+
+class SessionRename(BaseModel):
+    """Rename body: the story's display name, and nothing else.
+
+    The slug is deliberately absent. It names all three artifact files (PRD §10.5) and a
+    downstream pipeline reads them by name, so accepting a slug here would let a
+    cosmetic edit become a migration of stored objects.
+
+    Trimmed before it is measured, so a name of nothing but spaces is refused rather
+    than stored. The 255 mirrors the column, as ``SessionCreate`` does.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    story_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+    ]
 
 
 class SessionStateUpdate(BaseModel):
