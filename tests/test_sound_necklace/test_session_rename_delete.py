@@ -21,7 +21,10 @@ named — the previous suite passed while three superseded objects survived a de
 
 from __future__ import annotations
 
+import logging
+
 import pytest
+from google.api_core.exceptions import ServiceUnavailable
 from sqlalchemy import func, select
 
 from app.db.models.sound_necklace import (
@@ -78,6 +81,11 @@ def storage(monkeypatch):
     whole job is to move objects out of storage, and which keys it named is the only
     place that claim can be read. The project's source audio is seeded in ``objects`` so
     a test can watch it survive.
+
+    ``fail_deletes`` makes the bucket refuse, with the exception class the real client
+    raises rather than a bespoke one — the whole question a failing sweep raises is which
+    errors the service is entitled to swallow, and a fake that invented its own answer
+    would not be asking it.
     """
 
     class FakeStorage:
@@ -86,6 +94,7 @@ def storage(monkeypatch):
             self.signed: list[dict] = []
             self.deleted: list[str] = []
             self.deleted_buckets: set[str] = set()
+            self.fail_deletes = False
 
         async def upload(
             self, bucket: str, key: str, data: bytes, content_type: str, *, content_encoding=None
@@ -100,6 +109,8 @@ def storage(monkeypatch):
             return f"https://storage.googleapis.com/{bucket}/{key}?X-Goog-Signature=beef"
 
         async def delete(self, bucket: str, key: str) -> None:
+            if self.fail_deletes:
+                raise ServiceUnavailable(f"the bucket is unreachable: {key}")
             self.deleted.append(key)
             self.deleted_buckets.add(bucket)
             self.objects.pop(key, None)
@@ -474,6 +485,31 @@ async def test_a_delete_after_a_reupload_leaves_nothing_of_the_session_behind(
     assert storage.session_keys() == set()
     assert PROJECT_AUDIO_KEY in storage.objects
     assert storage.deleted_buckets == {"sound-necklace-private"}
+
+
+async def test_a_sweep_that_fails_does_not_fail_the_export(client, alice, project, storage, caplog):
+    """The commit has already happened by the time the predecessor is swept, so letting a
+    storage failure out answers 500 for an export that really succeeded — and completion
+    is a gate in the SPA's flow. A retry cannot even heal it: the key is a content hash,
+    so re-exporting the same bytes lands on the same key, the row already points there,
+    and nothing is superseded to sweep. The orphan left behind is exactly the condition
+    this change is fixing, so hygiene that occasionally does not run beats hygiene that
+    turns a good export into an error — but the log line naming the key is then the only
+    trace of an object nothing points at, which is why it is asserted here."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_artifacts(client, headers, session_id)
+    superseded_key, _ = await served(client, headers, session_id, "report", storage)
+    storage.fail_deletes = True
+
+    with caplog.at_level(logging.WARNING):
+        res = await put_artifacts(client, headers, session_id, REVISED_PAYLOADS)
+
+    assert res.status_code == 201, res.text
+    _key, current = await served(client, headers, session_id, "report", storage)
+    assert current == REVISED_REPORT
+    assert superseded_key in storage.objects, "the sweep was supposed to have failed"
+    assert superseded_key in caplog.text, "the stranded object's key was never logged"
 
 
 # ── Who may do either ────────────────────────────────────────────────────────

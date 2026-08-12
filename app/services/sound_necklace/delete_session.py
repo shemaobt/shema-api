@@ -23,7 +23,10 @@ async def delete_session(db: AsyncSession, session: SnSession, actor_user_id: st
     re-export writes a second object and moves the pointer; the predecessor is referenced
     by nothing and no query here could name it. ``store_artifacts`` is what deletes it, at
     the moment it moves the pointer. Take that away and this function leaves a superseded
-    ``relatorio-mapeamento.md`` in the bucket for good instead.
+    ``relatorio-mapeamento.md`` in the bucket for good instead. That sweep is best-effort
+    by decision — it logs and continues when storage refuses, rather than failing an export
+    that succeeded — so an object stranded by a refusal is equally beyond this function's
+    reach, and its log line is the only trace of it.
 
     The lease is fenced before a single object moves. A refusal has to leave the session
     exactly as it was, and a fence that ran after the sweep would answer 409 having
