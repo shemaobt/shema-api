@@ -131,6 +131,8 @@ async def synthesize_speech(
     *,
     language_code: str | None = None,
     voice_name: str | None = None,
+    model_id: str | None = None,
+    voice_settings: dict[str, float | bool] | None = None,
     client: httpx.AsyncClient | None = None,
     settings: Settings | None = None,
 ) -> tuple[CachedAudio, bool]:
@@ -145,7 +147,9 @@ async def synthesize_speech(
     if language_code is None:
         language_code = detect_language_code(text)
 
-    cache_key = audio_cache.make_key(text, language_code, voice_name)
+    cache_key = audio_cache.make_key(
+        text, language_code, f"{voice_name}|{model_id}|{voice_settings}"
+    )
     cached = audio_cache.get(cache_key)
     if cached is not None:
         return cached, True
@@ -155,12 +159,14 @@ async def synthesize_speech(
         raise ValidationError("ELEVENLABS_API_KEY is not configured")
 
     voice_cfg = _resolve_voice(language_code, voice_name)
-    body = {
+    body: dict[str, object] = {
         "text": text,
-        "model_id": cfg.elevenlabs_tts_model,
+        "model_id": model_id or cfg.elevenlabs_tts_model,
         "language_code": voice_cfg["language_code"],
         "output_format": cfg.elevenlabs_output_format,
     }
+    if voice_settings:
+        body["voice_settings"] = voice_settings
     url = f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_cfg['voice_id']}/with-timestamps"
     headers = {
         "xi-api-key": cfg.elevenlabs_api_key,
