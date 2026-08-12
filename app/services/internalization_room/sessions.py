@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import floor_met, initial_state
 
@@ -103,6 +104,19 @@ async def apply_coverage(
 
 async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     session.status = IRSessionStatus.NEEDS_PERSON
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def back_translation_of(session: IRSession) -> BackTranslationState:
+    return BackTranslationState.model_validate(session.back_translation or {})
+
+
+async def save_back_translation(
+    db: AsyncSession, session: IRSession, state: BackTranslationState
+) -> IRSession:
+    session.back_translation = state.model_dump(mode="json")
     await db.commit()
     await db.refresh(session)
     return session
