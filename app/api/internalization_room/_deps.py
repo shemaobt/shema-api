@@ -32,3 +32,18 @@ async def require_room_key(x_room_key: str | None = Header(default=None)) -> Non
 
 
 room_key_dep = Depends(require_room_key)
+
+
+async def require_device(x_room_device: str | None = Header(default=None)) -> str:
+    """Which tablet is speaking.
+
+    The room has no accounts, so work is attributed to the device that produced it. The app
+    mints this once and keeps it, which is what lets an answer find the team days later and
+    what a take is filed under until a team login exists.
+    """
+    if not x_room_device:
+        raise ValidationError("Missing X-Room-Device header")
+    return x_room_device
+
+
+device_dep = Depends(require_device)
