@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,10 +22,22 @@ async def delete_session(db: AsyncSession, session: SnSession, actor_user_id: st
     exactly as it was, and a fence that ran after the sweep would answer 409 having
     already destroyed the recordings it was refusing to touch.
 
-    Objects go before rows, as in ``delete_voice_answer``. If the commit then fails, the
-    rows survive pointing at missing objects — a playback that 404s until a retry heals
-    it. For LGPD-sensitive audio that is the safe direction to fail; the reverse leaves
-    the recordings in the bucket with nothing left to reach them.
+    The deletions are issued concurrently, as ``store_artifacts`` issues its uploads. A
+    full interview runs to a few hundred questions, so a session can carry that many
+    recordings besides its three artifacts, and awaiting them one at a time is that many
+    serialised round trips with a facilitator watching the menu spin.
+    ``asyncio.to_thread`` runs them on the loop's default executor, so the fan-out is
+    bounded by that pool rather than by the number of keys. The pool is small and
+    process-wide, so a very large sweep queues behind it and holds threads other callers
+    share; if that shows up in practice the answer is the bucket's batch delete, not a
+    semaphore over one client per object.
+
+    Objects go before rows, as in ``delete_voice_answer``. If any deletion raises, the
+    gather propagates it, the session row is never deleted, and the rows survive pointing
+    at missing objects — a playback that 404s until a retry heals it. Siblings already in
+    flight are not cancelled and may still land, which is the same outcome the sequential
+    version had. For LGPD-sensitive audio that is the safe direction to fail; the reverse
+    leaves the recordings in the bucket with nothing left to reach them.
 
     The child rows go by cascade, not by hand: sn_session_state, sn_session_ticks,
     sn_artifacts, sn_voice_answers and sn_consents all carry ON DELETE CASCADE from
@@ -34,22 +48,24 @@ async def delete_session(db: AsyncSession, session: SnSession, actor_user_id: st
     """
     await raise_if_locked_by_other(db, session.id, actor_user_id)
 
-    keys = list(
+    # One statement for one question. The two halves are independent, but gathering them
+    # is not the way to get that: they share this session, and two db.execute calls in a
+    # gather race on its single connection.
+    keys = (
         (
             await db.execute(
-                select(SnArtifact.storage_key).where(SnArtifact.session_id == session.id)
+                select(SnArtifact.storage_key)
+                .where(SnArtifact.session_id == session.id)
+                .union_all(
+                    select(SnVoiceAnswer.storage_key).where(SnVoiceAnswer.session_id == session.id)
+                )
             )
-        ).scalars()
-    ) + list(
-        (
-            await db.execute(
-                select(SnVoiceAnswer.storage_key).where(SnVoiceAnswer.session_id == session.id)
-            )
-        ).scalars()
+        )
+        .scalars()
+        .all()
     )
 
-    for key in keys:
-        await gcs_utils.delete_gcs_object(GCS_SN_BUCKET, key)
+    await asyncio.gather(*(gcs_utils.delete_gcs_object(GCS_SN_BUCKET, key) for key in keys))
 
     await db.delete(session)
     await db.commit()
