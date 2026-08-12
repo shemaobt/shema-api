@@ -13,22 +13,27 @@ from app.models.oc_stats import (
 )
 
 
-def _counted_conditions(project_id: str) -> list[ColumnElement[bool]]:
-    """The recordings a project's stats describe: the ones its listing returns.
+def _counted_recording_conditions() -> list[ColumnElement[bool]]:
+    """The recordings every number in this module describes, whatever it groups them by.
 
     A split leaves the parent behind as an `ARCHIVED_AFTER_SPLIT` row that keeps its
     `upload_status` and its full duration, sitting beside the segment rows that replaced it.
     Counting it reports audio the user cannot open, and reports the segments' audio a second
-    time under the parent.
+    time under the parent. An upload the server never received is duration that exists only on
+    a device, which the platform cannot play and should not claim to hold.
 
-    Both aggregations below share this so they cannot drift apart from each other, or from
+    Every aggregation below shares this so they cannot drift apart from each other, or from
     `recording_service._listing_conditions`.
     """
     return [
-        OC_Recording.project_id == project_id,
         OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES),
         OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
     ]
+
+
+def _counted_conditions(project_id: str) -> list[ColumnElement[bool]]:
+    """`_counted_recording_conditions`, narrowed to one project."""
+    return [OC_Recording.project_id == project_id, *_counted_recording_conditions()]
 
 
 async def get_genre_stats(db: AsyncSession, project_id: str) -> GenreStatsResponse:
@@ -93,8 +98,19 @@ async def get_genre_stats(db: AsyncSession, project_id: str) -> GenreStatsRespon
 
 
 async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:
+    """Platform-wide totals, over the same recordings a project's own stats and listing show.
 
-    project_count_stmt = select(func.count(func.distinct(OC_Recording.project_id)))
+    The two numbers read from `oc_recordings` share `_counted_recording_conditions` with
+    `get_genre_stats`: a platform total that counted uploads the server never received, or
+    counted a split parent beside the segments that replaced it, would describe a different
+    set of recordings than every other screen in the product.
+
+    `total_languages` and `active_users` are not recording-derived and keep their meaning:
+    a language or a user with project access counts whether or not any audio arrived.
+    """
+    counted = _counted_recording_conditions()
+
+    project_count_stmt = select(func.count(func.distinct(OC_Recording.project_id))).where(*counted)
     project_result = await db.execute(project_count_stmt)
     total_projects = project_result.scalar_one()
 
@@ -106,7 +122,7 @@ async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:
     language_result = await db.execute(language_count_stmt)
     total_languages = language_result.scalar_one()
 
-    hours_stmt = select(func.coalesce(func.sum(OC_Recording.duration_seconds), 0.0))
+    hours_stmt = select(func.coalesce(func.sum(OC_Recording.duration_seconds), 0.0)).where(*counted)
     hours_result = await db.execute(hours_stmt)
     total_seconds = float(hours_result.scalar_one())
     total_hours = total_seconds / 3600.0
