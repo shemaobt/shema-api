@@ -95,6 +95,9 @@ services:
       INNGEST_DEV: "http://inngest:8288/"
       # Bucket generico da plataforma (cache de TTS). Nome, nao credencial: env comum.
       GCS_PLATFORM_BUCKET: ${GCS_PLATFORM_BUCKET:-tripod-platform}
+      # Chave de dispositivo da Sala de Internalizacao. Valor de dev no local;
+      # em producao vem dos segredos, como as demais credenciais.
+      INTERNALIZATION_ROOM_API_KEY: ${INTERNALIZATION_ROOM_API_KEY:-sala-local-dev}
     dns:
       - 8.8.8.8
       - 8.8.4.4

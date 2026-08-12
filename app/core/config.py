@@ -37,6 +37,8 @@ class Settings(BaseSettings):
 
     ph_elevenlabs_api_key: str = ""
 
+    internalization_room_api_key: str = ""
+
     gcs_bucket_name: str = ""
     # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it
     # needs neither CORS nor public access.
