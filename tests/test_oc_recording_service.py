@@ -1721,3 +1721,157 @@ async def test_an_upload_in_flight_can_still_be_deleted(
 
     with pytest.raises(NotFoundError):
         await rs.get_recording(db_session, rec.id)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upload_past_the_retention_is_deleted_with_its_blob(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned.m4a"
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        gcs_url=gcs_url,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+    await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
+
+    purged = await rs.purge_failed_uploads(db_session)
+
+    assert purged == 1
+    assert deleted == [gcs_url]
+    with pytest.raises(NotFoundError):
+        await rs.get_recording(db_session, rec.id)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upload_that_never_reached_the_bucket_is_purged_anyway(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+    await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
+
+    assert await rs.purge_failed_uploads(db_session) == 1
+    assert deleted == []
+    with pytest.raises(NotFoundError):
+        await rs.get_recording(db_session, rec.id)
+
+
+@pytest.mark.asyncio
+async def test_a_bucket_that_refuses_the_blob_does_not_keep_the_row(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A blob already gone, or a bucket that answers with an error, is not a reason to keep
+    the row or to abandon the rest of the sweep."""
+    rs = _import_service()
+
+    def _refuse():  # type: ignore[no-untyped-def]
+        raise RuntimeError("bucket unreachable")
+
+    monkeypatch.setattr(rs, "_get_gcs_client", _refuse)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    for index in range(2):
+        rec = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"abandoned {index}",
+            gcs_url=f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned-{index}.m4a",
+            upload_status=UploadStatus.UPLOAD_FAILED,
+        )
+        await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
+
+    assert await rs.purge_failed_uploads(db_session) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upload_inside_the_retention_is_left_alone(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+    await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION - timedelta(days=1))
+
+    assert await rs.purge_failed_uploads(db_session) == 0
+    recording = await rs.get_recording(db_session, rec.id)
+    assert recording.upload_status == UploadStatus.UPLOAD_FAILED
+
+
+@pytest.mark.asyncio
+async def test_no_other_upload_state_is_purged_however_old_it_is(
+    db_session: AsyncSession,
+) -> None:
+    """`UPLOADING` above all: the reaper decides when an upload stops being in flight, and
+    the purge must not take that decision away from it."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    untouched = [
+        UploadStatus.LOCAL,
+        UploadStatus.UPLOADING,
+        UploadStatus.UPLOADED,
+        UploadStatus.VERIFIED,
+    ]
+    ids = {}
+    for status in untouched:
+        rec = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"recording {status}",
+            upload_status=status,
+        )
+        await _age_recording(db_session, rec.id, timedelta(days=365))
+        ids[status] = rec.id
+
+    assert await rs.purge_failed_uploads(db_session) == 0
+    for status, recording_id in ids.items():
+        recording = await rs.get_recording(db_session, recording_id)
+        assert recording.upload_status == status

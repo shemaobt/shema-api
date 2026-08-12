@@ -500,7 +500,12 @@ async def clear_stale_recordings(
     *,
     is_platform_admin: bool = False,
 ) -> int:
-    """Delete the project's failed uploads and report how many rows went.
+    """Delete the project's failed uploads on demand and report how many rows went.
+
+    No application calls this any more. The Oral Collector's "clear failures" button was
+    removed for deleting device audio the server had never received, which leaves this an
+    administrative tool a manager or platform admin can still reach by hand, and leaves
+    `purge_failed_uploads` — not this — as the routine that keeps the rows from piling up.
 
     Only `UPLOAD_FAILED` is cleared, and the client counts more things as failed than the
     server ever will: a failure it hits before or instead of the upload leaves the server row
@@ -552,9 +557,9 @@ async def fail_stalled_uploads(db: AsyncSession) -> int:
     seven, so past a week the transfer provably cannot resume; the second week is grace for an
     offline-first client. Staleness reads `updated_at`, so any edit counts as progress.
 
-    Nothing is deleted and no blob is touched, but each owner is told once per sweep: the rows
-    land on the list the manager's bulk clear empties, and the only copy left is on the device
-    of someone who would otherwise never learn the upload died.
+    Nothing is deleted and no blob is touched, but each owner is told once per sweep: the only
+    copy left is on the device of someone who would otherwise never learn the upload died.
+    The rows this leaves are drained by `purge_failed_uploads` once they stop being news.
     """
     cutoff = datetime.now(UTC) - STALLED_UPLOAD_DEADLINE
     stmt = select(OC_Recording).where(
@@ -589,6 +594,50 @@ async def fail_stalled_uploads(db: AsyncSession) -> int:
             )
 
     return len(stalled)
+
+
+FAILED_UPLOAD_RETENTION = timedelta(days=180)
+
+
+async def purge_failed_uploads(db: AsyncSession) -> int:
+    """Delete the `UPLOAD_FAILED` rows untouched for `FAILED_UPLOAD_RETENTION`, blobs included.
+
+    `fail_stalled_uploads` manufactures these rows and nothing drains them. The app's bulk
+    clear was removed for deleting audio that existed only on the device, which leaves
+    `clear_stale_recordings` without a caller, so the reaper's output accumulates. The rubbish
+    belongs to the server and the server removes it.
+
+    Removing the row cannot cost a recording. The device keeps its local copy until the server
+    reports `uploaded`/`verified` *and* returns a server id, so a recording that never
+    finished uploading is still on the phone; its healing request simply answers 404. A row
+    that owns a blob owns one that failed verification, and `delete_recording` already treats
+    `gcs_url` as the only thing worth asking about.
+
+    Nothing fixes the retention the way the seven-day GCS resumable session fixed the reaper's
+    fourteen days: past that deadline the transfer provably could not resume, while here the
+    row is already dead and only the typed metadata is at stake. So the number is a choice,
+    taken conservatively — 180 days, the retention this project already uses for the artefacts
+    it keeps, and half a year after the owner was told the upload died. Age reads `updated_at`
+    like the reaper does, so any edit counts as activity and starts it over.
+
+    `_delete_gcs_blob` logs and swallows, so an object the bucket cannot produce costs its own
+    delete and nothing else: neither its row nor the rest of the pass.
+    """
+    cutoff = datetime.now(UTC) - FAILED_UPLOAD_RETENTION
+    stmt = select(OC_Recording).where(
+        OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
+        OC_Recording.updated_at < cutoff,
+    )
+    result = await db.execute(stmt)
+    abandoned = list(result.scalars().all())
+
+    for recording in abandoned:
+        if recording.gcs_url:
+            _delete_gcs_blob(recording.gcs_url)
+        await db.delete(recording)
+
+    await db.commit()
+    return len(abandoned)
 
 
 def _gcs_blob_path(project_id: str, genre_id: str, recording_id: str, fmt: str) -> str:

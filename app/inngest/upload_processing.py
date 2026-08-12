@@ -23,7 +23,10 @@ from app.inngest.helpers import (
 from app.inngest.schemas import BlobVerificationResult, UploadConfirmedPayload
 from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE
-from app.services.oral_collector.recording_service import fail_stalled_uploads
+from app.services.oral_collector.recording_service import (
+    fail_stalled_uploads,
+    purge_failed_uploads,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,3 +158,26 @@ async def fail_stalled_uploads_fn(ctx: inngest.Context, step: inngest.Step) -> i
             return await fail_stalled_uploads(db)
 
     return await step.run("fail-stalled-uploads", _sweep)
+
+
+FAILED_UPLOAD_PURGE_CRON = "30 4 * * *"
+
+
+@inngest_client.create_function(
+    fn_id="purge-failed-uploads",
+    trigger=inngest.TriggerCron(cron=FAILED_UPLOAD_PURGE_CRON),
+)
+async def purge_failed_uploads_fn(ctx: inngest.Context, step: inngest.Step) -> int:
+    """Drain the `UPLOAD_FAILED` rows the sweep above leaves behind, once a day.
+
+    Half an hour after the sweep, so a row the sweep just failed is read by a purge that has
+    already seen it aged, rather than by one racing the same transaction. Daily suits a
+    retention measured in months, and the pass is idempotent — a run that finds nothing writes
+    nothing and touches no bucket.
+    """
+
+    async def _purge() -> int:
+        async with AsyncSessionLocal() as db:
+            return await purge_failed_uploads(db)
+
+    return await step.run("purge-failed-uploads", _purge)

@@ -115,7 +115,12 @@ async def clear_stale_recordings(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, int]:
+    """Administrative: drop this project's failed uploads now, without waiting for the purge.
 
+    No client calls this. The app's button was removed for deleting device audio, and the
+    routine drain is `purge_failed_uploads`, a scheduled server-side pass. It survives as a
+    manual lever for a manager or platform admin who needs a project cleared today.
+    """
     deleted = await recording_service.clear_stale_recordings(
         db, project_id, user.id, is_platform_admin=user.is_platform_admin
     )
