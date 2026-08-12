@@ -290,14 +290,19 @@ async def test_admin_hours_count_only_the_audio_the_server_holds(
 
 
 @pytest.mark.asyncio
-async def test_admin_project_count_ignores_a_project_holding_nothing_the_server_received(
+async def test_admin_project_count_holds_a_project_whose_uploads_are_all_in_flight(
     db_session: AsyncSession,
 ) -> None:
-    """A project whose every upload failed has no audio on the platform to speak of."""
+    """A project collecting since yesterday is a project, whatever its uploads are doing.
+
+    Its hours are still zero, because hours are audio the server holds and it holds none of
+    it yet. Counting the project itself by the same rule would answer "0 projects" and
+    "1 language" about the same project in the same response.
+    """
     user = await make_user(db_session)
     lang = await make_language(db_session)
     holds_audio = await make_project(db_session, lang.id, name="holds audio")
-    holds_nothing = await make_project(db_session, lang.id, name="holds nothing")
+    collecting = await make_project(db_session, lang.id, name="collecting since yesterday")
     genre, sub = await _seed_admin_taxonomy(db_session)
 
     await make_oc_recording(
@@ -307,21 +312,28 @@ async def test_admin_project_count_ignores_a_project_holding_nothing_the_server_
         sub.id,
         user_id=user.id,
         title="verified recording",
+        duration_seconds=3600.0,
         upload_status=UploadStatus.VERIFIED,
     )
-    await make_oc_recording(
-        db_session,
-        holds_nothing.id,
-        genre.id,
-        sub.id,
-        user_id=user.id,
-        title="upload that never arrived",
-        upload_status=UploadStatus.UPLOAD_FAILED,
-    )
+    for title, upload_status in (
+        ("still uploading", UploadStatus.UPLOADING),
+        ("upload that never arrived", UploadStatus.UPLOAD_FAILED),
+    ):
+        await make_oc_recording(
+            db_session,
+            collecting.id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=title,
+            duration_seconds=1800.0,
+            upload_status=upload_status,
+        )
 
     response = await stats_service.get_admin_stats(db_session)
 
-    assert response.total_projects == 1
+    assert response.total_projects == 2
+    assert response.total_hours == 1.0
 
 
 @pytest.mark.asyncio
