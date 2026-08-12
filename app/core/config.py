@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     ph_elevenlabs_api_key: str = ""
 
     internalization_room_api_key: str = ""
+    internalization_room_voice_id: str = "83Nae6GFQiNslSbuzmE7"
+    internalization_room_language_code: str = "pt-BR"
+    internalization_room_tts_model: str = "eleven_turbo_v2_5"
+    internalization_room_voice_stability: float = 0.45
+    internalization_room_voice_similarity: float = 0.85
+    internalization_room_voice_style: float = 0.10
+    internalization_room_voice_speed: float = 0.96
 
     gcs_bucket_name: str = ""
     # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it
