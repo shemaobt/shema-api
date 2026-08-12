@@ -3,24 +3,41 @@ from __future__ import annotations
 import base64
 import hashlib
 import uuid
+from datetime import UTC, datetime
+from typing import Protocol
 
 from google_crc32c import Checksum
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
-from app.services.platform.storage import GcsPlatformStore
-from app.services.platform.tts import SpeechStore
+from app.services.oral_collector.gcs_utils import generate_signed_download_url
+from app.services.platform.storage import GcsPlatformStore, StoredObject
 
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
+LISTEN_MINUTES = 15
 
 FILENAMES = {IRTakeKind.ENSAIO: "tomada.m4a", IRTakeKind.RETRO: "trecho.m4a"}
 
 
-def _store(settings: Settings | None = None) -> SpeechStore:
+class TakeStore(Protocol):
+    """What a take needs from storage: write it, read it, and ask about it.
+
+    `stat` is the one the platform store did not have. It is what separates "the API
+    stored what it received" from "the bucket holds it".
+    """
+
+    async def get(self, key: str) -> bytes | None: ...
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+    async def stat(self, key: str) -> StoredObject | None: ...
+
+
+def _store(settings: Settings | None = None) -> TakeStore:
     return GcsPlatformStore(settings or get_settings())
 
 
@@ -55,9 +72,9 @@ async def store_take(
     pass_number: int | None = None,
     chunk_index: int | None = None,
     content_type: str = AUDIO_MIME,
-    store: SpeechStore | None = None,
+    store: TakeStore | None = None,
 ) -> IRTake:
-    """Put the bytes in the bucket, then record where they are.
+    """Put the bytes in the bucket, read it back, then record where it is.
 
     That order is deliberate and matches the hand's questions: a row pointing at an object
     that was never written is a take the app believes is safe and nobody can play. The
@@ -81,7 +98,10 @@ async def store_take(
     if already is not None:
         return already
 
-    await (store or _store()).put(key, audio, content_type)
+    speech_store = store or _store()
+    await speech_store.put(key, audio, content_type)
+    crc32c = _crc32c(audio)
+    landed = await speech_store.stat(key)
     take = IRTake(
         id=str(uuid.uuid4()),
         session_id=session_id,
@@ -94,8 +114,9 @@ async def store_take(
         storage_key=key,
         size_bytes=len(audio),
         sha256=digest,
-        crc32c=_crc32c(audio),
+        crc32c=crc32c,
         content_type=content_type,
+        verified_at=_verified(landed, size=len(audio), crc32c=crc32c),
     )
     db.add(take)
     await db.commit()
@@ -103,12 +124,46 @@ async def store_take(
     return take
 
 
+def _verified(landed: StoredObject | None, *, size: int, crc32c: str) -> datetime | None:
+    """A timestamp only when the bucket's own accounting matches what was sent.
+
+    Not raising is deliberate. The object is there either way, and refusing the request
+    would tell the app to keep trying — which re-sends the same bytes to the same
+    content-addressed key and reproduces the same mismatch. An unverified row is a row
+    somebody can go and look at; a lost take is not.
+    """
+    if landed is None or landed.size != size or landed.crc32c != crc32c:
+        return None
+    return datetime.now(UTC)
+
+
+async def take_by_id(db: AsyncSession, take_id: str) -> IRTake:
+    result = await db.execute(select(IRTake).where(IRTake.id == take_id))
+    take = result.scalar_one_or_none()
+    if take is None:
+        raise NotFoundError(f"Internalization room take {take_id} not found")
+    return take
+
+
+async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
+    """A short-lived signed URL, so the bytes never pass through the API.
+
+    A rehearsal take is the whole passage; proxying minutes of audio through the
+    application server buys nothing over letting storage serve it.
+    """
+    cfg = settings or get_settings()
+    if not cfg.gcs_platform_bucket:
+        raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
+    return await generate_signed_download_url(
+        cfg.gcs_platform_bucket,
+        take.storage_key,
+        expiry_minutes=LISTEN_MINUTES,
+        response_content_type=take.content_type,
+    )
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     result = await db.execute(
         select(IRTake).where(IRTake.session_id == session_id).order_by(IRTake.created_at)
     )
     return list(result.scalars().all())
-
-
-async def fetch_take(key: str, *, store: SpeechStore | None = None) -> bytes | None:
-    return await (store or _store()).get(key)

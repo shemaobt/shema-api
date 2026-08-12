@@ -15,9 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTakeKind
 from app.services.internalization_room import takes as service
+from app.services.platform.storage import StoredObject
 
 DEVICE = "tablet-da-equipe-1"
 AUDIO = b"a equipe contou a passagem inteira"
+
+
+def _crc(data: bytes) -> str:
+    checksum = Checksum()
+    checksum.update(data)
+    return base64.b64encode(checksum.digest()).decode("ascii")
 
 
 class MemoryStore:
@@ -31,6 +38,26 @@ class MemoryStore:
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         self.writes += 1
         self.objects[key] = data
+
+    async def stat(self, key: str) -> StoredObject | None:
+        stored = self.objects.get(key)
+        if stored is None:
+            return None
+        return StoredObject(size=len(stored), crc32c=_crc(stored))
+
+
+class TruncatingStore(MemoryStore):
+    """A bucket that accepted the write and kept less than it was given."""
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        await super().put(key, data[:-1], content_type)
+
+
+class ForgetfulStore(MemoryStore):
+    """A bucket that answered the write and has nothing under the key."""
+
+    async def stat(self, key: str) -> StoredObject | None:
+        return None
 
 
 class RefusingStore(MemoryStore):
@@ -66,9 +93,7 @@ async def test_the_checksums_describe_the_stored_bytes(db_session: AsyncSession)
 
     take = await _keep(db_session, store)
 
-    expected = Checksum()
-    expected.update(AUDIO)
-    assert take.crc32c == base64.b64encode(expected.digest()).decode("ascii")
+    assert take.crc32c == _crc(AUDIO)
     assert take.sha256 in take.storage_key
     assert take.size_bytes == len(AUDIO)
 
@@ -153,4 +178,40 @@ async def test_the_device_is_recorded_and_the_team_seat_is_left_open(db_session:
     assert take.team_id is None, (
         "a atribuição por aparelho é provisória — a coluna existe para o login "
         "de equipe reivindicar a linha depois, sem reescrita"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_take_read_back_whole_is_marked_verified(db_session: AsyncSession):
+    take = await _keep(db_session, MemoryStore())
+
+    assert take.verified_at is not None
+
+
+@pytest.mark.asyncio
+async def test_a_bucket_that_kept_less_than_it_was_given_is_not_verified(
+    db_session: AsyncSession,
+):
+    take = await _keep(db_session, TruncatingStore())
+
+    assert take.verified_at is None, (
+        "o checksum calculado na memória não prova nada sobre o objeto — quem prova é a releitura"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_bucket_with_nothing_under_the_key_is_not_verified(db_session: AsyncSession):
+    take = await _keep(db_session, ForgetfulStore())
+
+    assert take.verified_at is None
+
+
+@pytest.mark.asyncio
+async def test_an_unverified_take_is_still_recorded(db_session: AsyncSession):
+    await _keep(db_session, TruncatingStore())
+
+    assert await service.takes_of(db_session, "sessao-1") != [], (
+        "recusar faria o app reenviar os mesmos bytes para a mesma chave e "
+        "reproduzir o mesmo problema — uma linha sem verificação é algo que "
+        "alguém pode ir olhar, uma tomada perdida não"
     )

@@ -157,4 +157,5 @@ class IRTake(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     crc32c: Mapped[str] = mapped_column(String(16))
     content_type: Mapped[str] = mapped_column(String(64))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

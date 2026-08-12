@@ -12,9 +12,23 @@ the module the way `storage/upload.py` and `annotation_studio/constants.py` do i
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
+
+
+@dataclass(frozen=True)
+class StoredObject:
+    """What the bucket says about an object, without reading it.
+
+    `crc32c` comes back base64-encoded, which is the same shape a caller gets from
+    `google_crc32c` — so the two compare directly.
+    """
+
+    size: int
+    crc32c: str
+
 
 _gcs_client = None
 
@@ -47,6 +61,22 @@ class GcsPlatformStore:
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         """Write the object (overwrites)."""
         await asyncio.to_thread(self._put_sync, key, data, content_type)
+
+    async def stat(self, key: str) -> StoredObject | None:
+        """What the bucket holds under `key`, without downloading it.
+
+        This is how a caller checks that the object it just wrote arrived whole: size and
+        CRC32C come from the bucket's own accounting, not from the bytes the API had in
+        memory a moment ago.
+        """
+        return await asyncio.to_thread(self._stat_sync, key)
+
+    def _stat_sync(self, key: str) -> StoredObject | None:
+        blob = _blob(key, self._settings)
+        if not blob.exists():
+            return None
+        blob.reload()
+        return StoredObject(size=int(blob.size or 0), crc32c=str(blob.crc32c or ""))
 
     def _get_sync(self, key: str) -> bytes | None:
         # `exists()` + download costs two GCS round trips; catching `NotFound` would cost

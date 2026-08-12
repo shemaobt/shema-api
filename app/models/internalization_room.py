@@ -105,6 +105,7 @@ class TakeResponse(BaseModel):
     scope: str
     sha256: str
     size_bytes: int
+    verified: bool = False
 
 
 class TakesResponse(BaseModel):
