@@ -230,3 +230,151 @@ async def test_genre_stats_counts_the_same_set_the_listing_returns(
 
     counted_seconds = sum(g.duration_seconds for g in response.genres)
     assert counted_seconds == 900.0, "the segments' audio must be counted once, not twice"
+
+
+async def _seed_admin_taxonomy(db: AsyncSession) -> tuple[OC_Genre, OC_Subcategory]:
+    genre = await make_oc_genre(db, name="narrative", sort_order=0)
+    sub = await make_oc_subcategory(db, genre.id, name="folktale", sort_order=0)
+    return genre, sub
+
+
+@pytest.mark.asyncio
+async def test_admin_hours_count_only_the_audio_the_server_holds(
+    db_session: AsyncSession,
+) -> None:
+    """One hour of audio, beside two rows that describe no audio the platform can play.
+
+    A failed upload is duration the device holds and the server never received; an
+    archived-after-split parent is duration already counted under the segments that replaced
+    it. Summing either inflates the hours the admin panel reports.
+    """
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_admin_taxonomy(db_session)
+
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="verified recording",
+        duration_seconds=3600.0,
+        upload_status=UploadStatus.VERIFIED,
+    )
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="upload that never arrived",
+        duration_seconds=7200.0,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="archived parent",
+        duration_seconds=1800.0,
+        upload_status=UploadStatus.VERIFIED,
+        splitting_status=SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    )
+
+    response = await stats_service.get_admin_stats(db_session)
+
+    assert response.total_hours == 1.0
+
+
+@pytest.mark.asyncio
+async def test_admin_project_count_holds_a_project_whose_uploads_are_all_in_flight(
+    db_session: AsyncSession,
+) -> None:
+    """A project collecting since yesterday is a project, whatever its uploads are doing.
+
+    Its hours are still zero, because hours are audio the server holds and it holds none of
+    it yet. Counting the project itself by the same rule would answer "0 projects" and
+    "1 language" about the same project in the same response.
+    """
+    user = await make_user(db_session)
+    lang = await make_language(db_session)
+    holds_audio = await make_project(db_session, lang.id, name="holds audio")
+    collecting = await make_project(db_session, lang.id, name="collecting since yesterday")
+    genre, sub = await _seed_admin_taxonomy(db_session)
+
+    await make_oc_recording(
+        db_session,
+        holds_audio.id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="verified recording",
+        duration_seconds=3600.0,
+        upload_status=UploadStatus.VERIFIED,
+    )
+    for title, upload_status in (
+        ("still uploading", UploadStatus.UPLOADING),
+        ("upload that never arrived", UploadStatus.UPLOAD_FAILED),
+    ):
+        await make_oc_recording(
+            db_session,
+            collecting.id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=title,
+            duration_seconds=1800.0,
+            upload_status=upload_status,
+        )
+
+    response = await stats_service.get_admin_stats(db_session)
+
+    assert response.total_projects == 2
+    assert response.total_hours == 1.0
+
+
+@pytest.mark.asyncio
+async def test_admin_hours_describe_the_same_set_the_listing_returns(
+    db_session: AsyncSession,
+) -> None:
+    """Admin and the project listing must not disagree about which recordings exist.
+
+    This is the assertion that keeps the two from drifting apart again: it holds whatever the
+    seeded mix is, where a fixed expected number only holds for the mix written beside it.
+    """
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await _seed_admin_taxonomy(db_session)
+
+    seeded = [
+        ("verified recording", 1800.0, UploadStatus.VERIFIED, SplittingStatus.NONE),
+        ("uploaded recording", 1800.0, UploadStatus.UPLOADED, SplittingStatus.NONE),
+        ("still on the device", 500.0, UploadStatus.LOCAL, SplittingStatus.NONE),
+        ("upload that never arrived", 700.0, UploadStatus.UPLOAD_FAILED, SplittingStatus.NONE),
+        ("archived parent", 900.0, UploadStatus.VERIFIED, SplittingStatus.ARCHIVED_AFTER_SPLIT),
+    ]
+    for title, seconds, upload_status, splitting_status in seeded:
+        await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=title,
+            duration_seconds=seconds,
+            upload_status=upload_status,
+            splitting_status=splitting_status,
+        )
+
+    response = await stats_service.get_admin_stats(db_session)
+    listed = await _import_recording_service().list_recordings(db_session, project_id)
+
+    assert listed, "an empty listing would make the comparison below prove nothing"
+    listed_hours = round(sum(r.duration_seconds for r in listed) / 3600.0, 2)
+    assert response.total_hours == listed_hours, (
+        "the admin panel and the project listing describe one set of recordings; "
+        "they must not disagree about which ones the platform holds"
+    )
