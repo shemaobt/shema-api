@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from collections import Counter
@@ -598,6 +599,8 @@ async def fail_stalled_uploads(db: AsyncSession) -> int:
 
 FAILED_UPLOAD_RETENTION = timedelta(days=180)
 
+FAILED_UPLOAD_PURGE_BATCH = 300
+
 
 async def purge_failed_uploads(db: AsyncSession) -> int:
     """Delete the `UPLOAD_FAILED` rows untouched for `FAILED_UPLOAD_RETENTION`, blobs included.
@@ -622,18 +625,38 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
 
     `_delete_gcs_blob` logs and swallows, so an object the bucket cannot produce costs its own
     delete and nothing else: neither its row nor the rest of the pass.
+
+    A pass takes `FAILED_UPLOAD_PURGE_BATCH` rows, oldest first, and leaves the rest to
+    tomorrow's. Nothing else bounds the set, and this runs unattended: without a ceiling the
+    first pass walks whatever backlog has accumulated, one bucket round-trip per row, in a
+    request Cloud Run kills at 300 seconds (`deploy.yml`) — which would time the Inngest step
+    out and retry the whole pass, forever, on the same oversized set. 300 rows is the ceiling
+    that fits: at a pessimistic half-second per delete it spends half that budget. It is also
+    well above the daily inflow, since the only producer is `fail_stalled_uploads` and the
+    platform does not start 300 uploads a day, so a backlog shrinks with every pass instead of
+    being held at a level the batch cannot clear.
+
+    The delete runs on a worker thread, like every other blob call in this package
+    (`gcs_utils`, `cleaning_service`, `upload_processing._verify_blob`). `_delete_gcs_blob` is
+    synchronous, and a batch of blocking round-trips on the event loop would stall the uploads
+    the API is serving at the same time.
     """
     cutoff = datetime.now(UTC) - FAILED_UPLOAD_RETENTION
-    stmt = select(OC_Recording).where(
-        OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
-        OC_Recording.updated_at < cutoff,
+    stmt = (
+        select(OC_Recording)
+        .where(
+            OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
+            OC_Recording.updated_at < cutoff,
+        )
+        .order_by(OC_Recording.updated_at)
+        .limit(FAILED_UPLOAD_PURGE_BATCH)
     )
     result = await db.execute(stmt)
     abandoned = list(result.scalars().all())
 
     for recording in abandoned:
         if recording.gcs_url:
-            _delete_gcs_blob(recording.gcs_url)
+            await asyncio.to_thread(_delete_gcs_blob, recording.gcs_url)
         await db.delete(recording)
 
     await db.commit()
