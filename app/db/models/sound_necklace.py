@@ -521,6 +521,28 @@ class SnAnswerTranscript(Base):
     the trigger: it is the transcriber's hint and the switch that decides whether a
     translation is needed. ``generation`` backs the compare-and-swap that keeps a pass in
     flight from writing its result over a draft a ``force`` has already reset.
+
+    Two transcripts, not one. ``transcript_source`` is the cleaned text — what the
+    facilitator reads and confirms — and ``transcript_verbatim`` is what speech-to-text
+    returned before the disfluency cleanup touched it. Keeping both is what makes the
+    removal inspectable: a human cannot be the last word on a sentence they were never
+    shown, and without the verbatim column the only record of a dropped sentence would be
+    the model call that dropped it.
+
+    A confirm writes the facilitator's text into ``transcript_source`` and leaves
+    ``transcript_verbatim`` exactly where the transcription pass left it, which is what keeps
+    the spoken words recoverable however often the draft is edited. It also means the gap
+    between the two columns stops being the cleaner's work alone once a human has touched the
+    row: after a confirm it holds the removals and the edits together, and no column here
+    records which of the two a given difference came from.
+
+    Equality between the two does NOT mean the cleanup failed. A cleanup that fell back to
+    verbatim produces equal texts; so does a successful cleanup of an answer that had no
+    hesitation in it; and so does a facilitator confirming text that happens to match the
+    verbatim. Equality is the one signal that cannot tell those three apart. Selecting
+    ``WHERE transcript_verbatim = transcript_source`` and ``force``-ing the result would
+    re-bill the transcription of every cleanly-processed answer in the session and throw
+    away drafts a facilitator had already confirmed.
     """
 
     __tablename__ = "sn_answer_transcripts"
@@ -532,6 +554,7 @@ class SnAnswerTranscript(Base):
     )
     language: Mapped[str] = mapped_column(String(16))
     generation: Mapped[int] = mapped_column(Integer, default=0)
+    transcript_verbatim: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     translation_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

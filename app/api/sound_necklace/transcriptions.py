@@ -62,6 +62,7 @@ def _answer(draft: SnAnswerTranscript) -> AnswerTranscript:
     return AnswerTranscript(
         path=draft.resource_path,
         status=draft.status,
+        transcript_verbatim=draft.transcript_verbatim,
         transcript_source=draft.transcript_source,
         translation_en=draft.translation_en,
         error=draft.error,

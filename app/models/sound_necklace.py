@@ -375,6 +375,21 @@ class TranscriptionRequest(BaseModel):
 class AnswerTranscript(BaseModel):
     """One answer's draft. Advisory: nothing here reaches an artifact unconfirmed.
 
+    ``transcript_source`` is the cleaned text, which is the one to show and the one the
+    facilitator confirms. ``transcript_verbatim`` is what speech-to-text returned before the
+    disfluency cleanup, carried so the client can diff the two and show what was removed.
+
+    That diff means "what the cleaner removed" only while the draft is still unconfirmed. A
+    confirm writes the facilitator's own text into ``transcript_source`` and never touches
+    ``transcript_verbatim``, so from then on the diff is the cleaner's removals and the
+    human's edits at once, with nothing on this row to separate them — ``status`` is
+    ``ready`` either way and ``generation`` counts both. Rendering it as the model's work
+    after a confirm attributes the facilitator's own corrections to the cleaner.
+
+    Equality has three causes for the same reason: the cleanup fell back, the cleanup found
+    nothing to remove, or somebody confirmed text that happens to match the verbatim. It is
+    not a signal about the cleaner on its own.
+
     ``translation_en`` carries the English text whatever the interview language was — for
     an English interview it is the transcript itself — so the report reads one field.
     ``error`` is the answer's own failure, and it never means the job failed.
@@ -384,6 +399,7 @@ class AnswerTranscript(BaseModel):
 
     path: str
     status: TranscriptStatus
+    transcript_verbatim: str | None = None
     transcript_source: str | None = None
     translation_en: str | None = None
     error: str | None = None

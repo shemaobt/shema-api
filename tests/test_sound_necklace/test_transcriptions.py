@@ -255,6 +255,99 @@ async def test_the_draft_the_human_confirms_is_the_cleaned_one_not_the_verbatim_
     assert first["translation_en"] == "english of: cleaned: transcrição em pt-BR"
 
 
+async def test_the_verbatim_transcript_is_kept_beside_the_cleaned_one(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        return "sem hesitação"
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    first = (await progress(client, headers, session_id))["answers"][0]
+    assert first["transcript_source"] == "sem hesitação"
+    assert first["transcript_verbatim"] == "transcrição em pt-BR"
+
+
+async def test_a_cleaner_outage_stores_the_verbatim_text_in_both_fields(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        raise UpstreamServiceError("Gemini is down")
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    body = await progress(client, headers, session_id)
+    assert (body["ready"], body["failed"], body["pending"]) == (3, 0, 0)
+    first = body["answers"][0]
+    assert first["status"] == "ready"
+    assert first["transcript_verbatim"] == first["transcript_source"] == "transcrição em pt-BR"
+
+
+async def test_an_english_answer_keeps_its_verbatim_text_too(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id, language="en-US")
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        return "no hesitation"
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    first = (await progress(client, headers, session_id))["answers"][0]
+    assert providers.translated == []
+    assert first["transcript_source"] == first["translation_en"] == "no hesitation"
+    assert first["transcript_verbatim"] == "transcrição em en-US"
+
+
+async def test_force_throws_the_verbatim_text_away_with_the_rest_of_the_draft(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
+    )
+
+    forced = await start(client, headers, session_id, force=True)
+
+    first = forced.json()["answers"][0]
+    assert first["transcript_verbatim"] is None
+    assert first["transcript_source"] is None
+
+
 async def test_a_cleaner_outage_keeps_the_verbatim_answer_instead_of_losing_it(
     client, db_session, session_with_answers, no_background
 ) -> None:
@@ -596,6 +689,7 @@ async def test_a_force_that_lands_mid_pass_wins_over_the_take_it_replaced(
     superseded = next(a for a in body["answers"] if a["path"] == P1)
     assert superseded["status"] == "pending"
     assert superseded["transcript_source"] is None
+    assert superseded["transcript_verbatim"] is None
 
 
 async def test_a_double_submit_is_answered_twice_not_crashed_once(
