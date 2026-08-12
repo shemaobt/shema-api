@@ -1,0 +1,248 @@
+import json
+import sys
+from typing import Any
+
+import pytest
+
+from app.core.config import Settings
+from app.core.exceptions import ValidationError
+from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.render import render
+from app.services.internalization_room.run_turn import (
+    MAX_REDRAFTS,
+    coverage_status_block,
+    detects_peer_cue,
+    run_turn,
+)
+
+GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
+VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
+P = "P03"
+
+
+def _settings() -> Settings:
+    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
+
+
+class FakeAgent:
+    """Stands in for the LLM: alternates Guide draft, Validator verdict, Guide draft…"""
+
+    def __init__(self, verdicts: list[dict[str, Any]], drafts: list[str] | None = None):
+        self.verdicts = verdicts
+        self.drafts = drafts or [f"rascunho {i}" for i in range(len(verdicts) + 1)]
+        self.calls: list[str] = []
+        self.guide_inputs: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        is_validator = "corrected_response" in system_prompt
+        self.calls.append("validator" if is_validator else "guide")
+        if not is_validator:
+            self.guide_inputs.append(user_content)
+        if is_validator:
+            return json.dumps(self.verdicts[len([c for c in self.calls if c == "validator"]) - 1])
+        return self.drafts[len([c for c in self.calls if c == "guide"]) - 1]
+
+
+@pytest.fixture
+def patch_agent(monkeypatch: pytest.MonkeyPatch):
+    # The package re-exports the `run_turn` function, which shadows the module of the
+    # same name, so the dotted-string form of setattr would patch the function object.
+    module = sys.modules["app.services.internalization_room.run_turn"]
+
+    def _install(agent: FakeAgent) -> FakeAgent:
+        monkeypatch.setattr(module, "call_agent", agent)
+        return agent
+
+    return _install
+
+
+def test_render_refuses_a_prompt_with_an_unfilled_placeholder() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        render("mapa: {{MEANING_MAP}} lingua: {{SESSION_LANGUAGE}}", SESSION_LANGUAGE="pt")
+
+    assert "MEANING_MAP" in str(excinfo.value)
+
+
+def test_render_fills_every_placeholder() -> None:
+    out = render("{{A_B}} e {{C}}", A_B="um", C="dois")
+
+    assert out == "um e dois"
+
+
+def test_the_coverage_block_lists_only_what_is_left() -> None:
+    state = merge(initial_state(P), pericope_num=P, engaged=["scene:1", "scene:2"])
+    block = coverage_status_block(state, P)
+
+    assert "[scene:3]" in block
+    assert "[scene:1]" not in block
+
+
+def test_a_finished_map_says_nothing_remains() -> None:
+    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+    block = coverage_status_block(whole, P)
+
+    assert "nada" in block
+
+
+def test_peer_cue_is_read_off_the_reply() -> None:
+    assert detects_peer_cue("Agora ensaiem essa parte entre vocês, na língua de vocês.")
+    assert not detects_peer_cue("Me contem o que aconteceu com a família.")
+
+
+@pytest.mark.asyncio
+async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
+    agent = patch_agent(FakeAgent(verdicts=[]))
+
+    outcome = await run_turn(
+        transcript="   ",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert outcome.used_fail_safe is True
+    assert outcome.speech in utterances(FailSafe.INAUDIBLE, "pt")
+    assert agent.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
+    agent = patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "pass", "issues": []}],
+            drafts=["Ensaiem essa parte entre vocês."],
+        )
+    )
+
+    outcome = await run_turn(
+        transcript="A fome chegou e eles partiram.",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert outcome.speech == "Ensaiem essa parte entre vocês."
+    assert outcome.peer_cue is True
+    assert outcome.redrafts == 0
+    assert agent.calls == ["guide", "validator"]
+
+
+@pytest.mark.asyncio
+async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[
+                {
+                    "verdict": "correct",
+                    "issues": [{"problem": "invented_detail", "claim": "tinha dez filhos"}],
+                    "corrected_response": "Vamos ficar com o que a passagem conta.",
+                }
+            ],
+            drafts=["Eles tinha dez filhos."],
+        )
+    )
+
+    outcome = await run_turn(
+        transcript="quantos filhos?",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert outcome.speech == "Vamos ficar com o que a passagem conta."
+    assert outcome.used_fail_safe is False
+    assert outcome.issues
+
+
+@pytest.mark.asyncio
+async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
+    agent = patch_agent(
+        FakeAgent(
+            verdicts=[
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+            ]
+        )
+    )
+
+    outcome = await run_turn(
+        transcript="me conta mais sobre Rute",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert outcome.used_fail_safe is True
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    assert outcome.redrafts == MAX_REDRAFTS
+    assert agent.calls.count("guide") == MAX_REDRAFTS + 1
+
+
+@pytest.mark.asyncio
+async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> None:
+    class Garbage(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            is_validator = "corrected_response" in system_prompt
+            self.calls.append("validator" if is_validator else "guide")
+            return "desculpe, não consigo" if is_validator else "rascunho"
+
+    patch_agent(Garbage(verdicts=[]))
+
+    outcome = await run_turn(
+        transcript="alguma coisa",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert outcome.used_fail_safe is True
+
+
+@pytest.mark.asyncio
+async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_agent) -> None:
+    agent = patch_agent(
+        FakeAgent(
+            verdicts=[
+                {
+                    "verdict": "regenerate",
+                    "issues": [{"problem": "imported_knowledge", "claim": "Rute era moabita"}],
+                },
+                {"verdict": "pass", "issues": []},
+            ]
+        )
+    )
+    await run_turn(
+        transcript="pergunta",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    first_call, second_call = agent.guide_inputs[0], agent.guide_inputs[1]
+    assert "Nota de reescrita" not in first_call
+    assert "Nota de reescrita" in second_call
+    assert "imported_knowledge" in second_call
+    assert "Rute era moabita" in second_call
