@@ -1,0 +1,142 @@
+from __future__ import annotations
+
+import hashlib
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings, get_settings
+from app.core.exceptions import NotFoundError, ValidationError
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
+from app.services.platform.storage import GcsPlatformStore
+from app.services.platform.tts import SpeechStore
+
+AUDIO_MIME = "audio/mp4"
+
+
+def _store(settings: Settings | None = None) -> SpeechStore:
+    return GcsPlatformStore(settings or get_settings())
+
+
+def _key(kind: str, question_id: str, audio: bytes) -> str:
+    digest = hashlib.sha256(audio).hexdigest()[:16]
+    return f"internalization-room/questions/{question_id}/{kind}-{digest}.m4a"
+
+
+async def raise_question(
+    db: AsyncSession,
+    *,
+    device_id: str,
+    session_id: str,
+    pericope: str,
+    audio: bytes,
+    store: SpeechStore | None = None,
+) -> IRQuestion:
+    """Keep what the team asked, so the knot on the necklace stands for something.
+
+    The audio is stored before the row exists in any answerable state: a question the app
+    confirmed but the server dropped is the one outcome this feature cannot have, because
+    the team is told it was received and has no way to find out otherwise.
+    """
+    if not audio:
+        raise ValidationError("A question with no audio is not a question")
+    question_id = str(uuid.uuid4())
+    key = _key("pergunta", question_id, audio)
+    await (store or _store()).put(key, audio, AUDIO_MIME)
+    question = IRQuestion(
+        id=question_id,
+        device_id=device_id,
+        session_id=session_id,
+        pericope=pericope,
+        audio_key=key,
+        status=IRQuestionStatus.OPEN,
+    )
+    db.add(question)
+    await db.commit()
+    await db.refresh(question)
+    return question
+
+
+async def get_question(db: AsyncSession, question_id: str) -> IRQuestion:
+    result = await db.execute(select(IRQuestion).where(IRQuestion.id == question_id))
+    question = result.scalar_one_or_none()
+    if question is None:
+        raise NotFoundError(f"Question {question_id} not found")
+    return question
+
+
+async def open_questions(db: AsyncSession, *, limit: int = 50) -> list[IRQuestion]:
+    """What is still waiting on a person, oldest first — a queue, not a feed."""
+    result = await db.execute(
+        select(IRQuestion)
+        .where(IRQuestion.status == IRQuestionStatus.OPEN)
+        .order_by(IRQuestion.created_at)
+        .limit(limit)
+    )
+    return list(result.scalars())
+
+
+async def answer_with_voice(
+    db: AsyncSession,
+    question: IRQuestion,
+    *,
+    audio: bytes,
+    answered_by: str,
+    store: SpeechStore | None = None,
+) -> IRQuestion:
+    if not audio:
+        raise ValidationError("A reply with no audio is not a reply")
+    key = _key("resposta", question.id, audio)
+    await (store or _store()).put(key, audio, AUDIO_MIME)
+    question.reply_audio_key = key
+    question.status = IRQuestionStatus.ANSWERED
+    question.answered_by = answered_by
+    question.answered_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(question)
+    return question
+
+
+async def resolve_elsewhere(
+    db: AsyncSession, question: IRQuestion, *, answered_by: str
+) -> IRQuestion:
+    """Closed because the facilitator will speak to the team directly.
+
+    Distinct from answered on purpose: nothing will arrive in the app, so the team is never
+    left waiting on a reply that was always going to happen face to face.
+    """
+    question.status = IRQuestionStatus.RESOLVED
+    question.answered_by = answered_by
+    question.answered_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(question)
+    return question
+
+
+async def replies_for(db: AsyncSession, device_id: str) -> list[IRQuestion]:
+    """Answers this device has not heard yet, from any session it ever held.
+
+    A facilitator may answer hours later, when that passage is long closed. Scoping the
+    reply to its session would drop it silently.
+    """
+    result = await db.execute(
+        select(IRQuestion)
+        .where(IRQuestion.device_id == device_id)
+        .where(IRQuestion.status == IRQuestionStatus.ANSWERED)
+        .where(IRQuestion.heard_at.is_(None))
+        .order_by(IRQuestion.answered_at)
+    )
+    return list(result.scalars())
+
+
+async def mark_heard(db: AsyncSession, question: IRQuestion) -> IRQuestion:
+    question.heard_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(question)
+    return question
+
+
+async def fetch_audio(key: str, *, store: SpeechStore | None = None) -> bytes | None:
+    return await (store or _store()).get(key)
