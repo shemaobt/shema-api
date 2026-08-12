@@ -55,6 +55,18 @@ async def store_artifacts(
 
     Fenced by the editor lock, before the bytes move and again before the pointers do.
     Raises ``SessionLockedByOther`` if somebody else holds the session.
+
+    A pointer that moves takes its predecessor with it. ``delete_session`` sweeps the keys
+    the rows *currently* hold, so an object left behind by a re-export is referenced by
+    nothing and unreachable by the only system that could ever remove it — and one of the
+    three is the report carrying the storyteller's transcript and translation. Two things
+    decide whether this sweep is correct. A key that did not change is not superseded: the
+    key is a content hash, so re-exporting identical bytes lands on the *same* object, and
+    deleting it would destroy the artifact the row now points at. And it runs after the
+    commit, never before — delete-then-fail leaves the surviving row aimed at an object
+    that no longer exists, where commit-then-fail leaves an orphan, which is exactly the
+    condition this is fixing and no worse. ``delete_voice_answer`` and ``delete_session``
+    choose the same direction for the same reason.
     """
     session_id = session.id
     await raise_if_locked_by_other(db, session_id, actor_user_id)
@@ -92,11 +104,14 @@ async def store_artifacts(
     await raise_if_locked_by_other(db, session_id, actor_user_id)
 
     artifacts = []
+    superseded = []
     for kind, data, key, sha256 in staged:
         artifact = await db.get(SnArtifact, (session_id, kind))
         if artifact is None:
             artifact = SnArtifact(session_id=session_id, kind=kind)
             db.add(artifact)
+        elif artifact.storage_key != key:
+            superseded.append(artifact.storage_key)
         artifact.storage_key = key
         artifact.size = len(data)
         artifact.crc32c = _crc32c(data)
@@ -123,4 +138,6 @@ async def store_artifacts(
         session_id=session_id,
     )
     await db.commit()
+
+    await asyncio.gather(*(gcs_utils.delete_gcs_object(GCS_SN_BUCKET, key) for key in superseded))
     return artifacts

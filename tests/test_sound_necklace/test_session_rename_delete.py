@@ -10,6 +10,13 @@ audio belongs to the project and outlives every session cut from it; it lives in
 Oral Collector's bucket, reached through ``sn_audio_refs``. The delete tests seed one
 into the fake bucket and assert it is still there afterwards — the sweep is driven off
 the session's own rows, never off a bucket prefix, and that is the claim being made.
+
+A sweep driven off the rows can only reach what the rows still point at, which is why
+the re-upload tests are here rather than beside the other artifact ones. An artifact key
+is content-addressed, so re-exporting with changed bytes writes a *second* object and
+moves the pointer; the predecessor is then unreferenced and no later delete can name it.
+These tests therefore assert on what the bucket still holds, not on which keys the sweep
+named — the previous suite passed while three superseded objects survived a delete.
 """
 
 from __future__ import annotations
@@ -50,6 +57,16 @@ ARTIFACT_PAYLOADS = {
     "manifest": (b'{"manifest_id":"fnv1a32:d31a8419"}', "manifesto-contas.json", JSON),
     "anchoring": (b'{"scenes":[]}', "retorno-ancoragem.json", JSON),
     "report": ("# Relatório\n".encode(), "relatorio-mapeamento.md", "text/markdown"),
+}
+
+# A second export in which only the report changed. The report is the one that carries
+# the storyteller's transcript and translation, so it is the artifact whose superseded
+# copy matters most; leaving the other two untouched keeps their keys identical, which is
+# the case a naive "delete the old key" gets wrong.
+REVISED_REPORT = "# Relatório revisado\n".encode()
+REVISED_PAYLOADS = {
+    **ARTIFACT_PAYLOADS,
+    "report": (REVISED_REPORT, "relatorio-mapeamento.md", "text/markdown"),
 }
 
 
@@ -128,11 +145,27 @@ async def put_answer(client, headers, session_id: str, path: str):
     return res
 
 
-async def put_artifacts(client, headers, session_id: str):
-    files = {kind: (name, data, ctype) for kind, (data, name, ctype) in ARTIFACT_PAYLOADS.items()}
+async def put_artifacts(client, headers, session_id: str, payloads: dict | None = None):
+    triple = payloads or ARTIFACT_PAYLOADS
+    files = {kind: (name, data, ctype) for kind, (data, name, ctype) in triple.items()}
     res = await client.post(f"{SN}/sessions/{session_id}/artifacts", headers=headers, files=files)
     assert res.status_code in (200, 201), res.text
     return res
+
+
+async def served(client, headers, session_id: str, kind: str, storage) -> tuple[str, bytes]:
+    """The key the row points at now, and the bytes a client following the redirect gets.
+
+    Reading through the download route rather than the table is what makes the second
+    half of the tuple meaningful: it is the object still sitting in the bucket under the
+    key the API just signed, so a pointer left aimed at a deleted object raises here.
+    """
+    res = await client.get(
+        f"{SN}/sessions/{session_id}/artifacts/{kind}", headers=headers, follow_redirects=False
+    )
+    assert res.status_code == 307, f"{kind}: {res.text}"
+    key = storage.signed[-1]["key"]
+    return key, storage.objects[key]
 
 
 async def rows_for(db_session, model, session_id: str) -> int:
@@ -380,6 +413,67 @@ async def test_a_completed_session_deletes_the_same_way(
         SnAnswerTranscript,
     ):
         assert await rows_for(db_session, model, session_id) == 0, model.__name__
+
+
+# ── A re-upload takes its predecessor with it ────────────────────────────────
+
+
+async def test_reuploading_an_artifact_removes_the_copy_it_replaced(
+    client, alice, project, storage
+):
+    """Re-exporting is reachable through the ordinary reopen-and-re-complete flow, and
+    the key is content-addressed, so changed bytes write a new object and move the
+    pointer. The predecessor is then referenced by nothing — not by the row, and so not
+    by any later sweep — and would sit in the bucket for good."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_artifacts(client, headers, session_id)
+    superseded_key, _ = await served(client, headers, session_id, "report", storage)
+
+    await put_artifacts(client, headers, session_id, REVISED_PAYLOADS)
+
+    current_key, current = await served(client, headers, session_id, "report", storage)
+    assert current_key != superseded_key
+    assert current == REVISED_REPORT
+    assert superseded_key not in storage.objects, "the replaced report is still in the bucket"
+
+
+async def test_reuploading_identical_bytes_destroys_nothing(client, alice, project, storage):
+    """The sharp edge of the fix. The key is a content hash, so re-exporting the same
+    bytes produces the *same* key: the object an unguarded "delete the old key" would
+    remove is the one it has just written and the row now points at."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_artifacts(client, headers, session_id)
+    key, before = await served(client, headers, session_id, "report", storage)
+
+    await put_artifacts(client, headers, session_id)
+
+    assert key in storage.objects, "the re-upload deleted the object it had just written"
+    key_again, after = await served(client, headers, session_id, "report", storage)
+    assert key_again == key
+    assert after == before
+
+
+async def test_a_delete_after_a_reupload_leaves_nothing_of_the_session_behind(
+    client, alice, project, storage
+):
+    """The gap that let the delete tests pass while objects survived. Asserting on what
+    the sweep named cannot see it — the superseded object is exactly the one no row
+    names — so this asserts on what the bucket still holds, and the project's own audio
+    is the only thing allowed to be left."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_answer(client, headers, session_id, P1)
+    await put_artifacts(client, headers, session_id)
+    await put_artifacts(client, headers, session_id, REVISED_PAYLOADS)
+
+    res = await client.delete(f"{SN}/sessions/{session_id}", headers=headers)
+
+    assert res.status_code == 204, res.text
+    assert storage.session_keys() == set()
+    assert PROJECT_AUDIO_KEY in storage.objects
+    assert storage.deleted_buckets == {"sound-necklace-private"}
 
 
 # ── Who may do either ────────────────────────────────────────────────────────

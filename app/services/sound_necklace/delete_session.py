@@ -18,6 +18,13 @@ async def delete_session(db: AsyncSession, session: SnSession, actor_user_id: st
     and is reached through ``sn_audio_refs``; it belongs to the project, outlives every
     session cut from it, and is never named here. Only ``GCS_SN_BUCKET`` is.
 
+    A row-driven sweep reaches only what the rows point at *now*, which is why "for good"
+    depends on something outside this function. An artifact key is content-addressed, so a
+    re-export writes a second object and moves the pointer; the predecessor is referenced
+    by nothing and no query here could name it. ``store_artifacts`` is what deletes it, at
+    the moment it moves the pointer. Take that away and this function leaves a superseded
+    ``relatorio-mapeamento.md`` in the bucket for good instead.
+
     The lease is fenced before a single object moves. A refusal has to leave the session
     exactly as it was, and a fence that ran after the sweep would answer 409 having
     already destroyed the recordings it was refusing to touch.

@@ -77,6 +77,11 @@ def storage(monkeypatch):
     model of it — and it lets a test read back exactly what the API handed over. It can
     be told to fail on the Nth upload, because "a failure partway through" is the one
     behaviour a dict that always succeeds cannot exercise.
+
+    Deletes are intercepted too. A re-upload with changed bytes sweeps the object it
+    replaced, so a fake that only knew about uploads would let a test in this file reach
+    the real bucket. What that sweep leaves behind is asserted in the delete tests, which
+    own the fake that records it.
     """
 
     class FakeStorage:
@@ -119,6 +124,10 @@ def storage(monkeypatch):
             self.signed.append({"bucket": bucket_name, "blob": blob_name, "ttl": expiry_minutes})
             return f"https://storage.googleapis.com/{bucket_name}/{blob_name}?X-Goog-Signature=d0d0"
 
+        async def delete(self, bucket_name: str, blob_name: str) -> None:
+            self.objects.pop(blob_name, None)
+            self.content_types.pop(blob_name, None)
+
         def fetch(self, url: str) -> bytes:
             """What a client following the redirect would actually receive."""
             key = url.split("?", 1)[0].split("/", 4)[4]
@@ -127,6 +136,7 @@ def storage(monkeypatch):
     fake = FakeStorage()
     monkeypatch.setattr(gcs_utils, "upload_gcs_object", fake.upload)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", fake.sign)
+    monkeypatch.setattr(gcs_utils, "delete_gcs_object", fake.delete)
     return fake
 
 
