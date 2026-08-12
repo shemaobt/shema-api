@@ -423,12 +423,20 @@ class SnAuditEvent(Base):
     reads like a fact and is not one. The column exists because adding it later means a
     migration on a database six production apps share; filling it needs a trusted-proxy
     policy, which is its own work.
+
+    Two indexes, and only the first serves a query. ``ix_sn_audit_events_project_occurred``
+    is the trail's one read — a project's events, newest first — scope, ORDER BY and LIMIT
+    together. ``ix_sn_audit_events_session_id`` serves the SET NULL trigger instead:
+    without an index on the referencing column Postgres sequential-scans this append-only
+    table on every session delete, which ENG-414 turned from a rare admin chore into a
+    button a facilitator presses.
     """
 
     __tablename__ = "sn_audit_events"
 
     __table_args__ = (
         Index("ix_sn_audit_events_project_occurred", "project_id", "occurred_at", "id"),
+        Index("ix_sn_audit_events_session_id", "session_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

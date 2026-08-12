@@ -10,11 +10,21 @@ audio belongs to the project and outlives every session cut from it; it lives in
 Oral Collector's bucket, reached through ``sn_audio_refs``. The delete tests seed one
 into the fake bucket and assert it is still there afterwards — the sweep is driven off
 the session's own rows, never off a bucket prefix, and that is the claim being made.
+
+A sweep driven off the rows can only reach what the rows still point at, which is why
+the re-upload tests are here rather than beside the other artifact ones. An artifact key
+is content-addressed, so re-exporting with changed bytes writes a *second* object and
+moves the pointer; the predecessor is then unreferenced and no later delete can name it.
+These tests therefore assert on what the bucket still holds, not on which keys the sweep
+named — the previous suite passed while three superseded objects survived a delete.
 """
 
 from __future__ import annotations
 
+import logging
+
 import pytest
+from google.api_core.exceptions import ServiceUnavailable
 from sqlalchemy import func, select
 
 from app.db.models.sound_necklace import (
@@ -52,6 +62,16 @@ ARTIFACT_PAYLOADS = {
     "report": ("# Relatório\n".encode(), "relatorio-mapeamento.md", "text/markdown"),
 }
 
+# A second export in which only the report changed. The report is the one that carries
+# the storyteller's transcript and translation, so it is the artifact whose superseded
+# copy matters most; leaving the other two untouched keeps their keys identical, which is
+# the case a naive "delete the old key" gets wrong.
+REVISED_REPORT = "# Relatório revisado\n".encode()
+REVISED_PAYLOADS = {
+    **ARTIFACT_PAYLOADS,
+    "report": (REVISED_REPORT, "relatorio-mapeamento.md", "text/markdown"),
+}
+
 
 @pytest.fixture()
 def storage(monkeypatch):
@@ -61,6 +81,11 @@ def storage(monkeypatch):
     whole job is to move objects out of storage, and which keys it named is the only
     place that claim can be read. The project's source audio is seeded in ``objects`` so
     a test can watch it survive.
+
+    ``fail_deletes`` makes the bucket refuse, with the exception class the real client
+    raises rather than a bespoke one — the whole question a failing sweep raises is which
+    errors the service is entitled to swallow, and a fake that invented its own answer
+    would not be asking it.
     """
 
     class FakeStorage:
@@ -69,6 +94,7 @@ def storage(monkeypatch):
             self.signed: list[dict] = []
             self.deleted: list[str] = []
             self.deleted_buckets: set[str] = set()
+            self.fail_deletes = False
 
         async def upload(
             self, bucket: str, key: str, data: bytes, content_type: str, *, content_encoding=None
@@ -83,6 +109,8 @@ def storage(monkeypatch):
             return f"https://storage.googleapis.com/{bucket}/{key}?X-Goog-Signature=beef"
 
         async def delete(self, bucket: str, key: str) -> None:
+            if self.fail_deletes:
+                raise ServiceUnavailable(f"the bucket is unreachable: {key}")
             self.deleted.append(key)
             self.deleted_buckets.add(bucket)
             self.objects.pop(key, None)
@@ -128,11 +156,27 @@ async def put_answer(client, headers, session_id: str, path: str):
     return res
 
 
-async def put_artifacts(client, headers, session_id: str):
-    files = {kind: (name, data, ctype) for kind, (data, name, ctype) in ARTIFACT_PAYLOADS.items()}
+async def put_artifacts(client, headers, session_id: str, payloads: dict | None = None):
+    triple = payloads or ARTIFACT_PAYLOADS
+    files = {kind: (name, data, ctype) for kind, (data, name, ctype) in triple.items()}
     res = await client.post(f"{SN}/sessions/{session_id}/artifacts", headers=headers, files=files)
     assert res.status_code in (200, 201), res.text
     return res
+
+
+async def served(client, headers, session_id: str, kind: str, storage) -> tuple[str, bytes]:
+    """The key the row points at now, and the bytes a client following the redirect gets.
+
+    Reading through the download route rather than the table is what makes the second
+    half of the tuple meaningful: it is the object still sitting in the bucket under the
+    key the API just signed, so a pointer left aimed at a deleted object raises here.
+    """
+    res = await client.get(
+        f"{SN}/sessions/{session_id}/artifacts/{kind}", headers=headers, follow_redirects=False
+    )
+    assert res.status_code == 307, f"{kind}: {res.text}"
+    key = storage.signed[-1]["key"]
+    return key, storage.objects[key]
 
 
 async def rows_for(db_session, model, session_id: str) -> int:
@@ -380,6 +424,92 @@ async def test_a_completed_session_deletes_the_same_way(
         SnAnswerTranscript,
     ):
         assert await rows_for(db_session, model, session_id) == 0, model.__name__
+
+
+# ── A re-upload takes its predecessor with it ────────────────────────────────
+
+
+async def test_reuploading_an_artifact_removes_the_copy_it_replaced(
+    client, alice, project, storage
+):
+    """Re-exporting is reachable through the ordinary reopen-and-re-complete flow, and
+    the key is content-addressed, so changed bytes write a new object and move the
+    pointer. The predecessor is then referenced by nothing — not by the row, and so not
+    by any later sweep — and would sit in the bucket for good."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_artifacts(client, headers, session_id)
+    superseded_key, _ = await served(client, headers, session_id, "report", storage)
+
+    await put_artifacts(client, headers, session_id, REVISED_PAYLOADS)
+
+    current_key, current = await served(client, headers, session_id, "report", storage)
+    assert current_key != superseded_key
+    assert current == REVISED_REPORT
+    assert superseded_key not in storage.objects, "the replaced report is still in the bucket"
+
+
+async def test_reuploading_identical_bytes_destroys_nothing(client, alice, project, storage):
+    """The sharp edge of the fix. The key is a content hash, so re-exporting the same
+    bytes produces the *same* key: the object an unguarded "delete the old key" would
+    remove is the one it has just written and the row now points at."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_artifacts(client, headers, session_id)
+    key, before = await served(client, headers, session_id, "report", storage)
+
+    await put_artifacts(client, headers, session_id)
+
+    assert key in storage.objects, "the re-upload deleted the object it had just written"
+    key_again, after = await served(client, headers, session_id, "report", storage)
+    assert key_again == key
+    assert after == before
+
+
+async def test_a_delete_after_a_reupload_leaves_nothing_of_the_session_behind(
+    client, alice, project, storage
+):
+    """The gap that let the delete tests pass while objects survived. Asserting on what
+    the sweep named cannot see it — the superseded object is exactly the one no row
+    names — so this asserts on what the bucket still holds, and the project's own audio
+    is the only thing allowed to be left."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_answer(client, headers, session_id, P1)
+    await put_artifacts(client, headers, session_id)
+    await put_artifacts(client, headers, session_id, REVISED_PAYLOADS)
+
+    res = await client.delete(f"{SN}/sessions/{session_id}", headers=headers)
+
+    assert res.status_code == 204, res.text
+    assert storage.session_keys() == set()
+    assert PROJECT_AUDIO_KEY in storage.objects
+    assert storage.deleted_buckets == {"sound-necklace-private"}
+
+
+async def test_a_sweep_that_fails_does_not_fail_the_export(client, alice, project, storage, caplog):
+    """The commit has already happened by the time the predecessor is swept, so letting a
+    storage failure out answers 500 for an export that really succeeded — and completion
+    is a gate in the SPA's flow. A retry cannot even heal it: the key is a content hash,
+    so re-exporting the same bytes lands on the same key, the row already points there,
+    and nothing is superseded to sweep. The orphan left behind is exactly the condition
+    this change is fixing, so hygiene that occasionally does not run beats hygiene that
+    turns a good export into an error — but the log line naming the key is then the only
+    trace of an object nothing points at, which is why it is asserted here."""
+    _user, headers = alice
+    session_id = await new_session(client, headers, project.id)
+    await put_artifacts(client, headers, session_id)
+    superseded_key, _ = await served(client, headers, session_id, "report", storage)
+    storage.fail_deletes = True
+
+    with caplog.at_level(logging.WARNING):
+        res = await put_artifacts(client, headers, session_id, REVISED_PAYLOADS)
+
+    assert res.status_code == 201, res.text
+    _key, current = await served(client, headers, session_id, "report", storage)
+    assert current == REVISED_REPORT
+    assert superseded_key in storage.objects, "the sweep was supposed to have failed"
+    assert superseded_key in caplog.text, "the stranded object's key was never logged"
 
 
 # ── Who may do either ────────────────────────────────────────────────────────

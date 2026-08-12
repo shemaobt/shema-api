@@ -1,8 +1,11 @@
 import asyncio
 import base64
 import hashlib
+import logging
 
 import google_crc32c
+from google.api_core.exceptions import GoogleAPIError
+from google.auth.exceptions import GoogleAuthError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationError
@@ -15,6 +18,13 @@ from app.services.sound_necklace.constants import (
 )
 from app.services.sound_necklace.lock_fence import raise_if_locked_by_other
 from app.services.sound_necklace.record_audit_event import record_audit_event
+
+logger = logging.getLogger(__name__)
+
+#: What the storage boundary is allowed to fail with. Narrow on purpose: the sweep
+#: swallows these, and anything outside them is a bug in this module rather than a bucket
+#: having a bad day, so it still propagates instead of vanishing into a log line.
+STORAGE_FAILURES = (GoogleAPIError, GoogleAuthError, OSError)
 
 
 def _crc32c(data: bytes) -> str:
@@ -55,6 +65,32 @@ async def store_artifacts(
 
     Fenced by the editor lock, before the bytes move and again before the pointers do.
     Raises ``SessionLockedByOther`` if somebody else holds the session.
+
+    A pointer that moves takes its predecessor with it. ``delete_session`` sweeps the keys
+    the rows *currently* hold, so an object left behind by a re-export is referenced by
+    nothing and unreachable by the only system that could ever remove it — and one of the
+    three is the report carrying the storyteller's transcript and translation.
+
+    A key that did not change is not superseded. The key is a content hash, so re-exporting
+    identical bytes lands on the *same* object, and deleting it would destroy the artifact
+    the row now points at.
+
+    The sweep runs after the commit — the opposite of what ``delete_voice_answer`` and
+    ``delete_session`` do, because the situations are mirror images rather than the same
+    one. There the row is going away, so deleting objects first risks only a row pointing
+    at a missing object, and they accept that to avoid the reverse: a deleted row with the
+    recording still in the bucket and nothing left to reach it. Here the row survives and
+    has to go on pointing at a live object, so deleting first would mean a rolled-back
+    commit leaves it aimed at the old key with that object already destroyed — the current
+    artifact, gone. Committing first accepts an orphan instead, which is exactly the
+    condition this is fixing and no worse than before it.
+
+    A failed sweep does not fail the export. The commit has already happened, so raising
+    would answer 500 for an export that succeeded, and a retry could not heal it anyway:
+    the same bytes produce the same key, the row already points there, and nothing would be
+    superseded to sweep. The key that was left behind is logged, because that line is then
+    the only trace of an object nothing points at. Only ``STORAGE_FAILURES`` are swallowed;
+    anything else propagates, so a bug here does not disappear into a log.
     """
     session_id = session.id
     await raise_if_locked_by_other(db, session_id, actor_user_id)
@@ -92,11 +128,14 @@ async def store_artifacts(
     await raise_if_locked_by_other(db, session_id, actor_user_id)
 
     artifacts = []
+    superseded = []
     for kind, data, key, sha256 in staged:
         artifact = await db.get(SnArtifact, (session_id, kind))
         if artifact is None:
             artifact = SnArtifact(session_id=session_id, kind=kind)
             db.add(artifact)
+        elif artifact.storage_key != key:
+            superseded.append(artifact.storage_key)
         artifact.storage_key = key
         artifact.size = len(data)
         artifact.crc32c = _crc32c(data)
@@ -123,4 +162,20 @@ async def store_artifacts(
         session_id=session_id,
     )
     await db.commit()
+
+    swept = await asyncio.gather(
+        *(gcs_utils.delete_gcs_object(GCS_SN_BUCKET, key) for key in superseded),
+        return_exceptions=True,
+    )
+    for key, outcome in zip(superseded, swept, strict=True):
+        if not isinstance(outcome, BaseException):
+            continue
+        if not isinstance(outcome, STORAGE_FAILURES):
+            raise outcome
+        logger.warning(
+            "sound necklace: superseded artifact left in the bucket session=%s key=%s: %s",
+            session_id,
+            key,
+            outcome,
+        )
     return artifacts
