@@ -1,14 +1,14 @@
 """the audio the team must not lose: ensaio takes and back-translation chunks
 
-Revision ID: 20260812_ir01
-Revises: 20260811_0004
+Revision ID: 20260812_room06
+Revises: 20260812_room05
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260812_ir01"
-down_revision = "20260811_0004"
+revision = "20260812_room06"
+down_revision = "20260812_room05"
 branch_labels = None
 depends_on = None
 
