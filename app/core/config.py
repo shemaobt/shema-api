@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     ph_elevenlabs_api_key: str = ""
 
     internalization_room_api_key: str = ""
+    #: The room bills its own voice. Empty falls back to the shared key.
+    internalization_room_elevenlabs_api_key: str = ""
     internalization_room_voice_id: str = "83Nae6GFQiNslSbuzmE7"
     internalization_room_language_code: str = "pt-BR"
     internalization_room_tts_model: str = "eleven_turbo_v2_5"
