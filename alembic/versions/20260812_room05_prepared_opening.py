@@ -1,7 +1,7 @@
 """hold the passage's first line, written while the team is still hearing the panorama
 
-Revision ID: 20260811_0004
-Revises: 20260811_0003
+Revision ID: 20260812_room05
+Revises: 20260812_room04
 
 The opening is the one turn whose inputs are known before it is asked for: the team has not
 spoken yet, so nothing in it depends on them. Writing it during the panorama spends time the
@@ -11,8 +11,8 @@ session was giving away anyway.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260811_0004"
-down_revision = "20260811_0003"
+revision = "20260812_room05"
+down_revision = "20260812_room04"
 branch_labels = None
 depends_on = None
 
