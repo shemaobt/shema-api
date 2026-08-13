@@ -39,6 +39,11 @@ MANIFEST = "manifest.json"
 #: Their audio was rendered before this script existed and their wording was never written
 #: down, so declaring a guess would make the next render overwrite approved audio with it.
 STANDALONE = {
+    "gravacao_presa": (
+        "Tem uma gravação de vocês que eu ainda não consegui guardar. "
+        "Ela não se perdeu, está aqui comigo. "
+        "Peçam a alguém para dar uma olhada quando puder."
+    ),
     "microfone": (
         "Eu preciso ouvir vocês para trabalhar, e o microfone está desligado para mim. "
         "Peçam a alguém para liberar o microfone nos ajustes do aparelho. "
