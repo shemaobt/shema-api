@@ -16,7 +16,7 @@ editable copy; a row absent here simply falls back to the file.
 Creates only ir_* tables. This database is shared with every other Tripod app, so
 nothing here alters or drops anything it did not create.
 
-Revision ID: 20260807_0001
+Revision ID: 20260812_room01
 Revises: 20260731_0001
 Create Date: 2026-08-07 00:00:00.000000
 """
@@ -27,7 +27,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "20260807_0001"
+revision: str = "20260812_room01"
 down_revision: str | None = "20260812_0001"
 branch_labels: str | None = None
 depends_on: str | None = None
