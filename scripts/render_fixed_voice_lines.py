@@ -57,6 +57,21 @@ def catalogue(language_code: str) -> dict[str, str]:
     return lines
 
 
+class _NoCache:
+    """Synthesis for a build, not for a room.
+
+    The room's synthesis writes through the platform bucket so a line is paid for once
+    across every replica. A script that renders files into the app has no business needing
+    production storage — and would fail on any machine without the bucket configured.
+    """
+
+    async def get(self, key: str) -> bytes | None:
+        return None
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        return None
+
+
 def _clip_path(out: Path, name: str) -> Path:
     """Standalone lines sit beside the fixed folder, where the app already looks for them."""
     if name in STANDALONE:
@@ -98,7 +113,7 @@ async def render(out: Path, language_code: str, *, force: bool) -> None:
         if not force and clip.exists() and manifest.get(name) == fingerprint(text):
             print(f"  = {name}")
             continue
-        speech, _ = await synthesize_facilitator_speech(text)
+        speech, _ = await synthesize_facilitator_speech(text, store=_NoCache())
         clip.write_bytes(speech.audio)
         manifest[name] = fingerprint(text)
         print(f"  + {name}  {len(speech.audio) // 1024} KB  {text[:56]}")
