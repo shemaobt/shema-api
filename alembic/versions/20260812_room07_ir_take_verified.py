@@ -1,14 +1,14 @@
 """record that a stored take was read back from the bucket and matched
 
-Revision ID: 20260812_ir02
-Revises: 20260812_ir01
+Revision ID: 20260812_room07
+Revises: 20260812_room06
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260812_ir02"
-down_revision = "20260812_ir01"
+revision = "20260812_room07"
+down_revision = "20260812_room06"
 branch_labels = None
 depends_on = None
 
