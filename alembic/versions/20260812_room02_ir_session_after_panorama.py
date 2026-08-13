@@ -1,14 +1,14 @@
 """remember that the team already met the facilitator in the book panorama
 
-Revision ID: 20260811_0001
-Revises: 20260807_0001
+Revision ID: 20260812_room02
+Revises: 20260812_room01
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260811_0001"
-down_revision = "20260807_0001"
+revision = "20260812_room02"
+down_revision = "20260812_room01"
 branch_labels = None
 depends_on = None
 
