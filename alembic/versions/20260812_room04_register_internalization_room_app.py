@@ -1,7 +1,7 @@
 """register the internalization room so a facilitator can be given access
 
-Revision ID: 20260811_0003
-Revises: 20260811_0002
+Revision ID: 20260812_room04
+Revises: 20260812_room03
 
 The team's app needs none of this — it carries a device key and never signs in. This is for
 the person on the other end of the hand, who answers the team's questions and whose answers
@@ -13,8 +13,8 @@ import uuid
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260811_0003"
-down_revision = "20260811_0002"
+revision = "20260812_room04"
+down_revision = "20260812_room03"
 branch_labels = None
 depends_on = None
 

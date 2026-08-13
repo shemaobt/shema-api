@@ -1,14 +1,14 @@
 """the hand's questions, addressed to a person and outliving the session
 
-Revision ID: 20260811_0002
-Revises: 20260811_0001
+Revision ID: 20260812_room03
+Revises: 20260812_room02
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20260811_0002"
-down_revision = "20260811_0001"
+revision = "20260812_room03"
+down_revision = "20260812_room02"
 branch_labels = None
 depends_on = None
 
