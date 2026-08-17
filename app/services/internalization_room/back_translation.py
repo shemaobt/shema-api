@@ -74,7 +74,12 @@ def segments_block(chunks: list[Chunk]) -> str:
     return "\n".join(f"{chunk.index}. {chunk.text}" for chunk in chunks)
 
 
-def _parse_findings(raw: str) -> list[Finding]:
+def _parse_findings(raw: str) -> list[Finding] | None:
+    """The findings, or None when the answer could not be read at all.
+
+    None and `[]` must stay apart all the way up: `[]` is "read it, nothing to raise",
+    which closes the necklace, and None is "never read it", which must not.
+    """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
@@ -83,9 +88,9 @@ def _parse_findings(raw: str) -> list[Finding]:
         parsed: Any = json.loads(text)
     except json.JSONDecodeError:
         logger.warning("BT analyst returned unparseable JSON: %s", raw[:300])
-        return []
+        return None
     if not isinstance(parsed, dict):
-        return []
+        return None
 
     findings: list[Finding] = []
     for entry in parsed.get("findings", []):
@@ -127,12 +132,16 @@ async def analyse_telling_back(
     analyst_prompt: str,
     session_language: str = "Portuguese",
     settings: Settings | None = None,
-) -> list[Finding]:
+) -> list[Finding] | None:
     """Compare the bridge-language telling-back against the map. Never voiced.
 
     The system never hears the mother-tongue recording; it only ever sees what the team told
-    back. A failure here returns no findings, which reads as "nothing to raise" rather than
-    inventing one — the analyst under-reports by design.
+    back. The analyst under-reports by design — it never invents a finding when unsure.
+
+    But under-reporting is not the same as not reporting. Returning `[]` when the call itself
+    failed made an outage indistinguishable from a clean telling-back, and the room then told
+    the team their work was checked and closed the passage for good. None says "never ran",
+    and only `[]` is allowed to mean "ran, and found nothing".
     """
     cfg = settings or get_settings()
     system = render(
@@ -152,7 +161,7 @@ async def analyse_telling_back(
         )
     except Exception:
         logger.exception("BT analysis failed for %s", pericope_num)
-        return []
+        return None
     return _parse_findings(raw)
 
 

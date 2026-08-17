@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
@@ -124,13 +124,19 @@ async def finish(
     state = room.back_translation_of(session)
 
     if not state.already_analysed:
-        state.findings = await room.analyse_telling_back(
+        read = await room.analyse_telling_back(
             chunks=state.chunks,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
             analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
             settings=get_settings(),
         )
+        if read is None:
+            # Nothing is saved: `checked` stays as it was and `analysed_chunks` does not
+            # advance, so pressing `terminei` again actually re-runs the analyst instead of
+            # serving a verdict nobody ever reached.
+            raise UpstreamServiceError("a análise do contado de volta não pôde ser feita agora")
+        state.findings = read
         state.analysed_chunks = len(state.chunks)
     finding = state.current_finding
     state.checked = finding is None

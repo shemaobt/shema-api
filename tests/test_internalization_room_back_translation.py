@@ -121,10 +121,14 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_unparseable_analysis_raises_nothing_rather_than_inventing(
+async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
     patch_analyst,
 ) -> None:
-    """Under-report by design: a broken analysis must not become a finding the team hears."""
+    """Under-report by design — but never report a failure as a clean telling-back.
+
+    None invents no finding, exactly as `[]` did. What it also does is stay apart from
+    "read it, found nothing", which is the answer that closes the necklace for good.
+    """
     patch_analyst("desculpe, não consigo")
 
     findings = await analyse_telling_back(
@@ -135,7 +139,7 @@ async def test_an_unparseable_analysis_raises_nothing_rather_than_inventing(
         settings=_settings(),
     )
 
-    assert findings == []
+    assert findings is None
 
 
 def test_only_one_finding_ever_reaches_the_speaker() -> None:
@@ -232,3 +236,37 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     )
 
     assert [f.chunk for f in findings] == [None, None, None]
+
+
+@pytest.mark.asyncio
+async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) -> None:
+    """The one that matters: a failed call must not read as "checked"."""
+
+    def _explode(**_kwargs):
+        raise RuntimeError("elevenlabs fora do ar")
+
+    module = sys.modules["app.services.internalization_room.back_translation"]
+    monkey = pytest.MonkeyPatch()
+    monkey.setattr(module, "call_agent", _explode)
+    try:
+        findings = await analyse_telling_back(
+            chunks=_chunks(),
+            scope=P,
+            pericope_num=P,
+            analyst_prompt=ANALYST,
+            settings=_settings(),
+        )
+    finally:
+        monkey.undo()
+
+    assert findings is None, (
+        "engolir a exceção e devolver [] fazia o finish marcar checked=True: a sala "
+        "dizia que a retrotradução foi conferida, fechava o colar, e a perícope saía "
+        "da roda para sempre"
+    )
+
+
+def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
+    state = BackTranslationState(scope=P, findings=[])
+
+    assert state.current_finding is None
