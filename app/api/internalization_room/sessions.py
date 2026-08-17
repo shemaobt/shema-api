@@ -9,6 +9,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSession, IRSession
 from app.models.internalization_room import (
     CoverageView,
     CreateSessionRequest,
+    NeedsPersonResponse,
     SessionStateResponse,
     TurnResponse,
 )
@@ -85,6 +86,27 @@ async def create_session(
 async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
     session = await room.get_session(db, session_id)
     return _state(session)
+
+
+@router.post(
+    "/sessions/{session_id}/needs-person",
+    response_model=NeedsPersonResponse,
+    dependencies=[room_key_dep],
+)
+async def ask_for_a_person(
+    session_id: str, db: AsyncSession = Depends(get_db)
+) -> NeedsPersonResponse:
+    """The room in front of the team decided it cannot go on without a person.
+
+    `needs_person` had a consumer in the app and no producer here, so a room that had
+    already halted still reported `in_progress` and no facilitator could be told.
+    """
+    session = await room.get_session(db, session_id)
+    await room.mark_needs_person(db, session)
+    return NeedsPersonResponse(
+        session_id=session.id,
+        needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
+    )
 
 
 @router.post(
