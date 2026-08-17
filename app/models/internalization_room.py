@@ -56,6 +56,12 @@ class BackTranslationChunkResponse(BaseModel):
     session_id: str
     chunks: int
     captured: bool
+    #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
+    #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
+    #: no business deciding which one a chunk is.
+    pass_number: int = 1
+    #: True when the retells ran out. The room stops instead of buying another round.
+    needs_person: bool = False
 
 
 class BackTranslationVerdictResponse(BaseModel):
@@ -65,8 +71,17 @@ class BackTranslationVerdictResponse(BaseModel):
     mime_type: str = "audio/mpeg"
     checked: bool
     finding_kind: str | None = None
+    #: Which told-back piece the finding lands on, so the room can take the team straight to
+    #: that stretch of their recording instead of starting the whole passage over.
+    finding_chunk: int | None = None
     findings_remaining: int = 0
     used_fail_safe: bool = False
+
+
+class BackTranslationRestartResponse(BaseModel):
+    session_id: str
+    chunks: int
+    needs_person: bool
 
 
 class NeedsPersonResponse(BaseModel):
