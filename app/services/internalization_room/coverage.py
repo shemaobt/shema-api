@@ -46,9 +46,7 @@ def merge(
     return merged
 
 
-def furthest(
-    kept: dict[str, str], told: dict[str, str], *, pericope_num: str
-) -> dict[str, str]:
+def furthest(kept: dict[str, str], told: dict[str, str], *, pericope_num: str) -> dict[str, str]:
     """The better of two readings of the same spine, element by element.
 
     Two turns overlapping is ordinary: the classifier for turn seven takes a Gemini round
