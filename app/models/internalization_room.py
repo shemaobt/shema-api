@@ -138,6 +138,15 @@ class TakeResponse(BaseModel):
     sha256: str
     size_bytes: int
     verified: bool = False
+    #: Which stretch of the telling-back this is, and which pass over it. Both are stored
+    #: on the row and neither was exposed, so a reviewer opening a session saw N
+    #: indistinguishable `retro` takes: no way to tell stretch three from stretch seven,
+    #: and no way to tell a first telling from its correction. The labels are what travels
+    #: to Refine.
+    chunk_index: int | None = None
+    pass_number: int | None = None
+    pericope: str = ""
+    recorded_at: str = ""
 
 
 class TakesResponse(BaseModel):
