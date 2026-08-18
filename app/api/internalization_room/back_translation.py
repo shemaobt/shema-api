@@ -61,17 +61,14 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     state = room.back_translation_of(session)
-    if not text.strip():
-        return BackTranslationChunkResponse(
-            session_id=session.id,
-            chunks=len(state.chunks),
-            captured=False,
-            pass_number=state.retells + 1 if retelling else 1,
-        )
-
     told_again = state.retells + 1 if retelling else state.retells
     pass_number = 2 if retelling else 1
 
+    # Before deciding whether anything was said in it. An empty transcript is either a
+    # silent recording or a transcription outage wearing the same shape — `heard` cannot
+    # tell them apart — and this returned 200 above the store either way, so a stretch a
+    # team had just told stopped existing anywhere. The docstring above promised the
+    # opposite, and the app trusted it enough to keep no copy of its own.
     await store_take(
         db,
         session_id=session.id,
@@ -84,6 +81,14 @@ async def add_chunk(
         chunk_index=len(state.chunks) + 1,
         content_type=file.content_type or "audio/mp4",
     )
+
+    if not text.strip():
+        return BackTranslationChunkResponse(
+            session_id=session.id,
+            chunks=len(state.chunks),
+            captured=False,
+            pass_number=state.retells + 1 if retelling else 1,
+        )
     state.chunks.append(
         Chunk(
             index=len(state.chunks) + 1,
