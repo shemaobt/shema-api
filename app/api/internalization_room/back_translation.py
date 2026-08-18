@@ -59,16 +59,15 @@ async def add_chunk(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
-    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     state = room.back_translation_of(session)
     told_again = state.retells + 1 if retelling else state.retells
     pass_number = 2 if retelling else 1
 
-    # Before deciding whether anything was said in it. An empty transcript is either a
-    # silent recording or a transcription outage wearing the same shape — `heard` cannot
-    # tell them apart — and this returned 200 above the store either way, so a stretch a
-    # team had just told stopped existing anywhere. The docstring above promised the
-    # opposite, and the app trusted it enough to keep no copy of its own.
+    # The bytes are kept before anything is asked of them. Transcribing first put the one
+    # irreplaceable thing behind a network call to another company: `heard` only catches
+    # `ValidationError`, so a read timeout or a dropped connection to the transcriber
+    # raised straight past this line, and the stretch was never stored. On a weak link the
+    # tablet also gives up first, and a cancelled request dies at the same place.
     await store_take(
         db,
         session_id=session.id,
@@ -82,6 +81,7 @@ async def add_chunk(
         content_type=file.content_type or "audio/mp4",
     )
 
+    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
         return BackTranslationChunkResponse(
             session_id=session.id,

@@ -80,6 +80,43 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield c
 
 
+async def test_a_transcriber_that_never_answers_does_not_take_the_stretch_with_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The likelier outage: not an empty answer, but no answer at all.
+
+    `heard` only catches `ValidationError`, so a read timeout to the transcriber raised
+    past the store. On a weak link the tablet also gives up first, and the cancelled
+    request dies in the same place.
+    """
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def _never_answers(*_: Any, **__: Any) -> str:
+        raise httpx.ReadTimeout("a transcricao nao respondeu")
+
+    monkeypatch.setattr(bt_api, "heard", _never_answers)
+
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
+    )
+    session_id = created.json()["session_id"]
+
+    with pytest.raises(httpx.ReadTimeout):
+        await client.post(
+            f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+            headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        )
+
+    rows = (
+        (await db_session.execute(select(IRTake).where(IRTake.session_id == session_id)))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    assert list(client.bucket.objects.values()) == [AUDIO]  # type: ignore[attr-defined]
+
+
 async def test_a_stretch_with_no_transcript_is_still_stored(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
