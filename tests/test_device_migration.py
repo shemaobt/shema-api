@@ -142,77 +142,82 @@ async def stamped_database(tmp_path) -> str:
     return database_url
 
 
-class TestBehaviour8TheMigrationIsReversible:
-    async def test_upgrade_adds_the_table_and_downgrade_removes_it(self, stamped_database):
-        assert NEW_TABLE not in await _table_names(stamped_database)
+async def test_migration_upgrade_adds_the_table_and_downgrade_removes_it(stamped_database):
+    assert NEW_TABLE not in await _table_names(stamped_database)
 
-        up = _run_alembic(stamped_database, "upgrade", "head")
-        assert up.returncode == 0, up.stderr
-        assert NEW_TABLE in await _table_names(stamped_database)
+    up = _run_alembic(stamped_database, "upgrade", "head")
+    assert up.returncode == 0, up.stderr
+    assert NEW_TABLE in await _table_names(stamped_database)
 
-        down = _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION)
-        assert down.returncode == 0, down.stderr
-        assert NEW_TABLE not in await _table_names(stamped_database)
+    down = _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION)
+    assert down.returncode == 0, down.stderr
+    assert NEW_TABLE not in await _table_names(stamped_database)
 
-        again = _run_alembic(stamped_database, "upgrade", "head")
-        assert again.returncode == 0, again.stderr
-        assert NEW_TABLE in await _table_names(stamped_database)
+    again = _run_alembic(stamped_database, "upgrade", "head")
+    assert again.returncode == 0, again.stderr
+    assert NEW_TABLE in await _table_names(stamped_database)
 
-    async def test_nothing_outside_the_new_table_changes(self, stamped_database):
-        before = await _schema_outside_the_new_table(stamped_database)
 
-        assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
-        after_upgrade = await _schema_outside_the_new_table(stamped_database)
+async def test_migration_round_trip_leaves_everything_outside_the_new_table_unchanged(
+    stamped_database,
+):
+    before = await _schema_outside_the_new_table(stamped_database)
 
-        assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
-        after_downgrade = await _schema_outside_the_new_table(stamped_database)
+    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    after_upgrade = await _schema_outside_the_new_table(stamped_database)
 
-        assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
-        after_reupgrade = await _schema_outside_the_new_table(stamped_database)
+    assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
+    after_downgrade = await _schema_outside_the_new_table(stamped_database)
 
-        assert after_upgrade == before
-        assert after_downgrade == before
-        assert after_reupgrade == before
+    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    after_reupgrade = await _schema_outside_the_new_table(stamped_database)
 
-    async def test_existing_rows_survive_the_round_trip(self, stamped_database):
-        before = await _project_ids(stamped_database)
-        assert before
+    assert after_upgrade == before
+    assert after_downgrade == before
+    assert after_reupgrade == before
 
-        assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
-        assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
-        assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
 
-        assert await _project_ids(stamped_database) == before
+async def test_migration_round_trip_leaves_existing_rows_intact(stamped_database):
+    before = await _project_ids(stamped_database)
+    assert before
 
-    async def test_the_migrated_table_matches_the_model(self, stamped_database):
-        """CLAUDE.md §4 forbids schema changes outside Alembic, which only means anything
-        if the migration and the model agree. A model the migration does not build is a
-        schema change that happened outside Alembic by omission."""
-        assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
 
-        migrated_columns, migrated_indexes = await _migrated_shape(stamped_database)
-        model = Base.metadata.tables[NEW_TABLE]
+    assert await _project_ids(stamped_database) == before
 
-        assert migrated_columns == {(c.name, bool(c.nullable)) for c in model.columns}
-        assert migrated_indexes == {(i.name, bool(i.unique)) for i in model.indexes}
 
-    async def test_the_migration_never_names_the_internalization_room_tables(self):
-        """The IR half of the issue's clause, in the only form this branch can assert.
+async def test_migration_builds_the_table_the_model_declares(stamped_database):
+    """CLAUDE.md §4 forbids schema changes outside Alembic, which only means anything
+    if the migration and the model agree. A model the migration does not build is a
+    schema change that happened outside Alembic by omission."""
+    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
 
-        ``ir_questions`` and ``ir_takes`` are not on ``main``, so "their ``device_id``
-        values are untouched" cannot be run here. What can be checked is that the
-        migration never names them at all — and the wider claim, that nothing outside the
-        new table changes, is what ``test_nothing_outside_the_new_table_changes`` runs.
-        """
-        versions = REPO_ROOT / "alembic" / "versions"
-        new_migrations = [
-            path
-            for path in versions.glob("*.py")
-            if f'down_revision: str | None = "{PREVIOUS_REVISION}"' in path.read_text()
-        ]
-        assert len(new_migrations) == 1, "expected exactly one migration on top of the head"
+    migrated_columns, migrated_indexes = await _migrated_shape(stamped_database)
+    model = Base.metadata.tables[NEW_TABLE]
 
-        source = new_migrations[0].read_text()
-        operative = source.split('"""', 2)[-1]
-        for absent in ("ir_questions", "ir_takes", "ir_sessions"):
-            assert absent not in operative, f"the migration operates on {absent}"
+    assert migrated_columns == {(c.name, bool(c.nullable)) for c in model.columns}
+    assert migrated_indexes == {(i.name, bool(i.unique)) for i in model.indexes}
+
+
+async def test_migration_never_names_the_internalization_room_tables():
+    """The IR half of the issue's clause, in the only form this branch can assert.
+
+    ``ir_questions`` and ``ir_takes`` are not on ``main``, so "their ``device_id``
+    values are untouched" cannot be run here. What can be checked is that the
+    migration never names them at all. The wider claim — that nothing outside the new
+    table changes — is what the round-trip test above runs.
+    """
+    versions = REPO_ROOT / "alembic" / "versions"
+    new_migrations = [
+        path
+        for path in versions.glob("*.py")
+        if f'down_revision: str | None = "{PREVIOUS_REVISION}"' in path.read_text()
+    ]
+    assert len(new_migrations) == 1, "expected exactly one migration on top of the head"
+
+    source = new_migrations[0].read_text()
+    operative = source.split('"""', 2)[-1]
+    for absent in ("ir_questions", "ir_takes", "ir_sessions"):
+        assert absent not in operative, f"the migration operates on {absent}"
