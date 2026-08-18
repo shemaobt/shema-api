@@ -54,9 +54,7 @@ class SessionStateResponse(BaseModel):
     status: str
     coverage: CoverageView
     done: bool
-    back_translation: BackTranslationProgress = Field(
-        default_factory=BackTranslationProgress
-    )
+    back_translation: BackTranslationProgress = Field(default_factory=BackTranslationProgress)
 
 
 class TurnResponse(BaseModel):

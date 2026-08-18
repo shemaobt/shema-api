@@ -72,10 +72,7 @@ def _progress(session: IRSession) -> BackTranslationProgress:
     return BackTranslationProgress(
         scope=state.scope,
         passes=[chunk.pass_number for chunk in state.chunks],
-        spans=[
-            [chunk.starts_ms or 0, chunk.ends_ms or 0]
-            for chunk in state.chunks
-        ],
+        spans=[[chunk.starts_ms or 0, chunk.ends_ms or 0] for chunk in state.chunks],
         retells=state.retells,
         checked=state.checked,
         finding_chunk=finding.chunk if finding else None,
