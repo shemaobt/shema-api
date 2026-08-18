@@ -78,6 +78,12 @@ async def append_exchange(
         messages.append({"role": "team", "text": team_utterance})
     messages.append({"role": "guide", "text": guide_response})
     session.messages = messages
+    # A turn that lands is the proof a person came back. `NEEDS_PERSON` had no way out of
+    # itself — nothing anywhere wrote `IN_PROGRESS` a second time — so the app's resume
+    # was contradicted by the next state poll thirty seconds later, in a loop, for the
+    # rest of the session: the person arrives, the team speaks, the room halts again.
+    if session.status is IRSessionStatus.NEEDS_PERSON:
+        session.status = IRSessionStatus.IN_PROGRESS
     await db.commit()
     await db.refresh(session)
     return session
