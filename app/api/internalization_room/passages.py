@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter
 
 from app.api.internalization_room._deps import room_key_dep
@@ -9,6 +11,9 @@ from app.services.internalization_room.passage_lines import line_for
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
+
+#: Small on purpose: the synthesiser bills per call and rate-limits per key.
+_VOICES_AT_ONCE = 4
 
 
 @router.get(
@@ -28,16 +33,30 @@ async def passages(book: str) -> BookPassagesResponse:
     """
     settings = get_settings()
     language = settings.internalization_room_language_code
-    said = []
-    for meaning_map in load_book(book):
-        line = line_for(meaning_map.pericope_num, language)
-        if not line:
-            continue
-        voiced, _ = await room.synthesize_facilitator_speech(line, settings=settings)
-        said.append(
-            PassageView(
-                pericope=meaning_map.pericope_num,
-                audio_url=clip_url(voiced.key),
-            )
-        )
-    return BookPassagesResponse(book=book, passages=said)
+    named = [
+        (meaning_map.pericope_num, line)
+        for meaning_map in load_book(book)
+        for line in [line_for(meaning_map.pericope_num, language)]
+        if line
+    ]
+
+    # In parallel, bounded. Fourteen passages meant fourteen round trips in a row inside
+    # the app's ninety-second budget, and a cache cold for any reason — a new book, a
+    # tuning change, which is part of the cache key — put the route over it. The room then
+    # told a team on a working network that the internet was gone, while the server was
+    # still working. The bound is there because the voice on the other end has a quota.
+    gate = asyncio.Semaphore(_VOICES_AT_ONCE)
+
+    async def voiced(line: str) -> str:
+        async with gate:
+            entry, _ = await room.synthesize_facilitator_speech(line, settings=settings)
+            return clip_url(entry.key)
+
+    urls = await asyncio.gather(*(voiced(line) for _, line in named))
+    return BookPassagesResponse(
+        book=book,
+        passages=[
+            PassageView(pericope=pericope, audio_url=url)
+            for (pericope, _), url in zip(named, urls, strict=True)
+        ],
+    )
