@@ -8,6 +8,7 @@ import pytest
 
 from app.core.config import Settings
 from app.services.internalization_room.voice_handles import (
+    audio_url,
     clip_url,
     from_handle,
     to_handle,
@@ -57,6 +58,30 @@ def test_a_handle_for_something_else_is_refused(key: str) -> None:
     route's business.
     """
     assert from_handle(to_handle(key), settings=_settings()) is None
+
+
+REPLY_KEY = "internalization-room/questions/8f2c/resposta-abc123.m4a"
+
+
+def test_a_facilitator_reply_is_reachable_at_the_address_it_was_given() -> None:
+    """`audio_url` has always minted an address on the clip route for a spoken reply.
+
+    The route refused it: the key check accepted only synthesized speech, so every reply
+    404ed by construction. The app never marked one as heard, and the hand went on
+    offering the same silent answer on every touch, forever.
+    """
+    handle = audio_url(REPLY_KEY).removeprefix("/api/internalization-room/voice/")
+
+    assert from_handle(handle, settings=_settings()) == REPLY_KEY
+
+
+def test_the_reply_prefix_does_not_open_the_rest_of_the_bucket() -> None:
+    for key in (
+        "internalization-room/questions/../../tts/AnotherApp/x.mp3",
+        "internalization-roomm/questions/x.m4a",
+        "other-app/questions/x.m4a",
+    ):
+        assert from_handle(to_handle(key), settings=_settings()) is None
 
 
 @pytest.mark.parametrize("handle", ["", "!!!", "nao-e-base64!!", "eyJ"])
