@@ -138,5 +138,13 @@ async def begin_back_translation_again(
     adds a chunk beside the others, and its budget is counted where that happens.
     """
     state = back_translation_of(session)
-    await save_back_translation(db, session, BackTranslationState(scope=state.scope))
+    # The retell count carries across. `BackTranslationState(scope=...)` takes every other
+    # default, so it went back to zero — and re-recording is a room-key route the team
+    # drives by voice. The budget that exists so a loop cannot be a loop was reachable by
+    # tapping "record again", which is exactly the tap a stuck team makes.
+    await save_back_translation(
+        db,
+        session,
+        BackTranslationState(scope=state.scope, retells=state.retells),
+    )
     return back_translation_of(session)

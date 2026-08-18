@@ -84,11 +84,20 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
+        # The budget is spent on the attempt, not on the transcript. Returning above this
+        # meant that during a transcriber outage — when every attempt comes back empty —
+        # the team could retell forever, `MAX_RETELLS` was never reached, and the room's
+        # only route to a person was unreachable exactly when the room was broken.
+        state.retells = told_again
+        await room.save_back_translation(db, session, state)
+        if retelling and told_again >= MAX_RETELLS:
+            await room.mark_needs_person(db, session)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(state.chunks),
             captured=False,
-            pass_number=state.retells + 1 if retelling else 1,
+            pass_number=pass_number,
+            needs_person=retelling and told_again >= MAX_RETELLS,
         )
     state.chunks.append(
         Chunk(

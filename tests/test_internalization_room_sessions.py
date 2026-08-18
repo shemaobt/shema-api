@@ -107,7 +107,11 @@ async def test_a_fresh_recording_throws_the_whole_telling_back_away(
     state = await begin_back_translation_again(db_session, session)
 
     assert state.chunks == []
-    assert state.retells == 0
+    assert state.retells == 2, (
+        "o contado de volta é jogado fora; o orçamento de recontagens não é parte dele. "
+        "Zerá-lo punha nas mãos da equipe — por um toque em 'gravar de novo' — o contador "
+        "que existe para um laço não virar laço"
+    )
     assert session.status is IRSessionStatus.IN_PROGRESS
 
 
