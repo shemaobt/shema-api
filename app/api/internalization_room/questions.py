@@ -7,7 +7,8 @@ comes through the platform's own app access. They never see each other's routes.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import CurrentUser, device_dep, room_key_dep
@@ -92,11 +93,34 @@ async def open_questions(
                 question_id=question.id,
                 device_id=question.device_id,
                 pericope=question.pericope,
-                audio_url=audio_url(question.audio_key),
+                audio_url=f"/api/internalization-room/facilitator/questions/{question.id}/audio",
                 asked_at=_stamp(question.created_at),
             )
             for question in waiting
         ]
+    )
+
+
+@router.get(
+    "/facilitator/questions/{question_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+)
+async def listen_to_question(
+    question_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+) -> RedirectResponse:
+    """Redirect to a short-lived signed URL, the way the takes routes already do.
+
+    The queue used to hand the facilitator the clip route, which is gated on the room key
+    the tablet carries. They sign in as a person: every play button answered 401.
+    """
+    question = await service.get_question(db, question_id)
+    if not question.audio_key:
+        raise NotFoundError("No such recording")
+    return RedirectResponse(
+        await service.listen_url(question.audio_key),
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
 
 
