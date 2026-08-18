@@ -13,6 +13,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.back_translation import Chunk
+from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import MAX_RETELLS
@@ -127,6 +128,25 @@ async def finish(
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge."""
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
+
+    if not state.chunks:
+        # An analyst asked to compare nothing against the map answers with no findings,
+        # and no findings is what `checked` is made of — so pressing `terminei` over an
+        # empty back translation blessed the passage and the app struck it off the wheel
+        # for good, on a telling-back that never happened. The room says it did not hear
+        # anything, which is the line family written for exactly this.
+        _, line = choose(
+            FailSafe.INAUDIBLE,
+            get_settings().internalization_room_language_code,
+            turn=len(session.messages or []),
+        )
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            audio_url="",
+            fixed_line=line,
+            checked=False,
+            findings_remaining=0,
+        )
 
     if not state.already_analysed:
         read = await room.analyse_telling_back(

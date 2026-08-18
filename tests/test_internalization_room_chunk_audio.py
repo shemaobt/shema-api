@@ -142,3 +142,29 @@ async def test_a_stretch_with_no_transcript_is_still_stored(
     assert len(rows) == 1
     assert rows[0].kind is IRTakeKind.RETRO
     assert list(client.bucket.objects.values()) == [AUDIO]  # type: ignore[attr-defined]
+
+
+async def test_finishing_without_telling_anything_back_is_not_checking(
+    client: httpx.AsyncClient,
+) -> None:
+    """The one press that could strike a passage off the wheel without any work.
+
+    An analyst asked to compare nothing against the map answers with no findings, and no
+    findings is what `checked` is made of.
+    """
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
+    )
+    session_id = created.json()["session_id"]
+
+    answer = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/finish",
+        headers={"X-Room-Key": KEY},
+    )
+
+    assert answer.status_code == 200
+    body = answer.json()
+    assert body["checked"] is False
+    assert body["fixed_line"].startswith("D"), (
+        "a sala diz que não ouviu nada, que é a família escrita para isto"
+    )
