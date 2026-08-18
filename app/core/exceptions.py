@@ -75,28 +75,6 @@ class NotFoundError(Exception):
     pass
 
 
-class InvalidClaimCodeError(Exception):
-    """A device claim code was refused, and the caller is not told which refusal it was.
-
-    Wrong, already spent, expired, and naming a project that does not exist are four
-    different events to an operator and must be one event to whoever is holding the
-    tablet. A caller who can tell them apart has an oracle: they can enumerate codes and
-    learn which ones exist, and a code that exists is a device someone else can capture.
-
-    So the message is fixed and carries nothing about the attempt. Which of the four it
-    was is written to the log by ``app.services.device.claim_device``, where an operator
-    debugging a failed installation can read it and an attacker cannot.
-
-    Raise it with no argument. It takes none deliberately — an argument is exactly the
-    thing that would vary between the four.
-    """
-
-    MESSAGE: Final = "That claim code is not valid."
-
-    def __init__(self) -> None:
-        super().__init__(self.MESSAGE)
-
-
 class UnknownReferenceError(Exception):
     """A write named a foreign key that does not exist.
 
