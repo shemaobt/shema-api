@@ -28,12 +28,35 @@ class CreateSessionRequest(BaseModel):
     after_session: str | None = Field(default=None, max_length=36)
 
 
+class BackTranslationProgress(BaseModel):
+    """Where a telling-back stopped, so a tablet can be handed it back.
+
+    The app keeps none of this across a restart — `session_id` lives only in memory — so a
+    team that left a passage part-way lost the whole retro. Everything here is already
+    stored on the session; it simply had no way out.
+    """
+
+    scope: str = ""
+    #: One entry per stretch already told, in order, with the pass it was told on. The app
+    #: draws one bead per entry.
+    passes: list[int] = Field(default_factory=list)
+    #: Where each stretch sits in the rehearsal, so the room can play one back.
+    spans: list[list[int]] = Field(default_factory=list)
+    retells: int = 0
+    checked: bool = False
+    finding_chunk: int | None = None
+    finding_kind: str | None = None
+
+
 class SessionStateResponse(BaseModel):
     session_id: str
     pericope: str
     status: str
     coverage: CoverageView
     done: bool
+    back_translation: BackTranslationProgress = Field(
+        default_factory=BackTranslationProgress
+    )
 
 
 class TurnResponse(BaseModel):
