@@ -47,13 +47,13 @@ async def client(db_session: AsyncSession):
 
     from app.api.devices import devices_router
     from app.api.facilitator.devices import facilitator_devices_router
-    from app.api.facilitator.team_devices import facilitator_team_devices_router
+    from app.api.facilitator.teams import facilitator_teams_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
     test_app.include_router(facilitator_devices_router, prefix="/api/facilitator/devices")
-    test_app.include_router(facilitator_team_devices_router, prefix="/api/facilitator")
+    test_app.include_router(facilitator_teams_router, prefix="/api/facilitator/teams")
     test_app.include_router(devices_router, prefix="/api/devices")
     register_exception_handlers(test_app)
 
