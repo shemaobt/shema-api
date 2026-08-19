@@ -43,6 +43,7 @@ class ProbePlanInput(BaseModel):
     scene_ids: list[str]
     current_scene: str | None = None
     practiced_scene_ids: list[str] = Field(default_factory=list)
+    opened_scene_ids: list[str] = Field(default_factory=list)
     returning_to_full_retell: bool = False
     skip_carry_offer_for_checkpoint_ids: list[str] = Field(default_factory=list)
     focused_recovery: FocusedRecovery | None = None
@@ -105,18 +106,25 @@ def _next_independent_method(
 
 
 def _next_practice_scene(input_: ProbePlanInput, blocking: list[Checkpoint]) -> str | None:
+    """The next scene to rehearse in the mother tongue, among scenes the Voice has opened.
+
+    Practice is a process-only turn — the fixed invitation may not carry passage content —
+    so inviting it for a scene the team has never heard opened would ask them to rehearse
+    something nobody framed. A scene qualifies only after coverage shows it was opened.
+    """
     practiced = set(input_.practiced_scene_ids)
+    opened = set(input_.opened_scene_ids)
     if input_.current_scene:
-        if input_.current_scene not in practiced:
+        if input_.current_scene not in practiced and input_.current_scene in opened:
             return input_.current_scene
         if any(c.scene_id == input_.current_scene for c in blocking):
             return None
     blocking_scenes = {c.scene_id for c in blocking if c.scene_id}
     for scene_id in input_.scene_ids:
-        if scene_id in blocking_scenes and scene_id not in practiced:
+        if scene_id in blocking_scenes and scene_id not in practiced and scene_id in opened:
             return scene_id
     for scene_id in input_.scene_ids:
-        if scene_id not in practiced:
+        if scene_id not in practiced and scene_id in opened:
             return scene_id
     return None
 

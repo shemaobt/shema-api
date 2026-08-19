@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.comprehension.practice import (
     MOTHER_TONGUE_PRACTICE_PROMPT,
 )
@@ -50,9 +51,15 @@ def approve_all(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_opening_turn_persists_the_probe_it_voiced(
+async def test_the_opening_turn_belongs_to_the_guide(
     db_session: AsyncSession, approve_all: None
 ) -> None:
+    """The session's first line opens the passage; it is never an app-owned prompt.
+
+    The Terena field test heard 'ensaiem juntos esta cena' as the very first utterance of
+    a passage nobody had opened yet — instant, unframed, and with no thinking. Frame
+    first, elicit second: the opening always goes through the Guide.
+    """
     session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
 
     turn = await run_comprehension_turn(
@@ -66,12 +73,44 @@ async def test_the_opening_turn_persists_the_probe_it_voiced(
     )
 
     assert turn.bridge_mode == "guided_microchecks"
-    assert turn.state.active_probe is not None
-    assert turn.state.active_probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE
+    assert turn.outcome.speech == "Vamos começar pela primeira cena. O que vocês acham?"
+    assert turn.outcome.speech != MOTHER_TONGUE_PRACTICE_PROMPT
+    assert not turn.outcome.used_fail_safe
+    assert turn.state.active_probe is None
 
 
 @pytest.mark.asyncio
 async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="podemos começar"),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert turn.outcome.speech == MOTHER_TONGUE_PRACTICE_PROMPT
+    assert turn.outcome.peer_cue
+    assert not turn.outcome.used_fail_safe
+
+
+@pytest.mark.asyncio
+async def test_practice_is_not_invited_before_the_voice_opens_the_scene(
     db_session: AsyncSession, approve_all: None
 ) -> None:
     session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
@@ -89,9 +128,9 @@ async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
         settings=_settings(),
     )
 
-    assert turn.outcome.speech == MOTHER_TONGUE_PRACTICE_PROMPT
-    assert turn.outcome.peer_cue
-    assert not turn.outcome.used_fail_safe
+    assert turn.outcome.speech != MOTHER_TONGUE_PRACTICE_PROMPT
+    assert turn.state.active_probe is not None
+    assert turn.state.active_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
 
 
 @pytest.mark.asyncio

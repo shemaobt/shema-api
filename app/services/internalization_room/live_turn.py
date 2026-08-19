@@ -7,6 +7,11 @@ answer semantically, fold the evidence, plan the NEXT probe, and only then let t
 speak — or bypass it entirely with exact app-owned speech where safety demands fixed
 wording. A probe becomes state only after its question was actually voiced, so evidence is
 never bound to an unvoiced prompt.
+
+The opening turn always belongs to the Guide: no probe is planned and no app-owned line
+may hijack it, because the Voice must open the passage before anything is asked of the
+team — frame first, elicit second. For the same reason, the mother-tongue practice
+invitation for a scene is only planned once that scene has been opened in coverage.
 """
 
 from __future__ import annotations
@@ -107,6 +112,20 @@ def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | Non
         if not by_scene[scene]:
             return f"S{scene}"
     return None
+
+
+def opened_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
+    """Scenes the Voice has already opened — at least one element surfaced or engaged."""
+    opened: dict[int, bool] = {}
+    for element in elements_for(pericope):
+        if element.scene is None:
+            continue
+        touched = coverage_state.get(element.key) in (
+            CoverageStatus.SURFACED.value,
+            CoverageStatus.ENGAGED.value,
+        )
+        opened[element.scene] = opened.get(element.scene, False) or touched
+    return [f"S{scene}" for scene in sorted(opened) if opened[scene]]
 
 
 def _observation_id(tail: str) -> str:
@@ -381,7 +400,7 @@ async def run_comprehension_turn(
         and bool(transcript.strip())
     )
 
-    if bridge_mode is BridgeMode.CALIBRATION_PENDING or consent_decision == "accepted":
+    if opening or bridge_mode is BridgeMode.CALIBRATION_PENDING or consent_decision == "accepted":
         planned_probe: ActiveProbe | None = None
     elif recovery_clarification_checkpoint is not None and state.stt_recovery is not None:
         planned_probe = ActiveProbe(
@@ -417,6 +436,7 @@ async def run_comprehension_turn(
                 scene_ids=scene_ids,
                 current_scene=scene_pointer,
                 practiced_scene_ids=projected_practice,
+                opened_scene_ids=opened_scene_ids(session.coverage_state or {}, pericope),
                 returning_to_full_retell=(
                     bridge_mode is BridgeMode.FULL_RETELL
                     and current_mode is not BridgeMode.FULL_RETELL
@@ -438,7 +458,7 @@ async def run_comprehension_turn(
         )
 
     next_probe = planned_probe
-    if should_offer_recording_consent(
+    if not opening and should_offer_recording_consent(
         eligible=eligible,
         paused=state.recording_handoff_paused,
         explicit_resume_requested=resume_requested,
@@ -453,7 +473,7 @@ async def run_comprehension_turn(
         )
 
     app_owned_line: str | None = None
-    if eligible and consent_decision == "accepted":
+    if not opening and eligible and consent_decision == "accepted":
         app_owned_line = REHEARSAL_READINESS_CUE
     elif (
         prior_probe is not None
