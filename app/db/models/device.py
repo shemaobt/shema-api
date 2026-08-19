@@ -42,6 +42,16 @@ class Device(Base):
     #: against the same code reads this and is refused.
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    #: SHA-256 of the long-lived credential the device authenticates with, issued when the
+    #: claim code is spent (ENG-443). Null until then. The credential itself is returned
+    #: once, at claim, and never stored — so this is the only trace of it that survives.
+    credential_hash: Mapped[str | None] = mapped_column(
+        String(64), unique=True, index=True, nullable=True
+    )
+    credential_issued_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
