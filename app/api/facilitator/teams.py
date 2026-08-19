@@ -20,7 +20,7 @@ from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
 from app.models.device import TeamDeviceResponse
 from app.services.device.list_team_devices import list_team_devices
-from app.services.project.can_access_project import can_access_project
+from app.services.project.facilitates_project import facilitates_project
 
 facilitator_teams_router = APIRouter()
 
@@ -34,7 +34,7 @@ async def list_team_devices_route(
     user: User = Depends(get_current_user),
 ) -> list[TeamDeviceResponse]:
     """The devices linked to this team. A team with none answers with an empty list."""
-    if not await can_access_project(db, user.id, team_id):
+    if not await facilitates_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
     return [TeamDeviceResponse.of(device) for device in await list_team_devices(db, team_id)]

@@ -37,7 +37,7 @@ from app.services.device.claim_device import (
     claim_device,
 )
 from app.services.device.credential import generate_device_credential, hash_device_credential
-from app.services.project.can_access_project import can_access_project
+from app.services.project.facilitates_project import facilitates_project
 
 
 def _refuse_without_naming_the_team() -> InvalidClaimCodeError:
@@ -68,7 +68,7 @@ async def claim_device_as_facilitator(
     The credential is minted here rather than in ``claim_device`` because ENG-437 stopped
     at "the code can be spent" on purpose. This is what spending pays for.
     """
-    if not await can_access_project(db, user.id, project_id):
+    if not await facilitates_project(db, user, project_id):
         raise _refuse_without_naming_the_team()
 
     device = await claim_device(db, code=code, project_id=project_id, commit=False)
