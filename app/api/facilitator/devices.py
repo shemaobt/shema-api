@@ -1,4 +1,8 @@
-"""The one write the Desk makes to a room's configuration.
+"""The routes that act on one device: claiming it, saying who uses it, taking it out.
+
+Addressed by device, under one prefix. The team-addressed listing lives in ``teams.py``
+with its own prefix, so no two routers share a URL space and nothing depends on the order
+they are mounted in.
 
 The mapping from a refusal to a response is this module's whole job, and it is the point
 at which ENG-437's single answer becomes three. What the service decided, this translates:
@@ -12,7 +16,7 @@ code is exactly what ENG-460 says is not enough for the Desk.
 
 from collections.abc import Mapping
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,9 +29,13 @@ from app.models.device import (
     ERROR_CODE_CLAIM_CODE_UNKNOWN,
     DeviceClaimRequest,
     DeviceClaimResponse,
+    DeviceLabelUpdateRequest,
+    TeamDeviceResponse,
 )
 from app.services.device.claim_device import ClaimRefusal, InvalidClaimCodeError
 from app.services.device.claim_device_as_facilitator import claim_device_as_facilitator
+from app.services.device.set_team_device_label import set_team_device_label
+from app.services.device.unlink_device import unlink_device
 
 facilitator_devices_router = APIRouter()
 
@@ -86,3 +94,30 @@ async def claim_device_route(
         label=claimed.device.label,
         credential=claimed.credential,
     )
+
+
+@facilitator_devices_router.patch("/{device_id}", response_model=TeamDeviceResponse)
+async def edit_device_label_route(
+    device_id: str,
+    payload: DeviceLabelUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TeamDeviceResponse:
+    """Say who uses this device. Returns the row, so the panel can redraw from the answer."""
+    device = await set_team_device_label(db, user=user, device_id=device_id, label=payload.label)
+    return TeamDeviceResponse.of(device)
+
+
+@facilitator_devices_router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_device_route(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Take this device out of service and revoke the credential it authenticates with.
+
+    **Moving a device to another team is deliberately absent.** No requirement asks for it
+    in v1 — see the PR for the mismatch with the control the Desk already ships.
+    """
+    await unlink_device(db, user=user, device_id=device_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

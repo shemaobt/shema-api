@@ -16,6 +16,7 @@ from app.core.exceptions import AuthenticationError
 from app.db.models.device import Device
 from app.models.device import DeviceSelfResponse
 from app.services.device.get_device_by_credential import get_device_by_credential
+from app.services.device.touch_device_last_seen import touch_device_last_seen
 
 devices_router = APIRouter()
 
@@ -41,8 +42,14 @@ async def require_device_credential(
 @devices_router.get("/me", response_model=DeviceSelfResponse)
 async def read_own_device(
     device: Device = Depends(require_device_credential),
+    db: AsyncSession = Depends(get_db),
 ) -> DeviceSelfResponse:
-    """Which project this device belongs to. Never answers with the credential."""
+    """Which project this device belongs to. Never answers with the credential.
+
+    Stamps last-seen on the way through: this is the only request a device makes, so it is
+    the only place the Desk's "last activity" column can come from.
+    """
+    await touch_device_last_seen(db, device)
     return DeviceSelfResponse(
         device_id=device.id,
         project_id=device.project_id,
