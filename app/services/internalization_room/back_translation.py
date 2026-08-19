@@ -76,6 +76,8 @@ class SupersededAttempt(BaseModel):
     chunks: list[Chunk] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
     evidence_sufficient: bool = True
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = None
 
 
 class BackTranslationState(BaseModel):
@@ -85,6 +87,8 @@ class BackTranslationState(BaseModel):
     evidence_sufficient: bool = True
     checked: bool = False
     superseded: list[SupersededAttempt] = Field(default_factory=list)
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = None
     #: How many stretches the team has told back a second time. The retell is the one cycle
     #: the team can repeat at will, so the budget lives here — a counter the app cannot
     #: reach, which is what keeps a loop from being a loop.
@@ -102,6 +106,31 @@ class BackTranslationState(BaseModel):
     @property
     def already_analysed(self) -> bool:
         return self.analysed_chunks == len(self.chunks)
+
+
+PLAYBACK_TOLERANCE_MS = 750
+
+
+def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: int | None) -> bool:
+    """Whether the reported playback reached the whole clip, within tolerance.
+
+    A telling-back is a check of what was actually heard, not of what the team remembers,
+    so "checked" over a half-listened clip would be a claim about audio nobody played.
+    Reported ranges are merged and must cover [0, duration] with at most 750 ms of slack
+    at either edge or between stretches. No report at all is a legacy client and passes —
+    honesty about what we know, not a new wall for old tablets.
+    """
+    if not played_ranges or not clip_duration_ms:
+        return True
+    spans = sorted((max(0, int(start)), int(end)) for start, end in played_ranges if end > start)
+    if not spans:
+        return False
+    cursor = 0
+    for start, end in spans:
+        if start > cursor + PLAYBACK_TOLERANCE_MS:
+            return False
+        cursor = max(cursor, end)
+    return cursor >= clip_duration_ms - PLAYBACK_TOLERANCE_MS
 
 
 def segments_block(chunks: list[Chunk]) -> str:
