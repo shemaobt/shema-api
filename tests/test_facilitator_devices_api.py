@@ -13,6 +13,7 @@ could map the whole installation by trying (Behaviour 5).
 """
 
 import logging
+from importlib import import_module
 
 import httpx
 import pytest
@@ -20,12 +21,16 @@ from httpx import ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.device import claim_code, create_device
+from app.services.device import claim_code, claim_device_as_facilitator, create_device
 from tests.baker import make_language, make_project, make_project_user_access, make_user
 
 CLAIM_URL = "/api/facilitator/devices/claim"
 DEVICE_SELF_URL = "/api/devices/me"
 DEVICE_CREDENTIAL_HEADER = "X-Device-Credential"
+
+# The package __init__ rebinds this name to the function, so the module itself has to
+# be reached through the import machinery.
+facilitator_claim = import_module("app.services.device.claim_device_as_facilitator")
 
 
 @pytest.fixture()
@@ -337,3 +342,51 @@ async def test_replaying_a_spent_code_is_refused_as_already_used_and_does_not_mo
     assert replay.json()["code"] != ""
     still = await client.get(DEVICE_SELF_URL, headers={DEVICE_CREDENTIAL_HEADER: credential})
     assert still.json()["project_id"] == first_project.id
+
+
+# Spending the code and paying for it are one transaction.
+
+
+async def test_a_failure_after_the_code_is_spent_leaves_the_device_claimable(
+    db_session, monkeypatch
+):
+    """The device must not be stranded by a transient failure half way through.
+
+    Spending the code and issuing the credential are two writes. If the first commits and
+    the second does not, the row is left with ``claimed_at`` set and no credential — and
+    from there it can never recover on its own. Claiming it again is refused as already
+    used, and nothing else issues a credential, so the tablet is permanently unusable
+    because a hash write failed once.
+
+    This is asserted below the HTTP boundary because there is no way to fail half way
+    through from outside it. The rollback stands in for what a real request does: get_db
+    yields the session inside ``async with``, so a request that raises closes the session
+    and discards whatever was not committed.
+    """
+    user, project, _headers = await a_facilitator(db_session)
+    minted = await create_device(db_session)
+
+    def _the_credential_write_fails() -> str:
+        raise RuntimeError("minting the credential failed")
+
+    monkeypatch.setattr(
+        facilitator_claim, "generate_device_credential", _the_credential_write_fails
+    )
+
+    with pytest.raises(RuntimeError):
+        await claim_device_as_facilitator(
+            db_session, user=user, code=minted.claim_code, project_id=project.id
+        )
+
+    monkeypatch.undo()
+    await db_session.rollback()
+    # A new request loads its own objects; the rollback expired these ones.
+    await db_session.refresh(user)
+    await db_session.refresh(project)
+
+    recovered = await claim_device_as_facilitator(
+        db_session, user=user, code=minted.claim_code, project_id=project.id
+    )
+
+    assert recovered.device.project_id == project.id
+    assert recovered.credential
