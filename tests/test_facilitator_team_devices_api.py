@@ -39,13 +39,13 @@ async def client(db_session: AsyncSession):
 
     from app.api.devices import devices_router
     from app.api.facilitator.devices import facilitator_devices_router
-    from app.api.facilitator.team_devices import facilitator_team_devices_router
+    from app.api.facilitator.teams import facilitator_teams_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
     test_app.include_router(facilitator_devices_router, prefix="/api/facilitator/devices")
-    test_app.include_router(facilitator_team_devices_router, prefix="/api/facilitator")
+    test_app.include_router(facilitator_teams_router, prefix="/api/facilitator/teams")
     test_app.include_router(devices_router, prefix="/api/devices")
     register_exception_handlers(test_app)
 
@@ -120,7 +120,6 @@ async def test_the_list_carries_who_uses_it_and_when_it_was_linked(client, db_se
 
     assert row["label"] == "second row, cracked"
     assert row["linked_at"]
-    assert "last_seen_at" in row
 
 
 async def test_a_team_with_no_devices_answers_with_an_empty_list(client, db_session):
@@ -280,7 +279,9 @@ async def test_an_unlinked_devices_credential_cannot_be_brought_back(client, db_
     assert refused.status_code == 401
 
 
-async def test_a_device_that_was_never_claimed_can_be_unlinked_without_error(client, db_session):
+async def test_unlinking_a_device_that_was_never_claimed_is_refused_like_one_that_is_absent(
+    client, db_session
+):
     _user, _project, headers = await a_facilitator(db_session)
     unclaimed = await create_device(db_session)
 
@@ -309,3 +310,27 @@ async def test_an_unlinked_device_leaves_the_list(client, db_session):
         for row in (await client.get(team_devices_url(project.id), headers=headers)).json()
     }
     assert device_ids == {staying}
+
+
+async def test_last_activity_is_null_until_the_device_asks_the_api_something(client, db_session):
+    """The column has to be written, not merely present in the answer.
+
+    Asserting the key exists passes just as well when nothing ever sets it, which would
+    leave the Desk showing an always-empty column and this test agreeing.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    await a_linked_device(client, db_session, headers, project)
+
+    before = (await client.get(team_devices_url(project.id), headers=headers)).json()[0]
+
+    assert before["last_seen_at"] is None
+
+
+async def test_last_activity_is_set_once_the_device_reads_its_own_team(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    _device_id, credential = await a_linked_device(client, db_session, headers, project)
+
+    await client.get(DEVICE_SELF_URL, headers={DEVICE_CREDENTIAL_HEADER: credential})
+
+    after = (await client.get(team_devices_url(project.id), headers=headers)).json()[0]
+    assert after["last_seen_at"] is not None
