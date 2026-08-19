@@ -65,12 +65,26 @@ class BtAnalysis(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
 
 
+class SupersededAttempt(BaseModel):
+    """A telling-back the team replaced by re-recording.
+
+    Its chunks and findings do not disappear with the clip: they are the history the
+    Refine artifact carries, clearly marked as superseded — the team's open questions
+    survive their own retake.
+    """
+
+    chunks: list[Chunk] = Field(default_factory=list)
+    findings: list[Finding] = Field(default_factory=list)
+    evidence_sufficient: bool = True
+
+
 class BackTranslationState(BaseModel):
     scope: str = ""
     chunks: list[Chunk] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
     evidence_sufficient: bool = True
     checked: bool = False
+    superseded: list[SupersededAttempt] = Field(default_factory=list)
     #: How many stretches the team has told back a second time. The retell is the one cycle
     #: the team can repeat at will, so the budget lives here — a counter the app cannot
     #: reach, which is what keeps a loop from being a loop.
