@@ -10,6 +10,8 @@ in ``app/core/exceptions.py`` flattens every 4xx to ``BAD_REQUEST``, and a singl
 code is exactly what ENG-460 says is not enough for the Desk.
 """
 
+from collections.abc import Mapping
+
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,21 +26,20 @@ from app.models.device import (
     DeviceClaimRequest,
     DeviceClaimResponse,
 )
-from app.services.device.claim_device import (
-    REASON_ALREADY_SPENT,
-    REASON_EXPIRED,
-    InvalidClaimCodeError,
-)
+from app.services.device.claim_device import ClaimRefusal, InvalidClaimCodeError
 from app.services.device.claim_device_as_facilitator import claim_device_as_facilitator
 
 facilitator_devices_router = APIRouter()
 
-_REFUSAL_BODIES = {
-    REASON_ALREADY_SPENT: (
+#: Keyed by ``ClaimRefusal | None`` on purpose: a refusal that names no reason is a
+#: legitimate lookup and has to fall to the unknown answer like any other reason not
+#: listed here.
+_REFUSAL_BODIES: Mapping[ClaimRefusal | None, tuple[str, str]] = {
+    ClaimRefusal.ALREADY_SPENT: (
         "That claim code has already been used.",
         ERROR_CODE_CLAIM_CODE_ALREADY_USED,
     ),
-    REASON_EXPIRED: (
+    ClaimRefusal.EXPIRED: (
         "That claim code has expired.",
         ERROR_CODE_CLAIM_CODE_EXPIRED,
     ),

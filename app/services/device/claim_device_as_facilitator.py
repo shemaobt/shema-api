@@ -19,6 +19,12 @@ telling "not yours" from "no such thing" maps the installation just as well.
 **Order matters, and not only for tidiness.** The team check runs *before* the code is
 spent. Reversed, a claim aimed at someone else's team would burn a live code on its way to
 being refused, and the facilitator would have to go make the tablet show a new one.
+
+**The spend and the payment are one transaction.** ``claim_device`` is called with
+``commit=False`` so the guarded write and the credential land together. Committed
+separately, a failure between them would leave the row claimed with no credential: refused
+as already used on the next attempt, and with nothing left that issues one. A transient
+failure would permanently strand a tablet.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.auth import User
 from app.models.device import ClaimedDevice
 from app.services.device.claim_device import (
-    REASON_UNKNOWN_CODE,
+    ClaimRefusal,
     InvalidClaimCodeError,
     claim_device,
 )
@@ -41,7 +47,7 @@ def _refuse_without_naming_the_team() -> InvalidClaimCodeError:
     facilitator learns nothing about the project they named.
     """
     error = InvalidClaimCodeError()
-    error.reason = REASON_UNKNOWN_CODE
+    error.reason = ClaimRefusal.UNKNOWN_CODE
     return error
 
 
@@ -65,7 +71,7 @@ async def claim_device_as_facilitator(
     if not await can_access_project(db, user.id, project_id):
         raise _refuse_without_naming_the_team()
 
-    device = await claim_device(db, code=code, project_id=project_id)
+    device = await claim_device(db, code=code, project_id=project_id, commit=False)
 
     credential = generate_device_credential()
     device.credential_hash = hash_device_credential(credential)
