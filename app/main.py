@@ -14,6 +14,7 @@ from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
 from app.api.devices import devices_router
 from app.api.facilitator.devices import facilitator_devices_router
+from app.api.facilitator.team_devices import facilitator_team_devices_router
 from app.api.health import router as health_router
 from app.api.languages import router as languages_router
 from app.api.meaning_maps import router as meaning_maps_router
@@ -138,6 +139,11 @@ def create_app() -> FastAPI:
     app.include_router(
         facilitator_devices_router,
         prefix="/api/facilitator/devices",
+        tags=["facilitator-devices"],
+    )
+    app.include_router(
+        facilitator_team_devices_router,
+        prefix="/api/facilitator",
         tags=["facilitator-devices"],
     )
     app.include_router(devices_router, prefix="/api/devices", tags=["devices"])

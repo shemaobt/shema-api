@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -66,3 +67,23 @@ class DeviceSelfResponse(BaseModel):
 ERROR_CODE_CLAIM_CODE_UNKNOWN = "CLAIM_CODE_UNKNOWN"
 ERROR_CODE_CLAIM_CODE_ALREADY_USED = "CLAIM_CODE_ALREADY_USED"
 ERROR_CODE_CLAIM_CODE_EXPIRED = "CLAIM_CODE_EXPIRED"
+
+
+class TeamDeviceResponse(BaseModel):
+    """One row of the Desk's devices panel.
+
+    Descriptive, not a credential list: it exists so a facilitator can say "that one is
+    so-and-so's" while looking at the screen. Nothing here is secret, and nothing here
+    can be presented to the API as proof of anything.
+    """
+
+    device_id: str
+    label: str | None
+    linked_at: datetime | None
+    last_seen_at: datetime | None
+
+
+class DeviceLabelUpdateRequest(BaseModel):
+    """The who-uses-it note. Free text, stored verbatim, empty allowed."""
+
+    label: str = Field(max_length=120)
