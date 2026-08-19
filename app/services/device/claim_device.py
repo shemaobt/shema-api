@@ -33,6 +33,18 @@ class InvalidClaimCodeError(Exception):
     Raise it with no argument. It takes none deliberately — an argument is exactly the
     thing that would vary between the four.
 
+    **The opt-in exception, added by ENG-443.** ``reason`` carries which of the four it
+    was. The exception's *value* is untouched — type, message and ``args`` are still one
+    thing across all four, so any caller that merely propagates it leaks nothing, and a
+    caller has to reach for ``reason`` deliberately to see more.
+
+    Exactly one caller does: ``claim_device_as_facilitator``, because its caller is an
+    authenticated facilitator with a team watching them type, and telling a typo apart
+    from an expired code is the difference between retyping and walking to the tablet.
+    The oracle ENG-437 closed is one for an anonymous caller, and authentication is what
+    removes that caller. A caller who cannot name a reason to read ``reason`` should not
+    read it.
+
     It lives here rather than in ``app/core/exceptions.py`` because nothing in this slice
     reaches HTTP, and ``register_exception_handlers`` registers every top-level class in
     that module. A service-local exception the router maps itself is the shape CLAUDE.md
@@ -43,8 +55,17 @@ class InvalidClaimCodeError(Exception):
 
     MESSAGE: Final = "That claim code is not valid."
 
+    #: Which of the four refusals this was. Never part of the exception's value.
+    reason: str = ""
+
     def __init__(self) -> None:
         super().__init__(self.MESSAGE)
+
+
+REASON_UNKNOWN_CODE: Final = "unknown_code"
+REASON_ALREADY_SPENT: Final = "code_already_spent"
+REASON_EXPIRED: Final = "code_expired"
+REASON_UNKNOWN_PROJECT: Final = "unknown_project"
 
 
 def _refuse(reason: str, *, device_id: str | None = None) -> NoReturn:
@@ -52,7 +73,9 @@ def _refuse(reason: str, *, device_id: str | None = None) -> NoReturn:
         "device claim refused",
         extra={"reason": reason, "device_id": device_id},
     )
-    raise InvalidClaimCodeError()
+    error = InvalidClaimCodeError()
+    error.reason = reason
+    raise error
 
 
 async def _project_exists(db: AsyncSession, project_id: str) -> bool:
@@ -91,13 +114,13 @@ async def claim_device(db: AsyncSession, *, code: str, project_id: str) -> Devic
     ).scalar_one_or_none()
 
     if device is None:
-        _refuse("unknown_code")
+        _refuse(REASON_UNKNOWN_CODE)
     if device.claimed_at is not None:
-        _refuse("code_already_spent", device_id=device.id)
+        _refuse(REASON_ALREADY_SPENT, device_id=device.id)
     if claim_codes.has_expired(device.claim_code_expires_at, at=now):
-        _refuse("code_expired", device_id=device.id)
+        _refuse(REASON_EXPIRED, device_id=device.id)
     if not await _project_exists(db, project_id):
-        _refuse("unknown_project", device_id=device.id)
+        _refuse(REASON_UNKNOWN_PROJECT, device_id=device.id)
 
     spent = await db.execute(
         update(Device)
@@ -105,7 +128,7 @@ async def claim_device(db: AsyncSession, *, code: str, project_id: str) -> Devic
         .values(project_id=project_id, claimed_at=now)
     )
     if spent.rowcount != 1:
-        _refuse("code_already_spent", device_id=device.id)
+        _refuse(REASON_ALREADY_SPENT, device_id=device.id)
 
     await db.commit()
     await db.refresh(device)
