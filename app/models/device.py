@@ -82,6 +82,16 @@ class TeamDeviceResponse(BaseModel):
     linked_at: datetime | None
     last_seen_at: datetime | None
 
+    @classmethod
+    def of(cls, device: Device) -> "TeamDeviceResponse":
+        """One row, built the same way wherever it is answered from."""
+        return cls(
+            device_id=device.id,
+            label=device.label,
+            linked_at=device.claimed_at,
+            last_seen_at=device.last_seen_at,
+        )
+
 
 class DeviceLabelUpdateRequest(BaseModel):
     """The who-uses-it note. Free text, stored verbatim, empty allowed."""
