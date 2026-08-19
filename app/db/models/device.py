@@ -52,6 +52,17 @@ class Device(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    #: When a facilitator took this device out of service (ENG-444). Set once, and it is
+    #: what every read path filters on — an unlinked device is gone from the Desk without
+    #: its row being gone from the table. ``credential_hash`` is nulled at the same moment,
+    #: which is what actually stops it authenticating; this column is the record, not the
+    #: revocation.
+    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    #: The last time this device asked the API anything. Null until it does. Nothing but
+    #: ``GET /api/devices/me`` moves it, because that is the only request a device makes.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
