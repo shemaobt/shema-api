@@ -14,6 +14,7 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     analyse_telling_back,
     findings_block,
+    played_ranges_cover_clip,
     segments_block,
 )
 from app.services.internalization_room.run_turn import run_verdict_turn
@@ -441,3 +442,26 @@ async def test_a_legacy_reply_without_the_sufficiency_field_still_reads(
     assert analysis is not None
     assert analysis.evidence_sufficient
     assert [f.kind for f in analysis.findings] == [FindingKind.MISSING]
+
+
+def test_contiguous_playback_covers_the_clip() -> None:
+    assert played_ranges_cover_clip([[0, 30000], [30000, 61000]], 61000)
+
+
+def test_tolerance_forgives_the_edges_but_not_a_hole() -> None:
+    assert played_ranges_cover_clip([[400, 60400]], 61000)
+    assert not played_ranges_cover_clip([[0, 20000], [24000, 61000]], 61000)
+
+
+def test_a_half_listened_clip_is_not_covered() -> None:
+    assert not played_ranges_cover_clip([[0, 30000]], 61000)
+
+
+def test_a_legacy_client_without_a_report_passes() -> None:
+    assert played_ranges_cover_clip([], None)
+    assert played_ranges_cover_clip([], 61000)
+    assert played_ranges_cover_clip([[0, 61000]], None)
+
+
+def test_an_empty_report_with_a_duration_does_not_pass() -> None:
+    assert not played_ranges_cover_clip([[5000, 5000]], 61000)
