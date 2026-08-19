@@ -250,8 +250,15 @@ async def make_project_user_access(
     db: AsyncSession,
     project_id: str,
     user_id: str,
+    *,
+    role: str = "member",
 ) -> ProjectUserAccess:
-    access = ProjectUserAccess(project_id=project_id, user_id=user_id)
+    """A project_user_access row. `role` defaults to what the column defaults to.
+
+    Written straight to the table, so it accepts values `grant_user_access` would reject —
+    which is what lets a test seed a row an older code path could have left behind.
+    """
+    access = ProjectUserAccess(project_id=project_id, user_id=user_id, role=role)
     db.add(access)
     await db.commit()
     await db.refresh(access)

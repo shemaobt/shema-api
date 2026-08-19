@@ -17,6 +17,8 @@ app/
                    #   rag/ (document upload, query, embeddings)
                    #   bhsa/ (Hebrew text-fabric passage extraction)
                    #   oral_collector/ (field recordings, storytellers, review flags)
+                   #   device/ (tablets: the single-use code that claims one into a
+                   #            project, and the long-lived credential it buys)
 alembic/           # Database migrations
 scripts/           # One-off scripts (e.g. seed_apps_roles.py)
 tests/             # Async pytest suite, one file per service domain
