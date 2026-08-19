@@ -15,6 +15,7 @@ _FILES: dict[IRPromptKey, str] = {
     IRPromptKey.DRAFT_SELF_CHECK: "draft_check_system_prompt.md",
     IRPromptKey.BT_ANALYST: "backtranslation_analysis_system_prompt.md",
     IRPromptKey.BT_VERDICT_SPEAKER: "backtranslation_verdict_system_prompt.md",
+    IRPromptKey.COMPREHENSION_ASSESSOR: "comprehension_evidence_system_prompt.md",
 }
 
 _META: dict[IRPromptKey, tuple[str, str]] = {
@@ -45,6 +46,10 @@ _META: dict[IRPromptKey, tuple[str, str]] = {
     IRPromptKey.BT_VERDICT_SPEAKER: (
         "BT Verdict Speaker",
         "Voz do veredito da retrotradução: um achado por turno, e para.",
+    ),
+    IRPromptKey.COMPREHENSION_ASSESSOR: (
+        "Comprehension Evidence Assessor",
+        "Classifica evidência semântica da resposta ao probe autorizado. Nunca é falado.",
     ),
 }
 
