@@ -66,3 +66,33 @@ async def test_a_session_with_nothing_prepared_says_so(db_session: AsyncSession)
     await db_session.commit()
 
     assert await take_prepared(db_session, session) is None
+
+
+def test_the_prepared_line_belongs_to_the_passage_it_was_written_for() -> None:
+    """It is written from one passage's meaning map, and delivered as that passage's words.
+
+    A team choosing P03 heard P01's opening as P03's framing, to people who cannot read
+    and have no way to check.
+    """
+    panorama = IRSession(id="ov", pericope="OV-Ruth")
+    panorama.prepared_speech = "a primeira fala da P01"
+    panorama.prepared_audio_key = "tts/v/p01.mp3"
+
+    outra = IRSession(id="s2", pericope="P03")
+
+    assert hand_over(panorama, outra) is False
+    assert outra.prepared_speech is None
+
+
+def test_a_prepared_line_is_handed_over_once() -> None:
+    panorama = IRSession(id="ov", pericope="OV-Ruth")
+    panorama.prepared_speech = "a primeira fala"
+    panorama.prepared_audio_key = "tts/v/p01.mp3"
+
+    first = IRSession(id="s1", pericope="P01")
+    second = IRSession(id="s2", pericope="P01")
+
+    assert hand_over(panorama, first) is True
+    assert hand_over(panorama, second) is False, (
+        "a origem nunca era limpa, então a mesma fala ia para toda sessão seguinte"
+    )

@@ -53,11 +53,25 @@ async def prepare_opening(panorama_session_id: str, pericope: str = DEFAULT_PERI
 
 
 def hand_over(prepared: IRSession, opening: IRSession) -> bool:
-    """Move a ready opening onto the session that will speak it."""
+    """Move a ready opening onto the session that will speak it — if it is that session's.
+
+    The line is written from one passage's meaning map, and the panorama can only guess
+    which passage the team will pick, so it writes the first one's. Handing it to whatever
+    session came next meant a team choosing P03 heard P01's opening as P03's framing —
+    delivered as the passage's own words, to people who cannot read and have no way to
+    check. And the source was never cleared, so the same line went to P04, P05 and every
+    session after them.
+    """
     if not prepared.prepared_speech or not prepared.prepared_audio_key:
+        return False
+    if opening.pericope != DEFAULT_PERICOPE:
         return False
     opening.prepared_speech = prepared.prepared_speech
     opening.prepared_audio_key = prepared.prepared_audio_key
+    # Spent. Working ahead buys one opening, not one per session that mentions the
+    # panorama.
+    prepared.prepared_speech = None
+    prepared.prepared_audio_key = None
     return True
 
 
