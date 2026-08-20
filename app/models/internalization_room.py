@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -103,6 +104,21 @@ class ElementCoverage(BaseModel):
     #: carry. `CoverageStatus` is a `StrEnum`, so the JSON is unchanged.
     status: CoverageStatus
     touched_in_session: TouchedInSession | None = None
+
+
+class PericopePosition(StrEnum):
+    CLOSED = "closed"
+    CURRENT = "current"
+    FUTURE = "future"
+
+
+class PericopeStanding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pericope: str
+    reference: str
+    title: str
+    position: PericopePosition
 
 
 class CoverageView(BaseModel):

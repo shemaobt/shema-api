@@ -462,17 +462,64 @@ async def test_the_whole_necklace_costs_one_query(client, db_session: AsyncSessi
 # ------------------------------------------------------- behaviour 5: the pericope is required
 
 
-async def test_the_pericope_is_required(client, db_session: AsyncSession) -> None:
-    """Behaviour 5 — there is no honest default until ENG-450 resolves where a team stands.
+async def test_the_pericope_omitted_means_the_one_the_team_is_on(
+    client, db_session: AsyncSession
+) -> None:
+    """Behaviour 5 — required when this route landed, defaulted now that ENG-450 resolves.
 
-    Falling back to `DEFAULT_PERICOPE` would answer every team about P01 with confidence,
-    which is the failure ENG-450 exists to end.
+    It answered 422 because nothing in this codebase knew where a team stood, and falling back
+    to a constant would have answered every team about the first passage with full confidence.
+    The default is not that constant: it is the team's own next unfinished passage, so a team
+    that has closed the first is answered about the second.
     """
     _user, project, headers = await a_facilitator(db_session, email="b6@x.com")
+    await a_session_that_moved(
+        db_session,
+        project_id=project.id,
+        pericope="P01",
+        moved=dict.fromkeys(element_keys("P01"), PARTIALLY_ENGAGED),
+    )
 
     response = await client.get(coverage_url(project.id), headers=headers)
+    named = await client.get(coverage_url(project.id, "P02"), headers=headers)
 
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert response.json() == named.json()
+
+
+async def test_a_team_that_has_not_started_is_answered_about_the_first_passage(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b6start@x.com")
+
+    body = (await client.get(coverage_url(project.id), headers=headers)).json()
+
+    assert [bead["key"] for bead in body] == element_keys("P01")
+
+
+async def test_a_team_that_closed_the_book_has_no_passage_to_default_to(
+    client, db_session: AsyncSession
+) -> None:
+    """409 rather than 400 or 404: the request is well formed and the team exists.
+
+    There is simply no passage they are on, which is the end of the walk. Naming one answers.
+    """
+    from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+
+    _user, project, headers = await a_facilitator(db_session, email="b6end@x.com")
+    for meaning_map in load_book(ROOM_BOOK):
+        await a_session_that_moved(
+            db_session,
+            project_id=project.id,
+            pericope=meaning_map.pericope_num,
+            moved=dict.fromkeys(element_keys(meaning_map.pericope_num), PARTIALLY_ENGAGED),
+        )
+
+    refused = await client.get(coverage_url(project.id), headers=headers)
+    named = await client.get(coverage_url(project.id, "P01"), headers=headers)
+
+    assert refused.status_code == 409
+    assert named.status_code == 200
 
 
 # ------------------------------------------------------------- behaviour 6: the two refusals
