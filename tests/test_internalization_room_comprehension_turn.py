@@ -19,6 +19,7 @@ from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
+from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
 from app.services.internalization_room.sessions import (
     append_exchange,
     comprehension_of,
@@ -64,6 +65,109 @@ class LongWindedAgent:
         )
 
 
+class TwoMovementAgent:
+    """A Guide that marks the boundary between the whole and the first scene."""
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return (
+            "Olá, eu sou o Facilitador Digital. Nesta passagem uma família sai de Belém "
+            "por falta de comida e peregrina em Moabe, e ali perde quase tudo.\n"
+            "[[CENA]]\n"
+            "Vamos ficar no começo. Como vocês contariam essa primeira parte?"
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_opening_is_cut_where_the_guide_marked_it(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two movements, so the room can hand the scene back on its own and the necklace can
+    wait for it — and so each half answers to its own ceiling instead of the turn becoming
+    one long breath."""
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
+    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(),
+        opening=True,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert len(turn.outcome.movements) == 2
+    assert turn.outcome.movements[0].startswith("Olá, eu sou o Facilitador Digital.")
+    assert turn.outcome.movements[1].startswith("Vamos ficar no começo.")
+    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
+    assert "[[" not in turn.outcome.speech
+
+
+@pytest.mark.asyncio
+async def test_a_session_that_already_spoke_is_not_opened_twice(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file-less POST on a live session is a re-open, not a first line.
+
+    Letting it ask for the two movements again would say the whole passage a second time and
+    pull the necklace apart under a team already working.
+    """
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
+    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(),
+        opening=True,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert turn.outcome.movements == []
+    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
+
+
+class LongPanoramaAgent:
+    """A Guide whose first movement runs past even the panorama's wider ceiling."""
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return f"{'palavra ' * 200}.\n[[CENA]]\nE agora a cena."
+
+
+@pytest.mark.asyncio
+async def test_even_the_panorama_has_a_ceiling(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", LongPanoramaAgent())
+    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(),
+        opening=True,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert turn.outcome.used_fail_safe
+    assert turn.outcome.movements == []
+
+
 @pytest.mark.asyncio
 async def test_the_opening_may_give_the_whole_before_the_parts(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
@@ -73,8 +177,8 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
     Enforcing 45 words on the turn that has to introduce the Guide, give the whole before
     the parts and invite meant every passage opening busted the budget, redrafted twice and
     fell back to a canned line — so the room never introduced itself and never walked the
-    team into the scenes, and the team waited six model calls for it. The panorama opening
-    was already exempt; the passage opening was not.
+    team into the scenes, and the team waited six model calls for it. The opening answers to
+    a wider ceiling now, not to none: lifting it entirely produced a ninety-second monologue.
     """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongWindedAgent())

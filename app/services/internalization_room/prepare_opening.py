@@ -8,7 +8,7 @@ from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.run_turn import run_turn
+from app.services.internalization_room.run_turn import OPENING_BUDGET, run_turn
 from app.services.internalization_room.sessions import DEFAULT_PERICOPE, get_session
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
@@ -39,6 +39,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str = DEFAULT_PERI
                 opening=True,
                 already_met=True,
                 settings=get_settings(),
+                budget=OPENING_BUDGET,
             )
             if outcome.used_fail_safe:
                 logger.info("Not keeping a fail-safe as the prepared opening")

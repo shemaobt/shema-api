@@ -10,7 +10,11 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.run_turn import (
+    MAX_SPOKEN_PANORAMA_WORDS,
     MAX_SPOKEN_TURN_WORDS,
+    OPENING_BUDGET,
+    PANORAMA_BUDGET,
+    TURN_BUDGET,
     run_turn,
     spoken_turn_fits_budget,
 )
@@ -66,7 +70,7 @@ async def test_an_over_budget_draft_fails_safe_even_with_a_passing_verdict(
         validator_prompt=VALIDATOR,
         pericope_num=P,
         settings=_settings(),
-        enforce_speech_budget=True,
+        budget=TURN_BUDGET,
     )
 
     assert outcome.used_fail_safe
@@ -93,3 +97,18 @@ async def test_the_budget_is_off_unless_asked_for(
     )
 
     assert not outcome.used_fail_safe
+
+
+def test_the_panorama_movement_is_given_more_room_than_a_turn() -> None:
+    """The whole-before-the-parts cannot be said in three sentences, and it is said once.
+
+    Lifting the ceiling from the opening entirely produced a 232-word, ninety-second
+    monologue — the thing `guide_system_prompt.md` calls "never a long speech". A wider
+    ceiling for the panorama and the ordinary one for the scene keeps both true.
+    """
+    panorama = "palavra " * (MAX_SPOKEN_TURN_WORDS + 5)
+
+    assert not TURN_BUDGET.fits(panorama)
+    assert PANORAMA_BUDGET.fits(panorama)
+    assert not PANORAMA_BUDGET.fits("palavra " * (MAX_SPOKEN_PANORAMA_WORDS + 1))
+    assert OPENING_BUDGET.words == MAX_SPOKEN_PANORAMA_WORDS + MAX_SPOKEN_TURN_WORDS

@@ -11,6 +11,8 @@ from app.services.internalization_room.live_turn import (
     run_comprehension_turn,
 )
 from app.services.internalization_room.run_turn import (
+    OPENING_BUDGET,
+    TURN_BUDGET,
     TurnOutcome,
     run_panorama_turn,
     run_turn,
@@ -35,6 +37,8 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
 )
 
 __all__ = [
+    "OPENING_BUDGET",
+    "TURN_BUDGET",
     "BackTranslationState",
     "Chunk",
     "ComprehensionTurn",

@@ -60,11 +60,18 @@ class SessionStateResponse(BaseModel):
     bridge_mode: str = "calibration_pending"
 
 
+class SpokenSegment(BaseModel):
+    #: "panorama" first, then "scene" — the app replays the scene alone for "ouvir de novo".
+    role: str
+    audio_url: str
+
+
 class TurnResponse(BaseModel):
     session_id: str
-    #: Where to fetch the one line the team hears this turn, empty when `fixed_line`
-    #: names it instead. One voice, never a list — a turn that could carry several clips
-    #: is a turn someone would eventually splice, and spliced speech is audibly sewn.
+    #: Where to fetch the line the team hears this turn, empty when `fixed_line` names it
+    #: instead. Still one voice and never a splice: `segments` below can carry the same
+    #: opening pre-cut, but each clip there is synthesized whole from its own words, and
+    #: this url always holds the entire turn, so an app that ignores them loses nothing.
     audio_url: str = ""
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
@@ -75,6 +82,10 @@ class TurnResponse(BaseModel):
     coverage: CoverageView
     done: bool
     bridge_mode: str = "calibration_pending"
+    #: The session's opening cut at the boundary the Guide drew itself: the whole passage
+    #: first, then the scene and its invitation. Empty on every other turn, and empty
+    #: whenever the Guide did not mark the boundary exactly where it was asked for.
+    segments: list[SpokenSegment] = Field(default_factory=list)
 
 
 class PassageView(BaseModel):

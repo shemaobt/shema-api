@@ -23,11 +23,74 @@ _RECENT_TURNS = 6
 MAX_SPOKEN_TURN_WORDS = 45
 MAX_SPOKEN_TURN_SENTENCES = 3
 
+MAX_SPOKEN_PANORAMA_WORDS = 90
+MAX_SPOKEN_PANORAMA_SENTENCES = 6
+
+
+@dataclass(frozen=True)
+class SpeechBudget:
+    """How much a single spoken movement may be.
+
+    A ceiling per movement rather than one for the whole turn: the panorama that opens a
+    passage has to carry the shape of the story and cannot say it in three sentences, while
+    the scene that follows it — and every turn after — must stay short enough that a team
+    hearing it once can hold it. Removing the ceiling from the opening altogether produced a
+    ninety-second monologue, which is the thing the Guide's own prompt forbids.
+    """
+
+    words: int
+    sentences: int
+
+    def fits(self, text: str) -> bool:
+        words = len(text.split())
+        sentences = len([part for part in re.split(r"[.!?…]+", text) if part.strip()])
+        return words <= self.words and sentences <= self.sentences
+
+
+TURN_BUDGET = SpeechBudget(MAX_SPOKEN_TURN_WORDS, MAX_SPOKEN_TURN_SENTENCES)
+PANORAMA_BUDGET = SpeechBudget(MAX_SPOKEN_PANORAMA_WORDS, MAX_SPOKEN_PANORAMA_SENTENCES)
+OPENING_BUDGET = SpeechBudget(
+    MAX_SPOKEN_PANORAMA_WORDS + MAX_SPOKEN_TURN_WORDS,
+    MAX_SPOKEN_PANORAMA_SENTENCES + MAX_SPOKEN_TURN_SENTENCES,
+)
+
+OPENING_MOVEMENT_MARK = "[[CENA]]"
+_MOVEMENT_MARK = re.compile(r"^[ \t]*\[\[CENA\]\][ \t]*$", re.M)
+
 
 def spoken_turn_fits_budget(text: str) -> bool:
-    words = len(text.split())
-    sentences = len([part for part in re.split(r"[.!?…]+", text) if part.strip()])
-    return words <= MAX_SPOKEN_TURN_WORDS and sentences <= MAX_SPOKEN_TURN_SENTENCES
+    return TURN_BUDGET.fits(text)
+
+
+def split_opening_movements(draft: str) -> tuple[str, list[str]]:
+    """The draft with the mark taken out, and its two movements when the mark is exact.
+
+    The text comes back mark-free whatever happens: a marker read aloud by the synthesiser
+    is the one outcome nothing downstream recovers from. The movements come back empty
+    unless the mark stands exactly once, alone on its own line, with speech on both sides —
+    a half-offered structure has to be indistinguishable from no structure at all, because
+    an opening told in one breath is what the room already does well.
+    """
+    parts = _MOVEMENT_MARK.split(draft)
+    clean = _MOVEMENT_MARK.sub("", draft).replace(OPENING_MOVEMENT_MARK, " ")
+    clean = re.sub(r"[ \t]{2,}", " ", clean)
+    clean = re.sub(r"\n{3,}", "\n\n", clean).strip()
+    if len(parts) != 2:
+        return clean, []
+    whole, scene = (part.strip() for part in parts)
+    if not whole or not scene:
+        return clean, []
+    return clean, [whole, scene]
+
+
+def _broken_ceiling(speech: str, movements: list[str], budget: SpeechBudget) -> SpeechBudget | None:
+    """The ceiling the speech went over, or None when it fits."""
+    if movements:
+        for text, ceiling in zip(movements, (PANORAMA_BUDGET, TURN_BUDGET), strict=True):
+            if not ceiling.fits(text):
+                return ceiling
+        return None
+    return None if budget.fits(speech) else budget
 
 
 _PEER_CUE_PHRASES = (
@@ -52,6 +115,10 @@ class TurnOutcome:
     #: Which pre-approved line was spoken, when one was. The app ships these as audio, so a
     #: fail-safe is named rather than synthesized — no TTS bill, no network, no waiting.
     fixed_line: str = ""
+    #: The opening's two movements — the whole passage, then the scene and its invitation —
+    #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
+    #: mark was not exactly where it was asked for; `speech` always stays the whole text.
+    movements: list[str] = field(default_factory=list)
 
 
 def detects_peer_cue(speech: str) -> bool:
@@ -121,6 +188,13 @@ ALREADY_MET_INSTRUCTION = (
     "passagem: dê à equipe o todo antes das partes, e convide."
 )
 
+OPENING_MOVEMENT_INSTRUCTION = (
+    "Escreva esta abertura em dois movimentos, separados por uma linha contendo "
+    f"apenas {OPENING_MOVEMENT_MARK} e nada mais. Antes da linha: o todo da "
+    "passagem, o arco e o tom. Depois da linha: abra a primeira cena e convide. "
+    "Não escreva a marca em nenhum outro lugar e não a comente."
+)
+
 
 async def _draft(
     *,
@@ -130,6 +204,7 @@ async def _draft(
     redraft_note: str,
     settings: Settings,
     opening_instruction: str = "",
+    ask_for_movements: bool = False,
 ) -> str:
     """Assemble the Speaker's user turn.
 
@@ -142,7 +217,10 @@ async def _draft(
             f"## O que a equipe acabou de dizer\n\n{utterance}\n"
         )
     elif opening_instruction:
-        user_content = f"## A conversa até aqui\n\n{conversation}\n\n{opening_instruction}\n"
+        opening = opening_instruction
+        if ask_for_movements:
+            opening = f"{opening} {OPENING_MOVEMENT_INSTRUCTION}"
+        user_content = f"## A conversa até aqui\n\n{conversation}\n\n{opening}\n"
     else:
         user_content = f"## A conversa até aqui\n\n{conversation}\n"
     if redraft_note:
@@ -170,8 +248,9 @@ async def _voiced_after_validation(
     opening: bool,
     settings: Settings,
     validator_context: str = "",
-    enforce_speech_budget: bool = False,
+    budget: SpeechBudget | None = None,
     opening_instruction: str = "",
+    ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -183,14 +262,22 @@ async def _voiced_after_validation(
     issues: list[dict[str, Any]] = []
 
     for attempt in range(MAX_REDRAFTS + 1):
-        draft = await _draft(
-            guide_prompt=speaker_system,
-            conversation=conversation,
-            utterance="" if opening else transcript,
-            redraft_note=redraft_note,
-            settings=settings,
-            opening_instruction=opening_instruction,
+        # Cut the draft, never the validated speech: the Validator must judge exactly the
+        # words the team will hear, and it is told to write plain speakable text, so a mark
+        # left in front of it comes back either flagged or silently dropped.
+        draft, movements = split_opening_movements(
+            await _draft(
+                guide_prompt=speaker_system,
+                conversation=conversation,
+                utterance="" if opening else transcript,
+                redraft_note=redraft_note,
+                settings=settings,
+                opening_instruction=opening_instruction,
+                ask_for_movements=ask_for_movements,
+            )
         )
+        if not ask_for_movements:
+            movements = []
 
         validator_system = render(
             validator_prompt,
@@ -217,9 +304,13 @@ async def _voiced_after_validation(
         if verdict.get("verdict") == "pass":
             speech = draft
         elif verdict.get("verdict") == "correct":
+            # The Validator rewrote the speech, so the boundary the Guide drew no longer
+            # describes it. One clip is the honest answer.
             speech = (verdict.get("corrected_response") or "").strip()
+            movements = []
 
-        if speech and enforce_speech_budget and not spoken_turn_fits_budget(speech):
+        broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
+        if broken is not None:
             issues = [*issues, {"problem": "over_speech_budget"}]
             speech = ""
         elif speech and strays_from(speech, language_code):
@@ -233,9 +324,10 @@ async def _voiced_after_validation(
                 peer_cue=detects_peer_cue(speech),
                 redrafts=attempt,
                 issues=issues,
+                movements=movements,
             )
 
-        redraft_note = _redraft_note(issues, session_language)
+        redraft_note = _redraft_note(issues, session_language, ceiling=broken)
 
     off_language = any(i.get("problem") == "off_bridge_language" for i in issues)
     logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
@@ -270,7 +362,8 @@ async def run_turn(
     settings: Settings | None = None,
     app_context: str = "",
     validator_context: str = "",
-    enforce_speech_budget: bool = False,
+    budget: SpeechBudget | None = None,
+    ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
@@ -311,7 +404,8 @@ async def run_turn(
         opening_instruction=(ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION),
         settings=cfg,
         validator_context=validator_context,
-        enforce_speech_budget=enforce_speech_budget,
+        budget=budget,
+        ask_for_movements=ask_for_movements,
     )
 
 
@@ -328,7 +422,8 @@ async def run_panorama_turn(
     opening: bool = False,
     settings: Settings | None = None,
     validator_context: str = "",
-    enforce_speech_budget: bool = False,
+    budget: SpeechBudget | None = None,
+    ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """One exchange of a Book Panorama — the session before a book's first passage.
 
@@ -363,7 +458,8 @@ async def run_panorama_turn(
         opening_instruction=OPENING_INSTRUCTION,
         settings=cfg,
         validator_context=validator_context,
-        enforce_speech_budget=enforce_speech_budget,
+        budget=budget,
+        ask_for_movements=ask_for_movements,
     )
 
 
@@ -407,12 +503,18 @@ async def run_verdict_turn(
     )
 
 
-def _redraft_note(issues: list[dict[str, Any]], session_language: str = "português") -> str:
+def _redraft_note(
+    issues: list[dict[str, Any]],
+    session_language: str = "português",
+    ceiling: SpeechBudget | None = None,
+) -> str:
     if any(issue.get("problem") == "over_speech_budget" for issue in issues):
+        # The ceiling that actually broke, not the smallest one there is: telling a Guide
+        # that busted the panorama to redraft in three sentences asks for the wrong turn.
+        held = ceiling or TURN_BUDGET
         return (
             "A resposta anterior era longa demais para uma sala oral. Refaça com no "
-            f"máximo {MAX_SPOKEN_TURN_SENTENCES} frases curtas e "
-            f"{MAX_SPOKEN_TURN_WORDS} palavras, um único movimento conversacional."
+            f"máximo {held.sentences} frases curtas e {held.words} palavras."
         )
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
         return (

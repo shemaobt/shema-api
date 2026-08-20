@@ -1,4 +1,7 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+import asyncio
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import room_key_dep
@@ -12,6 +15,7 @@ from app.models.internalization_room import (
     CreateSessionRequest,
     NeedsPersonResponse,
     SessionStateResponse,
+    SpokenSegment,
     TurnResponse,
 )
 from app.services import internalization_room as room
@@ -40,8 +44,53 @@ from app.services.internalization_room.sessions import (
     is_panorama,
 )
 from app.services.internalization_room.voice_handles import clip_url
+from app.services.platform.tts import SynthesizedSpeech
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_SEGMENT_ROLES = ("panorama", "scene")
+
+
+async def _clip_or_none(text: str) -> str | None:
+    try:
+        entry, _ = await room.synthesize_facilitator_speech(text)
+    except Exception:
+        logger.warning("A movement of the opening could not be voiced; sending it whole")
+        return None
+    return entry.key
+
+
+async def _voice_the_turn(
+    outcome: room.TurnOutcome,
+) -> tuple[SynthesizedSpeech | None, list[SpokenSegment]]:
+    """The turn's audio: the whole line, and the opening's movements beside it.
+
+    All of it at once — three short syntheses in parallel cost the wall clock of the
+    slowest, where three in a row cost the sum and the room has ninety seconds before the
+    app decides the network is gone. A movement that will not synthesize is dropped rather
+    than raised: the whole line already succeeded, and one clip is the room's own fallback.
+    """
+    if outcome.fixed_line:
+        return None, []
+
+    async def whole_line() -> SynthesizedSpeech:
+        entry, _ = await room.synthesize_facilitator_speech(outcome.speech)
+        return entry
+
+    async def movements() -> list[str | None]:
+        return list(await asyncio.gather(*(_clip_or_none(part) for part in outcome.movements)))
+
+    whole, parts = await asyncio.gather(whole_line(), movements())
+    keys = [key for key in parts if key is not None]
+    if len(keys) != len(_SEGMENT_ROLES):
+        return whole, []
+    return whole, [
+        SpokenSegment(role=role, audio_url=clip_url(key))
+        for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
+    ]
+
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
@@ -205,7 +254,7 @@ async def take_turn(
                 book_material=build_book_material(book),
                 opening=opening,
                 settings=get_settings(),
-                enforce_speech_budget=not opening,
+                budget=room.OPENING_BUDGET if opening else room.TURN_BUDGET,
             )
             if (
                 opening
@@ -227,11 +276,7 @@ async def take_turn(
         session = await room.set_bridge_mode(db, session, turn.bridge_mode)
         session = await room.save_comprehension(db, session, turn.state)
 
-    voiced = (
-        None
-        if outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(outcome.speech))[0]
-    )
+    voiced, segments = await _voice_the_turn(outcome)
     session = await room.append_exchange(
         db,
         session,
@@ -258,4 +303,5 @@ async def take_turn(
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         bridge_mode=session.bridge_mode,
+        segments=segments,
     )

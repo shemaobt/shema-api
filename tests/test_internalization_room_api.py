@@ -48,7 +48,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             mime_type="audio/mpeg",
             etag="e",
             cached=False,
-            key=f"tts/{get_settings().internalization_room_voice_id}/m/f/abc.mp3",
+            key=(f"tts/{get_settings().internalization_room_voice_id}/m/f/{abs(hash(_text))}.mp3"),
         )
         return entry, False
 
@@ -82,3 +82,39 @@ async def test_the_opening_turn_carries_no_body_at_all(client: httpx.AsyncClient
         f"parecendo sem rede — veio {opened.status_code}: {opened.text[:200]}"
     )
     assert opened.json()["audio_url"].startswith("/api/internalization-room/voice/")
+
+
+async def test_a_marked_opening_arrives_as_two_clips_and_still_as_one(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`segments` is additive: the whole opening is still under `audio_url`.
+
+    An app that knows nothing about movements has to keep hearing the opening entire —
+    otherwise a backend deployed ahead of the app would drop the invitation on the floor.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _panorama(**_: Any) -> TurnOutcome:
+        return TurnOutcome(
+            speech="O todo da passagem.\n\nA cena e o convite.",
+            transcript="",
+            movements=["O todo da passagem.", "A cena e o convite."],
+        )
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV"}
+    )
+    session_id = created.json()["session_id"]
+
+    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+
+    body = opened.json()
+    assert body["audio_url"].startswith("/api/internalization-room/voice/")
+    assert [segment["role"] for segment in body["segments"]] == ["panorama", "scene"]
+    urls = [segment["audio_url"] for segment in body["segments"]]
+    assert len(set(urls)) == 2, "cada movimento é sintetizado das suas próprias palavras"
+    assert body["audio_url"] not in urls, (
+        "audio_url continua sendo a abertura inteira, não um dos movimentos"
+    )
