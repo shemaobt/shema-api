@@ -138,27 +138,14 @@ async def test_without_a_team_id_only_the_callers_own_teams_are_read(client, db_
 
 
 @pytest.mark.asyncio
-async def test_a_team_id_the_caller_does_not_facilitate_is_refused(client, db_session):
-    """The parameter filters; it does not grant."""
-    mine = await a_team(db_session, name="Equipe Terena")
-    theirs = await a_team(db_session, name="Equipe Guarani")
-    await a_hand(db_session, theirs)
-    _user, headers = await a_facilitator(db_session, mine)
-
-    response = await client.get(INBOX_URL, headers=headers, params={"team_id": theirs.id})
-
-    assert response.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_a_team_that_is_not_yours_is_refused_exactly_as_one_that_is_absent(
     client, db_session
 ):
-    """One sentence for both, the rule the team routes already hold.
+    """The parameter filters and does not grant — and it refuses in one sentence for both.
 
     A facilitator who could tell "not yours" from "no such thing" could map an installation
-    by asking about ids, and closing that at one door and leaving it open at another closes
-    nothing.
+    by asking about ids, and closing that at one door while leaving it open at another closes
+    nothing. It is the rule the team routes already hold.
     """
     mine = await a_team(db_session, name="Equipe Terena")
     theirs = await a_team(db_session, name="Equipe Guarani")
