@@ -139,16 +139,41 @@ class HandRepliesResponse(BaseModel):
     replies: list[HandReplyView]
 
 
-class OpenQuestionView(BaseModel):
+class InboxQuestionView(BaseModel):
+    """One card of the facilitator's inbox.
+
+    ``status`` is on the card because the page carries all three states at once and the
+    reader has to be able to tell the queue from the record. ``team_id`` is on it because the
+    inbox can be read across teams, and a question that does not say whose it is puts the
+    facilitator's next move back on them.
+    """
+
     question_id: str
+    team_id: str | None
     device_id: str
     pericope: str
+    status: str
     audio_url: str
     asked_at: str
 
 
-class OpenQuestionsResponse(BaseModel):
-    questions: list[OpenQuestionView]
+class QuestionInboxResponse(BaseModel):
+    """A page, the count it was cut out of, and where to resume.
+
+    ``open_total`` counts the open hands in the scope that was asked about — not the ones on
+    this page, and not what the ``status`` filter let through. **It is allowed to be larger
+    than ``questions``, and when the two disagree the count is the true one.** That is the
+    point of serving it: a client that counts the array it received reads one number inside
+    the Desk and a larger one on the team list, and nothing about either looks broken.
+
+    ``next_cursor`` is null on the last page. It is opaque on purpose — it stands for a place
+    in this route's order, and a caller that took it apart would be depending on that order
+    never changing.
+    """
+
+    questions: list[InboxQuestionView]
+    open_total: int
+    next_cursor: str | None
 
 
 class TakeResponse(BaseModel):

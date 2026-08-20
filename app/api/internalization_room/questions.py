@@ -7,7 +7,7 @@ comes through the platform's own app access. They never see each other's routes.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,11 +15,12 @@ from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
+from app.db.models.internalization_room import IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
-    OpenQuestionsResponse,
-    OpenQuestionView,
+    InboxQuestionView,
+    QuestionInboxResponse,
     QuestionRaisedResponse,
 )
 from app.services.internalization_room import questions as service
@@ -84,22 +85,39 @@ async def heard(
     return {"status": "heard"}
 
 
-@router.get("/facilitator/questions", response_model=OpenQuestionsResponse)
-async def open_questions(
-    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
-) -> OpenQuestionsResponse:
-    waiting = await service.open_questions(db)
-    return OpenQuestionsResponse(
+@router.get("/facilitator/questions", response_model=QuestionInboxResponse)
+async def question_inbox(
+    user: FacilitatorUser,
+    team_id: str | None = Query(default=None),
+    status_wanted: IRQuestionStatus | None = Query(default=None, alias="status"),
+    limit: int = Query(default=service.DEFAULT_PAGE, ge=1, le=service.MAX_PAGE),
+    cursor: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> QuestionInboxResponse:
+    """The inbox, scoped to the caller's teams whether or not ``team_id`` narrows it.
+
+    Both the order and the count are the route's rather than the reader's, for the same
+    reason: the page is a cut of something larger, so what the cut kept and how much it left
+    out are only knowable here.
+    """
+    page = await service.inbox_page(
+        db, user, team_id=team_id, wanted=status_wanted, limit=limit, cursor=cursor
+    )
+    return QuestionInboxResponse(
         questions=[
-            OpenQuestionView(
+            InboxQuestionView(
                 question_id=question.id,
+                team_id=question.project_id,
                 device_id=question.device_id,
                 pericope=question.pericope,
+                status=str(question.status),
                 audio_url=f"/api/internalization-room/facilitator/questions/{question.id}/audio",
                 asked_at=_stamp(question.created_at),
             )
-            for question in waiting
-        ]
+            for question in page.questions
+        ],
+        open_total=page.open_total,
+        next_cursor=page.next_cursor,
     )
 
 
