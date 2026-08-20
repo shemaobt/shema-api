@@ -151,6 +151,11 @@ async def list_facilitator_teams(
     only honest answer — there is nothing to attribute it to — and it is worth knowing that it
     is the common case today rather than the exception: the room's app does not send its
     device credential yet, so sessions and questions are written with no project at all.
+
+    The passage each team is on is resolved in a second statement rather than joined into the
+    one above, because whether a passage is finished is the canon's question and not SQL's.
+    It is handed the ids these rows already name — why that matters is on ``furthest_by_passage``
+    — and it is one statement for the roll rather than one per card.
     """
     moment = now or datetime.now(UTC)
     scope = _facilitated_projects(user)
@@ -177,9 +182,6 @@ async def list_facilitator_teams(
         query = query.where(Project.id.in_(scope))
 
     rows = (await db.execute(query)).all()
-    # The ids in hand rather than the scope again: `IN (subquery)` costs the planner the
-    # index on `ir_coverage_events`, and these rows already name every team the answer is
-    # about. One statement for the whole roll, not one per card.
     here = await active_passages(db, project_ids=[row.id for row in rows])
 
     every_team = [
@@ -189,7 +191,7 @@ async def list_facilitator_teams(
             mother_tongue=row.mother_tongue,
             active_passage=_passage(here[row.id]),
             state=team_state(
-                passage_done=here[row.id] is None,
+                book_closed=here[row.id] is None,
                 last_activity_at=row.last_activity_at,
                 now=moment,
             ),

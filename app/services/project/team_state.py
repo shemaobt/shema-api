@@ -32,21 +32,27 @@ def _as_utc(when: datetime) -> datetime:
 
 def team_state(
     *,
-    passage_done: bool,
+    book_closed: bool,
     last_activity_at: datetime | None,
     now: datetime,
 ) -> TeamState:
-    """Where a team stands, from the passage it is on and when it last did anything.
+    """Where a team stands, from whether they have anywhere left to go and when they last went.
 
-    A finished passage is never stalled, however long ago it was finished: stalled means the
-    work stopped, not that the team went quiet, and a team that closed a passage and moved on
-    is nobody to chase.
+    ``book_closed`` was ``passage_done`` and meant the latest session had finished its passage.
+    ENG-450 made that a passing moment: a closed passage moves the team straight to the next
+    one, so the only way to have nothing left is to have closed every passage of the book. The
+    parameter carries the new meaning under a name that says it, because the two readings agree
+    on almost every team and part on the only ones this state is about.
+
+    A team at the end of the book is never stalled, however long ago they got there: stalled
+    means the work stopped, not that the team went quiet, and a team that finished is nobody
+    to chase.
 
     A team that has never met is ``IN_PROGRESS`` and not stalled. "Never started" is not
     "stopped" — a team still waiting for its first session would otherwise arrive at the top
     of a facilitator's queue with nothing to be chased about.
     """
-    if passage_done:
+    if book_closed:
         return TeamState.COMPLETE
 
     if last_activity_at is not None and _as_utc(last_activity_at) < now - STALLED_AFTER:
