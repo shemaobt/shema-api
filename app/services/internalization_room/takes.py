@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.services.internalization_room.sessions import project_of_session
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 
@@ -104,6 +105,7 @@ async def store_take(
     landed = await speech_store.stat(key)
     take = IRTake(
         id=str(uuid.uuid4()),
+        project_id=await project_of_session(db, session_id),
         session_id=session_id,
         device_id=device_id,
         pericope=pericope,

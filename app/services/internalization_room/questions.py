@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
+from app.services.internalization_room.sessions import project_of_session
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore
 from app.services.platform.tts import SpeechStore
@@ -48,6 +49,7 @@ async def raise_question(
     await (store or _store()).put(key, audio, AUDIO_MIME)
     question = IRQuestion(
         id=question_id,
+        project_id=await project_of_session(db, session_id),
         device_id=device_id,
         session_id=session_id,
         pericope=pericope,

@@ -4,9 +4,11 @@ import secrets
 from typing import Annotated
 
 from fastapi import Depends, Header
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.access_control import require_app_access
 from app.core.config import get_settings
+from app.core.database import get_db
 from app.core.exceptions import AuthenticationError, ValidationError
 from app.db.models.auth import User
 
@@ -47,3 +49,33 @@ async def require_device(x_room_device: str | None = Header(default=None)) -> st
 
 
 device_dep = Depends(require_device)
+
+
+DEVICE_CREDENTIAL_HEADER = "X-Device-Credential"
+
+
+async def device_project(
+    db: AsyncSession = Depends(get_db),
+    x_device_credential: str | None = Header(default=None),
+) -> str | None:
+    """The project of the tablet that is speaking, when it says who it is.
+
+    Optional on purpose, and this is the seam between two slices. The credential is what
+    ENG-443 issues at claim, and it is the only device-to-project link there is:
+    ``X-Room-Device`` is a string the app mints for itself and matches no row anywhere.
+
+    Requiring it here would lock out every tablet in the field, since the app does not
+    send it until ENG-454. So a room that has not been claimed, or that has not shipped
+    that half yet, keeps working and its sessions carry no project. Making the credential
+    mandatory and retiring ``X-Room-Key`` is ENG-448.
+    """
+    if not x_device_credential:
+        return None
+
+    from app.services.device.get_device_by_credential import get_device_by_credential
+
+    device = await get_device_by_credential(db, x_device_credential)
+    return device.project_id if device else None
+
+
+device_project_dep = Depends(device_project)
