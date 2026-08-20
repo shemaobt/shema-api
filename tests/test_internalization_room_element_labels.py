@@ -29,6 +29,9 @@ from app.services.internalization_room.coverage import CoverageStatus
 
 PILOT = ("P01", "P02", "P05", "P14")
 
+#: A passage of no book. The refusal that is genuinely about the request.
+NOT_A_PASSAGE = "P99"
+
 
 @pytest.fixture
 def holed_catalogue(tmp_path):
@@ -248,9 +251,9 @@ def test_the_two_refusals_do_not_answer_the_same_thing_on_the_wire(tmp_path, hol
     def ours_is_broken():
         return labelled_elements("P01", catalogue_dir=holed_catalogue)
 
-    @app.get("/they-asked-for-p03")
-    def they_asked_for_p03():
-        return labelled_elements("P03")
+    @app.get("/they-asked-for-a-passage-that-is-not-one")
+    def they_asked_for_a_passage_that_is_not_one():
+        return labelled_elements(NOT_A_PASSAGE)
 
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -258,7 +261,7 @@ def test_the_two_refusals_do_not_answer_the_same_thing_on_the_wire(tmp_path, hol
     assert broken.status_code == 500
     assert "scene:1" not in broken.text
 
-    asked = client.get("/they-asked-for-p03")
+    asked = client.get("/they-asked-for-a-passage-that-is-not-one")
     assert asked.status_code == 400
 
 
@@ -282,13 +285,80 @@ def test_our_own_catalogue_being_broken_does_not_read_as_the_caller_s_mistake(tm
         labelled_elements("P01", catalogue_dir=tmp_path)
 
 
-def test_a_pericope_nobody_translated_is_still_about_what_was_asked_for():
-    """The one refusal that is genuinely about the request keeps being told apart from ours."""
-    untranslated = next(
-        f"P{n:02d}" for n in range(1, 15) if f"P{n:02d}" not in TRANSLATED_PERICOPES
-    )
+def test_a_passage_this_book_does_not_have_is_still_about_what_was_asked_for():
+    """The one refusal that is genuinely about the request keeps being told apart from ours.
 
+    ENG-451 moved which request that is. It used to be a passage nobody had translated,
+    which turned out to be ten of Ruth's fourteen and to be reachable by any team that
+    walks the book — a whole history refused because one conversation happened in P07. A
+    passage the canon does not have at all is the refusal that is really about the ask.
+    """
     with pytest.raises(ValidationError) as refused:
-        labelled_elements(untranslated)
+        labelled_elements(NOT_A_PASSAGE)
 
     assert not isinstance(refused.value, ElementLabelsBroken)
+
+
+# ENG-451 — outside the pilot a bead is still named, and says what it does not have.
+
+
+@pytest.mark.parametrize(
+    "pericope_num",
+    [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in TRANSLATED_PERICOPES],
+)
+def test_a_passage_outside_the_pilot_is_named_rather_than_refused(pericope_num):
+    """Ten of the fourteen, and D-03 walks every team through all of them on its own.
+
+    This was a refusal until ENG-451, which is a whole session history 400ing because one
+    conversation happened in a passage nobody has translated yet.
+    """
+    named = labelled_elements(pericope_num)
+
+    assert {element.key for element in named} == {
+        element.key for element in elements_for(pericope_num)
+    }
+    assert all(element.label_en.strip() for element in named)
+
+
+@pytest.mark.parametrize(
+    "pericope_num",
+    [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in TRANSLATED_PERICOPES],
+)
+def test_outside_the_pilot_portuguese_and_spanish_are_absent_and_not_english(pericope_num):
+    """The promise `LabelledElement` cites: pt and es arrive missing, never machine-filled.
+
+    English comes almost free from the canon and the other two are translation work — so
+    the honest answer for an untranslated passage is nothing at all, and the Desk's own
+    `CoverageLabels` is `{ pt: string | null, en: string, es: string | null }` for exactly
+    this. Filling them with the English would put a sentence a facilitator does not read in
+    front of them and call it their language.
+    """
+    for element in labelled_elements(pericope_num):
+        assert element.label_pt is None
+        assert element.label_es is None
+
+
+def test_inside_the_pilot_nothing_moved():
+    """The four translated passages still carry all three, or the fallback ate them."""
+    for element in labelled_elements("P01"):
+        assert element.label_pt and element.label_en and element.label_es
+
+
+def test_outside_the_pilot_the_hardest_beads_fall_back_to_the_canons_own_shape():
+    """The declared limit, written as a test so nobody rediscovers it in the field.
+
+    ENG-442 promises no preservation rule shows an ALL_CAPS technical key in any language,
+    and that promise holds **inside the pilot only**. Outside it the English is the canon's
+    own `Element.label`, which for a preservation rule is `KIND: note` and for a significant
+    absence is a paragraph. Refusing instead would take the whole history down, which is
+    worse — so the gap is declared here rather than hidden, and it closes when a translator
+    reaches those ten passages.
+    """
+    preserved = [
+        element for element in labelled_elements("P03") if element.kind is ElementKind.PRESERVED
+    ]
+
+    assert preserved, "P03 has no preservation rule; pick another passage for this limit"
+    assert any(_SHOUTED.search(element.label_en) for element in preserved), (
+        "the canon fallback stopped being technical; the declared limit above is stale"
+    )
