@@ -14,9 +14,11 @@ from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.render import render
 from app.services.internalization_room.run_turn import (
     MAX_REDRAFTS,
+    OPENING_MOVEMENT_MARK,
     coverage_status_block,
     detects_peer_cue,
     run_turn,
+    split_opening_movements,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -58,6 +60,39 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
         return agent
 
     return _install
+
+
+def test_a_marked_opening_comes_back_as_two_movements() -> None:
+    text, movements = split_opening_movements(
+        "O todo da passagem.\n[[CENA]]\nA primeira cena, e o convite."
+    )
+
+    assert movements == ["O todo da passagem.", "A primeira cena, e o convite."]
+    assert OPENING_MOVEMENT_MARK not in text
+    assert text == "O todo da passagem.\n\nA primeira cena, e o convite."
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "Uma abertura inteira sem marca nenhuma.",
+        "O todo [[CENA]] e a cena na mesma linha.",
+        "O todo.\n[[CENA]]\nA cena.\n[[CENA]]\nMais uma.",
+        "\n[[CENA]]\nSó a cena, sem o todo.",
+        "Só o todo, sem a cena.\n[[CENA]]\n",
+    ],
+)
+def test_a_half_offered_structure_is_no_structure_at_all(draft: str) -> None:
+    """Fail-closed: anything but the exact shape reads as an opening told in one breath.
+
+    A structure read wrong would cut the opening in the wrong place, and the mark itself
+    must never survive into the text — the synthesiser would say it out loud.
+    """
+    text, movements = split_opening_movements(draft)
+
+    assert movements == []
+    assert "[[" not in text
+    assert OPENING_MOVEMENT_MARK not in text
 
 
 def test_the_channel_policy_is_about_conflation_not_order() -> None:
