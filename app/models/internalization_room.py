@@ -63,12 +63,19 @@ class CoverageLegend(BaseModel):
 class LegendName(BaseModel):
     """One value of a closed set, named for a facilitator rather than for the database.
 
-    `value` is the enum's string and is typed `str` rather than the enum itself, which is the
-    opposite of `ElementCoverage.status` and is decided rather than inconsistent. That field
-    carries one value out of a set the response never shows, so the schema is the only place
-    the Desk could read the set off. A legend **is** the set, written out — and the loader
-    resolves every entry by walking the enum, so an enum type here would re-refuse what was
-    just accepted by construction, buying no safety for the cost of a second gate.
+    `value` is the enum's string and is typed `str` rather than `CoverageStatus` or
+    `ElementKind`. A legend **is** the closed set, written out — so unlike a field that
+    carries one value out of a set the response never shows, there is nothing here the schema
+    has to promise that the body does not already say. And `legend()` resolves every entry by
+    walking the enum, so an enum type would re-refuse what is true by construction: it can
+    only reject what the loader has just accepted.
+
+    **The three labels are not nullable, and `LabelledElement`'s are** — the two shapes
+    disagree on purpose. A bead of a passage nobody has translated falls back to the canon,
+    which is English and nothing else, so `label_pt` there is legitimately absent. A legend
+    has no such fallback: `legend()` raises `ElementLabelsBroken` on a name missing in any
+    language, so a null cannot arrive here, and typing one would invite a screen to draw the
+    hole instead of the deploy failing loudly.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -88,11 +95,16 @@ class CoverageLegendResponse(BaseModel):
     hand the client an arrangement to make a second time, and ENG-462 is the record of what
     that costs.
 
-    The three languages are named fields rather than a map keyed by language, which is the
-    shape `ElementCoverage` already promises the Desk for a bead. A legend entry read as
-    `entry["pt"]` beside a bead read as `label_pt` would be two shapes for one thing on one
-    screen. `CoverageLegend` — the loader's own answer — keeps the map, because that is the
-    catalogue's shape and a fourth language there costs a catalogue entry and nothing else.
+    The three languages are named fields rather than a map keyed by language, because that is
+    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`
+    / `label_es`. A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would
+    be two shapes for one thing on one screen. `CoverageLegend` — the loader's own answer —
+    keeps the map, because that is the catalogue's shape and a fourth language there costs a
+    catalogue entry and nothing else.
+
+    ENG-449's `ElementCoverage` repeats the same three fields and is the response this legend
+    is read beside, but it is not on this branch — so the promise is anchored on
+    `LabelledElement`, which a reader here can open.
     """
 
     model_config = ConfigDict(extra="forbid")
