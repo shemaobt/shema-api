@@ -69,5 +69,19 @@ jobs:
           uv run alembic upgrade head
           # The newest migration has to undo exactly what it did: a downgrade that
           # leaves the schema dirty fails the next upgrade.
-          uv run alembic downgrade -1
+          #
+          # The targets are named rather than `-1`, and both lines are walked, because
+          # `20260820_merge` sits at the head joining the room line to the device line.
+          # A relative step back from a merge revision has two answers, so Alembic
+          # refuses it with "Ambiguous walk" — and even where it did resolve, it would
+          # undo the merge, which does nothing, and report that as the newest migration
+          # having been checked. Naming a tip of each line puts the last real migration
+          # of each back under test.
+          #
+          # `20260820_merge` is temporary and says so in its own docstring: when the room
+          # line reaches main the graph is linear again and that revision is deleted.
+          # These two lines go with it — restore `alembic downgrade -1` at that point.
+          uv run alembic downgrade 20260812_room07-1
+          uv run alembic upgrade head
+          uv run alembic downgrade 20260819_0001-1
           uv run alembic upgrade head
