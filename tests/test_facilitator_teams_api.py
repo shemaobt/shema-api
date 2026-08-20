@@ -22,7 +22,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
@@ -33,6 +33,9 @@ from app.db.models.internalization_room import (
     IRSessionStatus,
 )
 from app.services.device.create_device import create_device
+from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.coverage import CoverageStatus
+from app.services.internalization_room.sessions import apply_coverage, create_session
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -130,6 +133,39 @@ async def a_session(
     return session
 
 
+async def having_closed(db: AsyncSession, team, *passages: str) -> None:
+    """Walk this team through these passages the way the room does, so nothing is inserted."""
+    for passage in passages:
+        session = await create_session(db, pericope=passage, project_id=team.id)
+        await apply_coverage(
+            db,
+            session.id,
+            dict.fromkeys(element_keys(passage), CoverageStatus.PARTIALLY_ENGAGED.value),
+        )
+
+
+async def having_closed_the_book(db: AsyncSession, team) -> None:
+    """Walk this team to the end of Ruth through the production path.
+
+    Built with `create_session` and `apply_coverage` rather than by writing event rows, so a
+    fixture cannot agree with a resolution that reads the events differently from how the room
+    writes them. It is fourteen passages because "complete" now means the book, not a session.
+    """
+    from app.services.internalization_room import sessions as room
+    from app.services.internalization_room.canon.elements import element_keys
+    from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+    from app.services.internalization_room.coverage import CoverageStatus
+
+    for meaning_map in load_book(ROOM_BOOK):
+        passage = meaning_map.pericope_num
+        session = await room.create_session(db, pericope=passage, project_id=team.id)
+        await room.apply_coverage(
+            db,
+            session.id,
+            dict.fromkeys(element_keys(passage), CoverageStatus.PARTIALLY_ENGAGED.value),
+        )
+
+
 async def a_raised_hand(
     db: AsyncSession,
     team,
@@ -221,8 +257,13 @@ async def test_a_team_that_has_never_held_a_session_still_has_a_passage(client, 
 async def test_the_panorama_is_not_a_passage(client, db_session):
     """The panorama is material about the book and plays at the opening of a new passage.
 
-    A team whose most recent session is the panorama is not working on `OV-Ruth` — there
-    is no such passage, and the canon refuses to be asked for one.
+    A team whose most recent session is the panorama is not working on `OV-Ruth` — there is no
+    such passage, and the canon refuses to be asked for one.
+
+    This used to be a filter on the query that picked the latest session. Since ENG-450 the
+    card's passage comes from walking the canon's own fourteen, which `OV-Ruth` is not one of,
+    so the answer cannot name it however recent that session is. The case stays because the
+    property is worth pinning; what changed is that nothing has to remember to exclude it.
     """
     team = await a_team(db_session, name="Equipe Munduruku")
     await a_session(db_session, team, pericope="P02", when=datetime.now(UTC) - timedelta(days=3))
@@ -231,7 +272,7 @@ async def test_the_panorama_is_not_a_passage(client, db_session):
 
     card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
 
-    assert card["active_passage"]["pericope"] == "P02"
+    assert card["active_passage"]["pericope"] == "P01"
 
 
 # Behaviour 2 — the counts are of things to do, and they agree with the routes that own them.
@@ -296,14 +337,56 @@ async def test_a_hand_belonging_to_no_team_is_counted_for_nobody(client, db_sess
 
 
 @pytest.mark.asyncio
-async def test_a_passage_whose_session_is_done_reads_complete(client, db_session):
+async def test_a_team_that_closed_every_passage_reads_complete_and_stands_on_none(
+    client, db_session
+):
+    """`complete` used to mean the latest session was done, which is now a passing moment.
+
+    Since ENG-450 a closed passage moves the team to the next one, so the only way to have
+    nothing left is to have reached the end of the book — and there `active_passage` is null,
+    which is what lets the Desk draw the last passage closed rather than current.
+    """
     team = await a_team(db_session, name="Equipe Tikuna")
-    await a_session(db_session, team, pericope="P14", status=IRSessionStatus.DONE)
+    await having_closed_the_book(db_session, team)
     _user, headers = await a_facilitator(db_session, team)
 
     card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
 
     assert card["state"] == "complete"
+    assert card["active_passage"] is None
+
+
+@pytest.mark.asyncio
+async def test_closing_one_passage_moves_the_team_on_rather_than_finishing_it(client, db_session):
+    """The case that separates the two meanings of "done" the old state collapsed."""
+    team = await a_team(db_session, name="Equipe Kayapó")
+    session = await create_session(db_session, pericope="P01", project_id=team.id)
+    await apply_coverage(
+        db_session,
+        session.id,
+        dict.fromkeys(element_keys("P01"), CoverageStatus.PARTIALLY_ENGAGED.value),
+    )
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+
+    assert card["active_passage"]["pericope"] == "P02"
+    assert card["state"] == "in_progress"
+
+
+@pytest.mark.asyncio
+async def test_a_team_that_finished_the_book_is_still_found_by_name(client, db_session):
+    """The search reads the passage's two names, and such a team has neither.
+
+    Without this the search raises on the one team it is most reasonable to look up by name.
+    """
+    team = await a_team(db_session, name="Equipe Tikuna")
+    await having_closed_the_book(db_session, team)
+    _user, headers = await a_facilitator(db_session, team)
+
+    answer = await client.get(TEAMS_URL, params={"search": "tikuna"}, headers=headers)
+
+    assert named(answer.json()) == ["Equipe Tikuna"]
 
 
 @pytest.mark.asyncio
@@ -322,9 +405,10 @@ async def test_a_finished_passage_is_never_stalled_however_long_ago_it_was(clien
     """Stalled means work has stopped, not that the team is quiet. A team that finished
     and moved on is not somebody to chase."""
     team = await a_team(db_session, name="Equipe Apurinã")
-    await a_session(
-        db_session, team, status=IRSessionStatus.DONE, when=datetime.now(UTC) - LONG_AGO
-    )
+    await having_closed_the_book(db_session, team)
+    for session in (await db_session.execute(select(IRSession))).scalars():
+        session.updated_at = datetime.now(UTC) - LONG_AGO
+    await db_session.commit()
     _user, headers = await a_facilitator(db_session, team)
 
     card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
@@ -454,7 +538,10 @@ async def test_the_search_ignores_case_and_accents(client, db_session):
 async def test_the_search_reaches_the_tongue_the_pericope_and_the_reference(client, db_session):
     """The card draws all of them, so any of them is what the facilitator remembers."""
     team = await a_team(db_session, name="Equipe Sateré-Mawé", tongue="Sateré-Mawé")
-    await a_session(db_session, team, pericope="P03")
+    # Walked to P03 rather than given a session on it: the card's passage is resolved from
+    # what the team finished, so a session naming P03 with nothing closed before it leaves the
+    # team on P01 — and the case would fail on its fixture rather than on its subject.
+    await having_closed(db_session, team, "P01", "P02")
     _user, headers = await a_facilitator(db_session, team)
 
     for typed in ("satere", "P03", "Ruth 1:15", "1:15-18"):
@@ -473,7 +560,7 @@ async def test_each_filter_narrows_to_the_state_it_names(client, db_session):
     await a_session(db_session, with_hands)
     await a_session(db_session, working)
     await a_session(db_session, stopped, when=datetime.now(UTC) - LONG_AGO)
-    await a_session(db_session, finished, status=IRSessionStatus.DONE)
+    await having_closed_the_book(db_session, finished)
 
     _user, headers = await a_facilitator(db_session, with_hands, working, stopped, finished)
 

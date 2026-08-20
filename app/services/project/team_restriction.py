@@ -45,20 +45,22 @@ def folded(value: str) -> str:
 
 def _matches_search(team: FacilitatorTeamView, search: str) -> bool:
     """A passage is searched by both of its names because the card draws both, and which of
-    the two a facilitator remembers is not something this can decide for them."""
+    the two a facilitator remembers is not something this can decide for them.
+
+    A team that has closed every passage of the book has neither name, and is searched by the
+    two it still has. Reading through the absent passage would raise on exactly the team it is
+    most reasonable to look up by name.
+    """
     wanted = folded(search.strip())
     if not wanted:
         return True
 
-    return any(
-        wanted in folded(written)
-        for written in (
-            team.name,
-            team.mother_tongue,
-            team.active_passage.reference,
-            team.active_passage.pericope,
-        )
-    )
+    passage = team.active_passage
+    written_on_the_card = [team.name, team.mother_tongue]
+    if passage is not None:
+        written_on_the_card += [passage.reference, passage.pericope]
+
+    return any(wanted in folded(written) for written in written_on_the_card)
 
 
 def _matches_filter(team: FacilitatorTeamView, chosen: TeamFilter) -> bool:
