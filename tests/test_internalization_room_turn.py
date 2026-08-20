@@ -60,6 +60,25 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
+def test_the_channel_policy_is_about_conflation_not_order() -> None:
+    """The Validator invented a sequence rule and rejected the Guide in both directions.
+
+    In one session it rejected the Guide for asking the telling-back before the rehearsal
+    ("inverte o fluxo") and in the next for asking the rehearsal before the telling-back
+    ("a politica exige primeiro o relato"). The second is the inverse of the order the
+    Guide actually keeps, so both rejections spent the redrafts and dropped the room to a
+    canned line. The policy now says what it is for, and says where the order really lives
+    — the Guide's own instructions and the probe contract — so barring it from judging
+    order never reads as licence to invite a rehearsal the contract has not authorised.
+    """
+    policy = VALIDATOR[VALIDATOR.index("Keep the two evidence channels separate") :]
+    policy = policy[: policy.index("\n-")]
+
+    assert "conflation, not sequence" in policy
+    assert "evidence of the other" in policy
+    assert "still governs" in policy
+
+
 def test_render_refuses_a_prompt_with_an_unfilled_placeholder() -> None:
     with pytest.raises(ValidationError) as excinfo:
         render("mapa: {{MEANING_MAP}} lingua: {{SESSION_LANGUAGE}}", SESSION_LANGUAGE="pt")
