@@ -146,10 +146,15 @@ class InboxQuestionView(BaseModel):
     reader has to be able to tell the queue from the record. ``team_id`` is on it because the
     inbox can be read across teams, and a question that does not say whose it is puts the
     facilitator's next move back on them.
+
+    ``team_id`` is not nullable even though the column is. Every shape the inbox restriction
+    takes — ``= team_id``, ``IN (ids)``, ``IS NOT NULL`` — drops a row that names no team, so
+    a card that reaches this response always has one. Typing it nullable would ask the Desk
+    to draw a case this route cannot produce.
     """
 
     question_id: str
-    team_id: str | None
+    team_id: str
     device_id: str
     pericope: str
     status: str

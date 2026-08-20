@@ -15,7 +15,7 @@ from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
-from app.db.models.internalization_room import IRQuestionStatus
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
@@ -107,7 +107,7 @@ async def question_inbox(
         questions=[
             InboxQuestionView(
                 question_id=question.id,
-                team_id=question.project_id,
+                team_id=_team_of(question),
                 device_id=question.device_id,
                 pericope=question.pericope,
                 status=str(question.status),
@@ -166,6 +166,18 @@ async def resolve(
     question = await service.get_question(db, question_id)
     await service.resolve_elsewhere(db, question, answered_by=user.id)
     return {"status": "resolved"}
+
+
+def _team_of(question: IRQuestion) -> str:
+    """Whose question this is, which an answered card always knows.
+
+    The column is nullable and the answer's field is not, because every shape of the inbox
+    restriction drops a row that names no team. Asserted rather than branched on: there is no
+    behaviour to write for the other case, and typing the field nullable to avoid saying so
+    would hand the Desk a null it has to draw something for.
+    """
+    assert question.project_id is not None
+    return question.project_id
 
 
 def _stamp(moment: datetime | None) -> str:
