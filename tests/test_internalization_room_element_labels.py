@@ -159,3 +159,17 @@ def test_a_name_for_something_that_is_not_a_state_at_all_is_refused(tmp_path):
         legend(catalogue_dir=tmp_path)
 
     assert "nearly_there" in str(refused.value)
+
+
+def test_a_catalogue_that_is_not_a_catalogue_at_all_is_refused(tmp_path):
+    """A file that parses as JSON but is not an object of entries.
+
+    Without this the shape is never checked and the first thing to go wrong is a confusing
+    failure far from the file that caused it.
+    """
+    (tmp_path / "ruth.json").write_text('["P01"]', encoding="utf-8")
+
+    with pytest.raises(ValidationError) as refused:
+        labelled_elements("P01", catalogue_dir=tmp_path)
+
+    assert "ruth.json" in str(refused.value)

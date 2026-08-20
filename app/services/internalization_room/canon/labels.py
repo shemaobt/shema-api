@@ -155,6 +155,14 @@ def _legend(catalogue_dir: Path) -> dict:
 
 
 def _read(path: Path) -> dict:
+    """The catalogue as written, refused by name if it is not one.
+
+    `json.loads` answers `Any`, so without this the shape is never established and the first
+    symptom of a malformed file is an `AttributeError` raised somewhere far from it.
+    """
     if not path.exists():
         raise ValidationError(f"no label catalogue at {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    written = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(written, dict):
+        raise ValidationError(f"{path.name} is not a catalogue of labels")
+    return written
