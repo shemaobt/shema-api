@@ -27,6 +27,13 @@ class LabelledElement(BaseModel):
     site. `extra="forbid"` is what makes that cost visible: the loader builds this by
     spreading `LANGUAGES`, and pydantic drops an unknown keyword by default, so without it a
     fourth language would be demanded of the catalogue and then thrown away in silence.
+
+    **`label_pt` and `label_es` are nullable and `label_en` is not**, which is the shape that
+    promise actually names: the Desk's own `CoverageLabels` is
+    `{ pt: string | null, en: string, es: string | null }`, because English comes almost free
+    from the canon and the other two are translation work. This model cited that promise and
+    contradicted its text, and nobody had noticed because the four translated passages are
+    complete in all three. The canon serves fourteen and D-03 walks every team through them.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -34,9 +41,9 @@ class LabelledElement(BaseModel):
     key: str
     kind: ElementKind
     scene: int | None = None
-    label_pt: str
+    label_pt: str | None
     label_en: str
-    label_es: str
+    label_es: str | None
 
 
 class CoverageLegend(BaseModel):
