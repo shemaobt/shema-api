@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -123,3 +124,71 @@ async def necklace_with_touches(
         element_key: BeadHistory(status=CoverageStatus(status), session_id=session_id, at=at)
         for element_key, session_id, at, status in result.all()
     }
+
+
+async def furthest_by_passage(
+    db: AsyncSession, *, project_ids: Sequence[str]
+) -> dict[str, dict[str, dict[str, str]]]:
+    """How far a roll of teams took every bead of every passage they have touched.
+
+    `{project_id: {pericope: {element_key: status}}}`, and a team, passage or bead with no
+    events is absent rather than present and empty — the caller reads an absence as "not
+    encountered", which is what it is.
+
+    One statement for the whole roll. `necklace_with_touches` answers one team and one
+    passage, which is the Desk's element list; progression asks the opposite shape — every
+    passage of every team on a screen — and asking it that way would be fourteen round trips
+    for a facilitator with fourteen teams, on the screen that opens first.
+
+    **The ids are passed in hand and never as a subquery.** `IN (subquery)` does not use the
+    index on Postgres: measured on the facilitator scope, the planner drops
+    `ix_ir_coverage_events_element_touched` and reads eleven times the buffers to answer the
+    same rows. An empty roll is answered without asking the database anything, because
+    `IN ()` is a statement whose answer is known.
+
+    **The furthest status per bead, not a count of them.** The caller compares against the
+    canon's own spine, so a passage whose elements were renamed leaves events pointing at keys
+    nobody serves any more, and those must not be able to close it. `MAX` over the status
+    string would order `engaged` before `surfaced` alphabetically, so the scale is taught to
+    SQL by `ranks()` — the same one `coverage` keeps — and the winning row's own status is
+    carried back rather than the rank it won with.
+    """
+    if not project_ids:
+        return {}
+
+    standing = func.row_number().over(
+        partition_by=(
+            IRCoverageEvent.project_id,
+            IRCoverageEvent.pericope,
+            IRCoverageEvent.element_key,
+        ),
+        order_by=(
+            case(_RANK_OF, value=IRCoverageEvent.status, else_=0).desc(),
+            IRCoverageEvent.at.asc(),
+            IRCoverageEvent.id.asc(),
+        ),
+    )
+    walked = (
+        select(
+            IRCoverageEvent.project_id,
+            IRCoverageEvent.pericope,
+            IRCoverageEvent.element_key,
+            IRCoverageEvent.status,
+            standing.label("standing"),
+        )
+        .where(IRCoverageEvent.project_id.in_(project_ids))
+        .subquery()
+    )
+    result = await db.execute(
+        select(
+            walked.c.project_id,
+            walked.c.pericope,
+            walked.c.element_key,
+            walked.c.status,
+        ).where(walked.c.standing == 1)
+    )
+
+    reached: dict[str, dict[str, dict[str, str]]] = {}
+    for project_id, pericope, element_key, status in result.all():
+        reached.setdefault(project_id, {}).setdefault(pericope, {})[element_key] = status
+    return reached
