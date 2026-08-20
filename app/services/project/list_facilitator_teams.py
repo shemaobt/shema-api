@@ -9,6 +9,14 @@ a round trip per row, and a facilitator with fourteen teams would pay for fourte
 screen that opens first, every time it opens. The counts arrive as grouped subqueries joined
 once.
 
+**Every subquery carries the caller's scope, and that is not a tidiness.** Written without it
+the counts group the *whole installation* and the join throws away all but fourteen rows: the
+plan is a sequential scan of `ir_sessions`, `ir_questions` and `ir_takes` per request, with the
+`project_id` indexes never touched. Measured on a seeded Postgres before the scope was pushed
+down — three seq scans over 70,000 rows to answer fourteen teams. A query whose cost is the size
+of the installation rather than the size of the answer is one that works until the installation
+grows.
+
 The three numbers on the envelope are not the same kind of fact. ``teams`` answers the
 query; ``serves_any_team`` and ``open_hands_total`` answer the facilitator, and neither
 narrows with the restriction.
@@ -16,8 +24,9 @@ narrows with the restriction.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select, union_all
+from sqlalchemy import ColumnElement, Select, func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.selectable import Subquery
 
 from app.core.enums import ProjectRole
@@ -44,7 +53,36 @@ from app.services.project.team_restriction import as_work_queue, matching
 from app.services.project.team_state import team_state
 
 
-def _active_passage_subquery() -> Subquery:
+def _facilitated_projects(user: User) -> Select | None:
+    """The project ids the caller reaches, or ``None`` when that is every one of them.
+
+    ``None`` rather than a select of every id on purpose: a platform admin's scope is "no
+    restriction", and spelling it as a subquery listing the installation would put that list
+    inside five other subqueries for nothing.
+    """
+    if user.is_platform_admin:
+        return None
+
+    return select(ProjectUserAccess.project_id).where(
+        ProjectUserAccess.user_id == user.id,
+        ProjectUserAccess.role == ProjectRole.FACILITATOR,
+    )
+
+
+def _within(column: InstrumentedAttribute[str | None], scope: Select | None) -> ColumnElement[bool]:
+    """Confine one subquery to the caller's teams.
+
+    Falls back to "has a project at all" for a platform admin, which is what an unrestricted
+    scope means here. A null project belongs to no team either way, and ``IN`` already excludes
+    it — the explicit test is what keeps the admin's case honest rather than accidental.
+    """
+    if scope is None:
+        return column.is_not(None)
+
+    return column.in_(scope)
+
+
+def _active_passage_subquery(scope: Select | None) -> Subquery:
     """The team's current passage: the most recent session that names one.
 
     The panorama is skipped rather than read as a passage. It is material about the *book*
@@ -65,7 +103,7 @@ def _active_passage_subquery() -> Subquery:
             .label("place"),
         )
         .where(
-            IRSession.project_id.is_not(None),
+            _within(IRSession.project_id, scope),
             ~IRSession.pericope.startswith(PANORAMA_PREFIX),
         )
         .subquery()
@@ -77,7 +115,7 @@ def _active_passage_subquery() -> Subquery:
     )
 
 
-def _last_activity_subquery() -> Subquery:
+def _last_activity_subquery(scope: Select | None) -> Subquery:
     """The last moment the team did anything, across everything it can do.
 
     All three tables, not just the session's own row: a raised hand does not update the
@@ -86,13 +124,13 @@ def _last_activity_subquery() -> Subquery:
     """
     moments = union_all(
         select(IRSession.project_id.label("project_id"), IRSession.updated_at.label("at")).where(
-            IRSession.project_id.is_not(None)
+            _within(IRSession.project_id, scope)
         ),
         select(IRQuestion.project_id.label("project_id"), IRQuestion.created_at.label("at")).where(
-            IRQuestion.project_id.is_not(None)
+            _within(IRQuestion.project_id, scope)
         ),
         select(IRTake.project_id.label("project_id"), IRTake.created_at.label("at")).where(
-            IRTake.project_id.is_not(None)
+            _within(IRTake.project_id, scope)
         ),
     ).subquery()
     return (
@@ -102,19 +140,19 @@ def _last_activity_subquery() -> Subquery:
     )
 
 
-def _open_hands_subquery() -> Subquery:
+def _open_hands_subquery(scope: Select | None) -> Subquery:
     return (
         select(IRQuestion.project_id.label("project_id"), func.count().label("open_hands"))
         .where(
             IRQuestion.status == IRQuestionStatus.OPEN,
-            IRQuestion.project_id.is_not(None),
+            _within(IRQuestion.project_id, scope),
         )
         .group_by(IRQuestion.project_id)
         .subquery()
     )
 
 
-def _device_count_subquery() -> Subquery:
+def _device_count_subquery(scope: Select | None) -> Subquery:
     """Linked devices, counted the same way ``list_team_devices`` lists them.
 
     An unlinked device keeps its ``project_id`` so the row still records where the tablet
@@ -123,7 +161,7 @@ def _device_count_subquery() -> Subquery:
     """
     return (
         select(Device.project_id.label("project_id"), func.count().label("device_count"))
-        .where(Device.unlinked_at.is_(None), Device.project_id.is_not(None))
+        .where(Device.unlinked_at.is_(None), _within(Device.project_id, scope))
         .group_by(Device.project_id)
         .subquery()
     )
@@ -149,10 +187,11 @@ async def list_facilitator_teams(
     device credential yet, so sessions and questions are written with no project at all.
     """
     moment = now or datetime.now(UTC)
-    active = _active_passage_subquery()
-    activity = _last_activity_subquery()
-    hands = _open_hands_subquery()
-    devices = _device_count_subquery()
+    scope = _facilitated_projects(user)
+    active = _active_passage_subquery(scope)
+    activity = _last_activity_subquery(scope)
+    hands = _open_hands_subquery(scope)
+    devices = _device_count_subquery(scope)
 
     query = (
         select(
@@ -172,15 +211,8 @@ async def list_facilitator_teams(
         .outerjoin(devices, devices.c.project_id == Project.id)
     )
 
-    if not user.is_platform_admin:
-        query = query.where(
-            Project.id.in_(
-                select(ProjectUserAccess.project_id).where(
-                    ProjectUserAccess.user_id == user.id,
-                    ProjectUserAccess.role == ProjectRole.FACILITATOR,
-                )
-            )
-        )
+    if scope is not None:
+        query = query.where(Project.id.in_(scope))
 
     rows = (await db.execute(query)).all()
 
