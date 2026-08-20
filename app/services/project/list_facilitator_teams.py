@@ -24,12 +24,10 @@ narrows with the restriction.
 
 from datetime import UTC, datetime
 
-from sqlalchemy import ColumnElement, Select, func, select, union_all
+from sqlalchemy import Select, func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql.selectable import Subquery
 
-from app.core.enums import ProjectRole
 from app.db.models.auth import User
 from app.db.models.device import Device
 from app.db.models.internalization_room import (
@@ -40,7 +38,7 @@ from app.db.models.internalization_room import (
     IRTake,
 )
 from app.db.models.language import Language
-from app.db.models.project import Project, ProjectUserAccess
+from app.db.models.project import Project
 from app.models.team import (
     ActivePassageView,
     FacilitatorTeamView,
@@ -49,37 +47,10 @@ from app.models.team import (
 )
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.sessions import DEFAULT_PERICOPE, PANORAMA_PREFIX
+from app.services.project.facilitated_scope import facilitated_projects as _facilitated_projects
+from app.services.project.facilitated_scope import within as _within
 from app.services.project.team_restriction import as_work_queue, matching
 from app.services.project.team_state import team_state
-
-
-def _facilitated_projects(user: User) -> Select | None:
-    """The project ids the caller reaches, or ``None`` when that is every one of them.
-
-    ``None`` rather than a select of every id on purpose: a platform admin's scope is "no
-    restriction", and spelling it as a subquery listing the installation would put that list
-    inside five other subqueries for nothing.
-    """
-    if user.is_platform_admin:
-        return None
-
-    return select(ProjectUserAccess.project_id).where(
-        ProjectUserAccess.user_id == user.id,
-        ProjectUserAccess.role == ProjectRole.FACILITATOR,
-    )
-
-
-def _within(column: InstrumentedAttribute[str | None], scope: Select | None) -> ColumnElement[bool]:
-    """Confine one subquery to the caller's teams.
-
-    Falls back to "has a project at all" for a platform admin, which is what an unrestricted
-    scope means here. A null project belongs to no team either way, and ``IN`` already excludes
-    it — the explicit test is what keeps the admin's case honest rather than accidental.
-    """
-    if scope is None:
-        return column.is_not(None)
-
-    return column.in_(scope)
 
 
 def _active_passage_subquery(scope: Select | None) -> Subquery:
