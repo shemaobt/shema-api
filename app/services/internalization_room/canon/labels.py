@@ -52,13 +52,30 @@ TRANSLATED_PERICOPES: frozenset[str] = frozenset({"P01", "P02", "P05", "P14"})
 PENDING_COVERAGE_STATUS: frozenset[str] = frozenset({"partially_engaged"})
 
 
+class ElementLabelsBroken(Exception):
+    """A catalogue this repository ships is missing, malformed or holed.
+
+    Deliberately not a `ValidationError`, which is answered 400 with its own message in the
+    body: a file of ours being wrong is not the caller's request being wrong, and answering
+    it that way sends somebody to debug their own code over our deploy — with `P01 scene:1`
+    in front of them to do it with. It carries no handler for the same reason, so it is a
+    500 and is logged as ours, which is what the house rule asks of an infrastructure
+    failure.
+
+    Asking for a pericope nobody has translated stays a `ValidationError`: that one really
+    is about what was asked for. Whether the route answers it 400 or something softer is
+    ENG-449's to decide; what this split guarantees is that it can tell the two apart.
+    """
+
+
 def labelled_elements(
     pericope_num: str, *, book: str = "Ruth", catalogue_dir: Path = LABELS_DIR
 ) -> list[LabelledElement]:
     """The passage's beads in bead order, each named in every language.
 
-    Raises `ValidationError` naming the pericope, the key and the language rather than
-    answering a hole.
+    Raises `ElementLabelsBroken` naming the pericope, the key and the language rather than
+    answering a hole, and `ValidationError` for the one refusal that is about the request:
+    a pericope nobody has translated.
     """
     if pericope_num not in TRANSLATED_PERICOPES:
         raise ValidationError(f"{pericope_num} has no element labels; it is not in the pilot")
@@ -66,20 +83,20 @@ def labelled_elements(
     catalogue = _catalogue(catalogue_dir, book)
     for_passage = catalogue.get(pericope_num)
     if for_passage is None:
-        raise ValidationError(f"{pericope_num} has no element labels in {book}")
+        raise ElementLabelsBroken(f"{pericope_num} has no element labels in {book}")
 
     elements = elements_for(pericope_num, book)
     served = {element.key for element in elements}
     orphans = sorted(set(for_passage) - served)
     if orphans:
-        raise ValidationError(
+        raise ElementLabelsBroken(
             f"{pericope_num} {', '.join(orphans)} is labelled but the canon does not serve it"
         )
 
     return [
         LabelledElement(
             key=element.key,
-            kind=element.kind.value,
+            kind=element.kind,
             scene=element.scene,
             **{
                 f"label_{language}": _text(for_passage, pericope_num, element.key, language)
@@ -110,10 +127,10 @@ def legend(*, catalogue_dir: Path = LABELS_DIR) -> CoverageLegend:
 def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str:
     entry = for_passage.get(key)
     if entry is None:
-        raise ValidationError(f"{pericope_num} {key} has no label in any language")
+        raise ElementLabelsBroken(f"{pericope_num} {key} has no label in any language")
     text = (entry.get(language) or "").strip()
     if not text:
-        raise ValidationError(f"{pericope_num} {key} has no {language} label")
+        raise ElementLabelsBroken(f"{pericope_num} {key} has no {language} label")
     return text
 
 
@@ -127,19 +144,19 @@ def _named_group(
     entries = named.get(group, {})
     extras = sorted(set(entries) - set(values) - pending)
     if extras:
-        raise ValidationError(
+        raise ElementLabelsBroken(
             f"{group} {', '.join(extras)} is named but is not a value of the enum"
         )
     resolved: dict[str, dict[str, str]] = {}
     for value in values:
         texts = entries.get(value)
         if texts is None:
-            raise ValidationError(f"{group} {value} has no name in any language")
+            raise ElementLabelsBroken(f"{group} {value} has no name in any language")
         resolved[value] = {}
         for language in LANGUAGES:
             text = (texts.get(language) or "").strip()
             if not text:
-                raise ValidationError(f"{group} {value} has no {language} name")
+                raise ElementLabelsBroken(f"{group} {value} has no {language} name")
             resolved[value][language] = text
     return resolved
 
@@ -161,8 +178,8 @@ def _read(path: Path) -> dict:
     symptom of a malformed file is an `AttributeError` raised somewhere far from it.
     """
     if not path.exists():
-        raise ValidationError(f"no label catalogue at {path}")
+        raise ElementLabelsBroken(f"no label catalogue at {path}")
     written = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(written, dict):
-        raise ValidationError(f"{path.name} is not a catalogue of labels")
+        raise ElementLabelsBroken(f"{path.name} is not a catalogue of labels")
     return written

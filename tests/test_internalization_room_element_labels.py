@@ -10,19 +10,38 @@ import json
 import re
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from pydantic import ValidationError as PydanticValidationError
 
-from app.core.exceptions import ValidationError
+from app.core.exceptions import ValidationError, register_exception_handlers
+from app.models.internalization_room import LabelledElement
 from app.services.internalization_room.canon.elements import ElementKind, elements_for
 from app.services.internalization_room.canon.labels import (
     LANGUAGES,
     PENDING_COVERAGE_STATUS,
     TRANSLATED_PERICOPES,
+    ElementLabelsBroken,
     labelled_elements,
     legend,
 )
 from app.services.internalization_room.coverage import CoverageStatus
 
 PILOT = ("P01", "P02", "P05", "P14")
+
+
+@pytest.fixture
+def holed_catalogue(tmp_path):
+    """A copy of the shipped catalogue with one language emptied out of one element."""
+    complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
+    holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
+    holed["P01"]["scene:1"]["es"] = ""
+    (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
+    (tmp_path / "legend.json").write_text(
+        (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    return tmp_path
+
 
 #: An ALL_CAPS run is how a technical identifier reaches the screen —
 #: `STRUCTURAL_ABSENCE_OF_DIVINE_AGENCY`. YHWH is a name a facilitator says out loud.
@@ -91,22 +110,11 @@ def test_a_hole_in_the_catalogue_is_refused_rather_than_filled_in(tmp_path):
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
     )
 
-    with pytest.raises(ValidationError) as refused:
+    with pytest.raises(ElementLabelsBroken) as refused:
         labelled_elements("P01", catalogue_dir=tmp_path)
 
     said = str(refused.value)
     assert "P01" in said and "scene:1" in said and "es" in said
-
-
-def test_a_pericope_nobody_has_translated_is_refused_rather_than_answered_in_english():
-    untranslated = next(
-        f"P{n:02d}" for n in range(1, 15) if f"P{n:02d}" not in TRANSLATED_PERICOPES
-    )
-
-    with pytest.raises(ValidationError) as refused:
-        labelled_elements(untranslated)
-
-    assert untranslated in str(refused.value)
 
 
 def _shipped():
@@ -129,7 +137,7 @@ def test_a_label_hung_on_a_key_the_canon_no_longer_has_is_refused(tmp_path):
         (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
     )
 
-    with pytest.raises(ValidationError) as refused:
+    with pytest.raises(ElementLabelsBroken) as refused:
         labelled_elements("P01", catalogue_dir=tmp_path)
 
     assert "being:B99" in str(refused.value)
@@ -155,7 +163,7 @@ def test_a_name_for_something_that_is_not_a_state_at_all_is_refused(tmp_path):
     named["coverage_status"]["nearly_there"] = {"pt": "Quase", "en": "Nearly", "es": "Casi"}
     (tmp_path / "legend.json").write_text(json.dumps(named), encoding="utf-8")
 
-    with pytest.raises(ValidationError) as refused:
+    with pytest.raises(ElementLabelsBroken) as refused:
         legend(catalogue_dir=tmp_path)
 
     assert "nearly_there" in str(refused.value)
@@ -169,7 +177,118 @@ def test_a_catalogue_that_is_not_a_catalogue_at_all_is_refused(tmp_path):
     """
     (tmp_path / "ruth.json").write_text('["P01"]', encoding="utf-8")
 
-    with pytest.raises(ValidationError) as refused:
+    with pytest.raises(ElementLabelsBroken) as refused:
         labelled_elements("P01", catalogue_dir=tmp_path)
 
     assert "ruth.json" in str(refused.value)
+
+
+@pytest.mark.parametrize("pericope_num", PILOT)
+def test_two_beads_on_one_screen_never_read_the_same(pericope_num):
+    """A necklace is read across, so a repeated label is two beads a facilitator cannot tell apart.
+
+    P14 shipped four of these: the canon separates `CB_0047-Obed-Name` from the man, and the
+    first translation flattened both onto "Obed". Nothing else in the slice can see it — the
+    key is present either way and every label is a real sentence.
+    """
+    for language in LANGUAGES:
+        said: dict[str, str] = {}
+        for element in labelled_elements(pericope_num):
+            text = getattr(element, f"label_{language}")
+            clash = said.get(text)
+            assert clash is None, (
+                f"{pericope_num} {language}: {clash} and {element.key} both read {text!r}"
+            )
+            said[text] = element.key
+
+
+def test_a_language_nobody_added_a_field_for_is_refused_rather_than_dropped():
+    """`LANGUAGES` growing without the model growing is a label required and then discarded.
+
+    Pydantic ignores an unknown keyword by default, so the loader would demand the new label,
+    raise if it were missing, and then throw it away — a hole in the one module whose whole
+    posture is that a hole is refused.
+    """
+    with pytest.raises(PydanticValidationError):
+        LabelledElement(
+            key="scene:1",
+            kind=ElementKind.SCENE,
+            scene=1,
+            label_pt="a",
+            label_en="b",
+            label_es="c",
+            label_fr="d",
+        )
+
+
+def test_the_kind_on_the_wire_is_the_closed_set_and_not_any_string():
+    with pytest.raises(PydanticValidationError):
+        LabelledElement(
+            key="scene:1",
+            kind="scenery",
+            scene=1,
+            label_pt="a",
+            label_en="b",
+            label_es="c",
+        )
+
+
+def test_the_two_refusals_do_not_answer_the_same_thing_on_the_wire(tmp_path, holed_catalogue):
+    """The status code is the behaviour here, so the status code is what is measured.
+
+    Asserting on the class hierarchy would go green if `ElementLabelsBroken` were ever made
+    a `ValidationError` again — which is precisely the defect, and it is invisible from
+    inside the service. Measured before the split: both answered `400 BAD_REQUEST` with the
+    same code, and ours put `P01 scene:1` in the caller's error body.
+    """
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/ours-is-broken")
+    def ours_is_broken():
+        return labelled_elements("P01", catalogue_dir=holed_catalogue)
+
+    @app.get("/they-asked-for-p03")
+    def they_asked_for_p03():
+        return labelled_elements("P03")
+
+    client = TestClient(app, raise_server_exceptions=False)
+
+    broken = client.get("/ours-is-broken")
+    assert broken.status_code == 500
+    assert "scene:1" not in broken.text
+
+    asked = client.get("/they-asked-for-p03")
+    assert asked.status_code == 400
+
+
+def test_our_own_catalogue_being_broken_does_not_read_as_the_caller_s_mistake(tmp_path):
+    """A shipped file with a hole in it is our failure and has to sound like one.
+
+    `ValidationError` is answered 400 with its message in the body, so a broken catalogue
+    reached whoever called the coverage route as if their request were malformed — and put
+    `P01 scene:1` in front of them to debug. Measured before this: both this case and an
+    untranslated pericope answered `400 BAD_REQUEST`, indistinguishably.
+    """
+    complete = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
+    holed = {p: {k: dict(v) for k, v in keys.items()} for p, keys in complete.items()}
+    holed["P01"]["scene:1"]["es"] = ""
+    (tmp_path / "ruth.json").write_text(json.dumps(holed), encoding="utf-8")
+    (tmp_path / "legend.json").write_text(
+        (_shipped() / "legend.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    with pytest.raises(ElementLabelsBroken):
+        labelled_elements("P01", catalogue_dir=tmp_path)
+
+
+def test_a_pericope_nobody_translated_is_still_about_what_was_asked_for():
+    """The one refusal that is genuinely about the request keeps being told apart from ours."""
+    untranslated = next(
+        f"P{n:02d}" for n in range(1, 15) if f"P{n:02d}" not in TRANSLATED_PERICOPES
+    )
+
+    with pytest.raises(ValidationError) as refused:
+        labelled_elements(untranslated)
+
+    assert not isinstance(refused.value, ElementLabelsBroken)
