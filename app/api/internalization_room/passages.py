@@ -6,6 +6,7 @@ from app.api.internalization_room._deps import room_key_dep
 from app.core.config import get_settings
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
+from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.passage_lines import line_for
 from app.services.internalization_room.voice_handles import clip_url
@@ -56,7 +57,12 @@ async def passages(book: str) -> BookPassagesResponse:
     return BookPassagesResponse(
         book=book,
         passages=[
-            PassageView(pericope=pericope, audio_url=url)
+            PassageView(
+                pericope=pericope,
+                audio_url=url,
+                beads=len(element_keys(pericope, book=book)),
+                absence_index=absence_index(pericope, book=book),
+            )
             for (pericope, _), url in zip(named, urls, strict=True)
         ],
     )

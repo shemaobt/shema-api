@@ -82,6 +82,8 @@ class PassageView(BaseModel):
     #: Where to fetch the line that names this passage aloud. There is no text field: the
     #: team does not read, so a passage the room cannot say is a passage it cannot offer.
     audio_url: str
+    beads: int = 0
+    absence_index: int = -1
 
 
 class BookPassagesResponse(BaseModel):
