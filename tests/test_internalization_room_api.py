@@ -118,3 +118,40 @@ async def test_a_marked_opening_arrives_as_two_clips_and_still_as_one(
     assert body["audio_url"] not in urls, (
         "audio_url continua sendo a abertura inteira, não um dos movimentos"
     )
+
+
+async def test_a_team_walking_back_in_hears_where_the_room_was(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second audio-less POST is a return, not a second opening.
+
+    Reading it as an opening had the Guide introduce itself and lay the whole passage out
+    again — against a probe already waiting for a free retell, which the Validator rejected,
+    so a returning team was answered with a canned line. One session in testing collected
+    eleven Guide openings and not one team utterance this way.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    openings = 0
+
+    async def _panorama(**_: Any) -> TurnOutcome:
+        nonlocal openings
+        openings += 1
+        return TurnOutcome(speech=f"Abertura {openings}.", transcript="")
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV"}
+    )
+    session_id = created.json()["session_id"]
+
+    first = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    again = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+
+    assert first.status_code == 200
+    assert again.status_code == 200
+    assert openings == 1, "a sala abre a passagem uma vez, não a cada volta"
+    assert again.json()["audio_url"] == first.json()["audio_url"], (
+        "voltar para a passagem devolve a última fala do Guia, a mesma de antes"
+    )

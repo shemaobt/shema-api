@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from pydantic import BaseModel
 
@@ -14,6 +15,28 @@ from app.services.translation_helper.transcribe_audio import (
 logger = logging.getLogger(__name__)
 
 _BRIDGE_LANGUAGE_CODES = {"pt", "por"}
+
+_BRACKETED = re.compile(r"\[[^\]]{0,60}\]|[♪♫]")
+_ONLY_PARENTHETICAL = re.compile(r"^\s*\([^)]{0,60}\)\s*$")
+
+
+def spoken_words_only(text: str) -> str:
+    """The transcript minus what the transcriber wrote *about* the audio.
+
+    A room with a fan, a passing truck or a moment of quiet comes back as
+    ``[background music]``, ``[inaudible]`` or ``(silence)`` — the transcriber describing
+    what it heard, not words anyone said. Handed on as speech it becomes a team utterance
+    the Guide has to answer, and answering a stage direction produces a turn the Validator
+    throws out, so the room says a canned line to a team that never spoke. Emptied here, it
+    takes the path written for exactly this: the room says it could not make it out.
+
+    Square brackets go wherever they stand, which is the convention every transcriber uses
+    for this. Round brackets are only ever an annotation when they are the whole transcript
+    — inside a sentence they are far likelier to be someone actually speaking.
+    """
+    if _ONLY_PARENTHETICAL.match(text):
+        return ""
+    return re.sub(r"\s{2,}", " ", _BRACKETED.sub(" ", text)).strip()
 
 
 class HeardSpeech(BaseModel):
@@ -77,8 +100,8 @@ async def heard(
     *"não consegui ouvir direito — podem repetir?"*, which is why that line was written.
     """
     try:
-        return await transcribe_audio(
-            audio, filename=filename, mime_type=mime_type, settings=settings
+        return spoken_words_only(
+            await transcribe_audio(audio, filename=filename, mime_type=mime_type, settings=settings)
         )
     except ValidationError as failure:
         logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
@@ -101,7 +124,7 @@ async def heard_speech(
         logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
         return HeardSpeech()
     return HeardSpeech(
-        text=result.text,
+        text=spoken_words_only(result.text),
         language_code=result.language_code,
         language_probability=result.language_probability,
         transcript_confidence=result.transcript_confidence,

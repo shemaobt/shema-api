@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import room_key_dep
@@ -190,6 +190,33 @@ async def ask_for_a_person(
     )
 
 
+async def _say_it_again(session: IRSession) -> TurnResponse:
+    """Where the room already was, for a team walking back in.
+
+    No model, no new line, nothing appended: the last thing the Guide said, said again.
+    The synthesiser is content-addressed, so the very same words come straight back out of
+    the bucket — this costs one lookup and no waiting.
+    """
+    last = next(
+        (
+            message.get("text", "")
+            for message in reversed(session.messages or [])
+            if message.get("role") == "guide"
+        ),
+        "",
+    )
+    voiced = (await room.synthesize_facilitator_speech(last))[0] if last else None
+    return TurnResponse(
+        session_id=session.id,
+        audio_url=clip_url(voiced.key) if voiced else "",
+        transcript="",
+        peer_cue=detects_peer_cue(last),
+        coverage=_coverage_view(session),
+        done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
+        bridge_mode=session.bridge_mode,
+    )
+
+
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
@@ -204,7 +231,12 @@ async def take_turn(
     session = await room.get_session(db, session_id)
 
     speech_heard = HeardSpeech()
-    opening = file is None
+    # An opening is the session's first line, not merely a POST without audio. The app
+    # sends an audio-less turn again whenever a team walks back into a passage it left, and
+    # reading that as an opening had the Guide introduce itself and lay the whole passage
+    # out a second time — against a probe already waiting for a free retell, which the
+    # Validator then rejected, so the room answered a returning team with a canned line.
+    opening = file is None and not (session.messages or [])
     if file is not None:
         audio_bytes = await file.read()
         if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -213,6 +245,9 @@ async def take_turn(
             audio_bytes, filename=file.filename, mime_type=file.content_type
         )
     transcript = speech_heard.text
+
+    if file is None and not opening:
+        return await _say_it_again(session)
 
     ready = await take_prepared(db, session) if opening else None
     if ready is not None:
