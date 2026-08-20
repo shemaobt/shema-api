@@ -83,8 +83,16 @@ async def get_question(db: AsyncSession, question_id: str) -> IRQuestion:
 #: §7's own number, and the one the Desk models against fixtures as ``RAISED_HANDS_PAGE_SIZE``.
 DEFAULT_PAGE = 50
 
-#: A page is a page. Without a ceiling the parameter is a way to ask for the installation in
-#: one request, which is the behaviour this route was written to end.
+#: The ceiling on ``limit``, and **this number does not come from ENG-452** — the issue never
+#: mentions a page size. It is a decision made here and it should be contestable as one.
+#:
+#: Two arguments hold it up. Without a ceiling the parameter is a way to ask for the whole
+#: installation in one request, which is the behaviour this route was written to end. And the
+#: issue forbids a *silent* cut, not a cut: a hundred with ``open_total`` beside it is a
+#: different thing from fifty said nothing about, because the reader can tell what was left
+#: out. Take the total away and no ceiling is defensible, this one included.
+#:
+#: The number is arguable. That there is one is not.
 MAX_PAGE = 100
 
 #: Open first, then settled. Spelled as a rank rather than as a sort on the enum because the
