@@ -50,6 +50,76 @@ def approve_all(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(module, "call_agent", ApprovingAgent())
 
 
+class LongWindedAgent:
+    """A Guide that opens at length — introduce, give the whole, invite — and is approved."""
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return (
+            "Olá, eu sou o Facilitador Digital. Esta história começa nos dias em que os "
+            "juízes julgavam, quando falta comida na terra e uma família sai de Belém "
+            "para peregrinar em Moabe. Ali ela perde quase tudo ao longo de dez anos, e "
+            "é desse começo que vamos falar. Como vocês contariam essa primeira parte?"
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_opening_may_give_the_whole_before_the_parts(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The oral pacing budget is for the back-and-forth, never for the opening.
+
+    Enforcing 45 words on the turn that has to introduce the Guide, give the whole before
+    the parts and invite meant every passage opening busted the budget, redrafted twice and
+    fell back to a canned line — so the room never introduced itself and never walked the
+    team into the scenes, and the team waited six model calls for it. The panorama opening
+    was already exempt; the passage opening was not.
+    """
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", LongWindedAgent())
+    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(),
+        opening=True,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert not turn.outcome.used_fail_safe
+    assert turn.outcome.speech.startswith("Olá, eu sou o Facilitador Digital.")
+    assert len(turn.outcome.speech.split()) > 45
+
+
+@pytest.mark.asyncio
+async def test_a_turn_after_the_opening_still_answers_to_the_budget(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", LongWindedAgent())
+    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(transcript="a fome chegou", is_substantial=True),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert turn.outcome.used_fail_safe
+    assert turn.outcome.fixed_line
+
+
 @pytest.mark.asyncio
 async def test_the_opening_turn_belongs_to_the_guide(
     db_session: AsyncSession, approve_all: None
