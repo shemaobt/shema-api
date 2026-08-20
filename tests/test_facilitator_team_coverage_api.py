@@ -263,6 +263,62 @@ async def test_status_is_the_furthest_the_team_ever_reached(
     assert body[bead]["status"] == ENGAGED
 
 
+async def test_the_named_session_is_the_one_that_reached_the_status_shown(
+    client, db_session: AsyncSession
+) -> None:
+    """Behaviour 2 — status and session are one statement and must not contradict each other.
+
+    The common case, not an edge: every session opens at `initial_state`, so a bead the team
+    engaged on Tuesday earns a fresh `surfaced` event the moment Wednesday's Guide mentions it
+    again — `record_transitions` compares against Wednesday's own tracker, where the bead
+    really did move. At team level it did not move at all.
+
+    Naming Wednesday would put "Trabalhado · last touched Wednesday" in front of a facilitator
+    for a session that only surfaced it. The session named is the one that carried the bead to
+    where it now stands.
+    """
+    _user, project, headers = await a_facilitator(db_session, email="b2reached@x.com")
+    bead = element_keys("P02")[0]
+
+    reached = await a_session_that_moved(
+        db_session, project_id=project.id, pericope="P02", moved={bead: ENGAGED}
+    )
+    later = await a_session_that_moved(
+        db_session, project_id=project.id, pericope="P02", moved={bead: SURFACED}
+    )
+
+    body = by_key((await client.get(coverage_url(project.id, "P02"), headers=headers)).json())
+
+    assert body[bead]["status"] == ENGAGED
+    assert body[bead]["touched_in_session"]["session_id"] == reached.id
+    assert body[bead]["touched_in_session"]["session_id"] != later.id
+
+
+async def test_holding_a_bead_where_it_already_stood_does_not_rename_it(
+    client, db_session: AsyncSession
+) -> None:
+    """Behaviour 2 — two sessions reaching the same status: the one that moved it is the first.
+
+    Once a bead is engaged it has nowhere further to go, so a later session reaching `engaged`
+    again moved nothing. "Which session last moved it" is the session it last actually moved
+    in, which is when it arrived where it stands.
+    """
+    _user, project, headers = await a_facilitator(db_session, email="b2held@x.com")
+    bead = element_keys("P02")[0]
+
+    moved = await a_session_that_moved(
+        db_session, project_id=project.id, pericope="P02", moved={bead: ENGAGED}
+    )
+    held = await a_session_that_moved(
+        db_session, project_id=project.id, pericope="P02", moved={bead: ENGAGED}
+    )
+
+    body = by_key((await client.get(coverage_url(project.id, "P02"), headers=headers)).json())
+
+    assert body[bead]["touched_in_session"]["session_id"] == moved.id
+    assert moved.id != held.id
+
+
 async def test_an_untouched_bead_says_so_and_names_no_session(
     client, db_session: AsyncSession
 ) -> None:

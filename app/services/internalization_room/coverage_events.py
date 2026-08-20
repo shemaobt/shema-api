@@ -104,7 +104,7 @@ async def last_session_to_touch(
 class BeadHistory:
     """How far a team ever took one bead, and which of its sessions did it last."""
 
-    status: str
+    status: CoverageStatus
     session_id: str
     at: datetime
 
@@ -120,10 +120,21 @@ async def necklace_with_touches(
     session. Laying the team's events over the spine is what makes the necklace outlive the
     conversations that strung it.
 
-    Two answers come back from one pass over the events, which is why the ranking and the
-    recency are window functions rather than two queries: the furthest status per bead, and
-    the session of that bead's most recent event. Thirty-four beads would otherwise be
+    One window function over one pass picks the row that answers both halves: the events of a
+    bead are ordered by how far each took it, ties broken by which came first, and the winner
+    carries its own status *and* its own session. Thirty-four beads would otherwise be
     thirty-four round trips for the same rows.
+
+    Ordering by rank rather than by recency is the whole point, and it is not an edge case.
+    Every session opens at ``initial_state``, so a bead the team engaged on Tuesday earns a
+    fresh ``surfaced`` event the moment Wednesday's Guide mentions it again — against
+    Wednesday's own tracker it really did move. At team level it moved nowhere. Taking the
+    most recent event instead would answer ``engaged`` beside Wednesday's session, and tell a
+    facilitator that a conversation which only surfaced the bead is where it was worked.
+
+    The tie is broken towards the *earliest* of the events that reached the standing status.
+    Once a bead is engaged it has nowhere further to go, so a later session reaching ``engaged``
+    again moved nothing; the session named is the one the bead last actually moved in.
 
     Scoped by project **and** passage. An element key belongs to the canon, not to a team —
     two teams working Ruth both carry ``being:B3``, and Naomi appears in several passages —
@@ -136,20 +147,21 @@ async def necklace_with_touches(
     event is written — measured in ENG-441 and left to the room line to fix. Until it is, this
     answers a necklace that never moved, and answers it accurately.
     """
-    furthest = func.max(case(_RANK_OF, value=IRCoverageEvent.status, else_=0)).over(
-        partition_by=IRCoverageEvent.element_key
-    )
-    recency = func.row_number().over(
+    standing = func.row_number().over(
         partition_by=IRCoverageEvent.element_key,
-        order_by=(IRCoverageEvent.at.desc(), IRCoverageEvent.id.desc()),
+        order_by=(
+            case(_RANK_OF, value=IRCoverageEvent.status, else_=0).desc(),
+            IRCoverageEvent.at.asc(),
+            IRCoverageEvent.id.asc(),
+        ),
     )
     walked = (
         select(
             IRCoverageEvent.element_key,
             IRCoverageEvent.session_id,
             IRCoverageEvent.at,
-            furthest.label("furthest"),
-            recency.label("recency"),
+            IRCoverageEvent.status,
+            standing.label("standing"),
         )
         .where(
             IRCoverageEvent.project_id == project_id,
@@ -158,11 +170,11 @@ async def necklace_with_touches(
         .subquery()
     )
     result = await db.execute(
-        select(walked.c.element_key, walked.c.session_id, walked.c.at, walked.c.furthest).where(
-            walked.c.recency == 1
+        select(walked.c.element_key, walked.c.session_id, walked.c.at, walked.c.status).where(
+            walked.c.standing == 1
         )
     )
     return {
-        element_key: BeadHistory(status=_STATUS_AT[rank], session_id=session_id, at=at)
-        for element_key, session_id, at, rank in result.all()
+        element_key: BeadHistory(status=CoverageStatus(status), session_id=session_id, at=at)
+        for element_key, session_id, at, status in result.all()
     }

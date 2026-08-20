@@ -51,9 +51,7 @@ async def team_necklace(db: AsyncSession, *, team_id: str, pericope: str) -> lis
             kind=bead.kind,
             scene=bead.scene,
             status=(
-                history[bead.key].status
-                if bead.key in history
-                else CoverageStatus.NOT_ENCOUNTERED.value
+                history[bead.key].status if bead.key in history else CoverageStatus.NOT_ENCOUNTERED
             ),
             touched_in_session=(
                 TouchedInSession(session_id=history[bead.key].session_id, at=history[bead.key].at)

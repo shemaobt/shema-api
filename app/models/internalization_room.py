@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.internalization_room.canon.elements import ElementKind
+from app.services.internalization_room.coverage import CoverageStatus
 
 MAX_TTS_CHARS = 3000
 
@@ -84,7 +85,10 @@ class ElementCoverage(BaseModel):
     label_es: str
     kind: ElementKind
     scene: int | None = None
-    status: str
+    #: The enum and not the string it serialises to, so the Desk reads the closed set of four
+    #: off the schema instead of inferring it from whichever values one response happens to
+    #: carry. `CoverageStatus` is a `StrEnum`, so the JSON is unchanged.
+    status: CoverageStatus
     touched_in_session: TouchedInSession | None = None
 
 
