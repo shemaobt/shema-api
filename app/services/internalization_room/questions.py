@@ -151,10 +151,6 @@ async def mark_heard(db: AsyncSession, question: IRQuestion) -> IRQuestion:
     return question
 
 
-async def fetch_audio(key: str, *, store: SpeechStore | None = None) -> bytes | None:
-    return await (store or _store()).get(key)
-
-
 LISTEN_MINUTES = 15
 
 
