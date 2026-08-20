@@ -43,13 +43,14 @@ LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
 #: own English, which is the silent fallback this module exists to make impossible.
 TRANSLATED_PERICOPES: frozenset[str] = frozenset({"P01", "P02", "P05", "P14"})
 
-#: Coverage states named here before they exist in `CoverageStatus`. ENG-441 adds
-#: `partially_engaged` between `surfaced` and `engaged` on this same base, and says its labels
-#: belong to this slice — so the name is written now rather than left as a hole the day the
-#: enum grows. It is declared rather than merely tolerated: an undeclared extra is refused,
-#: because a catalogue that quietly accepts names nobody reads is how it drifts from the enum.
-#: When ENG-441 lands, the value moves into `CoverageStatus` and this set empties.
-PENDING_COVERAGE_STATUS: frozenset[str] = frozenset({"partially_engaged"})
+#: Coverage states named here before they exist in `CoverageStatus`. Empty, and that is the
+#: resting state: a name belongs here only while its label is written and its enum value is
+#: not, and it leaves the moment the enum catches up. `partially_engaged` was the one entry,
+#: written for ENG-441 while that slice was still a sibling branch; ENG-449 is where the two
+#: met, so it left here. The set stays because the next state will need the same window, and
+#: because an *undeclared* extra is still refused — a catalogue that quietly accepts names
+#: nobody reads is how it drifts from the enum.
+PENDING_COVERAGE_STATUS: frozenset[str] = frozenset()
 
 
 class ElementLabelsBroken(Exception):
