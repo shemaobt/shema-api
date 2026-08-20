@@ -102,9 +102,10 @@ class CoverageLegendResponse(BaseModel):
     keeps the map, because that is the catalogue's shape and a fourth language there costs a
     catalogue entry and nothing else.
 
-    ENG-449's `ElementCoverage` repeats the same three fields and is the response this legend
-    is read beside, but it is not on this branch — so the promise is anchored on
-    `LabelledElement`, which a reader here can open.
+    ENG-449's coverage response repeats the same three fields and is what this legend is read
+    beside. It is named by its issue and not by its model, deliberately: a class name is a
+    reference `grep` promises to resolve, so one naming a branch that has not merged is a
+    reference that lies. An issue number promises nothing and therefore cannot.
     """
 
     model_config = ConfigDict(extra="forbid")
