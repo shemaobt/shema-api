@@ -118,14 +118,21 @@ def _from_the_canon(element: Element) -> LabelledElement:
     language, which is the silent fallback this module exists to prevent; leaving them null
     is the Desk's own `CoverageLabels` shape and draws as a missing translation.
 
-    **The declared limit, and it is not small.** ENG-442 promises that no preservation rule
-    shows an ALL_CAPS technical key in any language, and that promise holds inside the pilot
-    only. Here the English of a preservation rule is `KIND: note` and the English of a
-    significant absence is a paragraph, because that is what the canon carries. A scene, a
-    being or a place reads well; those two do not. Refusing instead would take a whole
-    session history down for one conversation, which is worse — so the gap is declared, in
-    `tests/test_internalization_room_element_labels.py`, and it closes when a translator
-    reaches those ten passages.
+    **The declared limit, and it is not small.** This module promises that no preservation
+    rule shows an ALL_CAPS technical key in any language, and that promise holds for a
+    passage the catalogue has and for no other.
+
+    Measured over the ten passages it does not have, 264 beads: six of the seven kinds carry
+    the canon's `Hebrew / English` in `label_en` — 178 of 264 — and only `scene` comes
+    through clean. Most of that is cosmetic: `נָעֳמִי / Naomi` **contains** the name a
+    facilitator reads. The two that genuinely hurt are the two with no name in them at all:
+    `preserved`, which is `KIND: note` and is ALL_CAPS in 18 of 18, and `absence`, which is a
+    paragraph in 30 of 30.
+
+    Refusing instead would take a whole session history down for one conversation, which is
+    worse — so the gap is declared, and asserted in
+    `tests/test_internalization_room_element_labels.py` so it cannot go stale in silence. It
+    closes when a translator reaches those ten passages.
     """
     return LabelledElement(
         key=element.key,
