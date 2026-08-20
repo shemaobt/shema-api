@@ -10,6 +10,20 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 
+PANORAMA_PREFIX = "OV-"
+
+
+def is_panorama(pericope: str) -> bool:
+    """`OV-Ruth` addresses the book itself rather than one of its passages.
+
+    It lives here rather than beside the session service because what makes a panorama
+    different, everywhere it matters, is that it has **no coverage spine**: there is no map
+    to draw beads from, and every function in this module raises from the canon if it is
+    handed one. Both the session service and the reconstruction below have to ask, and the
+    reconstruction cannot import the session service without a cycle.
+    """
+    return pericope.startswith(PANORAMA_PREFIX)
+
 
 class CoverageStatus(enum.StrEnum):
     NOT_ENCOUNTERED = "not_encountered"

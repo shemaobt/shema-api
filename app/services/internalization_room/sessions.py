@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -9,18 +10,22 @@ from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import floor_met, furthest, initial_state
+from app.services.internalization_room.coverage import (
+    PANORAMA_PREFIX,
+    floor_met,
+    furthest,
+    initial_state,
+    is_panorama,
+)
 from app.services.internalization_room.coverage_events import record_transitions
 
 DEFAULT_PERICOPE = "P01"
-PANORAMA_PREFIX = "OV-"
 PANORAMA_ALIAS = "OV"
 MAX_RETELLS = 3
 
-
-def is_panorama(pericope: str) -> bool:
-    """`OV-Ruth` addresses the book itself rather than one of its passages."""
-    return pericope.startswith(PANORAMA_PREFIX)
+#: Re-exported so the room's callers go on asking the session service what a panorama is.
+#: The answer moved next to the coverage spine it is really about — see `coverage`.
+__all__ = ["PANORAMA_ALIAS", "PANORAMA_PREFIX", "is_panorama"]
 
 
 def book_of(pericope: str) -> str:
@@ -125,6 +130,13 @@ async def apply_coverage(
         and session.status is IRSessionStatus.IN_PROGRESS
     ):
         session.status = IRSessionStatus.DONE
+        # The one end this schema stamps. ENG-451: a session closes either because the floor
+        # was met — an event, at an instant, written here — or because nobody came back to
+        # it, which is derived from its last activity at read time and left unwritten. The
+        # guard above is what keeps this a single instant: the classifier goes on settling
+        # whatever turns were already in flight, and a stamp on every one of them would grow
+        # the conversation's length after the team had finished.
+        session.ended_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(session)
     return session

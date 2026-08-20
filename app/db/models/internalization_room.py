@@ -60,6 +60,13 @@ class IRSession(Base):
     #: ``ir_takes``: the room tables carry ids across an app boundary and have never
     #: constrained them.
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    #: When the conversation ended, stamped only where an end actually happened — the
+    #: completion floor closing the session. A session nobody closed is not stamped here:
+    #: its end is derived from its last activity at read time, because the idle limit that
+    #: decides it is a proposal shared with the room app (ENG-435) and not yet agreed, and a
+    #: number nobody has agreed must not be frozen into rows. ``session_end.end_of`` is the
+    #: whole of the rule.
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
