@@ -17,6 +17,7 @@ from httpx import ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRTakeKind
 from app.services.device import claim_device_as_facilitator, create_device
@@ -28,7 +29,6 @@ from tests.baker import make_language, make_project, make_project_user_access, m
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
-DEVICE_CREDENTIAL_HEADER = "X-Device-Credential"
 SELF_ISSUED_DEVICE = "a" * 32
 
 
@@ -154,6 +154,7 @@ async def test_a_question_takes_its_project_from_the_session_not_from_the_device
         device_id=SELF_ISSUED_DEVICE,
         session_id=session.id,
         pericope=session.pericope,
+        project_id=session.project_id,
         audio=b"anything",
         store=MemoryStore(),
     )
@@ -170,6 +171,7 @@ async def test_a_take_takes_its_project_from_the_session(db_session):
         session_id=session.id,
         device_id=SELF_ISSUED_DEVICE,
         pericope=session.pericope,
+        project_id=session.project_id,
         kind=IRTakeKind.ENSAIO,
         scope=session.pericope,
         audio=b"audio",
@@ -203,6 +205,7 @@ async def test_a_question_from_a_session_with_no_project_has_no_project(db_sessi
         device_id=SELF_ISSUED_DEVICE,
         session_id=session.id,
         pericope=session.pericope,
+        project_id=session.project_id,
         audio=b"anything",
         store=MemoryStore(),
     )
@@ -218,6 +221,7 @@ async def test_a_take_from_a_session_with_no_project_has_no_project(db_session):
         session_id=session.id,
         device_id=SELF_ISSUED_DEVICE,
         pericope=session.pericope,
+        project_id=session.project_id,
         kind=IRTakeKind.ENSAIO,
         scope=session.pericope,
         audio=b"audio",
@@ -245,6 +249,7 @@ async def test_a_stored_take_answers_with_a_project_and_the_old_name_is_gone(db_
         session_id=session.id,
         device_id=SELF_ISSUED_DEVICE,
         pericope=session.pericope,
+        project_id=session.project_id,
         kind=IRTakeKind.ENSAIO,
         scope=session.pericope,
         audio=b"audio",
@@ -270,3 +275,97 @@ async def test_filtering_by_project_uses_the_index(db_session, table):
 
     rendered = " ".join(str(row) for row in plan)
     assert "project_id" in rendered, f"{table} filtered by project without its index: {rendered}"
+
+
+# The routes are what hand the project down now, so they are what has to be watched.
+# The services take it as an argument, which means a caller can simply not pass it —
+# and every service-level test here would still be green while production wrote nulls.
+
+
+@pytest.fixture()
+def stored_in_memory(monkeypatch: pytest.MonkeyPatch):
+    """Point both write paths at the in-memory bucket their protocols document."""
+    store = MemoryStore()
+    monkeypatch.setattr(room_questions, "_store", lambda *a, **k: store)
+    monkeypatch.setattr(room_takes, "_store", lambda *a, **k: store)
+    return store
+
+
+async def test_the_question_route_carries_the_sessions_project(
+    client, db_session, stored_in_memory
+):
+    project, credential = await a_claimed_device(db_session)
+    opened = await client.post(
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
+        json={"pericope": "OV"},
+    )
+    session_id = opened.json()["session_id"]
+
+    raised = await client.post(
+        f"{PREFIX}/questions",
+        params={"session_id": session_id},
+        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        files={"file": ("q.m4a", b"pergunta", "audio/mp4")},
+    )
+
+    assert raised.status_code == 200, raised.text
+    question = await room_questions.get_question(db_session, raised.json()["question_id"])
+    assert question.project_id == project.id
+
+
+async def test_the_take_route_carries_the_sessions_project(client, db_session, stored_in_memory):
+    project, credential = await a_claimed_device(db_session)
+    opened = await client.post(
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
+        json={"pericope": "OV"},
+    )
+    session_id = opened.json()["session_id"]
+
+    kept = await client.post(
+        f"{PREFIX}/sessions/{session_id}/takes",
+        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        data={"kind": "ensaio", "scope": "OV"},
+        files={"file": ("t.m4a", b"take", "audio/mp4")},
+    )
+
+    assert kept.status_code == 200, kept.text
+    take = await room_takes.take_by_id(db_session, kept.json()["take_id"])
+    assert take.project_id == project.id
+
+
+async def test_the_back_translation_chunk_route_carries_the_sessions_project(
+    client, db_session, stored_in_memory, monkeypatch
+):
+    """The chunk path, which is the one that runs once per stretch with the team waiting.
+
+    The take is stored before the transcriber is called, so stubbing the transcriber does
+    not stub the thing under test — it only keeps a network call out of a unit test.
+    """
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def _heard(*_a, **_k) -> str:
+        return "told back"
+
+    monkeypatch.setattr(bt_api, "heard", _heard)
+
+    project, credential = await a_claimed_device(db_session)
+    opened = await client.post(
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential},
+        json={"pericope": "OV"},
+    )
+    session_id = opened.json()["session_id"]
+
+    sent = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        data={"retelling": "false"},
+        files={"file": ("c.m4a", b"chunk", "audio/mp4")},
+    )
+
+    assert sent.status_code == 200, sent.text
+    stored = await room_takes.takes_of(db_session, session_id)
+    assert stored, "the chunk was not kept"
+    assert all(take.project_id == project.id for take in stored)
