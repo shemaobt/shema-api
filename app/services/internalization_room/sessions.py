@@ -10,6 +10,7 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import floor_met, furthest, initial_state
+from app.services.internalization_room.coverage_events import record_transitions
 
 DEFAULT_PERICOPE = "P01"
 PANORAMA_PREFIX = "OV-"
@@ -35,13 +36,24 @@ def resolve_pericope(pericope: str) -> str:
 
 
 async def create_session(
-    db: AsyncSession, *, pericope: str = DEFAULT_PERICOPE, after_panorama: bool = False
+    db: AsyncSession,
+    *,
+    pericope: str = DEFAULT_PERICOPE,
+    after_panorama: bool = False,
+    project_id: str | None = None,
 ) -> IRSession:
+    """Open a session. ``project_id`` is whose it is, when the device said so.
+
+    Null is a normal answer, not a failure. The room app identifies itself with a device
+    credential only from ENG-454 onward, and refusing a session without one would take
+    every room in the field offline to gain a column value.
+    """
     pericope = resolve_pericope(pericope)
     panorama = is_panorama(pericope)
     if not panorama:
         load_map(pericope)  # refuse unapproved or unsupported canon before a session exists
     session = IRSession(
+        project_id=project_id,
         pericope=pericope,
         status=IRSessionStatus.IN_PROGRESS,
         messages=[],
@@ -94,18 +106,19 @@ async def apply_coverage(
 ) -> IRSession:
     """Store the tracker after the off-path classifier ran.
 
-    Closes the session when the completion floor is met.
+    Closes the session when the completion floor is met, and leaves an event behind for
+    every bead that moved — the merge is compared against what is stored before anything
+    is written, so a classifier round that reports no news costs no rows.
     """
     session = await get_session(db, session_id)
     # Merged against what is stored now, not written over it. The snapshot this was
     # computed from is a Gemini round trip old, and a second turn may have settled in the
     # meantime; a blind overwrite let the older reading win and darkened a bead the team
     # had already earned.
-    session.coverage_state = furthest(
-        session.coverage_state or {},
-        coverage_state,
-        pericope_num=session.pericope,
-    )
+    kept = session.coverage_state or {}
+    settled = furthest(kept, coverage_state, pericope_num=session.pericope)
+    record_transitions(db, session, before=kept, after=settled)
+    session.coverage_state = settled
     if (
         not is_panorama(session.pericope)
         and floor_met(session.coverage_state, session.pericope)

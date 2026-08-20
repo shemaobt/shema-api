@@ -26,6 +26,15 @@ _RANK = {
 }
 
 
+def ranks() -> dict[str, int]:
+    """The scale as plain values, for a caller that has to teach it to something else.
+
+    SQL cannot order a status name — `engaged` sorts before `surfaced` — so the query that
+    rebuilds a past necklace has to be handed the order this module keeps.
+    """
+    return {status.value: rank for status, rank in _RANK.items()}
+
+
 def initial_state(pericope_num: str) -> dict[str, str]:
     return dict.fromkeys(element_keys(pericope_num), CoverageStatus.NOT_ENCOUNTERED.value)
 
