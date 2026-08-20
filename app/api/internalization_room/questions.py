@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, File, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import CurrentUser, device_dep, room_key_dep
+from app.api.facilitator._deps import FacilitatorUser
+from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.internalization_room import (
@@ -85,7 +86,7 @@ async def heard(
 
 @router.get("/facilitator/questions", response_model=OpenQuestionsResponse)
 async def open_questions(
-    user: CurrentUser, db: AsyncSession = Depends(get_db)
+    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> OpenQuestionsResponse:
     waiting = await service.open_questions(db)
     return OpenQuestionsResponse(
@@ -109,7 +110,7 @@ async def open_questions(
     response_model=None,
 )
 async def listen_to_question(
-    question_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+    question_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> RedirectResponse:
     """Redirect to a short-lived signed URL, the way the takes routes already do.
 
@@ -128,7 +129,7 @@ async def listen_to_question(
 @router.post("/facilitator/questions/{question_id}/reply")
 async def reply(
     question_id: str,
-    user: CurrentUser,
+    user: FacilitatorUser,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
@@ -142,7 +143,7 @@ async def reply(
 
 @router.post("/facilitator/questions/{question_id}/resolve")
 async def resolve(
-    question_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+    question_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
     question = await service.get_question(db, question_id)
     await service.resolve_elsewhere(db, question, answered_by=user.id)

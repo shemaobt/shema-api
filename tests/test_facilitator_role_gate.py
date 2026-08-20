@@ -261,3 +261,46 @@ def test_the_audit_covers_both_route_families():
     assert set(facilitator_routes()) <= set(_REQUESTS), (
         f"rotas fora da tabela: {set(facilitator_routes()) - set(_REQUESTS)}"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_gate_does_not_re_read_the_role_tables_on_every_request(
+    client, db_session, room_app, test_engine
+):
+    """What the gate costs, on ten routes, six of them the room's.
+
+    `require_app_access` — the gate this slice replaced — reads a user's roles once and
+    keeps them for five minutes. `require_role` asked `has_role`, which is three reads in
+    a row: the app, then the role, then the grant. Tightening the door is not a licence to
+    make every screen pay three round trips for it, and a facilitator opens screens with a
+    team waiting in the room.
+
+    Measured on the second request, so the first is allowed its cold read. What must not
+    happen is the third, and the thirtieth.
+    """
+    from sqlalchemy import event
+
+    user = await make_user(db_session, email="custo@example.com")
+    await grant_app_role(db_session, room_app, user, FACILITATOR_ROLE)
+    team = await with_a_team(db_session, user, tag="custo")
+    headers = await auth_header(db_session, user)
+    url = f"/api/facilitator/teams/{team.id}/devices"
+
+    assert (await client.get(url, headers=headers)).status_code == 200
+
+    read: list[str] = []
+
+    @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
+    def _record(conn, cursor, statement, parameters, context, executemany):
+        read.append(" ".join(statement.split()))
+
+    try:
+        assert (await client.get(url, headers=headers)).status_code == 200
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
+
+    role_tables = [s for s in read if " apps" in s or " roles" in s or "user_app_roles" in s]
+
+    assert role_tables == [], (
+        f"o portao releu as tabelas de papel numa requisicao ja autenticada: {role_tables}"
+    )

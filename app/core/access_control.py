@@ -34,6 +34,22 @@ def require_app_access(app_key: str) -> Any:
 
 
 def require_role(app_key: str, role_key: str) -> Any:
+    """Gate on one named role, off the same cached read ``require_app_access`` uses.
+
+    It asked ``has_role`` until ENG-438, which is three round trips in a row — the app,
+    then the role, then the grant — paid on **every** request, while the looser gate beside
+    it paid one every five minutes. That looser gate already reads the list this needs:
+    ``list_roles`` answers ``(app_key, role_key)`` pairs, so holding a named role is a
+    membership test on something already in hand.
+
+    The two gates now share one cache entry per user and app, which is what makes them
+    agree. A revocation still closes the door on the next request — ``grant_app_role`` and
+    ``revoke_role`` both call ``invalidate_roles``. A grant or a revocation written
+    **outside this process**, in the Tripod Console or by hand, is not seen until the entry
+    ages out. That was already true of ``require_app_access`` and is the installation's
+    standing trade; it is written down here because this is the tighter of the two gates
+    and somebody will need to know which way it fails.
+    """
 
     async def _check(
         user: User = Depends(get_current_user),
@@ -41,8 +57,11 @@ def require_role(app_key: str, role_key: str) -> Any:
     ) -> User:
         if user.is_platform_admin:
             return user
-        ok = await authorization_service.has_role(db, user.id, app_key, role_key)
-        if not ok:
+        roles = get_cached_roles(user.id, app_key)
+        if roles is None:
+            roles = await authorization_service.list_roles(db, user.id, app_key)
+            set_cached_roles(user.id, app_key, roles)
+        if (app_key, role_key) not in roles:
             raise AuthorizationError(f"Role '{role_key}' is required for this action.")
         return user
 
