@@ -64,8 +64,11 @@ class ElementLabelsBroken(Exception):
     failure.
 
     Asking for a pericope nobody has translated stays a `ValidationError`: that one really
-    is about what was asked for. Whether the route answers it 400 or something softer is
-    ENG-449's to decide; what this split guarantees is that it can tell the two apart.
+    is about what was asked for. ENG-449 decided what its route answers, and the decision was
+    **404** — the canon serves all fourteen of Ruth, so reaching P03 through the Desk's
+    selector is a well-formed request for a representation this deploy cannot produce, and
+    400 would blame the caller for our gap. What this split guarantees is that a route can
+    tell that apart from a catalogue of ours being holed, which stays a 500.
     """
 
 
