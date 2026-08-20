@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.internalization_room.canon.elements import ElementKind
@@ -51,6 +53,39 @@ class CoverageLegend(BaseModel):
 
     coverage_status: dict[str, dict[str, str]]
     element_kind: dict[str, dict[str, str]]
+
+
+class TouchedInSession(BaseModel):
+    """Which session last moved one bead, and when."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    at: datetime
+
+
+class ElementCoverage(BaseModel):
+    """One bead of a team's necklace, as the Desk reads it.
+
+    A closed contract, and `extra="forbid"` is what keeps it closed. The product forbids
+    showing a facilitator any count, percentage or ratio, so an aggregate must not be able to
+    arrive here by being passed along from somewhere that legitimately computes one.
+
+    `scene` is `None` for a preservation rule. That is not a missing value — it is the group
+    apart at the end of the necklace, the rules that must not be lost, which belong to the
+    passage rather than to any one of its scenes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label_pt: str
+    label_en: str
+    label_es: str
+    kind: ElementKind
+    scene: int | None = None
+    status: str
+    touched_in_session: TouchedInSession | None = None
 
 
 class CoverageView(BaseModel):

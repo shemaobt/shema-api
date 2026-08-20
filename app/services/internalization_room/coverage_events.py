@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
+
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,3 +98,71 @@ async def last_session_to_touch(
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+@dataclass(frozen=True)
+class BeadHistory:
+    """How far a team ever took one bead, and which of its sessions did it last."""
+
+    status: str
+    session_id: str
+    at: datetime
+
+
+async def necklace_with_touches(
+    db: AsyncSession, *, project_id: str, pericope: str
+) -> dict[str, BeadHistory]:
+    """Where a team's whole necklace stands, and who moved each bead last. One statement.
+
+    This is the only honest reading of a *team's* coverage. ``ir_sessions.coverage_state`` is
+    one session's tracker and nothing more: ``create_session`` opens every session at
+    ``initial_state``, so a bead engaged on Tuesday reads ``not_encountered`` on Wednesday's
+    session. Laying the team's events over the spine is what makes the necklace outlive the
+    conversations that strung it.
+
+    Two answers come back from one pass over the events, which is why the ranking and the
+    recency are window functions rather than two queries: the furthest status per bead, and
+    the session of that bead's most recent event. Thirty-four beads would otherwise be
+    thirty-four round trips for the same rows.
+
+    Scoped by project **and** passage. An element key belongs to the canon, not to a team —
+    two teams working Ruth both carry ``being:B3``, and Naomi appears in several passages —
+    so neither half alone names a bead. A session that never said whose it was carries a null
+    ``project_id`` and is nobody's work rather than everybody's; it is filtered out by the
+    same equality, which is the intended answer here and not a row lost in silence.
+
+    What it cannot do is see work the classifier discarded. ``classify_coverage`` reads keys
+    the prompt does not produce, so well-formed replies are dropped, no merge happens and no
+    event is written — measured in ENG-441 and left to the room line to fix. Until it is, this
+    answers a necklace that never moved, and answers it accurately.
+    """
+    furthest = func.max(case(_RANK_OF, value=IRCoverageEvent.status, else_=0)).over(
+        partition_by=IRCoverageEvent.element_key
+    )
+    recency = func.row_number().over(
+        partition_by=IRCoverageEvent.element_key,
+        order_by=(IRCoverageEvent.at.desc(), IRCoverageEvent.id.desc()),
+    )
+    walked = (
+        select(
+            IRCoverageEvent.element_key,
+            IRCoverageEvent.session_id,
+            IRCoverageEvent.at,
+            furthest.label("furthest"),
+            recency.label("recency"),
+        )
+        .where(
+            IRCoverageEvent.project_id == project_id,
+            IRCoverageEvent.pericope == pericope,
+        )
+        .subquery()
+    )
+    result = await db.execute(
+        select(walked.c.element_key, walked.c.session_id, walked.c.at, walked.c.furthest).where(
+            walked.c.recency == 1
+        )
+    )
+    return {
+        element_key: BeadHistory(status=_STATUS_AT[rank], session_id=session_id, at=at)
+        for element_key, session_id, at, rank in result.all()
+    }
