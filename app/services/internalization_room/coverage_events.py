@@ -140,11 +140,21 @@ async def furthest_by_passage(
     passage of every team on a screen — and asking it that way would be fourteen round trips
     for a facilitator with fourteen teams, on the screen that opens first.
 
-    **The ids are passed in hand and never as a subquery.** `IN (subquery)` does not use the
-    index on Postgres: measured on the facilitator scope, the planner drops
-    `ix_ir_coverage_events_element_touched` and reads eleven times the buffers to answer the
-    same rows. An empty roll is answered without asking the database anything, because
-    `IN ()` is a statement whose answer is known.
+    **The ids are passed in hand and never as a subquery.** Measured on a seeded Postgres 16 —
+    210,000 events over 200 teams, `ANALYZE`d, answering the fourteen a facilitator holds:
+
+    ==================  ==========================================  =======  =======
+    scope spelled as    plan                                        buffers  time
+    ==================  ==========================================  =======  =======
+    ids in hand         Bitmap Index Scan on the element index          461  19.9 ms
+    ``IN (subquery)``   Seq Scan over all 210,000, then a Hash Join    4567  48.7 ms
+    ==================  ==========================================  =======  =======
+
+    Same 4,900 rows out of both. The subquery form never touches
+    `ix_ir_coverage_events_element_touched` at all, and its cost is the size of the
+    *installation* rather than the size of the answer — so it works until the installation
+    grows. An empty roll is answered without asking the database anything, because `IN ()` is
+    a statement whose answer is known.
 
     **The furthest status per bead, not a count of them.** The caller compares against the
     canon's own spine, so a passage whose elements were renamed leaves events pointing at keys
