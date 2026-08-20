@@ -60,6 +60,47 @@ class CoverageLegend(BaseModel):
     element_kind: dict[str, dict[str, str]]
 
 
+class LegendName(BaseModel):
+    """One value of a closed set, named for a facilitator rather than for the database.
+
+    `value` is the enum's string and is typed `str` rather than the enum itself, which is the
+    opposite of `ElementCoverage.status` and is decided rather than inconsistent. That field
+    carries one value out of a set the response never shows, so the schema is the only place
+    the Desk could read the set off. A legend **is** the set, written out — and the loader
+    resolves every entry by walking the enum, so an enum type here would re-refuse what was
+    just accepted by construction, buying no safety for the cost of a second gate.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    label_pt: str
+    label_en: str
+    label_es: str
+
+
+class CoverageLegendResponse(BaseModel):
+    """The coverage states and the element kinds, named once for the whole Desk.
+
+    A list and not a map, because a legend is read in order: `not_encountered → surfaced →
+    engaged` is the way a bead travels, and the kinds are the canon's own grouping. The order
+    is the enums' declaration order, which `legend()` already walks — serving a map would
+    hand the client an arrangement to make a second time, and ENG-462 is the record of what
+    that costs.
+
+    The three languages are named fields rather than a map keyed by language, which is the
+    shape `ElementCoverage` already promises the Desk for a bead. A legend entry read as
+    `entry["pt"]` beside a bead read as `label_pt` would be two shapes for one thing on one
+    screen. `CoverageLegend` — the loader's own answer — keeps the map, because that is the
+    catalogue's shape and a fourth language there costs a catalogue entry and nothing else.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_status: list[LegendName]
+    element_kind: list[LegendName]
+
+
 class CoverageView(BaseModel):
     engaged: int
     surfaced: int
