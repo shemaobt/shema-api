@@ -30,6 +30,18 @@ from app.core.database import Base
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PREVIOUS_REVISION = "20260812_0001"
+
+#: The tip of the device chain, named rather than asked for as "head".
+#:
+#: While the internalization-room line is unmerged, the two lines both descend from
+#: PREVIOUS_REVISION, so the tree has two heads and ``alembic upgrade head`` refuses to
+#: guess between them. Naming this one keeps these tests about the device migrations and
+#: nothing else. It stops being necessary when the two lines meet on main and this chain
+#: rebases onto the room chain's tip — the second head goes away with the rebase.
+DEVICE_CHAIN_HEAD = "20260819_0001"
+
+#: The migration these tests are actually about: the one that creates the table.
+DEVICE_TABLE_REVISION = "20260817_0001"
 NEW_TABLE = "devices"
 
 
@@ -145,7 +157,7 @@ async def stamped_database(tmp_path) -> str:
 async def test_migration_upgrade_adds_the_table_and_downgrade_removes_it(stamped_database):
     assert NEW_TABLE not in await _table_names(stamped_database)
 
-    up = _run_alembic(stamped_database, "upgrade", "head")
+    up = _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
     assert up.returncode == 0, up.stderr
     assert NEW_TABLE in await _table_names(stamped_database)
 
@@ -153,7 +165,7 @@ async def test_migration_upgrade_adds_the_table_and_downgrade_removes_it(stamped
     assert down.returncode == 0, down.stderr
     assert NEW_TABLE not in await _table_names(stamped_database)
 
-    again = _run_alembic(stamped_database, "upgrade", "head")
+    again = _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
     assert again.returncode == 0, again.stderr
     assert NEW_TABLE in await _table_names(stamped_database)
 
@@ -163,13 +175,13 @@ async def test_migration_round_trip_leaves_everything_outside_the_new_table_unch
 ):
     before = await _schema_outside_the_new_table(stamped_database)
 
-    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
     after_upgrade = await _schema_outside_the_new_table(stamped_database)
 
     assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
     after_downgrade = await _schema_outside_the_new_table(stamped_database)
 
-    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
     after_reupgrade = await _schema_outside_the_new_table(stamped_database)
 
     assert after_upgrade == before
@@ -181,9 +193,9 @@ async def test_migration_round_trip_leaves_existing_rows_intact(stamped_database
     before = await _project_ids(stamped_database)
     assert before
 
-    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
     assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
 
     assert await _project_ids(stamped_database) == before
 
@@ -192,7 +204,7 @@ async def test_migration_builds_the_table_the_model_declares(stamped_database):
     """CLAUDE.md §4 forbids schema changes outside Alembic, which only means anything
     if the migration and the model agree. A model the migration does not build is a
     schema change that happened outside Alembic by omission."""
-    assert _run_alembic(stamped_database, "upgrade", "head").returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
 
     migrated_columns, migrated_indexes = await _migrated_shape(stamped_database)
     model = Base.metadata.tables[NEW_TABLE]
@@ -204,18 +216,24 @@ async def test_migration_builds_the_table_the_model_declares(stamped_database):
 async def test_migration_never_names_the_internalization_room_tables():
     """The IR half of the issue's clause, in the only form this branch can assert.
 
-    ``ir_questions`` and ``ir_takes`` are not on ``main``, so "their ``device_id``
-    values are untouched" cannot be run here. What can be checked is that the
-    migration never names them at all. The wider claim — that nothing outside the new
-    table changes — is what the round-trip test above runs.
+    This migration was written against a branch where ``ir_questions`` and ``ir_takes``
+    did not exist, so "their ``device_id`` values are untouched" could not be run at all.
+    Where the two lines are joined the tables are present and the assertion is worth more
+    than it was: the migration still never names them. The wider claim — that nothing
+    outside the new table changes — is what the round-trip test above runs.
+
+    The migration under test is found by its own revision id. Looking for whatever
+    descends from ``PREVIOUS_REVISION`` used to identify it and no longer does: the room
+    line starts from the same parent, so that search finds two files and neither is
+    necessarily this one.
     """
     versions = REPO_ROOT / "alembic" / "versions"
     new_migrations = [
         path
         for path in versions.glob("*.py")
-        if f'down_revision: str | None = "{PREVIOUS_REVISION}"' in path.read_text()
+        if f'revision: str = "{DEVICE_TABLE_REVISION}"' in path.read_text()
     ]
-    assert len(new_migrations) == 1, "expected exactly one migration on top of the head"
+    assert len(new_migrations) == 1, f"expected exactly one {DEVICE_TABLE_REVISION}"
 
     source = new_migrations[0].read_text()
     operative = source.split('"""', 2)[-1]
