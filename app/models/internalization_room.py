@@ -14,6 +14,32 @@ class FacilitatorSpeakResponse(BaseModel):
     cached: bool = False
 
 
+class LabelledElement(BaseModel):
+    """One bead, named in each language the Desk offers.
+
+    `key` is unique only within its pericope: `scene:1` is a different scene in every
+    passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
+    """
+
+    key: str
+    kind: str
+    scene: int | None = None
+    label_pt: str
+    label_en: str
+    label_es: str
+
+
+class CoverageLegend(BaseModel):
+    """The names of the coverage states and the element kinds, once per response.
+
+    Each entry maps a language code to the text, so a fourth language is a catalogue change
+    rather than a field on every row.
+    """
+
+    coverage_status: dict[str, dict[str, str]]
+    element_kind: dict[str, dict[str, str]]
+
+
 class CoverageView(BaseModel):
     engaged: int
     surfaced: int

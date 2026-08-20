@@ -1,0 +1,61 @@
+{
+  "coverage_status": {
+    "not_encountered": {
+      "pt": "Não encontrado",
+      "en": "Not encountered",
+      "es": "No encontrado"
+    },
+    "surfaced": {
+      "pt": "Mencionado",
+      "en": "Surfaced",
+      "es": "Mencionado"
+    },
+    "partially_engaged": {
+      "pt": "Trabalhado em parte",
+      "en": "Partly engaged",
+      "es": "Trabajado en parte"
+    },
+    "engaged": {
+      "pt": "Trabalhado",
+      "en": "Engaged",
+      "es": "Trabajado"
+    }
+  },
+  "element_kind": {
+    "scene": {
+      "pt": "Cena",
+      "en": "Scene",
+      "es": "Escena"
+    },
+    "being": {
+      "pt": "Ser",
+      "en": "Being",
+      "es": "Ser"
+    },
+    "place": {
+      "pt": "Lugar",
+      "en": "Place",
+      "es": "Lugar"
+    },
+    "object": {
+      "pt": "Objeto",
+      "en": "Object",
+      "es": "Objeto"
+    },
+    "time": {
+      "pt": "Tempo",
+      "en": "Time",
+      "es": "Tiempo"
+    },
+    "absence": {
+      "pt": "Ausência significativa",
+      "en": "Significant absence",
+      "es": "Ausencia significativa"
+    },
+    "preserved": {
+      "pt": "Elemento preservado",
+      "en": "Preserved element",
+      "es": "Elemento preservado"
+    }
+  }
+}

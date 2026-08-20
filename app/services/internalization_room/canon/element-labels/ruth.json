@@ -1,0 +1,495 @@
+{
+  "P01": {
+    "scene:1": {
+      "pt": "Fome e ida para Moabe",
+      "en": "Famine and exile to Moab",
+      "es": "Hambre y salida a Moab"
+    },
+    "being:B2": {
+      "pt": "Elimeleque",
+      "en": "Elimelech",
+      "es": "Elimélec"
+    },
+    "being:B3": {
+      "pt": "Noemi",
+      "en": "Naomi",
+      "es": "Noemí"
+    },
+    "being:B4": {
+      "pt": "Malom",
+      "en": "Mahlon",
+      "es": "Mahlón"
+    },
+    "being:B5": {
+      "pt": "Quiliom",
+      "en": "Chilion",
+      "es": "Quelión"
+    },
+    "being:B1": {
+      "pt": "Os juízes",
+      "en": "The judges",
+      "es": "Los jueces"
+    },
+    "being:B6": {
+      "pt": "Efrateus",
+      "en": "Ephrathites",
+      "es": "Efrateos"
+    },
+    "place:PL1": {
+      "pt": "Belém de Judá",
+      "en": "Bethlehem of Judah",
+      "es": "Belén de Judá"
+    },
+    "place:PL2": {
+      "pt": "Os campos de Moabe",
+      "en": "The fields of Moab",
+      "es": "Los campos de Moab"
+    },
+    "place:PL_LAND_OF_JUDAH": {
+      "pt": "A terra",
+      "en": "The land",
+      "es": "La tierra"
+    },
+    "object:O1": {
+      "pt": "A fome",
+      "en": "The famine",
+      "es": "El hambre"
+    },
+    "object:CB_0030": {
+      "pt": "Morar como estrangeiro",
+      "en": "Living as a foreigner",
+      "es": "Vivir como extranjero"
+    },
+    "time:TM_PERIOD_OF_JUDGES": {
+      "pt": "Os dias dos juízes",
+      "en": "The days of the judges",
+      "es": "Los días de los jueces"
+    },
+    "absence:1": {
+      "pt": "Nenhuma palavra de Deus agindo",
+      "en": "No word of God acting",
+      "es": "Ninguna palabra de Dios actuando"
+    },
+    "scene:2": {
+      "pt": "A morte de Elimeleque",
+      "en": "The death of Elimelech",
+      "es": "La muerte de Elimélec"
+    },
+    "absence:2": {
+      "pt": "Uma morte sem causa e sem luto",
+      "en": "A death with no cause and no grief",
+      "es": "Una muerte sin causa y sin duelo"
+    },
+    "scene:3": {
+      "pt": "Casamentos, e dez anos se passam",
+      "en": "Marriages, and ten years pass",
+      "es": "Bodas, y pasan diez años"
+    },
+    "being:B7": {
+      "pt": "As mulheres moabitas",
+      "en": "The women of Moab",
+      "es": "Las mujeres moabitas"
+    },
+    "being:B8": {
+      "pt": "Orfa",
+      "en": "Orpah",
+      "es": "Orfa"
+    },
+    "being:B9": {
+      "pt": "Rute",
+      "en": "Ruth",
+      "es": "Rut"
+    },
+    "object:TH_TEN_YEARS_APPROXIMATELY": {
+      "pt": "Cerca de dez anos",
+      "en": "About ten years",
+      "es": "Unos diez años"
+    },
+    "absence:3": {
+      "pt": "Dez anos e nenhum filho",
+      "en": "Ten years and no child",
+      "es": "Diez años y ningún hijo"
+    },
+    "scene:4": {
+      "pt": "A morte dos filhos",
+      "en": "The deaths of the sons",
+      "es": "La muerte de los hijos"
+    },
+    "absence:4": {
+      "pt": "A linhagem para, e ninguém chora",
+      "en": "The line stops, and no one mourns",
+      "es": "El linaje se detiene, y nadie llora"
+    },
+    "preserved:R3": {
+      "pt": "As mesmas palavras nas duas mortes",
+      "en": "The same words for both deaths",
+      "es": "Las mismas palabras en ambas muertes"
+    },
+    "preserved:R5": {
+      "pt": "As perdas ditas de um fôlego, os filhos primeiro",
+      "en": "The losses named in one breath, children first",
+      "es": "Las pérdidas dichas de un aliento, los hijos primero"
+    },
+    "preserved:R6": {
+      "pt": "Deus nunca é nomeado como causa",
+      "en": "God is never named as the cause",
+      "es": "Dios nunca es nombrado como causa"
+    },
+    "preserved:R7": {
+      "pt": "Nenhum luto é acrescentado onde o texto cala",
+      "en": "No grief is added where the text is silent",
+      "es": "No se añade duelo donde el texto calla"
+    },
+    "preserved:R10": {
+      "pt": "Não se diz qual esposa é de qual filho",
+      "en": "Which wife married which son is withheld",
+      "es": "No se dice cuál esposa es de cuál hijo"
+    }
+  },
+  "P02": {
+    "scene:1": {
+      "pt": "Ouvir a notícia e pôr-se a caminho",
+      "en": "Hearing the news, and setting out",
+      "es": "Oír la noticia y ponerse en camino"
+    },
+    "being:B3": {
+      "pt": "Noemi",
+      "en": "Naomi",
+      "es": "Noemí"
+    },
+    "being:B8": {
+      "pt": "Orfa",
+      "en": "Orpah",
+      "es": "Orfa"
+    },
+    "being:B9": {
+      "pt": "Rute",
+      "en": "Ruth",
+      "es": "Rut"
+    },
+    "being:B10": {
+      "pt": "YHWH",
+      "en": "YHWH",
+      "es": "YHWH"
+    },
+    "being:B31": {
+      "pt": "O seu povo",
+      "en": "His people",
+      "es": "Su pueblo"
+    },
+    "place:PL2": {
+      "pt": "Os campos de Moabe",
+      "en": "The fields of Moab",
+      "es": "Los campos de Moab"
+    },
+    "place:PL_LAND_OF_JUDAH": {
+      "pt": "A terra de Judá",
+      "en": "The land of Judah",
+      "es": "La tierra de Judá"
+    },
+    "place:the-road": {
+      "pt": "O caminho",
+      "en": "The road",
+      "es": "El camino"
+    },
+    "object:CB_0012": {
+      "pt": "O pão",
+      "en": "Bread",
+      "es": "El pan"
+    },
+    "absence:1": {
+      "pt": "Deus dá pão; Noemi se levanta por si",
+      "en": "God gives bread; Naomi gets up on her own",
+      "es": "Dios da pan; Noemí se levanta por sí misma"
+    },
+    "scene:2": {
+      "pt": "O primeiro apelo e a recusa",
+      "en": "The first appeal, and the refusal",
+      "es": "La primera súplica y la negativa"
+    },
+    "being:B2": {
+      "pt": "Os mortos — Elimeleque, Malom e Quiliom",
+      "en": "The dead — Elimelech, Mahlon and Chilion",
+      "es": "Los muertos — Elimélec, Mahlón y Quelión"
+    },
+    "place:PL_EACH_HER_MOTHERS_HOUSE": {
+      "pt": "Cada uma à casa de sua mãe",
+      "en": "Each to her mother's house",
+      "es": "Cada una a la casa de su madre"
+    },
+    "object:CB_0011": {
+      "pt": "Hesed",
+      "en": "Hesed",
+      "es": "Hesed"
+    },
+    "object:CB_0008": {
+      "pt": "A bênção",
+      "en": "The blessing",
+      "es": "La bendición"
+    },
+    "object:CB_0014": {
+      "pt": "O descanso",
+      "en": "Rest",
+      "es": "El descanso"
+    },
+    "absence:2": {
+      "pt": "A bondade é suposta, nunca contada",
+      "en": "The kindness is assumed, never told",
+      "es": "La bondad se supone, nunca se cuenta"
+    },
+    "scene:3": {
+      "pt": "O segundo apelo e a separação",
+      "en": "The second appeal, and the parting",
+      "es": "La segunda súplica y la separación"
+    },
+    "absence:3": {
+      "pt": "Orfa volta atrás, e ninguém responde a Noemi",
+      "en": "Orpah turns back, and no one answers Naomi",
+      "es": "Orfa se vuelve, y nadie responde a Noemí"
+    },
+    "preserved:R1": {
+      "pt": "Deus age aqui pela primeira vez",
+      "en": "God acts here for the first time",
+      "es": "Dios actúa aquí por primera vez"
+    },
+    "preserved:R3": {
+      "pt": "Noemi nomeia YHWH como quem está contra ela",
+      "en": "Naomi names YHWH as the one against her",
+      "es": "Noemí nombra a YHWH como quien está contra ella"
+    },
+    "preserved:R5": {
+      "pt": "Ainda não se diz qual esposa é de qual filho",
+      "en": "Which wife married which son is still withheld",
+      "es": "Aún no se dice cuál esposa es de cuál hijo"
+    },
+    "preserved:R14": {
+      "pt": "Dois gestos num versículo, e os caminhos se separam",
+      "en": "Two acts on one verse, and the paths divide",
+      "es": "Dos gestos en un versículo, y los caminos se separan"
+    }
+  },
+  "P05": {
+    "scene:1": {
+      "pt": "O narrador apresenta Boaz",
+      "en": "The narrator introduces Boaz",
+      "es": "El narrador presenta a Booz"
+    },
+    "being:B13": {
+      "pt": "Boaz",
+      "en": "Boaz",
+      "es": "Booz"
+    },
+    "being:B3": {
+      "pt": "Noemi",
+      "en": "Naomi",
+      "es": "Noemí"
+    },
+    "being:B2": {
+      "pt": "Elimeleque",
+      "en": "Elimelech",
+      "es": "Elimélec"
+    },
+    "being:B29": {
+      "pt": "A família de Elimeleque",
+      "en": "The clan of Elimelech",
+      "es": "La familia de Elimélec"
+    },
+    "object:CB_0032": {
+      "pt": "Chayil",
+      "en": "Chayil",
+      "es": "Chayil"
+    },
+    "absence:1": {
+      "pt": "Boaz é nomeado, e nada mais",
+      "en": "Boaz is named, and nothing more",
+      "es": "Booz es nombrado, y nada más"
+    },
+    "scene:2": {
+      "pt": "Rute pede para ir respigar",
+      "en": "Ruth asks to go and glean",
+      "es": "Rut pide ir a espigar"
+    },
+    "being:B9": {
+      "pt": "Rute, a moabita",
+      "en": "Ruth the Moabitess",
+      "es": "Rut, la moabita"
+    },
+    "place:PL_NAOMIS_DWELLING": {
+      "pt": "Onde Noemi está morando",
+      "en": "Where Naomi is staying",
+      "es": "Donde vive Noemí"
+    },
+    "place:the-field-the-place-she-means-to": {
+      "pt": "O campo aonde ela quer ir",
+      "en": "The field she means to go to",
+      "es": "El campo adonde ella quiere ir"
+    },
+    "object:CB_0033": {
+      "pt": "O favor",
+      "en": "Favor",
+      "es": "El favor"
+    },
+    "object:CB_0034": {
+      "pt": "A respiga",
+      "en": "Gleaning",
+      "es": "El espigueo"
+    },
+    "absence:2": {
+      "pt": "Noemi não aponta campo nem parente",
+      "en": "Naomi names no field, and no kinsman",
+      "es": "Noemí no señala campo ni pariente"
+    },
+    "scene:3": {
+      "pt": "Ela chega por acaso à parte de Boaz",
+      "en": "She comes by chance to Boaz's portion",
+      "es": "Llega por azar a la parcela de Booz"
+    },
+    "being:B14": {
+      "pt": "Os ceifeiros",
+      "en": "The harvesters",
+      "es": "Los segadores"
+    },
+    "being:B10": {
+      "pt": "YHWH",
+      "en": "YHWH",
+      "es": "YHWH"
+    },
+    "place:PL5": {
+      "pt": "O campo",
+      "en": "The field",
+      "es": "El campo"
+    },
+    "place:PL5_BOAZ_PORTION": {
+      "pt": "A parte do campo que é de Boaz",
+      "en": "Boaz's portion of the field",
+      "es": "La parcela del campo que es de Booz"
+    },
+    "place:PL1": {
+      "pt": "Belém",
+      "en": "Bethlehem",
+      "es": "Belén"
+    },
+    "object:CB_0035": {
+      "pt": "O acaso",
+      "en": "Chance",
+      "es": "El azar"
+    },
+    "object:CB_0008": {
+      "pt": "A bênção",
+      "en": "The blessing",
+      "es": "La bendición"
+    },
+    "absence:3": {
+      "pt": "Ninguém diz que Deus a levou ali",
+      "en": "No one says God led her there",
+      "es": "Nadie dice que Dios la llevó allí"
+    },
+    "scene:4": {
+      "pt": "Boaz pergunta, e o capataz responde",
+      "en": "Boaz asks, and the foreman answers",
+      "es": "Booz pregunta, y el capataz responde"
+    },
+    "being:B15": {
+      "pt": "O encarregado dos ceifeiros",
+      "en": "The man set over the harvesters",
+      "es": "El encargado de los segadores"
+    },
+    "place:PL2": {
+      "pt": "Os campos de Moabe, mencionados",
+      "en": "The fields of Moab, spoken of",
+      "es": "Los campos de Moab, mencionados"
+    },
+    "place:PL_HA_BAYIT_FIELD_SHELTER": {
+      "pt": "O abrigo do campo",
+      "en": "The shelter at the field",
+      "es": "El cobertizo del campo"
+    },
+    "object:from-morning-until-now-how-long-": {
+      "pt": "Desde a manhã até agora",
+      "en": "From morning until now",
+      "es": "Desde la mañana hasta ahora"
+    },
+    "absence:4": {
+      "pt": "O capataz nunca diz o nome dela",
+      "en": "The foreman never says her name",
+      "es": "El capataz nunca dice su nombre"
+    },
+    "preserved:R3": {
+      "pt": "A plateia conhece Boaz; Noemi não o nomeia",
+      "en": "The audience knows Boaz; Naomi does not say him",
+      "es": "El público conoce a Booz; Noemí no lo nombra"
+    },
+    "preserved:R4": {
+      "pt": "Acaso ou providência — o texto não diz",
+      "en": "Chance or providence — the text will not say",
+      "es": "Azar o providencia — el texto no lo dice"
+    },
+    "preserved:R10": {
+      "pt": "Na boca do capataz ela é a moabita, não Rute",
+      "en": "On the foreman's lips she is the Moabite, not Ruth",
+      "es": "En boca del capataz ella es la moabita, no Rut"
+    },
+    "preserved:R12": {
+      "pt": "Boaz pergunta, e nada se diz do que ele sente",
+      "en": "Boaz asks, and nothing is said of what he feels",
+      "es": "Booz pregunta, y nada se dice de lo que siente"
+    },
+    "preserved:R13": {
+      "pt": "Quanto ela descansou é incerto, e assim fica",
+      "en": "How long she rested is uncertain, and stays uncertain",
+      "es": "Cuánto descansó es incierto, y así queda"
+    }
+  },
+  "P14": {
+    "scene:1": {
+      "pt": "As gerações de Perez",
+      "en": "The generations of Perez",
+      "es": "Las generaciones de Fares"
+    },
+    "being:B27": {
+      "pt": "Perez, Hezrom, Rão, Aminadabe, Naassom, Salmom",
+      "en": "Perez, Hezron, Ram, Amminadab, Nahshon, Salmon",
+      "es": "Fares, Hezrón, Ram, Aminadab, Naasón, Salmón"
+    },
+    "being:B13": {
+      "pt": "Boaz",
+      "en": "Boaz",
+      "es": "Booz"
+    },
+    "being:B25": {
+      "pt": "Obede",
+      "en": "Obed",
+      "es": "Obed"
+    },
+    "being:B26": {
+      "pt": "Jessé e Davi",
+      "en": "Jesse and David",
+      "es": "Isaí y David"
+    },
+    "object:CB_0049": {
+      "pt": "As gerações de Perez",
+      "en": "The generations of Perez",
+      "es": "Las generaciones de Fares"
+    },
+    "object:CB_0005": {
+      "pt": "A linha dos nomes",
+      "en": "The line of names",
+      "es": "La línea de los nombres"
+    },
+    "object:CB_0047": {
+      "pt": "Obede",
+      "en": "Obed",
+      "es": "Obed"
+    },
+    "object:CB_0048": {
+      "pt": "Davi",
+      "en": "David",
+      "es": "David"
+    },
+    "absence:1": {
+      "pt": "Nenhuma mãe é nomeada, e Davi não recebe comentário",
+      "en": "No mother is named, and David gets no comment",
+      "es": "No se nombra a ninguna madre, y de David no se dice nada"
+    }
+  }
+}
