@@ -357,6 +357,26 @@ async def test_a_question_belonging_to_no_team_reaches_nobody(client, db_session
 
 
 @pytest.mark.asyncio
+async def test_a_facilitator_with_no_teams_reads_an_empty_inbox(client, db_session):
+    """The fourth shape the restriction takes, and it has to close rather than open.
+
+    A facilitator who has not been assigned a team yet is an ordinary state, not an error —
+    it is what the Desk draws its "talk to administration" screen from. The scope is then an
+    empty list, and an empty list is the one that reads like "no restriction" to whoever
+    writes the next branch. It has to mean the opposite.
+    """
+    team = await a_team(db_session, name="Equipe Terena")
+    await a_hand(db_session, team)
+    unassigned = await make_user(db_session, email="sem-equipe@example.com")
+    await grant_facilitator_app_role(db_session, unassigned.id)
+
+    payload = await read(client, await auth_header(db_session, unassigned))
+
+    assert ids(payload) == []
+    assert payload["open_total"] == 0
+
+
+@pytest.mark.asyncio
 async def test_a_platform_admin_reads_every_team(client, db_session):
     """As on every other facilitator route: they already hold every other power here, and
     scoping the one person able to investigate an installation to nothing leaves nobody
