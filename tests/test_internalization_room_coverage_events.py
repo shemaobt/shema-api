@@ -5,8 +5,12 @@ which session moved a bead, or what the necklace looked like while an earlier se
 still running. `ir_coverage_events` is that history.
 
 The state stays the fast read. These tests never ask the events for the current state of a
-running session — they ask them for what a past session left behind, and for who touched an
-element last, which is what the Desk's element list and session cards need.
+running session — they ask them for what a past session left behind, and for where a team's
+whole necklace stands, which is what the Desk's element list and session cards need.
+
+Behaviour 5 was written against `last_session_to_touch`, which answered one bead per round
+trip. ENG-449 replaced it with `necklace_with_touches`, which answers the whole necklace in
+one statement, and these moved to the successor rather than being deleted with it.
 """
 
 from collections.abc import Sequence
@@ -19,8 +23,8 @@ from app.services.internalization_room import sessions as service
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus, furthest
 from app.services.internalization_room.coverage_events import (
-    last_session_to_touch,
     necklace_of,
+    necklace_with_touches,
     record_transitions,
 )
 
@@ -160,22 +164,6 @@ async def test_the_two_sources_agree_on_the_most_recent_session(db_session: Asyn
     assert await necklace_of(db_session, session) == session.coverage_state
 
 
-async def test_the_last_session_to_touch_an_element(db_session: AsyncSession) -> None:
-    """Behaviour 5 — the element list asks who moved this bead, and gets one answer."""
-    keys = element_keys(P)
-    earlier = await service.create_session(db_session, pericope=P, project_id="project-a")
-    await service.apply_coverage(db_session, earlier.id, {keys[0]: SURFACED})
-
-    later = await service.create_session(db_session, pericope=P, project_id="project-a")
-    await service.apply_coverage(db_session, later.id, {keys[0]: ENGAGED})
-
-    touched_by = await last_session_to_touch(
-        db_session, project_id="project-a", pericope=P, element_key=keys[0]
-    )
-
-    assert touched_by == later.id
-
-
 async def test_another_project_working_the_same_passage_is_not_the_answer(
     db_session: AsyncSession,
 ) -> None:
@@ -191,26 +179,26 @@ async def test_another_project_working_the_same_passage_is_not_the_answer(
     theirs = await service.create_session(db_session, pericope=P, project_id="project-b")
     await service.apply_coverage(db_session, theirs.id, {keys[0]: ENGAGED})
 
-    assert (
-        await last_session_to_touch(
-            db_session, project_id="project-a", pericope=P, element_key=keys[0]
-        )
-        == ours.id
-    )
+    ours_only = await necklace_with_touches(db_session, project_id="project-a", pericope=P)
+
+    assert ours_only[keys[0]].session_id == ours.id
+    assert theirs.id != ours.id
 
 
 async def test_an_untouched_element_has_touched_by_nobody(db_session: AsyncSession) -> None:
-    """Behaviour 5 — a bead nobody has worked yet answers with nothing, not with a guess."""
+    """Behaviour 5 — a bead nobody has worked yet is absent, rather than guessed at.
+
+    The reconstruction lays what came back over the untouched spine, so a bead with no events
+    has to be missing from the answer rather than present with an invented status.
+    """
     keys = element_keys(P)
     session = await service.create_session(db_session, pericope=P, project_id="project-a")
     await service.apply_coverage(db_session, session.id, {keys[0]: ENGAGED})
 
-    assert (
-        await last_session_to_touch(
-            db_session, project_id="project-a", pericope=P, element_key=keys[1]
-        )
-        is None
-    )
+    walked = await necklace_with_touches(db_session, project_id="project-a", pericope=P)
+
+    assert keys[0] in walked
+    assert keys[1] not in walked
 
 
 async def test_two_settles_that_read_the_same_state_do_not_lose_a_merge(

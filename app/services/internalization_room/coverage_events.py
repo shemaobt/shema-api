@@ -74,32 +74,6 @@ async def necklace_of(db: AsyncSession, session: IRSession) -> dict[str, str]:
     return state
 
 
-async def last_session_to_touch(
-    db: AsyncSession,
-    *,
-    project_id: str | None,
-    pericope: str,
-    element_key: str,
-) -> str | None:
-    """Which session last moved one bead, or nothing if none ever did.
-
-    Scoped by project and passage because an element key is the canon's, not a project's:
-    two teams working Ruth carry the same ``being:B3``, and answering without saying whose
-    bead it is hands one team the other team's session.
-    """
-    result = await db.execute(
-        select(IRCoverageEvent.session_id)
-        .where(
-            IRCoverageEvent.project_id == project_id,
-            IRCoverageEvent.pericope == pericope,
-            IRCoverageEvent.element_key == element_key,
-        )
-        .order_by(IRCoverageEvent.at.desc(), IRCoverageEvent.id.desc())
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
-
-
 @dataclass(frozen=True)
 class BeadHistory:
     """How far a team ever took one bead, and which of its sessions did it last."""
