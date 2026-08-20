@@ -11,10 +11,6 @@ element last, which is what the Desk's element list and session cards need.
 
 from collections.abc import Sequence
 
-from app.services.internalization_room.coverage_events import (
-    last_session_to_touch,
-    necklace_of,
-)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +18,10 @@ from app.db.models.internalization_room import IRCoverageEvent
 from app.services.internalization_room import sessions as service
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
+from app.services.internalization_room.coverage_events import (
+    last_session_to_touch,
+    necklace_of,
+)
 
 P = "P03"
 SURFACED = CoverageStatus.SURFACED.value
