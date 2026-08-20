@@ -7,11 +7,9 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRCoverageEvent, IRSession
-from app.services.internalization_room.coverage import CoverageStatus, initial_state, ranks
+from app.services.internalization_room.coverage import CoverageStatus, ranks
 
 _RANK_OF = ranks()
-_STATUS_AT = {rank: status for status, rank in _RANK_OF.items()}
-_FURTHEST_RANK = func.max(case(_RANK_OF, value=IRCoverageEvent.status, else_=0))
 
 
 def record_transitions(
@@ -45,33 +43,6 @@ def record_transitions(
     ]
     db.add_all(events)
     return events
-
-
-async def necklace_of(db: AsyncSession, session: IRSession) -> dict[str, str]:
-    """Where every bead of a session's spine stood when that session ended.
-
-    For a session still running, read ``coverage_state`` instead: it is the same answer
-    without the query, and keeping it the fast read is what keeps this table history
-    rather than the source of truth.
-
-    One statement. The furthest status per element is taken by the database — the scale
-    lives in ``coverage.ranks()`` and is handed to SQL as the case that orders it, because
-    a status name sorts alphabetically and ``engaged`` would lose to ``surfaced``. What
-    comes back is one row per bead that moved, laid over the untouched spine.
-
-    A panorama session has no spine and no coverage; asking it for a necklace raises, from
-    the canon, the same way every other route into a map that does not exist does.
-    """
-    result = await db.execute(
-        select(IRCoverageEvent.element_key, _FURTHEST_RANK)
-        .where(IRCoverageEvent.session_id == session.id)
-        .group_by(IRCoverageEvent.element_key)
-    )
-    state = initial_state(session.pericope)
-    for element_key, rank in result.all():
-        if element_key in state:
-            state[element_key] = _STATUS_AT[rank]
-    return state
 
 
 @dataclass(frozen=True)
