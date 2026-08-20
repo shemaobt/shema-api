@@ -127,14 +127,6 @@ async def _indexes(database_url: str, table: str) -> set[str]:
     return {index["name"] for index in indexes}
 
 
-async def _unique_constraints(database_url: str, table: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        constraints = await conn.run_sync(lambda sync: inspect(sync).get_unique_constraints(table))
-    await engine.dispose()
-    return {constraint["name"] for constraint in constraints}
-
-
 async def _schema_outside_the_events_table(database_url: str) -> set[tuple[str, str, str]]:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
@@ -276,5 +268,7 @@ async def test_the_migration_creates_the_indexes_the_query_plans_need(applied_da
     assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
     assert _run_alembic(url, "upgrade", REVISION).returncode == 0
 
-    assert "ix_ir_coverage_events_element_touched" in await _indexes(url, TABLE)
-    assert "uq_ir_coverage_events_step" in await _unique_constraints(url, TABLE)
+    assert await _indexes(url, TABLE) >= {
+        "ix_ir_coverage_events_step",
+        "ix_ir_coverage_events_element_touched",
+    }

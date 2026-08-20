@@ -13,9 +13,15 @@ get.
 
 **One row per transition, not per turn.** The classifier runs after every turn and mostly
 reports beads that are already where it says. The service compares before writing, so a
-session of forty turns that moved six beads leaves six rows. The unique constraint is the
-same rule as a shape the database can hold: coverage only moves forward, so a session
-reaches a given status on a given bead exactly once.
+session of forty turns that moved six beads leaves six rows.
+
+**The step is indexed, not made unique, and that is on purpose.** Coverage only moves
+forward, so a session reaches a given status on a given bead once — but two turns
+overlapping is ordinary, and each settle runs in its own transaction. Both can read the
+same tracker and write the same step. A unique constraint would refuse the second one and
+roll back that whole settle, losing the beads only it heard, at the exact moment
+``furthest`` exists to absorb. A repeated row costs a row and is invisible to a
+reconstruction that takes the furthest status per bead.
 
 **``project_id`` and ``pericope`` are copied from the session.** Element keys come from the
 canon — ``being:B3`` is Naomi in every project that works this passage, and repeats across
@@ -74,7 +80,8 @@ depends_on = None
 
 
 TABLE = "ir_coverage_events"
-INDEX = "ix_ir_coverage_events_element_touched"
+STEP_INDEX = "ix_ir_coverage_events_step"
+TOUCHED_INDEX = "ix_ir_coverage_events_element_touched"
 UNTOUCHED = "not_encountered"
 
 
@@ -128,14 +135,13 @@ def upgrade() -> None:
         sa.Column("element_key", sa.String(120), nullable=False),
         sa.Column("status", sa.String(32), nullable=False),
         sa.Column("at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.UniqueConstraint(
-            "session_id", "element_key", "status", name="uq_ir_coverage_events_step"
-        ),
     )
-    op.create_index(INDEX, TABLE, ["project_id", "pericope", "element_key", "at"])
+    op.create_index(STEP_INDEX, TABLE, ["session_id", "element_key", "status"])
+    op.create_index(TOUCHED_INDEX, TABLE, ["project_id", "pericope", "element_key", "at"])
     _backfill()
 
 
 def downgrade() -> None:
-    op.drop_index(INDEX, table_name=TABLE)
+    op.drop_index(TOUCHED_INDEX, table_name=TABLE)
+    op.drop_index(STEP_INDEX, table_name=TABLE)
     op.drop_table(TABLE)

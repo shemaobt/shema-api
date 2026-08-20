@@ -84,9 +84,14 @@ class IRCoverageEvent(Base):
     stores. A database enum here would give one scale two spellings, and a type to migrate
     on both sides every time the scale grows a step.
 
-    The unique constraint is the monotonic rule written down: coverage only moves forward,
-    so a session reaches a given status on a given bead exactly once. Its index is also
-    what makes rebuilding one session's necklace a lookup rather than a scan.
+    That a session reaches a given status on a given bead once is the rule the service
+    keeps, and deliberately not a unique constraint. Two turns overlapping is ordinary —
+    the classifier for one turn is still on its round trip when the next lands, and each
+    settle runs in its own transaction — so both can read the same tracker and write the
+    same step. A constraint would refuse the second one and take that whole transaction
+    with it, losing the beads only the later settle heard: the merge would fail at the one
+    moment ``furthest`` was written for. A repeated row costs a row; the reconstruction
+    takes the furthest status per bead and cannot see it.
 
     ``at`` is stamped in the application rather than by the database. On PostgreSQL
     ``now()`` is the transaction's clock, so every event of one settle would carry the same
@@ -96,7 +101,7 @@ class IRCoverageEvent(Base):
 
     __tablename__ = "ir_coverage_events"
     __table_args__ = (
-        UniqueConstraint("session_id", "element_key", "status", name="uq_ir_coverage_events_step"),
+        Index("ix_ir_coverage_events_step", "session_id", "element_key", "status"),
         Index(
             "ix_ir_coverage_events_element_touched",
             "project_id",

@@ -12,15 +12,16 @@ element last, which is what the Desk's element list and session cards need.
 from collections.abc import Sequence
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRCoverageEvent
 from app.services.internalization_room import sessions as service
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.coverage import CoverageStatus
+from app.services.internalization_room.coverage import CoverageStatus, furthest
 from app.services.internalization_room.coverage_events import (
     last_session_to_touch,
     necklace_of,
+    record_transitions,
 )
 
 P = "P03"
@@ -209,4 +210,40 @@ async def test_an_untouched_element_has_touched_by_nobody(db_session: AsyncSessi
             db_session, project_id="project-a", pericope=P, element_key=keys[1]
         )
         is None
+    )
+
+
+async def test_two_settles_that_read_the_same_state_do_not_lose_a_merge(
+    db_session: AsyncSession, test_engine
+) -> None:
+    """Two turns overlapping is ordinary, and the second one must not be thrown away.
+
+    The classifier for turn seven is still on its round trip when turn eight lands, and
+    each settle opens its own transaction. Both read the same tracker, so both write the
+    same step for the bead they agree on — and the later one also carries a bead only it
+    heard.
+
+    `furthest` exists to absorb exactly this. If the database refused the repeated step as
+    a duplicate it would take that whole second transaction down with it, and the bead only
+    the second settle heard would be gone: the merge would fail at the one moment it was
+    written for.
+    """
+    session = await service.create_session(db_session, pericope=P)
+    session_id = session.id
+    keys = element_keys(P)
+    read_by_both = dict(session.coverage_state)
+
+    seventh = furthest(read_by_both, {keys[0]: SURFACED}, pericope_num=P)
+    eighth = furthest(read_by_both, {keys[0]: SURFACED, keys[1]: ENGAGED}, pericope_num=P)
+
+    settling = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with settling() as seventh_turn, settling() as eighth_turn:
+        record_transitions(seventh_turn, session, before=read_by_both, after=seventh)
+        await seventh_turn.commit()
+        record_transitions(eighth_turn, session, before=read_by_both, after=eighth)
+        await eighth_turn.commit()
+
+    await db_session.rollback()
+    assert (keys[1], ENGAGED) in await _steps(db_session, session_id), (
+        "the bead only the later settle heard was lost with its transaction"
     )
