@@ -5,14 +5,14 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.back_translation import BackTranslationState
-from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.coverage import floor_met, furthest, initial_state
 from app.services.internalization_room.coverage_events import record_transitions
+from app.services.internalization_room.progression import active_passage
 
-DEFAULT_PERICOPE = "P01"
 PANORAMA_PREFIX = "OV-"
 PANORAMA_ALIAS = "OV"
 MAX_RETELLS = 3
@@ -29,25 +29,49 @@ def book_of(pericope: str) -> str:
 
 def resolve_pericope(pericope: str) -> str:
     """`OV` alone is the panorama of whichever book the room serves, so a client can ask
-    for it without naming the book — the canon stays entirely on this side."""
+    for it without naming the book — the canon stays entirely on this side.
+
+    It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
+    belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
+    under another name: a book is not a passage, the room serves one, and `elements_for`,
+    `labelled_elements` and `run_turn` already take it as a parameter.
+    """
     if pericope == PANORAMA_ALIAS:
-        return PANORAMA_PREFIX + book_of(DEFAULT_PERICOPE)
+        return PANORAMA_PREFIX + ROOM_BOOK
     return pericope
 
 
 async def create_session(
     db: AsyncSession,
     *,
-    pericope: str = DEFAULT_PERICOPE,
+    pericope: str | None = None,
     after_panorama: bool = False,
     project_id: str | None = None,
 ) -> IRSession:
-    """Open a session. ``project_id`` is whose it is, when the device said so.
+    """Open a session, on the passage this team is actually standing on.
 
-    Null is a normal answer, not a failure. The room app identifies itself with a device
-    credential only from ENG-454 onward, and refusing a session without one would take
-    every room in the field offline to gain a column value.
+    ``pericope`` is optional and its absence is a question, not a default. It used to be
+    ``DEFAULT_PERICOPE``, so a room that did not name a passage was answered the first one
+    with full confidence — every team, every time, fourteen passages deep into a book none of
+    them had ever left. Naming one still works and is obeyed: resolution fills a silence, it
+    does not overrule a request.
+
+    ``project_id`` is whose it is, when the device said so. Null is a normal answer, not a
+    failure: the room app identifies itself with a device credential only from ENG-454 onward,
+    and refusing a session without one would take every room in the field offline to gain a
+    column value. Work with no project has no history to read, so it starts at the beginning.
+
+    Raises ``ConflictError`` when the team has closed every passage and none was named. That
+    is the end of the book, and it is a defined state rather than a wrap-around: the request
+    is well formed and the team exists, so 409 rather than 400 or 404, and naming a passage is
+    the way back in.
     """
+    if pericope is None:
+        pericope = await active_passage(db, project_id=project_id)
+        if pericope is None:
+            raise ConflictError(
+                "This team has finished every passage of the book; name one to open a session"
+            )
     pericope = resolve_pericope(pericope)
     panorama = is_panorama(pericope)
     if not panorama:
