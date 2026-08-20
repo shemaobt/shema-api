@@ -11,8 +11,12 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError, ValidationError
 from app.db.models.auth import User
+from app.services.device.get_device_by_credential import get_device_by_credential
 
 ROOM_KEY_HEADER = "X-Room-Key"
+#: What a claimed tablet presents to say which team it belongs to. Read by the header
+#: declaration below and by the tests, so the wire name is written once.
+DEVICE_CREDENTIAL_HEADER = "X-Device-Credential"
 APP_KEY = "internalization-room"
 
 #: The person on the other end of the hand. The team never signs in — a facilitator does,
@@ -51,12 +55,9 @@ async def require_device(x_room_device: str | None = Header(default=None)) -> st
 device_dep = Depends(require_device)
 
 
-DEVICE_CREDENTIAL_HEADER = "X-Device-Credential"
-
-
 async def device_project(
     db: AsyncSession = Depends(get_db),
-    x_device_credential: str | None = Header(default=None),
+    x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
 ) -> str | None:
     """The project of the tablet that is speaking, when it says who it is.
 
@@ -71,8 +72,6 @@ async def device_project(
     """
     if not x_device_credential:
         return None
-
-    from app.services.device.get_device_by_credential import get_device_by_credential
 
     device = await get_device_by_credential(db, x_device_credential)
     return device.project_id if device else None

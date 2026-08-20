@@ -167,15 +167,3 @@ async def begin_back_translation_again(
         BackTranslationState(scope=state.scope, retells=state.retells),
     )
     return back_translation_of(session)
-
-
-async def project_of_session(db: AsyncSession, session_id: str) -> str | None:
-    """Whose session this is, for the rows that hang off it.
-
-    Questions and takes inherit this rather than resolving the device again. If the two
-    ever disagree — a device re-claimed into another team mid-session, say — the session
-    is the answer, because it is what the conversation belonged to when it happened.
-    """
-    return (
-        await db.execute(select(IRSession.project_id).where(IRSession.id == session_id))
-    ).scalar_one_or_none()
