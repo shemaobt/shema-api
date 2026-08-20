@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 
 import pytest
 from fastapi import FastAPI
@@ -18,9 +19,9 @@ from app.core.exceptions import ValidationError, register_exception_handlers
 from app.models.internalization_room import LabelledElement
 from app.services.internalization_room.canon.elements import ElementKind, elements_for
 from app.services.internalization_room.canon.labels import (
+    LABELS_DIR,
     LANGUAGES,
     PENDING_COVERAGE_STATUS,
-    TRANSLATED_PERICOPES,
     ElementLabelsBroken,
     labelled_elements,
     legend,
@@ -304,7 +305,7 @@ def test_a_passage_this_book_does_not_have_is_still_about_what_was_asked_for():
 
 @pytest.mark.parametrize(
     "pericope_num",
-    [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in TRANSLATED_PERICOPES],
+    [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in PILOT],
 )
 def test_a_passage_outside_the_pilot_is_named_rather_than_refused(pericope_num):
     """Ten of the fourteen, and D-03 walks every team through all of them on its own.
@@ -322,7 +323,7 @@ def test_a_passage_outside_the_pilot_is_named_rather_than_refused(pericope_num):
 
 @pytest.mark.parametrize(
     "pericope_num",
-    [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in TRANSLATED_PERICOPES],
+    [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in PILOT],
 )
 def test_outside_the_pilot_portuguese_and_spanish_are_absent_and_not_english(pericope_num):
     """The promise `LabelledElement` cites: pt and es arrive missing, never machine-filled.
@@ -361,4 +362,41 @@ def test_outside_the_pilot_the_hardest_beads_fall_back_to_the_canons_own_shape()
     assert preserved, "P03 has no preservation rule; pick another passage for this limit"
     assert any(_SHOUTED.search(element.label_en) for element in preserved), (
         "the canon fallback stopped being technical; the declared limit above is stale"
+    )
+
+
+def test_a_passage_translated_into_the_catalogue_is_read_from_it_without_a_second_edit(
+    tmp_path,
+):
+    """The catalogue is the only record of which passages are translated.
+
+    A hand-kept list of them beside it is the same fact written twice, and it can only drift
+    in the dangerous direction: the day somebody writes P03 into `ruth.json` and does not
+    touch the list, the passage goes on being answered from the canon with `label_pt=None`
+    and the translation sitting right there unread. That is the silent fallback this module
+    exists to prevent, and nothing anywhere would go red.
+
+    So the catalogue is asked directly. This drops a fifth passage into a copy of it and
+    requires that the loader find it with no other change.
+    """
+    catalogue = tmp_path / "element-labels"
+    catalogue.mkdir()
+    shutil.copy(LABELS_DIR / "legend.json", catalogue / "legend.json")
+    written = json.loads((LABELS_DIR / "ruth.json").read_text(encoding="utf-8"))
+    newly = "P03"
+    assert newly not in written, "P03 is translated now; pick a passage that is not"
+    written[newly] = {
+        element.key: {
+            "pt": f"pt {element.key}",
+            "en": f"en {element.key}",
+            "es": f"es {element.key}",
+        }
+        for element in elements_for(newly)
+    }
+    (catalogue / "ruth.json").write_text(json.dumps(written), encoding="utf-8")
+
+    named = labelled_elements(newly, catalogue_dir=catalogue)
+
+    assert all(element.label_pt and element.label_es for element in named), (
+        "the catalogue has this passage and the loader answered from the canon anyway"
     )

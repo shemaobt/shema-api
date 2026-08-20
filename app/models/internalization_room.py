@@ -35,9 +35,8 @@ class LabelledElement(BaseModel):
     promise actually names: the Desk's own `CoverageLabels` is
     `{ pt: string | null, en: string, es: string | null }`, because English comes almost free
     from the canon and the other two are translation work. This model cited that promise and
-    contradicted its text until ENG-451, and nobody had noticed because the four pilot
-    passages are complete in all three. The other ten are not, and D-03 walks every team
-    through them.
+    contradicted its text, and nobody had noticed because the four translated passages are
+    complete in all three. The canon serves fourteen and D-03 walks every team through them.
     """
 
     model_config = ConfigDict(extra="forbid")

@@ -39,14 +39,6 @@ LABELS_DIR = Path(__file__).parent / "element-labels"
 #: does not read English.
 LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
 
-#: What the pilot has been translated for. **Description, not a gate.** It was a gate until
-#: ENG-451: a passage outside it was refused, and since D-03 walks every team through all
-#: fourteen on its own, a team's whole session history 400ed because one conversation
-#: happened in P07. Outside these four a bead is named from the canon in English, and PT and
-#: ES arrive absent rather than machine-filled — which is what the Desk was promised and what
-#: `LabelledElement` says.
-TRANSLATED_PERICOPES: frozenset[str] = frozenset({"P01", "P02", "P05", "P14"})
-
 #: Coverage states named here before they exist in `CoverageStatus`. ENG-441 adds
 #: `partially_engaged` between `surfaced` and `engaged` on this same base, and says its labels
 #: belong to this slice — so the name is written now rather than left as a hole the day the
@@ -81,18 +73,19 @@ def labelled_elements(
     `ElementLabelsBroken` naming the pericope, the key and the language rather than being
     filled in. A passage without one is answered from the canon — see `_from_the_canon`.
 
+    **Which passages are translated is asked of the catalogue and never listed here.** A list
+    beside it would be the same fact written twice, and it could only drift in the direction
+    that hurts: the day somebody writes a passage into `ruth.json` and forgets the list, the
+    translation sits there unread while the canon answers, which is the silent fallback this
+    module exists to prevent — and nothing anywhere would go red.
+
     `ValidationError` is left for the one refusal that is genuinely about the request: a
     pericope this book does not have, which `elements_for` raises from the canon.
     """
     elements = elements_for(pericope_num, book)
-
-    if pericope_num not in TRANSLATED_PERICOPES:
-        return [_from_the_canon(element) for element in elements]
-
-    catalogue = _catalogue(catalogue_dir, book)
-    for_passage = catalogue.get(pericope_num)
+    for_passage = _catalogue(catalogue_dir, book).get(pericope_num)
     if for_passage is None:
-        raise ElementLabelsBroken(f"{pericope_num} has no element labels in {book}")
+        return [_from_the_canon(element) for element in elements]
 
     served = {element.key for element in elements}
     orphans = sorted(set(for_passage) - served)
@@ -118,8 +111,9 @@ def labelled_elements(
 def _from_the_canon(element: Element) -> LabelledElement:
     """A bead of a passage nobody has translated, named as well as it can honestly be.
 
-    English comes almost free from the canon — §7 says so — so `Element.label` is the English
-    and Portuguese and Spanish are **absent**. Filling them with the English would put a
+    Reached when the catalogue has no entry for this passage. English comes almost free from
+    the canon — §7 says so — so `Element.label` is the English, and Portuguese and Spanish are
+    **absent**. Filling them with the English would put a
     sentence a facilitator does not read in front of them under the name of their own
     language, which is the silent fallback this module exists to prevent; leaving them null
     is the Desk's own `CoverageLabels` shape and draws as a missing translation.
