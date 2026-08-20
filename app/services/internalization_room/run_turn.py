@@ -121,6 +121,14 @@ ALREADY_MET_INSTRUCTION = (
     "passagem: dê à equipe o todo antes das partes, e convide."
 )
 
+VERDICT_INSTRUCTION = (
+    "A equipe acabou de contar a gravação de volta e disse que terminou. Este "
+    "turno é o veredito da retrotradução: NÃO abra a sessão, NÃO se apresente e "
+    "NÃO convide a equipe a contar a passagem. Fale a partir dos achados do seu "
+    "prompt — nomeie o único achado e leve a equipe a ouvir e contar aquele "
+    "trecho de novo, ou, sem achados, feche com sobriedade."
+)
+
 
 async def _draft(
     *,
@@ -130,6 +138,7 @@ async def _draft(
     redraft_note: str,
     settings: Settings,
     already_met: bool = False,
+    silent_instruction: str | None = None,
 ) -> str:
     if utterance:
         user_content = (
@@ -137,7 +146,9 @@ async def _draft(
             f"## O que a equipe acabou de dizer\n\n{utterance}\n"
         )
     else:
-        opening = ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION
+        opening = silent_instruction or (
+            ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION
+        )
         user_content = f"## A conversa até aqui\n\n{conversation}\n\n{opening}\n"
     if redraft_note:
         user_content += f"\n## Nota de reescrita\n\n{redraft_note}\n"
@@ -166,6 +177,7 @@ async def _voiced_after_validation(
     already_met: bool = False,
     validator_context: str = "",
     enforce_speech_budget: bool = False,
+    silent_instruction: str | None = None,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -184,6 +196,7 @@ async def _voiced_after_validation(
             redraft_note=redraft_note,
             settings=settings,
             already_met=already_met,
+            silent_instruction=silent_instruction,
         )
 
         validator_system = render(
@@ -396,6 +409,7 @@ async def run_verdict_turn(
         session_language=session_language,
         language_code=language_code,
         opening=True,
+        silent_instruction=VERDICT_INSTRUCTION,
         settings=cfg,
     )
 

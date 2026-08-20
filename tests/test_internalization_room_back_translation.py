@@ -186,6 +186,44 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
     assert "{{" not in validator_system
 
 
+@pytest.mark.asyncio
+async def test_the_verdict_never_asks_to_open_the_session_again(monkeypatch) -> None:
+    """The team pressed `terminei`; a session history full of openings must not win.
+
+    The verdict turn drafts with an empty utterance, and the empty-utterance path used to
+    append the opening instruction — so the Speaker introduced itself and invited the team
+    to tell the passage, conducting the internalização all over again instead of judging
+    the telling-back.
+    """
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    contents: list[str] = []
+
+    async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        contents.append(user_content)
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return "No que você me contou, Orfa não apareceu."
+
+    monkeypatch.setattr(module, "call_agent", agent)
+
+    outcome = await run_verdict_turn(
+        findings_text=findings_block(Finding(kind=FindingKind.MISSING, note="Orfa")),
+        scope=P,
+        pericope_num=P,
+        messages=[{"role": "guide", "text": "Olá, eu sou o Facilitador Digital."}],
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert outcome.used_fail_safe is False
+    draft_content = contents[0]
+    assert "Abra a sessão" not in draft_content
+    assert "apresente-se" not in draft_content
+    assert "veredito" in draft_content
+    assert "NÃO se apresente" in draft_content
+
+
 def test_a_verdict_is_not_bought_twice_for_the_same_telling_back() -> None:
     state = BackTranslationState(scope=P, chunks=_chunks())
 
