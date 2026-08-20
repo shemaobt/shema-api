@@ -51,6 +51,18 @@ class IRSession(Base):
     after_panorama: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     prepared_speech: Mapped[str | None] = mapped_column(Text, nullable=True)
     prepared_audio_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    #: Which passage the prepared opening above was written from. Null while nothing is
+    #: prepared, and null on every row written before ENG-450.
+    #:
+    #: It exists because the guard that stops one passage's opening being spoken as another's
+    #: cannot be derived. It used to compare the opening against ``DEFAULT_PERICOPE`` and
+    #: worked only because one constant stood in both places. Re-resolving at hand-over time
+    #: looks equivalent and is not: if another device of the same team closes the passage
+    #: while the panorama is still playing, the resolution moves, both sides agree on the new
+    #: passage, and the line written from the old one is handed over as the new one's own
+    #: framing — to people who cannot read and cannot check.
+    prepared_pericope: Mapped[str | None] = mapped_column(String(120), nullable=True)
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
