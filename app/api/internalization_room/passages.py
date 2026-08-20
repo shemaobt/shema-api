@@ -68,9 +68,7 @@ async def passages(book: str) -> BookPassagesResponse:
     ]
     said = await asyncio.gather(
         *(
-            _voiced(
-                pericope_num, line, book=book, settings=settings, in_flight=in_flight
-            )
+            _voiced(pericope_num, line, book=book, settings=settings, in_flight=in_flight)
             for pericope_num, line in speakable
         )
     )
