@@ -114,6 +114,14 @@ async def apply_coverage(
     Closes the session when the completion floor is met, and leaves an event behind for
     every bead that moved — the merge is compared against what is stored before anything
     is written, so a classifier round that reports no news costs no rows.
+
+    Closing is the one end this schema stamps (ENG-451). A session ends either because the
+    floor was met — an event, at an instant, written into ``ended_at`` here — or because
+    nobody came back to it, which is derived from its last activity at read time and left
+    unwritten, because the limit that decides it is not agreed with the room app. The
+    ``IN_PROGRESS`` guard is what keeps the stamp a single instant: the classifier goes on
+    settling whatever turns were already in flight when the floor was met, and a stamp on
+    every one of them would grow the conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
     # Merged against what is stored now, not written over it. The snapshot this was
@@ -130,12 +138,6 @@ async def apply_coverage(
         and session.status is IRSessionStatus.IN_PROGRESS
     ):
         session.status = IRSessionStatus.DONE
-        # The one end this schema stamps. ENG-451: a session closes either because the floor
-        # was met — an event, at an instant, written here — or because nobody came back to
-        # it, which is derived from its last activity at read time and left unwritten. The
-        # guard above is what keeps this a single instant: the classifier goes on settling
-        # whatever turns were already in flight, and a stamp on every one of them would grow
-        # the conversation's length after the team had finished.
         session.ended_at = datetime.now(UTC)
     await db.commit()
     await db.refresh(session)

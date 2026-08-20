@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.enums import SessionState
 from app.services.internalization_room.canon.elements import ElementKind
-from app.services.internalization_room.session_end import SessionState, as_utc
 
 MAX_TTS_CHARS = 3000
 
@@ -107,6 +107,9 @@ class TeamSessionResponse(BaseModel):
 
     RF-06's short note is deliberately absent. Nothing says where its text would come from,
     and a fabricated field is worse than a missing one.
+
+    The moments arrive already carrying their offset; `team_sessions` is where that is done
+    and says why.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -118,18 +121,6 @@ class TeamSessionResponse(BaseModel):
     duration_minutes: int | None
     state: SessionState
     coverage: list[SessionBead]
-
-    @field_validator("started_at", "ended_at")
-    @classmethod
-    def _name_the_clock(cls, when: datetime | None) -> datetime | None:
-        """No moment leaves here without saying which clock it is on.
-
-        `DateTime(timezone=True)` hands back a naive value on SQLite and an aware one on
-        Postgres, off one schema and one writer. A naive one serialises bare — a `20:00:56`
-        with nothing after it was measured coming off the device route — and whoever receives
-        it reads it as local, which on the machines this runs on is three hours out.
-        """
-        return None if when is None else as_utc(when)
 
 
 class CoverageView(BaseModel):

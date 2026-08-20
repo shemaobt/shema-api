@@ -37,10 +37,10 @@ an end, a state and a length that could be computed apart are three things to ke
 
 from __future__ import annotations
 
-import enum
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from app.core.enums import SessionState
 from app.db.models.internalization_room import IRSession
 
 #: How long a session may sit with nothing happening before it is over. **Proposed, not
@@ -54,23 +54,6 @@ from app.db.models.internalization_room import IRSession
 SESSION_IDLE_LIMIT = timedelta(hours=6)
 
 _SECONDS_A_MINUTE = 60
-
-
-class SessionState(enum.StrEnum):
-    """RF-06 names two — in progress and complete — and there are three.
-
-    The third arrived with the rule above: a session nobody closed is over, and calling it
-    complete would be a lie a facilitator can check against the necklace drawn beside it,
-    where the beads are plainly unfinished. It is also the reason this crosses the boundary
-    at all. With two values the state was a function of ``ended_at`` and serving it would
-    have been a second record of one fact; with three, ``COMPLETE`` and ``ABANDONED`` both
-    carry an ``ended_at`` and no client can tell them apart. It is a fact the collection
-    cannot be made to yield, which is the shape that has to be served.
-    """
-
-    IN_PROGRESS = "in_progress"
-    COMPLETE = "complete"
-    ABANDONED = "abandoned"
 
 
 @dataclass(frozen=True)

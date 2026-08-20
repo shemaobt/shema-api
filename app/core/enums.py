@@ -88,3 +88,22 @@ class OCNotificationEvent(StrEnum):
     CLEANING_FAILED = "oc.cleaning.failed"
     SPLIT_COMPLETED = "oc.split.completed"
     SPLIT_FAILED = "oc.split.failed"
+
+
+class SessionState(StrEnum):
+    """How a room conversation reads on the Desk's session card (RF-06, ENG-451).
+
+    Not `IRSessionStatus`, which is the room's own machine and is persisted. This is derived
+    at read time from when the conversation ended, and it is the Desk's vocabulary.
+
+    RF-06 names two and there are three. The third arrived with the rule that decides when a
+    conversation is over: a session nobody closed is over, and calling it complete would be a
+    lie a facilitator can check against the necklace drawn beside it, where the beads are
+    plainly unfinished. It is also why this crosses the boundary at all — with two values it
+    was a function of `ended_at` and serving it would have been a second record of one fact,
+    but `COMPLETE` and `ABANDONED` both carry an `ended_at` and no client can tell them apart.
+    """
+
+    IN_PROGRESS = "in_progress"
+    COMPLETE = "complete"
+    ABANDONED = "abandoned"

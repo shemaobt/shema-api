@@ -2,8 +2,16 @@
 
 The cards are built here rather than on the response model, which is where the devices
 panel builds its rows. The reason is the import direction and nothing else: naming a bead
-needs `canon.labels`, and `canon.labels` already imports the models, so a `TeamSessionResponse.of`
-would close a cycle.
+needs `canon.labels`, and `canon.labels` already imports the models, so a
+`TeamSessionResponse.of` would close a cycle.
+
+**Every moment leaves here saying which clock it is on**, and this is where that is done
+rather than in a validator on the model — `app/models/` takes its vocabulary from
+`app/core/` and `app/db/models/` and reaches into no service, which the five other response
+modules keep. `DateTime(timezone=True)` hands back a naive value on SQLite and an aware one
+on Postgres, off one schema and one writer; a naive one serialises bare, and whoever receives
+a `20:00:56` with nothing after it reads it as local. `end_of` normalises the end it answers;
+the start is normalised here beside it.
 """
 
 from __future__ import annotations
@@ -19,7 +27,7 @@ from app.models.internalization_room import SessionBead, TeamSessionResponse
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
-from app.services.internalization_room.session_end import end_of
+from app.services.internalization_room.session_end import as_utc, end_of
 
 
 async def list_team_sessions(db: AsyncSession, project_id: str) -> list[TeamSessionResponse]:
@@ -54,7 +62,7 @@ def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> Team
     return TeamSessionResponse(
         session_id=session.id,
         pericope=session.pericope,
-        started_at=session.created_at,
+        started_at=as_utc(session.created_at),
         ended_at=end.ended_at,
         duration_minutes=end.duration_minutes,
         state=end.state,
