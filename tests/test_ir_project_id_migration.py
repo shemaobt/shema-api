@@ -25,11 +25,12 @@ from app.core.database import Base
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: This migration, and the room migration it sits on. Named rather than asked for as
-#: "head": while the device line is unmerged the tree carries a second head, which is
-#: recorded in the PR and goes away when the two lines meet on main.
+#: This migration and the revision it sits on. The parent is the merge revision that
+#: joins the room and device lines: stepping back from a merge revision is ambiguous, so
+#: the merge is never a head and this migration is always the thing above it. Both go
+#: away when the two lines meet on main.
 REVISION = "20260820_0001"
-PREVIOUS_REVISION = "20260812_room07"
+PREVIOUS_REVISION = "20260820_merge"
 
 CARRYING_TABLES = ("ir_sessions", "ir_questions", "ir_takes")
 

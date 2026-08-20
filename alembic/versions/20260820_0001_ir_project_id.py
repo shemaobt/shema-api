@@ -29,8 +29,14 @@ Not a foreign key, matching the column being renamed. The room tables carry ids 
 app boundary and have never constrained them; adding a constraint to rows that are all
 null would be a separate decision with a separate migration.
 
+It sits on the merge revision that joins the room and device lines rather than on the
+last room migration directly. That is what keeps ``alembic downgrade -1`` unambiguous:
+stepping back from a merge revision has two answers and Alembic refuses to pick, so the
+merge must never be a head. When the two lines meet on main and the merge revision goes
+away, this depends on the last room migration instead.
+
 Revision ID: 20260820_0001
-Revises: 20260812_room07
+Revises: 20260820_merge
 Create Date: 2026-08-20 00:00:00.000000
 """
 
@@ -41,7 +47,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260820_0001"
-down_revision: str | None = "20260812_room07"
+down_revision: str | None = "20260820_merge"
 branch_labels = None
 depends_on = None
 
