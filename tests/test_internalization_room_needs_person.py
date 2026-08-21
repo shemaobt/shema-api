@@ -61,3 +61,39 @@ async def test_re_recording_does_not_hand_the_team_a_fresh_retell_budget(
 
     assert fresh.retells == 2, "toda outra propriedade voltava ao padrão, e o orçamento junto"
     assert fresh.chunks == []
+
+
+async def test_the_session_says_where_the_telling_back_stopped(
+    db_session: AsyncSession,
+) -> None:
+    """Everything a tablet needs to pick a retro back up was already stored, unreachable.
+
+    The app keeps `session_id` in memory only, so any restart lost the whole telling-back
+    and the team had to record the rehearsal again.
+    """
+    from app.api.internalization_room.sessions import _progress
+    from app.services.internalization_room.back_translation import (
+        BackTranslationState,
+        Chunk,
+    )
+
+    session = await service.create_session(db_session, pericope="P01")
+    await service.save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(
+            scope="P01",
+            retells=1,
+            chunks=[
+                Chunk(index=1, text="um", pass_number=1, starts_ms=0, ends_ms=9000),
+                Chunk(index=2, text="dois", pass_number=2, starts_ms=9000, ends_ms=21000),
+            ],
+        ),
+    )
+
+    told = _progress(session)
+
+    assert told.passes == [1, 2]
+    assert told.spans == [[0, 9000], [9000, 21000]]
+    assert told.scope == "P01"
+    assert told.retells == 1

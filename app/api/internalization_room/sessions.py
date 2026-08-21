@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
+    BackTranslationProgress,
     CoverageView,
     CreateSessionRequest,
     NeedsPersonResponse,
@@ -55,6 +56,27 @@ def _state(session: IRSession) -> SessionStateResponse:
         status=str(session.status),
         coverage=_coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
+        back_translation=_progress(session),
+    )
+
+
+def _progress(session: IRSession) -> BackTranslationProgress:
+    """What a tablet needs to pick a telling-back back up where it stopped.
+
+    All of it was already on the session and none of it had a way out, so an app that
+    forgot its session id — which is every restart, because the id lives only in memory —
+    lost the retro entirely and had to record the rehearsal again.
+    """
+    state = room.back_translation_of(session)
+    finding = state.current_finding
+    return BackTranslationProgress(
+        scope=state.scope,
+        passes=[chunk.pass_number for chunk in state.chunks],
+        spans=[[chunk.starts_ms or 0, chunk.ends_ms or 0] for chunk in state.chunks],
+        retells=state.retells,
+        checked=state.checked,
+        finding_chunk=finding.chunk if finding else None,
+        finding_kind=finding.kind.value if finding else None,
     )
 
 
