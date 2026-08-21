@@ -53,6 +53,8 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Final
 
+from app.utils.stored_time import as_utc
+
 CLAIM_CODE_TTL: Final = timedelta(minutes=15)
 
 #: Twenty-five glyphs: A-Z and 0-9 with every spoken-collision pair removed.
@@ -88,10 +90,8 @@ def hash_claim_code(code: str) -> str:
 def has_expired(expires_at: datetime, *, at: datetime) -> bool:
     """Whether a code minted with ``expires_at`` is past its life at ``at``.
 
-    SQLite hands back a naive datetime for a ``DateTime(timezone=True)`` column while
-    Postgres hands back an aware one, and comparing the two raises. Reading the stored
-    value as UTC is correct on both, because UTC is the only thing this ever writes.
+    A predicate over two moments and nothing else, so a caller with a clock of its own can
+    ask it. The reason the stored value has to be read before it can be compared is on
+    ``as_utc``; this sentence used to carry it, and it now carries one copy fewer.
     """
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=UTC)
-    return at >= expires_at
+    return at >= as_utc(expires_at)
