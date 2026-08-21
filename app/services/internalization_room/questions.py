@@ -13,7 +13,12 @@ from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, UpstreamServiceError, ValidationError
+from app.core.exceptions import (
+    NotFoundError,
+    TranscriptionDefect,
+    UpstreamServiceError,
+    ValidationError,
+)
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
@@ -111,6 +116,15 @@ async def _transcribe_for_the_desk(
     the same thing to a raised hand. The card appears with audio and no transcript, and the
     facilitator answers it by listening, which is what they did before this column existed.
 
+    **``ValidationError`` is in that tuple deliberately, and it is not hiding a defect of
+    ours behind "the audio was bad".** Four places can raise it on this path, and none of
+    them is a mistake in this repository: an empty payload, which `raise_question` refuses
+    several lines above and a test holds; an empty language, which cannot happen because
+    `ROOM_LANGUAGE` is a constant; a missing provider key, which is a machine without the
+    tool, the same situation as a missing ffprobe and answered the same way; and a 4xx from
+    the provider, which is the provider refusing this clip. A bug of ours reaches the
+    `except` below instead.
+
     The mime type is the one the clip was stored under rather than the one the app declared,
     which is the same string today for every question (ENG-526).
     """
@@ -119,6 +133,9 @@ async def _transcribe_for_the_desk(
     except (UpstreamServiceError, ValidationError, httpx.HTTPError):
         logger.warning("question %s could not be transcribed", question.id, exc_info=True)
         return
+    except Exception as defect:
+        logger.exception("question %s hit a defect on our side while transcribing", question.id)
+        raise TranscriptionDefect(question_id=question.id, status=str(question.status)) from defect
 
     question.transcript = said or None
     await db.commit()

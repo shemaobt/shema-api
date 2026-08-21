@@ -18,8 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.core.exceptions import UpstreamServiceError
-from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
+from app.core.exceptions import TranscriptionDefect, UpstreamServiceError
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRSession
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.platform import audio_duration
@@ -108,6 +108,44 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
 
 
 INBOX = "/api/internalization-room/facilitator/questions"
+
+
+@pytest.fixture()
+async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    """The tablet's side of the router, with a transcriber that is broken on our side."""
+    import httpx
+    from fastapi import FastAPI
+    from httpx import ASGITransport
+
+    from app.api.internalization_room.questions import router as questions_router
+    from app.core.config import get_settings
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+
+    monkeypatch.setattr(
+        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
+    )
+
+    async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
+        raise TypeError("o transcritor foi chamado errado")
+
+    monkeypatch.setattr(service, "_store", lambda *a, **kw: MemoryStore())
+    monkeypatch.setattr(service, "transcribe_speech", broken)
+
+    test_app = FastAPI()
+    test_app.include_router(questions_router, prefix="/api/internalization-room")
+    register_exception_handlers(test_app)
+
+    async def _get_db():
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=test_app),
+        base_url="http://test",
+        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+    ) as client:
+        yield client
 
 
 @pytest.fixture()
@@ -216,25 +254,53 @@ async def test_a_transcription_that_fails_does_not_lose_the_question(
 async def test_a_transcriber_that_is_broken_is_not_mistaken_for_a_provider_that_is_down(
     db_session: AsyncSession,
 ) -> None:
-    """The three ways a provider fails are tolerated; a defect of ours is not swallowed.
+    """The three ways a provider fails are tolerated; a defect of ours is named and raised.
 
-    Widening the ingest's `except` to every exception costs nothing that any other case in
-    this file can see, which is exactly why this one is here: a `TypeError` on this path is
-    a mistake in this repository, and a mistake that silently produces questions with no
-    transcript is one nobody finds. The question is committed before the transcription is
-    attempted, so it survives either way — what differs is whether the defect is visible.
+    Widening the ingest's `except` to every exception costs nothing any other case in this
+    file can see, which is exactly why this one is here: a `TypeError` on this path is a
+    mistake in this repository, and a mistake that silently produces questions with no
+    transcript is one nobody finds. It travels as its own type, carrying the original error
+    as its cause, so "we broke it" is still distinguishable from "they were down" wherever
+    somebody looks later.
     """
     store = MemoryStore()
 
     async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
         raise TypeError("o transcritor foi chamado errado")
 
-    with pytest.raises(TypeError):
+    with pytest.raises(TranscriptionDefect) as raised:
         await _raise(db_session, store, stt=broken)
+
+    assert isinstance(raised.value.__cause__, TypeError)
 
     (kept,) = (await db_session.execute(select(IRQuestion))).scalars().all()
     assert kept.transcript is None
     assert store.objects[kept.audio_key] == recorded()
+
+
+async def test_a_defect_of_ours_does_not_send_the_team_back_to_the_recorder(
+    db_session: AsyncSession, room_client
+) -> None:
+    """What the tablet is told when the transcription breaks on our side: the hand went up.
+
+    The team cannot read and cannot check whether the question arrived. Answering the defect
+    with a failure costs them a re-recording of something already committed, so the status
+    code is the one place the distinction is given up — it survives in the type and in the
+    log, where its reader can act on it.
+    """
+    db_session.add(IRSession(id="sessao-1", pericope=PERICOPE))
+    await db_session.commit()
+
+    answer = await room_client.post(
+        "/api/internalization-room/questions",
+        params={"session_id": "sessao-1"},
+        files={"file": ("pergunta.m4a", recorded(), "audio/mp4")},
+    )
+
+    assert answer.status_code == 200, answer.text
+    kept = await service.get_question(db_session, answer.json()["question_id"])
+    assert kept.transcript is None
+    assert kept.duration_ms is not None, "a pergunta chegou inteira menos o texto"
 
 
 async def test_a_duration_that_cannot_be_measured_does_not_lose_the_question(

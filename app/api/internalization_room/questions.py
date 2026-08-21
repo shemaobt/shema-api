@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, TranscriptionDefect, ValidationError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
@@ -50,20 +50,31 @@ async def raise_question(
     How long the recording runs is measured here from the audio and is not a parameter: a
     length the client reports is a length the client gets wrong, and nothing downstream
     could tell.
+
+    **A defect of ours while transcribing is answered as a raised hand, not as a failure.**
+    The question is already committed by then, and the tablet is held by a team standing in
+    a room who cannot read and cannot check whether it arrived: a 500 here costs them a
+    re-recording of a question that was already safe. The distinction survives where it is
+    useful — `TranscriptionDefect` is its own type and the stack trace is in the log — and
+    is given up only in the status code, which is the one place its only reader is somebody
+    who can do nothing about it.
     """
     audio = await file.read()
     if len(audio) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
     session = await session_service.get_session(db, session_id)
-    question = await service.raise_question(
-        db,
-        device_id=device_id,
-        session_id=session.id,
-        project_id=session.project_id,
-        pericope=session.pericope,
-        element_key=element_key,
-        audio=audio,
-    )
+    try:
+        question = await service.raise_question(
+            db,
+            device_id=device_id,
+            session_id=session.id,
+            project_id=session.project_id,
+            pericope=session.pericope,
+            element_key=element_key,
+            audio=audio,
+        )
+    except TranscriptionDefect as defect:
+        return QuestionRaisedResponse(question_id=defect.question_id, status=defect.status)
     return QuestionRaisedResponse(question_id=question.id, status=str(question.status))
 
 
