@@ -345,24 +345,30 @@ def test_inside_the_pilot_nothing_moved():
         assert element.label_pt and element.label_en and element.label_es
 
 
-def test_outside_the_pilot_the_hardest_beads_fall_back_to_the_canons_own_shape():
-    """The declared limit, written as a test so nobody rediscovers it in the field.
+def test_a_passage_the_catalogue_does_not_have_still_falls_back_to_the_canon(tmp_path):
+    """The declared limit closed, and the path it described did not.
 
-    ENG-442 promises no preservation rule shows an ALL_CAPS technical key in any language,
-    and that promise holds **inside the pilot only**. Outside it the English is the canon's
-    own `Element.label`, which for a preservation rule is `KIND: note` and for a significant
-    absence is a paragraph. Refusing instead would take the whole history down, which is
-    worse — so the gap is declared here rather than hidden, and it closes when a translator
-    reaches those ten passages.
+    This case asserted that P03's preservation rules arrive as the canon's own ALL_CAPS text —
+    the gap ENG-442 declared rather than hid, promising it would close "when a translator
+    reaches those ten passages". A translator reached them, so the assertion is now false of
+    the shipped catalogue and would be a lie about the product.
+
+    What has to stay is the mechanism, because it is what serves a book nobody has written a
+    catalogue for at all. So the same property is asserted where it is still true: against a
+    catalogue with the passage taken out.
     """
-    preserved = [
-        element for element in labelled_elements("P03") if element.kind is ElementKind.PRESERVED
-    ]
+    catalogue = tmp_path / "element-labels"
+    catalogue.mkdir()
+    shutil.copy(_shipped() / "legend.json", catalogue / "legend.json")
+    written = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
+    del written["P03"]
+    (catalogue / "ruth.json").write_text(json.dumps(written), encoding="utf-8")
 
-    assert preserved, "P03 has no preservation rule; pick another passage for this limit"
-    assert any(_SHOUTED.search(element.label_en) for element in preserved), (
-        "the canon fallback stopped being technical; the declared limit above is stale"
-    )
+    named = labelled_elements("P03", catalogue_dir=catalogue)
+    from_the_canon = {element.key: element.label for element in elements_for("P03")}
+
+    assert all(element.label_pt is None and element.label_es is None for element in named)
+    assert all(element.label_en == from_the_canon[element.key] for element in named)
 
 
 def test_a_passage_translated_into_the_catalogue_is_read_from_it_without_a_second_edit(
@@ -376,15 +382,21 @@ def test_a_passage_translated_into_the_catalogue_is_read_from_it_without_a_secon
     and the translation sitting right there unread. That is the silent fallback this module
     exists to prevent, and nothing anywhere would go red.
 
-    So the catalogue is asked directly. This drops a fifth passage into a copy of it and
-    requires that the loader find it with no other change.
+    So the catalogue is asked directly. This takes a passage back out of a copy of it, puts it
+    in again with three languages, and requires that the loader find it with no other change.
+
+    It used to pick a passage the shipped catalogue did not have. **There is no longer one** —
+    all fourteen are in it since the ten were written — so the passage is removed first. That
+    is not a weakening: what the case is about is the loader consulting the catalogue rather
+    than a list, and removing and re-adding exercises exactly that, on data the case controls.
     """
     catalogue = tmp_path / "element-labels"
     catalogue.mkdir()
     shutil.copy(LABELS_DIR / "legend.json", catalogue / "legend.json")
     written = json.loads((LABELS_DIR / "ruth.json").read_text(encoding="utf-8"))
     newly = "P03"
-    assert newly not in written, "P03 is translated now; pick a passage that is not"
+    del written[newly]
+    assert newly not in written
     written[newly] = {
         element.key: {
             "pt": f"pt {element.key}",
@@ -400,3 +412,150 @@ def test_a_passage_translated_into_the_catalogue_is_read_from_it_without_a_secon
     assert all(element.label_pt and element.label_es for element in named), (
         "the catalogue has this passage and the loader answered from the canon anyway"
     )
+
+
+# ------------------------------- the ten passages nobody had translated, and what let them in
+
+
+TEN = [p for p in (f"P{n:02d}" for n in range(1, 15)) if p not in PILOT]
+
+
+def _with(pericope_num: str, entry: dict, tmp_path):
+    """A copy of the shipped catalogue with one passage's entry replaced."""
+    catalogue = tmp_path / "element-labels"
+    catalogue.mkdir(exist_ok=True)
+    shutil.copy(_shipped() / "legend.json", catalogue / "legend.json")
+    written = json.loads((_shipped() / "ruth.json").read_text(encoding="utf-8"))
+    written[pericope_num] = entry
+    (catalogue / "ruth.json").write_text(json.dumps(written), encoding="utf-8")
+    return catalogue
+
+
+def test_a_label_with_no_portuguese_is_served_absent_rather_than_refused(tmp_path):
+    """The loader stopped contradicting the model it fills.
+
+    `LabelledElement` types `label_pt` and `label_es` as `str | None` — ENG-442 established
+    that the two are translation work and may be missing. `_text` went on raising for any
+    empty language, which was the right rule **before** that and stopped being it after: a
+    catalogue entry written in English alone is not a holed file, it is an untranslated
+    passage that somebody finally named.
+
+    Measured before the fix: dropping the ten passages' English into `ruth.json` turned ten
+    passages that answered from the canon into `ElementLabelsBroken`, which carries no handler
+    and is a 500.
+    """
+    only_english = {
+        element.key: {"pt": None, "en": f"en {element.key}", "es": None}
+        for element in elements_for("P03")
+    }
+
+    named = labelled_elements("P03", catalogue_dir=_with("P03", only_english, tmp_path))
+
+    assert {element.key for element in named} == {e.key for e in elements_for("P03")}
+    assert all(element.label_en.startswith("en ") for element in named)
+    assert all(element.label_pt is None and element.label_es is None for element in named)
+
+
+def test_the_permission_does_not_reach_english(tmp_path):
+    """The half that must not move with it: `label_en` is still required.
+
+    Without this the fix reads as "empty labels are fine now", and a catalogue entry with no
+    English at all would serve a bead with nothing on it — which is the ALL_CAPS identifier
+    problem again, one step worse, because there would not even be an identifier.
+    """
+    no_english = {
+        element.key: {"pt": "algo", "en": None, "es": "algo"} for element in elements_for("P03")
+    }
+
+    with pytest.raises(ElementLabelsBroken) as refused:
+        labelled_elements("P03", catalogue_dir=_with("P03", no_english, tmp_path))
+
+    assert "en" in str(refused.value)
+
+
+def test_a_key_the_catalogue_names_with_nothing_at_all_is_still_our_file_being_wrong(
+    tmp_path,
+):
+    """An entry present and empty in all three is a holed file, not an untranslated passage.
+
+    The difference is the whole point of the permission: *absent Portuguese* is a passage
+    waiting for a translator, and *absent everything* is our own file. Only one of the two is
+    allowed through.
+    """
+    nothing = {element.key: {"pt": None, "en": None, "es": None} for element in elements_for("P03")}
+
+    with pytest.raises(ElementLabelsBroken):
+        labelled_elements("P03", catalogue_dir=_with("P03", nothing, tmp_path))
+
+
+@pytest.mark.parametrize("pericope_num", TEN)
+def test_the_ten_are_read_from_the_catalogue_and_not_from_the_canon(pericope_num):
+    """The case without which this slice changes nothing and still passes.
+
+    "The ten carry labels" is green while the loader is still falling back to the canon —
+    that path has always answered `label_en`. What separates the two is *which* English
+    arrives, and the difference is exactly what a facilitator sees: the canon's own
+    `Element.label` for a preservation rule is `KIND: note` in ALL_CAPS and for a significant
+    absence is a paragraph of up to 443 characters.
+
+    So this asserts the label is **not** the canon's, on the beads where the canon is worst.
+    """
+    from_the_canon = {element.key: element.label for element in elements_for(pericope_num)}
+    hardest = [
+        element
+        for element in labelled_elements(pericope_num)
+        if element.kind in (ElementKind.PRESERVED, ElementKind.ABSENCE)
+    ]
+
+    assert hardest, f"{pericope_num} has neither a rule nor an absence; pick another"
+    for element in hardest:
+        assert element.label_en != from_the_canon[element.key], (
+            f"{pericope_num} {element.key} is still the canon's own text"
+        )
+
+
+@pytest.mark.parametrize("pericope_num", TEN)
+def test_the_ten_keep_the_promises_the_pilot_keeps(pericope_num):
+    """Zero Hebrew, no wiki syntax, no shouted identifier, nothing longer than a bead holds.
+
+    The pilot's own cases assert these over the four; the ten arrive under the same rules or
+    they arrive as a second class of label that nobody is checking.
+
+    **The wiki assert is here because it was missing and the one defect in the 264 hid that.**
+    `The house of [[PL_ISRAEL-Israel]] Israel` was caught by the shouted-identifier rule, which
+    made this loop look like it covered wiki syntax when it did not — `[[B3-Naomi]]` carries no
+    shouted run and would have gone through both asserts. The pilot's own case checks `[[`, and
+    it is parametrized over the four.
+    """
+    hebrew = re.compile(r"[֐-׿]")
+
+    for element in labelled_elements(pericope_num):
+        text = element.label_en
+        assert not hebrew.search(text), f"{pericope_num} {element.key} shows Hebrew: {text}"
+        assert not _SHOUTED.search(text.replace("YHWH", "")), (
+            f"{pericope_num} {element.key} shows an identifier: {text}"
+        )
+        assert "[[" not in text and "]]" not in text, (
+            f"{pericope_num} {element.key} shows wiki syntax: {text}"
+        )
+        assert len(text) <= 45, f"{pericope_num} {element.key} is {len(text)} chars: {text}"
+
+
+@pytest.mark.parametrize("pericope_num", TEN)
+def test_two_beads_of_the_ten_never_read_the_same_on_one_screen(pericope_num):
+    """The defect the writer measured twice and found again on the mechanical pass."""
+    seen: dict[str, str] = {}
+    for element in labelled_elements(pericope_num):
+        clash = seen.get(element.label_en)
+        assert clash is None, (
+            f"{pericope_num}: {element.key} and {clash} both read {element.label_en!r}"
+        )
+        seen[element.label_en] = element.key
+
+
+@pytest.mark.parametrize("pericope_num", TEN)
+def test_portuguese_and_spanish_stay_absent_for_the_ten(pericope_num):
+    """Naming them in English did not machine-fill the other two, which is the whole refusal."""
+    for element in labelled_elements(pericope_num):
+        assert element.label_pt is None
+        assert element.label_es is None

@@ -81,6 +81,13 @@ def labelled_elements(
 
     `ValidationError` is left for the one refusal that is genuinely about the request: a
     pericope this book does not have, which `elements_for` raises from the canon.
+
+    English is named on its own below and the other languages are spread, which is the shape of
+    the rule rather than a concession to the type checker: it is the one language a bead cannot
+    reach the screen without, and `_required` says so in a type instead of in prose. A fourth
+    language still costs a field here and a catalogue entry, which is what `extra="forbid"` on
+    the model is for. It is also evaluated first, which is why `_text` never meets an entry
+    whose English is missing.
     """
     elements = elements_for(pericope_num, book)
     for_passage = _catalogue(catalogue_dir, book).get(pericope_num)
@@ -99,9 +106,11 @@ def labelled_elements(
             key=element.key,
             kind=element.kind,
             scene=element.scene,
+            label_en=_required(for_passage, pericope_num, element.key),
             **{
                 f"label_{language}": _text(for_passage, pericope_num, element.key, language)
                 for language in LANGUAGES
+                if language != REQUIRED_LANGUAGE
             },
         )
         for element in elements
@@ -118,21 +127,26 @@ def _from_the_canon(element: Element) -> LabelledElement:
     language, which is the silent fallback this module exists to prevent; leaving them null
     is the Desk's own `CoverageLabels` shape and draws as a missing translation.
 
-    **The declared limit, and it is not small.** This module promises that no preservation
-    rule shows an ALL_CAPS technical key in any language, and that promise holds for a
-    passage the catalogue has and for no other.
+    **No passage of Ruth reaches here any more.** The catalogue carries all fourteen, so for
+    this book the path below is unreachable in production and exists for a book nobody has
+    written a catalogue for at all. `test_a_passage_the_catalogue_does_not_have_still_falls_
+    back_to_the_canon` is what keeps it honest, against a catalogue with the passage removed.
 
-    Measured over the ten passages it does not have, 264 beads: six of the seven kinds carry
-    the canon's `Hebrew / English` in `label_en` — 178 of 264 — and only `scene` comes
-    through clean. Most of that is cosmetic: `נָעֳמִי / Naomi` **contains** the name a
-    facilitator reads. The two that genuinely hurt are the two with no name in them at all:
-    `preserved`, which is `KIND: note` and is ALL_CAPS in 18 of 18, and `absence`, which is a
-    paragraph in 30 of 30.
+    **What it cost while it was reachable**, kept because it is the argument for ever writing
+    a label: measured over the ten passages the catalogue did not have, 264 beads, six of the
+    seven kinds carried the canon's `Hebrew / English` in `label_en` — 178 of 264 — and only
+    `scene` came through clean. Most of that was cosmetic, since `נָעֳמִי / Naomi` **contains**
+    the name a facilitator reads. The two that hurt were the two with no name in them at all:
+    `preserved`, which is `KIND: note` and was ALL_CAPS in 18 of 18, and `absence`, a paragraph
+    in 30 of 30.
 
-    Refusing instead would take a whole session history down for one conversation, which is
-    worse — so the gap is declared, and asserted in
-    `tests/test_internalization_room_element_labels.py` so it cannot go stale in silence. It
-    closes when a translator reaches those ten passages.
+    The gap was declared rather than hidden, and it closed: a translator reached those ten. The
+    sentence that promised it would close is gone rather than left beside the fact that it did,
+    and the test it pointed at no longer asserts the limit — it asserts the fallback, which is
+    a different claim about a different thing.
+
+    Refusing instead of falling back would take a whole session history down for one
+    conversation, which is why the path stays even with nothing in this book using it.
     """
     return LabelledElement(
         key=element.key,
@@ -161,14 +175,75 @@ def legend(*, catalogue_dir: Path = LABELS_DIR) -> CoverageLegend:
     return CoverageLegend(coverage_status=coverage_status, element_kind=element_kind)
 
 
-def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str:
+#: The language a bead cannot reach the screen without. The other two are translation work and
+#: may legitimately be missing — `LabelledElement` types them `str | None` for exactly that —
+#: so a catalogue entry written in English alone is an untranslated passage somebody finally
+#: named, and not a holed file.
+#:
+#: Before this distinction existed the loader refused any empty language, which was the right
+#: rule while only translated passages had entries at all. After ENG-442 it contradicted the
+#: model it fills: adding the ten passages' English would have turned ten passages that
+#: answered from the canon into `ElementLabelsBroken` — which carries no handler and is a 500.
+REQUIRED_LANGUAGE = "en"
+
+
+def _translated_into(for_passage: dict, language: str) -> bool:
+    """Whether this passage has been translated into a language at all.
+
+    The permission is for a passage nobody has translated, and the loader cannot tell that
+    from a passage whose Spanish somebody deleted — unless it looks at the passage rather than
+    at the bead. Written the other way round, blanking one label on a translated passage would
+    have gone through in silence, which is the guarantee this module exists for.
+
+    Today the data is exactly consistent: the pilot's four carry all three languages on every
+    bead, and the ten carry English on every bead and nothing else on any. That is what makes
+    a whole-passage rule the honest one — a passage is translated or it is not, and a bead is
+    not a unit of translation.
+    """
+    return any((entry.get(language) or "").strip() for entry in for_passage.values())
+
+
+def _required(for_passage: dict, pericope_num: str, key: str) -> str:
+    """The label a bead cannot be served without. Absent, it is our own file being wrong.
+
+    The check below is not unreachable, and a `pragma` saying so was wrong: `_text` refusing
+    this language is the first guard and this is the second. Measured — a mutant removing
+    either one alone survives the whole suite, and only removing both reddens
+    `test_the_permission_does_not_reach_english`. Two guards for one rule is defence in depth
+    rather than duplication, because the rule is what a bead cannot reach a screen without.
+    """
+    text = _text(for_passage, pericope_num, key, REQUIRED_LANGUAGE)
+    if text is None:
+        raise ElementLabelsBroken(f"{pericope_num} {key} has no {REQUIRED_LANGUAGE} label")
+    return text
+
+
+def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str | None:
+    """One label, or nothing where nothing is a legitimate answer.
+
+    Absent Portuguese is a passage waiting for a translator. Absent English is our own file
+    being wrong — the difference between the two is the whole of the permission, and only one
+    goes through.
+
+    An entry empty in all three is caught by the English refusal above and never reaches the
+    rest of this function: `labelled_elements` evaluates `label_en` before it spreads the other
+    languages, so by the time this is asked about Portuguese the English of the same entry is
+    known to be there. A separate refusal for "nothing in any language" was written here and
+    measured dead — it promised a message that never came out.
+    """
     entry = for_passage.get(key)
     if entry is None:
         raise ElementLabelsBroken(f"{pericope_num} {key} has no label in any language")
     text = (entry.get(language) or "").strip()
-    if not text:
+    if text:
+        return text
+    if language == REQUIRED_LANGUAGE:
         raise ElementLabelsBroken(f"{pericope_num} {key} has no {language} label")
-    return text
+    if _translated_into(for_passage, language):
+        raise ElementLabelsBroken(
+            f"{pericope_num} {key} has no {language} label, and the rest of the passage does"
+        )
+    return None
 
 
 def _named_group(
