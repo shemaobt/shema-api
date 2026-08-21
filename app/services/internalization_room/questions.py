@@ -86,10 +86,18 @@ async def answer_with_voice(
     answered_by: str,
     store: SpeechStore | None = None,
 ) -> IRQuestion:
+    """The facilitator's spoken reply, put in front of the team as something not yet heard.
+
+    A second reply supersedes the first, and the tablet only fetches what it has not heard.
+    Leaving `heard_at` set filtered the correction out forever: the facilitator realises they
+    were wrong, records the right answer, the API says "answered", and the team keeps the wrong
+    rendering with no way to learn otherwise.
+    """
     if not audio:
         raise ValidationError("A reply with no audio is not a reply")
     key = _key("resposta", question.id, audio)
     await (store or _store()).put(key, audio, AUDIO_MIME)
+    question.heard_at = None
     question.reply_audio_key = key
     question.status = IRQuestionStatus.ANSWERED
     question.answered_by = answered_by
@@ -106,7 +114,14 @@ async def resolve_elsewhere(
 
     Distinct from answered on purpose: nothing will arrive in the app, so the team is never
     left waiting on a reply that was always going to happen face to face.
+
+    A recording the team has not heard yet is not closed over. Resolving on top of it moved
+    the row out of the reply filter and left the audio in the bucket, reachable by nothing —
+    and the facilitator had no way to know a reply existed, because the queue does not show
+    one.
     """
+    if question.status is IRQuestionStatus.ANSWERED and question.heard_at is None:
+        raise ValidationError("This question already has a spoken reply the team has not heard yet")
     question.status = IRQuestionStatus.RESOLVED
     question.answered_by = answered_by
     question.answered_at = datetime.now(UTC)

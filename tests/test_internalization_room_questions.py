@@ -140,3 +140,55 @@ async def test_who_answered_is_recorded(db_session: AsyncSession) -> None:
 
     assert question.answered_by == "user-42"
     assert question.answered_at is not None
+
+
+async def test_a_corrected_reply_reaches_a_team_that_heard_the_first(
+    db_session: AsyncSession,
+) -> None:
+    """The facilitator realises they were wrong and records the right answer."""
+    store = MemoryStore()
+    question = await service.raise_question(
+        db_session,
+        device_id=DEVICE,
+        session_id="s1",
+        pericope="P01",
+        audio=b"pergunta",
+        store=store,
+    )
+    await service.answer_with_voice(
+        db_session, question, audio=b"errado", answered_by="fac", store=store
+    )
+    await service.mark_heard(db_session, question)
+
+    await service.answer_with_voice(
+        db_session, question, audio=b"certo", answered_by="fac", store=store
+    )
+
+    waiting = await service.replies_for(db_session, DEVICE)
+    assert [q.id for q in waiting] == [question.id], (
+        "o heard_at da primeira filtrava a correção para sempre, e a equipe ficava com a "
+        "renderização errada sem meio de descobrir"
+    )
+
+
+async def test_resolving_does_not_bury_a_reply_nobody_has_heard(
+    db_session: AsyncSession,
+) -> None:
+    store = MemoryStore()
+    question = await service.raise_question(
+        db_session,
+        device_id=DEVICE,
+        session_id="s1",
+        pericope="P01",
+        audio=b"pergunta",
+        store=store,
+    )
+    await service.answer_with_voice(
+        db_session, question, audio=b"resposta", answered_by="fac", store=store
+    )
+
+    with pytest.raises(ValidationError):
+        await service.resolve_elsewhere(db_session, question, answered_by="fac")
+
+    waiting = await service.replies_for(db_session, DEVICE)
+    assert [q.id for q in waiting] == [question.id]
