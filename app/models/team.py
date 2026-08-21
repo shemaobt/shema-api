@@ -78,6 +78,40 @@ class FacilitatorTeamView(BaseModel):
     last_activity_at: datetime | None
 
 
+class FacilitatorTeamDetail(FacilitatorTeamView):
+    """One team at its own address, with the two facts only this route can answer.
+
+    Everything the queue's row carries, because the screen draws all of it, plus two the row
+    deliberately does not: they are facts about **one** team, and on a fourteen-row queue they
+    would be fourteen answers to a question nobody asked.
+    """
+
+    #: Which scene of the active passage the team last actually moved a bead in — `scene:2`,
+    #: not `2`, for the reason `ElementCoverage.scene` gives: a client that has to compose a
+    #: key composes the wrong one the day the key's shape changes.
+    #:
+    #: Null in three cases and none of them is a missing value: a team that has moved nothing,
+    #: a team at the end of the book that is on no passage at all, and a team whose most recent
+    #: movement was on a preservation rule — those belong to the passage and to none of its
+    #: scenes.
+    #:
+    #: "Last moved" and not "first still owed". The two readings disagree exactly when a team
+    #: worked a later scene while an earlier one still has beads left, and the field names the
+    #: first: it says where they **are**.
+    scene_the_team_is_in: str | None = None
+
+    #: How many of the book's passages have met the completion floor.
+    #:
+    #: **The one count this product allows, and the reason has to live beside it.** It is a
+    #: position in the book, not a measure of the team — every other count on every other
+    #: surface is forbidden, so without the reason written down this one gets deleted by
+    #: somebody who is right about the rule and wrong about the case (ENG-469).
+    #:
+    #: Counts the floor, not the walk: a passage closed out of order counts, and the team
+    #: still stands where the canon's order puts them.
+    closed_total: int
+
+
 class TeamListingResponse(BaseModel):
     """The restricted list, beside two facts the restriction never touches.
 

@@ -33,6 +33,44 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", plain.casefold()).strip("-")[:32] or "unnamed"
 
 
+@lru_cache(maxsize=64)
+def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
+    """The scene each bead belongs to — and only for the beads that belong to just one.
+
+    `elements_of` dedupes entities across the passage on purpose: Naomi in three scenes is one
+    thing for the team to work with, not three. The bead she gets therefore carries the scene
+    she **first** appeared in, which is fine for drawing a necklace in order and wrong for
+    answering where a team is standing — five of P01's beads span scenes and every one of them
+    says `1`.
+
+    So a bead that appears in more than one scene is absent from this map rather than present
+    with its first. A caller asking "which scene is this" gets no answer instead of a confident
+    wrong one, which is the only difference that matters when the answer is a position.
+
+    Preservation rules are absent too, and for the older reason: they belong to the passage and
+    to none of its scenes.
+    """
+    appearances: dict[str, set[int]] = {}
+    for scene in load_map(pericope_num).scenes:
+        for kind, entities in (
+            (ElementKind.BEING, scene.beings),
+            (ElementKind.PLACE, scene.places),
+            (ElementKind.OBJECT, scene.objects),
+            (ElementKind.TIME, scene.times),
+        ):
+            for entity in entities:
+                appearances.setdefault(_entity_key(kind, entity), set()).add(scene.number)
+
+    single = {}
+    for element in elements_for(pericope_num, book):
+        if element.scene is None:
+            continue
+        spans = appearances.get(element.key)
+        if spans is None or len(spans) == 1:
+            single[element.key] = element.scene
+    return single
+
+
 def scene_key(number: int) -> str:
     """A scene's own bead, named. The one place the shape of that key is written.
 
