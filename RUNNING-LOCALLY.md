@@ -79,6 +79,59 @@ docker exec -i shema-integracao-db psql -U integracao -d integracao \
 Without it the routes still answer 200, with `serves_any_team: false` — the contract is
 exercisable and the screen is not.
 
+## 5b. Something for the inbox to hold
+
+A team is enough for the routes to answer. It is not enough for them to answer with anything:
+the inbox comes back empty and the session list comes back `[]`, so a client can check that it
+parses the shape and nothing about what it draws. Coverage is the exception — it is answered
+from the canon and is full from the start.
+
+```sh
+docker exec -i shema-integracao-db psql -U integracao -d integracao \
+  -v team_name="Equipe Piloto" < scripts/seed_local_content.sql
+```
+
+One session and three raised hands — two open, one answered and heard — with transcripts,
+durations and real element keys out of P01's Meaning Map. After it, `/facilitator/teams`
+reports `open_hands_total: 2` and the inbox has three cards to draw.
+
+The audio keys point at nothing. A card carries the *address* of a recording; playing it is a
+separate path through signed URLs and object storage that a local database cannot stand in for.
+
+## The email validator rejects more than you would guess
+
+`@something.test` and `@something.local` are both refused with **422** — "a special-use or
+reserved name that cannot be used with email" — and the message says `email`, not `password`,
+which is easy to misread as a credential problem. `@something.example` is accepted. Measured,
+not assumed.
+
+## Do not reach for `scripts/seed_apps_roles.py`
+
+It does not register the apps this needs. Its `SEED_APPS` list carries `tripod-studio`,
+`meaning-map-generator`, `oral-bridge`, `oral-collector`, `avita`, `annotation-studio` and
+`sound-necklace` — and **not** `internalization-room`, `project-health` or `translation-helper`.
+Running it against a fresh database adds seven apps nobody here needs and none of the ones they
+do.
+
+The apps this procedure depends on arrive by migration, not by script:
+`20260812_room04_register_internalization_room_app.py` is the one that registers the room and
+its `facilitator` role. That is why a database created from nothing already has them.
+
+## `/api/apps` is not the way to check whether apps exist
+
+It answers **403** to anyone who is not a platform admin — it never reports an empty list for
+lack of apps, and reading a refusal there as "nothing is registered" points at the environment
+when the answer is about the caller.
+
+The route that answers for the signed-in user is `GET /api/apps/my-apps`, and it returns what
+*they* hold. An account with no role gets `[]` from it, which is a true statement about the
+account and says nothing about the database. To ask the database, ask the database:
+
+```sh
+docker exec shema-integracao-db psql -U integracao -d integracao \
+  -c "select app_key, is_active from apps order by app_key;"
+```
+
 ## 6. The token, and a look
 
 ```sh
