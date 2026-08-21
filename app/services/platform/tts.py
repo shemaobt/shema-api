@@ -86,6 +86,7 @@ async def synthesize_speech(
     voice_id: str | None = None,
     model: str | None = None,
     voice_settings: Mapping[str, float | bool] | None = None,
+    api_key: str | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
@@ -99,9 +100,11 @@ async def synthesize_speech(
         raise ValidationError("text must not be empty")
 
     cfg = settings or get_settings()
-    if not cfg.elevenlabs_api_key:
-        # ponytail: project_health uses a SECOND key (`ph_elevenlabs_api_key`). When it
-        # migrates here, the two become one.
+    credential = api_key or cfg.elevenlabs_api_key
+    if not credential:
+        # ponytail: project_health uses a SECOND key (`ph_elevenlabs_api_key`), and the
+        # internalization room now brings its own. A caller that passes none still falls
+        # back to the shared one, so nothing that worked before needs to change.
         raise ValidationError("ELEVENLABS_API_KEY is not configured")
 
     voice = voice_id or resolve_voice(language)
@@ -127,6 +130,7 @@ async def synthesize_speech(
         voice_settings=voice_settings,
         cfg=cfg,
         client=client,
+        api_key=credential,
     )
     await _cache_quietly(speech_store, key, audio)
     return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
@@ -163,6 +167,7 @@ async def _synthesize(
     client: httpx.AsyncClient | None,
     model: str,
     voice_settings: Mapping[str, float | bool] | None = None,
+    api_key: str | None = None,
 ) -> bytes:
     body: dict[str, object] = {
         "text": text,
@@ -177,7 +182,7 @@ async def _synthesize(
     response = await http.post(
         f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
         json=body,
-        headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": MIME_TYPE},
+        headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
     )
     if response.status_code >= 400:
         logger.warning(

@@ -338,3 +338,50 @@ async def test_the_room_can_bring_its_own_voice_and_model() -> None:
     body = client.post.await_args.kwargs["json"]
     assert body["model_id"] == "eleven_turbo_v2_5"
     assert "83Nae6GFQiNslSbuzmE7" in client.post.await_args.args[0]
+
+
+async def test_a_caller_may_bill_its_own_elevenlabs_key() -> None:
+    client = _client(_ok())
+
+    await synthesize_speech(
+        QUESTION,
+        language="pt-BR",
+        api_key="chave-da-sala",
+        settings=_settings(),
+        client=client,
+        store=MemoryStore(),
+    )
+
+    _url, kwargs = client.post.await_args
+    assert kwargs["headers"]["xi-api-key"] == "chave-da-sala"
+
+
+async def test_a_caller_without_its_own_key_still_uses_the_shared_one() -> None:
+    client = _client(_ok())
+
+    await synthesize_speech(
+        QUESTION,
+        language="pt-BR",
+        api_key=None,
+        settings=_settings(),
+        client=client,
+        store=MemoryStore(),
+    )
+
+    _url, kwargs = client.post.await_args
+    assert kwargs["headers"]["xi-api-key"] == "fake-elevenlabs"
+
+
+async def test_an_own_key_stands_in_for_a_missing_shared_one() -> None:
+    client = _client(_ok())
+
+    await synthesize_speech(
+        QUESTION,
+        language="pt-BR",
+        api_key="chave-da-sala",
+        settings=_settings(elevenlabs_api_key=""),
+        client=client,
+        store=MemoryStore(),
+    )
+
+    assert client.post.await_count == 1

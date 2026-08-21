@@ -25,6 +25,10 @@ async def synthesize_facilitator_speech(
     the language from the text, which lets an English word from the map drag a whole
     sentence out of Portuguese.
 
+    The room carries its own ElevenLabs key so its spend and its rate limit are separable
+    from the rest of the platform's; an empty setting falls back to the shared one, which
+    is what keeps every other caller unchanged.
+
     Synthesis goes through the platform service, whose cache lives in the bucket: a line
     is paid for once and then answers every replica and every deploy. The in-process LRU
     this used to call started cold on each worker, so a room that failed over mid-session
@@ -43,6 +47,7 @@ async def synthesize_facilitator_speech(
             "use_speaker_boost": True,
             "speed": cfg.internalization_room_voice_speed,
         },
+        api_key=cfg.internalization_room_elevenlabs_api_key or None,
         settings=cfg,
         client=client,
         store=store,

@@ -98,6 +98,8 @@ services:
       # Chave de dispositivo da Sala de Internalizacao. Valor de dev no local;
       # em producao vem dos segredos, como as demais credenciais.
       INTERNALIZATION_ROOM_API_KEY: ${INTERNALIZATION_ROOM_API_KEY:-sala-local-dev}
+      # A voz da Sala tem chave propria. Vazio cai na chave compartilhada.
+      INTERNALIZATION_ROOM_ELEVENLABS_API_KEY: ${INTERNALIZATION_ROOM_ELEVENLABS_API_KEY:-}
     dns:
       - 8.8.8.8
       - 8.8.4.4
