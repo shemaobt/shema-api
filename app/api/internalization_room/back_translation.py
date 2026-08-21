@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, room_key_dep
@@ -85,7 +85,7 @@ async def add_chunk(
             session_id=session.id,
             chunks=len(state.chunks),
             captured=False,
-            pass_number=state.retells + 1 if retelling else 1,
+            pass_number=pass_number,
         )
 
     state.chunks.append(
@@ -120,7 +120,6 @@ async def add_chunk(
 )
 async def finish(
     session_id: str,
-    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge."""
