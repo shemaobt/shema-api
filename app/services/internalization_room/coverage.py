@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import enum
 from collections.abc import Iterable
 
+#: Re-exported so `_RANK` below reads beside the values it ranks. Defined in `core`
+#: because `app/models` needs it too — see `app/core/room_enums.py`.
+from app.core.room_enums import CoverageStatus
 from app.services.internalization_room.canon.elements import (
     Element,
     ElementKind,
     element_keys,
     elements_for,
 )
-
-
-class CoverageStatus(enum.StrEnum):
-    NOT_ENCOUNTERED = "not_encountered"
-    SURFACED = "surfaced"
-    PARTIALLY_ENGAGED = "partially_engaged"
-    ENGAGED = "engaged"
-
 
 _RANK = {
     CoverageStatus.NOT_ENCOUNTERED: 0,

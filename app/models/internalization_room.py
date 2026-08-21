@@ -3,8 +3,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.services.internalization_room.canon.elements import ElementKind
-from app.services.internalization_room.coverage import CoverageStatus
+from app.core.room_enums import CoverageStatus, ElementKind
 
 MAX_TTS_CHARS = 3000
 
