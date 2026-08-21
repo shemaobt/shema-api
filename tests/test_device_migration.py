@@ -40,6 +40,18 @@ PREVIOUS_REVISION = "20260812_0001"
 #: rebases onto the room chain's tip — the second head goes away with the rebase.
 DEVICE_CHAIN_HEAD = "20260819_0001"
 
+#: Where the rest of the `devices` columns arrive (ENG-448), and what stands between here
+#: and there.
+#:
+#: The rotation and revocation columns were written after ``20260820_merge`` joined the two
+#: lines, so their revision descends from the room chain's tip rather than from
+#: DEVICE_CHAIN_HEAD. Upgrading straight through would run the room migrations, and one of
+#: them inserts a row into `apps` — a table this file never builds, because it stamps the
+#: past instead of migrating it. Stamping the room tip is the same move applied to the same
+#: kind of thing: migrations that are somebody else's subject.
+ROOM_CHAIN_TIP = "20260820_0002"
+DEVICE_COLUMNS_HEAD = "20260820_0003"
+
 #: The migration these tests are actually about: the one that creates the table.
 DEVICE_TABLE_REVISION = "20260817_0001"
 NEW_TABLE = "devices"
@@ -205,6 +217,9 @@ async def test_migration_builds_the_table_the_model_declares(stamped_database):
     if the migration and the model agree. A model the migration does not build is a
     schema change that happened outside Alembic by omission."""
     assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    assert _run_alembic(stamped_database, "stamp", ROOM_CHAIN_TIP).returncode == 0
+    columns_added = _run_alembic(stamped_database, "upgrade", DEVICE_COLUMNS_HEAD)
+    assert columns_added.returncode == 0, columns_added.stderr
 
     migrated_columns, migrated_indexes = await _migrated_shape(stamped_database)
     model = Base.metadata.tables[NEW_TABLE]

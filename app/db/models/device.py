@@ -52,6 +52,22 @@ class Device(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    #: The credential this device held before its last rotation, still good until the new
+    #: one is used once. Cleared by that first use. Null the rest of the time — see
+    #: ``rotate_device_credential`` for why the window closes on evidence and not a clock.
+    previous_credential_hash: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
+    )
+
+    #: The hash of a credential that was revoked, kept so a revoked device can be told
+    #: apart from one presenting a string that was never issued. **The lookup that
+    #: authenticates never reads this column**; only the refusal path does, and only to
+    #: choose which refusal. Writing it does not weaken ENG-444's revocation, because
+    #: nothing authenticates against it.
+    revoked_credential_hash: Mapped[str | None] = mapped_column(
+        String(64), index=True, nullable=True
+    )
+
     #: When a facilitator took this device out of service (ENG-444). Set once, and it is
     #: what every read path filters on — an unlinked device is gone from the Desk without
     #: its row being gone from the table. ``credential_hash`` is nulled at the same moment,
