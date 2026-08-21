@@ -39,13 +39,16 @@ LABELS_DIR = Path(__file__).parent / "element-labels"
 #: does not read English.
 LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
 
-#: Coverage states named here before they exist in `CoverageStatus`. ENG-441 adds
-#: `partially_engaged` between `surfaced` and `engaged` on this same base, and says its labels
-#: belong to this slice — so the name is written now rather than left as a hole the day the
-#: enum grows. It is declared rather than merely tolerated: an undeclared extra is refused,
-#: because a catalogue that quietly accepts names nobody reads is how it drifts from the enum.
-#: When ENG-441 lands, the value moves into `CoverageStatus` and this set empties.
-PENDING_COVERAGE_STATUS: frozenset[str] = frozenset({"partially_engaged"})
+#: Coverage states named here before they exist in `CoverageStatus`. Empty, and the mechanism
+#: is kept rather than deleted with its last entry: it is what lets a slice write a label for
+#: a state the enum has not grown yet, which is the ordinary case when the catalogue and the
+#: enum land in different weeks. An undeclared extra is still refused — a catalogue that
+#: quietly accepts names nobody reads is how it drifts from the enum.
+#:
+#: `partially_engaged` was the entry, written by ENG-442 ahead of ENG-441. It landed, so the
+#: set empties, which is what the case beside it was written to make happen rather than to
+#: wait for.
+PENDING_COVERAGE_STATUS: frozenset[str] = frozenset()
 
 
 class ElementLabelsBroken(Exception):
