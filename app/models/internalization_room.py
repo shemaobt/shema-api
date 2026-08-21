@@ -52,6 +52,18 @@ class TurnResponse(BaseModel):
     done: bool
 
 
+class PassageView(BaseModel):
+    pericope: str
+    #: Where to fetch the line that names this passage aloud. There is no text field: the
+    #: team does not read, so a passage the room cannot say is a passage it cannot offer.
+    audio_url: str
+
+
+class BookPassagesResponse(BaseModel):
+    book: str
+    passages: list[PassageView]
+
+
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
     chunks: int
