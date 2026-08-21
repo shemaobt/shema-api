@@ -16,10 +16,17 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.background import settle_coverage
+from app.services.internalization_room.calibration import (
+    BRIDGE_CALIBRATION_QUESTION,
+    BridgeMode,
+    bridge_calibration_acknowledgement,
+    resolve_bridge_mode_for_turn,
+    resolve_one_shot_calibration,
+)
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.canon.elements import absence_index
-from app.services.internalization_room.coverage import counts, floor_met
-from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.coverage import counts
+from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.prepare_opening import (
     hand_over,
     prepare_opening,
@@ -57,6 +64,7 @@ def _state(session: IRSession) -> SessionStateResponse:
         coverage=_coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
         back_translation=_progress(session),
+        bridge_mode=session.bridge_mode,
     )
 
 
@@ -90,6 +98,7 @@ async def create_session(
         db,
         pericope=payload.pericope or DEFAULT_PERICOPE,
         after_panorama=payload.after_panorama or payload.after_session is not None,
+        bridge_mode=payload.bridge_mode,
     )
     if payload.after_session:
         previous = await room.get_session(db, payload.after_session)
@@ -144,13 +153,16 @@ async def take_turn(
 ) -> TurnResponse:
     session = await room.get_session(db, session_id)
 
-    transcript = ""
+    speech_heard = HeardSpeech()
     opening = file is None
     if file is not None:
         audio_bytes = await file.read()
         if len(audio_bytes) > MAX_AUDIO_BYTES:
             raise ValidationError("Audio payload exceeds 25 MB limit")
-        transcript = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+        speech_heard = await heard_speech(
+            audio_bytes, filename=file.filename, mime_type=file.content_type
+        )
+    transcript = speech_heard.text
 
     ready = await take_prepared(db, session) if opening else None
     if ready is not None:
@@ -164,33 +176,55 @@ async def take_turn(
             peer_cue=outcome.peer_cue,
             coverage=_coverage_view(session),
             done=False,
+            bridge_mode=session.bridge_mode,
         )
 
     validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
     if is_panorama(session.pericope):
-        book = book_of(session.pericope)
-        outcome = await room.run_panorama_turn(
-            transcript=transcript,
-            messages=session.messages or [],
-            panorama_prompt=await get_prompt_text(db, IRPromptKey.BOOK_PANORAMA),
-            validator_prompt=validator_prompt,
-            book=book,
-            book_material=build_book_material(book),
-            opening=opening,
-            settings=get_settings(),
-        )
+        if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
+            choice_speech = "" if not speech_heard.reliable_bridge_speech else transcript
+            resolved = resolve_one_shot_calibration(choice_speech)
+            session = await room.set_bridge_mode(db, session, resolved.mode.value)
+            outcome = TurnOutcome(
+                speech=bridge_calibration_acknowledgement(resolved.mode),
+                transcript=transcript,
+            )
+        else:
+            if not opening and transcript.strip():
+                switched = resolve_bridge_mode_for_turn(BridgeMode(session.bridge_mode), transcript)
+                if switched.explicit:
+                    session = await room.set_bridge_mode(db, session, switched.mode.value)
+            book = book_of(session.pericope)
+            outcome = await room.run_panorama_turn(
+                transcript=transcript,
+                messages=session.messages or [],
+                panorama_prompt=await get_prompt_text(db, IRPromptKey.BOOK_PANORAMA),
+                validator_prompt=validator_prompt,
+                book=book,
+                book_material=build_book_material(book),
+                opening=opening,
+                settings=get_settings(),
+                enforce_speech_budget=not opening,
+            )
+            if (
+                opening
+                and not outcome.used_fail_safe
+                and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value
+            ):
+                outcome.speech = f"{outcome.speech} {BRIDGE_CALIBRATION_QUESTION}"
     else:
-        outcome = await room.run_turn(
-            transcript=transcript,
-            coverage_state=session.coverage_state or {},
-            messages=session.messages or [],
+        turn = await room.run_comprehension_turn(
+            db,
+            session,
+            speech=speech_heard,
+            opening=opening,
             guide_prompt=await get_prompt_text(db, IRPromptKey.GUIDE),
             validator_prompt=validator_prompt,
-            pericope_num=session.pericope,
-            opening=opening,
-            already_met=session.after_panorama,
             settings=get_settings(),
         )
+        outcome = turn.outcome
+        session = await room.set_bridge_mode(db, session, turn.bridge_mode)
+        session = await room.save_comprehension(db, session, turn.state)
 
     voiced = (
         None
@@ -221,9 +255,6 @@ async def take_turn(
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         coverage=_coverage_view(session),
-        done=(
-            False
-            if is_panorama(session.pericope)
-            else floor_met(session.coverage_state or {}, session.pericope)
-        ),
+        done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
+        bridge_mode=session.bridge_mode,
     )

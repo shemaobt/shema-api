@@ -26,6 +26,7 @@ class CreateSessionRequest(BaseModel):
     after_panorama: bool = False
     #: Which panorama session preceded this one, so its prepared opening can be handed over.
     after_session: str | None = Field(default=None, max_length=36)
+    bridge_mode: str | None = Field(default=None, max_length=24)
 
 
 class BackTranslationProgress(BaseModel):
@@ -55,6 +56,7 @@ class SessionStateResponse(BaseModel):
     coverage: CoverageView
     done: bool
     back_translation: BackTranslationProgress = Field(default_factory=BackTranslationProgress)
+    bridge_mode: str = "calibration_pending"
 
 
 class TurnResponse(BaseModel):
@@ -71,6 +73,7 @@ class TurnResponse(BaseModel):
     used_fail_safe: bool = False
     coverage: CoverageView
     done: bool
+    bridge_mode: str = "calibration_pending"
 
 
 class PassageView(BaseModel):

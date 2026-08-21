@@ -5,6 +5,16 @@ from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSessionStatus
 from app.services.internalization_room.back_translation import BackTranslationState, Chunk
 from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.evidence import (
+    EvidenceMethod,
+    EvidenceObservation,
+    EvidenceResult,
+)
+from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.sessions import (
     MAX_RETELLS,
@@ -16,6 +26,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     mark_needs_person,
     save_back_translation,
+    save_comprehension,
 )
 
 P = "P03"
@@ -75,8 +86,43 @@ async def test_coverage_settles_without_closing_a_partial_session(
 
 
 @pytest.mark.asyncio
-async def test_meeting_the_floor_closes_the_session(db_session: AsyncSession) -> None:
+async def test_the_coverage_floor_alone_no_longer_closes_the_session(
+    db_session: AsyncSession,
+) -> None:
+    """Coverage bookkeeping is participation, not comprehension — the very confusion the
+    bridge-language calibration exists to undo."""
     session = await create_session(db_session, pericope=P)
+    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+
+    session = await apply_coverage(db_session, session.id, whole)
+
+    assert session.status is IRSessionStatus.IN_PROGRESS
+
+
+def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
+    ledger = [
+        EvidenceObservation(
+            id=f"ev-{index}",
+            unit_id=checkpoint.id,
+            probe_id=f"probe-{index}",
+            method=EvidenceMethod.MICRO_TELLBACK,
+            result=EvidenceResult.DEMONSTRATED,
+        )
+        for index, checkpoint in enumerate(checkpoints_for(pericope))
+    ]
+    return ComprehensionState(
+        ledger=list(ledger),
+        practiced_scene_ids=scene_ids_for(pericope),
+        recording_consent_given=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_floor_plus_evidence_practice_and_consent_closes_the_session(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
     session = await apply_coverage(db_session, session.id, whole)

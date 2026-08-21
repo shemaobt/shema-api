@@ -38,6 +38,7 @@ def _plan_input(**overrides):
         "scene_ids": scene_ids_for(P),
         "current_scene": None,
         "practiced_scene_ids": [],
+        "opened_scene_ids": scene_ids_for(P),
     }
     base.update(overrides)
     return ProbePlanInput(**base)
@@ -149,6 +150,21 @@ def test_guided_mode_asks_for_scene_practice_before_any_semantic_question() -> N
     assert probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE
     assert probe.practice_scene_ids == [scene_ids_for(P)[0]]
     assert probe.checkpoint_ids == []
+
+
+def test_practice_is_never_invited_for_a_scene_the_voice_has_not_opened() -> None:
+    probe = plan_next_probe(_plan_input(opened_scene_ids=[]))
+    assert probe is not None
+    assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+
+def test_practice_waits_for_its_own_scene_to_open() -> None:
+    later = scene_ids_for(P)[1:]
+    probe = plan_next_probe(_plan_input(opened_scene_ids=later, current_scene=scene_ids_for(P)[0]))
+    assert probe is not None
+    assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE or (
+        probe.practice_scene_ids and probe.practice_scene_ids[0] in later
+    )
 
 
 def test_guided_mode_probes_one_atomic_checkpoint_after_practice() -> None:

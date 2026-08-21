@@ -55,6 +55,10 @@ class IRSession(Base):
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    bridge_mode: Mapped[str] = mapped_column(
+        String(24), default="calibration_pending", server_default="calibration_pending"
+    )
+    comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 MAX_REDRAFTS = 2
 _RECENT_TURNS = 6
 
+MAX_SPOKEN_TURN_WORDS = 45
+MAX_SPOKEN_TURN_SENTENCES = 3
+
+
+def spoken_turn_fits_budget(text: str) -> bool:
+    words = len(text.split())
+    sentences = len([part for part in re.split(r"[.!?…]+", text) if part.strip()])
+    return words <= MAX_SPOKEN_TURN_WORDS and sentences <= MAX_SPOKEN_TURN_SENTENCES
+
+
 _PEER_CUE_PHRASES = (
     "entre vocês",
     "entre voces",
@@ -159,6 +169,8 @@ async def _voiced_after_validation(
     language_code: str,
     opening: bool,
     settings: Settings,
+    validator_context: str = "",
+    enforce_speech_budget: bool = False,
     opening_instruction: str = "",
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
@@ -188,6 +200,8 @@ async def _voiced_after_validation(
             TEAM_UTTERANCE=transcript or "(a equipe ainda não falou — abertura da sessão)",
             DRAFTED_RESPONSE=draft,
         )
+        if validator_context:
+            validator_system = f"{validator_system}\n\n{validator_context}"
         verdict = _parse_verdict(
             await call_agent(
                 system_prompt=validator_system,
@@ -205,7 +219,14 @@ async def _voiced_after_validation(
         elif verdict.get("verdict") == "correct":
             speech = (verdict.get("corrected_response") or "").strip()
 
-        if speech and not strays_from(speech, language_code):
+        if speech and enforce_speech_budget and not spoken_turn_fits_budget(speech):
+            issues = [*issues, {"problem": "over_speech_budget"}]
+            speech = ""
+        elif speech and strays_from(speech, language_code):
+            issues = [*issues, {"problem": "off_bridge_language"}]
+            speech = ""
+
+        if speech:
             return TurnOutcome(
                 speech=speech,
                 transcript=transcript,
@@ -213,9 +234,6 @@ async def _voiced_after_validation(
                 redrafts=attempt,
                 issues=issues,
             )
-
-        if speech:
-            issues = [*issues, {"problem": "off_bridge_language"}]
 
         redraft_note = _redraft_note(issues, session_language)
 
@@ -250,10 +268,16 @@ async def run_turn(
     opening: bool = False,
     already_met: bool = False,
     settings: Settings | None = None,
+    app_context: str = "",
+    validator_context: str = "",
+    enforce_speech_budget: bool = False,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
     `opening` is the session's first turn, where the Guide speaks before the team has.
+    `app_context` rides inside the Guide's COVERAGE_STATUS slot and `validator_context`
+    is appended to the Validator's system — both are app-owned state (bridge mode,
+    comprehension evidence, the active probe contract), never team speech.
     """
     cfg = settings or get_settings()
 
@@ -267,12 +291,15 @@ async def run_turn(
         )
 
     map_block = meaning_map_block(pericope_num, book)
+    coverage_status = coverage_status_block(coverage_state, pericope_num)
+    if app_context:
+        coverage_status = f"{coverage_status}\n\n{app_context}"
     return await _voiced_after_validation(
         speaker_system=render(
             guide_prompt,
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=map_block,
-            COVERAGE_STATUS=coverage_status_block(coverage_state, pericope_num),
+            COVERAGE_STATUS=coverage_status,
         ),
         validator_prompt=validator_prompt,
         standard_of_truth=map_block,
@@ -283,6 +310,8 @@ async def run_turn(
         opening=opening,
         opening_instruction=(ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION),
         settings=cfg,
+        validator_context=validator_context,
+        enforce_speech_budget=enforce_speech_budget,
     )
 
 
@@ -298,6 +327,8 @@ async def run_panorama_turn(
     language_code: str = "pt",
     opening: bool = False,
     settings: Settings | None = None,
+    validator_context: str = "",
+    enforce_speech_budget: bool = False,
 ) -> TurnOutcome:
     """One exchange of a Book Panorama — the session before a book's first passage.
 
@@ -331,6 +362,8 @@ async def run_panorama_turn(
         opening=opening,
         opening_instruction=OPENING_INSTRUCTION,
         settings=cfg,
+        validator_context=validator_context,
+        enforce_speech_budget=enforce_speech_budget,
     )
 
 
@@ -375,6 +408,12 @@ async def run_verdict_turn(
 
 
 def _redraft_note(issues: list[dict[str, Any]], session_language: str = "português") -> str:
+    if any(issue.get("problem") == "over_speech_budget" for issue in issues):
+        return (
+            "A resposta anterior era longa demais para uma sala oral. Refaça com no "
+            f"máximo {MAX_SPOKEN_TURN_SENTENCES} frases curtas e "
+            f"{MAX_SPOKEN_TURN_WORDS} palavras, um único movimento conversacional."
+        )
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
         return (
             "A resposta anterior saiu do idioma da sessão e por isso não pôde ser "

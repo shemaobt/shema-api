@@ -5,10 +5,19 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.calibration import BridgeMode, is_selected_bridge_mode
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.session_readiness import (
+    evaluate_session_comprehension,
+)
+from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import floor_met, furthest, initial_state
 
 DEFAULT_PERICOPE = "P01"
@@ -35,7 +44,11 @@ def resolve_pericope(pericope: str) -> str:
 
 
 async def create_session(
-    db: AsyncSession, *, pericope: str = DEFAULT_PERICOPE, after_panorama: bool = False
+    db: AsyncSession,
+    *,
+    pericope: str = DEFAULT_PERICOPE,
+    after_panorama: bool = False,
+    bridge_mode: str | None = None,
 ) -> IRSession:
     """Open a session on a passage, or on the panorama of a book.
 
@@ -47,6 +60,12 @@ async def create_session(
     panorama = is_panorama(pericope)
     if not panorama:
         load_map(pericope)
+    if bridge_mode is not None and not is_selected_bridge_mode(bridge_mode):
+        raise ValidationError(f"Unknown bridge mode {bridge_mode!r}")
+    if bridge_mode is None:
+        bridge_mode = (
+            BridgeMode.CALIBRATION_PENDING.value if panorama else BridgeMode.ADAPTIVE.value
+        )
     session = IRSession(
         pericope=pericope,
         status=IRSessionStatus.IN_PROGRESS,
@@ -55,6 +74,8 @@ async def create_session(
         coverage_state={} if panorama else initial_state(pericope),
         kept_takes={},
         back_translation={},
+        bridge_mode=bridge_mode,
+        comprehension={},
     )
     db.add(session)
     await db.commit()
@@ -114,13 +135,61 @@ async def apply_coverage(
     )
     if (
         not is_panorama(session.pericope)
-        and floor_met(session.coverage_state, session.pericope)
+        and session_is_done(session)
         and session.status is IRSessionStatus.IN_PROGRESS
     ):
         session.status = IRSessionStatus.DONE
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def set_bridge_mode(db: AsyncSession, session: IRSession, mode: str) -> IRSession:
+    if not is_selected_bridge_mode(mode) and mode != BridgeMode.CALIBRATION_PENDING.value:
+        raise ValidationError(f"Unknown bridge mode {mode!r}")
+    session.bridge_mode = mode
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def comprehension_of(session: IRSession) -> ComprehensionState:
+    return ComprehensionState.model_validate(session.comprehension or {})
+
+
+async def save_comprehension(
+    db: AsyncSession, session: IRSession, state: ComprehensionState
+) -> IRSession:
+    session.comprehension = state.model_dump(mode="json")
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def semantics_ready(session: IRSession) -> bool:
+    """Whether the comprehension side of the gate is met — calibration done, readiness not
+    `needs_more_work` (which already folds in per-scene mother-tongue practice)."""
+    if session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
+        return False
+    state = comprehension_of(session)
+    readiness = evaluate_session_comprehension(
+        checkpoints=list(checkpoints_for(session.pericope)),
+        scene_ids=scene_ids_for(session.pericope),
+        ledger=state.ledger,
+        practiced_scene_ids=state.practiced_scene_ids,
+    )
+    return readiness.evaluation.outcome.value != "needs_more_work"
+
+
+def session_is_done(session: IRSession) -> bool:
+    """The full advance gate: coverage floor, semantic readiness with practice, and the
+    team's explicit recording consent. Coverage bookkeeping alone can no longer end the
+    interview — that is what let bridge-limited teams be judged on Portuguese output."""
+    return (
+        floor_met(session.coverage_state or {}, session.pericope)
+        and semantics_ready(session)
+        and comprehension_of(session).recording_consent_given
+    )
 
 
 async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
