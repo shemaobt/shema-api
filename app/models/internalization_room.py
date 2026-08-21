@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.services.internalization_room.canon.elements import ElementKind
 
 MAX_TTS_CHARS = 3000
 
@@ -12,6 +14,50 @@ class FacilitatorSpeakResponse(BaseModel):
     mime_type: str = "audio/mpeg"
     etag: str
     cached: bool = False
+
+
+class LabelledElement(BaseModel):
+    """One bead, named in each language the Desk offers.
+
+    `key` is unique only within its pericope: `scene:1` is a different scene in every
+    passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
+
+    The three languages are named fields because that is the shape the Desk was promised, so
+    a fourth costs a field here as well as a catalogue entry — three files, not every call
+    site. `extra="forbid"` is what makes that cost visible: the loader builds this by
+    spreading `LANGUAGES`, and pydantic drops an unknown keyword by default, so without it a
+    fourth language would be demanded of the catalogue and then thrown away in silence.
+
+    **`label_pt` and `label_es` are nullable and `label_en` is not**, which is the shape that
+    promise actually names: the Desk's own `CoverageLabels` is
+    `{ pt: string | null, en: string, es: string | null }`, because English comes almost free
+    from the canon and the other two are translation work. This model cited that promise and
+    contradicted its text, and nobody had noticed because the four translated passages are
+    complete in all three. The canon serves fourteen and D-03 walks every team through them.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    kind: ElementKind
+    scene: int | None = None
+    label_pt: str | None
+    label_en: str
+    label_es: str | None
+
+
+class CoverageLegend(BaseModel):
+    """The names of the coverage states and the element kinds, once per response.
+
+    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose three
+    fields the Desk was promised by name, nothing was promised about this shape — so here a
+    fourth language is a catalogue change and nothing else.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_status: dict[str, dict[str, str]]
+    element_kind: dict[str, dict[str, str]]
 
 
 class CoverageView(BaseModel):
