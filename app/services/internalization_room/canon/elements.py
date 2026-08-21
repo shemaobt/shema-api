@@ -40,6 +40,17 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", plain.casefold()).strip("-")[:32] or "unnamed"
 
 
+def scene_key(number: int) -> str:
+    """A scene's own bead, named. The one place the shape of that key is written.
+
+    It was an f-string inside `elements_of` and nowhere else, which was fine while the number
+    alone never left this side. The coverage route now says which scene a bead sits in by
+    naming that scene's bead, so the format has a second reader — and a format with two
+    readers and one spelling is a format that drifts the moment either moves.
+    """
+    return f"{ElementKind.SCENE}:{number}"
+
+
 def _entity_key(kind: ElementKind, entity: Entity) -> str:
     """Stable across sessions: coverage is persisted under these keys."""
     return f"{kind}:{entity.code or _slug(_label(entity))}"
@@ -68,7 +79,7 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
     for scene in meaning_map.scenes:
         elements.append(
             Element(
-                key=f"{ElementKind.SCENE}:{scene.number}",
+                key=scene_key(scene.number),
                 label=scene.title,
                 kind=ElementKind.SCENE,
                 scene=scene.number,

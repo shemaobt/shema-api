@@ -181,7 +181,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     body = response.json()
     expected = PILOT[pericope]
     assert len(body) == expected["elements"]
-    assert sorted({e["scene"] for e in body if e["scene"] is not None}) == expected["scenes"]
+    assert sorted({e["scene"] for e in body if e["scene"] is not None}) == [
+        f"scene:{number}" for number in expected["scenes"]
+    ]
     preserved = [e for e in body if e["kind"] == ElementKind.PRESERVED.value]
     assert len(preserved) == expected["preserved"]
     assert all(e["scene"] is None for e in preserved)
@@ -496,6 +498,49 @@ async def test_a_pericope_outside_the_book_is_refused(client, db_session: AsyncS
 
     assert response.status_code == 404
     assert "P99" in response.json()["detail"]
+
+
+async def test_the_scene_a_bead_sits_in_is_served_as_a_key_and_not_as_a_number(
+    client, db_session: AsyncSession
+) -> None:
+    """The scene a bead belongs to is named the way every other bead is named.
+
+    It served the bare number, which obliges the client to build `scene:{n}` before it can
+    relate a bead to the scene bead beside it on the necklace — and building a key on the
+    client is what this whole route exists to prevent. The day the key's shape changes, a
+    client composing it composes the wrong one, and nothing anywhere goes red: the necklace
+    simply stops joining up.
+
+    Asserted as membership rather than as a string, which is the difference that matters. A
+    case comparing against a literal `"scene:1"` passes just as well when the server invents a
+    format nothing else uses; this one only passes while the value is a key the same response
+    actually carries.
+    """
+    _user, project, headers = await a_facilitator(db_session, email="b8scene@x.com")
+
+    body = (await client.get(coverage_url(project.id, "P01"), headers=headers)).json()
+
+    served = {bead["key"] for bead in body}
+    scenes = {bead["scene"] for bead in body if bead["scene"] is not None}
+
+    assert scenes, "nenhuma conta disse em que cena está"
+    assert scenes <= served, f"a cena servida não é uma conta deste colar: {scenes - served}"
+    assert all(bead["scene"] == bead["key"] for bead in body if bead["kind"] == "scene")
+
+
+async def test_a_preservation_rule_still_belongs_to_no_scene(
+    client, db_session: AsyncSession
+) -> None:
+    """The absence stays an absence, and it is not the empty string.
+
+    Written beside the case above because that one only asserts about beads that have a
+    scene, so a change that gave every bead a scene would leave it green.
+    """
+    _user, project, headers = await a_facilitator(db_session, email="b8noscene@x.com")
+
+    body = (await client.get(coverage_url(project.id, "P01"), headers=headers)).json()
+
+    assert [bead["scene"] for bead in body if bead["kind"] == "preserved"] == [None] * 5
 
 
 # ---------------------------------------------- behaviour 7: non-enumeration, and its ordering
