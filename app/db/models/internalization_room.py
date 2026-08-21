@@ -110,6 +110,23 @@ class IRQuestion(Base):
     session_id: Mapped[str] = mapped_column(String(36))
     pericope: Mapped[str] = mapped_column(String(120))
     audio_key: Mapped[str] = mapped_column(String(512))
+    #: Which bead of the Meaning Map the hand went up on, as the app names it. Nullable
+    #: because every row written before ENG-447 has none, and because the app only starts
+    #: sending it with ENG-456 — a card that names no element is the common case today,
+    #: not a broken one.
+    element_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    #: How long the recording runs, measured from the audio at ingest and never taken from
+    #: the client. Nullable because the measurement is a call to a tool outside this
+    #: process: when it is missing the card shows audio with no length, which is worth more
+    #: than an ingest that refuses the question.
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: What was said, **for the facilitator alone**. It makes the inbox skimmable and the
+    #: set of them is the log of questions the Meaning Map could not answer. It must never
+    #: reach the team's app — transcribing the team's voice *for the team* is out of scope
+    #: for v1 — and `tests/test_ir_transcript_stays_with_the_facilitator.py` holds that line
+    #: over the whole set of room routes rather than over any one of them. Nullable for the
+    #: same reason as the duration: a provider outage does not lose a question.
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[IRQuestionStatus] = mapped_column(
         _QUESTION_STATUS_TYPE, default=IRQuestionStatus.OPEN
     )
