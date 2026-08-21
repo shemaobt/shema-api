@@ -69,5 +69,16 @@ jobs:
           uv run alembic upgrade head
           # The newest migration has to undo exactly what it did: a downgrade that
           # leaves the schema dirty fails the next upgrade.
-          uv run alembic downgrade -1
-          uv run alembic upgrade head
+          #
+          # Which revisions that means is asked of the graph rather than written here.
+          # `alembic downgrade -1` has no answer while a merge revision sits at the head —
+          # two parents, so Alembic refuses with "Ambiguous walk" — and a target spelled
+          # out in this file would walk one extra migration for every one a joined line
+          # gained, drifting further from "the newest one" with each. See
+          # scripts/downgrade_targets.py; it needs no edit when the junction is deleted.
+          targets=$(uv run python scripts/downgrade_targets.py)
+          echo "downgrade targets: $(echo "$targets" | tr '\n' ' ')"
+          while read -r target; do
+            uv run alembic downgrade "$target"
+            uv run alembic upgrade head
+          done <<< "$targets"

@@ -21,6 +21,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.device import Device
 from app.db.models.internalization_room import IRPrompt, IRQuestion, IRSession, IRTake
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
@@ -84,6 +85,7 @@ __all__ = [
     "BibleBook",
     "BookContextDocument",
     "ChatMessageRole",
+    "Device",
     "GranularityLevel",
     "IRPrompt",
     "IRQuestion",

@@ -1,6 +1,28 @@
 from enum import StrEnum
 
 
+class ProjectRole(StrEnum):
+    """The accepted values of ``project_user_access.role``.
+
+    The column is a free ``String(30)`` and stays one: enforcement is at the write path,
+    not in the database. A CHECK constraint would have to be reconciled against whatever
+    production rows already hold, and rewriting somebody's data to fit a new enum is not
+    a migration to make blind.
+
+    That leaves one gap worth being precise about, because it decides which way this
+    fails. A row written by an older code path or by direct SQL can still hold anything.
+    Every read asks for ``FACILITATOR`` exactly, so an unrecognised value **denies**. The
+    column can be wrong; it cannot be wrong in the direction that grants.
+    """
+
+    MEMBER = "member"
+    MANAGER = "manager"
+    #: Serves a team on the Facilitator Desk. Narrower than access: a member or a manager
+    #: of the same project is not one, and neither is someone who reaches the project
+    #: through an organization. Granted by administration, outside this product.
+    FACILITATOR = "facilitator"
+
+
 class UploadStatus(StrEnum):
     LOCAL = "local"
     UPLOADING = "uploading"
