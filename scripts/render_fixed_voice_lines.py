@@ -31,6 +31,21 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "internalization-room/assets/audio/fixed"
 MANIFEST = "manifest.json"
 
+#: A line the app plays outside a turn: it is not a fail-safe and does not live in the
+#: prompt, but it must be in the bundle, because the room says it before it can do anything
+#: at all.
+#:
+#: `sem_conexao` and `toque_para_comecar` ship beside it and are deliberately absent here.
+#: Their audio was rendered before this script existed and their wording was never written
+#: down, so declaring a guess would make the next render overwrite approved audio with it.
+STANDALONE = {
+    "microfone": (
+        "Eu preciso ouvir vocês para trabalhar, e o microfone está desligado para mim. "
+        "Peçam a alguém para liberar o microfone nos ajustes do aparelho. "
+        "Enquanto isso eu não consigo continuar."
+    ),
+}
+
 
 def catalogue(language_code: str) -> dict[str, str]:
     """Every pre-approved line, by the name the app plays it under."""
@@ -38,7 +53,30 @@ def catalogue(language_code: str) -> dict[str, str]:
     for kind in FailSafe:
         for index, text in enumerate(utterances(kind, language_code)):
             lines[f"{kind}{index}"] = text
+    lines.update(STANDALONE)
     return lines
+
+
+class _NoCache:
+    """Synthesis for a build, not for a room.
+
+    The room's synthesis writes through the platform bucket so a line is paid for once
+    across every replica. A script that renders files into the app has no business needing
+    production storage — and would fail on any machine without the bucket configured.
+    """
+
+    async def get(self, key: str) -> bytes | None:
+        return None
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        return None
+
+
+def _clip_path(out: Path, name: str) -> Path:
+    """Standalone lines sit beside the fixed folder, where the app already looks for them."""
+    if name in STANDALONE:
+        return out.parent / f"{name}.mp3"
+    return out / f"{name}.mp3"
 
 
 def fingerprint(text: str) -> str:
@@ -60,7 +98,7 @@ def drift(out: Path, language_code: str) -> list[str]:
             complaints.append(f"{name}: never rendered")
         elif recorded[name] != fingerprint(text):
             complaints.append(f"{name}: text changed since it was rendered")
-        elif not (out / f"{name}.mp3").exists():
+        elif not _clip_path(out, name).exists():
             complaints.append(f"{name}: manifest lists it but the audio is missing")
     for name in recorded.keys() - catalogue(language_code).keys():
         complaints.append(f"{name}: rendered but no longer in the prompt")
@@ -71,11 +109,11 @@ async def render(out: Path, language_code: str, *, force: bool) -> None:
     out.mkdir(parents=True, exist_ok=True)
     manifest = {} if force else read_manifest(out)
     for name, text in catalogue(language_code).items():
-        clip = out / f"{name}.mp3"
+        clip = _clip_path(out, name)
         if not force and clip.exists() and manifest.get(name) == fingerprint(text):
             print(f"  = {name}")
             continue
-        speech, _ = await synthesize_facilitator_speech(text)
+        speech, _ = await synthesize_facilitator_speech(text, store=_NoCache())
         clip.write_bytes(speech.audio)
         manifest[name] = fingerprint(text)
         print(f"  + {name}  {len(speech.audio) // 1024} KB  {text[:56]}")
