@@ -27,22 +27,17 @@ def _session(**over: object) -> IRSession:
 
 
 def test_a_ready_line_is_handed_to_the_session_that_speaks_it() -> None:
-    panorama = _session(id="ov", prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
+    panorama = _session(
+        id="ov",
+        prepared_speech="Olá.",
+        prepared_audio_key="tts/x.mp3",
+        prepared_pericope="P01",
+    )
     passage = _session(id="p")
 
     assert hand_over(panorama, passage) is True
     assert passage.prepared_speech == "Olá."
     assert passage.prepared_audio_key == "tts/x.mp3"
-
-
-def test_the_line_is_handed_over_only_once() -> None:
-    """A second session opened after the same panorama must not be given the same opening."""
-    panorama = _session(id="ov", prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
-
-    assert hand_over(panorama, _session(id="p1")) is True
-    assert panorama.prepared_speech is None
-    assert panorama.prepared_audio_key is None
-    assert hand_over(panorama, _session(id="p2")) is False
 
 
 def test_another_passage_is_not_given_the_first_passage_line() -> None:
@@ -93,8 +88,12 @@ def test_the_prepared_line_belongs_to_the_passage_it_was_written_for() -> None:
 
     A team choosing P03 heard P01's opening as P03's framing, to people who cannot read
     and have no way to check.
+
+    The comparison is against the passage recorded when the line was written, not against the
+    constant this used to hold nor against a fresh resolution — see ENG-450's own case for why
+    the third of those is not the same guard.
     """
-    panorama = IRSession(id="ov", pericope="OV-Ruth")
+    panorama = IRSession(id="ov", pericope="OV-Ruth", prepared_pericope="P01")
     panorama.prepared_speech = "a primeira fala da P01"
     panorama.prepared_audio_key = "tts/v/p01.mp3"
 
@@ -105,7 +104,7 @@ def test_the_prepared_line_belongs_to_the_passage_it_was_written_for() -> None:
 
 
 def test_a_prepared_line_is_handed_over_once() -> None:
-    panorama = IRSession(id="ov", pericope="OV-Ruth")
+    panorama = IRSession(id="ov", pericope="OV-Ruth", prepared_pericope="P01")
     panorama.prepared_speech = "a primeira fala"
     panorama.prepared_audio_key = "tts/v/p01.mp3"
 

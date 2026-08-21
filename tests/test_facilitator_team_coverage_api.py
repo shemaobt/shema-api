@@ -65,6 +65,11 @@ PILOT = {
 #: Real canon, no labels written for it. Ten of Ruth's fourteen are in this position.
 UNLABELLED = "P03"
 
+#: A name the canon never had, which is the one thing this route still refuses. The ordering
+#: test has to use this rather than `UNLABELLED`: since ENG-442 an untranslated passage is
+#: served, so a case built on it would pass with the two gates in either order.
+OUTSIDE_THE_BOOK = "P99"
+
 
 def coverage_url(team_id: str, pericope: str | None = None) -> str:
     url = f"/api/facilitator/teams/{team_id}/coverage"
@@ -459,38 +464,90 @@ async def test_the_whole_necklace_costs_one_query(client, db_session: AsyncSessi
 # ------------------------------------------------------- behaviour 5: the pericope is required
 
 
-async def test_the_pericope_is_required(client, db_session: AsyncSession) -> None:
-    """Behaviour 5 — there is no honest default until ENG-450 resolves where a team stands.
+async def test_the_pericope_omitted_means_the_one_the_team_is_on(
+    client, db_session: AsyncSession
+) -> None:
+    """Behaviour 5 — required when this route landed, defaulted now that ENG-450 resolves.
 
-    Falling back to `DEFAULT_PERICOPE` would answer every team about P01 with confidence,
-    which is the failure ENG-450 exists to end.
+    It answered 422 because nothing in this codebase knew where a team stood, and falling back
+    to a constant would have answered every team about the first passage with full confidence.
+    The default is not that constant: it is the team's own next unfinished passage, so a team
+    that has closed the first is answered about the second.
     """
     _user, project, headers = await a_facilitator(db_session, email="b6@x.com")
+    await a_session_that_moved(
+        db_session,
+        project_id=project.id,
+        pericope="P01",
+        moved=dict.fromkeys(element_keys("P01"), PARTIALLY_ENGAGED),
+    )
 
     response = await client.get(coverage_url(project.id), headers=headers)
+    named = await client.get(coverage_url(project.id, "P02"), headers=headers)
 
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert response.json() == named.json()
+
+
+async def test_a_team_that_has_not_started_is_answered_about_the_first_passage(
+    client, db_session: AsyncSession
+) -> None:
+    _user, project, headers = await a_facilitator(db_session, email="b6start@x.com")
+
+    body = (await client.get(coverage_url(project.id), headers=headers)).json()
+
+    assert [bead["key"] for bead in body] == element_keys("P01")
+
+
+async def test_a_team_that_closed_the_book_has_no_passage_to_default_to(
+    client, db_session: AsyncSession
+) -> None:
+    """409 rather than 400 or 404: the request is well formed and the team exists.
+
+    There is simply no passage they are on, which is the end of the walk. Naming one answers.
+    """
+    from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
+
+    _user, project, headers = await a_facilitator(db_session, email="b6end@x.com")
+    for meaning_map in load_book(ROOM_BOOK):
+        await a_session_that_moved(
+            db_session,
+            project_id=project.id,
+            pericope=meaning_map.pericope_num,
+            moved=dict.fromkeys(element_keys(meaning_map.pericope_num), PARTIALLY_ENGAGED),
+        )
+
+    refused = await client.get(coverage_url(project.id), headers=headers)
+    named = await client.get(coverage_url(project.id, "P01"), headers=headers)
+
+    assert refused.status_code == 409
+    assert named.status_code == 200
 
 
 # ------------------------------------------------------------- behaviour 6: the two refusals
 
 
-async def test_an_unlabelled_passage_is_not_the_callers_fault(
+async def test_an_unlabelled_passage_is_served_with_the_two_translations_absent(
     client, db_session: AsyncSession
 ) -> None:
     """Behaviour 6 — a real passage the pilot has not written labels for.
 
-    The canon serves all fourteen of Ruth; labels exist for four. Reaching P03 through the
-    Desk's selector is a well-formed request, so 400 is the wrong word, and serving the bead
-    unnamed would put an identifier in front of a facilitator — which is the one thing the
-    label catalogue exists to prevent. It is a representation this deploy cannot produce: 404.
+    This route refused it until ENG-442 landed. It does not any more, and the reason is worth
+    keeping: the canon serves all fourteen of Ruth, D-03 walks every team through them, and
+    refusing ten of the fourteen would have taken the whole necklace down for a passage the
+    team is genuinely working on. English comes almost free from the canon; Portuguese and
+    Spanish are absent rather than filled in with it, which is what stops a sentence a
+    facilitator does not read arriving under the name of their own language.
     """
     _user, project, headers = await a_facilitator(db_session, email="b7@x.com")
 
     response = await client.get(coverage_url(project.id, UNLABELLED), headers=headers)
 
-    assert response.status_code == 404
-    assert UNLABELLED in response.json()["detail"]
+    assert response.status_code == 200
+    body = response.json()
+    assert body, "a passagem sem catalogo respondeu vazia em vez de vir do canon"
+    assert all(bead["label_en"] for bead in body)
+    assert all(bead["label_pt"] is None and bead["label_es"] is None for bead in body)
 
 
 async def test_a_pericope_outside_the_book_is_refused(client, db_session: AsyncSession) -> None:
@@ -501,10 +558,10 @@ async def test_a_pericope_outside_the_book_is_refused(client, db_session: AsyncS
     """
     _user, project, headers = await a_facilitator(db_session, email="b7canon@x.com")
 
-    response = await client.get(coverage_url(project.id, "P99"), headers=headers)
+    response = await client.get(coverage_url(project.id, OUTSIDE_THE_BOOK), headers=headers)
 
     assert response.status_code == 404
-    assert "P99" in response.json()["detail"]
+    assert OUTSIDE_THE_BOOK in response.json()["detail"]
 
 
 async def test_the_scene_a_bead_sits_in_is_served_as_a_key_and_not_as_a_number(
@@ -577,7 +634,7 @@ async def test_the_team_gate_runs_before_the_label_gate(client, db_session: Asyn
     _user, _mine, headers = await a_facilitator(db_session, email="b8order@x.com")
     _other_user, theirs, _other = await a_facilitator(db_session, email="b8ordertheirs@x.com")
 
-    response = await client.get(coverage_url(theirs.id, UNLABELLED), headers=headers)
+    response = await client.get(coverage_url(theirs.id, OUTSIDE_THE_BOOK), headers=headers)
 
     assert response.status_code == 404
     assert response.json()["detail"] == TEAM_NOT_FOUND

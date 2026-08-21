@@ -1,4 +1,15 @@
-"""The Desk's entry screen and the panel behind it, both addressed by team.
+"""The Desk's entry screen and the panels behind it, all addressed by team.
+
+Three reads and no writes. The work queue, the team's necklace for one passage, and the
+book's fourteen passages with this team's position on each. Where a team stands is answered
+by one resolution (`services/internalization_room/progression.py`) rather than by each route
+working it out, which is what "one source of truth for where is this team" costs in practice:
+the queue used to read the most recent session that named a passage and the necklace used to
+make the caller say, and the two could disagree on a team that had worked a passage over two
+evenings.
+
+Nothing here writes, and that is D-03 rather than an omission: the team walks the book on its
+own and the facilitator reads. There is no operation in this module that could move a team.
 
 Split from the device routes rather than sharing a URL space with them. The routes that
 act on one device live under ``/api/facilitator/devices`` and this one is addressed by the
@@ -16,11 +27,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError
 from app.models.device import TeamDeviceResponse
-from app.models.internalization_room import ElementCoverage
+from app.models.internalization_room import ElementCoverage, PericopeStanding
 from app.models.team import TeamFilter, TeamListingResponse
 from app.services.device.list_team_devices import list_team_devices
+from app.services.internalization_room.progression import active_passage, team_standing
 from app.services.internalization_room.team_coverage import team_necklace
 from app.services.project.facilitates_project import facilitates_project
 from app.services.project.list_facilitator_teams import list_facilitator_teams
@@ -67,18 +79,22 @@ async def list_team_devices_route(
 async def read_team_coverage_route(
     team_id: str,
     user: FacilitatorUser,
-    pericope: str = Query(min_length=1, max_length=120),
+    pericope: str | None = Query(default=None, min_length=1, max_length=120),
     db: AsyncSession = Depends(get_db),
 ) -> list[ElementCoverage]:
     """This team's necklace for one passage, bead by bead, in the canon's order.
 
-    ``pericope`` is required, and that is a decision rather than an omission. Nothing in this
-    codebase yet knows which passage a team is standing on — resolving it is ENG-450, which
-    depends on the fourth coverage state and has not landed. Defaulting to
-    ``DEFAULT_PERICOPE`` would answer every team about P01 with full confidence, which is the
-    exact failure ENG-450 exists to end. When that resolution arrives it belongs in this
-    signature and nowhere else: giving the parameter a default computed there is the one
-    change, and it breaks no client, because the Desk already sends the passage it is showing.
+    ``pericope`` was required when ENG-449 landed, because nothing in this codebase knew which
+    passage a team was standing on and a default would have answered every team about the
+    first one with full confidence. ENG-450 resolves it, and this is the change that slice
+    said belonged here and nowhere else: the parameter keeps its meaning and gains a default
+    computed from the team's own history. It breaks no client — the Desk sends the passage it
+    is showing, which is what the selector is for — and it makes the omitted case mean "the
+    one they are on" rather than "the first one there is".
+
+    Omitted by a team that has closed every passage of the book is a ``ConflictError``. There
+    is no passage they are on, so there is nothing for the default to be; the request is well
+    formed and the team exists, which rules out 400 and 404, and naming a passage answers it.
 
     The team gate runs first, and the order matters. Both refusals here are 404, but only one
     of them carries a message that names something — so checking the team first means the
@@ -90,4 +106,34 @@ async def read_team_coverage_route(
     if not await facilitates_project(db, user, team_id):
         raise NotFoundError(TEAM_NOT_FOUND)
 
+    if pericope is None:
+        pericope = await active_passage(db, project_id=team_id)
+        if pericope is None:
+            raise ConflictError(
+                "This team has closed every passage of the book; name the one to read"
+            )
+
     return await team_necklace(db, team_id=team_id, pericope=pericope)
+
+
+@facilitator_teams_router.get("/{team_id}/pericopes", response_model=list[PericopeStanding])
+async def list_team_pericopes_route(
+    team_id: str,
+    user: FacilitatorUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[PericopeStanding]:
+    """The book's passages in the canon's order, each already placed for this team.
+
+    It answers positions and not a list. A screen given the fourteen and the team's active
+    passage would have to work out closed from current from future itself, which is a second
+    place deciding where a team stands — and the two would disagree on exactly the cases that
+    matter, such as a passage closed out of order.
+
+    Nothing in this family writes. The team walks the book on its own (D-03) and the
+    facilitator reads; there is no operation here that could move a team, which is the
+    restriction no other test catches because a stray write leaves every screen looking right.
+    """
+    if not await facilitates_project(db, user, team_id):
+        raise NotFoundError(TEAM_NOT_FOUND)
+
+    return await team_standing(db, team_id)

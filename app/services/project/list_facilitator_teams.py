@@ -34,7 +34,6 @@ from app.db.models.internalization_room import (
     IRQuestion,
     IRQuestionStatus,
     IRSession,
-    IRSessionStatus,
     IRTake,
 )
 from app.db.models.language import Language
@@ -46,44 +45,11 @@ from app.models.team import (
     TeamListingResponse,
 )
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.sessions import DEFAULT_PERICOPE, PANORAMA_PREFIX
+from app.services.internalization_room.progression import active_passages
 from app.services.project.facilitated_scope import facilitated_projects as _facilitated_projects
 from app.services.project.facilitated_scope import within as _within
 from app.services.project.team_restriction import as_work_queue, matching
 from app.services.project.team_state import team_state
-
-
-def _active_passage_subquery(scope: Select | None) -> Subquery:
-    """The team's current passage: the most recent session that names one.
-
-    The panorama is skipped rather than read as a passage. It is material about the *book*
-    and plays at the opening of a new one, so a team whose latest session is ``OV-Ruth`` is
-    not working on ``OV-Ruth`` — there is no such passage, and the canon refuses to be asked
-    for one.
-    """
-    ranked = (
-        select(
-            IRSession.project_id.label("project_id"),
-            IRSession.pericope.label("pericope"),
-            IRSession.status.label("status"),
-            func.row_number()
-            .over(
-                partition_by=IRSession.project_id,
-                order_by=(IRSession.created_at.desc(), IRSession.id.desc()),
-            )
-            .label("place"),
-        )
-        .where(
-            _within(IRSession.project_id, scope),
-            ~IRSession.pericope.startswith(PANORAMA_PREFIX),
-        )
-        .subquery()
-    )
-    return (
-        select(ranked.c.project_id, ranked.c.pericope, ranked.c.status)
-        .where(ranked.c.place == 1)
-        .subquery()
-    )
 
 
 def _last_activity_subquery(scope: Select | None) -> Subquery:
@@ -156,10 +122,14 @@ async def list_facilitator_teams(
     only honest answer — there is nothing to attribute it to — and it is worth knowing that it
     is the common case today rather than the exception: the room's app does not send its
     device credential yet, so sessions and questions are written with no project at all.
+
+    The passage each team is on is resolved in a second statement rather than joined into the
+    one above, because whether a passage is finished is the canon's question and not SQL's.
+    It is handed the ids these rows already name — why that matters is on ``furthest_by_passage``
+    — and it is one statement for the roll rather than one per card.
     """
     moment = now or datetime.now(UTC)
     scope = _facilitated_projects(user)
-    active = _active_passage_subquery(scope)
     activity = _last_activity_subquery(scope)
     hands = _open_hands_subquery(scope)
     devices = _device_count_subquery(scope)
@@ -169,14 +139,11 @@ async def list_facilitator_teams(
             Project.id,
             Project.name,
             Language.name.label("mother_tongue"),
-            active.c.pericope,
-            active.c.status,
             func.coalesce(hands.c.open_hands, 0).label("open_hands"),
             func.coalesce(devices.c.device_count, 0).label("device_count"),
             activity.c.last_activity_at,
         )
         .join(Language, Language.id == Project.language_id)
-        .outerjoin(active, active.c.project_id == Project.id)
         .outerjoin(activity, activity.c.project_id == Project.id)
         .outerjoin(hands, hands.c.project_id == Project.id)
         .outerjoin(devices, devices.c.project_id == Project.id)
@@ -186,15 +153,16 @@ async def list_facilitator_teams(
         query = query.where(Project.id.in_(scope))
 
     rows = (await db.execute(query)).all()
+    here = await active_passages(db, project_ids=[row.id for row in rows])
 
     every_team = [
         FacilitatorTeamView(
             team_id=row.id,
             name=row.name,
             mother_tongue=row.mother_tongue,
-            active_passage=_passage(row.pericope),
+            active_passage=_passage(here[row.id]),
             state=team_state(
-                passage_done=row.status == IRSessionStatus.DONE,
+                book_closed=here[row.id] is None,
                 last_activity_at=row.last_activity_at,
                 now=moment,
             ),
@@ -212,16 +180,22 @@ async def list_facilitator_teams(
     )
 
 
-def _passage(pericope: str | None) -> ActivePassageView:
-    """The passage by both its names.
+def _passage(pericope: str | None) -> ActivePassageView | None:
+    """The passage by both its names, or nothing at all at the end of the book.
 
-    A team with no session yet is on ``P01``: the room resolves a team's next unfinished
-    passage when a session opens and starts there with no history, so a card drawn before the
-    first session is drawn on the passage that session will be about — not on nothing.
+    `None` is the answer for a team that has closed every passage, and it is a position rather
+    than a missing value: there is no passage they are on. A card drawn for such a team shows
+    its last one closed, which is ENG-469's criterion and is only sayable if `active_passage`
+    can be absent.
+
+    A team with no session yet is not that case — it is on the first passage, because that is
+    where the resolution puts it, and the card is drawn on the passage its first session will
+    be about rather than on nothing.
 
     The reference comes off the canon verbatim and a pericope the canon does not hold raises
     rather than answering blank. A passage the API cannot name is a data fault, and a card
     quietly missing its reference is the kind of fault nobody reports.
     """
-    named = pericope or DEFAULT_PERICOPE
-    return ActivePassageView(pericope=named, reference=load_map(named).reference)
+    if pericope is None:
+        return None
+    return ActivePassageView(pericope=pericope, reference=load_map(pericope).reference)

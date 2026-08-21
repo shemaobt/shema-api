@@ -68,7 +68,10 @@ class FacilitatorTeamView(BaseModel):
     team_id: str
     name: str
     mother_tongue: str
-    active_passage: ActivePassageView
+    #: Null for a team that has closed every passage of the book. That is the end of the walk
+    #: and a defined state, not a missing value — ENG-469 draws such a team with its last
+    #: passage closed rather than current, which is only expressible if there is no current.
+    active_passage: ActivePassageView | None
     state: TeamState
     open_raised_hands: int
     device_count: int

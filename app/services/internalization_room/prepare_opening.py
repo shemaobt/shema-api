@@ -7,9 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import run_turn
-from app.services.internalization_room.sessions import DEFAULT_PERICOPE, get_session
+from app.services.internalization_room.sessions import get_session
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
@@ -17,18 +18,32 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
 logger = logging.getLogger(__name__)
 
 
-async def prepare_opening(panorama_session_id: str, pericope: str = DEFAULT_PERICOPE) -> None:
+async def prepare_opening(panorama_session_id: str, pericope: str | None = None) -> None:
     """Write and voice the passage's first line while the team is still on the panorama.
 
     The opening is the only turn whose inputs are all known in advance — the team has not
     spoken, the coverage is untouched, the conversation is empty. Everything after it depends
     on what they say, so this is the one place where working ahead is possible at all.
 
+    Which passage it writes for is resolved from the panorama's own team, so a team six
+    passages into the book gets the opening of the passage they are about to enter rather than
+    the first one's. A team that has finished the book gets nothing prepared, which is the same
+    outcome as any other failure here: the session writes its own line on demand.
+
+    The passage is written down beside the line. What it is for is `hand_over`; why it cannot
+    be derived instead is on the column.
+
     Failure here is silent on purpose: the prepared line is an optimisation, and the session
-    opens perfectly well by writing it on demand.
+    opens perfectly well without one.
     """
     try:
         async with AsyncSessionLocal() as db:
+            if pericope is None:
+                panorama = await get_session(db, panorama_session_id)
+                pericope = await active_passage(db, project_id=panorama.project_id)
+            if pericope is None:
+                logger.info("Nothing left to prepare: the team has closed every passage")
+                return
             outcome = await run_turn(
                 transcript="",
                 coverage_state={},
@@ -47,6 +62,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str = DEFAULT_PERI
             panorama = await get_session(db, panorama_session_id)
             panorama.prepared_speech = outcome.speech
             panorama.prepared_audio_key = speech.key
+            panorama.prepared_pericope = pericope
             await db.commit()
     except Exception:
         logger.exception("Could not prepare the opening for %s", pericope)
@@ -55,15 +71,23 @@ async def prepare_opening(panorama_session_id: str, pericope: str = DEFAULT_PERI
 def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     """Move a ready opening onto the session that will speak it, once and to the right passage.
 
-    The panorama writes ahead without knowing which passage the team will pick, so the line
-    it holds is always `DEFAULT_PERICOPE`'s: any other passage has to write its own rather
-    than be given another passage's framing as if it were its own words. The source is
-    cleared as it is given away, so a second session opened after the same panorama gets
-    nothing here and writes on demand.
+    The line is written from one passage's meaning map, and the panorama writes it before the
+    team has entered anything. Handing it to whatever session came next meant a team on one
+    passage heard another's opening as their own framing — delivered as the passage's words,
+    to people who cannot read and have no way to check. And the source was never cleared, so
+    the same line went to every session after it.
+
+    The passage is compared against the one recorded when the line was written, never against
+    a fresh resolution: the two differ exactly when the team's history moved while the panorama
+    was playing, which is the case this guard exists for.
+
+    A line with no passage recorded is refused. That is every row written before ENG-450, and
+    the bias is the floor's: what is unknown is not waved through. The cost is one session
+    writing its own opening.
     """
     if not prepared.prepared_speech or not prepared.prepared_audio_key:
         return False
-    if opening.pericope != DEFAULT_PERICOPE:
+    if prepared.prepared_pericope is None or prepared.prepared_pericope != opening.pericope:
         return False
     opening.prepared_speech = prepared.prepared_speech
     opening.prepared_audio_key = prepared.prepared_audio_key
@@ -71,6 +95,7 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     # panorama.
     prepared.prepared_speech = None
     prepared.prepared_audio_key = None
+    prepared.prepared_pericope = None
     return True
 
 
@@ -81,5 +106,6 @@ async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str]
     speech, key = session.prepared_speech, session.prepared_audio_key
     session.prepared_speech = None
     session.prepared_audio_key = None
+    session.prepared_pericope = None
     await db.commit()
     return speech, key

@@ -39,10 +39,6 @@ LABELS_DIR = Path(__file__).parent / "element-labels"
 #: does not read English.
 LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
 
-#: What the pilot needs. Anything outside is refused rather than answered in the canon's
-#: own English, which is the silent fallback this module exists to make impossible.
-TRANSLATED_PERICOPES: frozenset[str] = frozenset({"P01", "P02", "P05", "P14"})
-
 #: Coverage states named here before they exist in `CoverageStatus`. Empty, and that is the
 #: resting state: a name belongs here only while its label is written and its enum value is
 #: not, and it leaves the moment the enum catches up. `partially_engaged` was the one entry,

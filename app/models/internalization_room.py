@@ -1,9 +1,9 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.services.internalization_room.canon.elements import ElementKind
-from app.services.internalization_room.coverage import CoverageStatus
+from app.core.room_enums import CoverageStatus, ElementKind
 
 MAX_TTS_CHARS = 3000
 
@@ -142,14 +142,20 @@ class ElementCoverage(BaseModel):
     It is `None` for a preservation rule. That is not a missing value — it is the group apart
     at the end of the necklace, the rules that must not be lost, which belong to the passage
     rather than to any one of its scenes.
+
+    `label_pt` and `label_es` are nullable and `label_en` is not, which is `LabelledElement`'s
+    shape carried through unchanged. A passage nobody has translated is served from the canon
+    with the other two absent, and a bead here must be able to say so: narrowing them to `str`
+    would mean this route could only ever answer the four translated passages, while D-03
+    walks every team through all fourteen.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     key: str
-    label_pt: str
+    label_pt: str | None
     label_en: str
-    label_es: str
+    label_es: str | None
     kind: ElementKind
     scene: str | None = None
     #: The enum and not the string it serialises to, so the Desk reads the closed set of four
@@ -158,6 +164,20 @@ class ElementCoverage(BaseModel):
     status: CoverageStatus
     touched_in_session: TouchedInSession | None = None
 
+
+class PericopePosition(StrEnum):
+    CLOSED = "closed"
+    CURRENT = "current"
+    FUTURE = "future"
+
+
+class PericopeStanding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pericope: str
+    reference: str
+    title: str
+    position: PericopePosition
 
 
 class CoverageView(BaseModel):
