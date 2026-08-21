@@ -516,10 +516,16 @@ def test_the_ten_are_read_from_the_catalogue_and_not_from_the_canon(pericope_num
 
 @pytest.mark.parametrize("pericope_num", TEN)
 def test_the_ten_keep_the_promises_the_pilot_keeps(pericope_num):
-    """Zero Hebrew, no shouted identifier, and nothing longer than a bead can hold.
+    """Zero Hebrew, no wiki syntax, no shouted identifier, nothing longer than a bead holds.
 
     The pilot's own cases assert these over the four; the ten arrive under the same rules or
     they arrive as a second class of label that nobody is checking.
+
+    **The wiki assert is here because it was missing and the one defect in the 264 hid that.**
+    `The house of [[PL_ISRAEL-Israel]] Israel` was caught by the shouted-identifier rule, which
+    made this loop look like it covered wiki syntax when it did not — `[[B3-Naomi]]` carries no
+    shouted run and would have gone through both asserts. The pilot's own case checks `[[`, and
+    it is parametrized over the four.
     """
     hebrew = re.compile(r"[֐-׿]")
 
@@ -528,6 +534,9 @@ def test_the_ten_keep_the_promises_the_pilot_keeps(pericope_num):
         assert not hebrew.search(text), f"{pericope_num} {element.key} shows Hebrew: {text}"
         assert not _SHOUTED.search(text.replace("YHWH", "")), (
             f"{pericope_num} {element.key} shows an identifier: {text}"
+        )
+        assert "[[" not in text and "]]" not in text, (
+            f"{pericope_num} {element.key} shows wiki syntax: {text}"
         )
         assert len(text) <= 45, f"{pericope_num} {element.key} is {len(text)} chars: {text}"
 

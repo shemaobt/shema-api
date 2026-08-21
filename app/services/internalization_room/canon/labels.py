@@ -81,6 +81,13 @@ def labelled_elements(
 
     `ValidationError` is left for the one refusal that is genuinely about the request: a
     pericope this book does not have, which `elements_for` raises from the canon.
+
+    English is named on its own below and the other languages are spread, which is the shape of
+    the rule rather than a concession to the type checker: it is the one language a bead cannot
+    reach the screen without, and `_required` says so in a type instead of in prose. A fourth
+    language still costs a field here and a catalogue entry, which is what `extra="forbid"` on
+    the model is for. It is also evaluated first, which is why `_text` never meets an entry
+    whose English is missing.
     """
     elements = elements_for(pericope_num, book)
     for_passage = _catalogue(catalogue_dir, book).get(pericope_num)
@@ -99,11 +106,6 @@ def labelled_elements(
             key=element.key,
             kind=element.kind,
             scene=element.scene,
-            # English is named on its own and the rest are spread, which is the shape of the
-            # rule rather than a concession to the type checker: it is the one language a bead
-            # cannot reach the screen without, and `_required` is what says so in a type
-            # instead of in a comment. A fourth language still costs a field here and a
-            # catalogue entry, which is what `extra="forbid"` above is for.
             label_en=_required(for_passage, pericope_num, element.key),
             **{
                 f"label_{language}": _text(for_passage, pericope_num, element.key, language)
@@ -197,14 +199,15 @@ def _translated_into(for_passage: dict, language: str) -> bool:
 
 
 def _required(for_passage: dict, pericope_num: str, key: str) -> str:
-    """The label a bead cannot be served without. Absent, it is our own file being wrong."""
+    """The label a bead cannot be served without. Absent, it is our own file being wrong.
+
+    The check below is not unreachable, and a `pragma` saying so was wrong: `_text` refusing
+    this language is the first guard and this is the second. Measured — a mutant removing
+    either one alone survives the whole suite, and only removing both reddens
+    `test_the_permission_does_not_reach_english`. Two guards for one rule is defence in depth
+    rather than duplication, because the rule is what a bead cannot reach a screen without.
+    """
     text = _text(for_passage, pericope_num, key, REQUIRED_LANGUAGE)
-    # Not unreachable, and the `pragma` this once carried was wrong: `_text` raising for this
-    # language is the first guard and this is the second, so removing either one alone changes
-    # nothing. Measured — a mutant that removes only one survives the whole suite, and only
-    # removing both reddens `test_the_permission_does_not_reach_english`. Two guards for one
-    # rule is defence in depth here rather than duplication, because the rule is what a bead
-    # cannot reach a screen without.
     if text is None:
         raise ElementLabelsBroken(f"{pericope_num} {key} has no {REQUIRED_LANGUAGE} label")
     return text
@@ -214,8 +217,14 @@ def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str 
     """One label, or nothing where nothing is a legitimate answer.
 
     Absent Portuguese is a passage waiting for a translator. Absent English is our own file
-    being wrong, and so is an entry that names a bead and then says nothing in any language —
-    the difference between the two is the whole of the permission, and only one goes through.
+    being wrong — the difference between the two is the whole of the permission, and only one
+    goes through.
+
+    An entry empty in all three is caught by the English refusal above and never reaches the
+    rest of this function: `labelled_elements` evaluates `label_en` before it spreads the other
+    languages, so by the time this is asked about Portuguese the English of the same entry is
+    known to be there. A separate refusal for "nothing in any language" was written here and
+    measured dead — it promised a message that never came out.
     """
     entry = for_passage.get(key)
     if entry is None:
@@ -225,8 +234,6 @@ def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str 
         return text
     if language == REQUIRED_LANGUAGE:
         raise ElementLabelsBroken(f"{pericope_num} {key} has no {language} label")
-    if not any((entry.get(other) or "").strip() for other in LANGUAGES):
-        raise ElementLabelsBroken(f"{pericope_num} {key} has no label in any language")
     if _translated_into(for_passage, language):
         raise ElementLabelsBroken(
             f"{pericope_num} {key} has no {language} label, and the rest of the passage does"
