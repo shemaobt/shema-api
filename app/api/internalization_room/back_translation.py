@@ -82,11 +82,17 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
+        state.retells = told_again
+        await room.save_back_translation(db, session, state)
+        spent = retelling and told_again >= MAX_RETELLS
+        if spent:
+            await room.mark_needs_person(db, session)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(state.chunks),
             captured=False,
             pass_number=pass_number,
+            needs_person=spent,
         )
 
     state.chunks.append(

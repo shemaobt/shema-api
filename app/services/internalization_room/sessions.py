@@ -143,5 +143,9 @@ async def begin_back_translation_again(
     adds a chunk beside the others, and its budget is counted where that happens.
     """
     state = back_translation_of(session)
-    await save_back_translation(db, session, BackTranslationState(scope=state.scope))
+    await save_back_translation(
+        db,
+        session,
+        BackTranslationState(scope=state.scope, retells=state.retells),
+    )
     return back_translation_of(session)

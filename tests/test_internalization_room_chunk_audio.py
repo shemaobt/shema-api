@@ -168,3 +168,29 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     assert body["fixed_line"].startswith("D"), (
         "a sala diz que não ouviu nada, que é a família escrita para isto"
     )
+
+
+async def test_a_transcriber_outage_still_spends_the_retell_budget(
+    client: httpx.AsyncClient,
+) -> None:
+    """Every attempt comes back empty during an outage, and every one used to be free.
+
+    `MAX_RETELLS` was never reached, so the room's only route to a person was unreachable
+    exactly when the room was broken.
+    """
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
+    )
+    session_id = created.json()["session_id"]
+
+    last = None
+    for _ in range(4):
+        last = await client.post(
+            f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+            headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+            data={"retelling": "true"},
+            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+        )
+
+    assert last is not None
+    assert last.json()["needs_person"] is True

@@ -41,3 +41,23 @@ async def test_a_finished_passage_does_not_reopen_itself(db_session: AsyncSessio
     assert session.status is IRSessionStatus.DONE, (
         "só a pausa se desfaz sozinha; uma passagem conferida não volta a estar em curso"
     )
+
+
+async def test_re_recording_does_not_hand_the_team_a_fresh_retell_budget(
+    db_session: AsyncSession,
+) -> None:
+    """The counter exists so a loop cannot be a loop, and the team could reset it.
+
+    Re-recording is a room-key route the team drives by voice — the very tap a stuck team
+    makes when the finding will not go away.
+    """
+    session = await service.create_session(db_session, pericope="P01")
+    state = service.back_translation_of(session)
+    state.scope = "P01"
+    state.retells = 2
+    await service.save_back_translation(db_session, session, state)
+
+    fresh = await service.begin_back_translation_again(db_session, session)
+
+    assert fresh.retells == 2, "toda outra propriedade voltava ao padrão, e o orçamento junto"
+    assert fresh.chunks == []
