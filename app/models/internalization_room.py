@@ -252,10 +252,33 @@ class InboxQuestionView(BaseModel):
     a card that reaches this response always has one. Typing it nullable would ask the Desk
     to draw a case this route cannot produce.
 
-    ``element_key``, ``duration_ms`` and ``transcript`` are all nullable, and the Desk has to
-    draw a card without each of them. An element is missing on every question raised before
+    ``element_label_*``, ``duration_ms`` and ``transcript`` are all nullable, and the Desk has
+    to draw a card without each of them. An element is missing on every question raised before
     ENG-456 ships the app's half; a duration or a transcript is missing when the machine that
     produces it failed, and the card still carries audio a facilitator can answer by playing.
+
+    **The bead is named and its key is not served** (ENG-543). ``element_key`` is the room's
+    identity for a bead — coverage is persisted under it and it is unique only inside its
+    passage — and it was never anything a person was meant to read: a card said ``being:B3``
+    where a facilitator reads "Noemi". Measured across the Desk's whole ``src/``, neither
+    ``element_key`` nor ``elementKey`` appears anywhere, so serving both would put a field on
+    every card that its only consumer never reads.
+
+    **Three languages rather than one**, which is the same shape ``LabelledElement`` and the
+    coverage legend take. Nothing in this API negotiates a language — no ``Accept-Language``,
+    no ``?lang=`` on any room or facilitator route — so serving a single label would mean
+    inventing negotiation here. The client picks, as it already does everywhere else.
+
+    **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
+    passages and four of them are translated, so on the other ten every bead carries English
+    and two nulls. A Desk reading ``pt`` first has to have somewhere to fall back to, and that
+    choice is the client's — this response does not make it, exactly as ``LabelledElement``
+    does not.
+
+    All three are null together when the question named no bead, when the key is one the
+    catalogue does not have, or when the pericope is outside the canon. The last two are
+    other programs' input, and a lookup that raised on them would trade one unreadable card
+    for an inbox that does not open — see ``label_index``.
 
     **``transcript`` appears on this response and on no response the room app can read.**
     Transcribing the team's voice *for the team* is out of scope for v1; this is the
@@ -285,7 +308,9 @@ class InboxQuestionView(BaseModel):
     team_id: str
     device_id: str
     pericope: str
-    element_key: str | None
+    element_label_pt: str | None
+    element_label_en: str | None
+    element_label_es: str | None
     status: str
     heard_at: str | None
     audio_url: str
