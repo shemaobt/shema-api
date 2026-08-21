@@ -77,11 +77,18 @@ async def append_exchange(
     team_utterance: str,
     guide_response: str,
 ) -> IRSession:
+    """Append one team/guide turn to the transcript.
+
+    A turn that lands is the proof a person came back, so it also releases
+    `NEEDS_PERSON` — nothing else ever writes `IN_PROGRESS` a second time.
+    """
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
     messages.append({"role": "guide", "text": guide_response})
     session.messages = messages
+    if session.status is IRSessionStatus.NEEDS_PERSON:
+        session.status = IRSessionStatus.IN_PROGRESS
     await db.commit()
     await db.refresh(session)
     return session
