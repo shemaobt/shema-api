@@ -25,19 +25,21 @@ it is a small number for an attacker who can guess without limit. The safety of 
 artefact rests on three things: the short life, the single use, and rate limiting at the
 route that spends it.
 
-**The third one does not exist, and the route does.** ``POST /api/facilitator/devices/claim``
-is in ``app/api/facilitator/devices.py`` and carries no limit of any kind, while
-``app/core/rate_limit.py`` already guards four routes across two other products. This
-paragraph said the debt could not be paid because the route had not been built; the route was
-built in ENG-443 and the sentence stayed, which left the only place the debt is recorded
-telling whoever read it that there was nothing to do.
+**All three exist.** The third is ``CLAIM_RATE_LIMIT_PER_MINUTE`` in
+``app/api/facilitator/devices.py``, thirty a minute per caller, added in ENG-547 with the
+same ``app/core/rate_limit.py`` that guards the platform's metered routes.
 
-The debt is **open and unpaid**, and it is now **ENG-547**. A number is searchable; a
-paragraph is only found by whoever opens this file.
+It is counted **per caller, not per code**, and that is the whole point of it. Short life
+and single use both work against **reuse** of one code, and an attacker trying many
+different codes is slowed by neither — so a limit keyed on the code would leave exactly the
+attempt that reaches a credential untouched, filling a fresh bucket with every guess.
 
-Short life and single use are the wrong defence for this, and that is why the gap matters
-rather than merely existing: both work against **reuse** of one code. An attacker trying many
-different codes is slowed by neither.
+What the number buys, for whoever revisits it: with no limit, a caller sustaining fifty
+requests a second for the fifteen minutes a code is alive gets 45,000 guesses; at thirty a
+minute they get 450. Against 6.1e9 codes both are small, which is the honest way to read
+it — the limit moves the odds by two orders of magnitude, and between five and sixty a
+minute it barely moves them at all. So the number was chosen by what a facilitator setting
+up a room needs, with room to spare, and not by what the arithmetic prefers.
 
 **What the row keeps.** The code is never stored. The row keeps a SHA-256 of it, which is
 enough to recognise a replayed code as *spent* rather than *unknown* — the distinction
