@@ -15,6 +15,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # The suite measures the length of a recording with ffprobe, the same tool
+      # `oral_collector/split_service.py` and `inngest/audio_splitting.py` already shell out
+      # to and the same one both Dockerfiles install. The runner image ships neither, so
+      # without this the tests here would be measuring a machine the deployed one is not.
+      # Measured at ~43 s on ubuntu 24.04 (4 s update, 39 s install, no recommends).
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
 
