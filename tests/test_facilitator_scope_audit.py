@@ -58,6 +58,8 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.device import claim_device_as_facilitator, create_device
+from app.services.internalization_room import questions as question_service
+from app.services.internalization_room.voice_handles import to_handle
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -240,6 +242,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     heard_id = await _a_question_of(db, owner, f"h{tag}")
     reply_id = await _a_question_of(db, owner, f"r{tag}")
     resolve_id = await _a_question_of(db, owner, f"v{tag}")
+    await _a_question_of(db, owner, f"k{tag}")
+    #: The key route names its resource by key, so the bytes have to exist for the owner's
+    #: half to mean "reached" rather than "no such audio". `_store` is the patched one.
+    owned_key = f"internalization-room/questions/k{tag}.m4a"
+    await question_service._store().put(owned_key, b"a equipe perguntou", "audio/mp4")
+    absent_key = "internalization-room/questions/nao-existe-em-lugar-nenhum.m4a"
     session_id, take_id = await _a_recorded_session_of(db, owner, f"t{tag}")
     patch_device = await _a_device_of(db, owner, f"p{tag}")
     delete_device = await _a_device_of(db, owner, f"d{tag}")
@@ -285,6 +293,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/questions/{heard_id}/audio", {}),
             "absent": (f"{IR}/facilitator/questions/{absent}/audio", {}),
             "ids": (heard_id, absent),
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/questions/audio/{to_handle(owned_key)}", {}),
+            "absent": (f"{IR}/facilitator/questions/audio/{to_handle(absent_key)}", {}),
+            "ids": (to_handle(owned_key), to_handle(absent_key)),
         },
         {
             "method": "POST",
@@ -335,6 +349,7 @@ REFUSING_TEMPLATES = {
     ("GET", f"{DESK}/teams/{{team_id}}/devices"),
     ("GET", f"{IR}/facilitator/questions"),
     ("GET", f"{IR}/facilitator/questions/{{question_id}}/audio"),
+    ("GET", f"{IR}/facilitator/questions/audio/{{handle}}"),
     ("POST", f"{IR}/facilitator/questions/{{question_id}}/reply"),
     ("POST", f"{IR}/facilitator/questions/{{question_id}}/resolve"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/takes"),

@@ -178,12 +178,22 @@ async def question_inbox(
 
 
 @router.get("/facilitator/questions/audio/{handle}")
-async def facilitator_audio(handle: str, user: FacilitatorUser) -> Response:
+async def facilitator_audio(
+    handle: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> Response:
     """Serve a team's recorded question to the person deciding how to answer it.
 
     A facilitator signs in and holds no device key, so the same bytes need a route their
     own credential opens — the queue is unusable if the only thing in it cannot be heard.
+
+    Scoped to the caller's own teams, like every other route that names a question. This
+    one names it by key rather than by id, which is why it was not among the five ENG-534
+    fixed: it reached this codebase from a different line and arrived after the slice.
     """
+    key = from_question_handle(handle)
+    if key is None:
+        raise NotFoundError("No such audio")
+    await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
     return await _audio(handle)
 @router.get(
     "/facilitator/questions/{question_id}/audio",

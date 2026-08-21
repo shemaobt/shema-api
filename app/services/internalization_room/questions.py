@@ -192,6 +192,40 @@ async def get_question_for_facilitator(
     return question
 
 
+async def audio_of_a_question_this_facilitator_facilitates(
+    db: AsyncSession, user: User, key: str
+) -> IRQuestion:
+    """The question an audio key belongs to, if the caller facilitates its team.
+
+    The routes that name a question by id are scoped by ``get_question_for_facilitator``.
+    A key is the other way to name one: it addresses a team's recording or a facilitator's
+    spoken reply, and holding the role has never been owning either. Same rule, reached
+    from the other direction.
+
+    The question is found **by the key** rather than by reading an id out of it. The keys
+    this feature writes carry the question's id in a path segment, but that is a fact about
+    how they are built today and a scope check should not be the thing that stops working
+    when it changes. Rows from before that shape exist, and they are the ones a parser
+    would wave through.
+
+    Refusing an unmatched key with the same ``NotFoundError`` as an unowned one is the rule
+    the rest of this file keeps: a caller must not be able to tell "not yours" from "no
+    such thing", or the refusal becomes a way to ask which handles are real.
+    """
+    found = (
+        await db.execute(
+            select(IRQuestion).where(
+                or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
+            )
+        )
+    ).scalars().first()
+    if found is None:
+        raise NotFoundError("No such audio")
+    if found.project_id is None or not await facilitates_project(db, user, found.project_id):
+        raise NotFoundError("No such audio")
+    return found
+
+
 #: §7's own number, and the one the Desk models against fixtures as ``RAISED_HANDS_PAGE_SIZE``.
 DEFAULT_PAGE = 50
 
