@@ -12,7 +12,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, room_key_dep
+from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
@@ -36,7 +36,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 DeviceId = device_dep
 
 
-@router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[room_key_dep])
+@router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[room_caller_dep])
 async def raise_question(
     session_id: str,
     background: BackgroundTasks,
@@ -80,7 +80,9 @@ async def raise_question(
     return QuestionRaisedResponse(question_id=question.id, status=str(question.status))
 
 
-@router.get("/questions/replies", response_model=HandRepliesResponse, dependencies=[room_key_dep])
+@router.get(
+    "/questions/replies", response_model=HandRepliesResponse, dependencies=[room_caller_dep]
+)
 async def replies(
     device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
 ) -> HandRepliesResponse:
@@ -97,7 +99,7 @@ async def replies(
     )
 
 
-@router.post("/questions/{question_id}/heard", dependencies=[room_key_dep])
+@router.post("/questions/{question_id}/heard", dependencies=[room_caller_dep])
 async def heard(
     question_id: str, device_id: str = DeviceId, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:

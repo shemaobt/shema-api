@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter
 
-from app.api.internalization_room._deps import room_key_dep
+from app.api.internalization_room._deps import room_caller_dep
 from app.core.config import get_settings
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
@@ -19,7 +19,7 @@ _VOICES_AT_ONCE = 4
 @router.get(
     "/books/{book}/passages",
     response_model=BookPassagesResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def passages(book: str) -> BookPassagesResponse:
     """The passages of a book, each with the line the room says to name it out loud.

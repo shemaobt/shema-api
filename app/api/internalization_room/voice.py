@@ -3,7 +3,7 @@ from hashlib import sha256
 
 from fastapi import APIRouter, Response
 
-from app.api.internalization_room._deps import room_key_dep
+from app.api.internalization_room._deps import room_caller_dep
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
 from app.models.internalization_room import (
@@ -22,7 +22,7 @@ router = APIRouter()
 @router.post(
     "/voice/speak",
     response_model=FacilitatorSpeakResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def speak(payload: FacilitatorSpeakRequest, response: Response) -> FacilitatorSpeakResponse:
     entry, cached = await synthesize_facilitator_speech(payload.text)
@@ -39,7 +39,7 @@ async def speak(payload: FacilitatorSpeakRequest, response: Response) -> Facilit
 IMMUTABLE = "private, max-age=31536000, immutable"
 
 
-@router.get("/voice/{handle}", dependencies=[room_key_dep])
+@router.get("/voice/{handle}", dependencies=[room_caller_dep])
 async def clip(handle: str) -> Response:
     """Serve one synthesized line by the handle a turn handed out.
 
