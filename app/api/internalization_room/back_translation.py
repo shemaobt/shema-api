@@ -13,6 +13,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.back_translation import Chunk
+from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import MAX_RETELLS
@@ -122,9 +123,33 @@ async def finish(
     session_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
-    """`terminei` — compare the telling-back to the map and voice one finding, or the badge."""
+    """`terminei` — compare the telling-back to the map and voice one finding, or the badge.
+
+    With nothing told back, the analyst is not asked. Given no stretches it answers with no
+    findings, and no findings is precisely what `checked` is made of — so `terminei` over an
+    empty back translation came back clean, the app closed the necklace and struck the passage
+    off the wheel for good, on a telling-back that never happened. A finished passage never
+    returns to the wheel, by design, so there is no undo for that.
+
+    The answer is the D family instead — *"I could not make anything out, can you tell me
+    again?"* — which is what the situation actually is, and is already on the tablet as audio.
+    """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
+
+    if not state.chunks:
+        _, line = choose(
+            FailSafe.INAUDIBLE,
+            get_settings().internalization_room_language_code,
+            turn=len(session.messages or []),
+        )
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            audio_url="",
+            fixed_line=line,
+            checked=False,
+            findings_remaining=0,
+        )
 
     if not state.already_analysed:
         read = await room.analyse_telling_back(
