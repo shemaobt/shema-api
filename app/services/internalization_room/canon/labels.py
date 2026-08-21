@@ -99,9 +99,16 @@ def labelled_elements(
             key=element.key,
             kind=element.kind,
             scene=element.scene,
+            # English is named on its own and the rest are spread, which is the shape of the
+            # rule rather than a concession to the type checker: it is the one language a bead
+            # cannot reach the screen without, and `_required` is what says so in a type
+            # instead of in a comment. A fourth language still costs a field here and a
+            # catalogue entry, which is what `extra="forbid"` above is for.
+            label_en=_required(for_passage, pericope_num, element.key),
             **{
                 f"label_{language}": _text(for_passage, pericope_num, element.key, language)
                 for language in LANGUAGES
+                if language != REQUIRED_LANGUAGE
             },
         )
         for element in elements
@@ -161,14 +168,70 @@ def legend(*, catalogue_dir: Path = LABELS_DIR) -> CoverageLegend:
     return CoverageLegend(coverage_status=coverage_status, element_kind=element_kind)
 
 
-def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str:
+#: The language a bead cannot reach the screen without. The other two are translation work and
+#: may legitimately be missing — `LabelledElement` types them `str | None` for exactly that —
+#: so a catalogue entry written in English alone is an untranslated passage somebody finally
+#: named, and not a holed file.
+#:
+#: Before this distinction existed the loader refused any empty language, which was the right
+#: rule while only translated passages had entries at all. After ENG-442 it contradicted the
+#: model it fills: adding the ten passages' English would have turned ten passages that
+#: answered from the canon into `ElementLabelsBroken` — which carries no handler and is a 500.
+REQUIRED_LANGUAGE = "en"
+
+
+def _translated_into(for_passage: dict, language: str) -> bool:
+    """Whether this passage has been translated into a language at all.
+
+    The permission is for a passage nobody has translated, and the loader cannot tell that
+    from a passage whose Spanish somebody deleted — unless it looks at the passage rather than
+    at the bead. Written the other way round, blanking one label on a translated passage would
+    have gone through in silence, which is the guarantee this module exists for.
+
+    Today the data is exactly consistent: the pilot's four carry all three languages on every
+    bead, and the ten carry English on every bead and nothing else on any. That is what makes
+    a whole-passage rule the honest one — a passage is translated or it is not, and a bead is
+    not a unit of translation.
+    """
+    return any((entry.get(language) or "").strip() for entry in for_passage.values())
+
+
+def _required(for_passage: dict, pericope_num: str, key: str) -> str:
+    """The label a bead cannot be served without. Absent, it is our own file being wrong."""
+    text = _text(for_passage, pericope_num, key, REQUIRED_LANGUAGE)
+    # Not unreachable, and the `pragma` this once carried was wrong: `_text` raising for this
+    # language is the first guard and this is the second, so removing either one alone changes
+    # nothing. Measured — a mutant that removes only one survives the whole suite, and only
+    # removing both reddens `test_the_permission_does_not_reach_english`. Two guards for one
+    # rule is defence in depth here rather than duplication, because the rule is what a bead
+    # cannot reach a screen without.
+    if text is None:
+        raise ElementLabelsBroken(f"{pericope_num} {key} has no {REQUIRED_LANGUAGE} label")
+    return text
+
+
+def _text(for_passage: dict, pericope_num: str, key: str, language: str) -> str | None:
+    """One label, or nothing where nothing is a legitimate answer.
+
+    Absent Portuguese is a passage waiting for a translator. Absent English is our own file
+    being wrong, and so is an entry that names a bead and then says nothing in any language —
+    the difference between the two is the whole of the permission, and only one goes through.
+    """
     entry = for_passage.get(key)
     if entry is None:
         raise ElementLabelsBroken(f"{pericope_num} {key} has no label in any language")
     text = (entry.get(language) or "").strip()
-    if not text:
+    if text:
+        return text
+    if language == REQUIRED_LANGUAGE:
         raise ElementLabelsBroken(f"{pericope_num} {key} has no {language} label")
-    return text
+    if not any((entry.get(other) or "").strip() for other in LANGUAGES):
+        raise ElementLabelsBroken(f"{pericope_num} {key} has no label in any language")
+    if _translated_into(for_passage, language):
+        raise ElementLabelsBroken(
+            f"{pericope_num} {key} has no {language} label, and the rest of the passage does"
+        )
+    return None
 
 
 def _named_group(
