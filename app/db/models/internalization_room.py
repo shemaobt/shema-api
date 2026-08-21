@@ -3,11 +3,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Enum, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+from app.db.types import UtcDateTime
 
 
 class IRPromptKey(enum.StrEnum):
@@ -66,10 +67,12 @@ class IRSession(Base):
     #: decides it is a proposal shared with the room app (ENG-435) and not yet agreed, and a
     #: number nobody has agreed must not be frozen into rows. ``session_end.end_of`` is the
     #: whole of the rule.
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -125,7 +128,7 @@ class IRCoverageEvent(Base):
     element_key: Mapped[str] = mapped_column(String(120))
     status: Mapped[str] = mapped_column(String(32))
     at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
     )
@@ -140,9 +143,11 @@ class IRPrompt(Base):
     description: Mapped[str] = mapped_column(Text)
     prompt: Mapped[str] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 
@@ -180,15 +185,17 @@ class IRQuestion(Base):
     )
     reply_audio_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     answered_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    heard_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    heard_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     #: Whose conversation this was. Null when the room app did not identify itself with a
     #: device credential, which is every session until ENG-454 ships that half — see the
     #: migration notes. Not a foreign key, matching the column it stands beside on
     #: ``ir_takes``: the room tables carry ids across an app boundary and have never
     #: constrained them.
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
 
 
 class IRTakeKind(enum.StrEnum):
@@ -236,5 +243,7 @@ class IRTake(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     crc32c: Mapped[str] = mapped_column(String(16))
     content_type: Mapped[str] = mapped_column(String(64))
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
