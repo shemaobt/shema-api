@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import CurrentUser, device_dep, room_key_dep
+from app.api.facilitator._deps import FacilitatorUser
+from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
@@ -102,7 +103,7 @@ async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> Tak
 
 @router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)
 async def facilitator_takes(
-    session_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> TakesResponse:
     """What a session recorded, for the person who will listen to it.
 
@@ -123,7 +124,7 @@ async def facilitator_takes(
     response_model=None,
 )
 async def listen_to_take(
-    take_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+    take_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> RedirectResponse:
     """Redirect to a short-lived signed URL: storage serves the bytes.
 
