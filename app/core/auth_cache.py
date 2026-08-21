@@ -15,9 +15,17 @@ it stays that way.
 Thirty seconds, not the five minutes this started at (ENG-551). Five was a library-shaped
 default nobody chose; thirty is a measured trade. The cost has a **ceiling per minute** — two
 reloads per user per minute at most, whatever the request rate — so the burst above still
-costs nothing, while a withdrawal lands in half a minute instead of five. Checking the
-database before granting was measured against it and costs one read per *request* instead,
-with no ceiling; that is a separate decision and not this one.
+costs nothing, while a withdrawal lands in half a minute instead of five.
+
+Closing the window entirely — checking the database before *granting* — was measured against
+this and **declined**, and the reason is written here so it is not rebuilt from the same
+reasoning that first proposed it. It costs one read per granted *request* with no ceiling, so
+the burst costs six instead of nothing, and it turns
+`test_the_gate_does_not_re_read_the_role_tables_on_every_request` red — the case that exists to
+say the room's screens do not each pay a round trip. The plan that proposed it called it cheap,
+on a cost line inherited from an earlier description that checked before *refusing*: that
+repairs a grant arriving late and leaves a revocation standing, which is the harm. Pointed at
+the direction that matters, cheap and check-always are one policy.
 
 `_user_cache` carries the same window, and for a sharper reason: it holds `is_active`, so its
 entry outliving a change means a **deactivated account still getting in**. That is the
