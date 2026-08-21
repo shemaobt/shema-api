@@ -6,7 +6,7 @@ import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import ColumnElement, and_, case, func, or_, select
@@ -440,21 +440,42 @@ async def fetch_audio(key: str, *, store: SpeechStore | None = None) -> bytes | 
 LISTEN_MINUTES = 15
 
 
-async def listen_url(key: str, *, settings: Settings | None = None) -> str:
-    """A short-lived signed URL for a question or a reply.
+@dataclass(frozen=True)
+class SignedAudio:
+    """An address that authenticates itself, and the instant it stops doing so."""
+
+    url: str
+    expires_at: datetime
+
+
+async def listen_address(key: str, *, settings: Settings | None = None) -> SignedAudio:
+    """A short-lived signed address for a question or a reply, and when it dies.
 
     The only address these ever had was the clip route, which is gated on the room key —
     the tablet's credential. A facilitator signs in as a person and carries no room key,
     so every play button in their queue answered 401 and the hand was dead on their side
-    as surely as it was on the team's. The takes routes already solve this by redirecting
-    to storage rather than proxying; this is the same move.
+    as surely as it was on the team's.
+
+    The route used to redirect here. It no longer does, and the reason is the consumer: the
+    Desk draws ``<audio src=...>``, and a media element sends no headers at all — it never
+    reached the redirect, because the route refused it first. So the address is handed to
+    the caller, who *can* authenticate, and pointed at storage by them.
+
+    ``expires_at`` is computed from the same constant the signature is minted with, and
+    returned beside it, because the two disagreeing is worse than saying nothing: the Desk
+    would hold a dead address believing it good, and a play that does nothing looks exactly
+    like a recording that was never there.
     """
     cfg = settings or get_settings()
     if not cfg.gcs_platform_bucket:
         raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
-    return await generate_signed_download_url(
+    url = await generate_signed_download_url(
         cfg.gcs_platform_bucket,
         key,
         expiry_minutes=LISTEN_MINUTES,
         response_content_type=AUDIO_MIME,
+    )
+    return SignedAudio(
+        url=url,
+        expires_at=datetime.now(UTC) + timedelta(minutes=LISTEN_MINUTES),
     )

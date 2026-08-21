@@ -7,8 +7,7 @@ comes through the platform's own app access. They never see each other's routes.
 
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
@@ -20,6 +19,7 @@ from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
     InboxQuestionView,
+    QuestionAudioResponse,
     QuestionInboxResponse,
     QuestionRaisedResponse,
 )
@@ -152,25 +152,27 @@ async def question_inbox(
 
 @router.get(
     "/facilitator/questions/{question_id}/audio",
-    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    response_class=RedirectResponse,
-    response_model=None,
+    response_model=QuestionAudioResponse,
 )
 async def listen_to_question(
     question_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
-) -> RedirectResponse:
-    """Redirect to a short-lived signed URL, the way the takes routes already do.
+) -> QuestionAudioResponse:
+    """Hand back a short-lived signed address for the recording, rather than redirecting.
 
-    The queue used to hand the facilitator the clip route, which is gated on the room key
-    the tablet carries. They sign in as a person: every play button answered 401.
+    This route used to answer `307` to that same address, which is the right shape for
+    serving audio and the wrong shape for the only thing that consumes it. The Desk draws
+    `<audio src=...>`, and **a media element sends no headers**: it was refused here, with
+    `401`, before the redirect existed. No facilitator has ever heard a question.
+
+    Returning the address moves the authenticated request to the caller, who can make one,
+    and points the element at storage — which needs no CORS, since media elements fetch in
+    `no-cors` mode, and keeps `Range`, so seeking inside a recording still works.
     """
     question = await service.get_question_for_facilitator(db, user, question_id)
     if not question.audio_key:
         raise NotFoundError("No such recording")
-    return RedirectResponse(
-        await service.listen_url(question.audio_key),
-        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    )
+    signed = await service.listen_address(question.audio_key)
+    return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
 
 
 @router.post("/facilitator/questions/{question_id}/reply")

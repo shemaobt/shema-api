@@ -44,6 +44,8 @@ coverage case below is for.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 from httpx import ASGITransport
@@ -123,13 +125,16 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     store = MemoryStore()
     monkeypatch.setattr(question_service, "_store", lambda *a, **kw: store)
 
-    async def _signed_question(key: str) -> str:
-        return f"https://storage.example/{key}"
+    async def _signed_question(key: str, **kw) -> question_service.SignedAudio:
+        return question_service.SignedAudio(
+            url=f"https://storage.example/{key}",
+            expires_at=datetime.now(UTC) + timedelta(minutes=question_service.LISTEN_MINUTES),
+        )
 
     async def _signed_take(take, **kw) -> str:
         return f"https://storage.example/{take.storage_key}"
 
-    monkeypatch.setattr(question_service, "listen_url", _signed_question)
+    monkeypatch.setattr(question_service, "listen_address", _signed_question)
     monkeypatch.setattr(take_routes, "listen_url", _signed_take)
 
     async def _get_db():
