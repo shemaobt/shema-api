@@ -48,6 +48,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("DELETE", "/api/facilitator/devices/{device_id}"): {},
     ("GET", "/api/facilitator/teams"): {},
     ("GET", "/api/facilitator/teams/{team_id}/devices"): {},
+    ("GET", "/api/facilitator/coverage-legend"): {},
     ("GET", "/api/internalization-room/facilitator/questions"): {},
     ("GET", "/api/internalization-room/facilitator/questions/{question_id}/audio"): {},
     ("GET", "/api/internalization-room/facilitator/questions/audio/{handle}"): {},
