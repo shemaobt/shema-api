@@ -12,6 +12,12 @@
 name: ENG-556 ruler
 
 on:
+  # `push` on this branch and not `workflow_dispatch`: dispatch only resolves against the
+  # default branch, and this workflow is deliberately not there. An empty commit is one run,
+  # which is what firing it repeatedly needs anyway.
+  push:
+    branches:
+      - "henok/eng-556-**"
   workflow_dispatch:
 
 env:
