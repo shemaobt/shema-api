@@ -33,7 +33,7 @@ ours is the window we ask for and the instant we promise the caller, and both ar
 """
 
 from datetime import UTC, datetime
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 import pytest
@@ -57,6 +57,12 @@ BUCKET = "balde-de-teste"
 SPOKEN = b"a pergunta que a equipe gravou, em bytes"
 MIME = "audio/mp4"
 
+#: What the stub serves when the address asks for nothing. Deliberately **not** `MIME`: if
+#: the object carried its own audio type, a case asserting on the type that arrives would
+#: pass even with the service no longer declaring one, and would be asserting on the
+#: fallback. A bucket answers exactly this for an object stored without a content type.
+UNTYPED = "application/octet-stream"
+
 
 @pytest.fixture()
 def store() -> dict[str, tuple[bytes, str]]:
@@ -71,7 +77,7 @@ async def client(db_session: AsyncSession, store, monkeypatch: pytest.MonkeyPatc
     hands out can actually be requested. Without that, every case here would be asserting
     on a string.
     """
-    from fastapi import FastAPI, Response
+    from fastapi import FastAPI, Query, Response
 
     from app.api.internalization_room import router
     from app.core.config import get_settings
@@ -87,8 +93,13 @@ async def client(db_session: AsyncSession, store, monkeypatch: pytest.MonkeyPatc
         expiry_minutes: int,
         response_content_type: str | None = None,
     ) -> str:
-        query = f"?response-content-type={response_content_type}" if response_content_type else ""
-        return f"http://test{STORAGE}/{bucket}/{key}{query}&X-Goog-Expires={expiry_minutes * 60}"
+        # Built as a proper query string whether or not a type was asked for: gluing an
+        # `&` onto an empty string yields a malformed URL, and then every case that parses
+        # this address fails for that reason instead of the one it is about.
+        params = {"X-Goog-Expires": str(expiry_minutes * 60)}
+        if response_content_type:
+            params["response-content-type"] = response_content_type
+        return f"http://test{STORAGE}/{bucket}/{key}?{urlencode(params)}"
 
     monkeypatch.setattr(service, "generate_signed_download_url", _signed)
 
@@ -96,7 +107,15 @@ async def client(db_session: AsyncSession, store, monkeypatch: pytest.MonkeyPatc
     test_app.include_router(router, prefix=IR)
 
     @test_app.get(f"{STORAGE}/{{bucket}}/{{key:path}}", response_model=None)
-    async def _bucket(bucket: str, key: str, response_content_type: str | None = None) -> Response:
+    async def _bucket(
+        bucket: str,
+        key: str,
+        # The alias matters: the bucket's parameter is spelled with hyphens, and without
+        # this FastAPI binds nothing and the stub quietly serves the stored type instead —
+        # which would make the type assertion below unable to fail. Review caught exactly
+        # that, and it was the ENG-434 shape hiding inside the file that describes it.
+        response_content_type: str | None = Query(default=None, alias="response-content-type"),
+    ) -> Response:
         stored = store.get(key)
         if bucket != BUCKET or stored is None:
             raise NotFoundError(f"no object at {key}")
@@ -129,7 +148,7 @@ async def a_facilitator(db: AsyncSession, *, email: str = "fac@example.com"):
 async def a_recorded_question(db: AsyncSession, store, project_id: str, *, tag: str) -> IRQuestion:
     """A raised hand whose audio is really in the stubbed bucket."""
     key = f"internalization-room/questions/{tag}.m4a"
-    store[key] = (SPOKEN, MIME)
+    store[key] = (SPOKEN, UNTYPED)
 
     session = IRSession(id=f"sessao-{tag}", pericope="P03", project_id=project_id)
     db.add(session)
@@ -184,7 +203,10 @@ async def test_what_arrives_at_that_address_is_the_recording_and_it_says_what_it
 
     assert played.status_code == 200, played.text[:200]
     assert played.content == SPOKEN
-    assert played.headers["content-type"].startswith(MIME)
+    assert played.headers["content-type"].startswith(MIME), (
+        "o tipo que chegou nao e o que o servico pediu — o objeto esta guardado sem tipo, "
+        "entao isto so pode passar se o pedido do servico tiver viajado ate o fim"
+    )
 
 
 async def test_the_address_needs_no_authorization_of_its_own(client, db_session, store):

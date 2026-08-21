@@ -231,6 +231,12 @@ async def test_a_facilitator_still_reaches_their_own_teams_question(client, db_s
 
     Without it, a scope check that answered 404 for everyone would satisfy every other
     case in this file.
+
+    The audio route answers 200 with a signed address in the body rather than the 307 this
+    asserted when it was written: ENG-533 stopped redirecting, because the `<audio>` element
+    that consumes it sends no headers and was refused before the redirect ever happened.
+    What this case is about is that the owner is *served*; the shape of that answer belongs
+    to `test_facilitator_question_audio_url.py`, which follows it to the bytes.
     """
     mine, headers = await a_facilitator(db_session, email="a@example.com")
     question = await a_question_of(db_session, mine.id, tag="minha")
@@ -238,11 +244,6 @@ async def test_a_facilitator_still_reaches_their_own_teams_question(client, db_s
     heard = await client.get(audio_url(question.id), headers=headers)
     answered = await client.post(reply_url(question.id), headers=headers, **REPLY_FILE)
 
-    # 200 with the signed address in the body, not the 307 this asserted when it was
-    # written: ENG-533 stopped redirecting, because the `<audio>` element that consumes
-    # this route sends no headers and was refused before the redirect ever happened. What
-    # this case is about is that the owner is *served* — the shape of the answer belongs to
-    # `test_facilitator_question_audio_url.py`, which follows it to the bytes.
     assert heard.status_code == 200
     assert answered.status_code == 200
     await db_session.refresh(question)
