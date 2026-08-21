@@ -7,7 +7,7 @@ comes through the platform's own app access. They never see each other's routes.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,7 @@ from app.models.internalization_room import (
 )
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
+from app.services.internalization_room.background import transcribe_question
 from app.services.internalization_room.voice_handles import audio_url
 
 router = APIRouter()
@@ -38,10 +39,30 @@ DeviceId = device_dep
 @router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[room_key_dep])
 async def raise_question(
     session_id: str,
+    background: BackgroundTasks,
     device_id: str = DeviceId,
+    element_key: str | None = Form(default=None),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> QuestionRaisedResponse:
+    """Take the hand down and keep what was asked.
+
+    ``element_key`` says which bead the question is about and is optional, because an app
+    that has not shipped ENG-456 sends none and its team's questions still have to arrive.
+    How long the recording runs is measured here from the audio and is not a parameter: a
+    length the client reports is a length the client gets wrong, and nothing downstream
+    could tell.
+
+    **The hand comes down before anything is transcribed.** Reading the question back is
+    the Desk's business and is scheduled rather than awaited: the transcriber is another
+    company's machine behind a 120 s read timeout, and the person holding the tablet is a
+    member of a team who cannot read and cannot check whether their question arrived. They
+    would be waiting for something that is not for them.
+
+    What that costs is said where it lands: `transcribe_question` has no caller to report
+    to, so a transcriber broken for everyone is visible only as rows — audio kept, text
+    null. That is a query, and the telemetry for it is ENG-482.
+    """
     audio = await file.read()
     if len(audio) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
@@ -52,8 +73,10 @@ async def raise_question(
         session_id=session.id,
         project_id=session.project_id,
         pericope=session.pericope,
+        element_key=element_key,
         audio=audio,
     )
+    background.add_task(transcribe_question, question_id=question.id, audio=audio)
     return QuestionRaisedResponse(question_id=question.id, status=str(question.status))
 
 
@@ -110,9 +133,12 @@ async def question_inbox(
                 team_id=_team_of(question),
                 device_id=question.device_id,
                 pericope=question.pericope,
+                element_key=question.element_key,
                 status=str(question.status),
                 heard_at=_moment(question.heard_at),
                 audio_url=f"/api/internalization-room/facilitator/questions/{question.id}/audio",
+                duration_ms=question.duration_ms,
+                transcript=question.transcript,
                 asked_at=_stamp(question.created_at),
             )
             for question in page.questions
