@@ -183,6 +183,30 @@ async def test_a_document_nobody_ever_locked_is_lockable(db_session: AsyncSessio
 
 
 @pytest.mark.asyncio
+async def test_a_lock_held_with_no_moment_recorded_is_not_broken_into(
+    db_session: AsyncSession,
+) -> None:
+    """The guard the shared normaliser cannot carry, because it is not about time-zones.
+
+    `as_utc` is non-optional, so `lock_bcd` reads `locked_at` only when there is one. No
+    service produces a row with a holder and no moment — every writer sets and clears the two
+    together, checked across the eight that touch them — so this is a row written *outside*
+    the code: a seed, a hand-fixed record, an older schema. What matters is what happens then,
+    and today the answer is that the lock **holds**: an unknown age is not an expired one.
+
+    Without this case the guard can be deleted and every test stays green, because none of the
+    others reaches the branch — the document nobody locked never gets that far.
+    """
+    holder, newcomer, bcd = await a_document(db_session, tag="sem-momento")
+    bcd.locked_by = holder.id
+    bcd.locked_at = None
+    await db_session.commit()
+
+    with pytest.raises(ConflictError):
+        await lock_bcd(db_session, bcd, newcomer.id)
+
+
+@pytest.mark.asyncio
 async def test_a_refresh_token_with_a_naive_expiry_is_read_as_utc(
     db_session: AsyncSession,
 ) -> None:
@@ -262,3 +286,66 @@ def test_the_two_conversions_disagree_and_that_is_the_point() -> None:
 
     assert _to_utc(elsewhere) != as_utc(elsewhere).replace(tzinfo=None)
     assert _to_utc(elsewhere).hour != as_utc(elsewhere).hour
+
+
+# ------------------------------------------------------- the criterion, swept over the tree
+
+
+#: The one module allowed to build an aware datetime out of a naive one without calling the
+#: shared normaliser, and the reason is on its own function: it converts a bound off the wire
+#: rather than reading back a value this codebase wrote. Named here rather than counted, so
+#: that a seventh copy has to argue with this list instead of slipping under a threshold.
+ALLOWED_TO_ATTACH_AN_OFFSET = {"api/sound_necklace/audit.py"}
+
+
+def test_no_module_outside_the_shared_one_attaches_utc_to_a_naive_moment() -> None:
+    """The acceptance criterion: no naive-to-UTC normalisation survives outside one place.
+
+    Read with `ast` rather than as text, because the docstrings that explain the conversion —
+    including this file's — say `replace(tzinfo=UTC)` in prose, and a text sweep would call
+    the explanation the thing it explains.
+    """
+    import ast
+    from pathlib import Path
+
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    shared = "utils/stored_time.py"
+
+    attaching = sorted(
+        {
+            str(source.relative_to(app_dir))
+            for source in app_dir.rglob("*.py")
+            if _attaches_an_offset(ast.parse(source.read_text(encoding="utf-8")))
+        }
+        - ALLOWED_TO_ATTACH_AN_OFFSET
+        - {shared}
+    )
+
+    assert attaching == [], f"normalização ingênuo→UTC fora do módulo único: {attaching}"
+
+
+def _attaches_an_offset(tree) -> bool:
+    """Whether a module calls `.replace(tzinfo=...)` anywhere in its code."""
+    import ast
+
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "replace"
+        and any(keyword.arg == "tzinfo" for keyword in node.keywords)
+        for node in ast.walk(tree)
+    )
+
+
+def test_the_shared_module_is_the_one_doing_it() -> None:
+    """The sweep above passes just as well if nobody normalises anywhere.
+
+    Written because an absence-assertion is only worth what the presence beside it is worth:
+    without this, deleting `as_utc` outright would leave the criterion green.
+    """
+    import ast
+    from pathlib import Path
+
+    shared = Path(__file__).resolve().parents[1] / "app" / "utils" / "stored_time.py"
+
+    assert _attaches_an_offset(ast.parse(shared.read_text(encoding="utf-8")))
