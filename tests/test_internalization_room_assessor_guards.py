@@ -147,3 +147,11 @@ def test_polarity_guard_accepts_a_plainly_asserted_quote() -> None:
 def test_negation_dropping_guard_sees_nearby_negators() -> None:
     assert excerpt_drops_nearby_negation("voltou", "ela não voltou")
     assert not excerpt_drops_nearby_negation("não voltou", "ela não voltou")
+
+
+def test_negation_dropping_guard_ignores_ordinary_portuguese_function_words() -> None:
+    assert not excerpt_drops_nearby_negation("campo de Boaz", "Rute foi trabalhar no campo de Boaz")
+    assert not excerpt_drops_nearby_negation(
+        "tempo da colheita", "Noemi voltou para Belém no tempo da colheita"
+    )
+    assert not excerpt_drops_nearby_negation("para Belém", "Noemi voltou, né, para Belém")
