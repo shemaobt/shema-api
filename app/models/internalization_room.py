@@ -139,16 +139,64 @@ class HandRepliesResponse(BaseModel):
     replies: list[HandReplyView]
 
 
-class OpenQuestionView(BaseModel):
+class InboxQuestionView(BaseModel):
+    """One card of the facilitator's inbox.
+
+    ``status`` is on the card because the page carries all three states at once and the
+    reader has to be able to tell the queue from the record. ``team_id`` is on it because the
+    inbox can be read across teams, and a question that does not say whose it is puts the
+    facilitator's next move back on them.
+
+    ``team_id`` is not nullable even though the column is. Every shape the inbox restriction
+    takes — ``= team_id``, ``IN (ids)``, ``IS NOT NULL`` — drops a row that names no team, so
+    a card that reaches this response always has one. Typing it nullable would ask the Desk
+    to draw a case this route cannot produce.
+
+    ``heard_at`` sits beside ``status`` because that is the only place it means anything: it
+    answers whether the team has played the reply, which is a question about an **answered**
+    card and about no other. It is null on an open one, and null again after a second reply —
+    ``record_reply`` clears it on purpose, so a card never says "heard" about an answer that
+    was replaced.
+
+    **A moment and not a flag, and the direction is the reason.** The Desk's own
+    ``RaisedHandState`` carries ``heardByTeam: boolean``, so a boolean is the obvious thing to
+    serve — but its header says the transport-to-domain translation belongs to its HTTP client
+    and never above it, and only one direction is lossless: *when* they heard gives *whether*
+    they heard, and whether never gives when. Serving the flag would throw away a fact the
+    column already holds and nobody recovers afterwards.
+
+    Null and not the empty string, which is where it parts from ``asked_at``: that column is
+    never null, so a blank there means nothing, and a blank here would be a value the Desk had
+    to learn to read as absent.
+    """
+
     question_id: str
+    team_id: str
     device_id: str
     pericope: str
+    status: str
+    heard_at: str | None
     audio_url: str
     asked_at: str
 
 
-class OpenQuestionsResponse(BaseModel):
-    questions: list[OpenQuestionView]
+class QuestionInboxResponse(BaseModel):
+    """A page, the count it was cut out of, and where to resume.
+
+    ``open_total`` counts the open hands in the scope that was asked about — not the ones on
+    this page, and not what the ``status`` filter let through. **It is allowed to be larger
+    than ``questions``, and when the two disagree the count is the true one.** That is the
+    point of serving it: a client that counts the array it received reads one number inside
+    the Desk and a larger one on the team list, and nothing about either looks broken.
+
+    ``next_cursor`` is null on the last page. It is opaque on purpose — it stands for a place
+    in this route's order, and a caller that took it apart would be depending on that order
+    never changing.
+    """
+
+    questions: list[InboxQuestionView]
+    open_total: int
+    next_cursor: str | None
 
 
 class TakeResponse(BaseModel):
