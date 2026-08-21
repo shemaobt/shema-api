@@ -162,7 +162,7 @@ def is_exact_excerpt(excerpt: str, utterance: str) -> bool:
     return _normalize_for_excerpt(excerpt) in _normalize_for_excerpt(utterance)
 
 
-_NEGATION_TOKENS = frozenset({"nao", "nunca", "jamais", "not", "never", "no", "ni", "pas", "ne"})
+_NEGATION_TOKENS = frozenset({"nao", "nunca", "jamais", "not", "never", "ni", "pas"})
 
 
 def excerpt_drops_nearby_negation(excerpt: str, utterance: str) -> bool:
