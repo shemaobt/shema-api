@@ -1,4 +1,9 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.services.internalization_room.canon.elements import ElementKind
+from app.services.internalization_room.coverage import CoverageStatus
 
 MAX_TTS_CHARS = 3000
 
@@ -12,6 +17,85 @@ class FacilitatorSpeakResponse(BaseModel):
     mime_type: str = "audio/mpeg"
     etag: str
     cached: bool = False
+
+
+class LabelledElement(BaseModel):
+    """One bead, named in each language the Desk offers.
+
+    `key` is unique only within its pericope: `scene:1` is a different scene in every
+    passage, so a label is identified by `(pericope_num, key)` and never by `key` alone.
+
+    The three languages are named fields because that is the shape the Desk was promised, so
+    a fourth costs a field here as well as a catalogue entry — three files, not every call
+    site. `extra="forbid"` is what makes that cost visible: the loader builds this by
+    spreading `LANGUAGES`, and pydantic drops an unknown keyword by default, so without it a
+    fourth language would be demanded of the catalogue and then thrown away in silence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    kind: ElementKind
+    scene: int | None = None
+    label_pt: str
+    label_en: str
+    label_es: str
+
+
+class CoverageLegend(BaseModel):
+    """The names of the coverage states and the element kinds, once per response.
+
+    Each entry maps a language code to the text. Unlike `LabelledElement` above, whose three
+    fields the Desk was promised by name, nothing was promised about this shape — so here a
+    fourth language is a catalogue change and nothing else.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_status: dict[str, dict[str, str]]
+    element_kind: dict[str, dict[str, str]]
+
+
+class TouchedInSession(BaseModel):
+    """Which session last moved one bead, and when."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    at: datetime
+
+
+class ElementCoverage(BaseModel):
+    """One bead of a team's necklace, as the Desk reads it.
+
+    A closed contract, and `extra="forbid"` is what keeps it closed. The product forbids
+    showing a facilitator any count, percentage or ratio, so an aggregate must not be able to
+    arrive here by being passed along from somewhere that legitimately computes one.
+
+    `scene` names the scene bead this one sits under — `scene:2`, not `2`. It is a key into
+    this same response and not a number, because the alternative is the client composing
+    `scene:{n}` to join a bead to its scene, and composing a key on the client is what the
+    label layer exists to prevent: the day the shape of a key changes, a client that builds
+    one builds the wrong one, in silence, and the necklace simply stops joining up.
+
+    It is `None` for a preservation rule. That is not a missing value — it is the group apart
+    at the end of the necklace, the rules that must not be lost, which belong to the passage
+    rather than to any one of its scenes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    label_pt: str
+    label_en: str
+    label_es: str
+    kind: ElementKind
+    scene: str | None = None
+    #: The enum and not the string it serialises to, so the Desk reads the closed set of four
+    #: off the schema instead of inferring it from whichever values one response happens to
+    #: carry. `CoverageStatus` is a `StrEnum`, so the JSON is unchanged.
+    status: CoverageStatus
+    touched_in_session: TouchedInSession | None = None
 
 
 class CoverageView(BaseModel):

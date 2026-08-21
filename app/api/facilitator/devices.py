@@ -20,9 +20,8 @@ from fastapi import APIRouter, Depends, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_middleware import get_current_user
+from app.api.facilitator._deps import FacilitatorUser
 from app.core.database import get_db
-from app.db.models.auth import User
 from app.models.device import (
     ERROR_CODE_CLAIM_CODE_ALREADY_USED,
     ERROR_CODE_CLAIM_CODE_EXPIRED,
@@ -73,8 +72,8 @@ def _refusal_response(error: InvalidClaimCodeError) -> JSONResponse:
 @facilitator_devices_router.post("/claim", response_model=None)
 async def claim_device_route(
     payload: DeviceClaimRequest,
+    user: FacilitatorUser,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
 ) -> DeviceClaimResponse | JSONResponse:
     """Trade the code the tablet is showing for the credential it will authenticate with."""
     try:
@@ -100,8 +99,8 @@ async def claim_device_route(
 async def edit_device_label_route(
     device_id: str,
     payload: DeviceLabelUpdateRequest,
+    user: FacilitatorUser,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
 ) -> TeamDeviceResponse:
     """Say who uses this device. Returns the row, so the panel can redraw from the answer."""
     device = await set_team_device_label(db, user=user, device_id=device_id, label=payload.label)
@@ -111,8 +110,8 @@ async def edit_device_label_route(
 @facilitator_devices_router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_device_route(
     device_id: str,
+    user: FacilitatorUser,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
 ) -> Response:
     """Take this device out of service and revoke the credential it authenticates with.
 
