@@ -38,10 +38,11 @@ an end, a state and a length that could be computed apart are three things to ke
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from app.core.enums import SessionState
 from app.db.models.internalization_room import IRSession
+from app.utils.stored_time import as_utc
 
 #: How long a session may sit with nothing happening before it is over. **Proposed, not
 #: agreed** — the room app holds the other half (ENG-435), and this is deliberately one
@@ -61,18 +62,6 @@ class SessionEnd:
     ended_at: datetime | None
     state: SessionState
     duration_minutes: int | None
-
-
-def as_utc(when: datetime) -> datetime:
-    """Read a stored timestamp as UTC, which is the only thing this schema ever writes.
-
-    ``DateTime(timezone=True)`` hands back a naive value on SQLite and an aware one on
-    Postgres — ``device.claim_code.has_expired`` says the same of the same schema — and
-    subtracting one from the other raises. Reading the naive one as *local* would not raise
-    and would be wrong by the machine's offset, which is three hours on the servers this
-    runs on.
-    """
-    return when.replace(tzinfo=UTC) if when.tzinfo is None else when
 
 
 def last_activity(session: IRSession) -> datetime:
