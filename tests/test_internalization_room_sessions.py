@@ -3,14 +3,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSessionStatus
+from app.services.internalization_room.back_translation import BackTranslationState, Chunk
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.sessions import (
+    MAX_RETELLS,
     append_exchange,
     apply_coverage,
+    back_translation_of,
+    begin_back_translation_again,
     create_session,
     get_session,
     mark_needs_person,
+    save_back_translation,
 )
 
 P = "P03"
@@ -86,3 +91,40 @@ async def test_a_session_needing_a_person_is_marked(db_session: AsyncSession) ->
     session = await mark_needs_person(db_session, session)
 
     assert session.status is IRSessionStatus.NEEDS_PERSON
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_recording_throws_the_whole_telling_back_away(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(scope=P, retells=2, chunks=[Chunk(index=1, text="velho")]),
+    )
+
+    state = await begin_back_translation_again(db_session, session)
+
+    assert state.chunks == []
+    assert state.retells == 0
+    assert session.status is IRSessionStatus.IN_PROGRESS
+
+
+@pytest.mark.asyncio
+async def test_the_retells_are_counted_and_run_out(db_session: AsyncSession) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(
+        db_session, session, BackTranslationState(scope=P, retells=MAX_RETELLS - 1)
+    )
+
+    state = back_translation_of(session)
+    state.retells += 1
+    await save_back_translation(db_session, session, state)
+    if state.retells >= MAX_RETELLS:
+        await mark_needs_person(db_session, session)
+
+    assert session.status is IRSessionStatus.NEEDS_PERSON, (
+        "contar o mesmo trecho de novo era um ciclo que ninguém limitava, e o "
+        "orçamento que existia estava numa rota que o app nunca chamava"
+    )

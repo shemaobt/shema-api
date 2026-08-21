@@ -14,6 +14,7 @@ from app.services.internalization_room.coverage import floor_met, initial_state
 DEFAULT_PERICOPE = "P01"
 PANORAMA_PREFIX = "OV-"
 PANORAMA_ALIAS = "OV"
+MAX_RETELLS = 3
 
 
 def is_panorama(pericope: str) -> bool:
@@ -124,3 +125,16 @@ async def save_back_translation(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def begin_back_translation_again(
+    db: AsyncSession, session: IRSession
+) -> BackTranslationState:
+    """Throw the telling-back away and start over on a freshly recorded clip.
+
+    Only the re-record reaches here. Telling one stretch again does not pass through: it
+    adds a chunk beside the others, and its budget is counted where that happens.
+    """
+    state = back_translation_of(session)
+    await save_back_translation(db, session, BackTranslationState(scope=state.scope))
+    return back_translation_of(session)

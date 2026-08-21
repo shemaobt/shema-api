@@ -176,3 +176,59 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
     assert "Orfa" in speaker_system
     assert "{{" not in speaker_system
     assert "{{" not in validator_system
+
+
+def test_a_verdict_is_not_bought_twice_for_the_same_telling_back() -> None:
+    state = BackTranslationState(scope=P, chunks=_chunks())
+
+    assert not state.already_analysed
+
+    state.analysed_chunks = len(state.chunks)
+
+    assert state.already_analysed
+
+
+def test_one_more_piece_told_back_earns_a_fresh_reading() -> None:
+    state = BackTranslationState(scope=P, chunks=_chunks())
+    state.analysed_chunks = len(state.chunks)
+
+    state.chunks.append(Chunk(index=3, text="e voltaram juntas"))
+
+    assert not state.already_analysed
+
+
+@pytest.mark.asyncio
+async def test_the_analyst_carries_the_chunk_pointer_through(patch_analyst) -> None:
+    patch_analyst('{"findings":[{"kind":"missing","chunk":2,"note":"nao contaram a fome"}]}')
+
+    findings = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert [(f.kind, f.chunk) for f in findings] == [(FindingKind.MISSING, 2)]
+
+
+@pytest.mark.asyncio
+async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
+    patch_analyst,
+) -> None:
+    patch_analyst(
+        '{"findings":['
+        '{"kind":"missing","chunk":null,"note":"a"},'
+        '{"kind":"addition","chunk":0,"note":"b"},'
+        '{"kind":"unclear","chunk":"tres","note":"c"}]}'
+    )
+
+    findings = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert [f.chunk for f in findings] == [None, None, None]

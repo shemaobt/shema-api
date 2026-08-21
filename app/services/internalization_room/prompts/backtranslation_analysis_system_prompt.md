@@ -47,10 +47,13 @@ Return **only** this JSON (no prose, no fences):
 ```json
 {
   "findings": [
-    { "kind": "missing" | "addition" | "unclear", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
+    { "kind": "missing" | "addition" | "unclear", "chunk": 3, "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
   ]
 }
 ```
+
+`"chunk"` is the chunk number the finding lands on — for a missing element, the chunk where it
+should have been told. Use `null` when it cannot be placed in one.
 
 A complete, faithful telling-back returns `{ "findings": [] }`.
 
