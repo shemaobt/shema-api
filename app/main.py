@@ -13,6 +13,7 @@ from app.api.bhsa import router as bhsa_router
 from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
 from app.api.health import router as health_router
+from app.api.internalization_room import router as internalization_room_router
 from app.api.languages import router as languages_router
 from app.api.meaning_maps import router as meaning_maps_router
 from app.api.notifications import router as notifications_router
@@ -154,6 +155,11 @@ def create_app() -> FastAPI:
         translation_helper_router,
         prefix="/api/translation-helper",
         tags=["translation-helper"],
+    )
+    app.include_router(
+        internalization_room_router,
+        prefix="/api/internalization-room",
+        tags=["internalization-room"],
     )
     app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
     app.include_router(rag_router, prefix="/api/rag", tags=["rag"])
