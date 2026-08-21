@@ -9,7 +9,7 @@ from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import floor_met, initial_state
+from app.services.internalization_room.coverage import floor_met, furthest, initial_state
 
 DEFAULT_PERICOPE = "P01"
 PANORAMA_PREFIX = "OV-"
@@ -99,13 +99,22 @@ async def apply_coverage(
 ) -> IRSession:
     """Store the tracker after the off-path classifier ran.
 
+    Merged against what is stored now, not written over it. The snapshot this was computed
+    from is a Gemini round trip old, and a second turn may have settled in the meantime; a
+    blind overwrite let the older reading win and darkened a bead the team had already
+    earned.
+
     Closes the session when the completion floor is met.
     """
     session = await get_session(db, session_id)
-    session.coverage_state = coverage_state
+    session.coverage_state = furthest(
+        session.coverage_state or {},
+        coverage_state,
+        pericope_num=session.pericope,
+    )
     if (
         not is_panorama(session.pericope)
-        and floor_met(coverage_state, session.pericope)
+        and floor_met(session.coverage_state, session.pericope)
         and session.status is IRSessionStatus.IN_PROGRESS
     ):
         session.status = IRSessionStatus.DONE

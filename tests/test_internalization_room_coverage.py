@@ -9,8 +9,10 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 from app.services.internalization_room.coverage import (
+    CoverageStatus,
     counts,
     floor_met,
+    furthest,
     initial_state,
     merge,
     remaining,
@@ -150,3 +152,25 @@ def test_the_handoff_does_not_read_as_the_app_itself() -> None:
     """The app is `o Facilitador Digital`; a bare `o facilitador` would point at itself."""
     for line in utterances(FailSafe.HANDOFF, "pt") + utterances(FailSafe.HARD_STOP, "pt"):
         assert "facilitador de vocês" in line or "Facilitador Digital" not in line
+
+
+def test_two_readings_of_the_same_spine_keep_the_further_one() -> None:
+    """Two turns overlapping is ordinary, and the older reading used to win.
+
+    The classifier for one turn takes a round trip; the next turn can land and settle
+    while it runs. Writing a whole snapshot over what is stored darkened a bead the team
+    had just earned, and the room asked them to work an element they had covered.
+    """
+    keys = element_keys(P)
+    earned = dict.fromkeys(keys, CoverageStatus.NOT_ENCOUNTERED.value)
+    earned[keys[0]] = CoverageStatus.ENGAGED.value
+
+    stale = dict.fromkeys(keys, CoverageStatus.NOT_ENCOUNTERED.value)
+    stale[keys[1]] = CoverageStatus.SURFACED.value
+
+    kept = furthest(earned, stale, pericope_num=P)
+
+    assert kept[keys[0]] == CoverageStatus.ENGAGED.value, (
+        "a leitura velha sobrescrevia a conta que a equipe acabou de ganhar"
+    )
+    assert kept[keys[1]] == CoverageStatus.SURFACED.value
