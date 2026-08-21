@@ -186,6 +186,8 @@ async def facilitator_audio(
         raise NotFoundError("No such audio")
     await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
     return await _audio(handle)
+
+
 @router.get(
     "/facilitator/questions/{question_id}/audio",
     response_model=QuestionAudioResponse,
@@ -252,6 +254,7 @@ async def _audio(handle: str) -> Response:
         media_type=service.AUDIO_MIME,
         headers={"Cache-Control": IMMUTABLE, "ETag": sha256(audio).hexdigest()[:32]},
     )
+
 
 def _team_of(question: IRQuestion) -> str:
     """Whose question this is, which an answered card always knows.

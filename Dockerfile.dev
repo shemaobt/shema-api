@@ -18,4 +18,15 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PORT=8000
 EXPOSE 8000
 
-CMD ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+# `heads`, plural, and not `head`. An integration branch bifurcates its Alembic graph every
+# time the chain composes again — three heads stood here on 2026-08-21 — and `head` refuses
+# to resolve while more than one exists, so the container would not boot at all. `heads`
+# applies every one of them, and once they are joined it is the same command: with a single
+# head, `heads` and `head` do the same thing, so this is not a special case anybody has to
+# undo later.
+#
+# **This weakens no gate.** The `migrations` job in CI runs `head` and goes on running it —
+# that job is what refuses a bifurcated graph, and it is the only thing that catches one,
+# since pytest builds its tables directly and never sees the graph at all. Policing the
+# graph is that job's business. The development container's business is to run.
+CMD ["sh", "-c", "uv run alembic upgrade heads && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]

@@ -114,8 +114,12 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
+    # `heads`, plural, for the reason written on the CMD in Dockerfile.dev — and here as well
+    # as there, because this line overrides that one. `docker compose up --build backend` is
+    # the path CLAUDE.md §7 documents, so fixing only the image would leave the boot failure
+    # standing on the way almost everybody actually starts the backend.
     command: >
-      sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade heads && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   bhsa-fetcher:
     build:
