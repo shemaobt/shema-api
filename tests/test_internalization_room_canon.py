@@ -129,3 +129,21 @@ def test_story_so_far_cannot_leak_a_later_disclosure() -> None:
 
 def test_the_first_pericope_has_no_story_behind_it() -> None:
     assert story_so_far("Ruth", "P01") == ""
+
+
+@pytest.mark.parametrize("name", ["*", "P0?", "P[01]", "../P01", ""])
+def test_a_pattern_is_not_a_passage(name: str) -> None:
+    """Both names reach a glob, where these are patterns rather than characters.
+
+    `pericope="*"` matched every vendored map and the sort quietly picked the first, so a
+    session could claim to be one passage and be grounded in another — and the wrong name
+    was then written into every take and question it produced.
+    """
+    with pytest.raises(ValidationError):
+        load_map(name)
+
+
+@pytest.mark.parametrize("name", ["*", "Ru?h", "R[u]th", "../Ruth"])
+def test_a_pattern_is_not_a_book(name: str) -> None:
+    with pytest.raises(ValidationError):
+        load_book(name)

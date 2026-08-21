@@ -220,8 +220,20 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
     )
 
 
+#: A passage is `P01`; a book is a word. Both arrive from the client — the pericope in a
+#: request body, the book in a path segment — and both were spliced straight into a glob,
+#: where `*`, `?` and `[…]` are patterns rather than characters. `pericope="*"` matched
+#: every vendored map and `sorted()[0]` quietly picked the first, so a session could claim
+#: to be one passage and be grounded in another, with the wrong name then written into
+#: every take and question it produced.
+_PERICOPE = re.compile(r"^[A-Za-z]{1,4}\d{1,3}$")
+_BOOK = re.compile(r"^[A-Za-z][A-Za-z0-9 '-]{0,60}$")
+
+
 @lru_cache(maxsize=64)
 def load_map(pericope_num: str) -> MeaningMap:
+    if not _PERICOPE.match(pericope_num):
+        raise ValidationError(f"no vendored Meaning Map for {pericope_num}")
     matches = sorted(MAPS_DIR.glob(f"{pericope_num}-*.md"))
     if not matches:
         raise ValidationError(f"no vendored Meaning Map for {pericope_num}")
@@ -232,6 +244,8 @@ def load_map(pericope_num: str) -> MeaningMap:
 @lru_cache(maxsize=8)
 def load_book(book: str) -> tuple[MeaningMap, ...]:
     """Every vendored map of one book, in story order."""
+    if not _BOOK.match(book):
+        raise ValidationError(f"no vendored Meaning Maps for book {book!r}")
     paths = sorted(MAPS_DIR.glob(f"*-{book}-*.md"))
     if not paths:
         raise ValidationError(f"no vendored Meaning Maps for book {book!r}")
