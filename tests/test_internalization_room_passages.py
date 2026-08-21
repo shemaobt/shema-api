@@ -89,4 +89,4 @@ async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
 
     assert len(answer.passages) > 1
     assert peak > 1, "uma linha por vez é o que estourava o orçamento do cliente"
-    assert peak <= route._VOICES_AT_ONCE, "e sem limite a cota do sintetizador é o próximo muro"
+    assert peak <= route.MAX_LINES_IN_FLIGHT, "e sem limite a cota do sintetizador é o próximo muro"
