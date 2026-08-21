@@ -22,9 +22,22 @@ contains a ``2`` — the shape survived that review and the glyph did not.
 
 Six billion is a large number for a code that lives fifteen minutes and works once, and
 it is a small number for an attacker who can guess without limit. The safety of this
-artefact rests on the short life, the single use, and rate limiting at the route that
-will spend it — which does not exist yet, because the route does not exist yet. **That
-rate limit is ENG-443's to add, and this docstring is where the debt is recorded.**
+artefact rests on three things: the short life, the single use, and rate limiting at the
+route that spends it.
+
+**The third one does not exist, and the route does.** ``POST /api/facilitator/devices/claim``
+is in ``app/api/facilitator/devices.py`` and carries no limit of any kind, while
+``app/core/rate_limit.py`` already guards four routes across two other products. This
+paragraph said the debt could not be paid because the route had not been built; the route was
+built in ENG-443 and the sentence stayed, which left the only place the debt is recorded
+telling whoever read it that there was nothing to do.
+
+The debt is **open and unpaid**, and it is now **ENG-547**. A number is searchable; a
+paragraph is only found by whoever opens this file.
+
+Short life and single use are the wrong defence for this, and that is why the gap matters
+rather than merely existing: both work against **reuse** of one code. An attacker trying many
+different codes is slowed by neither.
 
 **What the row keeps.** The code is never stored. The row keeps a SHA-256 of it, which is
 enough to recognise a replayed code as *spent* rather than *unknown* — the distinction
