@@ -274,18 +274,22 @@ def test_a_naive_bound_off_the_wire_is_assumed_utc() -> None:
 
 
 def test_the_two_conversions_disagree_and_that_is_the_point() -> None:
-    """Written as one assertion so that collapsing them cannot pass by accident.
+    """If someone replaces `_to_utc` with the stored normaliser, this is what reddens.
 
-    If someone replaces `_to_utc` with the stored normaliser, this is the case that reddens,
-    and its name says why before anyone opens the file.
+    Both sides are compared **on the same reading**, and that is not a detail. An earlier
+    version of this case asserted that an aware result was unequal to a naive one, which
+    Python answers `True` for any two values whatsoever — so it stayed green with the two
+    conversions collapsed, which is the one thing it existed to catch.
     """
     from app.api.sound_necklace.audit import _to_utc
     from app.services.internalization_room.session_end import as_utc
 
     elsewhere = datetime(2026, 8, 20, 17, 0, 56, tzinfo=BRASILIA)
 
-    assert _to_utc(elsewhere) != as_utc(elsewhere).replace(tzinfo=None)
+    assert _to_utc(elsewhere) == elsewhere.astimezone(UTC)
+    assert as_utc(elsewhere) is elsewhere
     assert _to_utc(elsewhere).hour != as_utc(elsewhere).hour
+    assert _to_utc(elsewhere).utcoffset() != as_utc(elsewhere).utcoffset()
 
 
 # ------------------------------------------------------- the criterion, swept over the tree
@@ -325,14 +329,25 @@ def test_no_module_outside_the_shared_one_attaches_utc_to_a_naive_moment() -> No
 
 
 def _attaches_an_offset(tree) -> bool:
-    """Whether a module calls `.replace(tzinfo=...)` anywhere in its code."""
+    """Whether a module *attaches* an offset — `.replace(tzinfo=<something>)`.
+
+    The value is read and not only the keyword's name. `replace(tzinfo=None)` **strips** an
+    offset, which is the opposite operation, and nothing in `app/` does it today — so a sweep
+    matching on the name alone stays green and then, on the day somebody strips a tzinfo
+    before a write, reports it as "naive-to-UTC normalisation outside the single module".
+    A failure message that names the wrong thing is worse than none.
+    """
     import ast
 
     return any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "replace"
-        and any(keyword.arg == "tzinfo" for keyword in node.keywords)
+        and any(
+            keyword.arg == "tzinfo"
+            and not (isinstance(keyword.value, ast.Constant) and keyword.value.value is None)
+            for keyword in node.keywords
+        )
         for node in ast.walk(tree)
     )
 
