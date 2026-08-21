@@ -16,6 +16,8 @@ A question carrying no `project_id` — a row from before ENG-440 — belongs to
 so nobody facilitates it and everybody is refused. It is not "unowned, therefore open".
 """
 
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 from httpx import ASGITransport
@@ -60,10 +62,13 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     store = MemoryStore()
     monkeypatch.setattr(service, "_store", lambda *a, **kw: store)
 
-    async def _signed(key: str) -> str:
-        return f"https://storage.example/{key}"
+    async def _signed(key: str, **kw) -> service.SignedAudio:
+        return service.SignedAudio(
+            url=f"https://storage.example/{key}",
+            expires_at=datetime.now(UTC) + timedelta(minutes=service.LISTEN_MINUTES),
+        )
 
-    monkeypatch.setattr(service, "listen_url", _signed)
+    monkeypatch.setattr(service, "listen_address", _signed)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=IR)
@@ -226,14 +231,20 @@ async def test_a_facilitator_still_reaches_their_own_teams_question(client, db_s
 
     Without it, a scope check that answered 404 for everyone would satisfy every other
     case in this file.
+
+    The audio route answers 200 with a signed address in the body rather than the 307 this
+    asserted when it was written: ENG-533 stopped redirecting, because the `<audio>` element
+    that consumes it sends no headers and was refused before the redirect ever happened.
+    What this case is about is that the owner is *served*; the shape of that answer belongs
+    to `test_facilitator_question_audio_url.py`, which follows it to the bytes.
     """
     mine, headers = await a_facilitator(db_session, email="a@example.com")
     question = await a_question_of(db_session, mine.id, tag="minha")
 
-    heard = await client.get(audio_url(question.id), headers=headers, follow_redirects=False)
+    heard = await client.get(audio_url(question.id), headers=headers)
     answered = await client.post(reply_url(question.id), headers=headers, **REPLY_FILE)
 
-    assert heard.status_code == 307
+    assert heard.status_code == 200
     assert answered.status_code == 200
     await db_session.refresh(question)
     assert question.status is IRQuestionStatus.ANSWERED
