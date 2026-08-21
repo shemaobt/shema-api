@@ -14,27 +14,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.language import Language
 from app.db.models.project import Project
 from app.models.internalization_room import PericopePosition
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
-from app.services.internalization_room.canon.elements import elements_for, scene_key
+from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.coverage_events import (
     furthest_by_passage,
     necklace_with_touches,
 )
 from app.services.internalization_room.progression import resolve, standing
-from app.services.project.list_facilitator_teams import (
-    _device_count_subquery,
-    _facilitated_projects,
-    _last_activity_subquery,
-    _open_hands_subquery,
-)
+from app.services.project.list_facilitator_teams import _facilitated_projects, team_cards
 from app.services.project.team_state import team_state
 
 
@@ -67,29 +60,7 @@ async def read_facilitator_team(
     """
     moment = now or datetime.now(UTC)
     scope = _facilitated_projects(user)
-    activity = _last_activity_subquery(scope)
-    hands = _open_hands_subquery(scope)
-    devices = _device_count_subquery(scope)
-
-    query = (
-        select(
-            Project.id,
-            Project.name,
-            Language.name.label("mother_tongue"),
-            func.coalesce(hands.c.open_hands, 0).label("open_hands"),
-            func.coalesce(devices.c.device_count, 0).label("device_count"),
-            activity.c.last_activity_at,
-        )
-        .join(Language, Language.id == Project.language_id)
-        .outerjoin(activity, activity.c.project_id == Project.id)
-        .outerjoin(hands, hands.c.project_id == Project.id)
-        .outerjoin(devices, devices.c.project_id == Project.id)
-        .where(Project.id == team_id)
-    )
-    if scope is not None:
-        query = query.where(Project.id.in_(scope))
-
-    row = (await db.execute(query)).first()
+    row = (await db.execute(team_cards(scope).where(Project.id == team_id))).first()
     if row is None:
         return None
 
@@ -128,9 +99,11 @@ async def _scene_they_are_in(
     towards the earliest event that reached the standing status — so the greatest of them is
     the team's most recent real movement and not merely the last turn that mentioned something.
 
-    Null rather than a guess when the most recent movement was a preservation rule: those
-    belong to the passage and to none of its scenes, and naming the scene before it would say
-    the team is somewhere they have already left.
+    Null rather than a guess in two cases, and both are the same refusal. A preservation rule
+    belongs to the passage and to none of its scenes. And a bead the canon deduped across
+    scenes — Naomi appears in four of P01's and her bead says the first — cannot say where a
+    team is standing either; naming its first appearance would be a confident wrong answer,
+    which on a position is worse than none. `scene_of` is where that decision lives.
     """
     if pericope is None:
         return None
@@ -139,9 +112,12 @@ async def _scene_they_are_in(
     if not history:
         return None
 
-    latest = max(history, key=lambda key: history[key].at)
-    scene = next(
-        (element.scene for element in elements_for(pericope, book) if element.key == latest),
-        None,
-    )
-    return None if scene is None else scene_key(scene)
+    # Only the beads that belong to exactly one scene can answer this. The rest are entities
+    # deduped across the passage, carrying the scene they first appeared in — see `scene_of`.
+    answers = scene_of(pericope, book)
+    moved = [key for key in history if key in answers]
+    if not moved:
+        return None
+
+    latest = max(moved, key=lambda key: history[key].at)
+    return scene_key(answers[latest])

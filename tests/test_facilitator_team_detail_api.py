@@ -295,6 +295,44 @@ async def test_the_scene_is_served_as_a_key_and_not_as_a_number(client, db_sessi
 
 
 @pytest.mark.asyncio
+async def test_a_bead_that_spans_scenes_cannot_say_which_one_they_are_in(
+    client, db_session
+) -> None:
+    """The case every other one here walks past, because they all move a *scene* bead.
+
+    `elements_of` dedupes entities across the passage — Naomi in three scenes is one thing for
+    the team to work with, not three — so an entity's bead carries the scene it **first**
+    appeared in. Five of P01's beads are like that, and `being:B3` spans scenes 1 to 4 while
+    saying `1`. Reading its scene as the team's position answers `scene:1` for a team that may
+    be anywhere in the passage, which is the opposite of what the field claims.
+
+    So a bead that belongs to more than one scene does not answer, and the most recent one that
+    does answers instead. Here the team moved scene 3's own bead and then Naomi: the answer
+    stays `scene:3`, because Naomi cannot say and scene 3 can.
+    """
+    _user, team, headers = await a_facilitator(db_session, email="abrange@x.com")
+
+    await moved(db_session, team, pericope=FIRST, keys=keys_in_scene(FIRST, 3)[:1])
+    await moved(db_session, team, pericope=FIRST, keys=["being:B3"])
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+
+    assert body["scene_the_team_is_in"] == "scene:3"
+
+
+@pytest.mark.asyncio
+async def test_a_team_whose_only_movement_spans_scenes_is_in_no_scene(client, db_session) -> None:
+    """`None` rather than the first appearance, which would be a confident wrong answer."""
+    _user, team, headers = await a_facilitator(db_session, email="so-abrange@x.com")
+
+    await moved(db_session, team, pericope=FIRST, keys=["being:B3"])
+
+    assert (await client.get(team_url(team.id), headers=headers)).json()[
+        "scene_the_team_is_in"
+    ] is None
+
+
+@pytest.mark.asyncio
 async def test_a_team_that_has_moved_nothing_is_in_no_scene(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="parada@x.com")
 
@@ -315,15 +353,35 @@ async def test_a_team_at_the_end_of_the_book_is_in_no_scene(client, db_session) 
 
 
 @pytest.mark.asyncio
-async def test_a_preservation_rule_puts_the_team_in_no_scene(client, db_session) -> None:
-    """The rules belong to the passage and to none of its scenes — that is not a gap.
+async def test_a_preservation_rule_does_not_move_them_out_of_the_scene_they_were_in(
+    client, db_session
+) -> None:
+    """One rule for every bead that cannot locate them: it is skipped, not answered with.
 
-    Written because a `None` here reads like a bug to whoever meets it first, and the
-    alternative — naming the previous scene — would say the team is somewhere they left.
+    A preservation rule belongs to the passage and to none of its scenes, so it does not say
+    where the team is — and neither does an entity the canon deduped across scenes. Both are
+    the same refusal, so both fall through to the most recent bead that *can* say.
+
+    This case asserted `None` before, on the reasoning that naming an earlier scene would put
+    the team somewhere they had left. Held against the other rule that reasoning does not
+    survive: the alternative is a panel that blanks out and comes back every time the team
+    touches a rule, and `scene:1` is not a guess — it is the last place they were locatable,
+    which is the honest answer to where they are.
     """
     _user, team, headers = await a_facilitator(db_session, email="preservacao@x.com")
     await moved(db_session, team, pericope=FIRST, keys=keys_in_scene(FIRST, 1)[:1])
     await moved(db_session, team, pericope=FIRST, keys=keys_in_scene(FIRST, None)[:1])
+
+    assert (await client.get(team_url(team.id), headers=headers)).json()[
+        "scene_the_team_is_in"
+    ] == "scene:1"
+
+
+@pytest.mark.asyncio
+async def test_a_team_that_has_only_worked_the_rules_is_in_no_scene(client, db_session) -> None:
+    """`None` survives where it is the whole truth: nothing they moved locates them."""
+    _user, team, headers = await a_facilitator(db_session, email="so-regras@x.com")
+    await moved(db_session, team, pericope=FIRST, keys=keys_in_scene(FIRST, None)[:2])
 
     assert (await client.get(team_url(team.id), headers=headers)).json()[
         "scene_the_team_is_in"
