@@ -151,12 +151,21 @@ async def get_question(db: AsyncSession, question_id: str) -> IRQuestion:
 
 
 def _no_such_question(question_id: str) -> str:
-    """The one message every refusal on a question route uses.
+    """The message the facilitator routes refuse with, written once.
 
-    Written once because the three refusals it serves must be **identical**, not merely
-    similar: absent, unowned, and belonging to another team. A caller who can tell them
-    apart asks for ids until one answers differently, and a question that exists is a team
-    that exists. Two call sites drifting by a word is all it takes to hand that back.
+    The three refusals it serves must be **identical**, not merely similar: absent,
+    unowned, and belonging to another team. A caller who can tell them apart asks for ids
+    until one answers differently, and a question that exists is a team that exists. Two
+    call sites drifting by a word is all it takes to hand that back.
+
+    **There is a fourth refusal of this exact shape and it does not come through here:**
+    the room's ``POST /questions/{id}/heard`` refuses a question raised by another device
+    with the same sentence, written by hand at ``app/api/internalization_room/questions.py``.
+    It is the same rule applied to a tablet instead of a facilitator, and it belongs to the
+    room's line rather than to this slice, so ENG-534 leaves it where it is and says so
+    here instead of quietly claiming to cover it. Routing it through this helper — better
+    still, giving it a ``get_question_for_device`` of its own, so the rule stops living in
+    a router — is worth an issue of its own.
     """
     return f"Question {question_id} not found"
 
