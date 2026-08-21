@@ -25,7 +25,7 @@ from app.core.database import Base
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-REVISION = "20260820_0003"
+REVISION = "20260820_0004"
 PREVIOUS_REVISION = "20260820_0002"
 
 TABLE = "ir_sessions"

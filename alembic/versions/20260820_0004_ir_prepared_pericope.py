@@ -17,7 +17,16 @@ So the passage is recorded beside the line it belongs to. Nullable, and null is 
 rather than trusted: every row written before this migration carries no passage, and the
 cost of refusing is one session writing its own opening.
 
-Revision ID: 20260820_0003
+Numbered 0004 with 0003 skipped, and that is not a gap to tidy. ENG-451 opened first and
+took ``20260820_0003`` on its own branch; two files declaring one revision id is not two
+heads but a duplicate, which Alembic reports as a ``UserWarning`` while ``alembic heads``
+still exits 0. Renumbering the later one leaves an ordinary two-headed junction for whoever
+joins the lines, which is a thing this repository already knows how to close.
+
+``down_revision`` stays at ``20260820_0002`` because ``20260820_0003`` does not exist on this
+line — pointing at it here would fail on this branch to tidy a number.
+
+Revision ID: 20260820_0004
 Revises: 20260820_0002
 """
 
@@ -26,7 +35,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260820_0003"
+revision: str = "20260820_0004"
 down_revision: str | None = "20260820_0002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
