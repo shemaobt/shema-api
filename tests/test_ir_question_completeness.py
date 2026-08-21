@@ -6,7 +6,9 @@ on and had nowhere to put it, and nothing measured or read the audio.
 
 Two of the three are allowed to be missing, and for different reasons. `element_key` is
 missing on every row written before this and on every app that has not shipped ENG-456, so a
-card without one is the common case rather than an error. `transcript` and `duration_ms` are
+card without one is the common case rather than an error. The card names the bead rather than
+handing over that key — ENG-543 — so what these cases read is `element_label_*`; the column
+they are about is the same one. `transcript` and `duration_ms` are
 missing when a machine that is not this one failed — and the question outliving that failure
 is the point: a card with audio and no transcript is a card a facilitator can still answer.
 """
@@ -22,6 +24,7 @@ from app.core.exceptions import TranscriptionDefect, UpstreamServiceError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRSession
 from app.services.internalization_room import questions as service
 from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.voice_handles import facilitator_audio_url
 from app.services.platform import audio_duration
 from tests.baker import (
@@ -54,6 +57,11 @@ PERICOPE = "P03"
 #: knows which bead the hand went up on — so a made-up string would pass every assertion
 #: below while proving nothing about the shape the app actually sends.
 ELEMENT = element_keys(PERICOPE)[0]
+
+#: What the card shows for that bead. The inbox serves the label and not the key (ENG-543),
+#: and P03 is one of the ten passages the catalogue carries in English only, so this is the
+#: language the card can be read in at all.
+NAMED_EN = next(e.label_en for e in labelled_elements(PERICOPE) if e.key == ELEMENT)
 SAID = "por que ela volta para Belem se nao tem ninguem la"
 
 
@@ -370,7 +378,7 @@ async def test_the_inbox_serves_all_three_on_the_card(
 
     assert answer.status_code == 200, answer.text
     (card,) = answer.json()["questions"]
-    assert card["element_key"] == ELEMENT
+    assert card["element_label_en"] == NAMED_EN
     assert card["transcript"] == SAID
     assert abs(card["duration_ms"] - RECORDED_MS) <= TOLERANCE_MS
 
@@ -394,7 +402,11 @@ async def test_a_card_with_nothing_but_audio_still_reaches_the_desk(
     answer = await desk_client.get(INBOX, headers=await auth_header(db_session, facilitator))
 
     (card,) = answer.json()["questions"]
-    assert card["element_key"] is None
+    assert (card["element_label_pt"], card["element_label_en"], card["element_label_es"]) == (
+        None,
+        None,
+        None,
+    )
     assert card["transcript"] is None
     assert card["duration_ms"] is None
     assert card["audio_url"] == facilitator_audio_url(question.audio_key), (

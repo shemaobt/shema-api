@@ -21,6 +21,7 @@ from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
     InboxQuestionView,
+    LabelledElement,
     QuestionAudioResponse,
     QuestionInboxResponse,
     QuestionRaisedResponse,
@@ -28,6 +29,7 @@ from app.models.internalization_room import (
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from app.services.internalization_room.background import transcribe_question
+from app.services.internalization_room.canon.labels import label_index
 from app.services.internalization_room.voice_handles import (
     facilitator_audio_url,
     from_question_handle,
@@ -128,6 +130,30 @@ async def heard(
     return {"status": "heard"}
 
 
+def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -> InboxQuestionView:
+    """One card, with its bead named in the three languages the Desk offers.
+
+    A hand raised on no bead, a key the catalogue does not have, and a pericope outside the
+    canon all arrive here as a miss, and all three leave the card with three nulls.
+    """
+    bead = named.get((question.pericope, question.element_key or ""))
+    return InboxQuestionView(
+        question_id=question.id,
+        team_id=_team_of(question),
+        device_id=question.device_id,
+        pericope=question.pericope,
+        element_label_pt=bead.label_pt if bead else None,
+        element_label_en=bead.label_en if bead else None,
+        element_label_es=bead.label_es if bead else None,
+        status=str(question.status),
+        heard_at=_moment(question.heard_at),
+        audio_url=facilitator_audio_url(question.audio_key),
+        duration_ms=question.duration_ms,
+        transcript=question.transcript,
+        asked_at=_stamp(question.created_at),
+    )
+
+
 @router.get("/facilitator/questions", response_model=QuestionInboxResponse)
 async def question_inbox(
     user: FacilitatorUser,
@@ -146,23 +172,9 @@ async def question_inbox(
     page = await service.inbox_page(
         db, user, team_id=team_id, wanted=status_wanted, limit=limit, cursor=cursor
     )
+    named = label_index({question.pericope for question in page.questions})
     return QuestionInboxResponse(
-        questions=[
-            InboxQuestionView(
-                question_id=question.id,
-                team_id=_team_of(question),
-                device_id=question.device_id,
-                pericope=question.pericope,
-                element_key=question.element_key,
-                status=str(question.status),
-                heard_at=_moment(question.heard_at),
-                audio_url=facilitator_audio_url(question.audio_key),
-                duration_ms=question.duration_ms,
-                transcript=question.transcript,
-                asked_at=_stamp(question.created_at),
-            )
-            for question in page.questions
-        ],
+        questions=[_card(question, named) for question in page.questions],
         open_total=page.open_total,
         next_cursor=page.next_cursor,
     )
@@ -186,6 +198,8 @@ async def facilitator_audio(
         raise NotFoundError("No such audio")
     await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
     return await _audio(handle)
+
+
 @router.get(
     "/facilitator/questions/{question_id}/audio",
     response_model=QuestionAudioResponse,
@@ -252,6 +266,7 @@ async def _audio(handle: str) -> Response:
         media_type=service.AUDIO_MIME,
         headers={"Cache-Control": IMMUTABLE, "ETag": sha256(audio).hexdigest()[:32]},
     )
+
 
 def _team_of(question: IRQuestion) -> str:
     """Whose question this is, which an answered card always knows.
