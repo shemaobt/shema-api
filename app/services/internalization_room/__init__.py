@@ -19,6 +19,7 @@ from app.services.internalization_room.sessions import (
     begin_back_translation_again,
     create_session,
     get_session,
+    get_session_for_facilitator,
     mark_needs_person,
     save_back_translation,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "create_session",
     "findings_block",
     "get_session",
+    "get_session_for_facilitator",
     "mark_needs_person",
     "run_panorama_turn",
     "run_turn",
