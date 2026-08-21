@@ -22,11 +22,21 @@ from tests.test_sound_necklace.conftest import (
 SN = "/api/sound-necklace"
 
 
-def state_bytes(*, mode: str = "escuta", confirmed: bool = False) -> str:
+def state_bytes(
+    *, mode: str = "escuta", confirmed: bool = False, review_complete: bool | None = None
+) -> str:
     """A state envelope whose exact bytes matter. Not built with json.dumps on purpose."""
+    flag = (
+        ""
+        if review_complete is None
+        else '  "reviewComplete": ' + ("true" if review_complete else "false") + ",\n"
+    )
     return (
-        '{"schema_version": 1,  "mode":"' + mode + '",\n'
-        '  "beadSec": 0.30000000000000004, "whole": {"confirmed": '
+        '{"schema_version": 1,  "mode":"'
+        + mode
+        + '",\n'
+        + flag
+        + '  "beadSec": 0.30000000000000004, "whole": {"confirmed": '
         + ("true" if confirmed else "false")
         + ', "id":"S1"},\n  "zeta": 1, "alpha": 2}'
     )
@@ -371,6 +381,23 @@ async def test_complete_then_reopen_preserves_the_document(client, facilitator):
 
     resumed = await client.get(f"{SN}/sessions/{session_id}/state", headers=headers)
     assert resumed.content == raw.encode(), "a completed-then-reopened session must resume intact"
+
+
+@pytest.mark.parametrize("review_complete", [True, None])
+async def test_a_completed_session_reports_the_saving_station(client, facilitator, review_complete):
+    """Completion decides this on its own; the review flag can neither add nor remove it."""
+    _user, project, headers = facilitator
+    session_id = await new_session(client, headers, project.id)
+    await client.put(
+        f"{SN}/sessions/{session_id}/state",
+        headers={**headers, **JSON_HEADERS},
+        content=state_bytes(mode="mapeamento", review_complete=review_complete),
+    )
+
+    done = await client.post(f"{SN}/sessions/{session_id}/complete", headers=headers)
+
+    assert done.status_code == 200, done.text
+    assert done.json()["progress"]["current_step"] == "save"
 
 
 # ── Listing ──────────────────────────────────────────────────────────────────

@@ -43,8 +43,11 @@ async def add_chunk(
 
     Nothing is voiced here: the clip resuming is the acknowledgement, so this returns no audio.
 
-    The audio is kept. It already crosses the wire to be transcribed, and a back translation
-    nobody can listen to is a claim about a recording rather than the recording itself.
+    The audio is kept, and kept before anything is asked of it. It already crosses the wire to
+    be transcribed, and a back translation nobody can listen to is a claim about a recording
+    rather than the recording itself. Storing after the hearing would lose it in the two
+    moments the team re-records: a transcriber that times out raises past the store, and a
+    chunk nobody could make out returns before it.
 
     `retelling` says the team is telling one stretch back a second time after a finding.
     That is the one cycle they can repeat at will, so it is counted and capped here: past
@@ -134,7 +137,17 @@ async def finish(
     response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
-    """`terminei` — compare the telling-back to the map and voice one finding, or the badge."""
+    """`terminei` — compare the telling-back to the map and voice one finding, or the badge.
+
+    With nothing told back, the analyst is not asked. Given no stretches it answers with no
+    findings, and no findings is precisely what `checked` is made of — so `terminei` over an
+    empty back translation came back clean, the app closed the necklace and struck the passage
+    off the wheel for good, on a telling-back that never happened. A finished passage never
+    returns to the wheel, by design, so there is no undo for that.
+
+    The answer is the D family instead — *"I could not make anything out, can you tell me
+    again?"* — which is what the situation actually is, and is already on the tablet as audio.
+    """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
 

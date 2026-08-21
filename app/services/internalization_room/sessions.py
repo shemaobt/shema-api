@@ -37,10 +37,16 @@ def resolve_pericope(pericope: str) -> str:
 async def create_session(
     db: AsyncSession, *, pericope: str = DEFAULT_PERICOPE, after_panorama: bool = False
 ) -> IRSession:
+    """Open a session on a passage, or on the panorama of a book.
+
+    The meaning map is loaded before anything is written, so unapproved or unsupported
+    canon is refused before a session exists. A panorama has no coverage spine and never
+    completes: it prepares the team to enter the book, and asks no retelling of them.
+    """
     pericope = resolve_pericope(pericope)
     panorama = is_panorama(pericope)
     if not panorama:
-        load_map(pericope)  # refuse unapproved or unsupported canon before a session exists
+        load_map(pericope)
     session = IRSession(
         pericope=pericope,
         status=IRSessionStatus.IN_PROGRESS,
@@ -73,6 +79,11 @@ async def append_exchange(
     team_utterance: str,
     guide_response: str,
 ) -> IRSession:
+    """Append one team/guide turn to the transcript.
+
+    A turn that lands is the proof a person came back, so it also releases
+    `NEEDS_PERSON` — nothing else ever writes `IN_PROGRESS` a second time.
+    """
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})

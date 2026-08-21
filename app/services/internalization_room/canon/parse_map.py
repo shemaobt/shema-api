@@ -103,7 +103,12 @@ def _entities(block: str) -> list[Entity]:
 
 
 def _scene_blocks(body: str) -> dict[str, str]:
-    """Split one scene's body into its 3A to 3F blocks plus its Significant Absence."""
+    """Split one scene's body into its 3A to 3F blocks plus its Significant Absence.
+
+    Blocks are found by their letter alone, never by their title: 3C is written
+    "Objects and Elements" in half the corpus and "Objects and Concepts" in the other
+    half, and matching either title would drop the other half's objects in silence.
+    """
     marks = [(m.group(1), m.start(), m.end()) for m in _BLOCK.finditer(body)]
     absence = _ABSENCE.search(body)
     blocks: dict[str, str] = {}

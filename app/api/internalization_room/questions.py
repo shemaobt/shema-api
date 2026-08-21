@@ -6,12 +6,14 @@ comes through the platform's own app access. They never see each other's routes.
 """
 
 from datetime import datetime
+from hashlib import sha256
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import CurrentUser, device_dep, room_key_dep
+from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.internalization_room import (
@@ -23,7 +25,11 @@ from app.models.internalization_room import (
 )
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
-from app.services.internalization_room.voice_handles import audio_url
+from app.services.internalization_room.voice_handles import (
+    facilitator_audio_url,
+    from_question_handle,
+    team_audio_url,
+)
 
 router = APIRouter()
 
@@ -63,12 +69,23 @@ async def replies(
         replies=[
             HandReplyView(
                 question_id=question.id,
-                audio_url=audio_url(question.reply_audio_key or ""),
+                audio_url=team_audio_url(question.reply_audio_key or ""),
                 pericope=question.pericope,
             )
             for question in waiting
         ]
     )
+
+
+@router.get("/questions/audio/{handle}", dependencies=[room_key_dep])
+async def team_audio(handle: str) -> Response:
+    """Serve a facilitator's spoken reply to the app that asked.
+
+    The room's voice route cannot carry these bytes: it only answers for keys under the
+    room's synthesized speech, so every reply address it was handed came back a 404 and
+    the answer never reached the team. This route reads the one folder a question writes.
+    """
+    return await _audio(handle)
 
 
 @router.post("/questions/{question_id}/heard", dependencies=[room_key_dep])
@@ -93,7 +110,7 @@ async def open_questions(
                 question_id=question.id,
                 device_id=question.device_id,
                 pericope=question.pericope,
-                audio_url=f"/api/internalization-room/facilitator/questions/{question.id}/audio",
+                audio_url=facilitator_audio_url(question.audio_key),
                 asked_at=_stamp(question.created_at),
             )
             for question in waiting
@@ -101,6 +118,14 @@ async def open_questions(
     )
 
 
+@router.get("/facilitator/questions/audio/{handle}")
+async def facilitator_audio(handle: str, user: CurrentUser) -> Response:
+    """Serve a team's recorded question to the person deciding how to answer it.
+
+    A facilitator signs in and holds no device key, so the same bytes need a route their
+    own credential opens — the queue is unusable if the only thing in it cannot be heard.
+    """
+    return await _audio(handle)
 @router.get(
     "/facilitator/questions/{question_id}/audio",
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -146,6 +171,25 @@ async def resolve(
     question = await service.get_question(db, question_id)
     await service.resolve_elsewhere(db, question, answered_by=user.id)
     return {"status": "resolved"}
+
+
+async def _audio(handle: str) -> Response:
+    """The bytes behind one question handle, for whichever audience asked.
+
+    Both keys carry a digest of their own audio, so what a handle addresses can never
+    change and either app may keep it for as long as it has room.
+    """
+    key = from_question_handle(handle)
+    if key is None:
+        raise NotFoundError("No such audio")
+    audio = await service.fetch_audio(key)
+    if audio is None:
+        raise NotFoundError("No such audio")
+    return Response(
+        content=audio,
+        media_type=service.AUDIO_MIME,
+        headers={"Cache-Control": IMMUTABLE, "ETag": sha256(audio).hexdigest()[:32]},
+    )
 
 
 def _stamp(moment: datetime | None) -> str:
