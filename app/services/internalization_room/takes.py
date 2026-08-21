@@ -12,9 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationError
+from app.db.models.auth import User
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
+from app.services.project.facilitates_project import facilitates_project
 
 AUDIO_MIME = "audio/mp4"
 MAX_TAKE_BYTES = 25 * 1024 * 1024
@@ -143,7 +145,24 @@ async def take_by_id(db: AsyncSession, take_id: str) -> IRTake:
     result = await db.execute(select(IRTake).where(IRTake.id == take_id))
     take = result.scalar_one_or_none()
     if take is None:
-        raise NotFoundError(f"Internalization room take {take_id} not found")
+        raise NotFoundError(_no_such_take(take_id))
+    return take
+
+
+def _no_such_take(take_id: str) -> str:
+    """One message for absent, unowned, and somebody else's. See ENG-534."""
+    return f"Internalization room take {take_id} not found"
+
+
+async def take_for_facilitator(db: AsyncSession, user: User, take_id: str) -> IRTake:
+    """The take, if it belongs to a team this facilitator facilitates.
+
+    The route this guards answers with a signed URL, so what a missing check leaks is not a
+    row but the audio itself — and the URL outlives the request that produced it.
+    """
+    take = await take_by_id(db, take_id)
+    if take.project_id is None or not await facilitates_project(db, user, take.project_id):
+        raise NotFoundError(_no_such_take(take_id))
     return take
 
 
