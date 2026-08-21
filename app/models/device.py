@@ -97,3 +97,14 @@ class DeviceLabelUpdateRequest(BaseModel):
     """The who-uses-it note. Free text, stored verbatim, empty allowed."""
 
     label: str = Field(max_length=120)
+
+
+class DeviceCredentialResponse(BaseModel):
+    """A freshly rotated credential, returned once and never stored in the clear.
+
+    Same discipline as ``DeviceClaimResponse``: this object and the device's own memory are
+    the only places the string exists.
+    """
+
+    device_id: str
+    credential: str
