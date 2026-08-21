@@ -77,15 +77,16 @@ async def append_exchange(
     team_utterance: str,
     guide_response: str,
 ) -> IRSession:
+    """Append one team/guide turn to the transcript.
+
+    A turn that lands is the proof a person came back, so it also releases
+    `NEEDS_PERSON` — nothing else ever writes `IN_PROGRESS` a second time.
+    """
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
     messages.append({"role": "guide", "text": guide_response})
     session.messages = messages
-    # A turn that lands is the proof a person came back. `NEEDS_PERSON` had no way out of
-    # itself — nothing anywhere wrote `IN_PROGRESS` a second time — so the app's resume
-    # was contradicted by the next state poll thirty seconds later, in a loop, for the
-    # rest of the session: the person arrives, the team speaks, the room halts again.
     if session.status is IRSessionStatus.NEEDS_PERSON:
         session.status = IRSessionStatus.IN_PROGRESS
     await db.commit()
