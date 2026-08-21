@@ -23,7 +23,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.services.device import claim_code, claim_device_as_facilitator, create_device
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.baker import (
+    grant_facilitator_app_role,
+    make_language,
+    make_project,
+    make_project_user_access,
+    make_user,
+)
 
 CLAIM_URL = "/api/facilitator/devices/claim"
 DEVICE_SELF_URL = "/api/devices/me"
@@ -71,6 +77,7 @@ async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
     language = await make_language(db, name=f"Lang {email}", code=email[:3])
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
+    await grant_facilitator_app_role(db, user.id)
     return user, project, await auth_header(db, user)
 
 

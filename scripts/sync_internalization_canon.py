@@ -4,6 +4,11 @@ The room reads canon only from the vendored directory — never over the network
 time, and never writing back. Canon changes through the project's own governed process; this
 script is the one door, and it is deliberate.
 
+`--sync` overwrites the vendored directory wholesale, so nothing of ours may live inside it.
+The facilitator-facing element labels are the case that already exists: they sit in
+`canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a re-pin cannot delete
+them without a word.
+
     uv run python scripts/sync_internalization_canon.py --check   # drift only, exits 1
     uv run python scripts/sync_internalization_canon.py --sync    # re-pin to current main
 """
