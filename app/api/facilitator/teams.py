@@ -44,9 +44,9 @@ async def list_team_devices_route(
 @facilitator_teams_router.get("/{team_id}/coverage", response_model=list[ElementCoverage])
 async def read_team_coverage_route(
     team_id: str,
+    user: FacilitatorUser,
     pericope: str = Query(min_length=1, max_length=120),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
 ) -> list[ElementCoverage]:
     """This team's necklace for one passage, bead by bead, in the canon's order.
 

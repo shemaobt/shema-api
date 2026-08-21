@@ -37,7 +37,13 @@ from app.core.enums import ProjectRole
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import ElementKind, element_keys
 from app.services.internalization_room.coverage import CoverageStatus
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.baker import (
+    grant_facilitator_app_role,
+    make_language,
+    make_project,
+    make_project_user_access,
+    make_user,
+)
 
 TEAM_NOT_FOUND = "Team not found"
 
@@ -104,6 +110,7 @@ async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
     language = await make_language(db, name=f"Lang {email}", code=f"t{next(_codes):02d}")
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
+    await grant_facilitator_app_role(db, user.id)
     return user, project, await auth_header(db, user)
 
 
