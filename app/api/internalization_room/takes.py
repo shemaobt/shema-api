@@ -6,18 +6,36 @@ opposite: the recording is the work, and a tablet that breaks with them still on
 session with it.
 """
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, room_key_dep
+from app.api.internalization_room._deps import CurrentUser, device_dep, room_key_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRTakeKind
+from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.models.internalization_room import TakeResponse, TakesResponse
 from app.services import internalization_room as room
-from app.services.internalization_room.takes import store_take, takes_of
+from app.services.internalization_room.takes import (
+    listen_url,
+    store_take,
+    take_by_id,
+    takes_of,
+)
 
 router = APIRouter()
+
+
+def _view(take: IRTake) -> TakeResponse:
+    return TakeResponse(
+        take_id=take.id,
+        session_id=take.session_id,
+        kind=take.kind.value,
+        scope=take.scope,
+        sha256=take.sha256,
+        size_bytes=take.size_bytes,
+        verified=take.verified_at is not None,
+    )
 
 
 def _kind(raw: str) -> IRTakeKind:
@@ -61,14 +79,7 @@ async def keep_take(
         chunk_index=chunk_index,
         content_type=file.content_type or "audio/mp4",
     )
-    return TakeResponse(
-        take_id=take.id,
-        session_id=take.session_id,
-        kind=take.kind.value,
-        scope=take.scope,
-        sha256=take.sha256,
-        size_bytes=take.size_bytes,
-    )
+    return _view(take)
 
 
 @router.get(
@@ -80,15 +91,40 @@ async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> Tak
     session = await room.get_session(db, session_id)
     return TakesResponse(
         session_id=session.id,
-        takes=[
-            TakeResponse(
-                take_id=take.id,
-                session_id=take.session_id,
-                kind=take.kind.value,
-                scope=take.scope,
-                sha256=take.sha256,
-                size_bytes=take.size_bytes,
-            )
-            for take in await takes_of(db, session.id)
-        ],
+        takes=[_view(take) for take in await takes_of(db, session.id)],
     )
+
+
+@router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)
+async def facilitator_takes(
+    session_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+) -> TakesResponse:
+    """What a session recorded, for the person who will listen to it.
+
+    A facilitator signs in; the team never does. So this carries no room key — the two
+    audiences never share a route.
+    """
+    session = await room.get_session(db, session_id)
+    return TakesResponse(
+        session_id=session.id,
+        takes=[_view(take) for take in await takes_of(db, session.id)],
+    )
+
+
+@router.get(
+    "/facilitator/takes/{take_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+)
+async def listen_to_take(
+    take_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+) -> RedirectResponse:
+    """Redirect to a short-lived signed URL: storage serves the bytes.
+
+    The API never proxies a take. A rehearsal take is the whole passage, and streaming
+    minutes of audio through the application server buys nothing over letting the bucket
+    do it — the same reason the sound necklace redirects rather than proxies.
+    """
+    take = await take_by_id(db, take_id)
+    return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
