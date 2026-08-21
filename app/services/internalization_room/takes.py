@@ -163,9 +163,11 @@ async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
 
 
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
-    # Ordered by where each take belongs, not only by when it arrived: a retry lands
-    # after a later stretch and the created-at order alone puts them in the wrong reading
-    # sequence for whoever reviews the session.
+    """Every take of a session, in reading order rather than in arrival order.
+
+    A retry lands after a later stretch, so the created-at order alone puts the takes in
+    the wrong sequence for whoever reviews the session.
+    """
     result = await db.execute(
         select(IRTake)
         .where(IRTake.session_id == session_id)
