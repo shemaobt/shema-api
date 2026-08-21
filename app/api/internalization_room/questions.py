@@ -135,6 +135,7 @@ async def question_inbox(
                 pericope=question.pericope,
                 element_key=question.element_key,
                 status=str(question.status),
+                heard_at=_moment(question.heard_at),
                 audio_url=f"/api/internalization-room/facilitator/questions/{question.id}/audio",
                 duration_ms=question.duration_ms,
                 transcript=question.transcript,
@@ -208,3 +209,13 @@ def _team_of(question: IRQuestion) -> str:
 
 def _stamp(moment: datetime | None) -> str:
     return moment.isoformat() if moment else ""
+
+
+def _moment(when: datetime | None) -> str | None:
+    """An instant that may genuinely be absent, kept absent.
+
+    Distinct from ``_stamp``, which answers ``""`` for nothing — right for a column that is
+    never null, and wrong for one that is: an empty string is a value the reader has to be
+    taught to treat as missing, and null already is missing.
+    """
+    return when.isoformat() if when else None
