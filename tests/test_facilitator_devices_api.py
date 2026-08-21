@@ -409,14 +409,9 @@ async def test_a_failure_after_the_code_is_spent_leaves_the_device_claimable(
 
 # Behaviour 9 — the route that spends a code is rate limited (ENG-547).
 #
-# claim_code.py names three things the artefact's safety rests on: the short life, the
-# single use, and a limit at the route that spends it. The first two defend against
-# replaying ONE code and do nothing against an attacker walking through many, which is
-# the attempt that reaches a credential. This is the third one.
-#
-# The first test only proves a limit exists — it still passes with the bucket keyed on the
-# code. The second is the one that holds the intention, and it is what goes red the day
-# someone changes the key.
+# The third of the three things claim_code.py rests on. The first case only proves a limit
+# exists — it still passes with the bucket keyed on the code; the second is what holds the
+# intention, and what goes red the day someone changes the key.
 
 
 async def test_the_claim_route_refuses_the_call_past_its_limit(client, db_session):

@@ -36,10 +36,14 @@ attempt that reaches a credential untouched, filling a fresh bucket with every g
 
 What the number buys, for whoever revisits it: with no limit, a caller sustaining fifty
 requests a second for the fifteen minutes a code is alive gets 45,000 guesses; at thirty a
-minute they get 450. Against 6.1e9 codes both are small, which is the honest way to read
-it — the limit moves the odds by two orders of magnitude, and between five and sixty a
-minute it barely moves them at all. So the number was chosen by what a facilitator setting
-up a room needs, with room to spare, and not by what the arithmetic prefers.
+minute they get 450 **per login**. Against 6.1e9 codes both are small, which is the honest
+way to read it — the limit moves the odds by two orders of magnitude, and between five and
+sixty a minute it barely moves them at all. So the number was chosen by what a facilitator
+setting up a room needs, with room to spare, and not by what the arithmetic prefers.
+
+Read "per login" as the limit it is. The bucket is the access token, so a fresh login is a
+fresh bucket and the route's limit is a toll rather than a ceiling; see the route's own
+docstring for what closing that would cost.
 
 **What the row keeps.** The code is never stored. The row keeps a SHA-256 of it, which is
 enough to recognise a replayed code as *spent* rather than *unknown* — the distinction

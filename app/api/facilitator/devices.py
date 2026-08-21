@@ -92,6 +92,17 @@ async def claim_device_route(
     authenticated metered routes use; escaping it costs a valid credential and a fresh login,
     where ``get_remote_address`` behind this app's ``ProxyHeadersMiddleware`` costs a header.
 
+    **What this does and does not impose.** ``bearer_token_key`` buckets on the access token,
+    and its own docstring is explicit that it does not cover "a user minting sessions to grind
+    past a limit" — which is this route's attacker, an authenticated facilitator walking
+    through codes. Measured: a second login by the same user answers from a fresh bucket of
+    thirty, and ``POST /api/auth/login`` carries no limit of its own. So this is a toll of one
+    login per thirty guesses, not a ceiling, and any arithmetic that reads it as a ceiling is
+    reading it as more than it is. Closing that would mean bucketing on the user id, which
+    means decoding the JWT ahead of the auth dependency — a thing ``app/core/rate_limit.py``
+    deliberately does not do — or limiting the login. Neither is ENG-547's, and this paragraph
+    is where the remainder is recorded rather than left for the next reader to rediscover.
+
     Refused calls answer with the limiter's own 429 and no ``code`` field. That is not the
     ``CLAIM_CODE_UNKNOWN`` rule being bent: the rule keeps a refusal from naming what a
     facilitator could learn about a *code* by guessing, and this one says nothing about the
