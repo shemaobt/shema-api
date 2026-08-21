@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Enum, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -48,6 +48,7 @@ class IRSession(Base):
         _SESSION_STATUS_TYPE, default=IRSessionStatus.IN_PROGRESS
     )
     messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    after_panorama: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
