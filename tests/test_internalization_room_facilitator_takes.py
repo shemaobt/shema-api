@@ -15,6 +15,7 @@ import pytest
 from google_crc32c import Checksum
 from httpx import ASGITransport
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import Role
 from app.db.models.internalization_room import IRSession, IRTakeKind
@@ -195,3 +196,33 @@ async def test_listening_without_a_login_is_refused(client, db_session, room_app
     response = await client.get(f"{IR}/facilitator/takes/{take.id}/audio")
 
     assert response.status_code == 401
+
+
+async def test_a_reviewer_can_tell_the_stretches_apart(db_session: AsyncSession) -> None:
+    """N indistinguishable `retro` rows is not a back translation anyone can read.
+
+    `chunk_index` and `pass_number` are stored and were not exposed, so the reviewer could
+    not tell stretch three from stretch seven, nor a first telling from its correction.
+    """
+    store = MemoryStore()
+    for index, (chunk, passe) in enumerate([(2, 2), (1, 1), (2, 1)]):
+        await service.store_take(
+            db_session,
+            session_id="s1",
+            device_id="tablet-da-equipe-1",
+            pericope="P01",
+            kind=IRTakeKind.RETRO,
+            scope="P01",
+            audio=f"trecho {index}".encode(),
+            pass_number=passe,
+            chunk_index=chunk,
+            store=store,
+        )
+
+    rows = await service.takes_of(db_session, "s1")
+    seen = [(take.chunk_index, take.pass_number) for take in rows]
+
+    assert seen == [(1, 1), (2, 1), (2, 2)], (
+        "e a ordem tem de ser a da leitura, não a da chegada: uma retentativa cai depois "
+        "de um trecho posterior"
+    )

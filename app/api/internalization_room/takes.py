@@ -35,6 +35,10 @@ def _view(take: IRTake) -> TakeResponse:
         sha256=take.sha256,
         size_bytes=take.size_bytes,
         verified=take.verified_at is not None,
+        chunk_index=take.chunk_index,
+        pass_number=take.pass_number,
+        pericope=take.pericope,
+        recorded_at=take.created_at.isoformat() if take.created_at else "",
     )
 
 
