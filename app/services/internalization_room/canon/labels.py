@@ -127,21 +127,26 @@ def _from_the_canon(element: Element) -> LabelledElement:
     language, which is the silent fallback this module exists to prevent; leaving them null
     is the Desk's own `CoverageLabels` shape and draws as a missing translation.
 
-    **The declared limit, and it is not small.** This module promises that no preservation
-    rule shows an ALL_CAPS technical key in any language, and that promise holds for a
-    passage the catalogue has and for no other.
+    **No passage of Ruth reaches here any more.** The catalogue carries all fourteen, so for
+    this book the path below is unreachable in production and exists for a book nobody has
+    written a catalogue for at all. `test_a_passage_the_catalogue_does_not_have_still_falls_
+    back_to_the_canon` is what keeps it honest, against a catalogue with the passage removed.
 
-    Measured over the ten passages it does not have, 264 beads: six of the seven kinds carry
-    the canon's `Hebrew / English` in `label_en` — 178 of 264 — and only `scene` comes
-    through clean. Most of that is cosmetic: `נָעֳמִי / Naomi` **contains** the name a
-    facilitator reads. The two that genuinely hurt are the two with no name in them at all:
-    `preserved`, which is `KIND: note` and is ALL_CAPS in 18 of 18, and `absence`, which is a
-    paragraph in 30 of 30.
+    **What it cost while it was reachable**, kept because it is the argument for ever writing
+    a label: measured over the ten passages the catalogue did not have, 264 beads, six of the
+    seven kinds carried the canon's `Hebrew / English` in `label_en` — 178 of 264 — and only
+    `scene` came through clean. Most of that was cosmetic, since `נָעֳמִי / Naomi` **contains**
+    the name a facilitator reads. The two that hurt were the two with no name in them at all:
+    `preserved`, which is `KIND: note` and was ALL_CAPS in 18 of 18, and `absence`, a paragraph
+    in 30 of 30.
 
-    Refusing instead would take a whole session history down for one conversation, which is
-    worse — so the gap is declared, and asserted in
-    `tests/test_internalization_room_element_labels.py` so it cannot go stale in silence. It
-    closes when a translator reaches those ten passages.
+    The gap was declared rather than hidden, and it closed: a translator reached those ten. The
+    sentence that promised it would close is gone rather than left beside the fact that it did,
+    and the test it pointed at no longer asserts the limit — it asserts the fallback, which is
+    a different claim about a different thing.
+
+    Refusing instead of falling back would take a whole session history down for one
+    conversation, which is why the path stays even with nothing in this book using it.
     """
     return LabelledElement(
         key=element.key,
