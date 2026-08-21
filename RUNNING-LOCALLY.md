@@ -153,16 +153,42 @@ git worktree remove --force .worktrees/subir
 
 ## What this gives you, and what it does not
 
-Sixteen facilitator routes answer here, against **zero** on whatever is running on 8000. The
-eight `GET`s among them answer **200** with a facilitator's credential and **401** without one,
-on an account that is **not** a platform admin — checked, not assumed.
+An environment that says what it does **not** prove is the only kind you can trust about what
+it does. So both halves are written down, and the second half is the longer one.
 
-What is not covered:
+**Proved here**, checked rather than assumed:
+
+- Sixteen facilitator routes answer, against **zero** on whatever is running on 8000.
+- The eight `GET`s among them answer **200** with a facilitator's credential and **401**
+  without one, on an account whose `is_platform_admin` is `f` — so it is the facilitator path
+  and not the admin door.
+- With `seed_local_content.sql`, the inbox holds three cards and `/facilitator/teams` reports
+  `open_hands_total: 2`.
+
+**Not proved here:**
 
 - **The eight write routes** (`POST` / `PATCH` / `DELETE`) are unexercised. They need a paired
-  device and a recorded question, and neither exists in a fresh database.
+  device and a recorded question, and a fresh database has neither. Nothing below the read
+  path has been through this environment.
+- **Audio does not play, by construction.** The seeded `audio_key`s point at nothing. A card
+  carries the *address* of a recording; fetching it runs through signed URLs and object
+  storage, which a local database does not stand in for. A client can check that it receives
+  and parses an address, never that the address resolves.
+- **The Desk has not been exercised with a facilitator's credential.** It was exercised with
+  an account holding no role, which the gate correctly refused — so what has been shown is
+  that the door closes, not that anything behind it works. That run belongs to whoever owns
+  the Desk client.
 - **The database is new and empty.** No production dump, no real content: one team, one
-  language, and whatever you create yourself.
+  language, three questions written by a seed, and whatever you create yourself.
+- **Nothing here says the API is correct**, only that it is reachable. The inbox on this
+  branch still serves `element_key` — the raw canon key — so every card draws without a name
+  until ENG-543 lands. Check what the branch you built from actually contains before reading a
+  wrong answer as a client defect:
+
+  ```sh
+  git merge-base --is-ancestor origin/henok/<the-slice> origin/integration/facilitator-api \
+    && echo in || echo out
+  ```
 - **Qdrant and BHSA do not come up**, and the log says so on boot. Neither is on the
   facilitator path; the API serves it regardless.
 - **A database that already exists is a different story.** The local `tripod_db` predates the
