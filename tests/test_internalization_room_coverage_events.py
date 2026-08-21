@@ -31,10 +31,12 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus, furthest
 from app.services.internalization_room.coverage_events import (
     necklace_with_touches,
+    necklaces_of,
     record_transitions,
 )
 
 P = "P03"
+TEAM = "the-team"
 SURFACED = CoverageStatus.SURFACED.value
 ENGAGED = CoverageStatus.ENGAGED.value
 NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
@@ -253,3 +255,124 @@ async def test_two_settles_that_read_the_same_state_do_not_lose_a_merge(
     assert (keys[1], ENGAGED) in await _steps(db_session, session_id), (
         "the bead only the later settle heard was lost with its transaction"
     )
+
+
+async def test_a_card_shows_the_necklace_as_it_stood_when_that_conversation_ended(
+    db_session: AsyncSession,
+) -> None:
+    """ENG-451 — RF-06 asks for the portrait *at that moment*, which accumulates.
+
+    A card showing only what its own conversation moved would sit under a panel showing
+    everything the team has done and disagree with it, which is the one thing the issue says
+    must not happen. `necklace_of` above answers the other question and says so.
+    """
+    keys = element_keys(P)
+    first = await service.create_session(db_session, pericope=P, project_id=TEAM)
+    await service.apply_coverage(db_session, first.id, {keys[0]: ENGAGED})
+
+    second = await service.create_session(db_session, pericope=P, project_id=TEAM)
+    await service.apply_coverage(db_session, second.id, {keys[1]: ENGAGED})
+
+    rebuilt = await necklaces_of(db_session, [second, first])
+
+    assert rebuilt[first.id][keys[0]] == ENGAGED
+    assert rebuilt[first.id][keys[1]] == NOT_ENCOUNTERED, "a later conversation leaked backwards"
+    assert rebuilt[second.id][keys[0]] == ENGAGED, (
+        "Tuesday's bead vanished from Wednesday's card; the portrait is a diff, not a state"
+    )
+    assert rebuilt[second.id][keys[1]] == ENGAGED
+
+
+async def test_two_conversations_on_one_bead_stay_on_their_own_cards(
+    db_session: AsyncSession,
+) -> None:
+    """The common case, not the rare one — and the case a grouping without the session leaks.
+
+    The first version of this test had the two conversations touching different beads, which
+    left exactly one row per group: dropping the session from the grouping still answered
+    correctly and the mutation survived. Two conversations moving the *same* bead is what a
+    team actually does, and it is what makes the grouping observable.
+    """
+    keys = element_keys(P)
+    first = await service.create_session(db_session, pericope=P, project_id=TEAM)
+    await service.apply_coverage(db_session, first.id, {keys[0]: SURFACED})
+
+    second = await service.create_session(db_session, pericope=P, project_id=TEAM)
+    await service.apply_coverage(db_session, second.id, {keys[0]: ENGAGED})
+
+    rebuilt = await necklaces_of(db_session, [second, first])
+
+    assert rebuilt[first.id][keys[0]] == SURFACED, (
+        "the later conversation's step reached the earlier conversation's card"
+    )
+    assert rebuilt[second.id][keys[0]] == ENGAGED
+
+
+async def test_a_bead_already_engaged_is_not_walked_back_by_a_later_mention(
+    db_session: AsyncSession,
+) -> None:
+    """Furthest rank, never most recent — the rule the facilitator's panel already uses.
+
+    Every session opens at `initial_state`, so a bead the team engaged on Tuesday earns a
+    fresh `surfaced` step the moment Wednesday's Guide mentions it: against Wednesday's own
+    tracker it really did move, and at team level it moved nowhere. Reading the latest step
+    instead would show the bead going backwards on the newer card.
+    """
+    keys = element_keys(P)
+    tuesday = await service.create_session(db_session, pericope=P, project_id=TEAM)
+    await service.apply_coverage(db_session, tuesday.id, {keys[0]: ENGAGED})
+
+    wednesday = await service.create_session(db_session, pericope=P, project_id=TEAM)
+    await service.apply_coverage(db_session, wednesday.id, {keys[0]: SURFACED})
+
+    rebuilt = await necklaces_of(db_session, [wednesday, tuesday])
+
+    assert rebuilt[wednesday.id][keys[0]] == ENGAGED
+
+
+async def test_one_passage_does_not_accumulate_into_another(db_session: AsyncSession) -> None:
+    """A team walks the book, and the passages share beads — which is what makes this bite.
+
+    The first version put a P05 conversation with no steps of its own beside a P03 one and
+    asked for nothing to have crossed. It passed with the grouping mutated away, because a
+    conversation with no steps has no instant of its own and sorted first by accident of the
+    database's one-second clock. Naomi is `being:B3` in both passages, so the honest version
+    engages a **shared** key over here and gives the P05 conversation a step of its own, so
+    it is genuinely the later of the two.
+    """
+    other = "P05"
+    shared = "being:B3"
+    only_there = "being:B13"
+    assert shared in element_keys(P) and shared in element_keys(other)
+    assert only_there not in element_keys(P)
+
+    here = await service.create_session(db_session, pericope=P, project_id=TEAM)
+    await service.apply_coverage(db_session, here.id, {shared: ENGAGED})
+
+    there = await service.create_session(db_session, pericope=other, project_id=TEAM)
+    await service.apply_coverage(db_session, there.id, {only_there: SURFACED})
+
+    rebuilt = await necklaces_of(db_session, [there, here])
+
+    assert rebuilt[there.id][shared] == NOT_ENCOUNTERED, (
+        "the other passage's bead crossed over; an element key is the canon's, not a team's"
+    )
+    assert rebuilt[there.id][only_there] == SURFACED
+    assert rebuilt[here.id][shared] == ENGAGED
+
+
+async def test_rebuilding_no_sessions_asks_the_database_nothing(db_session: AsyncSession) -> None:
+    """A team that has never met is the ordinary case, not an edge one."""
+    assert await necklaces_of(db_session, []) == {}
+
+
+async def test_a_panorama_session_has_no_spine_to_rebuild(db_session: AsyncSession) -> None:
+    """`OV-Ruth` addresses the book rather than a passage, so there are no beads.
+
+    It is answered empty rather than refused: a panorama is a conversation the team really
+    held, and dropping it from their history would hide it. The Desk draws an empty portrait
+    as a conversation that reached nothing, which is what happened.
+    """
+    panorama = await service.create_session(db_session, pericope="OV", project_id=TEAM)
+
+    assert await necklaces_of(db_session, [panorama]) == {panorama.id: {}}

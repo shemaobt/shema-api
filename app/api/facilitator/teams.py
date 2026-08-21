@@ -29,11 +29,16 @@ from app.api.facilitator._deps import FacilitatorUser
 from app.core.database import get_db
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.device import TeamDeviceResponse
-from app.models.internalization_room import ElementCoverage, PericopeStanding
+from app.models.internalization_room import (
+    ElementCoverage,
+    PericopeStanding,
+    TeamSessionResponse,
+)
 from app.models.team import FacilitatorTeamDetail, TeamFilter, TeamListingResponse
 from app.services.device.list_team_devices import list_team_devices
 from app.services.internalization_room.progression import active_passage, team_standing
 from app.services.internalization_room.team_coverage import team_necklace
+from app.services.internalization_room.team_sessions import list_team_sessions
 from app.services.project.facilitates_project import facilitates_project
 from app.services.project.list_facilitator_teams import list_facilitator_teams
 from app.services.project.read_facilitator_team import read_facilitator_team
@@ -164,3 +169,22 @@ async def list_team_pericopes_route(
         raise NotFoundError(TEAM_NOT_FOUND)
 
     return await team_standing(db, team_id)
+
+
+
+@facilitator_teams_router.get("/{team_id}/sessions", response_model=list[TeamSessionResponse])
+async def list_team_sessions_route(
+    team_id: str,
+    user: FacilitatorUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[TeamSessionResponse]:
+    """The passage's history (RF-06). A team that has never met answers with an empty list.
+
+    An empty history and a team that is not the caller's are different answers on purpose:
+    the second is the 404 this module's docstring describes, because a facilitator who could
+    tell "not yours" from "no such thing" could map an installation by asking about ids.
+    """
+    if not await facilitates_project(db, user, team_id):
+        raise NotFoundError(TEAM_NOT_FOUND)
+
+    return await list_team_sessions(db, team_id)

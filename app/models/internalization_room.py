@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
 
 MAX_TTS_CHARS = 3000
@@ -178,6 +179,67 @@ class PericopeStanding(BaseModel):
     reference: str
     title: str
     position: PericopePosition
+
+
+class SessionBead(BaseModel):
+    """One bead of a session card's mini necklace.
+
+    A strict subset of ENG-449's element, under the same names: the two it drops are the
+    two that belong to the full necklace and not to a portrait. `scene` groups the big
+    necklace and a portrait groups nothing, and `touched_in_session` would repeat the card's
+    own heading on every bead.
+
+    `status` is the plain `CoverageStatus` value, matching the column it is read out of —
+    `ir_coverage_events.status` is a `String` on purpose, so that one scale does not acquire
+    two spellings. Typing it as the enum here would put the second spelling back at the door
+    and would refuse a value on the day the scale grows a step.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    kind: ElementKind
+    label_pt: str | None
+    label_en: str
+    label_es: str | None
+    status: str
+
+
+class TeamSessionResponse(BaseModel):
+    """One card of the Desk's session history (RF-06).
+
+    **`state` has three values where RF-06 names two**, and that is deliberate. The third
+    arrived with the rule that decides when a conversation is over: a session nobody closed
+    is over, and calling it complete would be a lie a facilitator can check against the
+    necklace drawn beside it, where the beads are plainly unfinished.
+
+    It is also why the state crosses at all. With two values it was a function of `ended_at`
+    and serving it would have been a second record of one fact. With three, `complete` and
+    `abandoned` both carry an `ended_at` and no client can tell them apart — it is a fact the
+    collection cannot be made to yield, which is the shape that has to be served.
+
+    `duration_minutes` travels for the rule this product keeps: the client does not compute.
+    It cannot disagree with `ended_at` because both come out of one function on one pair of
+    timestamps. It is whole minutes rounded half up, which is how the Desk rounded it while
+    the arithmetic was still there.
+
+    RF-06's short note is deliberately absent. Nothing says where its text would come from,
+    and a fabricated field is worse than a missing one.
+
+    The moments arrive already carrying their offset; `team_sessions` is where that is done
+    and says why.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str
+    pericope: str
+    started_at: datetime
+    ended_at: datetime | None
+    duration_minutes: int | None
+    state: SessionState
+    coverage: list[SessionBead]
+
 
 
 class CoverageView(BaseModel):
