@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, room_key_dep
+from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
@@ -28,7 +28,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 @router.post(
     "/sessions/{session_id}/back-translation/chunks",
     response_model=BackTranslationChunkResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def add_chunk(
     session_id: str,
@@ -131,7 +131,7 @@ async def add_chunk(
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def finish(
     session_id: str,
@@ -224,7 +224,7 @@ async def finish(
 @router.post(
     "/sessions/{session_id}/back-translation/restart",
     response_model=BackTranslationRestartResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def restart(
     session_id: str,

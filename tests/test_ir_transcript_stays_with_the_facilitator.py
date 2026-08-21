@@ -11,7 +11,7 @@ each new schema is a promise the next route breaks. Everything below is derived 
 mounted application, so a route that would break it fails this file on the day it is written:
 
 * which routes the room app reaches — every mounted route whose dependency tree contains the
-  tablet's gates (`require_room_key`, `require_device`), read off `route.dependant`;
+  tablet's gates (`require_room_caller`, `require_device`), read off `route.dependant`;
 * which of those can reach a question — the ones the room's question router mounts, read off
   the module rather than listed here, so a fourth one is covered the day it is added;
 * what a route can put in a body — every model reachable from the return type FastAPI
@@ -72,10 +72,10 @@ def _dependency_calls(dependant) -> set:
 
 def room_app_routes() -> list:
     """Every mounted route a tablet can reach, in path order."""
-    from app.api.internalization_room._deps import require_device, require_room_key
+    from app.api.internalization_room._deps import require_device, require_room_caller
     from app.main import app
 
-    gates = {require_room_key, require_device}
+    gates = {require_room_caller, require_device}
     reachable = [
         route
         for route in app.routes
