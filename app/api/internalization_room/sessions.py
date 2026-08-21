@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import room_key_dep
@@ -95,7 +95,6 @@ async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> S
 async def take_turn(
     session_id: str,
     background: BackgroundTasks,
-    response: Response,
     file: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
