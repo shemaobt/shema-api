@@ -171,7 +171,6 @@ async def list_team_pericopes_route(
     return await team_standing(db, team_id)
 
 
-
 @facilitator_teams_router.get("/{team_id}/sessions", response_model=list[TeamSessionResponse])
 async def list_team_sessions_route(
     team_id: str,
