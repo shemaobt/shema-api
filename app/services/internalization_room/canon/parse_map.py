@@ -22,8 +22,6 @@ _ARC = re.compile(
     re.M | re.S,
 )
 _SCENE = re.compile(r"^### Scene (\d+) — (.+?) \(([^)]*)\)\s*$", re.M)
-# 3C is written two ways across the corpus — "Objects and Elements" in half the maps and
-# "Objects and Concepts" in the other half. Matching one would drop the other in silence.
 _BLOCK = re.compile(r"^\*\*3([A-F]) — [^*]+\*\*\s*$", re.M)
 _ABSENCE = re.compile(r"^\*\*Significant Absence\*\*\s*$", re.M)
 _WIKILINK = re.compile(r"\[\[([A-Za-z]+[0-9_][^\]|]*)\]\]")
@@ -103,7 +101,12 @@ def _entities(block: str) -> list[Entity]:
 
 
 def _scene_blocks(body: str) -> dict[str, str]:
-    """Split one scene's body into its 3A to 3F blocks plus its Significant Absence."""
+    """Split one scene's body into its 3A to 3F blocks plus its Significant Absence.
+
+    Blocks are found by their letter alone, never by their title: 3C is written
+    "Objects and Elements" in half the corpus and "Objects and Concepts" in the other
+    half, and matching either title would drop the other half's objects in silence.
+    """
     marks = [(m.group(1), m.start(), m.end()) for m in _BLOCK.finditer(body)]
     absence = _ABSENCE.search(body)
     blocks: dict[str, str] = {}
