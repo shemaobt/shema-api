@@ -13,11 +13,12 @@ in the log — without a credential-shaped string outliving its purpose in the t
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+from app.db.types import UtcDateTime
 
 
 class Device(Base):
@@ -36,11 +37,11 @@ class Device(Base):
     label: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     claim_code_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    claim_code_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    claim_code_expires_at: Mapped[datetime] = mapped_column(UtcDateTime(timezone=True))
 
     #: Null while the code is unspent. Set once, when the code is spent; a second claim
     #: against the same code reads this and is refused.
-    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
 
     #: SHA-256 of the long-lived credential the device authenticates with, issued when the
     #: claim code is spent (ENG-443). Null until then. The credential itself is returned
@@ -49,7 +50,7 @@ class Device(Base):
         String(64), unique=True, index=True, nullable=True
     )
     credential_issued_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        UtcDateTime(timezone=True), nullable=True
     )
 
     #: The credential this device held before its last rotation, still good until the new
@@ -73,13 +74,15 @@ class Device(Base):
     #: its row being gone from the table. ``credential_hash`` is nulled at the same moment,
     #: which is what actually stops it authenticating; this column is the record, not the
     #: revocation.
-    unlinked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    unlinked_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
 
     #: The last time this device asked the API anything. Null until it does. Nothing but
     #: ``GET /api/devices/me`` moves it, because that is the only request a device makes.
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
