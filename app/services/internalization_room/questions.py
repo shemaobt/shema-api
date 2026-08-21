@@ -33,6 +33,7 @@ async def raise_question(
     session_id: str,
     pericope: str,
     audio: bytes,
+    project_id: str | None = None,
     store: SpeechStore | None = None,
 ) -> IRQuestion:
     """Keep what the team asked, so the knot on the necklace stands for something.
@@ -48,6 +49,7 @@ async def raise_question(
     await (store or _store()).put(key, audio, AUDIO_MIME)
     question = IRQuestion(
         id=question_id,
+        project_id=project_id,
         device_id=device_id,
         session_id=session_id,
         pericope=pericope,

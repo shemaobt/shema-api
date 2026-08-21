@@ -69,6 +69,7 @@ async def store_take(
     kind: IRTakeKind,
     scope: str,
     audio: bytes,
+    project_id: str | None = None,
     pass_number: int | None = None,
     chunk_index: int | None = None,
     content_type: str = AUDIO_MIME,
@@ -104,6 +105,7 @@ async def store_take(
     landed = await speech_store.stat(key)
     take = IRTake(
         id=str(uuid.uuid4()),
+        project_id=project_id,
         session_id=session_id,
         device_id=device_id,
         pericope=pericope,

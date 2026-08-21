@@ -73,6 +73,7 @@ async def add_chunk(
         db,
         session_id=session.id,
         device_id=device_id,
+        project_id=session.project_id,
         pericope=session.pericope,
         kind=IRTakeKind.RETRO,
         scope=state.scope or session.pericope,

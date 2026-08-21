@@ -35,13 +35,24 @@ def resolve_pericope(pericope: str) -> str:
 
 
 async def create_session(
-    db: AsyncSession, *, pericope: str = DEFAULT_PERICOPE, after_panorama: bool = False
+    db: AsyncSession,
+    *,
+    pericope: str = DEFAULT_PERICOPE,
+    after_panorama: bool = False,
+    project_id: str | None = None,
 ) -> IRSession:
+    """Open a session. ``project_id`` is whose it is, when the device said so.
+
+    Null is a normal answer, not a failure. The room app identifies itself with a device
+    credential only from ENG-454 onward, and refusing a session without one would take
+    every room in the field offline to gain a column value.
+    """
     pericope = resolve_pericope(pericope)
     panorama = is_panorama(pericope)
     if not panorama:
         load_map(pericope)  # refuse unapproved or unsupported canon before a session exists
     session = IRSession(
+        project_id=project_id,
         pericope=pericope,
         status=IRSessionStatus.IN_PROGRESS,
         messages=[],
