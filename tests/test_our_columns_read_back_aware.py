@@ -30,9 +30,15 @@ from app.db.models.device import Device
 from app.db.models.internalization_room import IRSession
 
 #: The declarations this slice covers. Both are read by the Desk.
+#:
+#: Anchored on this file and not on the working directory: a guard whose job is to still be
+#: there at the next migration must not answer `FileNotFoundError` because pytest was invoked
+#: from somewhere else. It is what every other source-reading test here does —
+#: `test_stored_time` and the migration ones all resolve from `__file__`.
+_MODELS_DIR = Path(__file__).resolve().parents[1] / "app" / "db" / "models"
 OUR_MODELS = (
-    Path("app/db/models/internalization_room.py"),
-    Path("app/db/models/device.py"),
+    _MODELS_DIR / "internalization_room.py",
+    _MODELS_DIR / "device.py",
 )
 
 STORED = datetime(2026, 8, 21, 1, 0, tzinfo=UTC)
@@ -100,18 +106,43 @@ async def test_every_datetime_column_of_ours_is_declared_with_the_utc_type() -> 
     takes in the Desk: it cannot see a column built some other way, and what it does see it
     sees for nothing.
     """
-    raw: list[str] = []
-    for path in OUR_MODELS:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "DateTime"
-            ):
-                raw.append(f"{path}:{node.lineno}")
+    raw = [f"{path.name}:{lineno}" for path in OUR_MODELS for lineno in _mentions(path, "DateTime")]
 
     assert not raw, (
         "these columns are declared with the raw DateTime instead of UtcDateTime, so they "
         f"read back naive on SQLite: {', '.join(raw)}"
+    )
+
+
+def test_our_models_do_declare_datetime_columns_with_the_utc_type() -> None:
+    """The presence beside the absence, and this repository already learned to want it.
+
+    The sweep above passes just as well over a file that declares no datetime column at all —
+    a rename, a bad path, an empty parse — and would then be a green light that has never
+    looked at anything. `test_stored_time.test_the_shared_module_is_the_one_doing_it` exists
+    next to the other sweep for the same reason, in the same words: an absence-assertion is
+    only worth what the presence beside it is worth.
+    """
+    for path in OUR_MODELS:
+        assert _mentions(path, "UtcDateTime"), f"{path.name} declares no UtcDateTime column"
+
+
+def _mentions(path: Path, name: str) -> list[int]:
+    """Every line of `path` that *uses* `name`, whichever way it is spelled.
+
+    **Both `DateTime(timezone=True)` and a bare `DateTime` count**, and the second is the one
+    that matters: `mapped_column(DateTime, nullable=True)` is an `ast.Name` and not an
+    `ast.Call`, so a sweep looking for calls walks straight past it — and it reads back naive
+    exactly the same. That is the tomorrow-migration case this whole test is written for.
+    Measured: the call-only version saw the parenthesised form and not the bare one.
+
+    `sa.DateTime` counts too. An import is neither a Name nor an Attribute node, so importing
+    the type without using it is not a mention — and ruff reports that as unused anyway.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return sorted(
+        node.lineno
+        for node in ast.walk(tree)
+        if (isinstance(node, ast.Name) and node.id == name)
+        or (isinstance(node, ast.Attribute) and node.attr == name)
     )
