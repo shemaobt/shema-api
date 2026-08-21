@@ -1,0 +1,55 @@
+# ENG-556 — measure the runner, not the suite.
+#
+# A workflow of its own, on workflow_dispatch, rather than a change to `test.yml`. Two
+# reasons. Nobody controls which run will be the slow one, so this has to be fired many times
+# to catch one — and firing `test.yml` that often means opening and pushing to a PR. And the
+# instrumentation has not earned a place in the job everyone waits on: whether any of it
+# stays is decided after it has shown something.
+#
+# The suite is run exactly as `test.yml` runs it, `-v` included, so the timings compare to
+# the runs already in the history. `--durations` is added because it is free and pytest
+# already knows it.
+name: ENG-556 ruler
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  ruler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Ruler, before
+        run: uv run python scripts/ci_ruler.py ruler before
+
+      - name: Run tests, with the sampler alongside
+        run: |
+          uv run python scripts/ci_ruler.py sample 5 > sampler.log 2>&1 &
+          echo $! > sampler.pid
+          uv run pytest tests/ -v --durations=25
+          kill "$(cat sampler.pid)" || true
+        env:
+          JWT_SECRET_KEY: test-secret-for-pytest-only
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+
+      - name: Ruler, after
+        if: always()
+        run: uv run python scripts/ci_ruler.py ruler after
+
+      - name: The sampler's series
+        if: always()
+        run: cat sampler.log
