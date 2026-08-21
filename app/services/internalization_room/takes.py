@@ -108,7 +108,3 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
         select(IRTake).where(IRTake.session_id == session_id).order_by(IRTake.created_at)
     )
     return list(result.scalars().all())
-
-
-async def fetch_take(key: str, *, store: SpeechStore | None = None) -> bytes | None:
-    return await (store or _store()).get(key)
