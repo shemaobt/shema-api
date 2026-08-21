@@ -146,7 +146,49 @@ async def get_question(db: AsyncSession, question_id: str) -> IRQuestion:
     result = await db.execute(select(IRQuestion).where(IRQuestion.id == question_id))
     question = result.scalar_one_or_none()
     if question is None:
-        raise NotFoundError(f"Question {question_id} not found")
+        raise NotFoundError(_no_such_question(question_id))
+    return question
+
+
+def _no_such_question(question_id: str) -> str:
+    """The message the facilitator routes refuse with, written once.
+
+    The three refusals it serves must be **identical**, not merely similar: absent,
+    unowned, and belonging to another team. A caller who can tell them apart asks for ids
+    until one answers differently, and a question that exists is a team that exists. Two
+    call sites drifting by a word is all it takes to hand that back.
+
+    **There is a fourth refusal of this exact shape and it does not come through here:**
+    the room's ``POST /questions/{id}/heard`` refuses a question raised by another device
+    with the same sentence, written by hand at ``app/api/internalization_room/questions.py``.
+    It is the same rule applied to a tablet instead of a facilitator, and it belongs to the
+    room's line rather than to this slice, so ENG-534 leaves it where it is and says so
+    here instead of quietly claiming to cover it. Routing it through this helper — better
+    still, giving it a ``get_question_for_device`` of its own, so the rule stops living in
+    a router — is worth an issue of its own.
+    """
+    return f"Question {question_id} not found"
+
+
+async def get_question_for_facilitator(
+    db: AsyncSession, user: User, question_id: str
+) -> IRQuestion:
+    """The question, if it belongs to a team this facilitator facilitates.
+
+    Holding the facilitator role is not owning the question. The routes that act on one —
+    reply, resolve, and the audio — asked only for the role until ENG-534, so any
+    facilitator with an id could answer another team by voice, close their card, and listen
+    to their recording.
+
+    A question carrying no ``project_id`` is refused rather than served. Those are rows
+    from before ENG-440 and they belong to no team at all, which makes them nobody's to
+    reach — not everybody's. It is the common shape today, because the room's app does not
+    send its device credential yet, so reading "unowned" as "unrestricted" would leave most
+    of the table open to any facilitator.
+    """
+    question = await get_question(db, question_id)
+    if question.project_id is None or not await facilitates_project(db, user, question.project_id):
+        raise NotFoundError(_no_such_question(question_id))
     return question
 
 

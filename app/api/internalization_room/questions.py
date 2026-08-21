@@ -199,7 +199,7 @@ async def listen_to_question(
     The queue used to hand the facilitator the clip route, which is gated on the room key
     the tablet carries. They sign in as a person: every play button answered 401.
     """
-    question = await service.get_question(db, question_id)
+    question = await service.get_question_for_facilitator(db, user, question_id)
     if not question.audio_key:
         raise NotFoundError("No such recording")
     return RedirectResponse(
@@ -218,7 +218,7 @@ async def reply(
     audio = await file.read()
     if len(audio) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
-    question = await service.get_question(db, question_id)
+    question = await service.get_question_for_facilitator(db, user, question_id)
     await service.answer_with_voice(db, question, audio=audio, answered_by=user.id)
     return {"status": "answered"}
 
@@ -227,7 +227,7 @@ async def reply(
 async def resolve(
     question_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
-    question = await service.get_question(db, question_id)
+    question = await service.get_question_for_facilitator(db, user, question_id)
     await service.resolve_elsewhere(db, question, answered_by=user.id)
     return {"status": "resolved"}
 

@@ -6,10 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
+from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import floor_met, furthest, initial_state
+from app.services.project.facilitates_project import facilitates_project
 
 DEFAULT_PERICOPE = "P01"
 PANORAMA_PREFIX = "OV-"
@@ -78,7 +80,25 @@ async def get_session(db: AsyncSession, session_id: str) -> IRSession:
     result = await db.execute(select(IRSession).where(IRSession.id == session_id))
     session = result.scalar_one_or_none()
     if session is None:
-        raise NotFoundError(f"Internalization room session {session_id} not found")
+        raise NotFoundError(_no_such_session(session_id))
+    return session
+
+
+def _no_such_session(session_id: str) -> str:
+    """One message for absent, unowned, and somebody else's. See ENG-534."""
+    return f"Internalization room session {session_id} not found"
+
+
+async def get_session_for_facilitator(db: AsyncSession, user: User, session_id: str) -> IRSession:
+    """The session, if it belongs to a team this facilitator facilitates.
+
+    What hangs off a session is what the team recorded, so reaching one that is not yours
+    reaches their rehearsal audio. A session with no ``project_id`` is refused for the
+    reason ``get_question_for_facilitator`` gives: unowned is nobody's, not everybody's.
+    """
+    session = await get_session(db, session_id)
+    if session.project_id is None or not await facilitates_project(db, user, session.project_id):
+        raise NotFoundError(_no_such_session(session_id))
     return session
 
 

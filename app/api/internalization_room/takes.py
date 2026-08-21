@@ -20,7 +20,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.takes import (
     listen_url,
     store_take,
-    take_by_id,
+    take_for_facilitator,
     takes_of,
 )
 
@@ -110,7 +110,7 @@ async def facilitator_takes(
     A facilitator signs in; the team never does. So this carries no room key — the two
     audiences never share a route.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.get_session_for_facilitator(db, user, session_id)
     return TakesResponse(
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
@@ -132,5 +132,5 @@ async def listen_to_take(
     minutes of audio through the application server buys nothing over letting the bucket
     do it — the same reason the sound necklace redirects rather than proxies.
     """
-    take = await take_by_id(db, take_id)
+    take = await take_for_facilitator(db, user, take_id)
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
