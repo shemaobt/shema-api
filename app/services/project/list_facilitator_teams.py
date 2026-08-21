@@ -104,6 +104,44 @@ def _device_count_subquery(scope: Select | None) -> Subquery:
     )
 
 
+def team_cards(scope: Select | None) -> Select:
+    """Everything a team's card draws, for as many teams as the scope allows.
+
+    One statement, and **one place**. The queue and the single team's route answer the same
+    fields to the same screen, and a second copy of this select would agree with it only for
+    as long as nobody added a column — `FacilitatorTeamDetail` extends `FacilitatorTeamView`,
+    so a field added to the view and to one select fails in the other at request time, and
+    mypy says nothing about a pydantic model built from a row. So there is one select and the
+    callers narrow it.
+
+    **Every subquery carries the caller's scope, and that is not a tidiness.** Written without
+    it the counts group the *whole installation* and the join throws away all but fourteen
+    rows: three sequential scans over 70,000 rows to answer fourteen teams, measured on a
+    seeded Postgres before the scope was pushed down.
+    """
+    activity = _last_activity_subquery(scope)
+    hands = _open_hands_subquery(scope)
+    devices = _device_count_subquery(scope)
+
+    query = (
+        select(
+            Project.id,
+            Project.name,
+            Language.name.label("mother_tongue"),
+            func.coalesce(hands.c.open_hands, 0).label("open_hands"),
+            func.coalesce(devices.c.device_count, 0).label("device_count"),
+            activity.c.last_activity_at,
+        )
+        .join(Language, Language.id == Project.language_id)
+        .outerjoin(activity, activity.c.project_id == Project.id)
+        .outerjoin(hands, hands.c.project_id == Project.id)
+        .outerjoin(devices, devices.c.project_id == Project.id)
+    )
+    if scope is not None:
+        query = query.where(Project.id.in_(scope))
+    return query
+
+
 async def list_facilitator_teams(
     db: AsyncSession,
     user: User,
@@ -130,29 +168,7 @@ async def list_facilitator_teams(
     """
     moment = now or datetime.now(UTC)
     scope = _facilitated_projects(user)
-    activity = _last_activity_subquery(scope)
-    hands = _open_hands_subquery(scope)
-    devices = _device_count_subquery(scope)
-
-    query = (
-        select(
-            Project.id,
-            Project.name,
-            Language.name.label("mother_tongue"),
-            func.coalesce(hands.c.open_hands, 0).label("open_hands"),
-            func.coalesce(devices.c.device_count, 0).label("device_count"),
-            activity.c.last_activity_at,
-        )
-        .join(Language, Language.id == Project.language_id)
-        .outerjoin(activity, activity.c.project_id == Project.id)
-        .outerjoin(hands, hands.c.project_id == Project.id)
-        .outerjoin(devices, devices.c.project_id == Project.id)
-    )
-
-    if scope is not None:
-        query = query.where(Project.id.in_(scope))
-
-    rows = (await db.execute(query)).all()
+    rows = (await db.execute(team_cards(scope))).all()
     here = await active_passages(db, project_ids=[row.id for row in rows])
 
     every_team = [
