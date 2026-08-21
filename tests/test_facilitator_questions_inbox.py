@@ -92,6 +92,7 @@ async def a_hand(
     ago: timedelta = A_WHILE,
     device: str = "aparelho",
     pericope: str = "P01",
+    heard_at: datetime | None = None,
 ) -> IRQuestion:
     question = IRQuestion(
         device_id=device,
@@ -101,6 +102,7 @@ async def a_hand(
         status=status,
         project_id=team.id if team is not None else None,
         created_at=datetime.now(UTC) - ago,
+        heard_at=heard_at,
     )
     db.add(question)
     await db.commit()
@@ -431,3 +433,116 @@ async def test_the_page_does_not_pay_a_read_per_question(client, db_session, tes
     assert len(for_ten) == len(for_one), (
         f"a pagina paga por linha: {len(for_one)} -> {len(for_ten)}"
     )
+
+
+# ------------------------------------------------------ heard_at: when, not whether
+
+
+class _Nowhere:
+    """A store that takes the clip and keeps nothing — the bytes are not what is under test."""
+
+    async def put(self, key: str, data: bytes, mime: str) -> None:
+        return None
+
+
+async def test_an_answer_the_team_has_heard_says_when(client, db_session) -> None:
+    """The one fact the Desk cannot draw a raised hand without, and nothing served it.
+
+    `heard_at` exists on the column, is written when the tablet reports the reply played, and
+    is cleared again when a facilitator answers a second time — and no response model anywhere
+    in this repository carried it. One of the Desk's three card states, `answered · heard`, was
+    unreachable.
+    """
+    team = await a_team(db_session, name="Equipe Terena")
+    when = datetime.now(UTC) - timedelta(minutes=5)
+    await a_hand(db_session, team, status=IRQuestionStatus.ANSWERED, heard_at=when)
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await read(client, headers))["questions"][0]
+
+    # Compared as an instant and not as text. `DateTime(timezone=True)` hands the value back
+    # naive on SQLite and aware on Postgres, so the same moment serialises with and without an
+    # offset — pinning the string would pin whichever engine the suite happens to run on. That
+    # difference is real and reaches the wire; `asked_at` has it too, and it is reported rather
+    # than fixed here, because it belongs with ENG-532's normaliser.
+    served = datetime.fromisoformat(card["heard_at"])
+    assert (served if served.tzinfo else served.replace(tzinfo=UTC)) == when
+
+
+async def test_an_answer_still_waiting_says_nothing_rather_than_a_time(client, db_session) -> None:
+    """`null` is the whole answer for a reply the team has not played yet."""
+    team = await a_team(db_session, name="Equipe Guajajara")
+    await a_hand(db_session, team, status=IRQuestionStatus.ANSWERED, heard_at=None)
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert (await read(client, headers))["questions"][0]["heard_at"] is None
+
+
+async def test_the_field_is_a_moment_and_not_a_flag(client, db_session) -> None:
+    """The case that guards the decision, and it exists because the Desk's type is a boolean.
+
+    `RaisedHandState` carries `heardByTeam: boolean`, so the obvious move is to serve one —
+    and the Desk's own header says the transport-to-domain translation belongs to its HTTP
+    client, never above it. The direction matters and only one way round is lossless: **when
+    they heard gives whether they heard, and whether never gives when.** A boolean here throws
+    away a fact the column already holds and nobody recovers it afterwards.
+
+    Without this case, `bool(question.heard_at)` passes every other test in this file: `True`
+    is not `None`, and the waiting case reads `False`, which is also not a time. Asserted on
+    the type and on the value, because `False` and `None` are different answers and only one
+    of them means "not yet".
+    """
+    team = await a_team(db_session, name="Equipe Xavante")
+    when = datetime.now(UTC) - timedelta(hours=2)
+    await a_hand(db_session, team, status=IRQuestionStatus.ANSWERED, heard_at=when)
+    _user, headers = await a_facilitator(db_session, team)
+
+    served = (await read(client, headers))["questions"][0]["heard_at"]
+
+    assert not isinstance(served, bool), "o instante virou bandeira e a informação sumiu"
+    assert isinstance(served, str)
+    assert served.startswith(when.date().isoformat())
+
+
+async def test_answering_a_second_time_puts_the_card_back_to_unheard(client, db_session) -> None:
+    """The correction path, which is where a stale instant would be worst.
+
+    `reply` clears `heard_at` on purpose — leaving it set filtered the correction out forever,
+    so the team never heard the second answer. The card has to say `null` again, not the moment
+    they heard the **first** one, or a facilitator reads "heard" about a reply that was
+    replaced.
+    """
+    from app.services.internalization_room import questions as service
+
+    team = await a_team(db_session, name="Equipe Munduruku")
+    question = await a_hand(
+        db_session,
+        team,
+        status=IRQuestionStatus.ANSWERED,
+        heard_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    user, headers = await a_facilitator(db_session, team)
+
+    assert (await read(client, headers))["questions"][0]["heard_at"] is not None
+
+    # Through the production path, so the fixture cannot agree with a route that reads the
+    # clearing differently from how `answer_with_voice` writes it.
+    await service.answer_with_voice(
+        db_session, question, audio=b"a resposta certa", answered_by=user.id, store=_Nowhere()
+    )
+
+    assert (await read(client, headers))["questions"][0]["heard_at"] is None
+
+
+async def test_an_open_hand_has_no_moment_to_report(client, db_session) -> None:
+    """Nothing to hear yet, so the field is `null` and not an empty string.
+
+    Written because `_stamp` answers `""` for a missing moment — which is right for
+    `asked_at`, a column that is never null, and wrong here: an empty string is a value the
+    Desk would have to know to treat as absent.
+    """
+    team = await a_team(db_session, name="Equipe Apurinã")
+    await a_hand(db_session, team, status=IRQuestionStatus.OPEN)
+    _user, headers = await a_facilitator(db_session, team)
+
+    assert (await read(client, headers))["questions"][0]["heard_at"] is None
