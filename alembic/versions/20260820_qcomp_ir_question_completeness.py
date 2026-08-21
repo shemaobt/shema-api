@@ -20,7 +20,19 @@ same shape as a question whose transcription failed, which the Desk already draw
 as the person needs, and truncating what was said to fit a column would be a silent edit of
 somebody's words.
 
-Revision ID: 20260820_0002
+**The id is a word, not the next number, and that is the fix.** This revision was
+``20260820_0002`` and so was ``20260820_0002_ir_coverage_events`` on another branch: two
+files, one id, different filenames. Git merges that **cleanly** — there is no textual
+conflict to catch — and then Alembic resolves the id to one of them and the other simply
+stops existing. Measured on the two branches merged together: ``alembic upgrade`` ran this
+migration, and ``ir_coverage_events`` was never created, with nothing failing.
+
+Sequential ids invite that collision every time two branches number the next migration
+without seeing each other, which is the normal state of parallel work. A word cannot be
+guessed into collision by a branch that has never heard of this one. ``20260820_merge``
+already set the precedent.
+
+Revision ID: 20260820_qcomp
 Revises: 20260820_0001
 Create Date: 2026-08-20 00:00:00.000000
 """
@@ -31,7 +43,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "20260820_0002"
+revision: str = "20260820_qcomp"
 down_revision: str | None = "20260820_0001"
 branch_labels = None
 depends_on = None
