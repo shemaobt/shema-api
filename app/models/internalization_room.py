@@ -60,6 +60,60 @@ class CoverageLegend(BaseModel):
     element_kind: dict[str, dict[str, str]]
 
 
+class LegendName(BaseModel):
+    """One value of a closed set, named for a facilitator rather than for the database.
+
+    `value` is the enum's string and is typed `str` rather than `CoverageStatus` or
+    `ElementKind`. A legend **is** the closed set, written out — so unlike a field that
+    carries one value out of a set the response never shows, there is nothing here the schema
+    has to promise that the body does not already say. And `legend()` resolves every entry by
+    walking the enum, so an enum type would re-refuse what is true by construction: it can
+    only reject what the loader has just accepted.
+
+    **The three labels are not nullable, and `LabelledElement`'s are** — the two shapes
+    disagree on purpose. A bead of a passage nobody has translated falls back to the canon,
+    which is English and nothing else, so `label_pt` there is legitimately absent. A legend
+    has no such fallback: `legend()` raises `ElementLabelsBroken` on a name missing in any
+    language, so a null cannot arrive here, and typing one would invite a screen to draw the
+    hole instead of the deploy failing loudly.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    label_pt: str
+    label_en: str
+    label_es: str
+
+
+class CoverageLegendResponse(BaseModel):
+    """The coverage states and the element kinds, named once for the whole Desk.
+
+    A list and not a map, because a legend is read in order: `not_encountered → surfaced →
+    engaged` is the way a bead travels, and the kinds are the canon's own grouping. The order
+    is the enums' declaration order, which `legend()` already walks — serving a map would
+    hand the client an arrangement to make a second time, and ENG-462 is the record of what
+    that costs.
+
+    The three languages are named fields rather than a map keyed by language, because that is
+    the shape a bead already takes: `LabelledElement`, above, carries `label_pt` / `label_en`
+    / `label_es`. A legend entry read as `entry["pt"]` beside a bead read as `label_pt` would
+    be two shapes for one thing on one screen. `CoverageLegend` — the loader's own answer —
+    keeps the map, because that is the catalogue's shape and a fourth language there costs a
+    catalogue entry and nothing else.
+
+    ENG-449's coverage response repeats the same three fields and is what this legend is read
+    beside. It is named by its issue and not by its model, deliberately: a class name is a
+    reference `grep` promises to resolve, so one naming a branch that has not merged is a
+    reference that lies. An issue number promises nothing and therefore cannot.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    coverage_status: list[LegendName]
+    element_kind: list[LegendName]
+
+
 class CoverageView(BaseModel):
     engaged: int
     surfaced: int
