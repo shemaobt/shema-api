@@ -53,11 +53,22 @@ async def prepare_opening(panorama_session_id: str, pericope: str = DEFAULT_PERI
 
 
 def hand_over(prepared: IRSession, opening: IRSession) -> bool:
-    """Move a ready opening onto the session that will speak it."""
+    """Move a ready opening onto the session that will speak it, once and to the right passage.
+
+    The panorama writes ahead without knowing which passage the team will pick, so the line
+    it holds is always `DEFAULT_PERICOPE`'s: any other passage has to write its own rather
+    than be given another passage's framing as if it were its own words. The source is
+    cleared as it is given away, so a second session opened after the same panorama gets
+    nothing here and writes on demand.
+    """
     if not prepared.prepared_speech or not prepared.prepared_audio_key:
+        return False
+    if opening.pericope != DEFAULT_PERICOPE:
         return False
     opening.prepared_speech = prepared.prepared_speech
     opening.prepared_audio_key = prepared.prepared_audio_key
+    prepared.prepared_speech = None
+    prepared.prepared_audio_key = None
     return True
 
 

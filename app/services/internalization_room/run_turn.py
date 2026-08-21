@@ -119,16 +119,22 @@ async def _draft(
     utterance: str,
     redraft_note: str,
     settings: Settings,
-    already_met: bool = False,
+    opening_instruction: str = "",
 ) -> str:
+    """Assemble the Speaker's user turn.
+
+    An empty `opening_instruction` is a turn that opens nothing: the verdict Speaker has no
+    team utterance to answer and no session to open either, so it is told neither.
+    """
     if utterance:
         user_content = (
             f"## A conversa até aqui\n\n{conversation}\n\n"
             f"## O que a equipe acabou de dizer\n\n{utterance}\n"
         )
+    elif opening_instruction:
+        user_content = f"## A conversa até aqui\n\n{conversation}\n\n{opening_instruction}\n"
     else:
-        opening = ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION
-        user_content = f"## A conversa até aqui\n\n{conversation}\n\n{opening}\n"
+        user_content = f"## A conversa até aqui\n\n{conversation}\n"
     if redraft_note:
         user_content += f"\n## Nota de reescrita\n\n{redraft_note}\n"
     return (
@@ -153,7 +159,7 @@ async def _voiced_after_validation(
     language_code: str,
     opening: bool,
     settings: Settings,
-    already_met: bool = False,
+    opening_instruction: str = "",
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -171,7 +177,7 @@ async def _voiced_after_validation(
             utterance="" if opening else transcript,
             redraft_note=redraft_note,
             settings=settings,
-            already_met=already_met,
+            opening_instruction=opening_instruction,
         )
 
         validator_system = render(
@@ -275,7 +281,7 @@ async def run_turn(
         session_language=session_language,
         language_code=language_code,
         opening=opening,
-        already_met=already_met,
+        opening_instruction=(ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION),
         settings=cfg,
     )
 
@@ -323,6 +329,7 @@ async def run_panorama_turn(
         session_language=session_language,
         language_code=language_code,
         opening=opening,
+        opening_instruction=OPENING_INSTRUCTION,
         settings=cfg,
     )
 
