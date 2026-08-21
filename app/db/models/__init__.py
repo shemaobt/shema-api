@@ -22,7 +22,13 @@ from app.db.models.book_context import (
     BookContextDocument,
 )
 from app.db.models.device import Device
-from app.db.models.internalization_room import IRPrompt, IRQuestion, IRSession, IRTake
+from app.db.models.internalization_room import (
+    IRCoverageEvent,
+    IRPrompt,
+    IRQuestion,
+    IRSession,
+    IRTake,
+)
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -87,6 +93,7 @@ __all__ = [
     "ChatMessageRole",
     "Device",
     "GranularityLevel",
+    "IRCoverageEvent",
     "IRPrompt",
     "IRQuestion",
     "IRSession",
