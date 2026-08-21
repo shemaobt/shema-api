@@ -54,6 +54,12 @@ class IRSession(Base):
     coverage_state: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     kept_takes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     back_translation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    #: Whose conversation this was. Null when the room app did not identify itself with a
+    #: device credential, which is every session until ENG-454 ships that half — see the
+    #: migration notes. Not a foreign key, matching the column it stands beside on
+    #: ``ir_takes``: the room tables carry ids across an app boundary and have never
+    #: constrained them.
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -111,6 +117,12 @@ class IRQuestion(Base):
     answered_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     heard_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Whose conversation this was. Null when the room app did not identify itself with a
+    #: device credential, which is every session until ENG-454 ships that half — see the
+    #: migration notes. Not a foreign key, matching the column it stands beside on
+    #: ``ir_takes``: the room tables carry ids across an app boundary and have never
+    #: constrained them.
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -134,8 +146,10 @@ class IRTake(Base):
     the back-translation chunks are what a reviewer would need to hear to check the telling.
     Losing them loses the session.
 
-    `team_id` is the seat for the login that will identify a team directly. Until it exists
-    the device is the attribution, and a row can be claimed later without a rewrite.
+    `project_id` is whose work this is. It was called `team_id` and held nothing; the rest
+    of the schema says "project" for the same entity, and carrying two words for one thing
+    is how the next person loses an afternoon. "Team" stays the Desk's word, in the UI and
+    in the backlog.
     """
 
     __tablename__ = "ir_takes"
@@ -146,7 +160,7 @@ class IRTake(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id: Mapped[str] = mapped_column(String(36), index=True)
     device_id: Mapped[str] = mapped_column(String(64), index=True)
-    team_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     pericope: Mapped[str] = mapped_column(String(120))
     kind: Mapped[IRTakeKind] = mapped_column(_TAKE_KIND_TYPE)
     scope: Mapped[str] = mapped_column(String(120))

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_key_dep
+from app.api.internalization_room._deps import device_project_dep, room_key_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
@@ -85,11 +85,13 @@ async def create_session(
     payload: CreateSessionRequest,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    project_id: str | None = device_project_dep,
 ) -> SessionStateResponse:
     session = await room.create_session(
         db,
         pericope=payload.pericope or DEFAULT_PERICOPE,
         after_panorama=payload.after_panorama or payload.after_session is not None,
+        project_id=project_id,
     )
     if payload.after_session:
         previous = await room.get_session(db, payload.after_session)

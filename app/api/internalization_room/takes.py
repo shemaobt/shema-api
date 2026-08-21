@@ -76,6 +76,7 @@ async def keep_take(
         db,
         session_id=session.id,
         device_id=device_id,
+        project_id=session.project_id,
         pericope=session.pericope,
         kind=_kind(kind),
         scope=scope,

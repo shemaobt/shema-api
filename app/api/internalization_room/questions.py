@@ -49,6 +49,7 @@ async def raise_question(
         db,
         device_id=device_id,
         session_id=session.id,
+        project_id=session.project_id,
         pericope=session.pericope,
         audio=audio,
     )
