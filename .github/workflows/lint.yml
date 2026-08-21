@@ -31,10 +31,14 @@ jobs:
         run: uv run ruff format --check .
 
   # `ruff` and `mypy` read the source without running it, and `test` runs it through a suite
-  # whose collection order can break an import cycle by accident — nine branches of one stack
-  # were green together while one of them could not boot. This asks the only question a server
-  # asks, in a clean interpreter, and answers it in seconds rather than in the ten minutes the
-  # suite takes to reach the same import.
+  # whose collection order can break an import cycle by accident. Nine branches of one stack
+  # were green together while one of them could not boot, and the green was not luck — it was
+  # order: that branch's role-gate suite errored on its own and passed inside the full run.
+  #
+  # It lives here, on the junction, and not on the slice that found it. A gate protects by
+  # being in the ancestor, not by being good: the role gate ENG-438 added only ever guarded
+  # routes whose branch had ENG-438 behind them, which is why later ones were born open. The
+  # same shape, twice. From here this one reaches every line that joins.
   boots:
     runs-on: ubuntu-latest
     env:
