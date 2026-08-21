@@ -1,6 +1,15 @@
-"""ENG-451 — the passage's history: one card per conversation, newest first.
+"""ENG-451 — the passage's history: the live conversation first, then newest to oldest.
 
-Three of these carry the slice.
+Four of these carry the slice.
+
+**The order was measured wrong and is fixed here.** Start time alone put a conversation still
+going on the 12th under a finished one from the 19th — the one session a facilitator can act
+on, buried under one they cannot. Two of the three ordering tests were red before the fix.
+
+**The third was green on arrival and is a guard rather than a discovery.** An abandoned
+session leading is what a fix that reached for "not complete" would do, and that is the shape
+the obvious fix takes. Proved by mutation rather than left to look thorough: keying the sort
+on `COMPLETE` turns exactly that test red and nothing else.
 
 **The project scoping is measured, not inherited.** Every session in the field today has a
 null project — the room app does not send its device credential until ENG-454 — so a route
@@ -121,6 +130,91 @@ async def test_the_history_reads_from_the_most_recent_conversation_backwards(cli
     history = await read_history(client, project.id, headers)
 
     assert [card["session_id"] for card in history] == [newest.id, middle.id, oldest.id]
+
+
+async def test_the_conversation_still_going_leads_however_old_it_is(client, db_session):
+    """The one session in the column the facilitator can still act on.
+
+    Measured against this route as it was: a live conversation from the 12th sank under a
+    finished one from the 19th. Start time alone buries the only live thing in the history,
+    which is the defect ENG-487 closed on the Desk — arriving back through the server.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    finished = await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 19, 9, 0, tzinfo=UTC),
+    )
+    finished.ended_at = datetime(2026, 8, 19, 10, 0, tzinfo=UTC)
+    still_going = await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
+        last_activity=datetime.now(UTC),
+    )
+    await db_session.commit()
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [still_going.id, finished.id]
+    assert history[0]["state"] == "in_progress"
+
+
+async def test_a_conversation_nobody_closed_does_not_lead_the_history(client, db_session):
+    """`in_progress` and nothing else leads, which is a decision this route has to take.
+
+    RF-06's sentence was written when a session was either open or finished. There are three
+    states now, and an abandoned conversation carries no end anybody stamped — but it is over,
+    and the facilitator can do nothing with it. Leading with it would put the one thing they
+    cannot act on where the one thing they can is supposed to be.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    finished = await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 19, 9, 0, tzinfo=UTC),
+    )
+    finished.ended_at = datetime(2026, 8, 19, 10, 0, tzinfo=UTC)
+    abandoned = await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
+        last_activity=datetime(2026, 8, 12, 9, 47, tzinfo=UTC),
+    )
+    await db_session.commit()
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [finished.id, abandoned.id]
+    assert history[1]["state"] == "abandoned"
+
+
+async def test_two_conversations_still_going_lead_in_the_order_they_opened(client, db_session):
+    """Leading is a group and not a slot: within it the history still reads backwards."""
+    _user, project, headers = await a_facilitator(db_session)
+    finished = await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 19, 9, 0, tzinfo=UTC),
+    )
+    finished.ended_at = datetime(2026, 8, 19, 10, 0, tzinfo=UTC)
+    older = await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC),
+        last_activity=datetime.now(UTC),
+    )
+    newer = await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 15, 9, 0, tzinfo=UTC),
+        last_activity=datetime.now(UTC),
+    )
+    await db_session.commit()
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [newer.id, older.id, finished.id]
 
 
 async def test_another_teams_conversations_are_not_in_this_teams_history(client, db_session):

@@ -27,11 +27,11 @@ from app.models.internalization_room import SessionBead, TeamSessionResponse
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
-from app.services.internalization_room.session_end import as_utc, end_of
+from app.services.internalization_room.session_end import SessionState, as_utc, end_of
 
 
 async def list_team_sessions(db: AsyncSession, project_id: str) -> list[TeamSessionResponse]:
-    """A team's history, newest first, each card carrying the necklace it left behind.
+    """A team's history: the conversation still going first, then newest to oldest.
 
     Ordering is the server's: RF-06 reads a history from the most recent conversation
     backwards, and a client that re-sorted what it was handed would be a second place
@@ -39,13 +39,40 @@ async def list_team_sessions(db: AsyncSession, project_id: str) -> list[TeamSess
     on a schema whose clock is the database's, and a list route that answers a different
     order each time it is asked is a list route nobody can test.
 
+    **Start time alone buries the only live thing in the column**, which is why the open
+    session leads. Measured on this route: a conversation still going from the 12th sat under
+    a finished one from the 19th. It is the one session a facilitator can still act on, and a
+    history that hides it is a history hiding the live thing in it.
+
     One statement for the rows and one for every portrait on them. A query per card is what
     this service has already had to take back out once.
     """
     sessions = await _history_of(db, project_id)
     portraits = await necklaces_of(db, sessions)
     now = datetime.now(UTC)
-    return [_card(session, portraits[session.id], at=now) for session in sessions]
+    cards = [_card(session, portraits[session.id], at=now) for session in sessions]
+    return _still_going_first(cards)
+
+
+def _still_going_first(cards: list[TeamSessionResponse]) -> list[TeamSessionResponse]:
+    """Lift the live conversations to the head, leaving the rest as they came.
+
+    **Sorted here and not in the statement, because the state is not a column.** `end_of`
+    decides it from `ended_at`, the last activity and an idle limit nobody has agreed to yet;
+    writing that predicate into SQL would be a second place deciding when a conversation is
+    over, and the two would part company the day the limit moves. This is still the server
+    ordering — what the rule forbids is the *client* arranging what it was handed.
+
+    The sort is stable and the key is a boolean, so within each group the statement's
+    `created_at desc, id desc` survives untouched.
+
+    **`in_progress` and nothing else leads, and that had to be decided rather than inherited.**
+    RF-06's sentence was written when a session was open or finished; there are three states
+    now. An abandoned conversation carries no end anybody stamped, so it reads open-ish — but
+    it is over, and it is the one thing in the column the facilitator can do nothing with.
+    Leading with it would put that where the live conversation is supposed to be.
+    """
+    return sorted(cards, key=lambda card: card.state is not SessionState.IN_PROGRESS)
 
 
 async def _history_of(db: AsyncSession, project_id: str) -> Sequence[IRSession]:
