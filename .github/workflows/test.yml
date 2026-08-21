@@ -19,7 +19,8 @@ jobs:
       # `oral_collector/split_service.py` and `inngest/audio_splitting.py` already shell out
       # to and the same one both Dockerfiles install. The runner image ships neither, so
       # without this the tests here would be measuring a machine the deployed one is not.
-      # Measured at ~43 s on ubuntu 24.04 (4 s update, 39 s install, no recommends).
+      # 16 s on the runner (measured on this job; a local ubuntu 24.04 container took 43 s,
+      # so the runner's mirror is the difference — the number to trust is the runner's).
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
