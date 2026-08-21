@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.models.internalization_room import ElementCoverage, TouchedInSession
+from app.services.internalization_room.canon.elements import scene_key
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.coverage_events import necklace_with_touches
@@ -48,7 +49,7 @@ async def team_necklace(db: AsyncSession, *, team_id: str, pericope: str) -> lis
             label_en=bead.label_en,
             label_es=bead.label_es,
             kind=bead.kind,
-            scene=bead.scene,
+            scene=scene_key(bead.scene) if bead.scene is not None else None,
             status=(
                 history[bead.key].status if bead.key in history else CoverageStatus.NOT_ENCOUNTERED
             ),
