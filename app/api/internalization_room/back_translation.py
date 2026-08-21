@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Response, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, room_key_dep
@@ -37,21 +37,18 @@ async def add_chunk(
 
     Nothing is voiced here: the clip resuming is the acknowledgement, so this returns no audio.
 
-    The audio is kept. It already crosses the wire to be transcribed, and a back translation
-    nobody can listen to is a claim about a recording rather than the recording itself.
+    The audio is kept, and kept before anything is asked of it. It already crosses the wire to
+    be transcribed, and a back translation nobody can listen to is a claim about a recording
+    rather than the recording itself. Storing after the hearing would lose it in the two
+    moments the team re-records: a transcriber that times out raises past the store, and a
+    chunk nobody could make out returns before it.
     """
     session = await room.get_session(db, session_id)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
-    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     state = room.back_translation_of(session)
-    if not text.strip():
-        return BackTranslationChunkResponse(
-            session_id=session.id, chunks=len(state.chunks), captured=False
-        )
-
     await store_take(
         db,
         session_id=session.id,
@@ -64,6 +61,13 @@ async def add_chunk(
         chunk_index=len(state.chunks) + 1,
         content_type=file.content_type or "audio/mp4",
     )
+
+    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+    if not text.strip():
+        return BackTranslationChunkResponse(
+            session_id=session.id, chunks=len(state.chunks), captured=False
+        )
+
     state.chunks.append(
         Chunk(index=len(state.chunks) + 1, text=text, pass_number=state.pass_number)
     )
@@ -81,7 +85,6 @@ async def add_chunk(
 )
 async def finish(
     session_id: str,
-    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge."""
