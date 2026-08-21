@@ -25,13 +25,12 @@ from app.services.internalization_room.coverage_events import necklace_with_touc
 async def team_necklace(db: AsyncSession, *, team_id: str, pericope: str) -> list[ElementCoverage]:
     """Every element of one passage, as this team stands on it, in the canon's bead order.
 
-    Raises `NotFoundError` when the passage has no labels written. The canon serves all
-    fourteen of Ruth and the pilot has written labels for four, so a facilitator reaching P03
-    through the Desk's selector has made a **well-formed** request for a representation this
-    deploy cannot produce. `ValidationError` — which is answered 400 — would blame the caller
-    for our gap and send somebody to debug their own code. Serving the bead with an empty
-    label would be worse still: it puts `preserved:R3` in front of a facilitator, which is
-    the one outcome the label catalogue exists to prevent.
+    Raises `NotFoundError` for a passage name the canon never had. That is the only refusal
+    left here: a passage the pilot has not translated is **served**, from the canon, with
+    `label_pt` and `label_es` absent — ENG-442's decision, and the reason this no longer
+    refuses P03. Answering it 400 instead would blame the caller for a name the book does not
+    hold being indistinguishable from a name it does; 404 is the same word the team gate uses
+    above it, which is what keeps a stranger from telling the two apart.
 
     A catalogue that is present but holed stays `ElementLabelsBroken` and stays a 500. That
     is our file being wrong, not this passage being outside the pilot, and the two must not

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-import enum
 from collections.abc import Iterable
+from enum import StrEnum
 
+#: Re-exported so `_RANK` below reads beside the values it ranks. Defined in `core`
+#: because `app/models` needs it too — see `app/core/room_enums.py`.
+from app.core import room_enums
+from app.core.room_enums import CoverageStatus
 from app.services.internalization_room.canon.elements import (
     Element,
     ElementKind,
@@ -10,20 +14,47 @@ from app.services.internalization_room.canon.elements import (
     elements_for,
 )
 
-
-class CoverageStatus(enum.StrEnum):
-    NOT_ENCOUNTERED = "not_encountered"
-    SURFACED = "surfaced"
-    PARTIALLY_ENGAGED = "partially_engaged"
-    ENGAGED = "engaged"
-
-
 _RANK = {
     CoverageStatus.NOT_ENCOUNTERED: 0,
     CoverageStatus.SURFACED: 1,
     CoverageStatus.PARTIALLY_ENGAGED: 2,
     CoverageStatus.ENGAGED: 3,
 }
+
+
+def unranked(rank: dict, canonical: type[StrEnum]) -> set[str]:
+    """The states `canonical` holds that `rank` does not — by value, not by identity.
+
+    By value because the two may be different class objects and still mean the same scale,
+    which is exactly the case worth catching.
+    """
+    return {state.value for state in canonical} - {getattr(key, "value", key) for key in rank}
+
+
+#: A state that reaches the enum without reaching `_RANK` is the one failure on this path that
+#: cannot be seen. `case(_RANK_OF, value=..., else_=0)` teaches the scale to SQL, and an
+#: unranked value lands on 0 — `not_encountered` — so every partially engaged bead would come
+#: back from the database as never touched, the passage would un-close itself, and nothing
+#: would be red. `ir_coverage_events.status` is a `String(32)` on purpose, so the schema does
+#: not object either.
+#:
+#: The `else_` is not the place to fix it: SQL has no way to raise from inside a `CASE`, and
+#: `else_=NULL` lands identically, because `MAX` ignores nulls and a missing bead already reads
+#: as `not_encountered`. The defence belongs where the map is built, which is here.
+#:
+#: **Compared against `app.core.room_enums` by name, and that is the whole decision.** Checking
+#: against whichever `CoverageStatus` is in local scope does not bite: a merge resolution that
+#: leaves a three-state class shadowing the shared four-state one shadows this map with it, so
+#: both sides carry three, set equality holds, and `partially_engaged` quietly ranks 0.
+#: Measured — see `tests/test_coverage_rank_covers_the_scale.py`, which keeps the version that
+#: cannot fail beside the one that can.
+_UNRANKED = unranked(_RANK, room_enums.CoverageStatus)
+if _UNRANKED:
+    raise RuntimeError(
+        "coverage states with no rank: "
+        + ", ".join(sorted(_UNRANKED))
+        + " — unranked states read back from the database as not_encountered"
+    )
 
 
 def ranks() -> dict[str, int]:

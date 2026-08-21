@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-import enum
 import re
 import unicodedata
 from functools import lru_cache
 
 from pydantic import BaseModel
 
+#: Re-exported so a reader of `elements_of` sees the values it builds on without leaving
+#: the file. It is defined in `core` because `app/models` needs it too, and a DTO module
+#: importing this package would run its `__init__` and close an import cycle.
+from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon.book_material import preservation_rules
 from app.services.internalization_room.canon.parse_map import Entity, MeaningMap, load_map
-
-
-class ElementKind(enum.StrEnum):
-    SCENE = "scene"
-    BEING = "being"
-    PLACE = "place"
-    OBJECT = "object"
-    TIME = "time"
-    ABSENCE = "absence"
-    PRESERVED = "preserved"
 
 
 class Element(BaseModel):

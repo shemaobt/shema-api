@@ -27,11 +27,7 @@ from app.services.internalization_room.prepare_opening import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
-from app.services.internalization_room.sessions import (
-    DEFAULT_PERICOPE,
-    book_of,
-    is_panorama,
-)
+from app.services.internalization_room.sessions import book_of, is_panorama
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
@@ -89,7 +85,7 @@ async def create_session(
 ) -> SessionStateResponse:
     session = await room.create_session(
         db,
-        pericope=payload.pericope or DEFAULT_PERICOPE,
+        pericope=payload.pericope,
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
     )

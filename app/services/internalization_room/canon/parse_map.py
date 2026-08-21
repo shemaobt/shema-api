@@ -12,6 +12,8 @@ from app.core.exceptions import ValidationError
 VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
 
+ROOM_BOOK = "Ruth"
+
 CONSUMABLE_STATUS = "complete"
 SUPPORTED_GENRE_GROUPS = frozenset({"NARRATIVE"})
 

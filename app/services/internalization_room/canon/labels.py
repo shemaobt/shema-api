@@ -27,21 +27,17 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from app.core.exceptions import ValidationError
 from app.models.internalization_room import CoverageLegend, LabelledElement
-from app.services.internalization_room.canon.elements import ElementKind, elements_for
+from app.services.internalization_room.canon.elements import Element, ElementKind, elements_for
 from app.services.internalization_room.coverage import CoverageStatus
 
 LABELS_DIR = Path(__file__).parent / "element-labels"
 
-#: Equals, not a preference order. There is no fallback language and no branch that reaches
-#: for one: a missing label is refused, because the alternative is an ALL_CAPS identifier or
-#: an English sentence in front of a facilitator who does not read English.
+#: Equals, not a preference order. Within a passage that has a catalogue entry there is no
+#: fallback language and no branch that reaches for one: a hole is refused, because the
+#: alternative is an ALL_CAPS identifier or an English sentence in front of a facilitator who
+#: does not read English.
 LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
-
-#: What the pilot needs. Anything outside is refused rather than answered in the canon's
-#: own English, which is the silent fallback this module exists to make impossible.
-TRANSLATED_PERICOPES: frozenset[str] = frozenset({"P01", "P02", "P05", "P14"})
 
 #: Coverage states named here before they exist in `CoverageStatus`. Empty, and that is the
 #: resting state: a name belongs here only while its label is written and its enum value is
@@ -77,19 +73,24 @@ def labelled_elements(
 ) -> list[LabelledElement]:
     """The passage's beads in bead order, each named in every language.
 
-    Raises `ElementLabelsBroken` naming the pericope, the key and the language rather than
-    answering a hole, and `ValidationError` for the one refusal that is about the request:
-    a pericope nobody has translated.
+    A passage with a catalogue entry is answered from it, whole: a hole raises
+    `ElementLabelsBroken` naming the pericope, the key and the language rather than being
+    filled in. A passage without one is answered from the canon — see `_from_the_canon`.
+
+    **Which passages are translated is asked of the catalogue and never listed here.** A list
+    beside it would be the same fact written twice, and it could only drift in the direction
+    that hurts: the day somebody writes a passage into `ruth.json` and forgets the list, the
+    translation sits there unread while the canon answers, which is the silent fallback this
+    module exists to prevent — and nothing anywhere would go red.
+
+    `ValidationError` is left for the one refusal that is genuinely about the request: a
+    pericope this book does not have, which `elements_for` raises from the canon.
     """
-    if pericope_num not in TRANSLATED_PERICOPES:
-        raise ValidationError(f"{pericope_num} has no element labels; it is not in the pilot")
-
-    catalogue = _catalogue(catalogue_dir, book)
-    for_passage = catalogue.get(pericope_num)
-    if for_passage is None:
-        raise ElementLabelsBroken(f"{pericope_num} has no element labels in {book}")
-
     elements = elements_for(pericope_num, book)
+    for_passage = _catalogue(catalogue_dir, book).get(pericope_num)
+    if for_passage is None:
+        return [_from_the_canon(element) for element in elements]
+
     served = {element.key for element in elements}
     orphans = sorted(set(for_passage) - served)
     if orphans:
@@ -109,6 +110,42 @@ def labelled_elements(
         )
         for element in elements
     ]
+
+
+def _from_the_canon(element: Element) -> LabelledElement:
+    """A bead of a passage nobody has translated, named as well as it can honestly be.
+
+    Reached when the catalogue has no entry for this passage. English comes almost free from
+    the canon — §7 says so — so `Element.label` is the English, and Portuguese and Spanish are
+    **absent**. Filling them with the English would put a
+    sentence a facilitator does not read in front of them under the name of their own
+    language, which is the silent fallback this module exists to prevent; leaving them null
+    is the Desk's own `CoverageLabels` shape and draws as a missing translation.
+
+    **The declared limit, and it is not small.** This module promises that no preservation
+    rule shows an ALL_CAPS technical key in any language, and that promise holds for a
+    passage the catalogue has and for no other.
+
+    Measured over the ten passages it does not have, 264 beads: six of the seven kinds carry
+    the canon's `Hebrew / English` in `label_en` — 178 of 264 — and only `scene` comes
+    through clean. Most of that is cosmetic: `נָעֳמִי / Naomi` **contains** the name a
+    facilitator reads. The two that genuinely hurt are the two with no name in them at all:
+    `preserved`, which is `KIND: note` and is ALL_CAPS in 18 of 18, and `absence`, which is a
+    paragraph in 30 of 30.
+
+    Refusing instead would take a whole session history down for one conversation, which is
+    worse — so the gap is declared, and asserted in
+    `tests/test_internalization_room_element_labels.py` so it cannot go stale in silence. It
+    closes when a translator reaches those ten passages.
+    """
+    return LabelledElement(
+        key=element.key,
+        kind=element.kind,
+        scene=element.scene,
+        label_pt=None,
+        label_en=element.label,
+        label_es=None,
+    )
 
 
 def legend(*, catalogue_dir: Path = LABELS_DIR) -> CoverageLegend:
