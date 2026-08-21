@@ -20,6 +20,9 @@ class Project(Base):
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     location_display_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    journey_id: Mapped[str | None] = mapped_column(
+        ForeignKey("journeys.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
