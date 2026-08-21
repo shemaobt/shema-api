@@ -208,6 +208,13 @@ def test_both_windows_are_declared_at_thirty_seconds():
     of two reads per user per minute, against a withdrawal that lands in half a minute. The
     two caches are asserted together: they are read on the same request, and a window that
     is short on one and long on the other is only as short as the longer one.
+
+    Read off the cache objects rather than off ``AUTH_CACHE_TTL_SECONDS``, and the private
+    name is the point rather than a compromise: **the public constant does not prove the
+    property**. Asserting a constant against itself passes on the day somebody declares it
+    and forgets to wire it — which is the easiest version of this case to write and the one
+    that guards least. What has to be true is that the caches *carry* the window, and the
+    only place that is observable is the objects doing the carrying.
     """
     assert (auth_cache._roles_cache.ttl, auth_cache._user_cache.ttl) == (30, 30), (
         "a janela dos caches de autenticacao mudou sem passar por aqui"
