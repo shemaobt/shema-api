@@ -270,7 +270,7 @@ async def test_the_gate_does_not_re_read_the_role_tables_on_every_request(
     """What the gate costs, on ten routes, six of them the room's.
 
     `require_app_access` — the gate this slice replaced — reads a user's roles once and
-    keeps them for five minutes. `require_role` asked `has_role`, which is three reads in
+    keeps them for one cache window. `require_role` asked `has_role`, which is three reads in
     a row: the app, then the role, then the grant. Tightening the door is not a licence to
     make every screen pay three round trips for it, and a facilitator opens screens with a
     team waiting in the room.
