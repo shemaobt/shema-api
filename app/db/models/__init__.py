@@ -21,6 +21,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.device import Device
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -83,6 +84,7 @@ __all__ = [
     "BibleBook",
     "BookContextDocument",
     "ChatMessageRole",
+    "Device",
     "GranularityLevel",
     "Language",
     "MeaningMap",
