@@ -14,10 +14,9 @@ closing that at one door and leaving it open at another closes nothing.
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_middleware import get_current_user
+from app.api.facilitator._deps import FacilitatorUser
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
-from app.db.models.auth import User
 from app.models.device import TeamDeviceResponse
 from app.models.internalization_room import ElementCoverage
 from app.services.device.list_team_devices import list_team_devices
@@ -32,8 +31,8 @@ TEAM_NOT_FOUND = "Team not found"
 @facilitator_teams_router.get("/{team_id}/devices", response_model=list[TeamDeviceResponse])
 async def list_team_devices_route(
     team_id: str,
+    user: FacilitatorUser,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
 ) -> list[TeamDeviceResponse]:
     """The devices linked to this team. A team with none answers with an empty list."""
     if not await facilitates_project(db, user, team_id):
