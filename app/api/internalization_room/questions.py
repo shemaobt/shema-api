@@ -33,6 +33,7 @@ from app.services.internalization_room.voice_handles import (
     from_question_handle,
     team_audio_url,
 )
+from app.utils.stored_time import as_utc
 
 router = APIRouter()
 
@@ -265,7 +266,13 @@ def _team_of(question: IRQuestion) -> str:
 
 
 def _stamp(moment: datetime | None) -> str:
-    return moment.isoformat() if moment else ""
+    """The moment the hand went up, saying which clock it is on.
+
+    Bare, the digits are read as local by whoever receives them. Near midnight that moves
+    the **day**: 01:00 UTC on the 21st is 22:00 on the 20th in this product's own timezone,
+    so a queue served without the offset dates a question to a day it did not happen on.
+    """
+    return as_utc(moment).isoformat() if moment else ""
 
 
 def _moment(when: datetime | None) -> str | None:

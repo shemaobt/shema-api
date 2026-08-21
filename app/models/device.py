@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.db.models.device import Device
+from app.utils.stored_time import as_utc
 
 
 @dataclass(frozen=True)
@@ -84,12 +85,18 @@ class TeamDeviceResponse(BaseModel):
 
     @classmethod
     def of(cls, device: Device) -> "TeamDeviceResponse":
-        """One row, built the same way wherever it is answered from."""
+        """One row, built the same way wherever it is answered from.
+
+        Both moments go through `as_utc` because `DateTime(timezone=True)` reads back naive on
+        SQLite, and a naive value serialises with no offset. Bare, the digits are read as local
+        by whoever receives them — near midnight that moves the **day**, so the panel would
+        date a tablet's last activity to a day it was not used.
+        """
         return cls(
             device_id=device.id,
             label=device.label,
-            linked_at=device.claimed_at,
-            last_seen_at=device.last_seen_at,
+            linked_at=as_utc(device.claimed_at) if device.claimed_at else None,
+            last_seen_at=as_utc(device.last_seen_at) if device.last_seen_at else None,
         )
 
 

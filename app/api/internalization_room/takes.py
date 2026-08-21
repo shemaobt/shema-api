@@ -23,6 +23,7 @@ from app.services.internalization_room.takes import (
     take_for_facilitator,
     takes_of,
 )
+from app.utils.stored_time import as_utc
 
 router = APIRouter()
 
@@ -39,7 +40,7 @@ def _view(take: IRTake) -> TakeResponse:
         chunk_index=take.chunk_index,
         pass_number=take.pass_number,
         pericope=take.pericope,
-        recorded_at=take.created_at.isoformat() if take.created_at else "",
+        recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",
     )
 
 
