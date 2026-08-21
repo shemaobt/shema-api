@@ -35,6 +35,26 @@ def test_a_ready_line_is_handed_to_the_session_that_speaks_it() -> None:
     assert passage.prepared_audio_key == "tts/x.mp3"
 
 
+def test_the_line_is_handed_over_only_once() -> None:
+    """A second session opened after the same panorama must not be given the same opening."""
+    panorama = _session(id="ov", prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
+
+    assert hand_over(panorama, _session(id="p1")) is True
+    assert panorama.prepared_speech is None
+    assert panorama.prepared_audio_key is None
+    assert hand_over(panorama, _session(id="p2")) is False
+
+
+def test_another_passage_is_not_given_the_first_passage_line() -> None:
+    """The panorama writes ahead for P01 only; P03 would hear P01's framing as its own."""
+    panorama = _session(id="ov", prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
+    other = _session(id="p", pericope="P03")
+
+    assert hand_over(panorama, other) is False
+    assert other.prepared_speech is None
+    assert panorama.prepared_speech == "Olá."
+
+
 def test_a_panorama_still_writing_hands_over_nothing() -> None:
     """The team may enter before it is ready; then the session simply writes its own."""
     assert hand_over(_session(id="ov"), _session(id="p")) is False
@@ -66,33 +86,3 @@ async def test_a_session_with_nothing_prepared_says_so(db_session: AsyncSession)
     await db_session.commit()
 
     assert await take_prepared(db_session, session) is None
-
-
-def test_the_prepared_line_belongs_to_the_passage_it_was_written_for() -> None:
-    """It is written from one passage's meaning map, and delivered as that passage's words.
-
-    A team choosing P03 heard P01's opening as P03's framing, to people who cannot read
-    and have no way to check.
-    """
-    panorama = IRSession(id="ov", pericope="OV-Ruth")
-    panorama.prepared_speech = "a primeira fala da P01"
-    panorama.prepared_audio_key = "tts/v/p01.mp3"
-
-    outra = IRSession(id="s2", pericope="P03")
-
-    assert hand_over(panorama, outra) is False
-    assert outra.prepared_speech is None
-
-
-def test_a_prepared_line_is_handed_over_once() -> None:
-    panorama = IRSession(id="ov", pericope="OV-Ruth")
-    panorama.prepared_speech = "a primeira fala"
-    panorama.prepared_audio_key = "tts/v/p01.mp3"
-
-    first = IRSession(id="s1", pericope="P01")
-    second = IRSession(id="s2", pericope="P01")
-
-    assert hand_over(panorama, first) is True
-    assert hand_over(panorama, second) is False, (
-        "a origem nunca era limpa, então a mesma fala ia para toda sessão seguinte"
-    )
