@@ -38,7 +38,7 @@ from app.services.internalization_room.canon import labels
 from app.services.internalization_room.canon.elements import ElementKind
 from app.services.internalization_room.canon.labels import LANGUAGES, ElementLabelsBroken
 from app.services.internalization_room.coverage import CoverageStatus
-from tests.baker import make_user
+from tests.baker import grant_facilitator_app_role, make_user
 
 LEGEND_URL = "/api/facilitator/coverage-legend"
 
@@ -72,7 +72,15 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
 
 
 async def a_signed_in_caller(db: AsyncSession) -> dict[str, str]:
-    return await auth_header(db, await make_user(db, email="facilitator@example.com"))
+    """A facilitator, not merely somebody with an account.
+
+    The role is what the door asks for since ENG-438. It is granted here rather than left out
+    because these tests are about the legend; that the door refuses everyone else is
+    `test_facilitator_role_gate.py`'s subject and this route is in its table.
+    """
+    user = await make_user(db, email="facilitator@example.com")
+    await grant_facilitator_app_role(db, user.id)
+    return await auth_header(db, user)
 
 
 def _served(body: dict, group: str) -> dict[str, dict[str, str]]:
