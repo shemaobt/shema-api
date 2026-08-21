@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
-from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore
 from app.services.platform.tts import SpeechStore
 
@@ -87,14 +86,17 @@ async def answer_with_voice(
     answered_by: str,
     store: SpeechStore | None = None,
 ) -> IRQuestion:
+    """The facilitator's spoken reply, put in front of the team as something not yet heard.
+
+    A second reply supersedes the first, and the tablet only fetches what it has not heard.
+    Leaving `heard_at` set filtered the correction out forever: the facilitator realises they
+    were wrong, records the right answer, the API says "answered", and the team keeps the wrong
+    rendering with no way to learn otherwise.
+    """
     if not audio:
         raise ValidationError("A reply with no audio is not a reply")
     key = _key("resposta", question.id, audio)
     await (store or _store()).put(key, audio, AUDIO_MIME)
-    # A second reply supersedes the first, and the tablet only fetches what it has not
-    # heard. Leaving `heard_at` set filtered the correction out forever: the facilitator
-    # realises they were wrong, records the right answer, the API says "answered", and the
-    # team keeps the wrong rendering with no way to learn otherwise.
     question.heard_at = None
     question.reply_audio_key = key
     question.status = IRQuestionStatus.ANSWERED
@@ -153,26 +155,3 @@ async def mark_heard(db: AsyncSession, question: IRQuestion) -> IRQuestion:
 
 async def fetch_audio(key: str, *, store: SpeechStore | None = None) -> bytes | None:
     return await (store or _store()).get(key)
-
-
-LISTEN_MINUTES = 15
-
-
-async def listen_url(key: str, *, settings: Settings | None = None) -> str:
-    """A short-lived signed URL for a question or a reply.
-
-    The only address these ever had was the clip route, which is gated on the room key —
-    the tablet's credential. A facilitator signs in as a person and carries no room key,
-    so every play button in their queue answered 401 and the hand was dead on their side
-    as surely as it was on the team's. The takes routes already solve this by redirecting
-    to storage rather than proxying; this is the same move.
-    """
-    cfg = settings or get_settings()
-    if not cfg.gcs_platform_bucket:
-        raise ValidationError("GCS_PLATFORM_BUCKET is not configured")
-    return await generate_signed_download_url(
-        cfg.gcs_platform_bucket,
-        key,
-        expiry_minutes=LISTEN_MINUTES,
-        response_content_type=AUDIO_MIME,
-    )
