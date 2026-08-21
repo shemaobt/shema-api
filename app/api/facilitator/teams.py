@@ -30,12 +30,13 @@ from app.core.database import get_db
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.device import TeamDeviceResponse
 from app.models.internalization_room import ElementCoverage, PericopeStanding
-from app.models.team import TeamFilter, TeamListingResponse
+from app.models.team import FacilitatorTeamDetail, TeamFilter, TeamListingResponse
 from app.services.device.list_team_devices import list_team_devices
 from app.services.internalization_room.progression import active_passage, team_standing
 from app.services.internalization_room.team_coverage import team_necklace
 from app.services.project.facilitates_project import facilitates_project
 from app.services.project.list_facilitator_teams import list_facilitator_teams
+from app.services.project.read_facilitator_team import read_facilitator_team
 
 facilitator_teams_router = APIRouter()
 
@@ -60,6 +61,32 @@ async def list_teams_route(
     nothing — which is why the answer also carries whether they have any teams at all.
     """
     return await list_facilitator_teams(db, user, search=search, chosen=filter)
+
+
+@facilitator_teams_router.get("/{team_id}", response_model=FacilitatorTeamDetail)
+async def read_team_route(
+    team_id: str,
+    user: FacilitatorUser,
+    db: AsyncSession = Depends(get_db),
+) -> FacilitatorTeamDetail:
+    """One team, at the address its three panels already hang off.
+
+    It exists because of the refusal and not because of the cost. The queue answers two
+    statements for fourteen teams and two for one, so a client filtering it would pay the same
+    — what it cannot do is refuse the way ``/devices``, ``/coverage`` and ``/pericopes`` refuse.
+    Those answer 404 with an identical body whether the team is absent or merely not the
+    caller's, and an empty list answers neither, nor either of them apart from a filter that
+    happened to hide the row. The screen would make four calls and three would refuse.
+
+    It also carries the two facts a queue row must not: ``closed_total`` and
+    ``scene_the_team_is_in`` are about **one** team, and on a fourteen-row answer they would be
+    fourteen answers to a question nobody asked.
+    """
+    team = await read_facilitator_team(db, user, team_id)
+    if team is None:
+        raise NotFoundError(TEAM_NOT_FOUND)
+
+    return team
 
 
 @facilitator_teams_router.get("/{team_id}/devices", response_model=list[TeamDeviceResponse])
