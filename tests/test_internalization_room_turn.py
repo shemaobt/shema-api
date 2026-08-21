@@ -49,8 +49,11 @@ class FakeAgent:
 
 @pytest.fixture
 def patch_agent(monkeypatch: pytest.MonkeyPatch):
-    # The package re-exports the `run_turn` function, which shadows the module of the
-    # same name, so the dotted-string form of setattr would patch the function object.
+    """Swap `call_agent` for a fake inside the turn module.
+
+    The package re-exports the `run_turn` function, which shadows the module of the same
+    name, so the dotted-string form of setattr would patch the function object.
+    """
     module = sys.modules["app.services.internalization_room.run_turn"]
 
     def _install(agent: FakeAgent) -> FakeAgent:
