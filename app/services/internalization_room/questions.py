@@ -3,19 +3,28 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import httpx
 from sqlalchemy import ColumnElement, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import (
+    NotFoundError,
+    TranscriptionDefect,
+    UpstreamServiceError,
+    ValidationError,
+)
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
+from app.services.platform.audio_duration import measure_ms
 from app.services.platform.storage import GcsPlatformStore
+from app.services.platform.stt import SpeechToText, transcribe_speech
 from app.services.platform.tts import SpeechStore
 from app.services.project.facilitated_scope import (
     TEAM_NOT_FOUND,
@@ -24,7 +33,14 @@ from app.services.project.facilitated_scope import (
 )
 from app.services.project.facilitates_project import facilitates_project
 
+logger = logging.getLogger(__name__)
+
 AUDIO_MIME = "audio/mp4"
+
+#: The room is run in Portuguese, the same default the rest of `services/internalization_room`
+#: carries. A hint and not a detection request: letting the provider guess is how a
+#: Portuguese question comes back as phonetic Spanish.
+ROOM_LANGUAGE = "pt"
 
 
 def _store(settings: Settings | None = None) -> SpeechStore:
@@ -44,6 +60,7 @@ async def raise_question(
     pericope: str,
     audio: bytes,
     project_id: str | None = None,
+    element_key: str | None = None,
     store: SpeechStore | None = None,
 ) -> IRQuestion:
     """Keep what the team asked, so the knot on the necklace stands for something.
@@ -51,6 +68,17 @@ async def raise_question(
     The audio is stored before the row exists in any answerable state: a question the app
     confirmed but the server dropped is the one outcome this feature cannot have, because
     the team is told it was received and has no way to find out otherwise.
+
+    **Nothing is transcribed here.** The hand comes down as soon as the row exists, and the
+    reading of it happens afterwards, off the request — see `transcribe_for_the_desk` and
+    the task that calls it. What waits on a transcription is a team standing in a room, and
+    the transcript is not for them.
+
+    ``element_key`` is whichever bead the app says the hand went up on, and ``None`` is a
+    normal answer: no row written before ENG-447 has one and no app sends one until ENG-456.
+    ``duration_ms`` is measured here, from the bytes, and there is deliberately no parameter
+    to hand it in with. The measurement stays on the request because it is local, takes
+    milliseconds, and the card is sorted by it.
     """
     if not audio:
         raise ValidationError("A question with no audio is not a question")
@@ -63,13 +91,55 @@ async def raise_question(
         device_id=device_id,
         session_id=session_id,
         pericope=pericope,
+        element_key=element_key,
         audio_key=key,
+        duration_ms=await measure_ms(audio),
         status=IRQuestionStatus.OPEN,
     )
     db.add(question)
     await db.commit()
     await db.refresh(question)
     return question
+
+
+async def transcribe_for_the_desk(
+    db: AsyncSession, question: IRQuestion, audio: bytes, stt: SpeechToText | None = None
+) -> None:
+    """Read the question back in text, for the facilitator's eyes only.
+
+    Called off the request path, so nothing here is waited on by the room. The caller is
+    `background.transcribe_question`, which owns the database session and the last word on
+    what a failure costs.
+
+    The boundary is here: the provider is another company's machine, and the three ways it
+    fails a caller — an outage, a refused request, a connection that never opens — all mean
+    the same thing to a raised hand. The card appears with audio and no transcript, and the
+    facilitator answers it by listening, which is what they did before this column existed.
+
+    **``ValidationError`` is in that tuple deliberately, and it is not hiding a defect of
+    ours behind "the audio was bad".** Four places can raise it on this path, and none of
+    them is a mistake in this repository: an empty payload, which `raise_question` refuses
+    several lines above and a test holds; an empty language, which cannot happen because
+    `ROOM_LANGUAGE` is a constant; a missing provider key, which is a machine without the
+    tool, the same situation as a missing ffprobe and answered the same way; and a 4xx from
+    the provider, which is the provider refusing this clip. A bug of ours reaches the
+    `except` below instead.
+
+    The mime type is the one the clip was stored under rather than the one the app declared,
+    which is the same string today for every question (ENG-526).
+    """
+    try:
+        said = await (stt or transcribe_speech)(audio, language=ROOM_LANGUAGE, mime_type=AUDIO_MIME)
+    except (UpstreamServiceError, ValidationError, httpx.HTTPError):
+        logger.warning("question %s could not be transcribed", question.id, exc_info=True)
+        return
+    except Exception as defect:
+        logger.exception("question %s hit a defect on our side while transcribing", question.id)
+        raise TranscriptionDefect(question_id=question.id, status=str(question.status)) from defect
+
+    question.transcript = said or None
+    await db.commit()
+    await db.refresh(question)
 
 
 async def get_question(db: AsyncSession, question_id: str) -> IRQuestion:

@@ -105,6 +105,27 @@ class UpstreamServiceError(Exception):
     """
 
 
+class TranscriptionDefect(Exception):
+    """A mistake of ours on a transcription path — not a provider that is down.
+
+    Kept apart from `UpstreamServiceError` for the same reason that one is kept apart from
+    `ValidationError`: swallowing our own bug as if the provider were unavailable is how a
+    defect produces empty transcripts for months and nobody looks. Raised with the original
+    error as its cause and logged with a stack trace, so the difference survives in the type
+    and in the log even where the caller answers the client as if nothing had gone wrong.
+
+    It carries what the caller needs to answer without the object it could not finish
+    working on. On the room's question path that is the raised hand: the question is already
+    committed when this is raised, and a team standing in a room must not be told to record
+    it again because of a bug on our side.
+    """
+
+    def __init__(self, *, question_id: str, status: str) -> None:
+        super().__init__(f"Transcription failed on our side for {question_id}")
+        self.question_id = question_id
+        self.status = status
+
+
 class InvalidCleaningStatusError(ValidationError):
     def __init__(self, status: str) -> None:
         super().__init__(

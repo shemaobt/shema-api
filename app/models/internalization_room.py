@@ -152,6 +152,17 @@ class InboxQuestionView(BaseModel):
     a card that reaches this response always has one. Typing it nullable would ask the Desk
     to draw a case this route cannot produce.
 
+    ``element_key``, ``duration_ms`` and ``transcript`` are all nullable, and the Desk has to
+    draw a card without each of them. An element is missing on every question raised before
+    ENG-456 ships the app's half; a duration or a transcript is missing when the machine that
+    produces it failed, and the card still carries audio a facilitator can answer by playing.
+
+    **``transcript`` appears on this response and on no response the room app can read.**
+    Transcribing the team's voice *for the team* is out of scope for v1; this is the
+    facilitator's reading of a question, and it stays on their side of the wall. That is held
+    by `tests/test_ir_transcript_stays_with_the_facilitator.py`, over the set of room routes
+    rather than over any one of them.
+
     ``heard_at`` sits beside ``status`` because that is the only place it means anything: it
     answers whether the team has played the reply, which is a question about an **answered**
     card and about no other. It is null on an open one, and null again after a second reply —
@@ -174,9 +185,12 @@ class InboxQuestionView(BaseModel):
     team_id: str
     device_id: str
     pericope: str
+    element_key: str | None
     status: str
     heard_at: str | None
     audio_url: str
+    duration_ms: int | None
+    transcript: str | None
     asked_at: str
 
 
