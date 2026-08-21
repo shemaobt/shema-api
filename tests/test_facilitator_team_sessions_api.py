@@ -41,7 +41,13 @@ from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.session_end import SESSION_IDLE_LIMIT
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.baker import (
+    grant_facilitator_app_role,
+    make_language,
+    make_project,
+    make_project_user_access,
+    make_user,
+)
 
 P = "P03"
 SURFACED = CoverageStatus.SURFACED.value
@@ -84,10 +90,18 @@ async def auth_header(db: AsyncSession, user) -> dict[str, str]:
 
 
 async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
+    """Someone who facilitates this team **and** holds the room's facilitator role.
+
+    Two different things since ENG-438, and both are needed to reach the handler: the app
+    role opens the door and the project access decides which teams are theirs. That the door
+    refuses everyone else is `test_facilitator_role_gate.py`'s subject, and this route is in
+    its table.
+    """
     user = await make_user(db, email=email)
     language = await make_language(db, name=f"Lang {email}", code=email[:3])
     project = await make_project(db, language.id, name=f"Team {email}")
     await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
+    await grant_facilitator_app_role(db, user.id)
     return user, project, await auth_header(db, user)
 
 

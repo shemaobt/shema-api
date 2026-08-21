@@ -21,6 +21,7 @@ from app.services.project.grant_user_access import grant_user_access
 from app.services.project.list_facilitated_project_ids import list_facilitated_project_ids
 from app.services.project.update_user_access_role import update_user_access_role
 from tests.baker import (
+    grant_facilitator_app_role,
     make_language,
     make_organization,
     make_organization_member,
@@ -82,6 +83,7 @@ async def a_user_holding(db: AsyncSession, project, role, *, email):
     """A user linked to ``project`` with ``role``. Returns (user, auth headers)."""
     user = await make_user(db, email=email)
     await make_project_user_access(db, project.id, user.id, role=role)
+    await grant_facilitator_app_role(db, user.id)
     return user, await auth_header(db, user)
 
 
@@ -91,6 +93,7 @@ async def a_user_via_organization(db: AsyncSession, project, *, email):
     org = await make_organization(db, name=f"Org {email}", slug=email.split("@")[0])
     await make_organization_member(db, user.id, org.id)
     await make_project_organization_access(db, project.id, org.id)
+    await grant_facilitator_app_role(db, user.id)
     return user, await auth_header(db, user)
 
 
@@ -139,6 +142,7 @@ async def test_a_facilitator_reaches_the_teams_they_facilitate(client, db_sessio
     user = await make_user(db_session, email="fac@example.com")
     await make_project_user_access(db_session, first.id, user.id, role=ProjectRole.FACILITATOR)
     await make_project_user_access(db_session, second.id, user.id, role=ProjectRole.FACILITATOR)
+    await grant_facilitator_app_role(db_session, user.id)
     headers = await auth_header(db_session, user)
 
     assert (await client.get(team_devices_url(first.id), headers=headers)).status_code == 200
@@ -165,6 +169,7 @@ async def test_facilitating_one_team_and_belonging_to_another_reaches_only_the_f
         db_session, facilitated.id, user.id, role=ProjectRole.FACILITATOR
     )
     await make_project_user_access(db_session, merely_member.id, user.id, role=ProjectRole.MEMBER)
+    await grant_facilitator_app_role(db_session, user.id)
     headers = await auth_header(db_session, user)
 
     assert (await client.get(team_devices_url(facilitated.id), headers=headers)).status_code == 200
@@ -251,6 +256,7 @@ async def test_a_facilitator_with_no_teams_is_refused_like_anyone_else_not_a_spe
 ):
     team = await a_team(db_session)
     user = await make_user(db_session, email="new@example.com")
+    await grant_facilitator_app_role(db_session, user.id)
     headers = await auth_header(db_session, user)
 
     unlinked_caller = await client.get(team_devices_url(team.id), headers=headers)
@@ -365,6 +371,7 @@ async def test_a_role_the_column_already_holds_still_denies_rather_than_grants(c
     for index, stored in enumerate(["something_older", "Facilitator", " facilitator ", ""]):
         user = await make_user(db_session, email=f"legacy{index}@example.com")
         await make_project_user_access(db_session, team.id, user.id, role=stored)
+        await grant_facilitator_app_role(db_session, user.id)
         headers = await auth_header(db_session, user)
 
         answer = await client.get(team_devices_url(team.id), headers=headers)

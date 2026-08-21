@@ -1,27 +1,19 @@
 from __future__ import annotations
 
 import secrets
-from typing import Annotated
 
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.access_control import require_app_access
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError, ValidationError
-from app.db.models.auth import User
 from app.services.device.get_device_by_credential import get_device_by_credential
 
 ROOM_KEY_HEADER = "X-Room-Key"
 #: What a claimed tablet presents to say which team it belongs to. Read by the header
 #: declaration below and by the tests, so the wire name is written once.
 DEVICE_CREDENTIAL_HEADER = "X-Device-Credential"
-APP_KEY = "internalization-room"
-
-#: The person on the other end of the hand. The team never signs in — a facilitator does,
-#: and answering a question is work attributable to someone.
-CurrentUser = Annotated[User, require_app_access(APP_KEY)]
 
 
 async def require_room_key(x_room_key: str | None = Header(default=None)) -> None:
