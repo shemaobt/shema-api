@@ -5,9 +5,10 @@ the same date and applying their own idea of "a while" is how one number starts 
 with another, and the facilitator believes whichever they saw last.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from app.models.team import TeamState
+from app.utils.stored_time import as_utc
 
 #: How long a passage may go untouched before the team reads as stalled.
 #:
@@ -18,16 +19,6 @@ from app.models.team import TeamState
 #: 2026-08-20. So it is neither arbitrary nor a rule handed down from the field, and anyone
 #: replacing it is contradicting a decision, not correcting a guess.
 STALLED_AFTER = timedelta(days=21)
-
-
-def _as_utc(when: datetime) -> datetime:
-    """A stored moment, made comparable.
-
-    Postgres reads a ``timestamptz`` back aware; SQLite reads the same column back naive.
-    Comparing either against ``now`` without this raises, and it raises only on one of the
-    two databases — which is the kind of difference that ships.
-    """
-    return when if when.tzinfo is not None else when.replace(tzinfo=UTC)
 
 
 def team_state(
@@ -55,7 +46,7 @@ def team_state(
     if book_closed:
         return TeamState.COMPLETE
 
-    if last_activity_at is not None and _as_utc(last_activity_at) < now - STALLED_AFTER:
+    if last_activity_at is not None and as_utc(last_activity_at) < now - STALLED_AFTER:
         return TeamState.STALLED
 
     return TeamState.IN_PROGRESS
