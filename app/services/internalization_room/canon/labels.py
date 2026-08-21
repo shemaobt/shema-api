@@ -39,15 +39,17 @@ LABELS_DIR = Path(__file__).parent / "element-labels"
 #: does not read English.
 LANGUAGES: tuple[str, ...] = ("pt", "en", "es")
 
-#: Coverage states named here before they exist in `CoverageStatus`. Empty, and the mechanism
-#: is kept rather than deleted with its last entry: it is what lets a slice write a label for
-#: a state the enum has not grown yet, which is the ordinary case when the catalogue and the
-#: enum land in different weeks. An undeclared extra is still refused — a catalogue that
-#: quietly accepts names nobody reads is how it drifts from the enum.
-#:
-#: `partially_engaged` was the entry, written by ENG-442 ahead of ENG-441. It landed, so the
-#: set empties, which is what the case beside it was written to make happen rather than to
-#: wait for.
+#: What the pilot needs. Anything outside is refused rather than answered in the canon's
+#: own English, which is the silent fallback this module exists to make impossible.
+TRANSLATED_PERICOPES: frozenset[str] = frozenset({"P01", "P02", "P05", "P14"})
+
+#: Coverage states named here before they exist in `CoverageStatus`. Empty, and that is the
+#: resting state: a name belongs here only while its label is written and its enum value is
+#: not, and it leaves the moment the enum catches up. `partially_engaged` was the one entry,
+#: written for ENG-441 while that slice was still a sibling branch; ENG-449 is where the two
+#: met, so it left here. The set stays because the next state will need the same window, and
+#: because an *undeclared* extra is still refused — a catalogue that quietly accepts names
+#: nobody reads is how it drifts from the enum.
 PENDING_COVERAGE_STATUS: frozenset[str] = frozenset()
 
 
@@ -62,8 +64,11 @@ class ElementLabelsBroken(Exception):
     failure.
 
     Asking for a pericope nobody has translated stays a `ValidationError`: that one really
-    is about what was asked for. Whether the route answers it 400 or something softer is
-    ENG-449's to decide; what this split guarantees is that it can tell the two apart.
+    is about what was asked for. ENG-449 decided what its route answers, and the decision was
+    **404** — the canon serves all fourteen of Ruth, so reaching P03 through the Desk's
+    selector is a well-formed request for a representation this deploy cannot produce, and
+    400 would blame the caller for our gap. What this split guarantees is that a route can
+    tell that apart from a catalogue of ours being holed, which stays a 500.
     """
 
 
