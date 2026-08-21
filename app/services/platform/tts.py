@@ -165,13 +165,13 @@ async def _synthesize(
     language: str,
     cfg: Settings,
     client: httpx.AsyncClient | None,
-    model: str | None = None,
+    model: str,
     voice_settings: Mapping[str, float | bool] | None = None,
     api_key: str | None = None,
 ) -> bytes:
     body: dict[str, object] = {
         "text": text,
-        "model_id": model or cfg.elevenlabs_tts_model,
+        "model_id": model,
         "output_format": cfg.elevenlabs_output_format,
         "language_code": language_hint(language),
     }
