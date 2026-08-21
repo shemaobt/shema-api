@@ -259,3 +259,82 @@ async def test_without_an_api_key_it_is_a_configuration_error() -> None:
             client=_client(),
             store=MemoryStore(),
         )
+
+
+async def test_changing_the_tuning_does_not_serve_the_old_clip() -> None:
+    """`voice_settings` reshapes the delivery without touching text, voice or format.
+
+    Same trap as `output_format` one level down: leave the tuning out of the key and the
+    bucket answers every future request with the clip recorded under the old settings.
+    """
+    store = MemoryStore()
+    client = _client(_ok(b"firme"), _ok(b"mais-solto"))
+
+    await synthesize_speech(
+        QUESTION,
+        language="pt-BR",
+        voice_settings={"stability": 0.8},
+        settings=_settings(),
+        client=client,
+        store=store,
+    )
+    second = await synthesize_speech(
+        QUESTION,
+        language="pt-BR",
+        voice_settings={"stability": 0.4},
+        settings=_settings(),
+        client=client,
+        store=store,
+    )
+
+    assert second.cached is False
+    assert second.audio == b"mais-solto"
+    assert client.post.await_count == 2
+    assert len(store.objects) == 2
+
+
+async def test_the_tuning_key_does_not_depend_on_dict_order() -> None:
+    ordered = cache_key(
+        QUESTION,
+        voice_id="v",
+        model="m",
+        output_format="f",
+        voice_settings={"speed": 0.96, "stability": 0.45},
+    )
+    shuffled = cache_key(
+        QUESTION,
+        voice_id="v",
+        model="m",
+        output_format="f",
+        voice_settings={"stability": 0.45, "speed": 0.96},
+    )
+
+    assert ordered == shuffled
+
+
+async def test_a_caller_without_tuning_keeps_reaching_the_clips_already_stored() -> None:
+    """Clips synthesized before tuning existed must stay addressable."""
+    assert cache_key(QUESTION, voice_id="v", model="m", output_format="f") == cache_key(
+        QUESTION, voice_id="v", model="m", output_format="f", voice_settings=None
+    )
+
+
+async def test_the_room_can_bring_its_own_voice_and_model() -> None:
+    store = MemoryStore()
+    client = _client(_ok())
+
+    await synthesize_speech(
+        QUESTION,
+        language="pt-BR",
+        voice_id="83Nae6GFQiNslSbuzmE7",
+        model="eleven_turbo_v2_5",
+        settings=_settings(),
+        client=client,
+        store=store,
+    )
+
+    key = next(iter(store.objects))
+    assert key.startswith("tts/83Nae6GFQiNslSbuzmE7/eleven_turbo_v2_5/")
+    body = client.post.await_args.kwargs["json"]
+    assert body["model_id"] == "eleven_turbo_v2_5"
+    assert "83Nae6GFQiNslSbuzmE7" in client.post.await_args.args[0]

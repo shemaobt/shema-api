@@ -15,7 +15,9 @@ that evaporates on every deploy.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -39,6 +41,8 @@ class SynthesizedSpeech:
     etag: str
     #: Came from the bucket (ElevenLabs was not called).
     cached: bool
+    #: Where the clip lives. Content-addressed, so it is also a stable public handle.
+    key: str = ""
 
 
 class SpeechStore(Protocol):
@@ -49,21 +53,39 @@ class SpeechStore(Protocol):
     async def put(self, key: str, data: bytes, content_type: str) -> None: ...
 
 
-def cache_key(text: str, *, voice_id: str, model: str, output_format: str) -> str:
-    """Content-addressed key: same text + voice + model + format = same object.
+def cache_key(
+    text: str,
+    *,
+    voice_id: str,
+    model: str,
+    output_format: str,
+    voice_settings: Mapping[str, float | bool] | None = None,
+) -> str:
+    """Content-addressed key: same text + voice + model + format + tuning = same object.
 
     Every input that changes the bytes belongs here. `output_format` in particular: leave it
     out and changing the setting keeps serving the old clip in the old format forever, with
-    the hardcoded MIME_TYPE hiding the mismatch.
+    the hardcoded MIME_TYPE hiding the mismatch. `voice_settings` is the same trap one level
+    down — stability and speed reshape the delivery without touching text, voice or format.
+
+    A caller that sends no tuning keeps the original key, so clips already in the bucket stay
+    addressable.
     """
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    return f"tts/{voice_id}/{model}/{output_format}/{digest}.mp3"
+    if not voice_settings:
+        return f"tts/{voice_id}/{model}/{output_format}/{digest}.mp3"
+    canonical = json.dumps(dict(sorted(voice_settings.items())), separators=(",", ":"))
+    tuning = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+    return f"tts/{voice_id}/{model}/{output_format}/{tuning}/{digest}.mp3"
 
 
 async def synthesize_speech(
     text: str,
     *,
     language: str,
+    voice_id: str | None = None,
+    model: str | None = None,
+    voice_settings: Mapping[str, float | bool] | None = None,
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
@@ -82,22 +104,41 @@ async def synthesize_speech(
         # migrates here, the two become one.
         raise ValidationError("ELEVENLABS_API_KEY is not configured")
 
-    voice_id = resolve_voice(language)
+    voice = voice_id or resolve_voice(language)
+    chosen_model = model or cfg.elevenlabs_tts_model
     key = cache_key(
         text,
-        voice_id=voice_id,
-        model=cfg.elevenlabs_tts_model,
+        voice_id=voice,
+        model=chosen_model,
         output_format=cfg.elevenlabs_output_format,
+        voice_settings=voice_settings,
     )
     speech_store = store or _default_store(cfg)
 
     cached = await speech_store.get(key)
     if cached is not None:
-        return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True)
+        return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
 
-    audio = await _synthesize(text, voice_id=voice_id, language=language, cfg=cfg, client=client)
+    audio = await _synthesize(
+        text,
+        voice_id=voice,
+        language=language,
+        model=chosen_model,
+        voice_settings=voice_settings,
+        cfg=cfg,
+        client=client,
+    )
     await _cache_quietly(speech_store, key, audio)
-    return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False)
+    return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
+
+
+async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
+    """Read back a clip by the key `synthesize_speech` minted for it.
+
+    Content-addressed keys never point at different bytes, which is what lets the route
+    that serves them promise an immutable cache.
+    """
+    return await store.get(key)
 
 
 async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
@@ -120,16 +161,17 @@ async def _synthesize(
     language: str,
     cfg: Settings,
     client: httpx.AsyncClient | None,
+    model: str,
+    voice_settings: Mapping[str, float | bool] | None = None,
 ) -> bytes:
     body: dict[str, object] = {
         "text": text,
-        "model_id": cfg.elevenlabs_tts_model,
+        "model_id": model,
         "output_format": cfg.elevenlabs_output_format,
         "language_code": language_hint(language),
-        # ponytail: no `voice_settings` — the voice defaults are fine for a short, neutral
-        # question. The calibration knob, if speech ever sounds rushed in an interview, is
-        # `"voice_settings": {"speed": 0.9}` (useful range 0.7-1.2, default 1.0).
     }
+    if voice_settings:
+        body["voice_settings"] = dict(voice_settings)
 
     http = client or _make_client()
     response = await http.post(
