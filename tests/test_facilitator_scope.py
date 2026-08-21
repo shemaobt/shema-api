@@ -7,6 +7,12 @@ through an organization. The Desk means something narrower: a facilitator is a
 
 Behaviour 2 is the driver and it fails against the code as it stood — all three of those
 callers could claim a device into a team, list its devices, rename them and unlink them.
+
+**What this file does not cover:** whether every facilitator route has a scope check at
+all. It exercises the team and device routes it was written for, and the room's question
+and take routes were not among them — they were reachable by any facilitator until
+ENG-534. `tests/test_facilitator_scope_audit.py` asserts that over the derived set of
+routes; this one asserts that the check, where present, means the right thing.
 """
 
 import httpx
