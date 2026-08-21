@@ -5,7 +5,6 @@ from collections.abc import Iterable
 
 from app.services.internalization_room.canon.elements import (
     Element,
-    ElementKind,
     element_keys,
     elements_for,
 )
@@ -97,11 +96,3 @@ def floor_met(state: dict[str, str], pericope_num: str) -> bool:
         ):
             return False
     return True
-
-
-def absence_positions(pericope_num: str) -> list[int]:
-    return [
-        index
-        for index, element in enumerate(elements_for(pericope_num))
-        if element.kind is ElementKind.ABSENCE
-    ]
