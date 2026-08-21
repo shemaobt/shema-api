@@ -365,6 +365,14 @@ REFUSING_TEMPLATES = {
 #: shows as a row that is absent rather than a status. Checked by its own case below.
 FILTERING_TEMPLATES = {("GET", f"{DESK}/teams")}
 
+#: Routes that carry nothing of the installation at all: the answer is the same for every
+#: facilitator, so there is no scope to check and pretending to check one would be theatre.
+#:
+#: **An exemption list in a scope audit is the thing that rots it**, so membership here is
+#: not taken on trust — the case below refuses an entry whose route could name a resource.
+#: A route earns this by having no path parameter and asking for nothing but the caller.
+NOTHING_TO_SCOPE = {("GET", f"{DESK}/coverage-legend")}
+
 
 def test_the_audit_is_not_empty() -> None:
     """The guard every other case here depends on.
@@ -387,7 +395,7 @@ def test_every_facilitator_route_is_covered_by_this_audit() -> None:
     says which kind of scoping it has.
     """
     mounted = set(facilitator_routes())
-    covered = REFUSING_TEMPLATES | FILTERING_TEMPLATES
+    covered = REFUSING_TEMPLATES | FILTERING_TEMPLATES | NOTHING_TO_SCOPE
 
     assert mounted == covered, (
         "as rotas de facilitador mudaram e esta auditoria nao acompanhou — "
@@ -450,6 +458,39 @@ async def test_the_same_resources_are_reachable_by_the_team_that_owns_them(clien
         "o dono nao alcancou o proprio recurso, entao a recusa do caso anterior nao prova "
         f"escopo — prova apenas que dois ids inexistentes sao recusados igual: {refused}"
     )
+
+
+def test_a_route_exempted_from_scoping_could_not_have_been_scoped() -> None:
+    """The guard on the exemption, without which `NOTHING_TO_SCOPE` is a way out.
+
+    Every other case here proves a route scopes. This one proves the routes that claim not
+    to need it are telling the truth, because the cheapest way to make this file green is to
+    move a route into that set and the second cheapest is to mean it.
+
+    The bar is what makes "nothing to scope" true rather than asserted: a route that names
+    no resource in its path and asks for nothing but the caller has no installation data to
+    scope. Anything with a path parameter, a query parameter or a body is naming something,
+    and naming something is what a scope check is for.
+    """
+    from app.main import app
+
+    for route in app.routes:
+        key = None
+        for method in sorted(getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}):
+            if (method, route.path) in NOTHING_TO_SCOPE:
+                key = (method, route.path)
+        if key is None:
+            continue
+
+        assert "{" not in route.path, f"{key} nomeia um recurso no caminho e nao esta isenta"
+
+        dependant = route.dependant
+        named = [p.name for p in dependant.path_params + dependant.query_params]
+        assert not named, (
+            f"{key} recebe {named}, entao ha algo da instalacao a escopar — "
+            "tire-a de NOTHING_TO_SCOPE em vez de alargar a isencao"
+        )
+        assert dependant.body_params == [], f"{key} recebe um corpo e nao esta isenta"
 
 
 async def test_a_listing_route_leaves_out_the_other_teams_rows(client, db_session):

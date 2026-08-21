@@ -150,6 +150,7 @@ async def test_a_state_nobody_has_named_is_refused_rather_than_served_raw(
     class GrownStatus(enum.StrEnum):
         NOT_ENCOUNTERED = "not_encountered"
         SURFACED = "surfaced"
+        PARTIALLY_ENGAGED = "partially_engaged"
         ENGAGED = "engaged"
         NEARLY_THERE = "nearly_there"
 
