@@ -217,3 +217,22 @@ class TakeResponse(BaseModel):
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+
+
+class QuestionAudioResponse(BaseModel):
+    """Where a facilitator's browser can fetch a question's recording, and for how long.
+
+    The address is a signed URL that authenticates itself, which is what lets an
+    ``<audio>`` element — an element that sends no headers — reach the bytes at all. It is
+    returned rather than redirected to, because the redirect happened after a gate the
+    element could not pass.
+
+    ``expires_at`` is here so the Desk can ask for a fresh address instead of finding out
+    with a play that does nothing, which on that screen is indistinguishable from a
+    recording that was never made.
+    """
+
+    url: str
+    #: ISO-8601 with an offset, like every other instant this module serves. A bare local
+    #: time here would be a promise nobody can compare against their own clock.
+    expires_at: str
