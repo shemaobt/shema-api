@@ -10,12 +10,16 @@ LOCK_TIMEOUT = timedelta(hours=4)
 
 
 async def lock_bcd(db: AsyncSession, bcd: BookContextDocument, user_id: str) -> BookContextDocument:
+    """Take the single-editor lease on a document, or refuse because somebody holds it.
+
+    A lease older than ``LOCK_TIMEOUT`` is taken over. One with no moment recorded is not:
+    ``locked_at`` is nullable and an unknown age is not an expired one, so the guard lives
+    here rather than in ``as_utc`` — which is non-optional, and would spread this column's
+    nullability to four callers that cannot receive a null.
+    """
     if bcd.status not in (BCDStatus.DRAFT, BCDStatus.REVIEW):
         raise ConflictError("Can only lock a document in draft or review status.")
     if bcd.locked_by and bcd.locked_by != user_id:
-        # `locked_at` is nullable and the shared normaliser is not, so the guard stays here,
-        # beside the column that can be null. A document nobody has locked has no moment to
-        # read, which is not the same as a moment that failed to be read.
         locked_at = as_utc(bcd.locked_at) if bcd.locked_at else None
         if locked_at and (datetime.now(UTC) - locked_at) > LOCK_TIMEOUT:
             pass
