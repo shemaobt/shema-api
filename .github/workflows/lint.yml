@@ -30,6 +30,37 @@ jobs:
       - name: Run Ruff format check
         run: uv run ruff format --check .
 
+  # `ruff` and `mypy` read the source without running it, and `test` runs it through a suite
+  # whose collection order can break an import cycle by accident. Nine branches of one stack
+  # were green together while one of them could not boot, and the green was not luck — it was
+  # order: that branch's role-gate suite errored on its own and passed inside the full run.
+  #
+  # It lives here, on the junction, and not on the slice that found it. A gate protects by
+  # being in the ancestor, not by being good: the role gate ENG-438 added only ever guarded
+  # routes whose branch had ENG-438 behind them, which is why later ones were born open. The
+  # same shape, twice. From here this one reaches every line that joins.
+  boots:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite+aiosqlite:///./boot-check.db
+      JWT_SECRET_KEY: test-secret-for-ci-only
+      INNGEST_DEV: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: The application imports in a clean interpreter
+        run: uv run python -c "import app.main"
+
   mypy:
     runs-on: ubuntu-latest
     steps:
