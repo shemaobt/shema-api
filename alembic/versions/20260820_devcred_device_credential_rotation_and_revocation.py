@@ -23,7 +23,13 @@ Both are nullable, both start NULL on every existing row, and neither has a uniq
 two devices can hold no previous credential at once, and ``credential_hash`` remains the
 only column uniqueness is asserted on.
 
-Revision ID: 20260820_0003
+**The id is a word rather than the next number, for the reason
+``20260820_qcomp`` states.** This revision was ``20260820_0003`` and so was
+``20260820_0003_ir_session_ended_at`` on another branch — the same collision one level
+down, and the same silent outcome: git merges two files with one id cleanly, Alembic picks
+one, and the other never runs.
+
+Revision ID: 20260820_devcred
 Revises: 20260820_0002
 Create Date: 2026-08-20 00:00:00.000000
 """
@@ -34,8 +40,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "20260820_0003"
-down_revision: str | None = "20260820_0002"
+revision: str = "20260820_devcred"
+down_revision: str | None = "20260820_qcomp"
 branch_labels = None
 depends_on = None
 

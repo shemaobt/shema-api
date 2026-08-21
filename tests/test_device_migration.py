@@ -49,8 +49,8 @@ DEVICE_CHAIN_HEAD = "20260819_0001"
 #: them inserts a row into `apps` — a table this file never builds, because it stamps the
 #: past instead of migrating it. Stamping the room tip is the same move applied to the same
 #: kind of thing: migrations that are somebody else's subject.
-ROOM_CHAIN_TIP = "20260820_0002"
-DEVICE_COLUMNS_HEAD = "20260820_0003"
+ROOM_CHAIN_TIP = "20260820_qcomp"
+DEVICE_COLUMNS_HEAD = "20260820_devcred"
 
 #: The migration these tests are actually about: the one that creates the table.
 DEVICE_TABLE_REVISION = "20260817_0001"
