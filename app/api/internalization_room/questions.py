@@ -8,7 +8,7 @@ comes through the platform's own app access. They never see each other's routes.
 from datetime import datetime
 from hashlib import sha256
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,11 +17,12 @@ from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
     HandReplyView,
-    OpenQuestionsResponse,
-    OpenQuestionView,
+    InboxQuestionView,
+    QuestionInboxResponse,
     QuestionRaisedResponse,
 )
 from app.services.internalization_room import questions as service
@@ -101,22 +102,40 @@ async def heard(
     return {"status": "heard"}
 
 
-@router.get("/facilitator/questions", response_model=OpenQuestionsResponse)
-async def open_questions(
-    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
-) -> OpenQuestionsResponse:
-    waiting = await service.open_questions(db)
-    return OpenQuestionsResponse(
+@router.get("/facilitator/questions", response_model=QuestionInboxResponse)
+async def question_inbox(
+    user: FacilitatorUser,
+    team_id: str | None = Query(default=None),
+    status_wanted: IRQuestionStatus | None = Query(default=None, alias="status"),
+    limit: int = Query(default=service.DEFAULT_PAGE, ge=1, le=service.MAX_PAGE),
+    cursor: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> QuestionInboxResponse:
+    """The inbox, scoped to the caller's teams whether or not ``team_id`` narrows it.
+
+    Both the order and the count are the route's rather than the reader's, for the same
+    reason: the page is a cut of something larger, so what the cut kept and how much it left
+    out are only knowable here.
+    """
+    page = await service.inbox_page(
+        db, user, team_id=team_id, wanted=status_wanted, limit=limit, cursor=cursor
+    )
+    return QuestionInboxResponse(
         questions=[
-            OpenQuestionView(
+            InboxQuestionView(
                 question_id=question.id,
+                team_id=_team_of(question),
                 device_id=question.device_id,
                 pericope=question.pericope,
+                status=str(question.status),
+                heard_at=_moment(question.heard_at),
                 audio_url=facilitator_audio_url(question.audio_key),
                 asked_at=_stamp(question.created_at),
             )
-            for question in waiting
-        ]
+            for question in page.questions
+        ],
+        open_total=page.open_total,
+        next_cursor=page.next_cursor,
     )
 
 
@@ -193,6 +212,27 @@ async def _audio(handle: str) -> Response:
         headers={"Cache-Control": IMMUTABLE, "ETag": sha256(audio).hexdigest()[:32]},
     )
 
+def _team_of(question: IRQuestion) -> str:
+    """Whose question this is, which an answered card always knows.
+
+    The column is nullable and the answer's field is not, because every shape of the inbox
+    restriction drops a row that names no team. Asserted rather than branched on: there is no
+    behaviour to write for the other case, and typing the field nullable to avoid saying so
+    would hand the Desk a null it has to draw something for.
+    """
+    assert question.project_id is not None
+    return question.project_id
+
 
 def _stamp(moment: datetime | None) -> str:
     return moment.isoformat() if moment else ""
+
+
+def _moment(when: datetime | None) -> str | None:
+    """An instant that may genuinely be absent, kept absent.
+
+    Distinct from ``_stamp``, which answers ``""`` for nothing — right for a column that is
+    never null, and wrong for one that is: an empty string is a value the reader has to be
+    taught to treat as missing, and null already is missing.
+    """
+    return when.isoformat() if when else None
