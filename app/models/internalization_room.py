@@ -275,6 +275,12 @@ class InboxQuestionView(BaseModel):
     choice is the client's — this response does not make it, exactly as ``LabelledElement``
     does not.
 
+    **Nothing reads this yet, and there is no window where something reads it wrong.** The
+    Desk has no HTTP client at all — no `fetch`, no `axios`, no `/api/` anywhere in its
+    `src/`; `FacilitatorService` is a type and its only implementation is a fixture. So the
+    key this replaces was never reaching a screen either, and mapping these three onto the
+    Desk's `elementLabel` is that side's work, on the day it grows a client.
+
     All three are null together when the question named no bead, when the key is one the
     catalogue does not have, or when the pericope is outside the canon. The last two are
     other programs' input, and a lookup that raised on them would trade one unreadable card
