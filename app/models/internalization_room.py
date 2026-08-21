@@ -69,6 +69,11 @@ class BackTranslationVerdictResponse(BaseModel):
     used_fail_safe: bool = False
 
 
+class NeedsPersonResponse(BaseModel):
+    session_id: str
+    needs_person: bool
+
+
 class QuestionRaisedResponse(BaseModel):
     question_id: str
     status: str
