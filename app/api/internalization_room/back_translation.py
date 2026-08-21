@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, room_key_dep
@@ -42,8 +42,11 @@ async def add_chunk(
 
     Nothing is voiced here: the clip resuming is the acknowledgement, so this returns no audio.
 
-    The audio is kept. It already crosses the wire to be transcribed, and a back translation
-    nobody can listen to is a claim about a recording rather than the recording itself.
+    The audio is kept, and kept before anything is asked of it. It already crosses the wire to
+    be transcribed, and a back translation nobody can listen to is a claim about a recording
+    rather than the recording itself. Storing after the hearing would lose it in the two
+    moments the team re-records: a transcriber that times out raises past the store, and a
+    chunk nobody could make out returns before it.
 
     `retelling` says the team is telling one stretch back a second time after a finding.
     That is the one cycle they can repeat at will, so it is counted and capped here: past
@@ -59,16 +62,7 @@ async def add_chunk(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
-    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     state = room.back_translation_of(session)
-    if not text.strip():
-        return BackTranslationChunkResponse(
-            session_id=session.id,
-            chunks=len(state.chunks),
-            captured=False,
-            pass_number=state.retells + 1 if retelling else 1,
-        )
-
     told_again = state.retells + 1 if retelling else state.retells
     pass_number = 2 if retelling else 1
 
@@ -84,6 +78,16 @@ async def add_chunk(
         chunk_index=len(state.chunks) + 1,
         content_type=file.content_type or "audio/mp4",
     )
+
+    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+    if not text.strip():
+        return BackTranslationChunkResponse(
+            session_id=session.id,
+            chunks=len(state.chunks),
+            captured=False,
+            pass_number=pass_number,
+        )
+
     state.chunks.append(
         Chunk(
             index=len(state.chunks) + 1,
@@ -116,7 +120,6 @@ async def add_chunk(
 )
 async def finish(
     session_id: str,
-    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge."""
@@ -132,9 +135,6 @@ async def finish(
             settings=get_settings(),
         )
         if read is None:
-            # Nothing is saved: `checked` stays as it was and `analysed_chunks` does not
-            # advance, so pressing `terminei` again actually re-runs the analyst instead of
-            # serving a verdict nobody ever reached.
             raise UpstreamServiceError("a análise do contado de volta não pôde ser feita agora")
         state.findings = read
         state.analysed_chunks = len(state.chunks)
