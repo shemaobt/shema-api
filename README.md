@@ -109,6 +109,11 @@ one is enough.
 
 Secrets are stored in GCP Secret Manager (project `shemaobt-secrets`) and fetched at startup by a Docker Compose sidecar.
 
+> Bringing up the **composed API** — the integration branch, on its own port, with a database
+> of its own — is a different procedure, and it is in [RUNNING-LOCALLY.md](RUNNING-LOCALLY.md).
+> That is the one to follow when a client has to be developed against facilitator routes that
+> have not reached `main` yet.
+
 ### Prerequisites
 
 1. **Install the [gcloud CLI](https://cloud.google.com/sdk/docs/install).**

@@ -11,8 +11,9 @@ exactly where they are. `docker compose` is deliberately not used: its `containe
 
 ## 1. A worktree on the integration branch
 
+From the repository root:
+
 ```sh
-cd ~/Documents/programming/obt/shema-api
 git fetch --all --prune
 git worktree add .worktrees/subir --detach origin/integration/facilitator-api
 cd .worktrees/subir
