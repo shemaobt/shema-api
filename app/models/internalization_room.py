@@ -162,6 +162,23 @@ class InboxQuestionView(BaseModel):
     facilitator's reading of a question, and it stays on their side of the wall. That is held
     by `tests/test_ir_transcript_stays_with_the_facilitator.py`, over the set of room routes
     rather than over any one of them.
+
+    ``heard_at`` sits beside ``status`` because that is the only place it means anything: it
+    answers whether the team has played the reply, which is a question about an **answered**
+    card and about no other. It is null on an open one, and null again after a second reply —
+    ``record_reply`` clears it on purpose, so a card never says "heard" about an answer that
+    was replaced.
+
+    **A moment and not a flag, and the direction is the reason.** The Desk's own
+    ``RaisedHandState`` carries ``heardByTeam: boolean``, so a boolean is the obvious thing to
+    serve — but its header says the transport-to-domain translation belongs to its HTTP client
+    and never above it, and only one direction is lossless: *when* they heard gives *whether*
+    they heard, and whether never gives when. Serving the flag would throw away a fact the
+    column already holds and nobody recovers afterwards.
+
+    Null and not the empty string, which is where it parts from ``asked_at``: that column is
+    never null, so a blank there means nothing, and a blank here would be a value the Desk had
+    to learn to read as absent.
     """
 
     question_id: str
@@ -170,6 +187,7 @@ class InboxQuestionView(BaseModel):
     pericope: str
     element_key: str | None
     status: str
+    heard_at: str | None
     audio_url: str
     duration_ms: int | None
     transcript: str | None
