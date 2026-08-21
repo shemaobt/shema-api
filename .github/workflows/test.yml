@@ -3,14 +3,11 @@ name: Test
 on:
   pull_request:
 
-  # `integration/**` is the base every new slice is cut from, and it has no pull request of
-  # its own, so until ENG-554 nothing here ever ran on it: it sat red on `ruff format` and
-  # was fixed by whoever branched off it next. A gate protects by being in the ancestor,
-  # not by being good.
+  # See the note in `lint.yml` for why `integration/**` is here at all.
   #
-  # The filter stays this narrow on purpose. The test job costs between 6 and 56 minutes
-  # (ENG-556) and the chain is merged a step at a time, so every branch widened here is
-  # paid once per step.
+  # The narrowness of the filter is this file's own concern more than any other's: this job
+  # is the one measured between 6 and 56 minutes (ENG-556), and the chain is merged a step
+  # at a time, so every branch added here is paid once per step by the slowest job there is.
   push:
     branches:
       - 'integration/**'

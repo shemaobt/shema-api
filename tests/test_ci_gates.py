@@ -26,8 +26,10 @@ import yaml
 
 WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 
-#: The four gates ENG-554 asks for, by the file that carries them. `lint.yml` holds three
-#: of the four; nothing here assumes one file means one job.
+#: ENG-554 names four gates — lint, test, migrations, boots — and that is four names, not
+#: four jobs: `lint` is a file carrying `ruff`, `boots` and `mypy`, and the issue names
+#: `boots` separately because it is the one it most wants held. As jobs it is five, which is
+#: what a push actually costs. Keyed by file, because nothing here assumes one file is one job.
 GATES = {
     "lint.yml": {"ruff", "boots", "mypy"},
     "test.yml": {"test"},
