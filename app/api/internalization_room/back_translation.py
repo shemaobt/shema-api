@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_key_dep
+from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRPromptKey
+from app.db.models.internalization_room import IRPromptKey, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationVerdictResponse,
@@ -14,6 +14,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.back_translation import Chunk
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.takes import store_take
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
@@ -29,19 +30,39 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 async def add_chunk(
     session_id: str,
     file: UploadFile = File(...),
+    device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationChunkResponse:
     """One piece told back in the bridge language, while the team's own recording plays.
 
     Nothing is voiced here: the clip resuming is the acknowledgement, so this returns no audio.
+
+    The audio is kept, and kept before anything is asked of it. It already crosses the wire to
+    be transcribed, and a back translation nobody can listen to is a claim about a recording
+    rather than the recording itself. Storing after the hearing would lose it in the two
+    moments the team re-records: a transcriber that times out raises past the store, and a
+    chunk nobody could make out returns before it.
     """
     session = await room.get_session(db, session_id)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
-    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     state = room.back_translation_of(session)
+    await store_take(
+        db,
+        session_id=session.id,
+        device_id=device_id,
+        pericope=session.pericope,
+        kind=IRTakeKind.RETRO,
+        scope=state.scope or session.pericope,
+        audio=audio_bytes,
+        pass_number=state.pass_number,
+        chunk_index=len(state.chunks) + 1,
+        content_type=file.content_type or "audio/mp4",
+    )
+
+    text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
         return BackTranslationChunkResponse(
             session_id=session.id, chunks=len(state.chunks), captured=False

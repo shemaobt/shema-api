@@ -96,3 +96,17 @@ class OpenQuestionView(BaseModel):
 
 class OpenQuestionsResponse(BaseModel):
     questions: list[OpenQuestionView]
+
+
+class TakeResponse(BaseModel):
+    take_id: str
+    session_id: str
+    kind: str
+    scope: str
+    sha256: str
+    size_bytes: int
+
+
+class TakesResponse(BaseModel):
+    session_id: str
+    takes: list[TakeResponse]

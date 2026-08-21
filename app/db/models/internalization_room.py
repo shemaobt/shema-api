@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, Enum, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -111,4 +111,50 @@ class IRQuestion(Base):
     answered_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     heard_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class IRTakeKind(enum.StrEnum):
+    ENSAIO = "ensaio"
+    RETRO = "retro"
+
+
+_TAKE_KIND_TYPE = Enum(
+    IRTakeKind,
+    name="ir_take_kind_enum",
+    values_callable=lambda enum_cls: [m.value for m in enum_cls],
+)
+
+
+class IRTake(Base):
+    """Audio the team recorded that is the work itself, not a means to a transcript.
+
+    The conversation's audio is thrown away once it has been heard — the record there is the
+    text. These two are different: the ensaio take is the passage as the team tells it, and
+    the back-translation chunks are what a reviewer would need to hear to check the telling.
+    Losing them loses the session.
+
+    `team_id` is the seat for the login that will identify a team directly. Until it exists
+    the device is the attribution, and a row can be claimed later without a rewrite.
+    """
+
+    __tablename__ = "ir_takes"
+    __table_args__ = (
+        UniqueConstraint("session_id", "storage_key", name="uq_ir_takes_session_storage_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    device_id: Mapped[str] = mapped_column(String(64), index=True)
+    team_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    pericope: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[IRTakeKind] = mapped_column(_TAKE_KIND_TYPE)
+    scope: Mapped[str] = mapped_column(String(120))
+    pass_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_key: Mapped[str] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    crc32c: Mapped[str] = mapped_column(String(16))
+    content_type: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

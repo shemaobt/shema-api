@@ -8,10 +8,10 @@ comes through the platform's own app access. They never see each other's routes.
 from datetime import datetime
 from hashlib import sha256
 
-from fastapi import APIRouter, Depends, File, Header, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import CurrentUser, room_key_dep
+from app.api.internalization_room._deps import CurrentUser, device_dep, room_key_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
@@ -35,18 +35,7 @@ router = APIRouter()
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-async def _device(x_room_device: str | None = Header(default=None)) -> str:
-    """Which tablet is asking.
-
-    The room has no accounts, so a question is addressed to the device that raised it. The
-    app mints this once and keeps it, which is what lets an answer find the team days later.
-    """
-    if not x_room_device:
-        raise ValidationError("Missing X-Room-Device header")
-    return x_room_device
-
-
-DeviceId = Depends(_device)
+DeviceId = device_dep
 
 
 @router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[room_key_dep])
