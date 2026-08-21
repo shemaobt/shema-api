@@ -241,7 +241,6 @@ class TeamSessionResponse(BaseModel):
     coverage: list[SessionBead]
 
 
-
 class CoverageView(BaseModel):
     engaged: int
     surfaced: int
