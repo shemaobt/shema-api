@@ -85,7 +85,6 @@ async def _raise(db: AsyncSession, store: MemoryStore, **kw):
         "pericope": PERICOPE,
         "audio": recorded(),
         "store": store,
-        "stt": a_transcriber(SAID),
     }
     given.update(kw)
     return await service.raise_question(db, **given)
@@ -224,8 +223,36 @@ async def test_a_question_that_names_no_element_is_still_a_question(
     assert question.status is IRQuestionStatus.OPEN
 
 
+async def test_raising_the_hand_never_waits_for_the_transcriber(
+    db_session: AsyncSession,
+) -> None:
+    """What the team waits on has to be what the team is waiting for.
+
+    The transcript is the Desk's, and the provider behind it is reached with a 120 s read
+    timeout. A room held still for that is a room held still for somebody else's screen.
+    """
+    reached = False
+
+    async def stt(audio: bytes, *, language: str, mime_type: str) -> str:
+        nonlocal reached
+        reached = True
+        return SAID
+
+    monkeypatched = pytest.MonkeyPatch()
+    monkeypatched.setattr(service, "transcribe_speech", stt)
+    try:
+        question = await _raise(db_session, MemoryStore())
+    finally:
+        monkeypatched.undo()
+
+    assert not reached, "a pergunta esperou pelo transcritor antes de responder"
+    assert question.transcript is None
+
+
 async def test_what_was_said_is_transcribed_and_kept(db_session: AsyncSession) -> None:
     question = await _raise(db_session, MemoryStore())
+
+    await service.transcribe_for_the_desk(db_session, question, recorded(), a_transcriber(SAID))
 
     assert question.transcript == SAID
 
@@ -244,7 +271,8 @@ async def test_a_transcription_that_fails_does_not_lose_the_question(
     async def refuses(audio: bytes, *, language: str, mime_type: str) -> str:
         raise UpstreamServiceError("Transcription request failed with status 503")
 
-    question = await _raise(db_session, store, stt=refuses)
+    question = await _raise(db_session, store)
+    await service.transcribe_for_the_desk(db_session, question, recorded(), refuses)
 
     assert question.transcript is None
     assert store.objects[question.audio_key] == recorded()
@@ -255,6 +283,10 @@ async def test_a_transcriber_that_is_broken_is_not_mistaken_for_a_provider_that_
     db_session: AsyncSession,
 ) -> None:
     """The three ways a provider fails are tolerated; a defect of ours is named and raised.
+
+    Nothing catches this in production any more — the task that calls it only logs — so what
+    the type buys is a log line that says "we broke it" instead of "they were down". That
+    difference is the only one left, which is why it is asserted here.
 
     Widening the ingest's `except` to every exception costs nothing any other case in this
     file can see, which is exactly why this one is here: a `TypeError` on this path is a
@@ -268,8 +300,10 @@ async def test_a_transcriber_that_is_broken_is_not_mistaken_for_a_provider_that_
     async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
         raise TypeError("o transcritor foi chamado errado")
 
+    question = await _raise(db_session, store)
+
     with pytest.raises(TranscriptionDefect) as raised:
-        await _raise(db_session, store, stt=broken)
+        await service.transcribe_for_the_desk(db_session, question, recorded(), broken)
 
     assert isinstance(raised.value.__cause__, TypeError)
 
@@ -283,10 +317,9 @@ async def test_a_defect_of_ours_does_not_send_the_team_back_to_the_recorder(
 ) -> None:
     """What the tablet is told when the transcription breaks on our side: the hand went up.
 
-    The team cannot read and cannot check whether the question arrived. Answering the defect
-    with a failure costs them a re-recording of something already committed, so the status
-    code is the one place the distinction is given up — it survives in the type and in the
-    log, where its reader can act on it.
+    The team cannot read and cannot check whether the question arrived, so a failure here
+    costs them a re-recording of something already committed. The reading runs after the
+    answer and reports to nobody; what it leaves behind is a row with audio and no text.
     """
     db_session.add(IRSession(id="sessao-1", pericope=PERICOPE))
     await db_session.commit()
@@ -329,7 +362,8 @@ async def test_the_inbox_serves_all_three_on_the_card(
     reader this issue is about.
     """
     team, facilitator = await a_team_and_its_facilitator(db_session)
-    await _raise(db_session, MemoryStore(), project_id=team.id, element_key=ELEMENT)
+    question = await _raise(db_session, MemoryStore(), project_id=team.id, element_key=ELEMENT)
+    await service.transcribe_for_the_desk(db_session, question, recorded(), a_transcriber(SAID))
 
     answer = await desk_client.get(INBOX, headers=await auth_header(db_session, facilitator))
 

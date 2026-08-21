@@ -62,7 +62,6 @@ async def raise_question(
     project_id: str | None = None,
     element_key: str | None = None,
     store: SpeechStore | None = None,
-    stt: SpeechToText | None = None,
 ) -> IRQuestion:
     """Keep what the team asked, so the knot on the necklace stands for something.
 
@@ -70,17 +69,16 @@ async def raise_question(
     confirmed but the server dropped is the one outcome this feature cannot have, because
     the team is told it was received and has no way to find out otherwise.
 
-    **The question is committed before anything is transcribed**, and the two commits are
-    two different promises. By the first the hand exists, is scoped to a team and is
-    answerable; the second only adds what was said. So a provider outage, a timeout or a
-    process that dies mid-transcription costs the transcript and never the question — which
-    is the acceptance criterion, and is not something a single commit around a network call
-    can offer.
+    **Nothing is transcribed here.** The hand comes down as soon as the row exists, and the
+    reading of it happens afterwards, off the request — see `transcribe_for_the_desk` and
+    the task that calls it. What waits on a transcription is a team standing in a room, and
+    the transcript is not for them.
 
     ``element_key`` is whichever bead the app says the hand went up on, and ``None`` is a
     normal answer: no row written before ENG-447 has one and no app sends one until ENG-456.
     ``duration_ms`` is measured here, from the bytes, and there is deliberately no parameter
-    to hand it in with.
+    to hand it in with. The measurement stays on the request because it is local, takes
+    milliseconds, and the card is sorted by it.
     """
     if not audio:
         raise ValidationError("A question with no audio is not a question")
@@ -101,15 +99,17 @@ async def raise_question(
     db.add(question)
     await db.commit()
     await db.refresh(question)
-
-    await _transcribe_for_the_desk(db, question, audio, stt)
     return question
 
 
-async def _transcribe_for_the_desk(
-    db: AsyncSession, question: IRQuestion, audio: bytes, stt: SpeechToText | None
+async def transcribe_for_the_desk(
+    db: AsyncSession, question: IRQuestion, audio: bytes, stt: SpeechToText | None = None
 ) -> None:
     """Read the question back in text, for the facilitator's eyes only.
+
+    Called off the request path, so nothing here is waited on by the room. The caller is
+    `background.transcribe_question`, which owns the database session and the last word on
+    what a failure costs.
 
     The boundary is here: the provider is another company's machine, and the three ways it
     fails a caller — an outage, a refused request, a connection that never opens — all mean

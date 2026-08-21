@@ -7,14 +7,14 @@ comes through the platform's own app access. They never see each other's routes.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import device_dep, room_key_dep
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError, TranscriptionDefect, ValidationError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.models.internalization_room import (
     HandRepliesResponse,
@@ -25,6 +25,7 @@ from app.models.internalization_room import (
 )
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
+from app.services.internalization_room.background import transcribe_question
 from app.services.internalization_room.voice_handles import audio_url
 
 router = APIRouter()
@@ -38,6 +39,7 @@ DeviceId = device_dep
 @router.post("/questions", response_model=QuestionRaisedResponse, dependencies=[room_key_dep])
 async def raise_question(
     session_id: str,
+    background: BackgroundTasks,
     device_id: str = DeviceId,
     element_key: str | None = Form(default=None),
     file: UploadFile = File(...),
@@ -51,30 +53,30 @@ async def raise_question(
     length the client reports is a length the client gets wrong, and nothing downstream
     could tell.
 
-    **A defect of ours while transcribing is answered as a raised hand, not as a failure.**
-    The question is already committed by then, and the tablet is held by a team standing in
-    a room who cannot read and cannot check whether it arrived: a 500 here costs them a
-    re-recording of a question that was already safe. The distinction survives where it is
-    useful — `TranscriptionDefect` is its own type and the stack trace is in the log — and
-    is given up only in the status code, which is the one place its only reader is somebody
-    who can do nothing about it.
+    **The hand comes down before anything is transcribed.** Reading the question back is
+    the Desk's business and is scheduled rather than awaited: the transcriber is another
+    company's machine behind a 120 s read timeout, and the person holding the tablet is a
+    member of a team who cannot read and cannot check whether their question arrived. They
+    would be waiting for something that is not for them.
+
+    What that costs is said where it lands: `transcribe_question` has no caller to report
+    to, so a transcriber broken for everyone is visible only as rows — audio kept, text
+    null. That is a query, and the telemetry for it is ENG-482.
     """
     audio = await file.read()
     if len(audio) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
     session = await session_service.get_session(db, session_id)
-    try:
-        question = await service.raise_question(
-            db,
-            device_id=device_id,
-            session_id=session.id,
-            project_id=session.project_id,
-            pericope=session.pericope,
-            element_key=element_key,
-            audio=audio,
-        )
-    except TranscriptionDefect as defect:
-        return QuestionRaisedResponse(question_id=defect.question_id, status=defect.status)
+    question = await service.raise_question(
+        db,
+        device_id=device_id,
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        element_key=element_key,
+        audio=audio,
+    )
+    background.add_task(transcribe_question, question_id=question.id, audio=audio)
     return QuestionRaisedResponse(question_id=question.id, status=str(question.status))
 
 
