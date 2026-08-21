@@ -23,17 +23,22 @@ credential in the tablet's hand in favour of one that only ever existed in a res
 nobody received — the dry swap again, one step further along.
 """
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.models.device import Device
 from app.services.device.credential import generate_device_credential, hash_device_credential
 
 
-def rotate_device_credential(device: Device, *, presented: str) -> str:
-    """Issue ``device`` a new credential and return it. Does not commit.
+async def rotate_device_credential(db: AsyncSession, device: Device, *, presented: str) -> str:
+    """Issue ``device`` a new credential and return it, once.
 
     ``presented`` is the credential the caller authenticated with; it keeps working until
-    the returned one is used.
+    the returned one is used. The returned string is the only copy — the row keeps hashes.
     """
     issued = generate_device_credential()
     device.previous_credential_hash = hash_device_credential(presented)
     device.credential_hash = hash_device_credential(issued)
+
+    await db.commit()
+    await db.refresh(device)
     return issued

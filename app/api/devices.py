@@ -83,7 +83,5 @@ async def rotate_own_credential(
     The credential presented keeps working until the returned one is used, so a lost
     response costs a retry rather than the room. See ``rotate_device_credential``.
     """
-    issued = rotate_device_credential(device, presented=presented)
-    await db.commit()
-    await db.refresh(device)
+    issued = await rotate_device_credential(db, device, presented=presented)
     return DeviceCredentialResponse(device_id=device.id, credential=issued)

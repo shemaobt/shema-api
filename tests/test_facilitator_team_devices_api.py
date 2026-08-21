@@ -261,6 +261,13 @@ async def test_the_label_grants_nothing_to_the_device_that_carries_it(client, db
 
 
 async def test_unlinking_a_device_makes_its_next_request_be_refused(client, db_session):
+    """403, not the 401 this asserted when it was written.
+
+    ENG-448 gives revocation a status of its own, so the tablet can tell "you were
+    unlinked" from "that string is not a credential" and forget what it holds in the first
+    case only. The refusal is the same refusal; what changed is that it says which one it
+    is. The case below reads the same way.
+    """
     _user, project, headers = await a_facilitator(db_session)
     device_id, credential = await a_linked_device(client, db_session, headers, project)
     assert (
@@ -271,10 +278,6 @@ async def test_unlinking_a_device_makes_its_next_request_be_refused(client, db_s
 
     assert unlinked.status_code in (200, 204)
     refused = await client.get(DEVICE_SELF_URL, headers={DEVICE_CREDENTIAL_HEADER: credential})
-    # 403, not the 401 this asserted when it was written: ENG-448 gives revocation a status
-    # of its own so the tablet can tell "you were unlinked" from "that string is not a
-    # credential" and forget what it holds in the first case only. The refusal is the same
-    # refusal — what changed is that it now says which one it is.
     assert refused.status_code == 403
 
 
