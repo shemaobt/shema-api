@@ -213,12 +213,16 @@ async def audio_of_a_question_this_facilitator_facilitates(
     such thing", or the refusal becomes a way to ask which handles are real.
     """
     found = (
-        await db.execute(
-            select(IRQuestion).where(
-                or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
+        (
+            await db.execute(
+                select(IRQuestion).where(
+                    or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     if found is None:
         raise NotFoundError("No such audio")
     if found.project_id is None or not await facilitates_project(db, user, found.project_id):
