@@ -112,14 +112,19 @@ async def test_a_session_opened_by_a_linked_device_carries_that_devices_project(
     assert session.project_id == project.id
 
 
-async def test_a_session_opened_with_an_unrecognised_credential_carries_no_project(
-    client, db_session
-):
-    """A credential that matches no device resolves to nothing, not to something.
+async def test_a_session_opened_with_an_unrecognised_credential_is_refused(client, db_session):
+    """An unrecognised credential is refused, not quietly ignored.
 
-    Without this, the resolver could answer with any project at all for a string it did
-    not recognise and every other test here would still pass — they only ever send a
-    credential that works, or none.
+    This case used to assert the opposite — 200, with the session carrying no project —
+    and that was right while the credential was only a hint about scoping. ENG-448 makes it
+    authentication, and the two readings cannot both hold: ignoring a credential that does
+    not resolve is exactly not authenticating by it. A caller presenting a string that
+    matches no device is told so, and does not get in on the strength of the shared key it
+    also sent.
+
+    The shared key **is** in this request deliberately. Without it the refusal would prove
+    nothing new — every request lacking both is already refused — and what is being asserted
+    here is that a bad credential is not rescued by a good key.
     """
     await a_claimed_device(db_session)
 
@@ -129,9 +134,7 @@ async def test_a_session_opened_with_an_unrecognised_credential_carries_no_proje
         json={"pericope": "OV"},
     )
 
-    assert opened.status_code == 200, opened.text
-    session = await room_sessions.get_session(db_session, opened.json()["session_id"])
-    assert session.project_id is None
+    assert opened.status_code == 401, opened.text
 
 
 # Behaviour 2 — the question inherits the session's project, it does not recompute it.

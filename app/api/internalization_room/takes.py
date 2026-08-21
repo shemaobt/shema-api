@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, room_key_dep
+from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
@@ -53,7 +53,7 @@ def _kind(raw: str) -> IRTakeKind:
 @router.post(
     "/sessions/{session_id}/takes",
     response_model=TakeResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def keep_take(
     session_id: str,
@@ -91,7 +91,7 @@ async def keep_take(
 @router.get(
     "/sessions/{session_id}/takes",
     response_model=TakesResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> TakesResponse:
     session = await room.get_session(db, session_id)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_project_dep, room_key_dep
+from app.api.internalization_room._deps import device_project_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
@@ -80,7 +80,7 @@ def _progress(session: IRSession) -> BackTranslationProgress:
     )
 
 
-@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_key_dep])
+@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_caller_dep])
 async def create_session(
     payload: CreateSessionRequest,
     background: BackgroundTasks,
@@ -105,7 +105,7 @@ async def create_session(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionStateResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
     session = await room.get_session(db, session_id)
@@ -115,7 +115,7 @@ async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> S
 @router.post(
     "/sessions/{session_id}/needs-person",
     response_model=NeedsPersonResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def ask_for_a_person(
     session_id: str, db: AsyncSession = Depends(get_db)
@@ -136,7 +136,7 @@ async def ask_for_a_person(
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def take_turn(
     session_id: str,
