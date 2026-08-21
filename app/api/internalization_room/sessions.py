@@ -18,7 +18,13 @@ from app.services.internalization_room.canon.book_material import build_book_mat
 from app.services.internalization_room.canon.elements import absence_index
 from app.services.internalization_room.coverage import counts, floor_met
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.prepare_opening import (
+    hand_over,
+    prepare_opening,
+    take_prepared,
+)
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sessions import (
     DEFAULT_PERICOPE,
     book_of,
@@ -54,6 +60,7 @@ def _state(session: IRSession) -> SessionStateResponse:
 @router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_key_dep])
 async def create_session(
     payload: CreateSessionRequest,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> SessionStateResponse:
     session = await room.create_session(
@@ -61,6 +68,12 @@ async def create_session(
         pericope=payload.pericope or DEFAULT_PERICOPE,
         after_panorama=payload.after_panorama or payload.after_session is not None,
     )
+    if payload.after_session:
+        previous = await room.get_session(db, payload.after_session)
+        if hand_over(previous, session):
+            await db.commit()
+    elif is_panorama(session.pericope):
+        background.add_task(prepare_opening, session.id)
     return _state(session)
 
 
@@ -94,6 +107,20 @@ async def take_turn(
         if len(audio_bytes) > MAX_AUDIO_BYTES:
             raise ValidationError("Audio payload exceeds 25 MB limit")
         transcript = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+
+    ready = await take_prepared(db, session) if opening else None
+    if ready is not None:
+        speech, audio_key = ready
+        outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
+        session = await room.append_exchange(db, session, team_utterance="", guide_response=speech)
+        return TurnResponse(
+            session_id=session.id,
+            audio_url=clip_url(audio_key),
+            transcript="",
+            peer_cue=outcome.peer_cue,
+            coverage=_coverage_view(session),
+            done=False,
+        )
 
     validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
     if is_panorama(session.pericope):
