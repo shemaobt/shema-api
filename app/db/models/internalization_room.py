@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import JSON, Boolean, DateTime, Enum, Index, Integer, String, Text, UniqueConstraint
@@ -63,6 +63,64 @@ class IRSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class IRCoverageEvent(Base):
+    """One step a session moved one bead forward.
+
+    ``ir_sessions.coverage_state`` stays the fast read of where a necklace stands; this is
+    how it got there. A row is written only when a merge actually changes an element, so
+    the table grows with transitions and not with turns — the classifier runs after every
+    turn and mostly reports beads that are already where it says.
+
+    ``project_id`` and ``pericope`` are copied off the session instead of joined for.
+    Element keys come from the canon: ``being:B3`` is Naomi in every project that works
+    this passage, and the same key repeats across the passages she appears in. A key alone
+    therefore does not name a bead, and the question the Desk asks of this table — which
+    session touched this one last — needs all three in one index to be a single lookup.
+
+    ``status`` holds the plain ``CoverageStatus`` value that ``coverage_state`` already
+    stores. A database enum here would give one scale two spellings, and a type to migrate
+    on both sides every time the scale grows a step.
+
+    That a session reaches a given status on a given bead once is the rule the service
+    keeps, and deliberately not a unique constraint. Two turns overlapping is ordinary —
+    the classifier for one turn is still on its round trip when the next lands, and each
+    settle runs in its own transaction — so both can read the same tracker and write the
+    same step. A constraint would refuse the second one and take that whole transaction
+    with it, losing the beads only the later settle heard: the merge would fail at the one
+    moment ``furthest`` was written for. A repeated row costs a row; the reconstruction
+    takes the furthest status per bead and cannot see it.
+
+    ``at`` is stamped in the application rather than by the database. On PostgreSQL
+    ``now()`` is the transaction's clock, so every event of one settle would carry the same
+    instant, and the order beads moved in — the thing this table exists to remember —
+    would be gone.
+    """
+
+    __tablename__ = "ir_coverage_events"
+    __table_args__ = (
+        Index("ix_ir_coverage_events_step", "session_id", "element_key", "status"),
+        Index(
+            "ix_ir_coverage_events_element_touched",
+            "project_id",
+            "pericope",
+            "element_key",
+            "at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36))
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    pericope: Mapped[str] = mapped_column(String(120))
+    element_key: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(32))
+    at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
     )
 
 
