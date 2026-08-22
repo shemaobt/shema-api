@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     google_api_key: str = ""
     google_maps_api_key: str = ""
+    recaptcha_secret_key: str = ""
     google_embedding_model: str = "gemini-embedding-001"
     google_llm_model: str = "gemini-3.1-pro-preview"
     rag_chunk_size: int = 1000
