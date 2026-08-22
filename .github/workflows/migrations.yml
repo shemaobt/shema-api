@@ -8,6 +8,28 @@ name: Migrations
 on:
   pull_request:
 
+  # See the note in `lint.yml` for why `integration/**` is here and why it stays narrow.
+  #
+  # **This job is expected to go red on that branch between certain steps, and that is not
+  # a reason to switch it off.** The chain is merged one branch at a time, and every merge
+  # that brings its own migration leaves the graph with more than one head until a merge
+  # revision collapses them. That window is a normal state of an integration branch, not a
+  # defect in it.
+  #
+  # It is not a hypothetical. On 2026-08-21 this branch stood at three heads
+  # (20260820_0003, 20260820_0004, 20260820_devcred), `alembic upgrade head` exited 255 with
+  # "Multiple head revisions are present", and the suite was 1927 green at the same moment.
+  # `20260821_join3` closed it hours later. **Read that as the shape, not as the state** —
+  # the branch moves, and a comment naming today's heads would be a lie by the next merge.
+  #
+  # The green suite next to the broken graph is the whole reason this job exists: pytest
+  # creates its tables directly and never walks the graph, so deploy would be the first
+  # thing to find out. Red here means a merge revision is owed. The answer is to land it,
+  # not to take the branch out of the filter.
+  push:
+    branches:
+      - 'integration/**'
+
 env:
   # Opt JavaScript-based actions into Node.js 24 ahead of the 2026-06-02
   # forced switch. Remove once the runner default is Node 24.

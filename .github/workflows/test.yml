@@ -3,6 +3,15 @@ name: Test
 on:
   pull_request:
 
+  # See the note in `lint.yml` for why `integration/**` is here at all.
+  #
+  # The narrowness of the filter is this file's own concern more than any other's: this job
+  # is the one measured between 6 and 56 minutes (ENG-556), and the chain is merged a step
+  # at a time, so every branch added here is paid once per step by the slowest job there is.
+  push:
+    branches:
+      - 'integration/**'
+
 env:
   # Opt JavaScript-based actions into Node.js 24 ahead of the 2026-06-02
   # forced switch. Remove once the runner default is Node 24.
