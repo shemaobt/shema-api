@@ -12,7 +12,10 @@ async def list_project_user_access(
     stmt: Select[tuple[ProjectUserAccess, User]] = (
         select(ProjectUserAccess, User)
         .join(User, ProjectUserAccess.user_id == User.id)
-        .where(ProjectUserAccess.project_id == project_id)
+        .where(
+            ProjectUserAccess.project_id == project_id,
+            User.is_platform_admin.is_(False),
+        )
         .order_by(ProjectUserAccess.granted_at)
     )
     result = await db.execute(stmt)
