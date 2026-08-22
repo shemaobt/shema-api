@@ -37,6 +37,7 @@ async def list_projects(
             latitude=p.latitude,
             longitude=p.longitude,
             location_display_name=p.location_display_name,
+            image_url=p.image_url,
             created_at=p.created_at,
             updated_at=p.updated_at,
             member_count=counts.get(p.id, 0),
