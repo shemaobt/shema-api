@@ -85,6 +85,7 @@ def _progress(session: IRSession) -> BackTranslationProgress:
         checked=state.checked,
         finding_chunk=finding.chunk if finding else None,
         finding_kind=finding.kind.value if finding else None,
+        superseded_attempts=len(state.superseded),
     )
 
 

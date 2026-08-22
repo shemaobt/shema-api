@@ -3,7 +3,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSessionStatus
-from app.services.internalization_room.back_translation import BackTranslationState, Chunk
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    Chunk,
+    Finding,
+    FindingKind,
+)
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -178,3 +183,62 @@ async def test_the_retells_are_counted_and_run_out(db_session: AsyncSession) -> 
         "contar o mesmo trecho de novo era um ciclo que ninguém limitava, e o "
         "orçamento que existia estava numa rota que o app nunca chamava"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSession) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=P,
+            chunks=[Chunk(index=1, text="Noemi mandou Rute voltar")],
+            findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
+            evidence_sufficient=False,
+            retells=2,
+        ),
+    )
+
+    fresh = await begin_back_translation_again(db_session, session)
+
+    assert fresh.chunks == []
+    assert fresh.findings == []
+    assert fresh.retells == 2
+    assert len(fresh.superseded) == 1
+    archived = fresh.superseded[0]
+    assert archived.chunks[0].text == "Noemi mandou Rute voltar"
+    assert archived.findings[0].kind is FindingKind.MISSING
+    assert not archived.evidence_sufficient
+
+
+@pytest.mark.asyncio
+async def test_restarting_an_empty_telling_back_archives_nothing(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(db_session, session, BackTranslationState(scope=P))
+
+    fresh = await begin_back_translation_again(db_session, session)
+
+    assert fresh.superseded == []
+
+
+@pytest.mark.asyncio
+async def test_two_retakes_keep_both_histories_in_order(db_session: AsyncSession) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(scope=P, chunks=[Chunk(index=1, text="primeira tentativa")]),
+    )
+    state = await begin_back_translation_again(db_session, session)
+    state.chunks.append(Chunk(index=1, text="segunda tentativa"))
+    await save_back_translation(db_session, session, state)
+
+    fresh = await begin_back_translation_again(db_session, session)
+
+    assert [attempt.chunks[0].text for attempt in fresh.superseded] == [
+        "primeira tentativa",
+        "segunda tentativa",
+    ]

@@ -47,6 +47,7 @@ class BackTranslationProgress(BaseModel):
     checked: bool = False
     finding_chunk: int | None = None
     finding_kind: str | None = None
+    superseded_attempts: int = 0
 
 
 class SessionStateResponse(BaseModel):

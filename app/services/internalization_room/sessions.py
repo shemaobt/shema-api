@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRSession, IRSessionStatus
-from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    SupersededAttempt,
+)
 from app.services.internalization_room.calibration import BridgeMode, is_selected_bridge_mode
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -215,15 +218,32 @@ async def save_back_translation(
 async def begin_back_translation_again(
     db: AsyncSession, session: IRSession
 ) -> BackTranslationState:
-    """Throw the telling-back away and start over on a freshly recorded clip.
+    """Start the telling-back over on a freshly recorded clip, archiving the old attempt.
 
     Only the re-record reaches here. Telling one stretch again does not pass through: it
     adds a chunk beside the others, and its budget is counted where that happens.
+
+    The replaced attempt is kept, clearly marked as superseded, rather than erased: its
+    chunks and findings are the history the Refine artifact carries, and the team's open
+    questions must survive their own retake.
     """
     state = back_translation_of(session)
+    superseded = list(state.superseded)
+    if state.chunks or state.findings:
+        superseded.append(
+            SupersededAttempt(
+                chunks=state.chunks,
+                findings=state.findings,
+                evidence_sufficient=state.evidence_sufficient,
+            )
+        )
+    # The retell count carries across. `BackTranslationState(scope=...)` takes every other
+    # default, so it went back to zero — and re-recording is a room-key route the team
+    # drives by voice. The budget that exists so a loop cannot be a loop was reachable by
+    # tapping "record again", which is exactly the tap a stuck team makes.
     await save_back_translation(
         db,
         session,
-        BackTranslationState(scope=state.scope, retells=state.retells),
+        BackTranslationState(scope=state.scope, retells=state.retells, superseded=superseded),
     )
     return back_translation_of(session)
