@@ -537,7 +537,7 @@ async def run_comprehension_turn(
             settings=settings,
             app_context=app_context,
             validator_context=validator_context,
-            enforce_speech_budget=True,
+            enforce_speech_budget=not opening,
         )
 
     final_probe = select_probe_after_oral_turn(
