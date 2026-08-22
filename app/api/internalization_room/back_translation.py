@@ -167,10 +167,11 @@ async def finish(
         )
         if read is None:
             raise UpstreamServiceError("a análise do contado de volta não pôde ser feita agora")
-        state.findings = read
+        state.findings = read.findings
+        state.evidence_sufficient = read.evidence_sufficient
         state.analysed_chunks = len(state.chunks)
     finding = state.current_finding
-    state.checked = finding is None
+    state.checked = finding is None and state.evidence_sufficient
 
     outcome = await room.run_verdict_turn(
         findings_text=room.findings_block(finding),
