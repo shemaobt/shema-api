@@ -88,7 +88,13 @@ from app.services.internalization_room.rehearsal_readiness import (
     resolve_rehearsal_consent,
     should_offer_recording_consent,
 )
-from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue, run_turn
+from app.services.internalization_room.run_turn import (
+    OPENING_BUDGET,
+    TURN_BUDGET,
+    TurnOutcome,
+    detects_peer_cue,
+    run_turn,
+)
 from app.services.internalization_room.sessions import comprehension_of
 
 
@@ -142,6 +148,12 @@ async def run_comprehension_turn(
     validator_prompt: str,
     settings: Settings,
 ) -> ComprehensionTurn:
+    """One comprehension turn: what was heard, what it settles, and what the room says back.
+
+    Only the session's very first line is told in two movements. A file-less POST on a session
+    that has already spoken is a re-open, and repeating the panorama there would say the whole
+    passage twice and pull the necklace apart again.
+    """
     pericope = session.pericope
     book = load_map(pericope).book
     checkpoints = list(checkpoints_for(pericope, book))
@@ -537,7 +549,8 @@ async def run_comprehension_turn(
             settings=settings,
             app_context=app_context,
             validator_context=validator_context,
-            enforce_speech_budget=not opening,
+            budget=OPENING_BUDGET if opening else TURN_BUDGET,
+            ask_for_movements=opening and not messages,
         )
 
     final_probe = select_probe_after_oral_turn(

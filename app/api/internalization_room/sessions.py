@@ -1,3 +1,6 @@
+import asyncio
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +15,7 @@ from app.models.internalization_room import (
     CreateSessionRequest,
     NeedsPersonResponse,
     SessionStateResponse,
+    SpokenSegment,
     TurnResponse,
 )
 from app.services import internalization_room as room
@@ -40,8 +44,53 @@ from app.services.internalization_room.sessions import (
     is_panorama,
 )
 from app.services.internalization_room.voice_handles import clip_url
+from app.services.platform.tts import SynthesizedSpeech
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_SEGMENT_ROLES = ("panorama", "scene")
+
+
+async def _clip_or_none(text: str) -> str | None:
+    try:
+        entry, _ = await room.synthesize_facilitator_speech(text)
+    except Exception:
+        logger.warning("A movement of the opening could not be voiced; sending it whole")
+        return None
+    return entry.key
+
+
+async def _voice_the_turn(
+    outcome: room.TurnOutcome,
+) -> tuple[SynthesizedSpeech | None, list[SpokenSegment]]:
+    """The turn's audio: the whole line, and the opening's movements beside it.
+
+    All of it at once — three short syntheses in parallel cost the wall clock of the
+    slowest, where three in a row cost the sum and the room has ninety seconds before the
+    app decides the network is gone. A movement that will not synthesize is dropped rather
+    than raised: the whole line already succeeded, and one clip is the room's own fallback.
+    """
+    if outcome.fixed_line:
+        return None, []
+
+    async def whole_line() -> SynthesizedSpeech:
+        entry, _ = await room.synthesize_facilitator_speech(outcome.speech)
+        return entry
+
+    async def movements() -> list[str | None]:
+        return list(await asyncio.gather(*(_clip_or_none(part) for part in outcome.movements)))
+
+    whole, parts = await asyncio.gather(whole_line(), movements())
+    keys = [key for key in parts if key is not None]
+    if len(keys) != len(_SEGMENT_ROLES):
+        return whole, []
+    return whole, [
+        SpokenSegment(role=role, audio_url=clip_url(key))
+        for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
+    ]
+
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
@@ -141,6 +190,33 @@ async def ask_for_a_person(
     )
 
 
+async def _say_it_again(session: IRSession) -> TurnResponse:
+    """Where the room already was, for a team walking back in.
+
+    No model, no new line, nothing appended: the last thing the Guide said, said again.
+    The synthesiser is content-addressed, so the very same words come straight back out of
+    the bucket — this costs one lookup and no waiting.
+    """
+    last = next(
+        (
+            message.get("text", "")
+            for message in reversed(session.messages or [])
+            if message.get("role") == "guide"
+        ),
+        "",
+    )
+    voiced = (await room.synthesize_facilitator_speech(last))[0] if last else None
+    return TurnResponse(
+        session_id=session.id,
+        audio_url=clip_url(voiced.key) if voiced else "",
+        transcript="",
+        peer_cue=detects_peer_cue(last),
+        coverage=_coverage_view(session),
+        done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
+        bridge_mode=session.bridge_mode,
+    )
+
+
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
@@ -152,10 +228,18 @@ async def take_turn(
     file: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
+    """One turn of the room: what the team just said goes in, the Guide's next line comes out.
+
+    An opening is the session's first line, not merely a POST without audio. The app sends an
+    audio-less turn again whenever a team walks back into a passage it left, and reading that
+    as an opening had the Guide introduce itself and lay the whole passage out a second time —
+    against a probe already waiting for a free retell, which the Validator then rejected, so
+    the room answered a returning team with a canned line.
+    """
     session = await room.get_session(db, session_id)
 
     speech_heard = HeardSpeech()
-    opening = file is None
+    opening = file is None and not (session.messages or [])
     if file is not None:
         audio_bytes = await file.read()
         if len(audio_bytes) > MAX_AUDIO_BYTES:
@@ -164,6 +248,9 @@ async def take_turn(
             audio_bytes, filename=file.filename, mime_type=file.content_type
         )
     transcript = speech_heard.text
+
+    if file is None and not opening:
+        return await _say_it_again(session)
 
     ready = await take_prepared(db, session) if opening else None
     if ready is not None:
@@ -205,7 +292,7 @@ async def take_turn(
                 book_material=build_book_material(book),
                 opening=opening,
                 settings=get_settings(),
-                enforce_speech_budget=not opening,
+                budget=room.OPENING_BUDGET if opening else room.TURN_BUDGET,
             )
             if (
                 opening
@@ -227,11 +314,7 @@ async def take_turn(
         session = await room.set_bridge_mode(db, session, turn.bridge_mode)
         session = await room.save_comprehension(db, session, turn.state)
 
-    voiced = (
-        None
-        if outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(outcome.speech))[0]
-    )
+    voiced, segments = await _voice_the_turn(outcome)
     session = await room.append_exchange(
         db,
         session,
@@ -258,4 +341,5 @@ async def take_turn(
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         bridge_mode=session.bridge_mode,
+        segments=segments,
     )
