@@ -10,6 +10,7 @@ from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationRestartResponse,
     BackTranslationVerdictResponse,
+    FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.back_translation import Chunk
@@ -127,6 +128,7 @@ async def add_chunk(
 )
 async def finish(
     session_id: str,
+    payload: FinishBackTranslationRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge.
@@ -142,6 +144,10 @@ async def finish(
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
+    if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
+        state.played_ranges = payload.played_ranges
+        state.clip_duration_ms = payload.clip_duration_ms
+        await room.save_back_translation(db, session, state)
 
     if not state.chunks:
         _, line = choose(

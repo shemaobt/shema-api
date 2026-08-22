@@ -101,6 +101,18 @@ class BackTranslationChunkResponse(BaseModel):
     needs_person: bool = False
 
 
+class FinishBackTranslationRequest(BaseModel):
+    """What the tablet actually played of the team's own recording, in milliseconds.
+
+    Optional end to end: an older app sends no body and everything behaves as before.
+    The report is evidence for the Refine artifact — the analysis itself already happens
+    only after the client let the clip run to its end.
+    """
+
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = Field(default=None, ge=0)
+
+
 class BackTranslationVerdictResponse(BaseModel):
     session_id: str
     audio_url: str = ""
