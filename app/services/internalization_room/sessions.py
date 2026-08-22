@@ -53,10 +53,16 @@ async def create_session(
     after_panorama: bool = False,
     bridge_mode: str | None = None,
 ) -> IRSession:
+    """Open a session on a passage, or on the panorama of a book.
+
+    The meaning map is loaded before anything is written, so unapproved or unsupported
+    canon is refused before a session exists. A panorama has no coverage spine and never
+    completes: it prepares the team to enter the book, and asks no retelling of them.
+    """
     pericope = resolve_pericope(pericope)
     panorama = is_panorama(pericope)
     if not panorama:
-        load_map(pericope)  # refuse unapproved or unsupported canon before a session exists
+        load_map(pericope)
     if bridge_mode is not None and not is_selected_bridge_mode(bridge_mode):
         raise ValidationError(f"Unknown bridge mode {bridge_mode!r}")
     if bridge_mode is None:
@@ -68,8 +74,6 @@ async def create_session(
         status=IRSessionStatus.IN_PROGRESS,
         messages=[],
         after_panorama=after_panorama,
-        # A panorama has no coverage spine and never completes: it prepares the team to enter
-        # the book, and asks no retelling of them.
         coverage_state={} if panorama else initial_state(pericope),
         kept_takes={},
         back_translation={},
@@ -97,15 +101,16 @@ async def append_exchange(
     team_utterance: str,
     guide_response: str,
 ) -> IRSession:
+    """Append one team/guide turn to the transcript.
+
+    A turn that lands is the proof a person came back, so it also releases
+    `NEEDS_PERSON` — nothing else ever writes `IN_PROGRESS` a second time.
+    """
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
     messages.append({"role": "guide", "text": guide_response})
     session.messages = messages
-    # A turn that lands is the proof a person came back. `NEEDS_PERSON` had no way out of
-    # itself — nothing anywhere wrote `IN_PROGRESS` a second time — so the app's resume
-    # was contradicted by the next state poll thirty seconds later, in a loop, for the
-    # rest of the session: the person arrives, the team speaks, the room halts again.
     if session.status is IRSessionStatus.NEEDS_PERSON:
         session.status = IRSessionStatus.IN_PROGRESS
     await db.commit()
@@ -118,13 +123,14 @@ async def apply_coverage(
 ) -> IRSession:
     """Store the tracker after the off-path classifier ran.
 
+    Merged against what is stored now, not written over it. The snapshot this was computed
+    from is a Gemini round trip old, and a second turn may have settled in the meantime; a
+    blind overwrite let the older reading win and darkened a bead the team had already
+    earned.
+
     Closes the session when the completion floor is met.
     """
     session = await get_session(db, session_id)
-    # Merged against what is stored now, not written over it. The snapshot this was
-    # computed from is a Gemini round trip old, and a second turn may have settled in the
-    # meantime; a blind overwrite let the older reading win and darkened a bead the team
-    # had already earned.
     session.coverage_state = furthest(
         session.coverage_state or {},
         coverage_state,

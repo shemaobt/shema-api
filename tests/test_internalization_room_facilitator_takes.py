@@ -205,8 +205,6 @@ async def test_a_reviewer_can_tell_the_stretches_apart(db_session: AsyncSession)
     not tell stretch three from stretch seven, nor a first telling from its correction.
     """
     store = MemoryStore()
-    # Stored out of reading order on purpose: a retry lands after a later stretch, and
-    # ordering by arrival alone gives the reviewer the wrong sequence.
     for index, (chunk, passe) in enumerate([(2, 2), (1, 1), (2, 1)]):
         await service.store_take(
             db_session,
