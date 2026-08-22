@@ -256,15 +256,18 @@ async def _voiced_after_validation(
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
+
+    The movement mark is cut from the draft and never from the validated speech: the Validator
+    must judge exactly the words the team will hear, and it is told to write plain speakable
+    text, so a mark left in front of it comes back either flagged or silently dropped. When the
+    Validator returns a correction instead, the boundary the Guide drew no longer describes the
+    speech, and one clip is the honest answer.
     """
     conversation = recent_conversation_block(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
 
     for attempt in range(MAX_REDRAFTS + 1):
-        # Cut the draft, never the validated speech: the Validator must judge exactly the
-        # words the team will hear, and it is told to write plain speakable text, so a mark
-        # left in front of it comes back either flagged or silently dropped.
         draft, movements = split_opening_movements(
             await _draft(
                 guide_prompt=speaker_system,
@@ -304,8 +307,6 @@ async def _voiced_after_validation(
         if verdict.get("verdict") == "pass":
             speech = draft
         elif verdict.get("verdict") == "correct":
-            # The Validator rewrote the speech, so the boundary the Guide drew no longer
-            # describes it. One clip is the honest answer.
             speech = (verdict.get("corrected_response") or "").strip()
             movements = []
 
@@ -508,9 +509,13 @@ def _redraft_note(
     session_language: str = "português",
     ceiling: SpeechBudget | None = None,
 ) -> str:
+    """What to tell a Guide whose draft did not pass, written in the session's own language.
+
+    The ceiling quoted back is the one that actually broke, not the smallest one there is:
+    telling a Guide that busted the panorama to redraft in three sentences asks for the wrong
+    turn.
+    """
     if any(issue.get("problem") == "over_speech_budget" for issue in issues):
-        # The ceiling that actually broke, not the smallest one there is: telling a Guide
-        # that busted the panorama to redraft in three sentences asks for the wrong turn.
         held = ceiling or TURN_BUDGET
         return (
             "A resposta anterior era longa demais para uma sala oral. Refaça com no "

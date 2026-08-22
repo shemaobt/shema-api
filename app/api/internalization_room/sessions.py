@@ -228,14 +228,17 @@ async def take_turn(
     file: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
+    """One turn of the room: what the team just said goes in, the Guide's next line comes out.
+
+    An opening is the session's first line, not merely a POST without audio. The app sends an
+    audio-less turn again whenever a team walks back into a passage it left, and reading that
+    as an opening had the Guide introduce itself and lay the whole passage out a second time —
+    against a probe already waiting for a free retell, which the Validator then rejected, so
+    the room answered a returning team with a canned line.
+    """
     session = await room.get_session(db, session_id)
 
     speech_heard = HeardSpeech()
-    # An opening is the session's first line, not merely a POST without audio. The app
-    # sends an audio-less turn again whenever a team walks back into a passage it left, and
-    # reading that as an opening had the Guide introduce itself and lay the whole passage
-    # out a second time — against a probe already waiting for a free retell, which the
-    # Validator then rejected, so the room answered a returning team with a canned line.
     opening = file is None and not (session.messages or [])
     if file is not None:
         audio_bytes = await file.read()

@@ -148,6 +148,12 @@ async def run_comprehension_turn(
     validator_prompt: str,
     settings: Settings,
 ) -> ComprehensionTurn:
+    """One comprehension turn: what was heard, what it settles, and what the room says back.
+
+    Only the session's very first line is told in two movements. A file-less POST on a session
+    that has already spoken is a re-open, and repeating the panorama there would say the whole
+    passage twice and pull the necklace apart again.
+    """
     pericope = session.pericope
     book = load_map(pericope).book
     checkpoints = list(checkpoints_for(pericope, book))
@@ -544,9 +550,6 @@ async def run_comprehension_turn(
             app_context=app_context,
             validator_context=validator_context,
             budget=OPENING_BUDGET if opening else TURN_BUDGET,
-            # Only the session's very first line is told in two movements. A file-less POST
-            # on a session that has already spoken is a re-open, and repeating the panorama
-            # there would say the whole passage twice and pull the necklace apart again.
             ask_for_movements=opening and not messages,
         )
 
