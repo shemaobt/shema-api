@@ -13,6 +13,16 @@ SEED_APPS = [
     ("avita", "AViTA", "https://avita.shemaywam.com"),
     ("annotation-studio", "Annotation Studio", "https://annotationstudio.shemaywam.com"),
     ("sound-necklace", "Sound Necklace", "https://soundnecklace.shemaywam.com"),
+    (
+        "resource-request-form",
+        "Resource Request Form",
+        # Provisional: the frontend's Cloud Run URL, until resourceform.shemaywam.com exists.
+        # The deterministic form (SERVICE-PROJECTNUMBER.REGION.run.app), not the hash one —
+        # the hash is assigned at service creation and would not survive a recreate.
+        # Swapping it is an UPDATE on the row, not a re-run: the seed below only fills an
+        # empty app_url, and request_password_reset builds the FE-25 email from this value.
+        "https://resource-request-form-718681737495.us-central1.run.app",
+    ),
 ]
 
 DEFAULT_ROLES = [
@@ -30,6 +40,8 @@ APP_ROLES_OVERRIDE: dict[str, list[str]] = {
     "oral-collector": ["member", "manager"],
     "annotation-studio": ["admin", "facilitator"],
     "sound-necklace": ["facilitator", "project_admin"],
+    # The role ids of resource-request-form's capabilities.ts verbatim, not a translation.
+    "resource-request-form": ["equipe", "mesa", "gestor"],
 }
 
 
