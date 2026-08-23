@@ -62,6 +62,7 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     ("POST", "/api/internalization-room/facilitator/questions/{question_id}/resolve"): {},
     ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/takes"): {},
     ("GET", "/api/internalization-room/facilitator/takes/{take_id}/audio"): {},
+    ("GET", "/api/internalization-room/facilitator/sessions/{session_id}/release"): {},
 }
 
 _PLACEHOLDER = "algum-id"

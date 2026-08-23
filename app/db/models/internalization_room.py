@@ -19,6 +19,7 @@ class IRPromptKey(enum.StrEnum):
     DRAFT_SELF_CHECK = "draft_self_check"
     BT_ANALYST = "bt_analyst"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
+    COMPREHENSION_ASSESSOR = "comprehension_assessor"
 
 
 class IRSessionStatus(enum.StrEnum):
@@ -82,6 +83,17 @@ class IRSession(Base):
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
+    )
+    bridge_mode: Mapped[str] = mapped_column(
+        String(24), default="calibration_pending", server_default="calibration_pending"
+    )
+    #: Declared with the ``server_default`` its own migration already writes. The model said
+    #: only ``default=dict``, which is Python-side and never reaches the DDL, so a table built
+    #: from the metadata got a NOT NULL column with no default and any insert that did not
+    #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
+    #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
+    comprehension: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, server_default="{}"
     )
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()

@@ -353,6 +353,12 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "absent": (f"{IR}/facilitator/takes/{absent}/audio", {}),
             "ids": (take_id, absent),
         },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/release", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/release", {}),
+            "ids": (session_id, absent),
+        },
     ]
 
 

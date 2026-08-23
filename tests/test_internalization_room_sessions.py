@@ -5,8 +5,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSessionStatus
-from app.services.internalization_room.back_translation import BackTranslationState, Chunk
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    Chunk,
+    Finding,
+    FindingKind,
+)
 from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.evidence import (
+    EvidenceMethod,
+    EvidenceObservation,
+    EvidenceResult,
+)
+from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.session_end import SessionState, end_of
 from app.services.internalization_room.sessions import (
@@ -19,6 +34,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     mark_needs_person,
     save_back_translation,
+    save_comprehension,
 )
 
 P = "P03"
@@ -78,8 +94,43 @@ async def test_coverage_settles_without_closing_a_partial_session(
 
 
 @pytest.mark.asyncio
-async def test_meeting_the_floor_closes_the_session(db_session: AsyncSession) -> None:
+async def test_the_coverage_floor_alone_no_longer_closes_the_session(
+    db_session: AsyncSession,
+) -> None:
+    """Coverage bookkeeping is participation, not comprehension — the very confusion the
+    bridge-language calibration exists to undo."""
     session = await create_session(db_session, pericope=P)
+    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+
+    session = await apply_coverage(db_session, session.id, whole)
+
+    assert session.status is IRSessionStatus.IN_PROGRESS
+
+
+def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
+    ledger = [
+        EvidenceObservation(
+            id=f"ev-{index}",
+            unit_id=checkpoint.id,
+            probe_id=f"probe-{index}",
+            method=EvidenceMethod.MICRO_TELLBACK,
+            result=EvidenceResult.DEMONSTRATED,
+        )
+        for index, checkpoint in enumerate(checkpoints_for(pericope))
+    ]
+    return ComprehensionState(
+        ledger=list(ledger),
+        practiced_scene_ids=scene_ids_for(pericope),
+        recording_consent_given=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_floor_plus_evidence_practice_and_consent_closes_the_session(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
     session = await apply_coverage(db_session, session.id, whole)
@@ -188,3 +239,62 @@ async def test_the_retells_are_counted_and_run_out(db_session: AsyncSession) -> 
         "contar o mesmo trecho de novo era um ciclo que ninguém limitava, e o "
         "orçamento que existia estava numa rota que o app nunca chamava"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSession) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=P,
+            chunks=[Chunk(index=1, text="Noemi mandou Rute voltar")],
+            findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
+            evidence_sufficient=False,
+            retells=2,
+        ),
+    )
+
+    fresh = await begin_back_translation_again(db_session, session)
+
+    assert fresh.chunks == []
+    assert fresh.findings == []
+    assert fresh.retells == 2
+    assert len(fresh.superseded) == 1
+    archived = fresh.superseded[0]
+    assert archived.chunks[0].text == "Noemi mandou Rute voltar"
+    assert archived.findings[0].kind is FindingKind.MISSING
+    assert not archived.evidence_sufficient
+
+
+@pytest.mark.asyncio
+async def test_restarting_an_empty_telling_back_archives_nothing(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(db_session, session, BackTranslationState(scope=P))
+
+    fresh = await begin_back_translation_again(db_session, session)
+
+    assert fresh.superseded == []
+
+
+@pytest.mark.asyncio
+async def test_two_retakes_keep_both_histories_in_order(db_session: AsyncSession) -> None:
+    session = await create_session(db_session, pericope=P)
+    await save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(scope=P, chunks=[Chunk(index=1, text="primeira tentativa")]),
+    )
+    state = await begin_back_translation_again(db_session, session)
+    state.chunks.append(Chunk(index=1, text="segunda tentativa"))
+    await save_back_translation(db_session, session, state)
+
+    fresh = await begin_back_translation_again(db_session, session)
+
+    assert [attempt.chunks[0].text for attempt in fresh.superseded] == [
+        "primeira tentativa",
+        "segunda tentativa",
+    ]

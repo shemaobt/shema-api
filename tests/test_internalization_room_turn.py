@@ -14,9 +14,11 @@ from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.render import render
 from app.services.internalization_room.run_turn import (
     MAX_REDRAFTS,
+    OPENING_MOVEMENT_MARK,
     coverage_status_block,
     detects_peer_cue,
     run_turn,
+    split_opening_movements,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -61,6 +63,58 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
         return agent
 
     return _install
+
+
+def test_a_marked_opening_comes_back_as_two_movements() -> None:
+    text, movements = split_opening_movements(
+        "O todo da passagem.\n[[CENA]]\nA primeira cena, e o convite."
+    )
+
+    assert movements == ["O todo da passagem.", "A primeira cena, e o convite."]
+    assert OPENING_MOVEMENT_MARK not in text
+    assert text == "O todo da passagem.\n\nA primeira cena, e o convite."
+
+
+@pytest.mark.parametrize(
+    "draft",
+    [
+        "Uma abertura inteira sem marca nenhuma.",
+        "O todo [[CENA]] e a cena na mesma linha.",
+        "O todo.\n[[CENA]]\nA cena.\n[[CENA]]\nMais uma.",
+        "\n[[CENA]]\nSó a cena, sem o todo.",
+        "Só o todo, sem a cena.\n[[CENA]]\n",
+    ],
+)
+def test_a_half_offered_structure_is_no_structure_at_all(draft: str) -> None:
+    """Fail-closed: anything but the exact shape reads as an opening told in one breath.
+
+    A structure read wrong would cut the opening in the wrong place, and the mark itself
+    must never survive into the text — the synthesiser would say it out loud.
+    """
+    text, movements = split_opening_movements(draft)
+
+    assert movements == []
+    assert "[[" not in text
+    assert OPENING_MOVEMENT_MARK not in text
+
+
+def test_the_channel_policy_is_about_conflation_not_order() -> None:
+    """The Validator invented a sequence rule and rejected the Guide in both directions.
+
+    In one session it rejected the Guide for asking the telling-back before the rehearsal
+    ("inverte o fluxo") and in the next for asking the rehearsal before the telling-back
+    ("a politica exige primeiro o relato"). The second is the inverse of the order the
+    Guide actually keeps, so both rejections spent the redrafts and dropped the room to a
+    canned line. The policy now says what it is for, and says where the order really lives
+    — the Guide's own instructions and the probe contract — so barring it from judging
+    order never reads as licence to invite a rehearsal the contract has not authorised.
+    """
+    policy = VALIDATOR[VALIDATOR.index("Keep the two evidence channels separate") :]
+    policy = policy[: policy.index("\n-")]
+
+    assert "conflation, not sequence" in policy
+    assert "evidence of the other" in policy
+    assert "still governs" in policy
 
 
 def test_render_refuses_a_prompt_with_an_unfilled_placeholder() -> None:

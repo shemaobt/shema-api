@@ -14,6 +14,7 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     analyse_telling_back,
     findings_block,
+    played_ranges_cover_clip,
     segments_block,
 )
 from app.services.internalization_room.run_turn import run_verdict_turn
@@ -85,7 +86,7 @@ def test_an_empty_telling_back_says_so_rather_than_looking_complete() -> None:
 async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> None:
     patch_analyst(json.dumps({"findings": []}))
 
-    findings = await analyse_telling_back(
+    analysis = await analyse_telling_back(
         chunks=_chunks(),
         scope=P,
         pericope_num=P,
@@ -93,7 +94,9 @@ async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> No
         settings=_settings(),
     )
 
-    assert findings == []
+    assert analysis is not None
+    assert analysis.findings == []
+    assert analysis.evidence_sufficient
 
 
 @pytest.mark.asyncio
@@ -109,7 +112,7 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
         )
     )
 
-    findings = await analyse_telling_back(
+    analysis = await analyse_telling_back(
         chunks=_chunks(),
         scope=P,
         pericope_num=P,
@@ -117,7 +120,8 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
         settings=_settings(),
     )
 
-    assert [f.kind for f in findings] == [FindingKind.MISSING, FindingKind.ADDITION]
+    assert analysis is not None
+    assert [f.kind for f in analysis.findings] == [FindingKind.MISSING, FindingKind.ADDITION]
 
 
 @pytest.mark.asyncio
@@ -131,7 +135,7 @@ async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
     """
     patch_analyst("desculpe, não consigo")
 
-    findings = await analyse_telling_back(
+    analysis = await analyse_telling_back(
         chunks=_chunks(),
         scope=P,
         pericope_num=P,
@@ -139,7 +143,7 @@ async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
         settings=_settings(),
     )
 
-    assert findings is None
+    assert analysis is None
 
 
 def test_only_one_finding_ever_reaches_the_speaker() -> None:
@@ -205,7 +209,7 @@ def test_one_more_piece_told_back_earns_a_fresh_reading() -> None:
 async def test_the_analyst_carries_the_chunk_pointer_through(patch_analyst) -> None:
     patch_analyst('{"findings":[{"kind":"missing","chunk":2,"note":"nao contaram a fome"}]}')
 
-    findings = await analyse_telling_back(
+    analysis = await analyse_telling_back(
         chunks=_chunks(),
         scope=P,
         pericope_num=P,
@@ -213,7 +217,8 @@ async def test_the_analyst_carries_the_chunk_pointer_through(patch_analyst) -> N
         settings=_settings(),
     )
 
-    assert [(f.kind, f.chunk) for f in findings] == [(FindingKind.MISSING, 2)]
+    assert analysis is not None
+    assert [(f.kind, f.chunk) for f in analysis.findings] == [(FindingKind.MISSING, 2)]
 
 
 @pytest.mark.asyncio
@@ -227,7 +232,7 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
         '{"kind":"unclear","chunk":"tres","note":"c"}]}'
     )
 
-    findings = await analyse_telling_back(
+    analysis = await analyse_telling_back(
         chunks=_chunks(),
         scope=P,
         pericope_num=P,
@@ -235,7 +240,8 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
         settings=_settings(),
     )
 
-    assert [f.chunk for f in findings] == [None, None, None]
+    assert analysis is not None
+    assert [f.chunk for f in analysis.findings] == [None, None, None]
 
 
 @pytest.mark.asyncio
@@ -249,7 +255,7 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
     monkey = pytest.MonkeyPatch()
     monkey.setattr(module, "call_agent", _explode)
     try:
-        findings = await analyse_telling_back(
+        analysis = await analyse_telling_back(
             chunks=_chunks(),
             scope=P,
             pericope_num=P,
@@ -259,7 +265,7 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
     finally:
         monkey.undo()
 
-    assert findings is None, (
+    assert analysis is None, (
         "engolir a exceção e devolver [] fazia o finish marcar checked=True: a sala "
         "dizia que a retrotradução foi conferida, fechava o colar, e a perícope saía "
         "da roda para sempre"
@@ -270,3 +276,192 @@ def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
     state = BackTranslationState(scope=P, findings=[])
 
     assert state.current_finding is None
+
+
+@pytest.mark.asyncio
+async def test_the_full_taxonomy_is_parsed(patch_analyst) -> None:
+    patch_analyst(
+        json.dumps(
+            {
+                "evidence_sufficient": True,
+                "findings": [
+                    {"kind": "meaning_change", "note": "a"},
+                    {"kind": "wrong_relation", "note": "b"},
+                    {"kind": "reordered_event", "note": "c"},
+                    {"kind": "preservation_violation", "note": "d"},
+                ],
+            }
+        )
+    )
+
+    analysis = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is not None
+    assert [f.kind for f in analysis.findings] == [
+        FindingKind.MEANING_CHANGE,
+        FindingKind.WRONG_RELATION,
+        FindingKind.REORDERED_EVENT,
+        FindingKind.PRESERVATION_VIOLATION,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_silence_finding_is_folded_into_addition(patch_analyst) -> None:
+    patch_analyst(
+        json.dumps(
+            {
+                "evidence_sufficient": True,
+                "findings": [{"kind": "silence", "note": "preencheu um silêncio"}],
+            }
+        )
+    )
+
+    analysis = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is not None
+    assert [f.kind for f in analysis.findings] == [FindingKind.ADDITION]
+
+
+@pytest.mark.asyncio
+async def test_one_malformed_finding_rejects_the_whole_reading(patch_analyst) -> None:
+    """Dropping one malformed finding could award a false clean verdict."""
+    patch_analyst(
+        json.dumps(
+            {
+                "evidence_sufficient": True,
+                "findings": [{"kind": "algo_estranho", "note": "x"}],
+            }
+        )
+    )
+
+    analysis = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is None
+
+
+@pytest.mark.asyncio
+async def test_insufficiency_must_name_its_limit(patch_analyst) -> None:
+    patch_analyst(json.dumps({"evidence_sufficient": False, "findings": []}))
+
+    analysis = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is None
+
+
+@pytest.mark.asyncio
+async def test_a_sufficient_reading_cannot_carry_an_insufficiency_finding(
+    patch_analyst,
+) -> None:
+    patch_analyst(
+        json.dumps(
+            {
+                "evidence_sufficient": True,
+                "findings": [{"kind": "insufficient_evidence", "note": "pouco"}],
+            }
+        )
+    )
+
+    analysis = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is None
+
+
+@pytest.mark.asyncio
+async def test_a_thin_telling_back_is_an_open_limit_not_a_clean_check(
+    patch_analyst,
+) -> None:
+    patch_analyst(
+        json.dumps(
+            {
+                "evidence_sufficient": False,
+                "findings": [
+                    {"kind": "insufficient_evidence", "chunk": 1, "note": "contaram muito pouco"}
+                ],
+            }
+        )
+    )
+
+    analysis = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is not None
+    assert not analysis.evidence_sufficient
+    assert analysis.findings[0].kind is FindingKind.INSUFFICIENT_EVIDENCE
+
+
+@pytest.mark.asyncio
+async def test_a_legacy_reply_without_the_sufficiency_field_still_reads(
+    patch_analyst,
+) -> None:
+    """The ir_prompts row seeded by an older deploy keeps answering in the old shape."""
+    patch_analyst(json.dumps({"findings": [{"kind": "missing", "note": "Orfa"}]}))
+
+    analysis = await analyse_telling_back(
+        chunks=_chunks(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is not None
+    assert analysis.evidence_sufficient
+    assert [f.kind for f in analysis.findings] == [FindingKind.MISSING]
+
+
+def test_contiguous_playback_covers_the_clip() -> None:
+    assert played_ranges_cover_clip([[0, 30000], [30000, 61000]], 61000)
+
+
+def test_tolerance_forgives_the_edges_but_not_a_hole() -> None:
+    assert played_ranges_cover_clip([[400, 60400]], 61000)
+    assert not played_ranges_cover_clip([[0, 20000], [24000, 61000]], 61000)
+
+
+def test_a_half_listened_clip_is_not_covered() -> None:
+    assert not played_ranges_cover_clip([[0, 30000]], 61000)
+
+
+def test_a_legacy_client_without_a_report_passes() -> None:
+    assert played_ranges_cover_clip([], None)
+    assert played_ranges_cover_clip([], 61000)
+    assert played_ranges_cover_clip([[0, 61000]], None)
+
+
+def test_an_empty_report_with_a_duration_does_not_pass() -> None:
+    assert not played_ranges_cover_clip([[5000, 5000]], 61000)

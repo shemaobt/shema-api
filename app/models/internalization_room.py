@@ -254,6 +254,28 @@ class CreateSessionRequest(BaseModel):
     after_panorama: bool = False
     #: Which panorama session preceded this one, so its prepared opening can be handed over.
     after_session: str | None = Field(default=None, max_length=36)
+    bridge_mode: str | None = Field(default=None, max_length=24)
+
+
+class BackTranslationProgress(BaseModel):
+    """Where a telling-back stopped, so a tablet can be handed it back.
+
+    The app keeps none of this across a restart — `session_id` lives only in memory — so a
+    team that left a passage part-way lost the whole retro. Everything here is already
+    stored on the session; it simply had no way out.
+    """
+
+    scope: str = ""
+    #: One entry per stretch already told, in order, with the pass it was told on. The app
+    #: draws one bead per entry.
+    passes: list[int] = Field(default_factory=list)
+    #: Where each stretch sits in the rehearsal, so the room can play one back.
+    spans: list[list[int]] = Field(default_factory=list)
+    retells: int = 0
+    checked: bool = False
+    finding_chunk: int | None = None
+    finding_kind: str | None = None
+    superseded_attempts: int = 0
 
 
 class BackTranslationProgress(BaseModel):
@@ -283,13 +305,21 @@ class SessionStateResponse(BaseModel):
     coverage: CoverageView
     done: bool
     back_translation: BackTranslationProgress = Field(default_factory=BackTranslationProgress)
+    bridge_mode: str = "calibration_pending"
+
+
+class SpokenSegment(BaseModel):
+    #: "panorama" first, then "scene" — the app replays the scene alone for "ouvir de novo".
+    role: str
+    audio_url: str
 
 
 class TurnResponse(BaseModel):
     session_id: str
-    #: Where to fetch the one line the team hears this turn, empty when `fixed_line`
-    #: names it instead. One voice, never a list — a turn that could carry several clips
-    #: is a turn someone would eventually splice, and spliced speech is audibly sewn.
+    #: Where to fetch the line the team hears this turn, empty when `fixed_line` names it
+    #: instead. Still one voice and never a splice: `segments` below can carry the same
+    #: opening pre-cut, but each clip there is synthesized whole from its own words, and
+    #: this url always holds the entire turn, so an app that ignores them loses nothing.
     audio_url: str = ""
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
@@ -299,6 +329,11 @@ class TurnResponse(BaseModel):
     used_fail_safe: bool = False
     coverage: CoverageView
     done: bool
+    bridge_mode: str = "calibration_pending"
+    #: The session's opening cut at the boundary the Guide drew itself: the whole passage
+    #: first, then the scene and its invitation. Empty on every other turn, and empty
+    #: whenever the Guide did not mark the boundary exactly where it was asked for.
+    segments: list[SpokenSegment] = Field(default_factory=list)
 
 
 class PassageView(BaseModel):
@@ -306,6 +341,8 @@ class PassageView(BaseModel):
     #: Where to fetch the line that names this passage aloud. There is no text field: the
     #: team does not read, so a passage the room cannot say is a passage it cannot offer.
     audio_url: str
+    beads: int = 0
+    absence_index: int = -1
 
 
 class BookPassagesResponse(BaseModel):
@@ -323,6 +360,18 @@ class BackTranslationChunkResponse(BaseModel):
     pass_number: int = 1
     #: True when the retells ran out. The room stops instead of buying another round.
     needs_person: bool = False
+
+
+class FinishBackTranslationRequest(BaseModel):
+    """What the tablet actually played of the team's own recording, in milliseconds.
+
+    Optional end to end: an older app sends no body and everything behaves as before.
+    The report is evidence for the Refine artifact — the analysis itself already happens
+    only after the client let the clip run to its end.
+    """
+
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = Field(default=None, ge=0)
 
 
 class BackTranslationVerdictResponse(BaseModel):

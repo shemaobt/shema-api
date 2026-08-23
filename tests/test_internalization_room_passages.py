@@ -1,7 +1,9 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
 
+from app.api.internalization_room import passages as route
 from app.core.config import get_settings
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.passage_lines import line_for
@@ -59,23 +61,45 @@ def test_the_region_never_decides_whether_a_passage_can_be_named(tag: str) -> No
     assert line_for("P01", tag)
 
 
+async def test_every_passage_arrives_with_its_necklace_already_counted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The app strings the necklace the moment the conversa opens.
+
+    Waiting for the session to be created left the team in front of a bare cord for the
+    whole round trip, so the wheel itself says how many beads each passage holds.
+    """
+    from app.api.internalization_room import passages as route
+    from app.services.internalization_room.canon.elements import element_keys
+
+    async def _instant(text: str, **_: object):
+        return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
+
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instant)
+
+    answer = await route.passages("Ruth")
+
+    for view in answer.passages:
+        assert view.beads == len(element_keys(view.pericope, book="Ruth"))
+        assert view.beads > 0
+    assert any(view.absence_index >= 0 for view in answer.passages)
+
+
 async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Fourteen round trips in a row, inside the app's ninety-second budget.
+    """Fourteen round trips in a row did not fit the app's ninety-second budget.
 
-    A cold cache — a new book, or a tuning change, which is part of the cache key — put
-    the route over it, and the room told a team on a working network that the internet
-    was gone while the server was still working.
+    A cold cache — a new book, or a tuning change, which is part of the cache key — put the
+    route over it, and the room told a team on a working network that the internet was gone
+    while the server was still working. The bound stays because the voice on the other end
+    has a quota, so this asserts the calls overlap and that they never exceed it, rather
+    than timing anything.
     """
-    import asyncio
-
-    from app.api.internalization_room import passages as route
-
     live = 0
     peak = 0
 
-    async def _slow(text: str, **_: object):
+    async def _slow(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
         nonlocal live, peak
         live += 1
         peak = max(peak, live)

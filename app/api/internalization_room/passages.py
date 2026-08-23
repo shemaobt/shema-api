@@ -6,6 +6,7 @@ from app.api.internalization_room._deps import room_caller_dep
 from app.core.config import Settings, get_settings
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
+from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.passage_lines import line_for
 from app.services.internalization_room.voice_handles import clip_url
@@ -19,13 +20,19 @@ async def _voiced(
     pericope_num: str,
     line: str,
     *,
+    book: str,
     settings: Settings,
     in_flight: asyncio.Semaphore,
 ) -> PassageView:
     """One passage's line, synthesized while at most a few others are in flight."""
     async with in_flight:
         voiced, _ = await room.synthesize_facilitator_speech(line, settings=settings)
-    return PassageView(pericope=pericope_num, audio_url=clip_url(voiced.key))
+    return PassageView(
+        pericope=pericope_num,
+        audio_url=clip_url(voiced.key),
+        beads=len(element_keys(pericope_num, book=book)),
+        absence_index=absence_index(pericope_num, book=book),
+    )
 
 
 @router.get(
@@ -61,7 +68,7 @@ async def passages(book: str) -> BookPassagesResponse:
     ]
     said = await asyncio.gather(
         *(
-            _voiced(pericope_num, line, settings=settings, in_flight=in_flight)
+            _voiced(pericope_num, line, book=book, settings=settings, in_flight=in_flight)
             for pericope_num, line in speakable
         )
     )

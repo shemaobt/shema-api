@@ -407,6 +407,13 @@ async def answer_with_voice(
     answered_by: str,
     store: SpeechStore | None = None,
 ) -> IRQuestion:
+    """The facilitator's spoken reply, put in front of the team as something not yet heard.
+
+    A second reply supersedes the first, and the tablet only fetches what it has not heard.
+    Leaving `heard_at` set filtered the correction out forever: the facilitator realises they
+    were wrong, records the right answer, the API says "answered", and the team keeps the wrong
+    rendering with no way to learn otherwise.
+    """
     if not audio:
         raise ValidationError("A reply with no audio is not a reply")
     key = _key("resposta", question.id, audio)

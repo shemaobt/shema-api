@@ -19,7 +19,15 @@ logger = logging.getLogger(__name__)
 class FindingKind(enum.StrEnum):
     MISSING = "missing"
     ADDITION = "addition"
+    MEANING_CHANGE = "meaning_change"
+    WRONG_RELATION = "wrong_relation"
+    REORDERED_EVENT = "reordered_event"
+    PRESERVATION_VIOLATION = "preservation_violation"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     UNCLEAR = "unclear"
+
+
+EVIDENCE_LIMIT_KINDS = frozenset({FindingKind.INSUFFICIENT_EVIDENCE, FindingKind.UNCLEAR})
 
 
 class Finding(BaseModel):
@@ -44,11 +52,43 @@ class Chunk(BaseModel):
     ends_ms: int | None = None
 
 
+class BtAnalysis(BaseModel):
+    """One completed analyst pass.
+
+    ``evidence_sufficient`` is the difference between "no difference appeared" and "there
+    was not enough telling-back to look for one". Weak evidence must never read as a
+    clean check: when it is False, at least one finding names the limit, so the Voice has
+    something concrete to resolve or send to Refine.
+    """
+
+    evidence_sufficient: bool = True
+    findings: list[Finding] = Field(default_factory=list)
+
+
+class SupersededAttempt(BaseModel):
+    """A telling-back the team replaced by re-recording.
+
+    Its chunks and findings do not disappear with the clip: they are the history the
+    Refine artifact carries, clearly marked as superseded — the team's open questions
+    survive their own retake.
+    """
+
+    chunks: list[Chunk] = Field(default_factory=list)
+    findings: list[Finding] = Field(default_factory=list)
+    evidence_sufficient: bool = True
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = None
+
+
 class BackTranslationState(BaseModel):
     scope: str = ""
     chunks: list[Chunk] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
+    evidence_sufficient: bool = True
     checked: bool = False
+    superseded: list[SupersededAttempt] = Field(default_factory=list)
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = None
     #: How many stretches the team has told back a second time. The retell is the one cycle
     #: the team can repeat at will, so the budget lives here — a counter the app cannot
     #: reach, which is what keeps a loop from being a loop.
@@ -68,17 +108,51 @@ class BackTranslationState(BaseModel):
         return self.analysed_chunks == len(self.chunks)
 
 
+PLAYBACK_TOLERANCE_MS = 750
+
+
+def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: int | None) -> bool:
+    """Whether the reported playback reached the whole clip, within tolerance.
+
+    A telling-back is a check of what was actually heard, not of what the team remembers,
+    so "checked" over a half-listened clip would be a claim about audio nobody played.
+    Reported ranges are merged and must cover [0, duration] with at most 750 ms of slack
+    at either edge or between stretches. No report at all is a legacy client and passes —
+    honesty about what we know, not a new wall for old tablets.
+    """
+    if not played_ranges or not clip_duration_ms:
+        return True
+    spans = sorted((max(0, int(start)), int(end)) for start, end in played_ranges if end > start)
+    if not spans:
+        return False
+    cursor = 0
+    for start, end in spans:
+        if start > cursor + PLAYBACK_TOLERANCE_MS:
+            return False
+        cursor = max(cursor, end)
+    return cursor >= clip_duration_ms - PLAYBACK_TOLERANCE_MS
+
+
 def segments_block(chunks: list[Chunk]) -> str:
     if not chunks:
         return "(a equipe ainda não contou nada de volta)"
     return "\n".join(f"{chunk.index}. {chunk.text}" for chunk in chunks)
 
 
-def _parse_findings(raw: str) -> list[Finding] | None:
-    """The findings, or None when the answer could not be read at all.
+def _parse_analysis(raw: str) -> BtAnalysis | None:
+    """The analyst's reply read atomically, or None when it cannot be trusted at all.
 
-    None and `[]` must stay apart all the way up: `[]` is "read it, nothing to raise",
-    which closes the necklace, and None is "never read it", which must not.
+    None and an empty findings list must stay apart all the way up: empty is "read it,
+    nothing to raise", which closes the necklace, and None is "never read it", which must
+    not. The reading is atomic on purpose — the old parser skipped a malformed entry with
+    a warning, and a reply whose only finding was malformed then counted as a clean
+    telling-back and blessed the passage. A "silence" kind is folded into addition: a
+    filled silence is something told that the passage does not tell.
+
+    A reply without ``evidence_sufficient`` is a legacy prompt still stored in
+    ``ir_prompts``; it is read as sufficient, exactly what that prompt's replies always
+    meant. When the field is present, it must agree with the findings: insufficient needs
+    a finding that names the limit, and sufficient may not carry insufficient_evidence.
     """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
@@ -89,24 +163,36 @@ def _parse_findings(raw: str) -> list[Finding] | None:
     except json.JSONDecodeError:
         logger.warning("BT analyst returned unparseable JSON: %s", raw[:300])
         return None
-    if not isinstance(parsed, dict):
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("findings"), list):
+        return None
+    sufficient_raw = parsed.get("evidence_sufficient", True)
+    if not isinstance(sufficient_raw, bool):
         return None
 
     findings: list[Finding] = []
-    for entry in parsed.get("findings", []):
+    for entry in parsed["findings"]:
         if not isinstance(entry, dict):
-            continue
+            return None
+        kind_raw = str(entry.get("kind", ""))
+        if kind_raw == "silence":
+            kind_raw = FindingKind.ADDITION.value
+        note = str(entry.get("note", "")).strip()
+        if not note:
+            return None
         try:
-            findings.append(
-                Finding(
-                    kind=FindingKind(str(entry.get("kind", ""))),
-                    note=str(entry.get("note", "")),
-                    chunk=_chunk_pointed_at(entry.get("chunk")),
-                )
-            )
+            kind = FindingKind(kind_raw)
         except ValueError:
             logger.warning("BT analyst returned an unknown finding kind: %s", entry)
-    return findings
+            return None
+        findings.append(
+            Finding(kind=kind, note=note[:1000], chunk=_chunk_pointed_at(entry.get("chunk")))
+        )
+
+    if not sufficient_raw and not any(f.kind in EVIDENCE_LIMIT_KINDS for f in findings):
+        return None
+    if sufficient_raw and any(f.kind is FindingKind.INSUFFICIENT_EVIDENCE for f in findings):
+        return None
+    return BtAnalysis(evidence_sufficient=sufficient_raw, findings=findings)
 
 
 def _chunk_pointed_at(raw: Any) -> int | None:
@@ -132,16 +218,17 @@ async def analyse_telling_back(
     analyst_prompt: str,
     session_language: str = "Portuguese",
     settings: Settings | None = None,
-) -> list[Finding] | None:
+) -> BtAnalysis | None:
     """Compare the bridge-language telling-back against the map. Never voiced.
 
     The system never hears the mother-tongue recording; it only ever sees what the team told
     back. The analyst under-reports by design — it never invents a finding when unsure.
 
-    But under-reporting is not the same as not reporting. Returning `[]` when the call itself
-    failed made an outage indistinguishable from a clean telling-back, and the room then told
-    the team their work was checked and closed the passage for good. None says "never ran",
-    and only `[]` is allowed to mean "ran, and found nothing".
+    But under-reporting is not the same as not reporting. Returning a clean analysis when
+    the call itself failed made an outage indistinguishable from a clean telling-back, and
+    the room then told the team their work was checked and closed the passage for good.
+    None says "never ran"; only a real, sufficient, findingless analysis may mean "ran,
+    and found nothing".
     """
     cfg = settings or get_settings()
     system = render(
@@ -162,7 +249,7 @@ async def analyse_telling_back(
     except Exception:
         logger.exception("BT analysis failed for %s", pericope_num)
         return None
-    return _parse_findings(raw)
+    return _parse_analysis(raw)
 
 
 def findings_block(finding: Finding | None) -> str:

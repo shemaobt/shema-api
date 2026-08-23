@@ -6,11 +6,23 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRSessionStatus
-from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    SupersededAttempt,
+)
+from app.services.internalization_room.calibration import BridgeMode, is_selected_bridge_mode
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.session_readiness import (
+    evaluate_session_comprehension,
+)
+from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
     floor_met,
@@ -54,6 +66,7 @@ async def create_session(
     pericope: str | None = None,
     after_panorama: bool = False,
     project_id: str | None = None,
+    bridge_mode: str | None = None,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
@@ -87,6 +100,12 @@ async def create_session(
     panorama = is_panorama(pericope)
     if not panorama:
         load_map(pericope)
+    if bridge_mode is not None and not is_selected_bridge_mode(bridge_mode):
+        raise ValidationError(f"Unknown bridge mode {bridge_mode!r}")
+    if bridge_mode is None:
+        bridge_mode = (
+            BridgeMode.CALIBRATION_PENDING.value if panorama else BridgeMode.ADAPTIVE.value
+        )
     session = IRSession(
         project_id=project_id,
         pericope=pericope,
@@ -98,6 +117,8 @@ async def create_session(
         coverage_state={} if panorama else initial_state(pericope),
         kept_takes={},
         back_translation={},
+        bridge_mode=bridge_mode,
+        comprehension={},
     )
     db.add(session)
     await db.commit()
@@ -168,6 +189,11 @@ async def apply_coverage(
     every bead that moved — the merge is compared against what is stored before anything
     is written, so a classifier round that reports no news costs no rows.
 
+    Merged against what is stored now, not written over it. The snapshot this was computed
+    from is a Gemini round trip old, and a second turn may have settled in the meantime; a
+    blind overwrite let the older reading win and darkened a bead the team had already
+    earned.
+
     Closing is the one end this schema stamps (ENG-451). A session ends either because the
     floor was met — an event, at an instant, written into ``ended_at`` here — or because
     nobody came back to it, which is derived from its last activity at read time and left
@@ -177,17 +203,13 @@ async def apply_coverage(
     every one of them would grow the conversation's length after the team had finished.
     """
     session = await get_session(db, session_id)
-    # Merged against what is stored now, not written over it. The snapshot this was
-    # computed from is a Gemini round trip old, and a second turn may have settled in the
-    # meantime; a blind overwrite let the older reading win and darkened a bead the team
-    # had already earned.
     kept = session.coverage_state or {}
     settled = furthest(kept, coverage_state, pericope_num=session.pericope)
     record_transitions(db, session, before=kept, after=settled)
     session.coverage_state = settled
     if (
         not is_panorama(session.pericope)
-        and floor_met(session.coverage_state, session.pericope)
+        and session_is_done(session)
         and session.status is IRSessionStatus.IN_PROGRESS
     ):
         session.status = IRSessionStatus.DONE
@@ -195,6 +217,54 @@ async def apply_coverage(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def set_bridge_mode(db: AsyncSession, session: IRSession, mode: str) -> IRSession:
+    if not is_selected_bridge_mode(mode) and mode != BridgeMode.CALIBRATION_PENDING.value:
+        raise ValidationError(f"Unknown bridge mode {mode!r}")
+    session.bridge_mode = mode
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def comprehension_of(session: IRSession) -> ComprehensionState:
+    return ComprehensionState.model_validate(session.comprehension or {})
+
+
+async def save_comprehension(
+    db: AsyncSession, session: IRSession, state: ComprehensionState
+) -> IRSession:
+    session.comprehension = state.model_dump(mode="json")
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
+def semantics_ready(session: IRSession) -> bool:
+    """Whether the comprehension side of the gate is met — calibration done, readiness not
+    `needs_more_work` (which already folds in per-scene mother-tongue practice)."""
+    if session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
+        return False
+    state = comprehension_of(session)
+    readiness = evaluate_session_comprehension(
+        checkpoints=list(checkpoints_for(session.pericope)),
+        scene_ids=scene_ids_for(session.pericope),
+        ledger=state.ledger,
+        practiced_scene_ids=state.practiced_scene_ids,
+    )
+    return readiness.evaluation.outcome.value != "needs_more_work"
+
+
+def session_is_done(session: IRSession) -> bool:
+    """The full advance gate: coverage floor, semantic readiness with practice, and the
+    team's explicit recording consent. Coverage bookkeeping alone can no longer end the
+    interview — that is what let bridge-limited teams be judged on Portuguese output."""
+    return (
+        floor_met(session.coverage_state or {}, session.pericope)
+        and semantics_ready(session)
+        and comprehension_of(session).recording_consent_given
+    )
 
 
 async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
@@ -220,12 +290,27 @@ async def save_back_translation(
 async def begin_back_translation_again(
     db: AsyncSession, session: IRSession
 ) -> BackTranslationState:
-    """Throw the telling-back away and start over on a freshly recorded clip.
+    """Start the telling-back over on a freshly recorded clip, archiving the old attempt.
 
     Only the re-record reaches here. Telling one stretch again does not pass through: it
     adds a chunk beside the others, and its budget is counted where that happens.
+
+    The replaced attempt is kept, clearly marked as superseded, rather than erased: its
+    chunks and findings are the history the Refine artifact carries, and the team's open
+    questions must survive their own retake.
     """
     state = back_translation_of(session)
+    superseded = list(state.superseded)
+    if state.chunks or state.findings:
+        superseded.append(
+            SupersededAttempt(
+                chunks=state.chunks,
+                findings=state.findings,
+                evidence_sufficient=state.evidence_sufficient,
+                played_ranges=state.played_ranges,
+                clip_duration_ms=state.clip_duration_ms,
+            )
+        )
     # The retell count carries across. `BackTranslationState(scope=...)` takes every other
     # default, so it went back to zero — and re-recording is a room-key route the team
     # drives by voice. The budget that exists so a loop cannot be a loop was reachable by
@@ -233,6 +318,6 @@ async def begin_back_translation_again(
     await save_back_translation(
         db,
         session,
-        BackTranslationState(scope=state.scope, retells=state.retells),
+        BackTranslationState(scope=state.scope, retells=state.retells, superseded=superseded),
     )
     return back_translation_of(session)
