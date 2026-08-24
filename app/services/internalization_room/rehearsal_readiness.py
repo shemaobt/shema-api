@@ -71,19 +71,42 @@ def explicitly_requests_recording_handoff(team_utterance: str) -> bool:
     return _normalize_decision(team_utterance) in _EXPLICIT_RECORD_REQUESTS
 
 
+def resumes_recording_handoff(team_utterance: str, *, reliable_bridge_speech: bool) -> bool:
+    """Whether this turn lifts a handoff the team put on hold.
+
+    A refusal is a postponement, not a door that locks from outside. Any ordinary turn the
+    room could hear and read in the bridge language lifts it, because the phrasings in
+    ``_EXPLICIT_RECORD_REQUESTS`` are wording no team says out loud and the Guide is
+    forbidden from asking for — leaving them as the only key meant the first "no" was the
+    last word. They remain a way through; they are ordinary bridge speech too.
+
+    Speech the room could not use is not the team asking to be asked again: a turn spent in
+    the team's own language is ordinary rehearsal, and a take that came back empty is
+    nothing anyone said.
+    """
+    return reliable_bridge_speech and bool(team_utterance.strip())
+
+
 def should_offer_recording_consent(
     *,
     eligible: bool,
     paused: bool,
-    explicit_resume_requested: bool,
+    resume_requested: bool,
     prior_decision: str,
     reliable_bridge_speech: bool,
+    consent_already_given: bool,
 ) -> bool:
+    """Whether this turn puts the recording question in front of the team.
+
+    Consent already given closes the question for good: asking a team that just agreed to
+    record whether it wants to record reads as the room not having heard the answer.
+    """
     return (
         eligible
         and reliable_bridge_speech
+        and not consent_already_given
         and prior_decision not in ("accepted", "declined")
-        and (not paused or explicit_resume_requested)
+        and (not paused or resume_requested)
     )
 
 

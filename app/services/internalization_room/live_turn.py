@@ -84,8 +84,8 @@ from app.services.internalization_room.rehearsal_readiness import (
     REHEARSAL_CONSENT_DECLINED_LINE,
     REHEARSAL_CONSENT_QUESTION,
     REHEARSAL_READINESS_CUE,
-    explicitly_requests_recording_handoff,
     resolve_rehearsal_consent,
+    resumes_recording_handoff,
     should_offer_recording_consent,
 )
 from app.services.internalization_room.run_turn import (
@@ -399,10 +399,8 @@ async def run_comprehension_turn(
         != "needs_more_work"
     )
     eligible = coverage_complete and semantic_ready
-    resume_requested = (
-        state.recording_handoff_paused
-        and reliable
-        and explicitly_requests_recording_handoff(transcript)
+    resume_requested = state.recording_handoff_paused and resumes_recording_handoff(
+        transcript, reliable_bridge_speech=reliable
     )
     adaptive_attempt_this_turn = (
         current_mode is BridgeMode.ADAPTIVE
@@ -473,9 +471,10 @@ async def run_comprehension_turn(
     if not opening and should_offer_recording_consent(
         eligible=eligible,
         paused=state.recording_handoff_paused,
-        explicit_resume_requested=resume_requested,
+        resume_requested=resume_requested,
         prior_decision=consent_decision,
         reliable_bridge_speech=reliable,
+        consent_already_given=state.recording_consent_given,
     ):
         next_probe = ActiveProbe(
             id=str(uuid.uuid4()),
