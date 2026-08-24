@@ -22,6 +22,10 @@ class ComprehensionState(BaseModel):
     practiced_scene_ids: list[str] = Field(default_factory=list)
     adaptive_free_retell_attempted: bool = False
     no_report_attempts: list[NoUsableReportAttempt] = Field(default_factory=list)
+    #: Assessor calls that failed in a row, cleared by the next one that reads an answer.
+    #: It is what lets the fail-safe ladder see an outage instead of a run of ordinary
+    #: turns that happened to find no evidence.
+    assessor_failures: int = 0
     stt_recovery: SttRecoveryState | None = None
     recording_consent_given: bool = False
     recording_handoff_paused: bool = False

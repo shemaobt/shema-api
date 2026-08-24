@@ -8,6 +8,10 @@ speak — or bypass it entirely with exact app-owned speech where safety demands
 wording. A probe becomes state only after its question was actually voiced, so evidence is
 never bound to an unvoiced prompt.
 
+An assessor call that fails is not an answer the room read and found empty: it degrades
+through the fail-safe, and a run of them reaches the hard stop rather than asking the same
+question forever.
+
 The opening turn always belongs to the Guide: no probe is planned and no app-owned line
 may hijack it, because the Voice must open the passage before anything is asked of the
 team — frame first, elicit second. For the same reason, the mother-tongue practice
@@ -134,8 +138,25 @@ def opened_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]
     return [f"S{scene}" for scene in sorted(opened) if opened[scene]]
 
 
+#: Consecutive failed assessor calls before the room stops re-asking and calls a person.
+#: The number is the fail-safe policy's own ("If fail-safes fire repeatedly across several
+#: consecutive turns (e.g. 3+) ... Don't loop forever"), not a fresh judgment made here.
+_ASSESSOR_FAILURES_BEFORE_HARD_STOP = 3
+
+
 def _observation_id(tail: str) -> str:
     return f"voice:{uuid.uuid4()}:{tail}"
+
+
+def _assessor_failures_after(prior: int, assessment: TurnAssessment) -> int:
+    """Failed assessor calls in a row: one more on a failure, none once one reads an answer.
+
+    A turn that never called the assessor leaves the count where it stood. It is evidence
+    of nothing either way, and clearing it there would let a process turn hide an outage.
+    """
+    if assessment.failed:
+        return prior + 1
+    return 0 if assessment.assessment_completed else prior
 
 
 async def run_comprehension_turn(
@@ -240,6 +261,8 @@ async def run_comprehension_turn(
             speech_recognition_uncertain=uncertain,
             settings=settings,
         )
+
+    assessor_failures = _assessor_failures_after(state.assessor_failures, assessment)
 
     new_attempts, no_report_observation = resolve_no_usable_report(
         probe=prior_probe,
@@ -529,6 +552,16 @@ async def run_comprehension_turn(
             outcome = TurnOutcome(
                 speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
             )
+    elif assessment.failed:
+        line, fixed = choose(
+            FailSafe.HARD_STOP
+            if assessor_failures >= _ASSESSOR_FAILURES_BEFORE_HARD_STOP
+            else FailSafe.UNREPAIRABLE,
+            turn=len(messages),
+        )
+        outcome = TurnOutcome(
+            speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
+        )
     elif app_owned_line is not None:
         outcome = TurnOutcome(
             speech=app_owned_line,
@@ -572,6 +605,7 @@ async def run_comprehension_turn(
             state.adaptive_free_retell_attempted or adaptive_attempt_this_turn
         ),
         no_report_attempts=[*state.no_report_attempts, *new_attempts],
+        assessor_failures=assessor_failures,
         stt_recovery=state.stt_recovery if recovery_needs_clarification else stt_plan.next_state,
         recording_consent_given=(
             state.recording_consent_given or (eligible and consent_decision == "accepted")

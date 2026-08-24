@@ -51,11 +51,19 @@ _ANSWER_BEARING_METHODS = frozenset(
 
 
 class TurnAssessment(BaseModel):
+    """What one pass over the team's answer settled — including that it settled nothing.
+
+    ``failed`` is the difference between *the room could not read this answer* and *the
+    room read it and found no evidence in it*. Both leave ``observations`` empty, and a
+    caller that cannot tell them apart voices an ordinary re-ask over a broken call.
+    """
+
     observations: list[EvidenceObservation]
     mother_tongue_practice_reported: bool = False
     speech_recognition_uncertain: bool = False
     assessment_completed: bool = False
     no_usable_report: bool = False
+    failed: bool = False
 
 
 def _tokens(text: str) -> list[str]:
@@ -440,7 +448,9 @@ async def assess_turn(
     STT uncertainty is transport evidence, not a linguistic judgment: it is reported
     without asking a model to speculate from a possibly corrupt transcript. A model or
     transport failure returns no observations *without* ``assessment_completed``, so it
-    can never rotate a bounded probe the way a genuine empty report does.
+    can never rotate a bounded probe the way a genuine empty report does — and it says so
+    with ``failed``, so the turn can degrade audibly instead of passing for an answer the
+    room read and found empty.
     """
     if speech_recognition_uncertain:
         return TurnAssessment(observations=[], speech_recognition_uncertain=True)
@@ -482,13 +492,13 @@ async def assess_turn(
         )
     except Exception:
         logger.exception("Comprehension assessor call failed")
-        return TurnAssessment(observations=[])
+        return TurnAssessment(observations=[], failed=True)
 
     parsed = parse_turn_assessor_decision(
         raw, team_utterance, [checkpoint.id for checkpoint in checkpoints]
     )
     if parsed is None:
-        return TurnAssessment(observations=[])
+        return TurnAssessment(observations=[], failed=True)
     rows, practice_reported = parsed
 
     observations: list[EvidenceObservation] = []
