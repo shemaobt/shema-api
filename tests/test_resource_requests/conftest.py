@@ -16,7 +16,7 @@ import httpx
 import pytest
 from httpx import ASGITransport
 
-from app.api.resource_requests._deps import APP_KEY
+from app.api.resource_requests._deps import APP_KEY, CurrentUser, MesaUser
 from tests.baker import make_app, make_role, make_user_app_role
 
 PROBE = "/api/resource-requests/_probe"
@@ -53,13 +53,19 @@ async def rrf_app(db_session):
 async def client(db_session):
     """An ASGI client running the probe router and the real auth router.
 
-    The real exception handlers are registered, so ``AuthorizationError`` reaches
-    the wire as the 403 a client would actually receive.
+    The real exception handlers are registered, so ``AuthorizationError`` reaches the
+    wire as the 403 a client would actually receive.
+
+    ``CurrentUser`` and ``MesaUser`` are imported at module level on purpose. These
+    handlers are defined inside this fixture, so their ``__globals__`` is this module —
+    and with ``from __future__ import annotations`` every annotation is a string FastAPI
+    resolves against exactly that namespace. Bound locally instead, the name does not
+    resolve, FastAPI falls back to treating ``user`` as a required query parameter, and
+    every guarded call answers 422 before the guard ever runs.
     """
     from fastapi import APIRouter, FastAPI
 
     from app.api.auth import router as auth_router
-    from app.api.resource_requests._deps import CurrentUser, MesaUser
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
