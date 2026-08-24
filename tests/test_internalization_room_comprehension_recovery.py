@@ -188,6 +188,49 @@ def test_a_future_plan_never_confirms() -> None:
     )
 
 
+def test_a_plain_report_of_finished_practice_confirms() -> None:
+    assert confirms_completed_mother_tongue_practice(MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos")
+
+
+def test_the_completion_word_confirms_inside_a_longer_utterance() -> None:
+    assert confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "pronto, terminamos"
+    )
+    assert confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "a gente leu, depois ensaiou junto, pronto, pode seguir"
+    )
+
+
+def test_asking_about_practice_never_confirms() -> None:
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos?"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "a gente tem que ensaiar agora?"
+    )
+
+
+def test_a_postponed_practice_never_confirms() -> None:
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "acho que a gente pode ensaiar depois"
+    )
+    assert not confirms_completed_mother_tongue_practice(MOTHER_TONGUE_PRACTICE_PROMPT, "ainda não")
+
+
+def test_a_negated_practice_never_confirms() -> None:
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "ainda não ensaiamos"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "não, pronto não"
+    )
+
+
+def test_nothing_confirms_a_practice_the_room_never_invited() -> None:
+    assert not confirms_completed_mother_tongue_practice("O que aconteceu depois?", "pronto")
+    assert not confirms_completed_mother_tongue_practice("O que aconteceu depois?", "já ensaiamos")
+
+
 def test_confident_foreign_audio_completes_only_the_practice_probe() -> None:
     practice = ActiveProbe(
         id="x",
