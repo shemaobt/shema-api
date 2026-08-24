@@ -176,6 +176,19 @@ def _parse_verdict(raw: str) -> dict[str, Any]:
     return parsed
 
 
+def _issues_as_dicts(raw: Any) -> list[dict[str, Any]]:
+    """The Validator's ``issues`` in the shape every reader of them assumes.
+
+    The field comes straight from a model, so its rows are whatever the model wrote and a
+    list of strings is as likely as a list of objects. Every reader asks each row for
+    ``problem``, and a bare string there raises in the middle of the generative path, where
+    the cost is the whole turn instead of one rejected draft.
+    """
+    if not isinstance(raw, list):
+        return []
+    return [row if isinstance(row, dict) else {"problem": str(row)} for row in raw]
+
+
 OPENING_INSTRUCTION = (
     "A sessão está começando agora e a equipe ainda não falou. Abra a sessão: "
     "apresente-se brevemente, dê à equipe o todo antes das partes, e convide."
@@ -262,76 +275,93 @@ async def _voiced_after_validation(
     text, so a mark left in front of it comes back either flagged or silently dropped. When the
     Validator returns a correction instead, the boundary the Guide drew no longer describes the
     speech, and one clip is the honest answer.
+
+    This is the boundary with the model, so it is where a model or transport failure stops:
+    a timeout, a quota, a dead socket, or a reply shaped in a way no reader here expected
+    comes out as the same fail-safe turn an exhausted redraft already produces. Letting it
+    rise instead reaches the endpoint as a 500, and a tablet reads a 500 as the room itself
+    being broken — which stops a session over an outage that lasted seconds. ``Exception``
+    and not ``BaseException`` on purpose: a cancelled or interrupted turn has no team left
+    to answer, and dressing shutdown up as an outage would keep the turn running past the
+    point the runtime asked it to stop.
     """
     conversation = recent_conversation_block(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
 
-    for attempt in range(MAX_REDRAFTS + 1):
-        draft, movements = split_opening_movements(
-            await _draft(
-                guide_prompt=speaker_system,
-                conversation=conversation,
-                utterance="" if opening else transcript,
-                redraft_note=redraft_note,
-                settings=settings,
-                opening_instruction=opening_instruction,
-                ask_for_movements=ask_for_movements,
+    model_failed = False
+    try:
+        for attempt in range(MAX_REDRAFTS + 1):
+            draft, movements = split_opening_movements(
+                await _draft(
+                    guide_prompt=speaker_system,
+                    conversation=conversation,
+                    utterance="" if opening else transcript,
+                    redraft_note=redraft_note,
+                    settings=settings,
+                    opening_instruction=opening_instruction,
+                    ask_for_movements=ask_for_movements,
+                )
             )
-        )
-        if not ask_for_movements:
-            movements = []
+            if not ask_for_movements:
+                movements = []
 
-        validator_system = render(
-            validator_prompt,
-            SESSION_LANGUAGE=session_language,
-            MEANING_MAP=standard_of_truth,
-            RECENT_CONVERSATION=conversation,
-            TEAM_UTTERANCE=transcript or "(a equipe ainda não falou — abertura da sessão)",
-            DRAFTED_RESPONSE=draft,
-        )
-        if validator_context:
-            validator_system = f"{validator_system}\n\n{validator_context}"
-        verdict = _parse_verdict(
-            await call_agent(
-                system_prompt=validator_system,
-                user_content="Julgue a resposta rascunhada.",
-                temperature=0.0,
-                max_output_tokens=2000,
-                settings=settings,
+            validator_system = render(
+                validator_prompt,
+                SESSION_LANGUAGE=session_language,
+                MEANING_MAP=standard_of_truth,
+                RECENT_CONVERSATION=conversation,
+                TEAM_UTTERANCE=transcript or "(a equipe ainda não falou — abertura da sessão)",
+                DRAFTED_RESPONSE=draft,
             )
-        )
-        issues = verdict.get("issues") or []
+            if validator_context:
+                validator_system = f"{validator_system}\n\n{validator_context}"
+            verdict = _parse_verdict(
+                await call_agent(
+                    system_prompt=validator_system,
+                    user_content="Julgue a resposta rascunhada.",
+                    temperature=0.0,
+                    max_output_tokens=2000,
+                    settings=settings,
+                )
+            )
+            issues = _issues_as_dicts(verdict.get("issues"))
 
-        speech = ""
-        if verdict.get("verdict") == "pass":
-            speech = draft
-        elif verdict.get("verdict") == "correct":
-            speech = (verdict.get("corrected_response") or "").strip()
-            movements = []
-
-        broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
-        if broken is not None:
-            issues = [*issues, {"problem": "over_speech_budget"}]
             speech = ""
-        elif speech and strays_from(speech, language_code):
-            issues = [*issues, {"problem": "off_bridge_language"}]
-            speech = ""
+            if verdict.get("verdict") == "pass":
+                speech = draft
+            elif verdict.get("verdict") == "correct":
+                speech = (verdict.get("corrected_response") or "").strip()
+                movements = []
 
-        if speech:
-            return TurnOutcome(
-                speech=speech,
-                transcript=transcript,
-                peer_cue=detects_peer_cue(speech),
-                redrafts=attempt,
-                issues=issues,
-                movements=movements,
-            )
+            broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
+            if broken is not None:
+                issues = [*issues, {"problem": "over_speech_budget"}]
+                speech = ""
+            elif speech and strays_from(speech, language_code):
+                issues = [*issues, {"problem": "off_bridge_language"}]
+                speech = ""
 
-        redraft_note = _redraft_note(issues, session_language, ceiling=broken)
+            if speech:
+                return TurnOutcome(
+                    speech=speech,
+                    transcript=transcript,
+                    peer_cue=detects_peer_cue(speech),
+                    redrafts=attempt,
+                    issues=issues,
+                    movements=movements,
+                )
 
-    off_language = any(i.get("problem") == "off_bridge_language" for i in issues)
-    logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
+            redraft_note = _redraft_note(issues, session_language, ceiling=broken)
+    except Exception:
+        logger.exception("Guide or Validator call failed; the turn degrades to a fail-safe")
+        model_failed = True
+    else:
+        logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
+
+    off_language = not model_failed and any(
+        issue.get("problem") == "off_bridge_language" for issue in issues
+    )
     speech, line = choose(
         FailSafe.OFF_BRIDGE_LANGUAGE if off_language else FailSafe.UNREPAIRABLE,
         language_code,
