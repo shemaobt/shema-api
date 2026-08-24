@@ -50,14 +50,15 @@ def _parse(raw: str) -> dict[str, list[str]]:
     verdict: dict[str, list[str]] = {"engaged": [], "surfaced": []}
     decisions = parsed.get("decisions")
     if not isinstance(decisions, list):
+        logger.warning("Coverage classifier returned no decisions list: %s", raw[:300])
         return verdict
     for entry in decisions:
-        if not isinstance(entry, dict):
-            continue
-        element_id = entry.get("element_id")
-        new_status = entry.get("new_status")
+        element_id = entry.get("element_id") if isinstance(entry, dict) else None
+        new_status = entry.get("new_status") if isinstance(entry, dict) else None
         if isinstance(element_id, str) and isinstance(new_status, str) and new_status in verdict:
             verdict[new_status].append(element_id)
+        else:
+            logger.warning("Coverage classifier returned an unusable decision: %s", entry)
     return verdict
 
 

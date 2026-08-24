@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from typing import Any
 
@@ -68,11 +69,13 @@ def _whole_passage_engaged(pericope: str) -> str:
 def patch_classifier(monkeypatch: pytest.MonkeyPatch):
     module = sys.modules["app.services.internalization_room.classify_coverage"]
 
-    def _install(reply: str) -> None:
+    def _install(reply: str):
         async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            agent.system = system_prompt
             return reply
 
         monkeypatch.setattr(module, "call_agent", agent)
+        return agent
 
     return _install
 
@@ -177,10 +180,61 @@ async def test_a_settled_passage_drops_the_coverage_blocker_from_the_release(
     )
     session = await service.apply_coverage(db_session, session.id, settled)
 
-    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+    blockers: list[str] = []
+    try:
         await build_internalization_release(db_session, session)
+    except InternalizationReleaseBlocked as blocked:
+        blockers = blocked.blockers
 
-    assert "coverage_floor_not_met" not in blocked.value.blockers, (
+    assert "coverage_floor_not_met" not in blockers, (
         "o colar ficava vazio por mais que a equipe trabalhasse, "
         "e a soltura respondia piso não atingido para sempre"
+    )
+
+
+def test_a_reply_with_no_decisions_says_so_instead_of_reading_as_no_change(caplog) -> None:
+    with caplog.at_level(logging.WARNING):
+        verdict = _parse(json.dumps({"retelling": {"scope": "S1", "approved": True}}))
+
+    assert verdict == {"engaged": [], "surfaced": []}
+    assert "no decisions list" in caplog.text, (
+        "uma resposta sem o array voltava vazia calada, igualzinho a um turno "
+        "em que nada mudou — foi esse silêncio que escondeu o bug por dois releases"
+    )
+
+
+def test_a_decision_carrying_an_unknown_status_is_named_in_the_log(caplog) -> None:
+    reply = json.dumps({"decisions": [{"element_id": "scene:1", "new_status": "not_encountered"}]})
+
+    with caplog.at_level(logging.WARNING):
+        verdict = _parse(reply)
+
+    assert verdict == {"engaged": [], "surfaced": []}
+    assert "unusable decision" in caplog.text, (
+        "um status que o parser não roteia sumia sem deixar rastro, "
+        "e a conta parada parecia decisão do classificador"
+    )
+
+
+async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) -> None:
+    agent = patch_classifier(_whole_passage_engaged(P))
+
+    await classify_coverage(
+        coverage_state=initial_state(P),
+        team_utterance="a equipe trabalhou a passagem inteira",
+        guide_response="o Guia acompanhou",
+        classifier_prompt=CLASSIFIER,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    missing = [
+        name
+        for name in ("decisions", "element_id", "new_status", "surfaced", "engaged")
+        if name not in agent.system
+    ]
+
+    assert missing == [], (
+        "o parser lia chaves que o prompt nunca pediu, e nenhum teste olhava as duas "
+        "pontas ao mesmo tempo, que é como a deriva atravessou dois releases"
     )
