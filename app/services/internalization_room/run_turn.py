@@ -280,18 +280,24 @@ async def _voiced_after_validation(
     a timeout, a quota, a dead socket, or a reply shaped in a way no reader here expected
     comes out as the same fail-safe turn an exhausted redraft already produces. Letting it
     rise instead reaches the endpoint as a 500, and a tablet reads a 500 as the room itself
-    being broken — which stops a session over an outage that lasted seconds. ``Exception``
-    and not ``BaseException`` on purpose: a cancelled or interrupted turn has no team left
-    to answer, and dressing shutdown up as an outage would keep the turn running past the
-    point the runtime asked it to stop.
+    being broken — which stops a session over an outage that lasted seconds.
+
+    The ``try`` holds only the two calls and the reading of their replies. Everything the
+    room decides for itself afterwards — the ceiling, the bridge-language check, the peer
+    cue, the redraft note — sits outside it on purpose: a defect in one of those is ours,
+    and answering it with an outage line would spend the team's turn hiding it in a log
+    instead of surfacing it. ``Exception`` and not ``BaseException`` for the same kind of
+    reason: a cancelled or interrupted turn has no team left to answer, and dressing
+    shutdown up as an outage would keep the turn running past the point the runtime asked
+    it to stop.
     """
     conversation = recent_conversation_block(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
 
     model_failed = False
-    try:
-        for attempt in range(MAX_REDRAFTS + 1):
+    for attempt in range(MAX_REDRAFTS + 1):
+        try:
             draft, movements = split_opening_movements(
                 await _draft(
                     guide_prompt=speaker_system,
@@ -333,29 +339,30 @@ async def _voiced_after_validation(
             elif verdict.get("verdict") == "correct":
                 speech = (verdict.get("corrected_response") or "").strip()
                 movements = []
+        except Exception:
+            logger.exception("Guide or Validator call failed; the turn degrades to a fail-safe")
+            model_failed = True
+            break
 
-            broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
-            if broken is not None:
-                issues = [*issues, {"problem": "over_speech_budget"}]
-                speech = ""
-            elif speech and strays_from(speech, language_code):
-                issues = [*issues, {"problem": "off_bridge_language"}]
-                speech = ""
+        broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
+        if broken is not None:
+            issues = [*issues, {"problem": "over_speech_budget"}]
+            speech = ""
+        elif speech and strays_from(speech, language_code):
+            issues = [*issues, {"problem": "off_bridge_language"}]
+            speech = ""
 
-            if speech:
-                return TurnOutcome(
-                    speech=speech,
-                    transcript=transcript,
-                    peer_cue=detects_peer_cue(speech),
-                    redrafts=attempt,
-                    issues=issues,
-                    movements=movements,
-                )
+        if speech:
+            return TurnOutcome(
+                speech=speech,
+                transcript=transcript,
+                peer_cue=detects_peer_cue(speech),
+                redrafts=attempt,
+                issues=issues,
+                movements=movements,
+            )
 
-            redraft_note = _redraft_note(issues, session_language, ceiling=broken)
-    except Exception:
-        logger.exception("Guide or Validator call failed; the turn degrades to a fail-safe")
-        model_failed = True
+        redraft_note = _redraft_note(issues, session_language, ceiling=broken)
     else:
         logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
 

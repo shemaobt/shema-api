@@ -72,6 +72,12 @@ async def spoken() -> list[str]:
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spoken: list[str]):
+    """The endpoint as the tablet reaches it, answering with whatever the handlers produce.
+
+    ``raise_app_exceptions=False`` because these tests are about the response a failing turn
+    produces: re-raising would hide the 500 behind the exception that caused it, and there
+    would be no status code left to assert on.
+    """
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
@@ -107,8 +113,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
         yield db_session
 
     test_app.dependency_overrides[get_db] = _get_db
-    # The tablet sees whatever the handlers produce, not the traceback: re-raising here
-    # would hide the 500 these tests are about behind the exception that caused it.
     transport = ASGITransport(app=test_app, raise_app_exceptions=False)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -261,6 +265,31 @@ async def test_a_failed_call_is_logged_without_repeating_what_the_team_said(
     ]
     assert failures, "uma falha do modelo tem de deixar rastro com o traceback"
     assert TEAM_ANSWER not in caplog.text
+
+
+async def test_a_bug_in_the_rooms_own_checks_is_not_dressed_up_as_an_outage(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rescue is for the model, not for us.
+
+    Both models answered here; what broke is one of the room's own checks over the reply.
+    Answering that with an outage line spends the team's turn hiding a defect, and leaves
+    it in a log nobody is watching instead of where someone would see it.
+    """
+    _the_models_answer(monkeypatch, GUIDE_LINE, _passes())
+    module = sys.modules["app.services.internalization_room.run_turn"]
+
+    def _explodes(*_args: Any, **_kwargs: Any) -> bool:
+        raise AssertionError("a defect in the room's own bridge-language check")
+
+    monkeypatch.setattr(module, "strays_from", _explodes)
+    session_id = await _a_room_opening_a_passage(client)
+
+    answered = await _the_room_takes_a_turn(client, session_id)
+
+    assert answered.status_code == 500, (
+        "um defeito nosso tem de continuar aparecendo, não virar linha de fail-safe"
+    )
 
 
 async def test_a_cancelled_turn_is_never_dressed_up_as_a_fail_safe(
