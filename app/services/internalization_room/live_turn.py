@@ -20,6 +20,7 @@ invitation for a scene is only planned once that scene has been opened in covera
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -101,6 +102,8 @@ from app.services.internalization_room.run_turn import (
 )
 from app.services.internalization_room.sessions import comprehension_of
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ComprehensionTurn:
@@ -138,9 +141,11 @@ def opened_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]
     return [f"S{scene}" for scene in sorted(opened) if opened[scene]]
 
 
-#: Consecutive failed assessor calls before the room stops re-asking and calls a person.
-#: The number is the fail-safe policy's own ("If fail-safes fire repeatedly across several
-#: consecutive turns (e.g. 3+) ... Don't loop forever"), not a fresh judgment made here.
+#: Failed assessor calls in a row before the room stops re-asking and calls a person.
+#: The count is of failed calls, not of consecutive turns: a fail-safe clears the probe, so
+#: the turn after one never reaches the assessor at all and the third failure lands on the
+#: fifth turn. The number itself is the fail-safe policy's ("If fail-safes fire repeatedly
+#: across several consecutive turns (e.g. 3+) ... Don't loop forever"), not one invented here.
 _ASSESSOR_FAILURES_BEFORE_HARD_STOP = 3
 
 
@@ -553,10 +558,15 @@ async def run_comprehension_turn(
                 speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
             )
     elif assessment.failed:
+        hard_stop = assessor_failures >= _ASSESSOR_FAILURES_BEFORE_HARD_STOP
+        if hard_stop:
+            logger.warning(
+                "Hard stop after %d failed assessor calls in session %s",
+                assessor_failures,
+                session.id,
+            )
         line, fixed = choose(
-            FailSafe.HARD_STOP
-            if assessor_failures >= _ASSESSOR_FAILURES_BEFORE_HARD_STOP
-            else FailSafe.UNREPAIRABLE,
+            FailSafe.HARD_STOP if hard_stop else FailSafe.UNREPAIRABLE,
             turn=len(messages),
         )
         outcome = TurnOutcome(

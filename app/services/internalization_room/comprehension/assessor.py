@@ -498,6 +498,7 @@ async def assess_turn(
         raw, team_utterance, [checkpoint.id for checkpoint in checkpoints]
     )
     if parsed is None:
+        logger.warning("Comprehension assessor reply could not be parsed (%d chars)", len(raw))
         return TurnAssessment(observations=[], failed=True)
     rows, practice_reported = parsed
 
