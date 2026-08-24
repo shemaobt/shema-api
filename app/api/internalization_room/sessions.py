@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_key_dep
+from app.api.internalization_room._deps import CurrentUser, room_key_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
@@ -13,6 +13,8 @@ from app.models.internalization_room import (
     BackTranslationProgress,
     CoverageView,
     CreateSessionRequest,
+    FacilitatorSessionsResponse,
+    FacilitatorSessionView,
     NeedsPersonResponse,
     SessionStateResponse,
     SpokenSegment,
@@ -167,6 +169,33 @@ async def create_session(
 async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
     session = await room.get_session(db, session_id)
     return _state(session)
+
+
+@router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
+async def facilitator_sessions(
+    user: CurrentUser, db: AsyncSession = Depends(get_db)
+) -> FacilitatorSessionsResponse:
+    """The sessions waiting on a person, for the person they are waiting on.
+
+    Halting had a writer and no reader: `needs_person` was written to the row and the only
+    facilitator-facing list in the system was the open questions, which named no session.
+    The two session-scoped facilitator routes are addressed by an id nobody could obtain,
+    so a room that stopped for someone could not reach anyone.
+
+    This makes discoverable what was already readable — an id was never the thing keeping
+    those routes shut, and obscurity was not the access rule.
+    """
+    return FacilitatorSessionsResponse(
+        sessions=[
+            FacilitatorSessionView(
+                session_id=session.id,
+                pericope=session.pericope,
+                status=session.status.value,
+                updated_at=session.updated_at.isoformat() if session.updated_at else "",
+            )
+            for session in await room.sessions_waiting_on_a_person(db)
+        ]
+    )
 
 
 @router.post(

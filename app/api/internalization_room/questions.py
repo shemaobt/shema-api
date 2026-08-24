@@ -108,6 +108,7 @@ async def open_questions(
             OpenQuestionView(
                 question_id=question.id,
                 device_id=question.device_id,
+                session_id=question.session_id,
                 pericope=question.pericope,
                 audio_url=facilitator_audio_url(question.audio_key),
                 asked_at=_stamp(question.created_at),

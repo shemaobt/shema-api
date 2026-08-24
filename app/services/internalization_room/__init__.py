@@ -30,6 +30,7 @@ from app.services.internalization_room.sessions import (
     save_back_translation,
     save_comprehension,
     session_is_done,
+    sessions_waiting_on_a_person,
     set_bridge_mode,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
@@ -62,6 +63,7 @@ __all__ = [
     "save_back_translation",
     "save_comprehension",
     "session_is_done",
+    "sessions_waiting_on_a_person",
     "set_bridge_mode",
     "synthesize_facilitator_speech",
 ]

@@ -195,6 +195,25 @@ def session_is_done(session: IRSession) -> bool:
     )
 
 
+async def sessions_waiting_on_a_person(db: AsyncSession) -> list[IRSession]:
+    """The sessions that need somebody, newest first.
+
+    Two states wait on a person and no third one does: a room that halted asked for
+    someone to come, and a finished passage is waiting to be carried into Refine through
+    the release route. A session still under way is waiting on the team, not on the
+    facilitator, and putting it here would turn a queue into a dump of every row.
+
+    Newest first because this is read as a queue. It does not page: the pilot has no
+    volume for it, and a limit that silently truncated would read as an empty queue.
+    """
+    result = await db.execute(
+        select(IRSession)
+        .where(IRSession.status.in_((IRSessionStatus.NEEDS_PERSON, IRSessionStatus.DONE)))
+        .order_by(IRSession.updated_at.desc())
+    )
+    return list(result.scalars())
+
+
 async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:
     session.status = IRSessionStatus.NEEDS_PERSON
     await db.commit()
