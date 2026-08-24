@@ -38,7 +38,26 @@ def downgrade_targets() -> list[str]:
     parents = script.get_revision(heads[0]).down_revision
     if not isinstance(parents, tuple):
         return ["-1"]
-    return [f"{parent}-1" for parent in parents]
+
+    # Descends through joins of joins. A parent that is itself a merge revision has no
+    # single step back either — `<merge>-1` is the same "Ambiguous walk" one level down —
+    # and that is not hypothetical: the branch joined three lines, then joined the result
+    # to a fourth that `main` grew. Walking to the nearest real migration of every line is
+    # what the job is actually checking, however many joins are stacked above them.
+    targets: list[str] = []
+    seen: set[str] = set()
+    pending = list(parents)
+    while pending:
+        revision = pending.pop(0)
+        if revision in seen:
+            continue
+        seen.add(revision)
+        above = script.get_revision(revision).down_revision
+        if isinstance(above, tuple):
+            pending.extend(above)
+        else:
+            targets.append(f"{revision}-1")
+    return targets
 
 
 if __name__ == "__main__":
