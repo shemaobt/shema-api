@@ -105,6 +105,40 @@ async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
     return user, project, await auth_header(db, user)
 
 
+def _ready_comprehension(pericope: str):
+    """Calibration, evidence, practice and consent — everything the floor no longer implies.
+
+    ``session_is_done`` stopped being the coverage floor alone: it folds in semantic
+    readiness and the team's recording consent, so that a bridge-limited team is not judged
+    on Portuguese output. A scenario about *closing* has to carry all of it now.
+    """
+    from app.services.internalization_room.comprehension.checkpoints import (
+        checkpoints_for,
+        scene_ids_for,
+    )
+    from app.services.internalization_room.comprehension.evidence import (
+        EvidenceMethod,
+        EvidenceObservation,
+        EvidenceResult,
+    )
+    from app.services.internalization_room.comprehension.state import ComprehensionState
+
+    return ComprehensionState(
+        ledger=[
+            EvidenceObservation(
+                id=f"ev-{index}",
+                unit_id=checkpoint.id,
+                probe_id=f"probe-{index}",
+                method=EvidenceMethod.MICRO_TELLBACK,
+                result=EvidenceResult.DEMONSTRATED,
+            )
+            for index, checkpoint in enumerate(checkpoints_for(pericope))
+        ],
+        practiced_scene_ids=scene_ids_for(pericope),
+        recording_consent_given=True,
+    )
+
+
 async def a_session(
     db: AsyncSession,
     *,
@@ -112,9 +146,17 @@ async def a_session(
     pericope: str = P,
     opened_at: datetime | None = None,
     last_activity: datetime | None = None,
+    ready_to_close: bool = False,
 ):
     """A conversation, optionally moved back in time so it can be an old one."""
-    session = await room.create_session(db, pericope=pericope, project_id=project_id)
+    session = await room.create_session(
+        db,
+        pericope=pericope,
+        project_id=project_id,
+        bridge_mode="guided_microchecks" if ready_to_close else None,
+    )
+    if ready_to_close:
+        session = await room.save_comprehension(db, session, _ready_comprehension(pericope))
     if opened_at is not None:
         session.created_at = opened_at
     if last_activity is not None:
@@ -287,7 +329,7 @@ async def test_a_conversation_closed_by_the_floor_reads_complete_with_its_length
     client, db_session
 ):
     _user, project, headers = await a_facilitator(db_session)
-    session = await a_session(db_session, project_id=project.id)
+    session = await a_session(db_session, project_id=project.id, ready_to_close=True)
     session.created_at = datetime.now(UTC) - timedelta(minutes=34)
     await db_session.commit()
 

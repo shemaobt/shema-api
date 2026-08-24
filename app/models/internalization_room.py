@@ -241,7 +241,6 @@ class TeamSessionResponse(BaseModel):
     coverage: list[SessionBead]
 
 
-
 class CoverageView(BaseModel):
     engaged: int
     surfaced: int
@@ -276,26 +275,6 @@ class BackTranslationProgress(BaseModel):
     finding_chunk: int | None = None
     finding_kind: str | None = None
     superseded_attempts: int = 0
-
-
-class BackTranslationProgress(BaseModel):
-    """Where a telling-back stopped, so a tablet can be handed it back.
-
-    The app keeps none of this across a restart — `session_id` lives only in memory — so a
-    team that left a passage part-way lost the whole retro. Everything here is already
-    stored on the session; it simply had no way out.
-    """
-
-    scope: str = ""
-    #: One entry per stretch already told, in order, with the pass it was told on. The app
-    #: draws one bead per entry.
-    passes: list[int] = Field(default_factory=list)
-    #: Where each stretch sits in the rehearsal, so the room can play one back.
-    spans: list[list[int]] = Field(default_factory=list)
-    retells: int = 0
-    checked: bool = False
-    finding_chunk: int | None = None
-    finding_kind: str | None = None
 
 
 class SessionStateResponse(BaseModel):

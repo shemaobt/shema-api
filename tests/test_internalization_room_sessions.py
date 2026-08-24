@@ -149,8 +149,14 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     exactly why this one has to be stamped: without it a finished conversation is
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
+
+    The scenario carries calibration, evidence, practice and consent because the floor alone
+    stopped closing anything: ``session_is_done`` folds those in, deliberately, so that
+    bridge-limited teams are not judged on Portuguese output. What is asserted here is
+    unchanged — that the close is *stamped* — only what it takes to reach a close moved.
     """
-    session = await create_session(db_session, pericope=P)
+    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
     session = await apply_coverage(db_session, session.id, whole)

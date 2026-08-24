@@ -92,9 +92,7 @@ class IRSession(Base):
     #: from the metadata got a NOT NULL column with no default and any insert that did not
     #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
-    comprehension: Mapped[dict[str, Any]] = mapped_column(
-        JSON, default=dict, server_default="{}"
-    )
+    comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

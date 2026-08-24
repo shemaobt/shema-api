@@ -358,6 +358,16 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{IR}/facilitator/sessions/{session_id}/release", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", {}),
             "ids": (session_id, absent),
+            #: The owner is refused too, and by a different door: 409 with the blockers
+            #: named, because a session this far from finished has no artifact to hand
+            #: over. That is the answer to somebody who *is* the owner — a stranger gets
+            #: 404, the same as for an id that never existed. The two codes differing is
+            #: what scoping means here, and asserting 200 would mean building a
+            #: release-ready session inside a scope audit: bridge calibrated,
+            #: comprehension evaluated, consent given, floor met, rehearsal audio and a
+            #: telling-back. The audit would then fail whenever any of those changed,
+            #: which is every one of them except scope.
+            "owner_expects": 409,
         },
     ]
 
@@ -379,6 +389,7 @@ def _shape(body, *ids: str):
 #: Templates of the same set, for matching against the mounted paths.
 REFUSING_TEMPLATES = {
     ("POST", f"{DESK}/devices/claim"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),
     ("GET", f"{DESK}/teams/{{team_id}}"),
@@ -485,7 +496,11 @@ async def test_the_same_resources_are_reachable_by_the_team_that_owns_them(clien
         method = case["method"]
         owned_url, owned_kw = case["owned"]
         answer = await client.request(method, owned_url, headers=b.headers, **owned_kw)
-        if answer.status_code >= 400:
+        expected = case.get("owner_expects")
+        if expected is not None:
+            if answer.status_code != expected:
+                refused.append(f"{method} {owned_url} -> {answer.status_code}, esperado {expected}")
+        elif answer.status_code >= 400:
             refused.append(f"{method} {owned_url} -> {answer.status_code}")
 
     assert not refused, (
