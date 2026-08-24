@@ -9,16 +9,31 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey
+from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.elements import element_keys, elements_for
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.evidence import (
+    EvidenceMethod,
+    EvidenceObservation,
+    EvidenceResult,
+)
 from app.services.internalization_room.comprehension.practice import (
     MOTHER_TONGUE_PRACTICE_PROMPT,
 )
 from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
+from app.services.internalization_room.rehearsal_readiness import (
+    REHEARSAL_CONSENT_DECLINED_LINE,
+    REHEARSAL_CONSENT_QUESTION,
+    REHEARSAL_READINESS_CUE,
+)
 from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
 from app.services.internalization_room.sessions import (
     append_exchange,
@@ -409,3 +424,94 @@ async def test_a_turn_without_a_prior_probe_mints_no_evidence(
 
     assert turn.state.ledger == []
     assert comprehension_of(session).ledger == []
+
+
+def _everything_demonstrated(pericope: str) -> ComprehensionState:
+    """A ledger and a practice record that leave the room one turn from the consent
+    question: every checkpoint demonstrated, every scene rehearsed in the mother tongue."""
+    return ComprehensionState(
+        ledger=[
+            EvidenceObservation(
+                id=f"ev-{index}",
+                unit_id=checkpoint.id,
+                probe_id=f"probe-{index}",
+                method=EvidenceMethod.MICRO_TELLBACK,
+                result=EvidenceResult.DEMONSTRATED,
+            )
+            for index, checkpoint in enumerate(checkpoints_for(pericope))
+        ],
+        practiced_scene_ids=scene_ids_for(pericope),
+    )
+
+
+async def _room_ready_to_ask_about_recording(db: AsyncSession) -> IRSession:
+    session = await create_session(db, pericope=P, bridge_mode="adaptive")
+    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+    session = await save_comprehension(db, session, _everything_demonstrated(P))
+    return await append_exchange(db, session, team_utterance="", guide_response="abertura")
+
+
+async def _team_says(
+    db: AsyncSession, session: IRSession, text: str, **heard: Any
+) -> tuple[IRSession, str]:
+    """One turn the way the endpoint takes it: run, persist, transcribe both sides."""
+    turn = await run_comprehension_turn(
+        db,
+        session,
+        speech=HeardSpeech(text=text, **heard),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    session = await save_comprehension(db, session, turn.state)
+    session = await append_exchange(
+        db, session, team_utterance=text, guide_response=turn.outcome.speech
+    )
+    return session, turn.outcome.speech
+
+
+@pytest.mark.asyncio
+async def test_a_refused_recording_is_offered_again_after_an_ordinary_turn(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A "no" postpones the question; it does not lock it behind wording nobody says."""
+    session = await _room_ready_to_ask_about_recording(db_session)
+
+    session, offered = await _team_says(db_session, session, "estamos entendendo bem essa parte")
+    assert offered == REHEARSAL_CONSENT_QUESTION
+
+    session, _ = await _team_says(db_session, session, "não")
+    session, later = await _team_says(
+        db_session, session, "acho que agora a gente já entendeu essa parte"
+    )
+
+    assert later == REHEARSAL_CONSENT_QUESTION
+
+
+@pytest.mark.asyncio
+async def test_the_turn_that_refuses_is_answered_by_accepting_the_refusal(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """Asking again in the same breath would make the "no" a question the team has to
+    survive rather than a decision the room takes."""
+    session = await _room_ready_to_ask_about_recording(db_session)
+    session, _ = await _team_says(db_session, session, "estamos entendendo bem essa parte")
+
+    session, answer = await _team_says(db_session, session, "não")
+
+    assert answer == REHEARSAL_CONSENT_DECLINED_LINE
+
+
+@pytest.mark.asyncio
+async def test_a_yes_hands_over_to_recording_and_is_not_asked_twice(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    session = await _room_ready_to_ask_about_recording(db_session)
+    session, _ = await _team_says(db_session, session, "estamos entendendo bem essa parte")
+
+    session, handoff = await _team_says(db_session, session, "sim")
+    assert handoff == REHEARSAL_READINESS_CUE
+
+    session, after = await _team_says(db_session, session, "sim")
+    assert after != REHEARSAL_CONSENT_QUESTION

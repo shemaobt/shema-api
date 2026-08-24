@@ -20,6 +20,7 @@ from app.services.internalization_room.comprehension.stt_recovery import (
 from app.services.internalization_room.rehearsal_readiness import (
     REHEARSAL_CONSENT_QUESTION,
     resolve_rehearsal_consent,
+    resumes_recording_handoff,
     should_offer_recording_consent,
 )
 
@@ -263,18 +264,38 @@ def test_uncertain_speech_never_consents() -> None:
     )
 
 
-def test_a_paused_handoff_is_not_reoffered_without_an_explicit_resume() -> None:
+def test_a_paused_handoff_waits_for_the_turn_that_resumes_it() -> None:
     assert not should_offer_recording_consent(
         eligible=True,
         paused=True,
-        explicit_resume_requested=False,
+        resume_requested=False,
+        consent_already_given=False,
         prior_decision="unclear",
         reliable_bridge_speech=True,
     )
     assert should_offer_recording_consent(
         eligible=True,
         paused=True,
-        explicit_resume_requested=True,
+        resume_requested=True,
+        consent_already_given=False,
         prior_decision="unclear",
         reliable_bridge_speech=True,
     )
+
+
+def test_an_ordinary_bridge_language_turn_resumes_a_paused_handoff() -> None:
+    """The narrow phrasings stopped being the only key; they did not stop working."""
+    assert resumes_recording_handoff(
+        "acho que agora a gente já entendeu essa parte", reliable_bridge_speech=True
+    )
+    assert resumes_recording_handoff("queremos gravar agora", reliable_bridge_speech=True)
+
+
+def test_speech_the_room_could_not_use_never_resumes_a_paused_handoff() -> None:
+    """The team spends whole turns in its own language while rehearsing, and a bad take
+    comes back as nothing at all — neither is the team asking to be asked again."""
+    assert not resumes_recording_handoff(
+        "koeti yoko vitukeovo enepone", reliable_bridge_speech=False
+    )
+    assert not resumes_recording_handoff("", reliable_bridge_speech=True)
+    assert not resumes_recording_handoff("   ", reliable_bridge_speech=True)
