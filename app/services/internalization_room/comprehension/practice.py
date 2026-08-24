@@ -116,7 +116,9 @@ def confirms_completed_mother_tongue_practice(
     passage evidence.
 
     The team's answer is read segment by segment, so a confirmation spoken as part of a
-    longer sentence still counts, while a question, a hedge or a negated segment does not.
+    longer sentence still counts. Reading by segment costs the anchoring that used to
+    refuse a negative on its own, so a question, a hedge or any negation anywhere in the
+    answer refuses it explicitly instead: "sim, mas ainda não" is not a finished practice.
     """
     guide = _normalize(previous_guide_utterance)
     if oral_utterance_is_interrogative(team_utterance) or oral_clause_is_non_committal(
@@ -131,6 +133,8 @@ def confirms_completed_mother_tongue_practice(
     if _explicit_completed_practice_report(team_utterance):
         return True
     segments = _oral_segments(team_utterance)
+    if any(oral_clause_has_negation(segment) for segment in segments):
+        return False
     if completion_token and any(_COMPLETION_TOKEN.match(segment) for segment in segments):
         return True
     return direct_confirmation and any(_AFFIRMATIVE.match(segment) for segment in segments)

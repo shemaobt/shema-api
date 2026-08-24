@@ -224,6 +224,21 @@ def test_a_negated_practice_never_confirms() -> None:
     assert not confirms_completed_mother_tongue_practice(
         MOTHER_TONGUE_PRACTICE_PROMPT, "não, pronto não"
     )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "não, pronto"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "sim, mas ainda não"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "pronto, mas ainda não"
+    )
+
+
+def test_wanting_another_round_does_not_undo_a_finished_practice() -> None:
+    assert confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos, mas queremos de novo"
+    )
 
 
 def test_nothing_confirms_a_practice_the_room_never_invited() -> None:
