@@ -200,11 +200,18 @@ async def sessions_waiting_on_a_person(db: AsyncSession) -> list[IRSession]:
 
     Two states wait on a person and no third one does: a room that halted asked for
     someone to come, and a finished passage is waiting to be carried into Refine through
-    the release route. A session still under way is waiting on the team, not on the
-    facilitator, and putting it here would turn a queue into a dump of every row.
+    the release route. Neither of those ids is obtainable anywhere else. A session still
+    under way is waiting on the team, not on the facilitator.
 
-    Newest first because this is read as a queue. It does not page: the pilot has no
-    volume for it, and a limit that silently truncated would read as an empty queue.
+    The two halves drain differently, and only one of them drains at all. `NEEDS_PERSON`
+    lifts itself the moment a turn lands, so a resumed room leaves on its own. `DONE` is
+    terminal — nothing in this service writes a status back out of it, and reading the
+    release does not mark a session as carried — so that half grows once per finished
+    passage and never shrinks. At pilot volume that is a short list; it is not a shape
+    that holds if the room outgrows the pilot, and the answer then is a state for
+    "carried", not a page limit that would read as an empty queue.
+
+    Newest first, because this is read as a queue.
     """
     result = await db.execute(
         select(IRSession)
