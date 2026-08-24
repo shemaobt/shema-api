@@ -49,6 +49,7 @@ _COMPLETION_TOKEN = re.compile(
     r"^(?:pronto|pronta|prontos|prontas|terminamos|acabamos|concluimos|ready|done"
     r"|finished|we\s+are\s+done|we\s+finished)$"
 )
+_SEGMENT_BOUNDARY = re.compile(r"[,;.!?\n]+")
 _COMPLETED_REPORT = (
     re.compile(
         r"\b(ja|acabamos\s+de|terminamos\s+de)\b.{0,40}\b(ensai|pratic|recont|tent\w*\s+cont)\w*"
@@ -74,9 +75,27 @@ def guide_invited_mother_tongue_practice(guide_utterance: str) -> bool:
     return bool(_PRACTICE.search(text) and _MOTHER_TONGUE.search(text))
 
 
+def _oral_segments(utterance: str) -> list[str]:
+    """Split a spoken confirmation at the boundaries a listener hears.
+
+    Commas count alongside the strong stops: a team that answers "pronto, terminamos"
+    said the completion word, and matching only the whole utterance would lose it.
+    """
+    return [
+        segment
+        for segment in (_normalize(part) for part in _SEGMENT_BOUNDARY.split(utterance))
+        if segment
+    ]
+
+
 def _explicit_completed_practice_report(team_utterance: str) -> bool:
+    """The team reports its own finished practice in plain speech.
+
+    Naming the language is the Guide's job, not the team's — the invitation already bound
+    the scene and the language, so the report is read for a completed practice alone.
+    """
     whole = _normalize(team_utterance)
-    if not _PRACTICE.search(whole) or not _MOTHER_TONGUE.search(whole):
+    if not _PRACTICE.search(whole):
         return False
     if oral_utterance_is_interrogative(team_utterance):
         return False
@@ -94,9 +113,12 @@ def confirms_completed_mother_tongue_practice(
 ) -> bool:
     """A bare yes can establish a process fact only when bound to a direct, validated
     question about already completed mother-tongue practice. It never becomes semantic
-    passage evidence."""
+    passage evidence.
+
+    The team's answer is read segment by segment, so a confirmation spoken as part of a
+    longer sentence still counts, while a question, a hedge or a negated segment does not.
+    """
     guide = _normalize(previous_guide_utterance)
-    team = _normalize(team_utterance)
     if oral_utterance_is_interrogative(team_utterance) or oral_clause_is_non_committal(
         team_utterance
     ):
@@ -108,9 +130,10 @@ def confirms_completed_mother_tongue_practice(
         return False
     if _explicit_completed_practice_report(team_utterance):
         return True
-    if completion_token and _COMPLETION_TOKEN.match(team):
+    segments = _oral_segments(team_utterance)
+    if completion_token and any(_COMPLETION_TOKEN.match(segment) for segment in segments):
         return True
-    return direct_confirmation and bool(_AFFIRMATIVE.match(team))
+    return direct_confirmation and any(_AFFIRMATIVE.match(segment) for segment in segments)
 
 
 MOTHER_TONGUE_PRACTICE_PROMPT = (
