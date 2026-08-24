@@ -1,3 +1,19 @@
+"""Seed the application registry — one row per app, with its roles.
+
+Idempotent by design: every entry is looked up before it is written, so this runs safely
+against a database that already holds some or all of it.
+
+``app_url`` is not decoration. ``request_password_reset`` looks the row up by ``app_key``
+and builds the reset email as ``{app_url}/reset-password?token=…``, so a wrong value
+breaks password recovery and nothing else, silently. The loop below only fills an
+``app_url`` that is empty, which means correcting one already written is an UPDATE on the
+row rather than a re-run of this script.
+
+``APP_ROLES_OVERRIDE`` carries the apps whose roles are not ``DEFAULT_ROLES``. For
+``resource-request-form`` the three keys are the role ids of the frontend's
+``capabilities.ts`` verbatim, not a translation of them.
+"""
+
 import asyncio
 
 from sqlalchemy import select
@@ -13,10 +29,6 @@ SEED_APPS = [
     ("avita", "AViTA", "https://avita.shemaywam.com"),
     ("annotation-studio", "Annotation Studio", "https://annotationstudio.shemaywam.com"),
     ("sound-necklace", "Sound Necklace", "https://soundnecklace.shemaywam.com"),
-    # app_url is not decoration: request_password_reset looks the row up by app_key and
-    # builds FE-25's reset email as {app_url}/reset-password?token=… — a wrong value here
-    # breaks password recovery and nothing else, silently. Correcting one is an UPDATE on
-    # the row, because the loop below only fills an app_url that is empty.
     ("resource-request-form", "Resource Request Form", "https://resourceform.shemaywam.com"),
 ]
 
@@ -35,7 +47,6 @@ APP_ROLES_OVERRIDE: dict[str, list[str]] = {
     "oral-collector": ["member", "manager"],
     "annotation-studio": ["admin", "facilitator"],
     "sound-necklace": ["facilitator", "project_admin"],
-    # The role ids of resource-request-form's capabilities.ts verbatim, not a translation.
     "resource-request-form": ["equipe", "mesa", "gestor"],
 }
 
