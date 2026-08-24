@@ -1,4 +1,4 @@
-# ruff: noqa: RUF001 — ported oral-decision patterns are verbatim reference data;
+# ruff: noqa: RUF001 — the curly apostrophe is stripped from oral answers on purpose;
 """The exact recording-consent handoff.
 
 The generated Guide may prepare the team for the handoff, but only this exact, validated
@@ -48,37 +48,13 @@ def _normalize_decision(value: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
-_EXPLICIT_RECORD_REQUESTS = frozenset(
-    {
-        "agora estamos prontos para gravar",
-        "agora estamos prontas para gravar",
-        "estamos prontos para gravar",
-        "estamos prontas para gravar",
-        "queremos gravar agora",
-        "podemos gravar agora",
-        "vamos para a gravacao",
-    }
-)
-
-
-def explicitly_requests_recording_handoff(team_utterance: str) -> bool:
-    """Re-arm a previously declined handoff only from a narrow, explicit request to
-    record now."""
-    if oral_utterance_is_interrogative(team_utterance) or oral_clause_is_non_committal(
-        team_utterance
-    ):
-        return False
-    return _normalize_decision(team_utterance) in _EXPLICIT_RECORD_REQUESTS
-
-
 def resumes_recording_handoff(team_utterance: str, *, reliable_bridge_speech: bool) -> bool:
     """Whether this turn lifts a handoff the team put on hold.
 
-    A refusal is a postponement, not a door that locks from outside. Any ordinary turn the
-    room could hear and read in the bridge language lifts it, because the phrasings in
-    ``_EXPLICIT_RECORD_REQUESTS`` are wording no team says out loud and the Guide is
-    forbidden from asking for — leaving them as the only key meant the first "no" was the
-    last word. They remain a way through; they are ordinary bridge speech too.
+    A refusal is a postponement, not a door that locks from outside: any ordinary turn the
+    room could hear and read in the bridge language lifts it. Nothing narrower may be
+    required, because the Guide's probe contract forbids it from asking the team to say
+    any particular thing about recording — a key the team is never handed is not a key.
 
     Speech the room could not use is not the team asking to be asked again: a turn spent in
     the team's own language is ordinary rehearsal, and a take that came back empty is
