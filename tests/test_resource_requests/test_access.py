@@ -37,7 +37,8 @@ class TestRegistration:
         _key, name, app_url = entry
         assert name == "Resource Request Form"
         # Not decoration: request_password_reset builds {app_url}/reset-password?token=…
-        assert app_url and app_url.startswith("https://")
+        # from it, so FE-25's email is only as right as this line.
+        assert app_url == "https://resourceform.shemaywam.com"
 
     def test_the_seeded_roles_are_the_frontends_role_ids(self) -> None:
         assert APP_ROLES_OVERRIDE[APP_KEY] == FRONTEND_ROLE_IDS

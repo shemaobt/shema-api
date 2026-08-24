@@ -71,7 +71,7 @@ Authorization: Bearer {{rrf_login_norole.response.body.tokens.access_token}}
 ### Forgot password — the FE-25 email
 # The app_key is what points the link at this product: request_password_reset
 # looks the row up in `apps` and builds {app_url}/reset-password?token=…
-# Today app_url is the provisional Cloud Run URL.
+# app_url is https://resourceform.shemaywam.com.
 POST {{baseUrl}}/api/auth/forgot-password
 Content-Type: application/json
 
