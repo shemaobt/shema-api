@@ -30,6 +30,12 @@ def _scenes_block(pericope_num: str) -> str:
 
 
 def _parse(raw: str) -> dict[str, list[str]]:
+    """Bucket the classifier's decisions into the two lists `merge` advances.
+
+    The reply's shape belongs to `prompts/classifier_system_prompt.md`, which asks for a
+    `decisions` array. Reading two top-level status keys instead left both buckets empty on
+    every well-formed reply, so no bead ever moved and no session ever reached done.
+    """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
@@ -41,9 +47,19 @@ def _parse(raw: str) -> dict[str, list[str]]:
         return {"engaged": [], "surfaced": []}
     if not isinstance(parsed, dict):
         return {"engaged": [], "surfaced": []}
-    engaged = [k for k in parsed.get("engaged", []) if isinstance(k, str)]
-    surfaced = [k for k in parsed.get("surfaced", []) if isinstance(k, str)]
-    return {"engaged": engaged, "surfaced": surfaced}
+    verdict: dict[str, list[str]] = {"engaged": [], "surfaced": []}
+    decisions = parsed.get("decisions")
+    if not isinstance(decisions, list):
+        logger.warning("Coverage classifier returned no decisions list: %s", raw[:300])
+        return verdict
+    for entry in decisions:
+        element_id = entry.get("element_id") if isinstance(entry, dict) else None
+        new_status = entry.get("new_status") if isinstance(entry, dict) else None
+        if isinstance(element_id, str) and isinstance(new_status, str) and new_status in verdict:
+            verdict[new_status].append(element_id)
+        else:
+            logger.warning("Coverage classifier returned an unusable decision: %s", entry)
+    return verdict
 
 
 async def classify_coverage(
