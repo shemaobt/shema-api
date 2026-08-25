@@ -368,6 +368,8 @@ async def take_turn(
         team_utterance=outcome.transcript,
         guide_response=outcome.speech,
     )
+    if outcome.needs_person:
+        session = await room.mark_needs_person(db, session)
 
     if not outcome.used_fail_safe and not is_panorama(session.pericope):
         background.add_task(

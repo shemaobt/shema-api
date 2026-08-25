@@ -16,7 +16,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
 from app.services.internalization_room.comprehension.evidence import EvidenceMethod
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
@@ -302,3 +302,65 @@ async def test_a_turn_that_fails_after_the_voice_still_reaches_no_one(
 
     assert answered.status_code == 500
     assert "audio_url" not in answered.text
+
+
+@pytest.fixture()
+def the_assessor_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Guide and Validator work; only the comprehension assessor cannot be reached."""
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
+    )
+
+    async def _assessor(**_: Any) -> str:
+        raise RuntimeError("assessor transport is down")
+
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.comprehension.assessor"],
+        "call_agent",
+        _assessor,
+    )
+
+
+async def test_the_hard_stop_outlives_the_request_that_raised_it(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    the_assessor_is_down: None,
+    reread,
+) -> None:
+    """Asking for a person has to survive the turn that asked.
+
+    `append_exchange` releases `NEEDS_PERSON` on every landed turn, and it runs in this same
+    request — so a halt taken inside `run_comprehension_turn` would be undone one line later
+    and the room would go on asking. Read from a second connection, because the fact under
+    test is what the next request loads.
+    """
+    for _ in range(4):
+        response = await _the_team_answers(client, waiting_room.id)
+        assert response.status_code == 200
+    assert (await reread(waiting_room.id)).status is IRSessionStatus.IN_PROGRESS
+
+    response = await _the_team_answers(client, waiting_room.id)
+
+    assert response.status_code == 200
+    assert response.json()["used_fail_safe"]
+    assert (await reread(waiting_room.id)).status is IRSessionStatus.NEEDS_PERSON
+
+
+async def test_the_pause_is_not_a_latch(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    the_assessor_is_down: None,
+    reread,
+) -> None:
+    """A person comes back, the team speaks, and the room leaves the pause on its own.
+
+    The hard stop clears the probe and spends the count, so the turn after it never reaches
+    the assessor — it lands, and a turn that lands is the proof a person came back.
+    """
+    for _ in range(5):
+        await _the_team_answers(client, waiting_room.id)
+    assert (await reread(waiting_room.id)).status is IRSessionStatus.NEEDS_PERSON
+
+    await _the_team_answers(client, waiting_room.id)
+
+    assert (await reread(waiting_room.id)).status is IRSessionStatus.IN_PROGRESS
