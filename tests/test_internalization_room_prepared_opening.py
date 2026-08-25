@@ -250,7 +250,8 @@ async def test_the_panorama_does_not_open_by_speaking_the_first_passage(
     panorama = await _create_panorama(client)
     await _park_the_prepared_line(db_session, panorama)
 
-    said = (await _open_it(client, panorama)) and await _the_room_said(db_session, panorama)
+    await _open_it(client, panorama)
+    said = await _the_room_said(db_session, panorama)
 
     assert PANORAMA in said
     assert PREPARED not in said
@@ -297,7 +298,8 @@ async def test_a_panorama_opened_before_the_preparation_lands_still_opens(
     """The ordinary case, where the race does not happen at all."""
     panorama = await _create_panorama(client)
 
-    said = (await _open_it(client, panorama)) and await _the_room_said(db_session, panorama)
+    await _open_it(client, panorama)
+    said = await _the_room_said(db_session, panorama)
 
     assert PANORAMA in said
     assert PREPARED not in said

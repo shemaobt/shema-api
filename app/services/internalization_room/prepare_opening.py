@@ -10,8 +10,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import OPENING_BUDGET, run_turn
-from app.services.internalization_room.sessions import get_session
-from app.services.internalization_room.synthesize_facilitator_speech import (
+from app.services.internalization_room.sessions import get_session, is_panoramafrom app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
 
@@ -101,7 +100,16 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
 
 
 async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str] | None:
-    """The line this session was handed, consumed once so a later turn never repeats it."""
+    """The line this session was handed, consumed once so a later turn never repeats it.
+
+    A panorama is handed nothing, even when a ready line is sitting on its own row — that row
+    is the parking place `prepare_opening` writes to, and `hand_over` is the only way out of
+    it. Reading it here opened the book by telling a team that had chosen no passage how the
+    first one begins, and spent the line doing it, so the passage they went on to choose paid
+    the wait this whole mechanism exists to spare them.
+    """
+    if is_panorama(session.pericope):
+        return None
     if not session.prepared_speech or not session.prepared_audio_key:
         return None
     speech, key = session.prepared_speech, session.prepared_audio_key

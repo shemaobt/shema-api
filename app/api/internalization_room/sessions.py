@@ -241,14 +241,7 @@ async def take_turn(
     ledger holding evidence for an exchange that was never recorded. Speaking first costs
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
-
-    A panorama never speaks a prepared line, even when one is sitting on its own row. That row
-    is where `prepare_opening` parks the first passage's opening while the team is still
-    hearing the book, and `hand_over` is the only way out of it — onto the session that will
-    actually speak it. Reading it here let the panorama win its own race: the book opened by
-    telling a team that had chosen no passage how Ruth 1:1-5 begins, and the line was spent,
-    so the passage they went on to choose paid the wait the preparation existed to spare them.    """
-    session = await room.get_session(db, session_id)
+    """    session = await room.get_session(db, session_id)
 
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])
@@ -264,9 +257,7 @@ async def take_turn(
     if file is None and not opening:
         return await _say_it_again(session)
 
-    ready = (
-        await take_prepared(db, session) if opening and not is_panorama(session.pericope) else None
-    )
+    ready = await take_prepared(db, session) if opening else None
     if ready is not None:
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
