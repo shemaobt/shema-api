@@ -152,17 +152,32 @@ for the other's tables should be asked why.
 | `app/api/resource_requests/evaluations.py` | BE-06 | Evaluation routes. Mesa-gated at the door. |
 | `app/api/resource_requests/funds.py` | BE-07 | Fund and balance reads, movement history. |
 | `app/api/resource_requests/board.py` | BE-08 | Stage transitions. |
-| `app/services/resource_requests/` | BE-04…BE-08 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `app/services/project/`, `app/services/auth/`), not the grouped `*_service.py` of `annotation_studio/`. |
-| `app/services/resource_requests/access.py` | BE-03 | Row-level scoping — the `app/services/annotation_studio/access.py` precedent. Anything past "does this user hold role X" is a service concern, never a router one. |
-| `app/services/resource_requests/capabilities.py` | BE-03 | The capability→roles map of §5.4 — a pure table — and the `holds_capability` service function that reads a user's roles against it. |
-| `app/services/resource_requests/vocabularies.json` | BE-05 | The vendored emission of §9 — the frontend's own lists, with the commit they came from. Data, not logic; the only non-Python file in the package. |
-| `app/models/resource_requests.py` | BE-04…BE-08 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models, separate `Create` / `Update` / `Response`. |
+| `app/services/resource_request/` | BE-04…BE-08 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `app/services/project/`, `app/services/auth/`), not the grouped `*_service.py` of `annotation_studio/`. |
+| `app/services/resource_request/access.py` | BE-03 | Row-level scoping — the `app/services/annotation_studio/access.py` precedent. Anything past "does this user hold role X" is a service concern, never a router one. |
+| `app/services/resource_request/capabilities.py` | BE-03 | The capability→roles map of §5.4 — a pure table — and the `holds_capability` service function that reads a user's roles against it. |
+| `app/services/resource_request/vocabularies.json` | BE-05 | The vendored emission of §9 — the frontend's own lists, with the commit they came from. Data, not logic; the only non-Python file in the package. |
+| `app/models/resource_request.py` | BE-04…BE-08 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models, separate `Create` / `Update` / `Response`. |
 | `app/db/models/resource_request.py` | BE-02 | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — see §8.1. |
 | `alembic/versions/20260NNN_rrNN_*.py` | BE-02 | Migrations. Single head, clean `downgrade -1`. |
 | `tests/test_resource_requests/` | all | Extend; do not replace. |
 
 ⚠️ `app/models/` is Pydantic and `app/db/models/` is SQLAlchemy. There is no
 `app/schemas/`. The naming trips every newcomer once.
+
+**The plural is not free, and it is not uniform — the repo already decided it, per
+directory.** Two rules, both read off the siblings rather than chosen here:
+
+- **`app/api/` is plural, `app/services/` is singular**, and the existing pairs say so
+  without exception worth following: `access_requests.py`/`access_request/`,
+  `projects/`/`project/`, `meaning_maps/`/`meaning_map/`, `languages.py`/`language/`,
+  `phases.py`/`phase/`, `users.py`/`user/`. Of the 24 packages in `app/services/`, **23 are
+  singular** and the one plural (`notifications/`) is plural on the API side too. So this
+  module is `app/api/resource_requests/` — which is BE-00's, already merged — and
+  `app/services/resource_request/`.
+- **Both model files are singular and carry the same name.** The 16 names that exist in both
+  `app/models/` and `app/db/models/` mirror each other exactly — `project.py`,
+  `sound_necklace.py`, `book_context.py`, `notification.py`, `auth.py`, … — and
+  `oc_stats.py` is the only file on either side whose name ends in an `s`.
 
 ---
 
@@ -309,7 +324,7 @@ as tables but **are not wired into `access_control.py`**, so there is no finer p
 primitive to reach for; and GATE-02 may still move a cell in that table, which must cost one
 line and not a sweep through the routers.
 
-**Decision.** The map is data, in `app/services/resource_requests/capabilities.py`, mirroring
+**Decision.** The map is data, in `app/services/resource_request/capabilities.py`, mirroring
 the table above field for field. Beside it, a service function `holds_capability(db, user_id,
 capability)` reads the user's roles through `authorization_service` and answers against the
 map; `_deps.py` gains only the `require_capability(capability)` factory that wraps it in
@@ -552,7 +567,7 @@ categories into a second source is precisely the drift the check exists to preve
 
 **Decision.** The frontend **emits** its vocabularies as JSON from the same
 `src/constants/` modules the product renders, and this repository **vendors** that file —
-committed, under `app/services/resource_requests/`, carrying the frontend commit it was
+committed, under `app/services/resource_request/`, carrying the frontend commit it was
 emitted from. Not a build-time fetch and not a generated Python module.
 
 The two-repository split is why it is a vendored file and not a shared source: neither CI job
