@@ -73,7 +73,19 @@ def _take_view(take: IRTake) -> dict[str, Any]:
 
 
 async def build_internalization_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    """Build the closed-world release for one session, or refuse with typed blockers."""
+    """Build the closed-world release for one session, or refuse with typed blockers.
+
+    A telling-back has to exist; it does not have to have come out clean. ``checked`` is
+    written as ``finding is None and evidence_sufficient``, so any question the team chose
+    not to resolve made it false — and blocking on it denied the one outcome the room is
+    meant to be able to reach, taking the questions to Refine. The rehearsal, the coverage,
+    the ledger and the telling-back stayed on the tablet with no way out, for a team that
+    had done every piece of the work.
+
+    What the package says instead of refusing: ``checked`` false, ``evidence_sufficient``
+    as the analyst left it, and every open finding in ``findings``. Judging the quality of
+    a telling-back is not this artifact's job — carrying it honestly is.
+    """
     blockers: list[str] = []
     if is_panorama(session.pericope):
         raise InternalizationReleaseBlocked(["panorama_sessions_never_release"])
@@ -104,8 +116,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         blockers.append("no_rehearsal_audio")
     if not telling_back.chunks:
         blockers.append("no_telling_back")
-    if not telling_back.checked:
-        blockers.append("telling_back_not_checked")
     if not played_ranges_cover_clip(telling_back.played_ranges, telling_back.clip_duration_ms):
         blockers.append("playback_did_not_cover_the_clip")
     if blockers:
