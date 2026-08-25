@@ -21,6 +21,7 @@ alembic/           # Database migrations
 scripts/           # One-off scripts (e.g. seed_apps_roles.py)
 tests/             # Async pytest suite, one file per service domain
 http/              # .http request examples (VS Code REST Client / JetBrains)
+docs/              # Module designs — written before the module, not after
 ```
 
 Each layer has a single responsibility: routers call services, services use db models, Pydantic models handle serialization. No business logic lives in routers; no DB calls live outside services.
@@ -336,6 +337,10 @@ uv run ruff format .
 ```
 
 Or via Docker: `docker compose --profile lint run --rm lint`
+
+## Module designs
+
+[`docs/resource_requests.md`](docs/resource_requests.md) — the Resource Circle module: layout, aggregate ownership, the two client-gated seams in both variants, and the open questions with the gate that owns each.
 
 ## API examples
 
