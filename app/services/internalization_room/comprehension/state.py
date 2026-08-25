@@ -22,6 +22,7 @@ class ComprehensionState(BaseModel):
     practiced_scene_ids: list[str] = Field(default_factory=list)
     adaptive_free_retell_attempted: bool = False
     no_report_attempts: list[NoUsableReportAttempt] = Field(default_factory=list)
+    assessor_failures: int = 0
     stt_recovery: SttRecoveryState | None = None
     recording_consent_given: bool = False
     recording_handoff_paused: bool = False
