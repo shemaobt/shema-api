@@ -31,9 +31,29 @@ ERROR_CODE_NOT_FOUND = "NOT_FOUND"
 ERROR_CODE_INTERNAL = "INTERNAL_ERROR"
 ERROR_CODE_UPSTREAM = "UPSTREAM_ERROR"
 
+#: A device whose credential was revoked. Its own code because the tablet acts on it: it
+#: forgets the credential it holds and shows its claim code again, which is the wrong
+#: response to every other refusal.
+ERROR_CODE_DEVICE_REVOKED: Final = "DEVICE_REVOKED"
+
 
 class AuthenticationError(Exception):
     pass
+
+
+class DeviceRevoked(AuthenticationError):
+    """A device presented the credential a facilitator took away from it.
+
+    Its own exception rather than a bare AuthenticationError because the two refusals ask
+    the tablet for different things. An unrecognised credential is a bug on the device and
+    it should keep what it has; a revoked one means the device is out of service and must
+    forget its credential and show a claim code. A single 401 for both leaves the app
+    unable to choose, and choosing wrong either wipes a working tablet or keeps a
+    decommissioned one asking.
+
+    Raising it does not mean the credential still authenticates — it does not, and nothing
+    reads the column that recognises it until authentication has already failed.
+    """
 
 
 class AuthorizationError(Exception):
@@ -105,6 +125,27 @@ class UpstreamServiceError(Exception):
     """
 
 
+class TranscriptionDefect(Exception):
+    """A mistake of ours on a transcription path — not a provider that is down.
+
+    Kept apart from `UpstreamServiceError` for the same reason that one is kept apart from
+    `ValidationError`: swallowing our own bug as if the provider were unavailable is how a
+    defect produces empty transcripts for months and nobody looks. Raised with the original
+    error as its cause and logged with a stack trace, so the difference survives in the type
+    and in the log even where the caller answers the client as if nothing had gone wrong.
+
+    It carries what the caller needs to answer without the object it could not finish
+    working on. On the room's question path that is the raised hand: the question is already
+    committed when this is raised, and a team standing in a room must not be told to record
+    it again because of a bug on our side.
+    """
+
+    def __init__(self, *, question_id: str, status: str) -> None:
+        super().__init__(f"Transcription failed on our side for {question_id}")
+        self.question_id = question_id
+        self.status = status
+
+
 class InvalidCleaningStatusError(ValidationError):
     def __init__(self, status: str) -> None:
         super().__init__(
@@ -137,6 +178,13 @@ async def handle_authentication_error(_request: Request, exc: AuthenticationErro
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
         content=_error_body(str(exc), ERROR_CODE_UNAUTHORIZED),
+    )
+
+
+async def handle_device_revoked(_request: Request, exc: DeviceRevoked) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN,
+        content=_error_body(str(exc), ERROR_CODE_DEVICE_REVOKED),
     )
 
 
@@ -254,6 +302,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, handle_http_exception)  # type: ignore[arg-type]
     app.add_exception_handler(AuthenticationError, handle_authentication_error)  # type: ignore[arg-type]
     app.add_exception_handler(AuthorizationError, handle_authorization_error)  # type: ignore[arg-type]
+    # Same MRO rule as SessionLockChanged below: the subclass wins over AuthenticationError.
+    app.add_exception_handler(DeviceRevoked, handle_device_revoked)  # type: ignore[arg-type]
     app.add_exception_handler(ConflictError, handle_conflict_error)  # type: ignore[arg-type]
     # Starlette walks the raised class's MRO, so the subclass wins over ConflictError
     # above regardless of the order these are registered in.

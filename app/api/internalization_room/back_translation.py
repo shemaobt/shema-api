@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, room_key_dep
+from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
@@ -29,7 +29,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 @router.post(
     "/sessions/{session_id}/back-translation/chunks",
     response_model=BackTranslationChunkResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def add_chunk(
     session_id: str,
@@ -68,10 +68,16 @@ async def add_chunk(
     told_again = state.retells + 1 if retelling else state.retells
     pass_number = 2 if retelling else 1
 
+    # The bytes are kept before anything is asked of them. Transcribing first put the one
+    # irreplaceable thing behind a network call to another company: `heard` only catches
+    # `ValidationError`, so a read timeout or a dropped connection to the transcriber
+    # raised straight past this line, and the stretch was never stored. On a weak link the
+    # tablet also gives up first, and a cancelled request dies at the same place.
     await store_take(
         db,
         session_id=session.id,
         device_id=device_id,
+        project_id=session.project_id,
         pericope=session.pericope,
         kind=IRTakeKind.RETRO,
         scope=state.scope or session.pericope,
@@ -83,6 +89,10 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
+        # The budget is spent on the attempt, not on the transcript. Returning above this
+        # meant that during a transcriber outage — when every attempt comes back empty —
+        # the team could retell forever, `MAX_RETELLS` was never reached, and the room's
+        # only route to a person was unreachable exactly when the room was broken.
         state.retells = told_again
         await room.save_back_translation(db, session, state)
         spent = retelling and told_again >= MAX_RETELLS
@@ -95,7 +105,6 @@ async def add_chunk(
             pass_number=pass_number,
             needs_person=spent,
         )
-
     state.chunks.append(
         Chunk(
             index=len(state.chunks) + 1,
@@ -124,10 +133,11 @@ async def add_chunk(
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def finish(
     session_id: str,
+    response: Response,
     payload: FinishBackTranslationRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
@@ -150,6 +160,11 @@ async def finish(
         await room.save_back_translation(db, session, state)
 
     if not state.chunks:
+        # An analyst asked to compare nothing against the map answers with no findings,
+        # and no findings is what `checked` is made of — so pressing `terminei` over an
+        # empty back translation blessed the passage and the app struck it off the wheel
+        # for good, on a telling-back that never happened. The room says it did not hear
+        # anything, which is the line family written for exactly this.
         _, line = choose(
             FailSafe.INAUDIBLE,
             get_settings().internalization_room_language_code,
@@ -172,6 +187,9 @@ async def finish(
             settings=get_settings(),
         )
         if read is None:
+            # Nothing is saved: `checked` stays as it was and `analysed_chunks` does not
+            # advance, so pressing `terminei` again actually re-runs the analyst instead of
+            # serving a verdict nobody ever reached.
             raise UpstreamServiceError("a análise do contado de volta não pôde ser feita agora")
         state.findings = read.findings
         state.evidence_sufficient = read.evidence_sufficient
@@ -214,7 +232,7 @@ async def finish(
 @router.post(
     "/sessions/{session_id}/back-translation/restart",
     response_model=BackTranslationRestartResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def restart(
     session_id: str,

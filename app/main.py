@@ -12,6 +12,10 @@ from app.api.auth import router as auth_router
 from app.api.bhsa import router as bhsa_router
 from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
+from app.api.devices import devices_router
+from app.api.facilitator.devices import facilitator_devices_router
+from app.api.facilitator.legend import facilitator_legend_router
+from app.api.facilitator.teams import facilitator_teams_router
 from app.api.health import router as health_router
 from app.api.internalization_room import router as internalization_room_router
 from app.api.languages import router as languages_router
@@ -135,6 +139,22 @@ def create_app() -> FastAPI:
     app.include_router(organizations_router, prefix="/api/organizations", tags=["organizations"])
     app.include_router(places_router, prefix="/api/places", tags=["places"])
     app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
+    app.include_router(
+        facilitator_devices_router,
+        prefix="/api/facilitator/devices",
+        tags=["facilitator-devices"],
+    )
+    app.include_router(
+        facilitator_teams_router,
+        prefix="/api/facilitator/teams",
+        tags=["facilitator-teams"],
+    )
+    app.include_router(
+        facilitator_legend_router,
+        prefix="/api/facilitator/coverage-legend",
+        tags=["facilitator-legend"],
+    )
+    app.include_router(devices_router, prefix="/api/devices", tags=["devices"])
     app.include_router(phases_router, prefix="/api/phases", tags=["phases"])
     app.include_router(books_router, prefix="/api/books", tags=["books"])
     app.include_router(pericopes_router, prefix="/api/pericopes", tags=["pericopes"])

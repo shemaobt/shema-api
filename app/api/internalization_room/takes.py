@@ -10,7 +10,8 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import CurrentUser, device_dep, room_key_dep
+from app.api.facilitator._deps import FacilitatorUser
+from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
@@ -19,9 +20,10 @@ from app.services import internalization_room as room
 from app.services.internalization_room.takes import (
     listen_url,
     store_take,
-    take_by_id,
+    take_for_facilitator,
     takes_of,
 )
+from app.utils.stored_time import as_utc
 
 router = APIRouter()
 
@@ -38,7 +40,7 @@ def _view(take: IRTake) -> TakeResponse:
         chunk_index=take.chunk_index,
         pass_number=take.pass_number,
         pericope=take.pericope,
-        recorded_at=take.created_at.isoformat() if take.created_at else "",
+        recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",
     )
 
 
@@ -52,7 +54,7 @@ def _kind(raw: str) -> IRTakeKind:
 @router.post(
     "/sessions/{session_id}/takes",
     response_model=TakeResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def keep_take(
     session_id: str,
@@ -75,6 +77,7 @@ async def keep_take(
         db,
         session_id=session.id,
         device_id=device_id,
+        project_id=session.project_id,
         pericope=session.pericope,
         kind=_kind(kind),
         scope=scope,
@@ -89,7 +92,7 @@ async def keep_take(
 @router.get(
     "/sessions/{session_id}/takes",
     response_model=TakesResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> TakesResponse:
     session = await room.get_session(db, session_id)
@@ -101,14 +104,14 @@ async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> Tak
 
 @router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)
 async def facilitator_takes(
-    session_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> TakesResponse:
     """What a session recorded, for the person who will listen to it.
 
     A facilitator signs in; the team never does. So this carries no room key — the two
     audiences never share a route.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.get_session_for_facilitator(db, user, session_id)
     return TakesResponse(
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
@@ -122,7 +125,7 @@ async def facilitator_takes(
     response_model=None,
 )
 async def listen_to_take(
-    take_id: str, user: CurrentUser, db: AsyncSession = Depends(get_db)
+    take_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
 ) -> RedirectResponse:
     """Redirect to a short-lived signed URL: storage serves the bytes.
 
@@ -130,5 +133,5 @@ async def listen_to_take(
     minutes of audio through the application server buys nothing over letting the bucket
     do it — the same reason the sound necklace redirects rather than proxies.
     """
-    take = await take_by_id(db, take_id)
+    take = await take_for_facilitator(db, user, take_id)
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)

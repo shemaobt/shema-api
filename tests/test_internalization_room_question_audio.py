@@ -21,6 +21,10 @@ from tests.baker import make_user
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
+#: Whose the question is. The inbox reaches a question through the team that owns it, so a
+#: hand raised by nobody's tablet reaches nobody — which is the state this file used to be
+#: written in, back when a question had no owner to be reached through.
+TEAM = "equipe-1"
 
 
 class MemoryStore:
@@ -82,6 +86,7 @@ async def _ask(db_session: AsyncSession, store: MemoryStore):
         session_id="sessao-1",
         pericope="P03",
         audio=b"a equipe perguntou",
+        project_id=TEAM,
         store=store,
     )
 

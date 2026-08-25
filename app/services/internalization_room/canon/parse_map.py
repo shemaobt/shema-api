@@ -12,6 +12,8 @@ from app.core.exceptions import ValidationError
 VENDOR = Path(__file__).parent / "vendor"
 MAPS_DIR = VENDOR / "meaning-map"
 
+ROOM_BOOK = "Ruth"
+
 CONSUMABLE_STATUS = "complete"
 SUPPORTED_GENRE_GROUPS = frozenset({"NARRATIVE"})
 
@@ -22,6 +24,8 @@ _ARC = re.compile(
     re.M | re.S,
 )
 _SCENE = re.compile(r"^### Scene (\d+) — (.+?) \(([^)]*)\)\s*$", re.M)
+# 3C is written two ways across the corpus — "Objects and Elements" in half the maps and
+# "Objects and Concepts" in the other half. Matching one would drop the other in silence.
 _BLOCK = re.compile(r"^\*\*3([A-F]) — [^*]+\*\*\s*$", re.M)
 _ABSENCE = re.compile(r"^\*\*Significant Absence\*\*\s*$", re.M)
 _WIKILINK = re.compile(r"\[\[([A-Za-z]+[0-9_][^\]|]*)\]\]")

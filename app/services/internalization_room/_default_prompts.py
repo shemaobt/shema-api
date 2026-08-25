@@ -29,7 +29,7 @@ _META: dict[IRPromptKey, tuple[str, str]] = {
     ),
     IRPromptKey.COVERAGE_CLASSIFIER: (
         "Coverage Classifier",
-        "Distingue o que foi mencionado do que a equipe trabalhou. Subconta por desenho.",
+        "Quatro estados entre o mencionado e o que a equipe trabalhou. Subconta por desenho.",
     ),
     IRPromptKey.BOOK_PANORAMA: (
         "Book Panorama",

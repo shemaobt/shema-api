@@ -8,9 +8,11 @@ here exists so that knot stands for something.
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import ProjectRole
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRQuestionStatus
 from app.services.internalization_room import questions as service
+from tests.baker import make_language, make_project, make_project_user_access, make_user
 
 DEVICE = "tablet-da-equipe-1"
 OTHER_DEVICE = "tablet-de-outra-equipe"
@@ -27,15 +29,37 @@ class MemoryStore:
         self.objects[key] = data
 
 
-async def _raise(db: AsyncSession, store: MemoryStore, *, device: str = DEVICE):
+async def _raise(
+    db: AsyncSession, store: MemoryStore, *, device: str = DEVICE, project_id: str | None = None
+):
     return await service.raise_question(
         db,
         device_id=device,
         session_id="sessao-1",
         pericope="P03",
         audio=b"a equipe perguntou",
+        project_id=project_id,
         store=store,
     )
+
+
+async def _a_team_and_its_facilitator(db: AsyncSession):
+    """A team and the person the inbox answers to.
+
+    The queue is read by somebody now: since ENG-452 a question belongs to a team and is
+    reachable only by whoever facilitates it, so a test asking "is it still waiting" has to
+    say who is waiting on it.
+    """
+    language = await make_language(db, name="Terena", code="tqe")
+    team = await make_project(db, language.id, name="Equipe Terena")
+    facilitator = await make_user(db, email="facilitadora@example.com")
+    await make_project_user_access(db, team.id, facilitator.id, role=ProjectRole.FACILITATOR)
+    return team, facilitator
+
+
+async def _still_open(db: AsyncSession, facilitator) -> list[str]:
+    page = await service.inbox_page(db, facilitator, wanted=IRQuestionStatus.OPEN)
+    return [question.id for question in page.questions]
 
 
 async def test_the_question_audio_is_kept_not_dropped(db_session: AsyncSession) -> None:
@@ -61,12 +85,10 @@ async def test_a_question_with_no_audio_is_refused(db_session: AsyncSession) -> 
 
 
 async def test_it_waits_in_the_queue_until_a_person_takes_it(db_session: AsyncSession) -> None:
-    store = MemoryStore()
-    question = await _raise(db_session, store)
+    team, facilitator = await _a_team_and_its_facilitator(db_session)
+    question = await _raise(db_session, MemoryStore(), project_id=team.id)
 
-    waiting = await service.open_questions(db_session)
-
-    assert [q.id for q in waiting] == [question.id]
+    assert await _still_open(db_session, facilitator) == [question.id]
 
 
 async def test_an_answer_reaches_the_team_that_asked(db_session: AsyncSession) -> None:
@@ -120,14 +142,15 @@ async def test_a_reply_is_offered_once_and_not_again(db_session: AsyncSession) -
 
 async def test_resolved_elsewhere_never_arrives_in_the_app(db_session: AsyncSession) -> None:
     """The facilitator will speak to the team directly, so nothing should be waiting."""
+    team, facilitator = await _a_team_and_its_facilitator(db_session)
     store = MemoryStore()
-    question = await _raise(db_session, store)
+    question = await _raise(db_session, store, project_id=team.id)
 
     await service.resolve_elsewhere(db_session, question, answered_by="user-1")
 
     assert question.status is IRQuestionStatus.RESOLVED
     assert await service.replies_for(db_session, DEVICE) == []
-    assert await service.open_questions(db_session) == []
+    assert await _still_open(db_session, facilitator) == []
 
 
 async def test_who_answered_is_recorded(db_session: AsyncSession) -> None:

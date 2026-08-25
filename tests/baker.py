@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
@@ -177,6 +178,41 @@ async def make_user_app_role(
     return assignment
 
 
+FACILITATOR_APP_KEY = "internalization-room"
+FACILITATOR_ROLE_KEY = "facilitator"
+
+
+async def grant_facilitator_app_role(db: AsyncSession, user_id: str) -> UserAppRole:
+    """Give a user the app role every facilitator route requires.
+
+    The rows `20260812_room04` registers do not exist here: the suite builds its schema with
+    ``create_all`` and never runs a migration. So the app and the role are created on first
+    use and reused after, which is why this is get-or-create rather than a plain make.
+
+    **The grant itself has no counterpart in production.** `room04` registers the app and the
+    roles and grants them to nobody, and no migration grants `facilitator` to anyone. This
+    helper is what lets a test measure the gate instead of measuring an empty
+    ``user_app_roles`` table; it is not evidence that a real facilitator can get in.
+    """
+    app = (
+        await db.execute(select(App).where(App.app_key == FACILITATOR_APP_KEY))
+    ).scalar_one_or_none()
+    if app is None:
+        app = await make_app(db, app_key=FACILITATOR_APP_KEY, name="Sala de Internalização")
+
+    role = (
+        await db.execute(
+            select(Role).where(Role.app_id == app.id, Role.role_key == FACILITATOR_ROLE_KEY)
+        )
+    ).scalar_one_or_none()
+    if role is None:
+        role = await make_role(
+            db, app.id, role_key=FACILITATOR_ROLE_KEY, label="Facilitador", is_system=True
+        )
+
+    return await make_user_app_role(db, user_id, app.id, role.id)
+
+
 async def make_language(
     db: AsyncSession,
     *,
@@ -250,8 +286,15 @@ async def make_project_user_access(
     db: AsyncSession,
     project_id: str,
     user_id: str,
+    *,
+    role: str = "member",
 ) -> ProjectUserAccess:
-    access = ProjectUserAccess(project_id=project_id, user_id=user_id)
+    """A project_user_access row. `role` defaults to what the column defaults to.
+
+    Written straight to the table, so it accepts values `grant_user_access` would reject —
+    which is what lets a test seed a row an older code path could have left behind.
+    """
+    access = ProjectUserAccess(project_id=project_id, user_id=user_id, role=role)
     db.add(access)
     await db.commit()
     await db.refresh(access)

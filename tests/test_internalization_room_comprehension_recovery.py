@@ -18,6 +18,7 @@ from app.services.internalization_room.comprehension.stt_recovery import (
     resolve_stt_recovery_choice,
 )
 from app.services.internalization_room.rehearsal_readiness import (
+    RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
     REHEARSAL_CONSENT_QUESTION,
     resolve_rehearsal_consent,
     should_offer_recording_consent,
@@ -188,6 +189,64 @@ def test_a_future_plan_never_confirms() -> None:
     )
 
 
+def test_a_plain_report_of_finished_practice_confirms() -> None:
+    assert confirms_completed_mother_tongue_practice(MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos")
+
+
+def test_the_completion_word_confirms_inside_a_longer_utterance() -> None:
+    assert confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "pronto, terminamos"
+    )
+    assert confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "a gente leu, depois ensaiou junto, pronto, pode seguir"
+    )
+
+
+def test_asking_about_practice_never_confirms() -> None:
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos?"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "a gente tem que ensaiar agora?"
+    )
+
+
+def test_a_postponed_practice_never_confirms() -> None:
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "acho que a gente pode ensaiar depois"
+    )
+    assert not confirms_completed_mother_tongue_practice(MOTHER_TONGUE_PRACTICE_PROMPT, "ainda não")
+
+
+def test_a_negated_practice_never_confirms() -> None:
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "ainda não ensaiamos"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "não, pronto não"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "não, pronto"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "sim, mas ainda não"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "pronto, mas ainda não"
+    )
+
+
+def test_wanting_another_round_does_not_undo_a_finished_practice() -> None:
+    assert confirms_completed_mother_tongue_practice(
+        MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos, mas queremos de novo"
+    )
+
+
+def test_nothing_confirms_a_practice_the_room_never_invited() -> None:
+    assert not confirms_completed_mother_tongue_practice("O que aconteceu depois?", "pronto")
+    assert not confirms_completed_mother_tongue_practice("O que aconteceu depois?", "já ensaiamos")
+
+
 def test_confident_foreign_audio_completes_only_the_practice_probe() -> None:
     practice = ActiveProbe(
         id="x",
@@ -263,10 +322,11 @@ def test_uncertain_speech_never_consents() -> None:
     )
 
 
-def test_a_paused_handoff_is_not_reoffered_without_an_explicit_resume() -> None:
+def test_a_paused_handoff_is_not_reoffered_before_the_cooldown_elapses() -> None:
     assert not should_offer_recording_consent(
         eligible=True,
         paused=True,
+        paused_turns=0,
         explicit_resume_requested=False,
         prior_decision="unclear",
         reliable_bridge_speech=True,
@@ -274,7 +334,58 @@ def test_a_paused_handoff_is_not_reoffered_without_an_explicit_resume() -> None:
     assert should_offer_recording_consent(
         eligible=True,
         paused=True,
+        paused_turns=0,
         explicit_resume_requested=True,
         prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+
+
+def test_a_paused_handoff_is_reoffered_once_the_cooldown_elapses() -> None:
+    """The team answered the app's own yes/no question with one of the two words it
+    offered; the pause is a deferral, so the question comes back on its own."""
+    assert not should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS - 1,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+    assert should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+
+
+def test_an_elapsed_cooldown_never_outranks_the_other_gates() -> None:
+    """Waiting is not readiness: the passage still has to be finished, the answer still
+    has to be heard, and the turn that just declined still declines."""
+    assert not should_offer_recording_consent(
+        eligible=False,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+    assert not should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=False,
+    )
+    assert not should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="declined",
         reliable_bridge_speech=True,
     )

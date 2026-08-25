@@ -26,10 +26,12 @@ from app.services.internalization_room.sessions import (
     comprehension_of,
     create_session,
     get_session,
+    get_session_for_facilitator,
     mark_needs_person,
     save_back_translation,
     save_comprehension,
     session_is_done,
+    sessions_waiting_on_a_person,
     set_bridge_mode,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
@@ -54,6 +56,7 @@ __all__ = [
     "create_session",
     "findings_block",
     "get_session",
+    "get_session_for_facilitator",
     "mark_needs_person",
     "run_comprehension_turn",
     "run_panorama_turn",
@@ -62,6 +65,7 @@ __all__ = [
     "save_back_translation",
     "save_comprehension",
     "session_is_done",
+    "sessions_waiting_on_a_person",
     "set_bridge_mode",
     "synthesize_facilitator_speech",
 ]

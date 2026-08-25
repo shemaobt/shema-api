@@ -51,11 +51,24 @@ _ANSWER_BEARING_METHODS = frozenset(
 
 
 class TurnAssessment(BaseModel):
+    """What one pass over the team's answer settled — including that it settled nothing.
+
+    ``failed`` is the difference between *the room could not read this answer* and *the
+    room read it and found nothing in it to quote*. Both leave ``observations`` empty, and
+    a caller that cannot tell them apart voices an ordinary re-ask over a broken call.
+
+    ``replied`` is narrower than ``assessment_completed``: it means a reply actually came
+    back and parsed. An answer settled here without asking anyone — a shrug, a bare "sim" —
+    completes the assessment but says nothing about whether the assessor can be reached.
+    """
+
     observations: list[EvidenceObservation]
     mother_tongue_practice_reported: bool = False
     speech_recognition_uncertain: bool = False
     assessment_completed: bool = False
     no_usable_report: bool = False
+    failed: bool = False
+    replied: bool = False
 
 
 def _tokens(text: str) -> list[str]:
@@ -440,7 +453,9 @@ async def assess_turn(
     STT uncertainty is transport evidence, not a linguistic judgment: it is reported
     without asking a model to speculate from a possibly corrupt transcript. A model or
     transport failure returns no observations *without* ``assessment_completed``, so it
-    can never rotate a bounded probe the way a genuine empty report does.
+    can never rotate a bounded probe the way a genuine empty report does — and it says so
+    with ``failed``, so the turn can degrade audibly instead of passing for an answer the
+    room read and found empty.
     """
     if speech_recognition_uncertain:
         return TurnAssessment(observations=[], speech_recognition_uncertain=True)
@@ -482,13 +497,14 @@ async def assess_turn(
         )
     except Exception:
         logger.exception("Comprehension assessor call failed")
-        return TurnAssessment(observations=[])
+        return TurnAssessment(observations=[], failed=True)
 
     parsed = parse_turn_assessor_decision(
         raw, team_utterance, [checkpoint.id for checkpoint in checkpoints]
     )
     if parsed is None:
-        return TurnAssessment(observations=[])
+        logger.warning("Comprehension assessor reply could not be parsed (%d chars)", len(raw))
+        return TurnAssessment(observations=[], failed=True)
     rows, practice_reported = parsed
 
     observations: list[EvidenceObservation] = []
@@ -509,6 +525,7 @@ async def assess_turn(
     return TurnAssessment(
         observations=observations,
         assessment_completed=True,
+        replied=True,
         no_usable_report=not observations,
         mother_tongue_practice_reported=practice_reported,
     )
