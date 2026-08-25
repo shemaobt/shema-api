@@ -107,6 +107,16 @@ class BackTranslationState(BaseModel):
     def already_analysed(self) -> bool:
         return self.analysed_chunks == len(self.chunks)
 
+    @property
+    def never_analysed(self) -> bool:
+        """The analyst has not read this telling-back at all.
+
+        Distinct from `not already_analysed`, which is also true when more was told back
+        after the last pass. Never read is the state whose defaults — no findings, evidence
+        sufficient — are indistinguishable from a clean check.
+        """
+        return self.analysed_chunks < 0
+
 
 PLAYBACK_TOLERANCE_MS = 750
 
