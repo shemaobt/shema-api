@@ -588,7 +588,7 @@ async def run_comprehension_turn(
             0
             if consent_decision in ("accepted", "declined") or resume_requested
             else state.recording_handoff_paused_turns + 1
-            if state.recording_handoff_paused and reliable
+            if state.recording_handoff_paused and reliable and not empty
             else state.recording_handoff_paused_turns
         ),
     )

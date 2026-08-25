@@ -539,6 +539,7 @@ _UNUSABLE_SPEECH = (
         language_probability=0.99,
     ),
     HeardSpeech(text="mmm ne", transcript_confidence=0.2),
+    HeardSpeech(),
 )
 
 
@@ -549,12 +550,14 @@ async def test_a_paused_handoff_does_not_count_speech_the_room_could_not_use(
     """The wait is measured in turns the room actually heard.
 
     A team that spends the pause rehearsing in its own language, or in a corner of the
-    house the microphone cannot reach, has not been given the room the wait is for."""
+    house the microphone cannot reach, has not been given the room the wait is for — and
+    a transcription that came back empty is the room asking them to repeat, not the room
+    standing back."""
     session = await _session_at_the_recording_handoff(db_session)
     await _say(db_session, session, "acho que já falamos de tudo")
     await _say(db_session, session, "não")
 
-    for index in range(2 * (RECORDING_HANDOFF_REOFFER_AFTER_TURNS + 1)):
+    for index in range(3 * (RECORDING_HANDOFF_REOFFER_AFTER_TURNS + 1)):
         turn = await run_comprehension_turn(
             db_session,
             session,
