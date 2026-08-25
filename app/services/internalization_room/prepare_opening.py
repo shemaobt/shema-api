@@ -10,7 +10,8 @@ from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import OPENING_BUDGET, run_turn
-from app.services.internalization_room.sessions import get_session, is_panoramafrom app.services.internalization_room.synthesize_facilitator_speech import (
+from app.services.internalization_room.sessions import get_session, is_panorama
+from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
 

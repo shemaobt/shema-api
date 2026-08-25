@@ -241,7 +241,8 @@ async def take_turn(
     ledger holding evidence for an exchange that was never recorded. Speaking first costs
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
-    """    session = await room.get_session(db, session_id)
+    """
+    session = await room.get_session(db, session_id)
 
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])

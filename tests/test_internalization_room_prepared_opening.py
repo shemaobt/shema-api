@@ -116,6 +116,7 @@ def test_a_prepared_line_is_handed_over_once() -> None:
         "a origem nunca era limpa, então a mesma fala ia para toda sessão seguinte"
     )
 
+
 PREPARED = "Vamos ficar no começo: uma família sai de Belém por falta de comida."
 PANORAMA = "Bem-vindos. Este livro inteiro é uma volta para casa, em quatro movimentos."
 ON_DEMAND = "Uma linha escrita na hora, porque nada estava pronto."
@@ -190,12 +191,18 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
 
 async def _park_the_prepared_line(db_session: AsyncSession, session_id: str) -> None:
-    """What the background preparation leaves behind when it wins the race."""
+    """What the background preparation leaves behind when it wins the race.
+
+    All three fields, as `prepare_opening` writes them: `hand_over` refuses a line whose
+    passage was never recorded, so staging only the speech and the key stages a state the
+    producer cannot produce.
+    """
     from app.services.internalization_room.sessions import get_session
 
     panorama = await get_session(db_session, session_id)
     panorama.prepared_speech = PREPARED
     panorama.prepared_audio_key = "tts/voice/m/f/prepared.mp3"
+    panorama.prepared_pericope = "P01"
     await db_session.commit()
 
 
