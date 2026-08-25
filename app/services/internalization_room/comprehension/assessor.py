@@ -56,6 +56,10 @@ class TurnAssessment(BaseModel):
     ``failed`` is the difference between *the room could not read this answer* and *the
     room read it and found nothing in it to quote*. Both leave ``observations`` empty, and
     a caller that cannot tell them apart voices an ordinary re-ask over a broken call.
+
+    ``replied`` is narrower than ``assessment_completed``: it means a reply actually came
+    back and parsed. An answer settled here without asking anyone — a shrug, a bare "sim" —
+    completes the assessment but says nothing about whether the assessor can be reached.
     """
 
     observations: list[EvidenceObservation]
@@ -64,6 +68,7 @@ class TurnAssessment(BaseModel):
     assessment_completed: bool = False
     no_usable_report: bool = False
     failed: bool = False
+    replied: bool = False
 
 
 def _tokens(text: str) -> list[str]:
@@ -520,6 +525,7 @@ async def assess_turn(
     return TurnAssessment(
         observations=observations,
         assessment_completed=True,
+        replied=True,
         no_usable_report=not observations,
         mother_tongue_practice_reported=practice_reported,
     )

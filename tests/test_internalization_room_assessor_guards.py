@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.comprehension.assessor import (
+    TurnAssessment,
     excerpt_drops_nearby_negation,
     is_bare_polar_answer,
     is_exact_excerpt,
@@ -28,7 +29,11 @@ from app.services.internalization_room.comprehension.evidence import EvidenceMet
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
+from app.services.internalization_room.live_turn import (
+    ComprehensionTurn,
+    _assessor_failures_after,
+    run_comprehension_turn,
+)
 from app.services.internalization_room.sessions import (
     append_exchange,
     comprehension_of,
@@ -349,20 +354,69 @@ async def test_three_assessor_failures_running_reach_the_hard_stop(
 
 
 @pytest.mark.asyncio
-async def test_one_failure_between_good_turns_never_reaches_the_hard_stop(
+async def test_a_reply_that_comes_back_clears_what_the_failures_owed(
     db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A single network hiccup must not walk a working room into a facilitator handoff."""
-    _assessor_answers(monkeypatch, "raise", "no_evidence", "raise")
+    """Hiccups spread over a working room never add up to a facilitator handoff.
+
+    The room reaches a carry-to-refine offer before a third call is ever placed, which is
+    the no-usable-report ladder doing its own job. What is pinned here is the whole path
+    staying out of category E; the clearing rule itself is pinned on
+    ``_assessor_failures_after``, where no other ladder can divert it.
+    """
+    _assessor_answers(monkeypatch, "raise", "no_evidence", "raise", "no_evidence", "raise")
     session = await _a_room_waiting_on_an_answer(db_session)
 
     spoken = []
-    for _ in range(4):
+    for _ in range(7):
         turn, session = await _the_team_answers(db_session, session)
         spoken.append(turn.outcome.speech)
 
     hard_stop = utterances(FailSafe.HARD_STOP, "pt")
     assert not any(line in hard_stop for line in spoken)
+
+
+def test_only_a_reply_clears_what_the_failures_owed() -> None:
+    """The three things a turn can learn about the assessor, and what each does to the count.
+
+    Behaviour cannot reach this cleanly: the no-usable-report ladder offers carry-to-refine
+    before a third call is placed, so an interleaved room never spends its failures.
+    """
+    assert _assessor_failures_after(2, TurnAssessment(observations=[], failed=True)) == 3
+
+    replied = TurnAssessment(observations=[], assessment_completed=True, replied=True)
+    assert _assessor_failures_after(2, replied) == 0
+
+    never_asked = TurnAssessment(observations=[])
+    assert _assessor_failures_after(2, never_asked) == 2
+
+    settled_locally = TurnAssessment(
+        observations=[], assessment_completed=True, no_usable_report=True
+    )
+    assert _assessor_failures_after(2, settled_locally) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_shrug_mid_outage_does_not_clear_the_ladder(
+    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ "Não sei" is settled without asking anyone, so it is no proof the assessor is back.
+
+    The room decides a semantically empty answer locally and never places the call. Counting
+    that as a healthy reply would let one shrug during an outage zero the ladder, and a team
+    that keeps shrugging at a room that keeps breaking would never reach a person.
+    """
+    _assessor_answers(monkeypatch, "raise", "raise", "raise")
+    session = await _a_room_waiting_on_an_answer(db_session)
+
+    turn, session = await _the_team_answers(db_session, session)
+    turn, session = await _the_team_answers(db_session, session)
+    turn, session = await _the_team_answers(db_session, session, text="não sei")
+    for _ in range(3):
+        turn, session = await _the_team_answers(db_session, session)
+
+    assert turn.outcome.speech in utterances(FailSafe.HARD_STOP, "pt")
+    assert turn.outcome.needs_person
 
 
 @pytest.mark.asyncio

@@ -149,16 +149,20 @@ def _observation_id(tail: str) -> str:
 
 
 def _assessor_failures_after(prior: int, assessment: TurnAssessment) -> int:
-    """Failed assessor calls in a row: one more on a failure, none once one reads an answer.
+    """Failed assessor calls in a row: one more on a failure, none once a reply comes back.
 
     The count is of calls, not of turns. A fail-safe clears the active probe, so the turn
     after one never reaches the assessor at all — and a turn that never called it leaves the
     count where it stood, because it is evidence of nothing either way and clearing it there
     would let a process turn hide an outage.
+
+    Only a reply clears it. An answer the room settles without asking anyone — a shrug, a
+    bare "sim" — completes the assessment locally, and treating that as proof of health
+    would let one shrug mid-outage zero the ladder and strand the team in category A.
     """
     if assessment.failed:
         return prior + 1
-    return 0 if assessment.assessment_completed else prior
+    return 0 if assessment.replied else prior
 
 
 async def run_comprehension_turn(
