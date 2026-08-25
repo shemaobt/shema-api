@@ -38,7 +38,7 @@ def require_role(app_key: str, role_key: str) -> Any:
 
     It asked ``has_role`` until ENG-438, which is three round trips in a row — the app,
     then the role, then the grant — paid on **every** request, while the looser gate beside
-    it paid one every five minutes. That looser gate already reads the list this needs:
+    it paid one per cache window. That looser gate already reads the list this needs:
     ``list_roles`` answers ``(app_key, role_key)`` pairs, so holding a named role is a
     membership test on something already in hand.
 
@@ -48,7 +48,9 @@ def require_role(app_key: str, role_key: str) -> Any:
     **outside this process**, in the Tripod Console or by hand, is not seen until the entry
     ages out. That was already true of ``require_app_access`` and is the installation's
     standing trade; it is written down here because this is the tighter of the two gates
-    and somebody will need to know which way it fails.
+    and somebody will need to know which way it fails. How long it stays that way is
+    ``auth_cache.AUTH_CACHE_TTL_SECONDS``, cut from five minutes to thirty seconds by
+    ENG-551 — read that module's docstring before changing it.
     """
 
     async def _check(
