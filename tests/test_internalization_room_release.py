@@ -68,6 +68,7 @@ def _checked_telling_back() -> BackTranslationState:
         findings=[],
         evidence_sufficient=True,
         checked=True,
+        analysed_chunks=1,
         played_ranges=[[0, 61000]],
         clip_duration_ms=61000,
     )
@@ -202,6 +203,9 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
 def _told_back_with_an_open_finding() -> BackTranslationState:
     """A telling-back the team finished and chose not to resolve.
 
+    `analysed_chunks` matches the chunks because the analyst did read it — that is what
+    makes the finding open rather than the verdict unasked.
+
     `checked` is written as `finding is None and evidence_sufficient`, so an open finding
     makes it false — which is the whole state this slice is about.
     """
@@ -217,6 +221,7 @@ def _told_back_with_an_open_finding() -> BackTranslationState:
         ],
         evidence_sufficient=True,
         checked=False,
+        analysed_chunks=1,
         played_ranges=[[0, 61000]],
         clip_duration_ms=61000,
     )
@@ -304,3 +309,29 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
         "recording_consent_never_given",
         "coverage_floor_not_met",
     }
+
+
+@pytest.mark.asyncio
+async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
+    db_session: AsyncSession,
+) -> None:
+    """Carrying the questions is the point; carrying silence as if it were clean is not.
+
+    A team that captured the stretches and never pressed `terminei` has an unread
+    telling-back, and its defaults — no findings, evidence sufficient — are the same
+    package a clean check produces.
+    """
+    session = await _ready_session(db_session)
+    await save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=P,
+            chunks=[Chunk(index=1, text="Noemi voltou com Rute", starts_ms=0, ends_ms=61000)],
+        ),
+    )
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert "telling_back_never_analysed" in blocked.value.blockers
