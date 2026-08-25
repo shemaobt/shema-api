@@ -473,6 +473,7 @@ async def run_comprehension_turn(
     if not opening and should_offer_recording_consent(
         eligible=eligible,
         paused=state.recording_handoff_paused,
+        paused_turns=state.recording_handoff_paused_turns,
         explicit_resume_requested=resume_requested,
         prior_decision=consent_decision,
         reliable_bridge_speech=reliable,
@@ -582,6 +583,13 @@ async def run_comprehension_turn(
             else False
             if consent_decision == "accepted" or resume_requested
             else state.recording_handoff_paused
+        ),
+        recording_handoff_paused_turns=(
+            0
+            if consent_decision in ("accepted", "declined") or resume_requested
+            else state.recording_handoff_paused_turns + 1
+            if state.recording_handoff_paused and reliable and not empty
+            else state.recording_handoff_paused_turns
         ),
     )
     return ComprehensionTurn(outcome=outcome, bridge_mode=bridge_mode.value, state=new_state)
