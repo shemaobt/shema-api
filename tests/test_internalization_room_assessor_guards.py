@@ -1,8 +1,20 @@
 """The assessor's fail-closed parser: every evidence row must quote the team exactly and
-survive negation, polarity, and duplicate guards."""
+survive negation, polarity, and duplicate guards.
+
+The second half reads the same guard from the live turn: what the team hears when the
+assessor call itself fails, and where a room goes when it keeps failing.
+"""
 
 import json
+import sys
+from typing import Any
 
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings
+from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.comprehension.assessor import (
     excerpt_drops_nearby_negation,
     is_bare_polar_answer,
@@ -11,8 +23,27 @@ from app.services.internalization_room.comprehension.assessor import (
     parse_turn_assessor_decision,
     semantic_excerpt_has_unresolved_polarity,
 )
+from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
+from app.services.internalization_room.comprehension.evidence import EvidenceMethod
+from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
+from app.services.internalization_room.sessions import (
+    append_exchange,
+    comprehension_of,
+    create_session,
+    save_comprehension,
+    set_bridge_mode,
+)
 
 ALLOWED = ["proposition:P03:P1"]
+
+GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
+VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
+GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
+P = "P03"
+TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 
 def _raw(rows: list[dict], **extra) -> str:
@@ -155,3 +186,204 @@ def test_negation_dropping_guard_ignores_ordinary_portuguese_function_words() ->
         "tempo da colheita", "Noemi voltou para Belém no tempo da colheita"
     )
     assert not excerpt_drops_nearby_negation("para Belém", "Noemi voltou, né, para Belém")
+
+
+class _ApprovingGuide:
+    """A Guide that drafts one short line and a Validator that passes it."""
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return GUIDE_LINE
+
+
+class _ScriptedAssessor:
+    """The assessor call answering as this test's script says, one entry per call.
+
+    ``raise`` breaks the transport, ``unreadable`` returns a reply no parser can use, and
+    ``no_evidence`` returns a well-formed report that simply found nothing to quote. Once
+    the script runs out the assessor works: a call a test did not plan for can only make
+    the room healthier, never manufacture the failure the test is looking for.
+    """
+
+    def __init__(self, script: list[str]) -> None:
+        self._script = list(script)
+
+    async def __call__(self, **kwargs: Any) -> str:
+        behaviour = self._script.pop(0) if self._script else "no_evidence"
+        if behaviour == "raise":
+            raise RuntimeError("assessor transport is down")
+        if behaviour == "unreadable":
+            return "desculpa, não consegui"
+        return json.dumps(
+            {
+                "observations": [],
+                "mother_tongue_practice_reported": False,
+                "practice_evidence_excerpt": "",
+            }
+        )
+
+
+@pytest.fixture
+def guide_that_approves(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", _ApprovingGuide())
+
+
+def _assessor_answers(monkeypatch: pytest.MonkeyPatch, *script: str) -> None:
+    module = sys.modules["app.services.internalization_room.comprehension.assessor"]
+    monkeypatch.setattr(module, "call_agent", _ScriptedAssessor(list(script)))
+
+
+def _settings() -> Settings:
+    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
+
+
+async def _a_room_waiting_on_an_answer(db: AsyncSession) -> IRSession:
+    session = await create_session(db, pericope=P, bridge_mode="guided_microchecks")
+    session = await append_exchange(
+        db, session, team_utterance="", guide_response="Quem aparece nesta parte?"
+    )
+    target = next(checkpoint for checkpoint in checkpoints_for(P) if checkpoint.critical)
+    state = comprehension_of(session)
+    state.active_probe = ActiveProbe(
+        id="probe-1",
+        checkpoint_ids=[target.id],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.INITIAL_CHECK,
+    )
+    return await save_comprehension(db, session, state)
+
+
+async def _the_team_answers(
+    db: AsyncSession, session: IRSession, text: str = TEAM_ANSWER
+) -> tuple[ComprehensionTurn, IRSession]:
+    """One whole turn as the endpoint runs it, so what one turn leaves the next one reads."""
+    turn = await run_comprehension_turn(
+        db,
+        session,
+        speech=HeardSpeech(text=text),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    session = await set_bridge_mode(db, session, turn.bridge_mode)
+    session = await save_comprehension(db, session, turn.state)
+    session = await append_exchange(
+        db, session, team_utterance=turn.outcome.transcript, guide_response=turn.outcome.speech
+    )
+    return turn, session
+
+
+@pytest.mark.asyncio
+async def test_an_assessor_that_cannot_be_reached_degrades_the_turn(
+    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A broken assessor call is not an answer the room understood and found empty.
+
+    Voicing an ordinary re-ask there tells the team their answer landed and was found
+    wanting, and leaves the room free to ask the same question forever.
+    """
+    _assessor_answers(monkeypatch, "raise")
+    session = await _a_room_waiting_on_an_answer(db_session)
+
+    turn, _ = await _the_team_answers(db_session, session)
+
+    assert turn.outcome.used_fail_safe
+    assert turn.outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+
+
+@pytest.mark.asyncio
+async def test_an_assessor_reply_nobody_can_read_degrades_the_same_turn(
+    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Malformed JSON and a dead socket cost the room the same thing: the answer."""
+    _assessor_answers(monkeypatch, "unreadable")
+    session = await _a_room_waiting_on_an_answer(db_session)
+
+    turn, _ = await _the_team_answers(db_session, session)
+
+    assert turn.outcome.used_fail_safe
+    assert turn.outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+
+
+@pytest.mark.asyncio
+async def test_an_on_topic_answer_with_no_evidence_is_still_an_ordinary_re_ask(
+    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The assessor read the answer and found nothing to quote — that is not a failure.
+
+    This is the pair that keeps the fix from marking every empty-handed turn as broken.
+    """
+    _assessor_answers(monkeypatch, "no_evidence")
+    session = await _a_room_waiting_on_an_answer(db_session)
+
+    turn, _ = await _the_team_answers(db_session, session)
+
+    assert not turn.outcome.used_fail_safe
+    assert turn.outcome.speech == GUIDE_LINE
+
+
+@pytest.mark.asyncio
+async def test_three_assessor_failures_running_reach_the_hard_stop(
+    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ladder the fail-safe policy promises: repeated failure stops looping and calls a
+    person, instead of asking the same question a fourth time as though it were the first.
+
+    Five turns to spend three failed calls: a fail-safe clears the active probe, so the turn
+    after one never reaches the assessor at all.
+    """
+    _assessor_answers(monkeypatch, "raise", "raise", "raise")
+    session = await _a_room_waiting_on_an_answer(db_session)
+
+    spoken = []
+    for _ in range(5):
+        turn, session = await _the_team_answers(db_session, session)
+        spoken.append(turn.outcome.speech)
+
+    assert spoken[-1] in utterances(FailSafe.HARD_STOP, "pt")
+    assert turn.outcome.used_fail_safe
+    assert turn.outcome.needs_person
+
+
+@pytest.mark.asyncio
+async def test_one_failure_between_good_turns_never_reaches_the_hard_stop(
+    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A single network hiccup must not walk a working room into a facilitator handoff."""
+    _assessor_answers(monkeypatch, "raise", "no_evidence", "raise")
+    session = await _a_room_waiting_on_an_answer(db_session)
+
+    spoken = []
+    for _ in range(4):
+        turn, session = await _the_team_answers(db_session, session)
+        spoken.append(turn.outcome.speech)
+
+    hard_stop = utterances(FailSafe.HARD_STOP, "pt")
+    assert not any(line in hard_stop for line in spoken)
+
+
+@pytest.mark.asyncio
+async def test_the_handoff_spends_the_count_it_was_owed(
+    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Calling a person is the escalation, so the next failure starts the ladder again.
+
+    Otherwise every later failure of the same outage answers with the identical category-E
+    sentence and asks for a person who is already standing there — which is the looping the
+    policy asks the hard stop to end.
+    """
+    _assessor_answers(monkeypatch, "raise", "raise", "raise", "raise")
+    session = await _a_room_waiting_on_an_answer(db_session)
+
+    for _ in range(5):
+        turn, session = await _the_team_answers(db_session, session)
+    assert turn.outcome.needs_person
+
+    for _ in range(2):
+        turn, session = await _the_team_answers(db_session, session)
+
+    assert turn.outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    assert not turn.outcome.needs_person

@@ -119,6 +119,7 @@ class TurnOutcome:
     #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
+    needs_person: bool = False
 
 
 def detects_peer_cue(speech: str) -> bool:
