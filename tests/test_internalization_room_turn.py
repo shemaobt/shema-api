@@ -165,6 +165,7 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     )
 
     assert outcome.used_fail_safe is True
+    assert outcome.degraded is True
     assert outcome.speech in utterances(FailSafe.INAUDIBLE, "pt")
     assert agent.calls == []
 
@@ -247,9 +248,43 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     )
 
     assert outcome.used_fail_safe is True
+    assert outcome.degraded is True
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
     assert outcome.redrafts == MAX_REDRAFTS
     assert agent.calls.count("guide") == MAX_REDRAFTS + 1
+
+
+@pytest.mark.asyncio
+async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearing_the_g_line(
+    patch_agent,
+) -> None:
+    """The same pre-approved line answers two opposite situations, and only the branch knows.
+
+    Category G affirms a team that rehearsed in its own language. Here nobody rehearsed:
+    the Guide itself could not stay in the room's language across three drafts, and the
+    room reaches for G because it is the closest thing it holds. Reading the failure off
+    the line name would file this one as healthy."""
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
+            drafts=["Tell me what you think happens next in this part of the story."]
+            * (MAX_REDRAFTS + 1),
+        )
+    )
+
+    outcome = await run_turn(
+        transcript="me conta mais sobre Rute",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert outcome.speech in utterances(FailSafe.OFF_BRIDGE_LANGUAGE, "pt")
+    assert outcome.used_fail_safe is True
+    assert outcome.degraded is True
 
 
 @pytest.mark.asyncio

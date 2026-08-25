@@ -306,6 +306,7 @@ class TurnResponse(BaseModel):
     transcript: str
     peer_cue: bool = False
     used_fail_safe: bool = False
+    degraded: bool = False
     coverage: CoverageView
     done: bool
     bridge_mode: str = "calibration_pending"

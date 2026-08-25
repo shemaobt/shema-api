@@ -174,6 +174,41 @@ async def test_a_guide_that_cannot_be_reached_answers_the_room_not_the_tablet(
 
     assert answered.status_code == 200, answered.text[:300]
     assert answered.json()["fixed_line"] in _unrepairable_lines()
+    assert answered.json()["degraded"] is True
+
+
+async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both turns are voiced from the tin, and only one of them is a room in trouble.
+
+    The tablet counts canned answers toward fetching a facilitator, so a team rehearsing in
+    its own language — the one thing the room asks them for — spent that count three turns
+    running and stopped the session for someone who was not in the house.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    _the_models_answer(monkeypatch, GUIDE_LINE, json.dumps({"verdict": "pass", "issues": []}))
+    _the_assessor_finds_nothing(monkeypatch)
+    session_id = await _a_room_opening_a_passage(client)
+    assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
+
+    async def _rehearsed_in_their_own_language(audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(
+            text="koeti yoko vitukeovo enepone itukovo",
+            language_code="und",
+            language_probability=0.99,
+        )
+
+    monkeypatch.setattr(sessions_api, "heard_speech", _rehearsed_in_their_own_language)
+
+    answered = await _the_team_answers(client, session_id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    body = answered.json()
+    assert body["fixed_line"].startswith(FailSafe.OFF_BRIDGE_LANGUAGE)
+    assert body["used_fail_safe"] is True
+    assert body["degraded"] is False
 
 
 async def test_a_validator_that_cannot_be_reached_degrades_the_same_turn(

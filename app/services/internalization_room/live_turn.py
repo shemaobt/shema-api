@@ -554,11 +554,16 @@ async def run_comprehension_turn(
                 speech=STT_RECOVERY_REDUCE_BURDEN_LINE,
                 transcript=transcript,
                 used_fail_safe=True,
+                degraded=True,
             )
         else:
             line, fixed = choose(FailSafe.INAUDIBLE, turn=len(messages))
             outcome = TurnOutcome(
-                speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
+                speech=line,
+                transcript=transcript,
+                used_fail_safe=True,
+                degraded=True,
+                fixed_line=fixed,
             )
     elif assessment.failed:
         hard_stop = assessor_failures >= _ASSESSOR_FAILURES_BEFORE_HARD_STOP
@@ -575,6 +580,7 @@ async def run_comprehension_turn(
             speech=line,
             transcript=transcript,
             used_fail_safe=True,
+            degraded=True,
             fixed_line=fixed,
             needs_person=hard_stop,
         )

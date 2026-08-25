@@ -26,7 +26,11 @@ from app.services.internalization_room.comprehension.practice import (
 )
 from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.comprehension.stt_recovery import (
+    STT_RECOVERY_REDUCE_BURDEN_LINE,
+)
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.rehearsal_readiness import (
@@ -399,10 +403,60 @@ async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe
     )
 
     assert turn.outcome.used_fail_safe
+    assert not turn.outcome.degraded
     assert turn.outcome.fixed_line.startswith("G")
     assert turn.state.active_probe is not None
     assert turn.state.active_probe.id == "semantic-1"
     assert all(event.kind != "evidence" for event in turn.state.ledger)
+
+
+@pytest.mark.asyncio
+async def test_speech_the_room_could_not_hear_degrades_on_both_rungs_of_the_recovery(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A room that cannot hear the team is a room that is not working, on either rung.
+
+    The recovery alternates — the first uncertainty asks them to repeat, the second offers a
+    smaller question — so counting only the first would leave a team whose microphone is not
+    reaching them answered by the same two lines forever, with nothing adding up."""
+    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="quem aparece nesta parte?"
+    )
+    target = next(c for c in checkpoints_for(P) if c.critical)
+    session = await save_comprehension(
+        db_session,
+        session,
+        ComprehensionState.model_validate(
+            {
+                "active_probe": {
+                    "id": "semantic-1",
+                    "checkpoint_ids": [target.id],
+                    "method": "micro_tellback",
+                    "purpose": "initial_check",
+                    "practice_scene_ids": [],
+                }
+            }
+        ),
+    )
+
+    spoken = []
+    for _ in range(2):
+        turn = await run_comprehension_turn(
+            db_session,
+            session,
+            speech=HeardSpeech(text="mmm ne", transcript_confidence=0.2),
+            opening=False,
+            guide_prompt=GUIDE,
+            validator_prompt=VALIDATOR,
+            settings=_settings(),
+        )
+        session = await save_comprehension(db_session, session, turn.state)
+        spoken.append(turn.outcome)
+
+    assert spoken[0].speech in utterances(FailSafe.INAUDIBLE, "pt")
+    assert spoken[1].speech == STT_RECOVERY_REDUCE_BURDEN_LINE
+    assert all(outcome.used_fail_safe and outcome.degraded for outcome in spoken)
 
 
 @pytest.mark.asyncio
