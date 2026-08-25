@@ -7,6 +7,7 @@ Use these with VS Code [REST Client](https://marketplace.visualstudio.com/items?
 - **api.http** – Full flow in one file: health → auth (login named) → roles. Token from login is reused for authenticated requests. Best for running the whole flow in order.
 - **health.http** – Health check only.
 - **auth.http** – Signup, login, refresh, logout, me, my-roles. Login is named so `me` / `refresh` / `logout` / `my-roles` in the same file use the returned token.
+- **resource_requests_auth.http** – Resource Request Form: signup, login, `my-roles` filtered by `app_key`, and the forgot/reset password pair. The product has no login of its own — it uses the shared `/api/auth`; what belongs to it are the `app_key` and the `equipe` / `mesa` / `gestor` roles. Run `scripts/seed_apps_roles.py` and grant a role first.
 - **roles.http** – Role check, assign, revoke. Requires a valid `access_token`: run **Auth: Login** in `auth.http`, copy `tokens.access_token` from the response, and set `@accessToken` at the top of `roles.http`.
 - **languages.http** – List, create, get by id/code. Set `@accessToken` after login.
 - **organizations.http** – List, create, get by id/slug, add member. Set `@accessToken` after login.
