@@ -234,6 +234,13 @@ async def take_turn(
     as an opening had the Guide introduce itself and lay the whole passage out a second time —
     against a probe already waiting for a free retell, which the Validator then rejected, so
     the room answered a returning team with a canned line.
+
+    The turn is voiced before any of it is written down. A probe is the room's authorization
+    to assess the answer that comes next, so committing one for a turn whose synthesis then
+    failed points that authorization at a question the team was never asked, and leaves the
+    ledger holding evidence for an exchange that was never recorded. Speaking first costs
+    nothing in the other direction: a clip reaches the team only as the handle in this
+    response, so a request that fails after synthesis hands the app nothing to play.
     """
     session = await room.get_session(db, session_id)
 
@@ -267,6 +274,7 @@ async def take_turn(
         )
 
     validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
+    turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
         if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
             choice_speech = "" if not speech_heard.reliable_bridge_speech else transcript
@@ -310,10 +318,11 @@ async def take_turn(
             settings=get_settings(),
         )
         outcome = turn.outcome
-        session = await room.set_bridge_mode(db, session, turn.bridge_mode)
-        session = await room.save_comprehension(db, session, turn.state)
 
     voiced, segments = await _voice_the_turn(outcome)
+    if turn is not None:
+        session = await room.set_bridge_mode(db, session, turn.bridge_mode)
+        session = await room.save_comprehension(db, session, turn.state)
     session = await room.append_exchange(
         db,
         session,
