@@ -186,9 +186,11 @@ directory.** Two rules, both read off the siblings rather than chosen here:
 Four aggregates, from FE-22's contract §1–§4, plus the capability table. Each row names the
 issue that builds it and the invariant that must survive it.
 
-The table names below are **Provisional** — an `rr_` prefix and a plural, chosen only so the
-rest of this document has something to point at. BE-02 renames them freely; what it may not
-change without saying so is the ownership and the invariants in the last two columns.
+The table names below were **Provisional** — an `rr_` prefix and a plural, chosen only so the
+rest of this document had something to point at. **BE-02 (OBT-451, 25/aug/2026) kept all nine
+verbatim**, so they are Decided now; `20260825_rr01` is the migration that created them and
+`app/db/models/resource_request.py` the models. The ownership and the invariants in the last
+two columns did not move.
 
 **Every table in this document is created by BE-02**, which §3 gives `app/db/models/` and
 every `alembic/versions/` file. The owner column therefore names two issues wherever there
@@ -220,6 +222,15 @@ evaluation with its own identity, its own authorship and its own read permission
 the single most expensive thing to get wrong here, because fixing it later is a migration
 plus an audit of who saw what.
 
+**Its uniqueness is the floor both gate answers share** (BE-02, 25/aug/2026). §10 listed
+"one evaluation per mesa, or one per member" as blocking the *schema* and not only the
+behaviour. It does not, and the reason is that the two answers are not two shapes: they are
+the same constraint at two tightnesses. `uq_rr_evaluations_snapshot_evaluator` is the looser
+one, and it holds under both — "one per mesa" is that constraint with the evaluator dropped,
+which is a one-line migration on a table that has no rows yet. The other order is what costs:
+loosening a constraint after the mesa has used it costs data, not a migration. So the gate
+now decides whether to tighten, and BE-06 is no longer waiting on a table.
+
 ### 4.2 Request shape: a queried spine, and sections that are not columns — **Decided**
 
 The asymmetry decides it, and the issue already states it: the spine (id, type, project
@@ -239,11 +250,16 @@ Two things are decided and two are BE-02's:
   survives whichever medium is chosen — **empty means "not answered", absent means "not
   asked"**. A section a type never renders writes no keys at all, and the mesa reads that
   difference.
-- **BE-02's:** whether the sections are `rr_request_sections` rows keyed
-  `(request_id, section_id, field_key)` or one JSONB document per request. Rows make a
-  single answer queryable and a JSONB document makes the whole read one hop; nothing in the
-  product asks to query a single answer today, so either is defensible and the choice
-  belongs with the migration.
+- ~~**BE-02's:** whether the sections are `rr_request_sections` rows keyed
+  `(request_id, section_id, field_key)` or one JSONB document per request.~~ **Answered: one
+  document** (BE-02, 25/aug/2026). `rr_request_sections` is one row per request carrying a
+  `content` JSON, and the deciding argument is the one this section already makes one level
+  up — the sections are read whole by exactly one screen, and nothing in the product queries
+  a single answer. The second argument is the one only the implementation could see:
+  `rr_snapshots.document` freezes the same shape, so submission is a **copy** and not a
+  projection, and BE-04 never grows a second serializer that can drift from the read path.
+  It is its own table rather than a column on `rr_requests` so the board and the lists never
+  drag the document they do not read.
 
 Three things are **not** free-form and stay relational:
 
@@ -265,6 +281,17 @@ The keys themselves are the gap: the contract mints stable slugs for the seven u
 *vocabularies*, but **not** for the 26 budget categories and **not** for the 3 × 6 criteria.
 Those two lists still have to be minted, from the frontend's own arrays, and frozen. §9 is
 where that lands.
+
+**Half of it landed early, and only because the seed needed it** (BE-02, 25/aug/2026). The
+sample board cards carry a `/30` total and `rr_evaluation_scores` stores rows, so the seed
+could not be written without criterion keys. The eighteen slugs are minted in
+`scripts/seed_resource_requests.py` — mechanically from the Portuguese labels, **prefixed by
+request type**, because *Vínculo com um projeto de tradução ativo* is criterion 2 of both
+`treinamento` and `equipamentos` and an unprefixed slug would collide. They live in the seed
+and nowhere else on purpose: writing them into `app/services/resource_request/` would be the
+hand-copied second source §9 exists to prevent. The **26 budget category slugs are still
+unminted** — nothing in this issue needed one, `rr_budget_lines.category_key` is a plain
+string, and membership is BE-05's check against the vendored emission.
 
 ---
 
@@ -513,9 +540,26 @@ _DECISION_TYPE = Enum(
 
 `values_callable` is not optional — without it PostgreSQL stores the member *names*, not the
 lowercase values the contract froze. Adding a value later is
-`ALTER TYPE … ADD VALUE IF NOT EXISTS` inside `op.get_context().autocommit_block()`, guarded
-by `if op.get_bind().dialect.name == "postgresql"`, because the same migration has to run
-under SQLite in CI.
+`ALTER TYPE … ADD VALUE IF NOT EXISTS` inside `op.get_context().autocommit_block()`.
+
+~~guarded by `if op.get_bind().dialect.name == "postgresql"`, because the same migration has
+to run under SQLite in CI.~~ **No migration in this repository runs under SQLite, and none
+can** (BE-02, 25/aug/2026, measured). `alembic upgrade head` dies on the first revision:
+`20260226_0001` creates `users` with `server_default=sa.text("now()")`, which SQLite rejects
+outright. Alembic is invoked in five places — `docker-compose.yml`, `Dockerfile.dev`,
+`scripts/restore_local_db.sh`, `migrations.yml` and the deploy — and every one of them points
+at PostgreSQL; the test suite builds its schema from `Base.metadata.create_all`, never from a
+revision. So a dialect guard inside a migration is dead code no test can reach, and
+`20260825_rr01` writes plain plpgsql. The **models** are where the split is real, and that is
+where `append_only_ddl` puts it: one plpgsql trigger on PostgreSQL, a `RAISE(ABORT)` pair on
+SQLite, chosen at `after_create` from the dialect in hand.
+
+**One default in that idiom is worth naming, because it is silent.** `Enum` has carried
+`create_constraint=False` since SQLAlchemy 1.4, so on a dialect with no native enums the
+column is a bare `VARCHAR` and nothing refuses a fifth decision string — on precisely the
+dialect the tests run. `app/db/models/resource_request.py` turns it back on: PostgreSQL emits
+no CHECK beside a native enum, so it costs production nothing, and it is what lets a test
+watch the database refuse `'rejected'`.
 
 The four decision strings are frozen by the contract and will not grow, which is what makes
 a native enum the right call for them. The six board columns are frozen too. Anything the
@@ -532,7 +576,27 @@ PostgreSQL — it runs `upgrade head`, `downgrade -1`, `upgrade head`, with
 `PYTHONWARNINGS=error::UserWarning` because a duplicate revision id is only a warning.
 **`downgrade()` is not decorative here; a migration that cannot come back down fails CI.**
 
-### 8.4 The error envelope carries no field, and BE-05 needs one
+### 8.4 A request and its snapshot reference each other, so a flush needs telling
+
+`rr_snapshots.request_id` points at the request and `rr_requests.revision_of_id` points
+back at the snapshot a revision answers — the second is the contract's own wording, and it
+is what says *which* evaluated version a revision came from when a request has more than
+one.
+
+The DDL side is solved and invisible: `use_alter=True` on the model, an `ALTER TABLE ADD
+CONSTRAINT` after both tables exist in the migration, and an inline FK on SQLite, which
+cannot ALTER and therefore does not need to.
+
+**The unit of work is not.** No `relationship()` is declared anywhere in this module — the
+services query explicitly, as the house rules ask — so a flush orders its inserts from the
+table graph alone, and that graph has a cycle. Measured: adding a request, its snapshot and
+its evaluation in **one** flush wrote the evaluation first and died on the foreign key. The
+rule for BE-04, BE-06 and BE-08 is therefore one line long: **`await db.flush()` between the
+request and its snapshot**, never one flush for both. `scripts/seed_resource_requests.py` and
+`tests/test_resource_requests/test_schema.py` both do it that way, and the second is where it
+was found.
+
+### 8.5 The error envelope carries no field, and BE-05 needs one
 
 `app/core/exceptions.py` renders every business exception as `{"detail": <string>,
 "code": <string>}`. `ValidationError` → 400, `AuthorizationError` → 403,
@@ -556,7 +620,7 @@ recomputed-total drift — the last one being the only check that needs a *cross
 validator, which is exactly what `ValidationInfo.data` gives. No new error envelope is
 invented, and no existing client sees a new shape.
 
-### 8.5 The app key is named once, and a test says so
+### 8.6 The app key is named once, and a test says so
 
 `tests/test_resource_requests/test_access.py::test_the_app_key_is_named_once_in_the_module`
 globs `app/api/resource_requests/*.py` and fails if any file but `_deps.py` contains the
@@ -622,12 +686,12 @@ that owns it and what it blocks.
 
 | Question | Gate | Blocks |
 |---|---|---|
-| What each of the five funds covers, and the old↔new mapping; Ready Vessels' fate | **GATE-01** (OBT-447) | BE-02's seed, BE-07 |
-| **Which fund a request asks from** — no field for it exists anywhere in the form; `funds_support` is an essay, not a reference. Team chooses / derived from type / mesa assigns at triage are three different columns in three different tables | **GATE-01** (OBT-447) | BE-02, BE-07 — **BE-07 cannot debit a fund it was never told about** |
+| What each of the five funds covers, and the old↔new mapping; Ready Vessels' fate | **GATE-01** (OBT-447) | BE-07. BE-02's seed no longer waits: it writes the five rows with `provisional = true`, the PRD's names over the prototype's ids, exactly as OBT-451 allows for an open gate |
+| **Which fund a request asks from** — no field for it exists anywhere in the form; `funds_support` is an essay, not a reference. Team chooses / derived from type / mesa assigns at triage are three different columns in three different tables | **GATE-01** (OBT-447) | BE-07 — **it cannot debit a fund it was never told about**. BE-02 read it again and the three shapes converge on one place: `rr_requests.fund_id`, nullable. What the gate decides is *who writes it and when*, which is behaviour |
 | Insufficient funds on a concurrent approve: refuse, or allow negative with a warning (§7.3) | **GATE-01** (OBT-447) | BE-07 |
 | How teams get access — accounts, leader-link, or anonymous + submit (§5.2). Decides whether `created_by` is a FK or nullable | **GATE-02** (OBT-448) | BE-03, BE-04 |
 | Whether the Gestor authors evaluations; whether `move_board` is the mesa's alone; whether the mesa may edit a team's request | **GATE-02** (OBT-448) | BE-03 — one cell each in §5.4's map |
-| One evaluation per mesa, or one per member | **GATE-02** (OBT-448) | BE-02, BE-06 — it is the primary key of `rr_evaluations`, so the gate blocks the schema and not only the behaviour |
+| One evaluation per mesa, or one per member | **GATE-02** (OBT-448) | BE-06. **Not the schema, and §4.1 says why**: the two answers are the same uniqueness at two tightnesses, `uq_rr_evaluations_snapshot_evaluator` is the one that holds under both, and tightening is a one-line migration on an empty table |
 | Whether recording a decision moves the card, or only suggests the column | **GATE-02** (OBT-448) | BE-06, BE-08 |
 | Audit trail for edits to the solicitação and the avaliação — who changed which field, who raised a score from 2 to 5, when. BE-07 covers money and BE-08 covers board moves; **nothing covers edits** | **GATE-02** (OBT-448) | BE-02 — history tables are cheap to add before there is data and expensive after |
 | Online submission vs print/file vs both; where the attachment lives; what the team sees after submitting (§6) | **GATE-03** (OBT-449) | BE-04, INT-02 |
@@ -647,10 +711,21 @@ And five items with **no gate**, which need issues rather than answers:
    applications, not this module's to fix unilaterally.
 5. **A PostgreSQL path for the test suite** (§7.3), without which BE-07's concurrency test
    cannot exist.
+6. **The board card projects two chips the form does not collect** (BE-02, 25/aug/2026,
+   found writing the seed). The contract's §6.2 records this about the card's *fund*; the
+   same is true of its **povo** and its **língua** for two of the three request types. A2 is
+   rendered by `traducao` alone, so `people_name` does not exist for `treinamento` or
+   `equipamentos`, and those two reach a language only through A1-slim's table of language
+   names — which the fixture's `—` and `Multi` are not. Four of the ten sample cards
+   therefore store neither, because writing one would say a section was asked when it never
+   was. It belongs with the contract's §6.1 question about whether that chip survives beside
+   the *solicitante*, and it needs the same owner: **before INT-04**, which builds the card
+   against a real endpoint.
 
 Two things this document changes elsewhere, and neither should be silent:
 
 - **FE-22's contract §5.1** gains the money decision of §7.2 — `Numeric(14, 2)` and
-  ISO-4217 on the server. The contract asked to be updated with that answer.
+  ISO-4217 on the server, implemented by BE-02 in `20260825_rr01`. The contract asked to be
+  updated with that answer.
 - **The frontend's `CLAUDE.md` §3.2** tells a reader that the ecosystem's BE-01 audited this
   repository and that its output should be read. It did not, and there is none (§1.1).
