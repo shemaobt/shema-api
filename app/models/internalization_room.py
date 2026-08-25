@@ -469,6 +469,10 @@ class InboxQuestionView(BaseModel):
     question_id: str
     team_id: str
     device_id: str
+    #: Which conversation the hand went up in. The column was always on the row and never
+    #: left it, so a facilitator holding a question had no way back to the session it came
+    #: from — and the two session-scoped facilitator routes are addressed by exactly this.
+    session_id: str
     pericope: str
     element_label_pt: str | None
     element_label_en: str | None
@@ -498,6 +502,17 @@ class QuestionInboxResponse(BaseModel):
     questions: list[InboxQuestionView]
     open_total: int
     next_cursor: str | None
+
+
+class FacilitatorSessionView(BaseModel):
+    session_id: str
+    pericope: str
+    status: str
+    updated_at: str
+
+
+class FacilitatorSessionsResponse(BaseModel):
+    sessions: list[FacilitatorSessionView]
 
 
 class TakeResponse(BaseModel):

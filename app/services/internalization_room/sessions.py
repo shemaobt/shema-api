@@ -32,6 +32,7 @@ from app.services.internalization_room.coverage import (
 )
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.progression import active_passage
+from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
 PANORAMA_ALIAS = "OV"
@@ -265,6 +266,50 @@ def session_is_done(session: IRSession) -> bool:
         and semantics_ready(session)
         and comprehension_of(session).recording_consent_given
     )
+
+
+async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:
+    """The sessions that need somebody, among the caller's own teams, newest first.
+
+    Two states wait on a person and no third one does: a room that halted asked for
+    someone to come, and a finished passage is waiting to be carried into Refine through
+    the release route. A session still under way is waiting on the team, not on the
+    facilitator.
+
+    **Scoped to the teams the caller facilitates, and a team is a project.** The route this
+    feeds was written to make halted rooms discoverable, on the argument that an id was
+    never what kept the session routes shut — obscurity was not the access rule. That was
+    true where it was written and stopped being true here: both routes addressed by a
+    session id now refuse a session belonging to another team, `…/takes` through
+    `get_session_for_facilitator` and `…/release` since ENG-563's composition. So an
+    unscoped list would no longer be surfacing what was already readable. It would be
+    announcing the existence, the passage and the moment of other teams' sessions — and
+    handing over ids their reader cannot open.
+
+    Scoped the way ENG-452 scoped the inbox, deliberately and not a second time from
+    scratch: the ids in hand rather than `IN (SELECT …)`, which the planner cannot use.
+    A session with no `project_id` belongs to no team and reaches nobody, which is the
+    same rule questions follow — unowned is nobody's, not everybody's.
+
+    The two halves drain differently, and only one of them drains at all. `NEEDS_PERSON`
+    lifts itself the moment a turn lands, so a resumed room leaves on its own. `DONE` is
+    terminal — nothing in this service writes a status back out of it, and reading the
+    release does not mark a session as carried — so that half grows once per finished
+    passage and never shrinks. At pilot volume that is a short list; it is not a shape
+    that holds if the room outgrows the pilot, and the answer then is a state for
+    "carried", not a page limit that would read as an empty queue.
+
+    Newest first, because this is read as a queue.
+    """
+    result = await db.execute(
+        select(IRSession)
+        .where(
+            IRSession.status.in_((IRSessionStatus.NEEDS_PERSON, IRSessionStatus.DONE)),
+            confined_to(IRSession.project_id, await facilitated_project_ids(db, user)),
+        )
+        .order_by(IRSession.updated_at.desc())
+    )
+    return list(result.scalars())
 
 
 async def mark_needs_person(db: AsyncSession, session: IRSession) -> IRSession:

@@ -408,7 +408,14 @@ REFUSING_TEMPLATES = {
 
 #: Routes that name no resource and cannot refuse: they answer with a list, and the scoping
 #: shows as a row that is absent rather than a status. Checked by its own case below.
-FILTERING_TEMPLATES = {("GET", f"{DESK}/teams")}
+FILTERING_TEMPLATES = {
+    ("GET", f"{DESK}/teams"),
+    #: ENG-581, scoped when it was composed. As it arrived it listed every halted or
+    #: finished session in the installation, which is the shape that answers 200 with a
+    #: full body and looks right from every angle except the caller who should not be in
+    #: it. `tests/test_internalization_room_facilitator_sessions.py` holds both halves.
+    ("GET", f"{IR}/facilitator/sessions"),
+}
 
 #: Routes that carry nothing of the installation at all: the answer is the same for every
 #: facilitator, so there is no scope to check and pretending to check one would be theatre.

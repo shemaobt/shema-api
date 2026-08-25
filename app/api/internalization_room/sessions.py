@@ -4,6 +4,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import device_project_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -13,6 +14,8 @@ from app.models.internalization_room import (
     BackTranslationProgress,
     CoverageView,
     CreateSessionRequest,
+    FacilitatorSessionsResponse,
+    FacilitatorSessionView,
     NeedsPersonResponse,
     SessionStateResponse,
     SpokenSegment,
@@ -165,6 +168,42 @@ async def create_session(
 async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
     session = await room.get_session(db, session_id)
     return _state(session)
+
+
+@router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
+async def facilitator_sessions(
+    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> FacilitatorSessionsResponse:
+    """The sessions waiting on a person, for the person they are waiting on.
+
+    Halting had a writer and no reader: `needs_person` was written to the row and the only
+    facilitator-facing list in the system was the open questions, which named no session.
+    The two session-scoped facilitator routes are addressed by an id nobody could obtain,
+    so a room that stopped for someone could not reach anyone.
+
+    **Scoped to the caller's own teams**, and the reason the route first gave for needing
+    no scope is worth correcting rather than deleting: it argued that this only makes
+    discoverable what was already readable, since an id was never what kept the
+    session-addressed routes shut. That was true where it was written. It is not true here
+    — `…/{id}/takes` refuses a session of another team through
+    `get_session_for_facilitator`, and `…/{id}/release` has refused one since ENG-563's
+    composition. An unscoped list would announce the existence, the passage and the moment
+    of other teams' sessions, and hand over ids their reader is refused.
+
+    Gated on `FacilitatorUser` for the same reason every other route under `/facilitator`
+    is: the app-wide gate it was written against no longer exists.
+    """
+    return FacilitatorSessionsResponse(
+        sessions=[
+            FacilitatorSessionView(
+                session_id=session.id,
+                pericope=session.pericope,
+                status=session.status.value,
+                updated_at=session.updated_at.isoformat() if session.updated_at else "",
+            )
+            for session in await room.sessions_waiting_on_a_person(db, user)
+        ]
+    )
 
 
 @router.post(

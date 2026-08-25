@@ -141,6 +141,7 @@ def _card(question: IRQuestion, named: dict[tuple[str, str], LabelledElement]) -
         question_id=question.id,
         team_id=_team_of(question),
         device_id=question.device_id,
+        session_id=question.session_id,
         pericope=question.pericope,
         element_label_pt=bead.label_pt if bead else None,
         element_label_en=bead.label_en if bead else None,
