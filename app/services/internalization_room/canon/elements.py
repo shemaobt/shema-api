@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-import enum
 import re
 import unicodedata
 from functools import lru_cache
 
 from pydantic import BaseModel
 
+#: Re-exported so a reader of `elements_of` sees the values it builds on without leaving
+#: the file. It is defined in `core` because `app/models` needs it too, and a DTO module
+#: importing this package would run its `__init__` and close an import cycle.
+from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon.book_material import preservation_rules
 from app.services.internalization_room.canon.parse_map import Entity, MeaningMap, load_map
-
-
-class ElementKind(enum.StrEnum):
-    SCENE = "scene"
-    BEING = "being"
-    PLACE = "place"
-    OBJECT = "object"
-    TIME = "time"
-    ABSENCE = "absence"
-    PRESERVED = "preserved"
 
 
 class Element(BaseModel):
@@ -38,6 +31,55 @@ def _slug(text: str) -> str:
     without_notes = re.sub(r"\([^)]*\)", " ", text)
     plain = unicodedata.normalize("NFKD", without_notes).encode("ascii", "ignore").decode()
     return re.sub(r"[^a-z0-9]+", "-", plain.casefold()).strip("-")[:32] or "unnamed"
+
+
+@lru_cache(maxsize=64)
+def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
+    """The scene each bead belongs to — and only for the beads that belong to just one.
+
+    `elements_of` dedupes entities across the passage on purpose: Naomi in three scenes is one
+    thing for the team to work with, not three. The bead she gets therefore carries the scene
+    she **first** appeared in, which is fine for drawing a necklace in order and wrong for
+    answering where a team is standing — five of P01's beads span scenes and every one of them
+    says `1`.
+
+    So a bead that appears in more than one scene is absent from this map rather than present
+    with its first. A caller asking "which scene is this" gets no answer instead of a confident
+    wrong one, which is the only difference that matters when the answer is a position.
+
+    Preservation rules are absent too, and for the older reason: they belong to the passage and
+    to none of its scenes.
+    """
+    appearances: dict[str, set[int]] = {}
+    for scene in load_map(pericope_num).scenes:
+        for kind, entities in (
+            (ElementKind.BEING, scene.beings),
+            (ElementKind.PLACE, scene.places),
+            (ElementKind.OBJECT, scene.objects),
+            (ElementKind.TIME, scene.times),
+        ):
+            for entity in entities:
+                appearances.setdefault(_entity_key(kind, entity), set()).add(scene.number)
+
+    single = {}
+    for element in elements_for(pericope_num, book):
+        if element.scene is None:
+            continue
+        spans = appearances.get(element.key)
+        if spans is None or len(spans) == 1:
+            single[element.key] = element.scene
+    return single
+
+
+def scene_key(number: int) -> str:
+    """A scene's own bead, named. The one place the shape of that key is written.
+
+    It was an f-string inside `elements_of` and nowhere else, which was fine while the number
+    alone never left this side. The coverage route now says which scene a bead sits in by
+    naming that scene's bead, so the format has a second reader — and a format with two
+    readers and one spelling is a format that drifts the moment either moves.
+    """
+    return f"{ElementKind.SCENE}:{number}"
 
 
 def _entity_key(kind: ElementKind, entity: Entity) -> str:
@@ -68,7 +110,7 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
     for scene in meaning_map.scenes:
         elements.append(
             Element(
-                key=f"{ElementKind.SCENE}:{scene.number}",
+                key=scene_key(scene.number),
                 label=scene.title,
                 kind=ElementKind.SCENE,
                 scene=scene.number,

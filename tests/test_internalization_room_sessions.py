@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +23,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.session_end import SessionState, end_of
 from app.services.internalization_room.sessions import (
     MAX_RETELLS,
     append_exchange,
@@ -133,6 +136,65 @@ async def test_floor_plus_evidence_practice_and_consent_closes_the_session(
     session = await apply_coverage(db_session, session.id, whole)
 
     assert session.status is IRSessionStatus.DONE
+
+
+@pytest.mark.asyncio
+async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
+    db_session: AsyncSession,
+) -> None:
+    """ENG-451. Closing is an event, so it is written down rather than inferred later.
+
+    The other way a session ends leaves no stamp on purpose — it is derived from the last
+    activity, because the limit that decides it is not agreed with the room app. Which is
+    exactly why this one has to be stamped: without it a finished conversation is
+    indistinguishable from an abandoned one, and the Desk would call every completed session
+    abandoned.
+
+    The scenario carries calibration, evidence, practice and consent because the floor alone
+    stopped closing anything: ``session_is_done`` folds those in, deliberately, so that
+    bridge-limited teams are not judged on Portuguese output. What is asserted here is
+    unchanged — that the close is *stamped* — only what it takes to reach a close moved.
+    """
+    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
+    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+
+    session = await apply_coverage(db_session, session.id, whole)
+
+    assert session.ended_at is not None
+    assert end_of(session, at=datetime.now(UTC)).state is SessionState.COMPLETE
+
+
+@pytest.mark.asyncio
+async def test_a_settle_that_does_not_close_the_session_stamps_nothing(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    partial = merge(initial_state(P), pericope_num=P, engaged=element_keys(P)[:3])
+
+    session = await apply_coverage(db_session, session.id, partial)
+
+    assert session.ended_at is None
+
+
+@pytest.mark.asyncio
+async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
+    db_session: AsyncSession,
+) -> None:
+    """A second settle on a closed session must not slide its end forward.
+
+    The classifier keeps running for whatever turns were already in flight when the floor
+    was met, and each of those is another write. An end re-stamped on every one of them
+    would grow the conversation's length after the team had finished.
+    """
+    session = await create_session(db_session, pericope=P)
+    whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+    session = await apply_coverage(db_session, session.id, whole)
+    closed_at = session.ended_at
+
+    session = await apply_coverage(db_session, session.id, whole)
+
+    assert session.ended_at == closed_at
 
 
 @pytest.mark.asyncio

@@ -8,8 +8,11 @@ import pytest
 
 from app.core.config import Settings
 from app.services.internalization_room.voice_handles import (
+    TEAM_AUDIO_ROUTE,
     clip_url,
     from_handle,
+    from_question_handle,
+    team_audio_url,
     to_handle,
 )
 
@@ -57,6 +60,31 @@ def test_a_handle_for_something_else_is_refused(key: str) -> None:
     route's business.
     """
     assert from_handle(to_handle(key), settings=_settings()) is None
+
+
+REPLY_KEY = "internalization-room/questions/8f2c/resposta-abc123.m4a"
+
+
+def test_a_facilitator_reply_is_reachable_at_the_address_it_was_given() -> None:
+    """The address minted for a spoken reply resolves back to the key it was minted from.
+
+    The reply used to be minted onto the clip route, whose key check accepts only
+    synthesized speech, so every reply 404ed by construction: the app never marked one as
+    heard, and the hand went on offering the same silent answer on every touch. A question's
+    audio has its own route and its own check, and this is the round trip between them.
+    """
+    handle = team_audio_url(REPLY_KEY).removeprefix(f"{TEAM_AUDIO_ROUTE}/")
+
+    assert from_question_handle(handle) == REPLY_KEY
+
+
+def test_the_reply_prefix_does_not_open_the_rest_of_the_bucket() -> None:
+    for key in (
+        "internalization-room/questions/../../tts/AnotherApp/x.mp3",
+        "internalization-roomm/questions/x.m4a",
+        "other-app/questions/x.m4a",
+    ):
+        assert from_question_handle(to_handle(key)) is None
 
 
 @pytest.mark.parametrize("handle", ["", "!!!", "nao-e-base64!!", "eyJ"])

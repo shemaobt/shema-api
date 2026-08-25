@@ -1,10 +1,11 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_key_dep
+from app.api.facilitator._deps import FacilitatorUser
+from app.api.internalization_room._deps import device_project_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
@@ -13,6 +14,8 @@ from app.models.internalization_room import (
     BackTranslationProgress,
     CoverageView,
     CreateSessionRequest,
+    FacilitatorSessionsResponse,
+    FacilitatorSessionView,
     NeedsPersonResponse,
     SessionStateResponse,
     SpokenSegment,
@@ -38,11 +41,7 @@ from app.services.internalization_room.prepare_opening import (
 )
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
-from app.services.internalization_room.sessions import (
-    DEFAULT_PERICOPE,
-    book_of,
-    is_panorama,
-)
+from app.services.internalization_room.sessions import book_of, is_panorama
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 
@@ -138,16 +137,18 @@ def _progress(session: IRSession) -> BackTranslationProgress:
     )
 
 
-@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_key_dep])
+@router.post("/sessions", response_model=SessionStateResponse, dependencies=[room_caller_dep])
 async def create_session(
     payload: CreateSessionRequest,
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    project_id: str | None = device_project_dep,
 ) -> SessionStateResponse:
     session = await room.create_session(
         db,
-        pericope=payload.pericope or DEFAULT_PERICOPE,
+        pericope=payload.pericope,
         after_panorama=payload.after_panorama or payload.after_session is not None,
+        project_id=project_id,
         bridge_mode=payload.bridge_mode,
     )
     if payload.after_session:
@@ -162,17 +163,53 @@ async def create_session(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionStateResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
     session = await room.get_session(db, session_id)
     return _state(session)
 
 
+@router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
+async def facilitator_sessions(
+    user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> FacilitatorSessionsResponse:
+    """The sessions waiting on a person, for the person they are waiting on.
+
+    Halting had a writer and no reader: `needs_person` was written to the row and the only
+    facilitator-facing list in the system was the open questions, which named no session.
+    The two session-scoped facilitator routes are addressed by an id nobody could obtain,
+    so a room that stopped for someone could not reach anyone.
+
+    **Scoped to the caller's own teams**, and the reason the route first gave for needing
+    no scope is worth correcting rather than deleting: it argued that this only makes
+    discoverable what was already readable, since an id was never what kept the
+    session-addressed routes shut. That was true where it was written. It is not true here
+    — `…/{id}/takes` refuses a session of another team through
+    `get_session_for_facilitator`, and `…/{id}/release` has refused one since ENG-563's
+    composition. An unscoped list would announce the existence, the passage and the moment
+    of other teams' sessions, and hand over ids their reader is refused.
+
+    Gated on `FacilitatorUser` for the same reason every other route under `/facilitator`
+    is: the app-wide gate it was written against no longer exists.
+    """
+    return FacilitatorSessionsResponse(
+        sessions=[
+            FacilitatorSessionView(
+                session_id=session.id,
+                pericope=session.pericope,
+                status=session.status.value,
+                updated_at=session.updated_at.isoformat() if session.updated_at else "",
+            )
+            for session in await room.sessions_waiting_on_a_person(db, user)
+        ]
+    )
+
+
 @router.post(
     "/sessions/{session_id}/needs-person",
     response_model=NeedsPersonResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def ask_for_a_person(
     session_id: str, db: AsyncSession = Depends(get_db)
@@ -220,11 +257,12 @@ async def _say_it_again(session: IRSession) -> TurnResponse:
 @router.post(
     "/sessions/{session_id}/turns",
     response_model=TurnResponse,
-    dependencies=[room_key_dep],
+    dependencies=[room_caller_dep],
 )
 async def take_turn(
     session_id: str,
     background: BackgroundTasks,
+    response: Response,
     file: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
@@ -235,6 +273,13 @@ async def take_turn(
     as an opening had the Guide introduce itself and lay the whole passage out a second time —
     against a probe already waiting for a free retell, which the Validator then rejected, so
     the room answered a returning team with a canned line.
+
+    The turn is voiced before any of it is written down. A probe is the room's authorization
+    to assess the answer that comes next, so committing one for a turn whose synthesis then
+    failed points that authorization at a question the team was never asked, and leaves the
+    ledger holding evidence for an exchange that was never recorded. Speaking first costs
+    nothing in the other direction: a clip reaches the team only as the handle in this
+    response, so a request that fails after synthesis hands the app nothing to play.
     """
     session = await room.get_session(db, session_id)
 
@@ -268,6 +313,7 @@ async def take_turn(
         )
 
     validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
+    turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
         if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
             choice_speech = "" if not speech_heard.reliable_bridge_speech else transcript
@@ -311,10 +357,11 @@ async def take_turn(
             settings=get_settings(),
         )
         outcome = turn.outcome
-        session = await room.set_bridge_mode(db, session, turn.bridge_mode)
-        session = await room.save_comprehension(db, session, turn.state)
 
     voiced, segments = await _voice_the_turn(outcome)
+    if turn is not None:
+        session = await room.set_bridge_mode(db, session, turn.bridge_mode)
+        session = await room.save_comprehension(db, session, turn.state)
     session = await room.append_exchange(
         db,
         session,

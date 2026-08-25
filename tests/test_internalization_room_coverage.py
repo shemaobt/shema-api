@@ -174,3 +174,152 @@ def test_two_readings_of_the_same_spine_keep_the_further_one() -> None:
         "a leitura velha sobrescrevia a conta que a equipe acabou de ganhar"
     )
     assert kept[keys[1]] == CoverageStatus.SURFACED.value
+
+
+_SCALE = [
+    CoverageStatus.NOT_ENCOUNTERED,
+    CoverageStatus.SURFACED,
+    CoverageStatus.PARTIALLY_ENGAGED,
+    CoverageStatus.ENGAGED,
+]
+
+_BUCKET = {
+    CoverageStatus.SURFACED: "surfaced",
+    CoverageStatus.PARTIALLY_ENGAGED: "partially_engaged",
+    CoverageStatus.ENGAGED: "engaged",
+}
+
+
+def _spine_at(status: CoverageStatus) -> dict[str, str]:
+    return dict.fromkeys(element_keys(P), status.value)
+
+
+def _with(overrides: dict[str, CoverageStatus]) -> dict[str, str]:
+    return {**initial_state(P), **{key: status.value for key, status in overrides.items()}}
+
+
+def test_a_merge_moves_a_bead_forward_or_leaves_it_across_the_whole_scale() -> None:
+    """Every ordered pair, not three hand-picked ones. The fourth state has two neighbours,
+    and a scale is only monotonic if it is monotonic everywhere.
+    """
+    key = element_keys(P)[0]
+
+    for standing in _SCALE:
+        for told, bucket in _BUCKET.items():
+            moved = merge(_with({key: standing}), pericope_num=P, **{bucket: [key]})
+            expected = told if _SCALE.index(told) > _SCALE.index(standing) else standing
+
+            assert moved[key] == expected.value, (
+                f"{standing.value} + {told.value} deveria ficar em {expected.value}"
+            )
+
+
+def test_the_further_of_two_readings_wins_across_the_whole_scale() -> None:
+    """`furthest` is the other one-way path — it runs when two settles overlap."""
+    key = element_keys(P)[0]
+
+    for kept_status in _SCALE:
+        for told_status in _SCALE:
+            kept = furthest(_with({key: kept_status}), _with({key: told_status}), pericope_num=P)
+            expected = max(kept_status, told_status, key=_SCALE.index)
+
+            assert kept[key] == expected.value, (
+                f"guardado {kept_status.value}, contado {told_status.value}"
+            )
+
+
+def test_the_floor_accepts_a_bead_the_team_only_partly_worked() -> None:
+    keys = element_keys(P)
+    half = len(keys) // 2
+    mixed = _with(
+        {
+            **dict.fromkeys(keys[:half], CoverageStatus.PARTIALLY_ENGAGED),
+            **dict.fromkeys(keys[half:], CoverageStatus.ENGAGED),
+        }
+    )
+
+    assert floor_met(mixed, P) is True
+    assert floor_met(_spine_at(CoverageStatus.PARTIALLY_ENGAGED), P) is True
+    assert floor_met({**mixed, keys[0]: CoverageStatus.SURFACED.value}, P) is False
+    assert floor_met({**mixed, keys[0]: CoverageStatus.NOT_ENCOUNTERED.value}, P) is False
+
+
+def test_a_preservation_rule_the_team_only_echoed_still_closes_the_passage() -> None:
+    """The case the fourth state exists for.
+
+    A team engages a preservation rule by noticing a silence, which mostly happens as an echo
+    of the Guide noticing it first. Demanding the unprompted version of that from all five
+    rules is how Ruth 1 becomes a passage that never closes.
+    """
+    preserved = [e.key for e in elements_for(P) if e.kind is ElementKind.PRESERVED]
+    others = [key for key in element_keys(P) if key not in preserved]
+    echoed = _with(
+        {
+            **dict.fromkeys(others, CoverageStatus.ENGAGED),
+            **dict.fromkeys(preserved, CoverageStatus.PARTIALLY_ENGAGED),
+        }
+    )
+
+    assert preserved
+    assert floor_met(echoed, P) is True
+
+
+def test_the_floor_being_met_is_not_the_work_being_finished() -> None:
+    """A partly worked bead stays in the unresolved set the classifier is shown.
+
+    Dropping it there would leave the classifier unable to ever promote it — it only sees
+    what is unresolved — and the bead would be frozen at partial for the rest of the session.
+    """
+    state = _spine_at(CoverageStatus.PARTIALLY_ENGAGED)
+
+    assert floor_met(state, P) is True
+    assert {element.key for element in remaining(state, P)} == set(element_keys(P))
+
+
+def test_a_partly_worked_bead_counts_as_encountered_but_not_as_worked() -> None:
+    keys = element_keys(P)
+    state = _with(
+        {
+            keys[0]: CoverageStatus.SURFACED,
+            keys[1]: CoverageStatus.PARTIALLY_ENGAGED,
+            keys[2]: CoverageStatus.ENGAGED,
+        }
+    )
+
+    assert counts(state) == {"engaged": 1, "surfaced": 3, "total": len(keys)}
+
+
+def test_a_tracker_written_before_the_fourth_state_reads_the_same() -> None:
+    """What a stored row holds is these three strings, and nothing can have written the new
+    one. The floor moved down one step, not two: an all-surfaced session still does not close.
+    """
+    keys = element_keys(P)
+    old_row = {**dict.fromkeys(keys, "not_encountered"), keys[0]: "surfaced", keys[1]: "engaged"}
+
+    assert counts(old_row) == {"engaged": 1, "surfaced": 2, "total": len(keys)}
+    assert floor_met(old_row, P) is False
+    assert floor_met(dict.fromkeys(keys, "surfaced"), P) is False
+    assert floor_met(dict.fromkeys(keys, "engaged"), P) is True
+    assert {element.key for element in remaining(old_row, P)} == set(keys) - {keys[1]}
+    assert merge(old_row, pericope_num=P, surfaced=[keys[1]])[keys[1]] == "engaged"
+
+
+def test_the_classifier_prompt_carries_the_whole_scale() -> None:
+    """A state the prompt does not name is a state the classifier cannot assign."""
+    prompt = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
+
+    for status in CoverageStatus:
+        assert f"`{status.value}`" in prompt, f"{status.value} não está escrito no prompt"
+
+
+def test_the_classifier_prompt_draws_both_borders_of_the_partial_state() -> None:
+    """Named but not delimited is a state the model guesses at. The issue asks for the
+    distinction written down, not implied by examples.
+    """
+    prompt = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
+    blocks = [block for block in prompt.split("\n\n") if "`partially_engaged`" in block]
+
+    assert blocks
+    assert any("`surfaced`" in block and "`engaged`" in block for block in blocks), (
+        "nenhum bloco compara o estado parcial com os dois vizinhos"
+    )
