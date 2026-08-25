@@ -150,6 +150,30 @@ Compose services run against the `db` container, never against Neon. An empty da
 migrated to head on startup, so the stack comes up usable with no extra step. (`pytest` is
 separate: it runs on SQLite and reaches neither database.)
 
+### Granting app access
+
+Access is per application. `scripts/seed_apps_roles.py` creates the `apps` row and its roles;
+nobody reaches an application until somebody grants them one of those roles. A fresh account
+holds none, so `require_app_access` answers **403** with the message that tells the person to
+ask for access.
+
+```bash
+docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && \
+  uv run python scripts/grant_app_role.py <email> <app_key> <role_key>"
+```
+
+**Who runs it:** a platform admin with Secret Manager access on `shemaobt-secrets`. The script
+is idempotent per user and app — a second run updates the existing grant rather than adding a
+second one.
+
+There is also a self-service path (`POST /api/access-requests`, reviewed by an admin); whether
+approval is automatic is `apps.auto_approve`, off by default, and the role an approval grants
+comes from `DEFAULT_ROLE_BY_APP_KEY` in `app/services/access_request/_default_roles.py`.
+
+For **`resource-request-form`** the roles are `equipe`, `mesa` and `gestor`, mirroring the
+frontend's `capabilities.ts`. The first mesa accounts are granted with the command above — who
+they are is not settled yet and belongs to GATE-02 (OBT-448).
+
 ### Data in the local database
 
 `docker compose up` populates the database for you. On a database that does not exist yet,
