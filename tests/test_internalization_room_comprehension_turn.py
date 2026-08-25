@@ -9,19 +9,36 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey
+from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.elements import element_keys, elements_for
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.evidence import (
+    EvidenceMethod,
+    EvidenceObservation,
+    EvidenceResult,
+)
 from app.services.internalization_room.comprehension.practice import (
     MOTHER_TONGUE_PRACTICE_PROMPT,
 )
 from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
+from app.services.internalization_room.rehearsal_readiness import (
+    RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+    REHEARSAL_CONSENT_DECLINED_LINE,
+    REHEARSAL_CONSENT_QUESTION,
+    REHEARSAL_READINESS_CUE,
+)
 from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
 from app.services.internalization_room.sessions import (
     append_exchange,
+    apply_coverage,
     comprehension_of,
     create_session,
     save_comprehension,
@@ -409,3 +426,145 @@ async def test_a_turn_without_a_prior_probe_mints_no_evidence(
 
     assert turn.state.ledger == []
     assert comprehension_of(session).ledger == []
+
+
+async def _session_at_the_recording_handoff(db_session: AsyncSession) -> IRSession:
+    """Everything the passage asks for is done except the recording: the coverage floor is
+    met and every checkpoint is demonstrated, so the app is about to offer its own
+    question."""
+    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await save_comprehension(
+        db_session,
+        session,
+        ComprehensionState(
+            ledger=[
+                EvidenceObservation(
+                    id=f"ev-{index}",
+                    unit_id=checkpoint.id,
+                    probe_id=f"probe-{index}",
+                    method=EvidenceMethod.MICRO_TELLBACK,
+                    result=EvidenceResult.DEMONSTRATED,
+                )
+                for index, checkpoint in enumerate(checkpoints_for(P))
+            ],
+            practiced_scene_ids=scene_ids_for(P),
+        ),
+    )
+    session = await apply_coverage(
+        db_session, session.id, merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+    )
+    return await append_exchange(db_session, session, team_utterance="", guide_response="abertura")
+
+
+async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> str:
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text=utterance),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    await save_comprehension(db_session, session, turn.state)
+    await append_exchange(
+        db_session, session, team_utterance=utterance, guide_response=turn.outcome.speech
+    )
+    return turn.outcome.speech
+
+
+@pytest.mark.asyncio
+async def test_a_declined_recording_handoff_is_offered_again(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """The app's own question offers two words and the team may say either one.
+
+    Answering "não" used to latch the handoff shut for the rest of the session: the only
+    way back was one of seven exact sentences, and the Guide is forbidden from teaching
+    them. The room promised "vocês decidem quando estiverem prontos" and then made that
+    impossible, so the passage ended with no rehearsal audio and the release refused it.
+    """
+    session = await _session_at_the_recording_handoff(db_session)
+
+    assert await _say(db_session, session, "acho que já falamos de tudo") == (
+        REHEARSAL_CONSENT_QUESTION
+    )
+    assert await _say(db_session, session, "não") == REHEARSAL_CONSENT_DECLINED_LINE
+    assert comprehension_of(session).recording_handoff_paused
+
+    for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
+        assert await _say(db_session, session, "estamos conversando sobre a última cena") != (
+            REHEARSAL_CONSENT_QUESTION
+        )
+
+    assert await _say(db_session, session, "essa parte ficou boa do jeito que contamos") == (
+        REHEARSAL_CONSENT_QUESTION
+    )
+    assert await _say(db_session, session, "sim") == REHEARSAL_READINESS_CUE
+    assert comprehension_of(session).recording_consent_given
+    assert not comprehension_of(session).recording_handoff_paused
+
+
+@pytest.mark.asyncio
+async def test_declining_twice_defers_twice_instead_of_latching(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A second "não" restarts the wait rather than ending the conversation about it."""
+    session = await _session_at_the_recording_handoff(db_session)
+    await _say(db_session, session, "acho que já falamos de tudo")
+    await _say(db_session, session, "não")
+    for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
+        await _say(db_session, session, "estamos conversando sobre a última cena")
+
+    assert await _say(db_session, session, "ainda estamos comentando entre nós") == (
+        REHEARSAL_CONSENT_QUESTION
+    )
+    assert await _say(db_session, session, "não") == REHEARSAL_CONSENT_DECLINED_LINE
+    assert comprehension_of(session).recording_handoff_paused_turns == 0
+
+    for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
+        assert await _say(db_session, session, "estamos conversando sobre a última cena") != (
+            REHEARSAL_CONSENT_QUESTION
+        )
+
+    assert await _say(db_session, session, "essa parte ficou boa do jeito que contamos") == (
+        REHEARSAL_CONSENT_QUESTION
+    )
+
+
+_UNUSABLE_SPEECH = (
+    HeardSpeech(
+        text="koeti yoko vitukeovo enepone itukovo",
+        language_code="und",
+        language_probability=0.99,
+    ),
+    HeardSpeech(text="mmm ne", transcript_confidence=0.2),
+)
+
+
+@pytest.mark.asyncio
+async def test_a_paused_handoff_does_not_count_speech_the_room_could_not_use(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """The wait is measured in turns the room actually heard.
+
+    A team that spends the pause rehearsing in its own language, or in a corner of the
+    house the microphone cannot reach, has not been given the room the wait is for."""
+    session = await _session_at_the_recording_handoff(db_session)
+    await _say(db_session, session, "acho que já falamos de tudo")
+    await _say(db_session, session, "não")
+
+    for index in range(2 * (RECORDING_HANDOFF_REOFFER_AFTER_TURNS + 1)):
+        turn = await run_comprehension_turn(
+            db_session,
+            session,
+            speech=_UNUSABLE_SPEECH[index % len(_UNUSABLE_SPEECH)],
+            opening=False,
+            guide_prompt=GUIDE,
+            validator_prompt=VALIDATOR,
+            settings=_settings(),
+        )
+        await save_comprehension(db_session, session, turn.state)
+        assert turn.outcome.speech != REHEARSAL_CONSENT_QUESTION
+
+    assert comprehension_of(session).recording_handoff_paused_turns == 0

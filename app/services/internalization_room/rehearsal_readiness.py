@@ -61,6 +61,9 @@ _EXPLICIT_RECORD_REQUESTS = frozenset(
 )
 
 
+RECORDING_HANDOFF_REOFFER_AFTER_TURNS = 3
+
+
 def explicitly_requests_recording_handoff(team_utterance: str) -> bool:
     """Re-arm a previously declined handoff only from a narrow, explicit request to
     record now."""
@@ -75,15 +78,27 @@ def should_offer_recording_consent(
     *,
     eligible: bool,
     paused: bool,
+    paused_turns: int,
     explicit_resume_requested: bool,
     prior_decision: str,
     reliable_bridge_speech: bool,
 ) -> bool:
+    """A pause is the team deferring the handoff, never ending it.
+
+    The app owns the question, so only the app can bring it back: the Guide is told not to
+    raise recording again, which left the seven explicit phrases as a password nobody was
+    ever given. After ``RECORDING_HANDOFF_REOFFER_AFTER_TURNS`` turns the room actually
+    heard, it asks once more.
+    """
     return (
         eligible
         and reliable_bridge_speech
         and prior_decision not in ("accepted", "declined")
-        and (not paused or explicit_resume_requested)
+        and (
+            not paused
+            or explicit_resume_requested
+            or paused_turns >= RECORDING_HANDOFF_REOFFER_AFTER_TURNS
+        )
     )
 
 

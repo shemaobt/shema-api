@@ -18,6 +18,7 @@ from app.services.internalization_room.comprehension.stt_recovery import (
     resolve_stt_recovery_choice,
 )
 from app.services.internalization_room.rehearsal_readiness import (
+    RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
     REHEARSAL_CONSENT_QUESTION,
     resolve_rehearsal_consent,
     should_offer_recording_consent,
@@ -321,10 +322,11 @@ def test_uncertain_speech_never_consents() -> None:
     )
 
 
-def test_a_paused_handoff_is_not_reoffered_without_an_explicit_resume() -> None:
+def test_a_paused_handoff_is_not_reoffered_before_the_cooldown_elapses() -> None:
     assert not should_offer_recording_consent(
         eligible=True,
         paused=True,
+        paused_turns=0,
         explicit_resume_requested=False,
         prior_decision="unclear",
         reliable_bridge_speech=True,
@@ -332,7 +334,58 @@ def test_a_paused_handoff_is_not_reoffered_without_an_explicit_resume() -> None:
     assert should_offer_recording_consent(
         eligible=True,
         paused=True,
+        paused_turns=0,
         explicit_resume_requested=True,
         prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+
+
+def test_a_paused_handoff_is_reoffered_once_the_cooldown_elapses() -> None:
+    """The team answered the app's own yes/no question with one of the two words it
+    offered; the pause is a deferral, so the question comes back on its own."""
+    assert not should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS - 1,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+    assert should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+
+
+def test_an_elapsed_cooldown_never_outranks_the_other_gates() -> None:
+    """Waiting is not readiness: the passage still has to be finished, the answer still
+    has to be heard, and the turn that just declined still declines."""
+    assert not should_offer_recording_consent(
+        eligible=False,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=True,
+    )
+    assert not should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="unclear",
+        reliable_bridge_speech=False,
+    )
+    assert not should_offer_recording_consent(
+        eligible=True,
+        paused=True,
+        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
+        explicit_resume_requested=False,
+        prior_decision="declined",
         reliable_bridge_speech=True,
     )

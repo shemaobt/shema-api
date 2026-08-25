@@ -25,3 +25,4 @@ class ComprehensionState(BaseModel):
     stt_recovery: SttRecoveryState | None = None
     recording_consent_given: bool = False
     recording_handoff_paused: bool = False
+    recording_handoff_paused_turns: int = 0

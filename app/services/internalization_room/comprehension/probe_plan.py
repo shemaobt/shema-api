@@ -325,8 +325,9 @@ def render_active_probe_contract(
                 "by the team.\n"
                 "Continue its ordinary grounded conversation or mother-tongue rehearsal. Do "
                 "not ask about recording again and do not imply that it must proceed.\n"
-                "The app will re-arm the exact consent question only after the team "
-                "explicitly says it is ready to record now."
+                "The app itself voices the exact consent question again when the team has "
+                "had room to keep working; you never ask, and you never say that it is "
+                "coming."
             )
         if semantic_ready is False:
             return (
