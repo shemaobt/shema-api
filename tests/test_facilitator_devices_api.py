@@ -21,7 +21,9 @@ from httpx import ASGITransport
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.facilitator.devices import CLAIM_RATE_LIMIT_PER_MINUTE
 from app.core.enums import ProjectRole
+from app.core.rate_limit import limiter
 from app.services.device import claim_code, claim_device_as_facilitator, create_device
 from tests.baker import (
     grant_facilitator_app_role,
@@ -40,10 +42,20 @@ DEVICE_CREDENTIAL_HEADER = "X-Device-Credential"
 facilitator_claim = import_module("app.services.device.claim_device_as_facilitator")
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Limiter storage is global and in-process: without a reset, a test leaks into the next."""
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 @pytest.fixture()
 async def client(db_session: AsyncSession):
     """Both routers this slice adds, running the real auth chain."""
     from fastapi import FastAPI
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
 
     from app.api.devices import devices_router
     from app.api.facilitator.devices import facilitator_devices_router
@@ -51,9 +63,11 @@ async def client(db_session: AsyncSession):
     from app.core.exceptions import register_exception_handlers
 
     test_app = FastAPI()
+    test_app.state.limiter = limiter
     test_app.include_router(facilitator_devices_router, prefix="/api/facilitator/devices")
     test_app.include_router(devices_router, prefix="/api/devices")
     register_exception_handlers(test_app)
+    test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     async def _get_db():
         yield db_session
@@ -398,3 +412,84 @@ async def test_a_failure_after_the_code_is_spent_leaves_the_device_claimable(
 
     assert recovered.device.project_id == project.id
     assert recovered.credential
+
+
+# Behaviour 9 — the route that spends a code is rate limited (ENG-547).
+#
+# The third of the three things claim_code.py rests on. The first case only proves a limit
+# exists — it still passes with the bucket keyed on the code; the second is what holds the
+# intention, and what goes red the day someone changes the key.
+
+
+async def test_the_claim_route_refuses_the_call_past_its_limit(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+
+    for _ in range(CLAIM_RATE_LIMIT_PER_MINUTE):
+        spent = await claim(client, headers, code="AAA-AAAA", project_id=project.id)
+        assert spent.status_code == 400
+
+    blocked = await claim(client, headers, code="AAA-AAAA", project_id=project.id)
+
+    assert blocked.status_code == 429
+
+
+async def test_the_limit_counts_the_caller_and_not_the_code(client, db_session):
+    """A different code every time is the attack, and it has to hit the same bucket.
+
+    Counting per code leaves the enumeration untouched: every guess is its own bucket and
+    nothing ever fills. Every code here is distinct and unknown.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    alphabet = claim_code.CLAIM_CODE_ALPHABET
+    codes = [
+        f"{alphabet[i % len(alphabet)]}{alphabet[i // len(alphabet)]}C-DEFG"
+        for i in range(CLAIM_RATE_LIMIT_PER_MINUTE)
+    ]
+    assert len(set(codes)) == CLAIM_RATE_LIMIT_PER_MINUTE, "the codes have to be distinct"
+
+    for code in codes:
+        refused = await claim(client, headers, code=code, project_id=project.id)
+        assert refused.status_code == 400
+
+    blocked = await claim(client, headers, code="ZZZ-ZZZZ", project_id=project.id)
+
+    assert blocked.status_code == 429
+
+
+async def test_a_call_stopped_by_the_limit_never_reaches_the_code(client, db_session):
+    """The 429 lands before the service, so a live code refused by it is still live.
+
+    This is what says the refusal is the limit and not the route having changed shape: a
+    limit that burned the code it turned away would strand a facilitator's tablet.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    minted = await create_device(db_session)
+
+    for _ in range(CLAIM_RATE_LIMIT_PER_MINUTE):
+        await claim(client, headers, code="AAA-AAAA", project_id=project.id)
+    blocked = await claim(client, headers, code=minted.claim_code, project_id=project.id)
+
+    assert blocked.status_code == 429
+    limiter.reset()
+    once_the_minute_passes = await claim(
+        client, headers, code=minted.claim_code, project_id=project.id
+    )
+    assert once_the_minute_passes.status_code == 200
+    assert once_the_minute_passes.json()["credential"]
+
+
+async def test_one_facilitator_at_the_limit_does_not_stop_another(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    _other, other_project, other_headers = await a_facilitator(
+        db_session, email="other@example.com"
+    )
+    other_device = await create_device(db_session)
+
+    for _ in range(CLAIM_RATE_LIMIT_PER_MINUTE + 1):
+        await claim(client, headers, code="AAA-AAAA", project_id=project.id)
+
+    unaffected = await claim(
+        client, other_headers, code=other_device.claim_code, project_id=other_project.id
+    )
+
+    assert unaffected.status_code == 200
