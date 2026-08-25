@@ -18,7 +18,7 @@ from app.api.sound_necklace._deps import Db, ProjectAdmin
 from app.db.models.sound_necklace import AuditEvent, SnAuditEvent
 from app.models.sound_necklace import AuditEventResponse, AuditListResponse
 from app.services import sound_necklace_service as sn_service
-from app.services.sound_necklace.get_lock_status import as_utc
+from app.utils.stored_time import as_utc
 
 router = APIRouter()
 
@@ -26,10 +26,16 @@ router = APIRouter()
 def _to_utc(when: datetime) -> datetime:
     """Normalise a client-supplied bound to UTC before it filters.
 
-    Distinct from ``as_utc``, which reads a STORED value back (a naive value from SQLite
-    is already UTC). Here the value comes from the wire and may carry any offset: an aware
-    one is converted, a naive one is assumed UTC. Without this the SQLite bind drops the
-    offset and the window would filter by wall-clock time under test.
+    Distinct from ``app.utils.stored_time.as_utc``, which reads a value this codebase
+    **wrote** back out — a naive one from SQLite is already UTC, so an aware one is passed
+    through untouched. Here the value comes from the wire and may legitimately carry any
+    offset, so an aware one is *converted* and only a naive one is assumed UTC.
+
+    That single difference is why this stayed behind when ENG-532 folded six copies of the
+    stored normaliser into one. Collapsing the two would leave a ``-03:00`` bound filtering as
+    though it were UTC — three hours of events on the wrong side of the window, on the screen
+    whose whole job is to be the record. Without it at all, the SQLite bind drops the offset
+    and the window filters by wall-clock under test.
     """
     return when.astimezone(UTC) if when.tzinfo is not None else when.replace(tzinfo=UTC)
 

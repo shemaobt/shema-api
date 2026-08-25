@@ -68,6 +68,7 @@ def _checked_telling_back() -> BackTranslationState:
         findings=[],
         evidence_sufficient=True,
         checked=True,
+        analysed_chunks=1,
         played_ranges=[[0, 61000]],
         clip_duration_ms=61000,
     )
@@ -100,6 +101,8 @@ async def _ready_session(db: AsyncSession, **comprehension_kwargs):
 
 @pytest.mark.asyncio
 async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) -> None:
+    """`telling_back_not_checked` left this list with ENG-584: a telling-back has to exist,
+    which `no_telling_back` already says, but it does not have to have come out clean."""
     session = await create_session(db_session, pericope=P)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
@@ -111,7 +114,6 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
         "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
-        "telling_back_not_checked",
     }
 
 
@@ -196,3 +198,140 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
     assert archived["chunks"][0]["text"] == "tentativa antiga"
     assert archived["findings"][0]["kind"] == "missing"
     assert archived["evidence_sufficient"] is False
+
+
+def _told_back_with_an_open_finding() -> BackTranslationState:
+    """A telling-back the team finished and chose not to resolve.
+
+    `analysed_chunks` matches the chunks because the analyst did read it — that is what
+    makes the finding open rather than the verdict unasked.
+
+    `checked` is written as `finding is None and evidence_sufficient`, so an open finding
+    makes it false — which is the whole state this slice is about.
+    """
+    return BackTranslationState(
+        scope=P,
+        chunks=[Chunk(index=1, text="Noemi voltou com Rute", starts_ms=0, ends_ms=61000)],
+        findings=[
+            Finding(
+                kind=FindingKind.MEANING_CHANGE,
+                note="a equipe disse que Noemi voltou alegre",
+                chunk=1,
+            )
+        ],
+        evidence_sufficient=True,
+        checked=False,
+        analysed_chunks=1,
+        played_ranges=[[0, 61000]],
+        clip_duration_ms=61000,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_session_carrying_an_open_finding_still_releases(
+    db_session: AsyncSession,
+) -> None:
+    """Taking the questions to Refine is an outcome the room is meant to have.
+
+    Refusing it left the rehearsal, the coverage, the ledger and the telling-back on the
+    tablet with no way out, for a team that had done every piece of the work.
+    """
+    session = await _ready_session(db_session)
+    await save_back_translation(db_session, session, _told_back_with_an_open_finding())
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["readiness"] == "ready_for_refine"
+    assert artifact["back_translation"]["checked"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_session_that_never_told_anything_back_is_still_refused(
+    db_session: AsyncSession,
+) -> None:
+    """The door that has to stay shut: nothing was told back at all."""
+    session = await _ready_session(db_session)
+    await save_back_translation(db_session, session, BackTranslationState(scope=P))
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert "no_telling_back" in blocked.value.blockers
+
+
+@pytest.mark.asyncio
+async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSession) -> None:
+    session = await _ready_session(db_session)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["readiness"] == "ready_for_refine"
+    assert artifact["back_translation"]["checked"] is True
+    assert artifact["back_translation"]["findings"] == []
+
+
+@pytest.mark.asyncio
+async def test_the_finding_travels_in_the_package_it_unblocked(
+    db_session: AsyncSession,
+) -> None:
+    """A package that does not name the finding is worse than the refusal.
+
+    The team would have carried the question all the way to Refine and nobody there would
+    see it — and unlike a blocked release, that looks resolved.
+    """
+    session = await _ready_session(db_session)
+    await save_back_translation(db_session, session, _told_back_with_an_open_finding())
+
+    artifact = await build_internalization_release(db_session, session)
+
+    carried = artifact["back_translation"]["findings"]
+    assert [finding["kind"] for finding in carried] == ["meaning_change"]
+    assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
+    assert carried[0]["chunk"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
+    """One item leaves the list; its neighbours are not loosened with it."""
+    session = await _ready_session(db_session)
+    await save_back_translation(db_session, session, _told_back_with_an_open_finding())
+    session.bridge_mode = "calibration_pending"
+    await save_comprehension(db_session, session, ComprehensionState())
+    session.coverage_state = {}
+    await db_session.commit()
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert set(blocked.value.blockers) >= {
+        "bridge_language_never_calibrated",
+        "comprehension_needs_more_work",
+        "recording_consent_never_given",
+        "coverage_floor_not_met",
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
+    db_session: AsyncSession,
+) -> None:
+    """Carrying the questions is the point; carrying silence as if it were clean is not.
+
+    A team that captured the stretches and never pressed `terminei` has an unread
+    telling-back, and its defaults — no findings, evidence sufficient — are the same
+    package a clean check produces.
+    """
+    session = await _ready_session(db_session)
+    await save_back_translation(
+        db_session,
+        session,
+        BackTranslationState(
+            scope=P,
+            chunks=[Chunk(index=1, text="Noemi voltou com Rute", starts_ms=0, ends_ms=61000)],
+        ),
+    )
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert "telling_back_never_analysed" in blocked.value.blockers

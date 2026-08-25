@@ -171,13 +171,16 @@ async def test_a_retro_chunk_carries_its_pass_and_position(db_session: AsyncSess
 
 
 @pytest.mark.asyncio
-async def test_the_device_is_recorded_and_the_team_seat_is_left_open(db_session: AsyncSession):
+async def test_the_device_is_recorded_and_the_project_comes_from_the_session(
+    db_session: AsyncSession,
+):
     take = await _keep(db_session, MemoryStore())
 
     assert take.device_id == DEVICE
-    assert take.team_id is None, (
-        "a atribuição por aparelho é provisória — a coluna existe para o login "
-        "de equipe reivindicar a linha depois, sem reescrita"
+    assert take.project_id is None, (
+        "o take herda o projeto da sessão, e esta nomeia uma sessão que não existe — "
+        "não há o que herdar. É o mesmo estado de uma sala cujo aparelho ainda não foi "
+        "reivindicado, que ENG-440 aceita com projeto nulo em vez de recusar"
     )
 
 

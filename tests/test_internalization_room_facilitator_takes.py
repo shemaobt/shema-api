@@ -17,11 +17,20 @@ from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import ProjectRole
 from app.db.models.auth import Role
 from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.services.internalization_room import takes as service
 from app.services.platform.storage import StoredObject
-from tests.baker import make_app, make_role, make_user, make_user_app_role
+from tests.baker import (
+    make_app,
+    make_language,
+    make_project,
+    make_project_user_access,
+    make_role,
+    make_user,
+    make_user_app_role,
+)
 
 APP_KEY = "internalization-room"
 IR = "/api/internalization-room"
@@ -93,14 +102,30 @@ async def grant_role(db_session, app_id: str, user_id: str, role_key: str) -> No
     await make_user_app_role(db_session, user_id, app_id, role.id)
 
 
-async def _session_with_a_take(db_session):
-    session = IRSession(id="sessao-1", pericope="P03")
+async def a_facilitator_of_their_own_team(db_session, room_app):
+    """A facilitator, their team, and the app role — the caller these routes expect.
+
+    The team is not decoration: since ENG-534 these routes are scoped, so a session that
+    belongs to nobody is refused and a facilitator with no team reaches nothing. What these
+    cases are about is what the answer *contains*, which needs the door open first.
+    """
+    user = await make_user(db_session)
+    language = await make_language(db_session, name="Lang takes", code="tkz")
+    project = await make_project(db_session, language.id, name="Equipe dos takes")
+    await make_project_user_access(db_session, project.id, user.id, role=ProjectRole.FACILITATOR)
+    await grant_role(db_session, room_app.id, user.id, "facilitator")
+    return user, project
+
+
+async def _session_with_a_take(db_session, project_id: str | None = None):
+    session = IRSession(id="sessao-1", pericope="P03", project_id=project_id)
     db_session.add(session)
     await db_session.commit()
     take = await service.store_take(
         db_session,
         session_id=session.id,
         device_id="tablet-1",
+        project_id=project_id,
         pericope=session.pericope,
         kind=IRTakeKind.ENSAIO,
         scope="passagem-inteira",
@@ -112,9 +137,8 @@ async def _session_with_a_take(db_session):
 
 @pytest.mark.asyncio
 async def test_a_facilitator_sees_what_a_session_recorded(client, db_session, room_app):
-    session, take = await _session_with_a_take(db_session)
-    user = await make_user(db_session)
-    await grant_role(db_session, room_app.id, user.id, "facilitator")
+    user, project = await a_facilitator_of_their_own_team(db_session, room_app)
+    session, take = await _session_with_a_take(db_session, project.id)
 
     response = await client.get(
         f"{IR}/facilitator/sessions/{session.id}/takes",
@@ -167,9 +191,8 @@ async def test_a_signed_in_user_without_the_app_is_refused(client, db_session, r
 async def test_listening_redirects_to_storage_instead_of_proxying(
     client, db_session, room_app, monkeypatch
 ):
-    _session, take = await _session_with_a_take(db_session)
-    user = await make_user(db_session)
-    await grant_role(db_session, room_app.id, user.id, "facilitator")
+    user, project = await a_facilitator_of_their_own_team(db_session, room_app)
+    _session, take = await _session_with_a_take(db_session, project.id)
     from app.api.internalization_room import takes as route
 
     monkeypatch.setattr(route, "listen_url", lambda take: _signed(take.storage_key))
@@ -205,6 +228,8 @@ async def test_a_reviewer_can_tell_the_stretches_apart(db_session: AsyncSession)
     not tell stretch three from stretch seven, nor a first telling from its correction.
     """
     store = MemoryStore()
+    # Stored out of reading order on purpose: a retry lands after a later stretch, and
+    # ordering by arrival alone gives the reviewer the wrong sequence.
     for index, (chunk, passe) in enumerate([(2, 2), (1, 1), (2, 1)]):
         await service.store_take(
             db_session,

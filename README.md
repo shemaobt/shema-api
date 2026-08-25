@@ -17,6 +17,10 @@ app/
                    #   rag/ (document upload, query, embeddings)
                    #   bhsa/ (Hebrew text-fabric passage extraction)
                    #   oral_collector/ (field recordings, storytellers, review flags)
+                   #   device/ (tablets: the single-use code that claims one into a
+                   #            project, and the long-lived credential it buys — which
+                   #            authenticates the room app, rotates without a new claim,
+                   #            and is revoked by unlinking)
 alembic/           # Database migrations
 scripts/           # One-off scripts (e.g. seed_apps_roles.py)
 tests/             # Async pytest suite, one file per service domain
@@ -105,6 +109,11 @@ one is enough.
 ## Local development
 
 Secrets are stored in GCP Secret Manager (project `shemaobt-secrets`) and fetched at startup by a Docker Compose sidecar.
+
+> Bringing up the **composed API** — the integration branch, on its own port, with a database
+> of its own — is a different procedure, and it is in [RUNNING-LOCALLY.md](RUNNING-LOCALLY.md).
+> That is the one to follow when a client has to be developed against facilitator routes that
+> have not reached `main` yet.
 
 ### Prerequisites
 
