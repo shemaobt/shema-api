@@ -190,12 +190,18 @@ The table names below are **Provisional** — an `rr_` prefix and a plural, chos
 rest of this document has something to point at. BE-02 renames them freely; what it may not
 change without saying so is the ownership and the invariants in the last two columns.
 
+**Every table in this document is created by BE-02**, which §3 gives `app/db/models/` and
+every `alembic/versions/` file. The owner column therefore names two issues wherever there
+is a table: BE-02 authors the schema, and the second issue builds the behaviour on it. The
+capability table is the one row with a single owner, because it is a map in Python and not a
+table at all.
+
 | Aggregate | Tables (working names) | Owner | The invariant |
 |---|---|---|---|
 | Request document | `rr_requests`, `rr_request_sections`, `rr_budget_lines`, `rr_snapshots` | BE-02 (schema), BE-04 (lifecycle) | Submission freezes an immutable snapshot; a revision is a **new draft linked to the evaluated snapshot**. What the mesa scored stays exactly as scored. |
-| Evaluation | `rr_evaluations`, `rr_evaluation_scores` | BE-06 | Its own aggregate — see §4.1. Six scores 0–5 per type; the /30 total is **derived, never stored**; evaluator and date come from the session, never the payload. |
-| Fund and ledger | `rr_funds`, `rr_fund_movements` | BE-07 | The ledger is append-only. Balances are sums over movements; `disponível = alocado − comprometido` is derived, never a third column. |
-| Board | `rr_board_transitions` (+ the request's current stage) | BE-08 | Stage change and ledger movement commit or roll back **together**. Only `aprovado` commits funds; moving out of it restores them. |
+| Evaluation | `rr_evaluations`, `rr_evaluation_scores` | BE-02 (schema), BE-06 (authorship) | Its own aggregate — see §4.1. Six scores 0–5 per type; the /30 total is **derived, never stored**; evaluator and date come from the session, never the payload. |
+| Fund and ledger | `rr_funds`, `rr_fund_movements` | BE-02 (schema), BE-07 (movements) | The ledger is append-only. Balances are sums over movements; `disponível = alocado − comprometido` is derived, never a third column. |
+| Board | `rr_board_transitions` (+ the request's current stage) | BE-02 (schema), BE-08 (transitions) | Stage change and ledger movement commit or roll back **together**. Only `aprovado` commits funds; moving out of it restores them. |
 | Capability table | none — a pure map | BE-03 | Mirrors the contract's §5.3 field for field, checked in CI against it. |
 
 ### 4.1 The evaluation is its own aggregate — **Decided**, and it is the one shape not to copy
@@ -621,7 +627,7 @@ that owns it and what it blocks.
 | Insufficient funds on a concurrent approve: refuse, or allow negative with a warning (§7.3) | **GATE-01** (OBT-447) | BE-07 |
 | How teams get access — accounts, leader-link, or anonymous + submit (§5.2). Decides whether `created_by` is a FK or nullable | **GATE-02** (OBT-448) | BE-03, BE-04 |
 | Whether the Gestor authors evaluations; whether `move_board` is the mesa's alone; whether the mesa may edit a team's request | **GATE-02** (OBT-448) | BE-03 — one cell each in §5.4's map |
-| One evaluation per mesa, or one per member | **GATE-02** (OBT-448) | BE-06 — it is the primary key of `rr_evaluations` |
+| One evaluation per mesa, or one per member | **GATE-02** (OBT-448) | BE-02, BE-06 — it is the primary key of `rr_evaluations`, so the gate blocks the schema and not only the behaviour |
 | Whether recording a decision moves the card, or only suggests the column | **GATE-02** (OBT-448) | BE-06, BE-08 |
 | Audit trail for edits to the solicitação and the avaliação — who changed which field, who raised a score from 2 to 5, when. BE-07 covers money and BE-08 covers board moves; **nothing covers edits** | **GATE-02** (OBT-448) | BE-02 — history tables are cheap to add before there is data and expensive after |
 | Online submission vs print/file vs both; where the attachment lives; what the team sees after submitting (§6) | **GATE-03** (OBT-449) | BE-04, INT-02 |
