@@ -10,6 +10,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSessionStatus
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import counts
+from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.run_turn import run_panorama_turn
 from app.services.internalization_room.sessions import (
     book_of,
@@ -122,6 +123,30 @@ async def test_the_validator_judges_against_the_same_material(patch_agent) -> No
     validator_system = agent.systems[1]
     assert "THE BOOK OF RUTH" in validator_system
     assert "{{" not in validator_system
+
+
+@pytest.mark.asyncio
+async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_agent) -> None:
+    """The book session counts toward a facilitator the same way a passage does.
+
+    Its fail-safe is a second copy of the one in `run_turn`, and a room that cannot hear the
+    team is a room that is not working whichever session it is standing in."""
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+
+    outcome = await run_panorama_turn(
+        transcript="   ",
+        messages=[{"role": "guide", "text": "vamos conhecer o livro"}],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        settings=_settings(),
+    )
+
+    assert outcome.speech in utterances(FailSafe.INAUDIBLE, "pt")
+    assert outcome.used_fail_safe is True
+    assert outcome.degraded is True
+    assert agent.systems == []
 
 
 @pytest.mark.asyncio
