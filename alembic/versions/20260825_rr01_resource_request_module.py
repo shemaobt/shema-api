@@ -1,10 +1,17 @@
 """the resource-request module's tables: requests, evaluations, funds, ledger, board
 
 Revision ID: 20260825_rr01
-Revises: 20260819_room08
+Revises: 20260823_join4
 Create Date: 2026-08-25
 
-Written by hand, like the other 66 revisions here. `alembic/env.py` imports only
+The parent is `20260823_join4`, the head `main` carries, and not `20260819_room08`, which
+this branch was cut above: `join4` already names `room08` as one of its two parents, so a
+revision hanging off `room08` would be a second head — invisible on a stacked PR, whose CI
+walks its own base, and fatal at the first `alembic upgrade head` after the branch reaches
+`main`. `tests/test_migration_graph.py` is the guard, and it came from `main` in the same
+merge that brought the parent.
+
+Written by hand, like the other 78 revisions here. `alembic/env.py` imports only
 `app.core.database`, so its metadata is empty and `--autogenerate` would emit a
 migration dropping all 64 existing tables (docs/resource_requests.md §8.1).
 
@@ -41,7 +48,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260825_rr01"
-down_revision = "20260819_room08"
+down_revision = "20260823_join4"
 branch_labels = None
 depends_on = None
 
@@ -103,7 +110,6 @@ def upgrade() -> None:
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
     )
-    op.create_index("ix_rr_requests_stage", "rr_requests", ["stage"])
     op.create_index("ix_rr_requests_fund_id", "rr_requests", ["fund_id"])
     op.create_index("ix_rr_requests_created_by", "rr_requests", ["created_by"])
     op.create_index("ix_rr_requests_stage_created", "rr_requests", ["stage", "created_at"])
@@ -213,7 +219,6 @@ def upgrade() -> None:
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
     )
-    op.create_index("ix_rr_fund_movements_fund_id", "rr_fund_movements", ["fund_id"])
     op.create_index("ix_rr_fund_movements_request_id", "rr_fund_movements", ["request_id"])
     op.create_index(
         "ix_rr_fund_movements_fund_created", "rr_fund_movements", ["fund_id", "created_at"]
@@ -240,7 +245,6 @@ def upgrade() -> None:
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
     )
-    op.create_index("ix_rr_board_transitions_request_id", "rr_board_transitions", ["request_id"])
     op.create_index(
         "ix_rr_board_transitions_request_created",
         "rr_board_transitions",

@@ -511,16 +511,18 @@ repository, nothing imports the package at all. Measured:
 
 ```
 tables visible importing only app.core.database: 0
-tables visible after importing app.db.models:   64
+tables visible after importing app.db.models:   75
 ```
 
 So `alembic revision --autogenerate` today compares an **empty** metadata against the
-database and would emit a migration dropping all 64 tables. That is not hypothetical for
-BE-02, which is the next issue and authors the first migration of this module.
+database and would emit a migration dropping all 75 tables. That is not hypothetical for
+BE-02, which is the next issue and authors the first migration of this module. (Both counts
+were 0 and 64 when this was written; the second is re-measured at BE-02, after `main` and
+this module's own nine tables — the zero is what does not move.)
 
-The repository has been living with it: only 2 of the 68 revisions carry alembic's
-autogenerate marker, and both are the legacy hash-named ones. **The 66 others were written
-by hand, and BE-02 writes its own by hand too.** Re-exporting the new model file from
+The repository has been living with it: only 2 of the 81 revisions carry alembic's
+autogenerate marker, and both are the legacy hash-named ones. **The 78 others were written
+by hand, and BE-02 wrote its own by hand too.** Re-exporting the new model file from
 `app/db/models/__init__.py` is still required — the app itself needs it — but it does not
 make autogenerate safe on its own. Fixing `env.py` is a repository-wide change touching
 seven other applications' migration workflow, and belongs to an issue of its own (§10).
@@ -570,11 +572,23 @@ enum.
 
 Files are `YYYYMMDD_NNNN_snake_description.py` with `revision` equal to the prefix
 (`20260819_room08`); the internalization-room series swapped the counter for a semantic tag,
-so `20260NNN_rr01_…` with `revision = "20260NNN_rr01"` follows the precedent. There is
-exactly one head today, `20260819_room08`, and `migrations.yml` enforces it against a real
-PostgreSQL — it runs `upgrade head`, `downgrade -1`, `upgrade head`, with
-`PYTHONWARNINGS=error::UserWarning` because a duplicate revision id is only a warning.
+so `20260NNN_rr01_…` with `revision = "20260NNN_rr01"` follows the precedent.
+`migrations.yml` enforces the single head against a real PostgreSQL — it runs
+`upgrade head`, `downgrade -1`, `upgrade head`, with `PYTHONWARNINGS=error::UserWarning`
+because a duplicate revision id is only a warning.
 **`downgrade()` is not decorative here; a migration that cannot come back down fails CI.**
+
+~~There is exactly one head today, `20260819_room08`.~~ **It moved while this document was
+in review, and the parent to hang a new revision off is read, never remembered** (BE-02,
+25/aug/2026). `main` grew twelve revisions and three join revisions in that window, and the
+head is `20260823_join4`, whose parents are `("20260821_join3", "20260819_room08")` — so
+`room08` already has a child. `20260825_rr01` hanging off it would have been a **second
+head**, and the failure is invisible where it is written: a stacked PR's CI runs against its
+own base, where the single-head check is content, and the graph forks only when the branch
+reaches `main`. `main` also grew the guard that catches it — `tests/test_migration_graph.py`,
+which asserts one head *and* that the join names every line that would otherwise be one.
+Bringing `main` down the stack before writing a revision is what makes both true; the
+command is `git log --oneline -1 origin/main -- alembic/versions`, not memory.
 
 ### 8.4 A request and its snapshot reference each other, so a flush needs telling
 

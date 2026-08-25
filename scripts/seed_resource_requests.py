@@ -15,10 +15,13 @@ Four things the fixture does not carry and this script decides, each named so no
 reads them as ported:
 
 * **The request type.** The board fixture has no type field. Each card takes the type its
-  own subject states, and for four of them the frontend's Tipo 1 category vocabulary
-  settles it outright — *Pesquisa sociolinguística*, *Porções* and *Audiovisual (ex.:
-  JESUS Film)* are all ``traducao`` categories. The fund is deliberately **not** used to
-  derive it: the old↔new fund correspondence is exactly what GATE-01 is still deciding.
+  own subject states, and every card that comes out ``traducao`` names a Tipo 1 category
+  outright — *NT*, *Tradução oral/áudio*, *Pesquisa sociolinguística*, *Porções* and
+  *Audiovisual (ex.: JESUS Film)*, five of the nine in ``projectCategory``. The remaining
+  five are read the same way from their own subject: a capacitação, a mentoria and the two
+  Ready Vessels are ``treinamento``, the gravação is ``equipamentos``. The fund is
+  deliberately **not** used to derive any of it: the old↔new fund correspondence is
+  exactly what GATE-01 is still deciding.
 * **The six scores behind each total.** The fixture carries a ``/30`` total and the
   schema stores per-criterion rows, because the total is derived and never stored. The
   six values are spread evenly over the total by ``_spread`` — sample data, not a mesa's

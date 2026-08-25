@@ -12,8 +12,10 @@ rules by different means — a CHECK where PostgreSQL has a native enum, a pair 
 ``app.db.models.resource_request.append_only_ddl`` is where that split lives.
 """
 
+import importlib.util
 from contextlib import asynccontextmanager
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select, text
@@ -29,8 +31,16 @@ from app.db.models.resource_request import (
     RRMovementKind,
     RRRequest,
     RRSnapshot,
+    append_only_ddl,
 )
 from scripts.seed_resource_requests import SEED_CARDS, SEED_FUNDS, _spread
+
+_REVISION = (
+    Path(__file__).resolve().parents[2]
+    / "alembic"
+    / "versions"
+    / "20260825_rr01_resource_request_module.py"
+)
 
 
 @pytest.fixture()
@@ -121,6 +131,12 @@ async def test_a_decision_outside_the_four_is_refused(
 async def test_each_of_the_four_decisions_is_accepted(
     db_session: AsyncSession, evaluation: RREvaluation
 ) -> None:
+    """The four literals are FE-22's contract, not ``RRDecision`` read back to itself.
+
+    Iterating the enum would ask the constraint whether it agrees with the thing that
+    generated it, which it cannot fail. Typed out, this is the other direction of the
+    test above: the check refuses a fifth string and admits exactly these four.
+    """
     for decision in ("approved", "conditional", "revise", "declined"):
         await db_session.execute(
             text("UPDATE rr_evaluations SET decision = :decision WHERE id = :id"),
@@ -239,9 +255,7 @@ async def test_the_seed_records_no_decision(seeded: AsyncSession) -> None:
     assert decisions and all(decision is None for decision in decisions)
 
 
-async def test_running_the_seed_twice_does_not_double_the_ledger(
-    seeded: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_running_the_seed_twice_does_not_double_the_ledger(seeded: AsyncSession) -> None:
     """The ledger is append-only, so a second run has nothing to correct with."""
     before = (await seeded.execute(select(func.sum(RRFundMovement.amount)))).scalar()
 
@@ -249,6 +263,34 @@ async def test_running_the_seed_twice_does_not_double_the_ledger(
 
     after = (await seeded.execute(select(func.sum(RRFundMovement.amount)))).scalar()
     assert after == before
+
+
+def test_the_migration_writes_the_same_guard_the_models_do() -> None:
+    """The append-only DDL has two homes on purpose, and this is what keeps them one rule.
+
+    The migration spells the trigger out rather than importing it, because importing a
+    model module executes ``app.core.database`` and builds an engine at import time — the
+    reason 20260731_0001 already recorded. The cost of that is drift nothing would report:
+    production runs the migration, pytest runs ``create_all``, and a trigger that grew
+    apart would enforce differently in the two places without a single test going red.
+
+    It is also the only reader the PostgreSQL branch of ``append_only_ddl`` has. The suite
+    runs on SQLite, so nothing else here ever compiles the plpgsql that production uses.
+    """
+    spec = importlib.util.spec_from_file_location("_rr01", _REVISION)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    assert migration.APPEND_ONLY_TABLES == ("rr_fund_movements", "rr_snapshots")
+
+    for table in migration.APPEND_ONLY_TABLES:
+        statements = append_only_ddl(table, "postgresql")
+        assert statements[0] == migration.APPEND_ONLY_FUNCTION
+        assert statements[1] == (
+            f"CREATE TRIGGER {table}_append_only BEFORE UPDATE OR DELETE ON {table} "
+            "FOR EACH ROW EXECUTE FUNCTION rr_reject_write()"
+        )
 
 
 def test_a_total_is_spread_without_breaking_the_range() -> None:

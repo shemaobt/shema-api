@@ -9,6 +9,12 @@ Money is ``Numeric(14, 2)`` mapped to ``Decimal`` and currency is ISO-4217, both
 in the design's §7.2. The frontend persists the symbol (``R$``); translating it is
 INT-02's client, not this schema's business.
 
+Three columns that a reader will expect to carry ``index=True`` deliberately do not —
+``rr_requests.stage``, ``rr_fund_movements.fund_id`` and ``rr_board_transitions.request_id``.
+Each already leads a composite (`(stage, created_at)`, `(fund_id, created_at)`,
+`(request_id, created_at)`), and a B-tree serves its leading column on its own, so a second
+index would cost every write and buy no read.
+
 Two tables are append-only and say so in the database rather than only in a service:
 ``rr_fund_movements`` and ``rr_snapshots``. ``append_only_ddl`` builds the guard for the
 dialect in hand and is hung on ``after_create`` so ``Base.metadata.create_all`` — which
@@ -190,7 +196,7 @@ class RRRequest(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     request_type: Mapped[RRRequestType] = mapped_column(_REQUEST_TYPE)
     reg_name: Mapped[str] = mapped_column(String(255), default="", server_default="")
-    stage: Mapped[RRStage] = mapped_column(_STAGE, default=RRStage.TRIAGEM, index=True)
+    stage: Mapped[RRStage] = mapped_column(_STAGE, default=RRStage.TRIAGEM)
     currency: Mapped[RRCurrency] = mapped_column(_CURRENCY, default=RRCurrency.BRL)
     fund_id: Mapped[str | None] = mapped_column(
         String(32), ForeignKey("rr_funds.id"), nullable=True, index=True
@@ -383,7 +389,7 @@ class RRFundMovement(Base):
     __table_args__ = (Index("ix_rr_fund_movements_fund_created", "fund_id", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    fund_id: Mapped[str] = mapped_column(String(32), ForeignKey("rr_funds.id"), index=True)
+    fund_id: Mapped[str] = mapped_column(String(32), ForeignKey("rr_funds.id"))
     request_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("rr_requests.id"), nullable=True, index=True
     )
@@ -416,7 +422,7 @@ class RRBoardTransition(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     request_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("rr_requests.id", ondelete="CASCADE"), index=True
+        String(36), ForeignKey("rr_requests.id", ondelete="CASCADE")
     )
     from_stage: Mapped[RRStage | None] = mapped_column(_STAGE, nullable=True)
     to_stage: Mapped[RRStage] = mapped_column(_STAGE)
