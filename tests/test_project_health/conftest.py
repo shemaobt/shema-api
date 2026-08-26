@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from app.db.models.project_health import PHLanguage
-from app.services.project_health.agents import llm_client, orchestrator
+from app.services.project_health.agents import orchestrator
 from tests.baker import make_app, make_role
 
 _ALL_DOMAINS = (
@@ -46,7 +46,7 @@ def stub_llm(monkeypatch):
         *,
         system_prompt: str,
         user_content: str,
-        model: str = llm_client.FAST_MODEL,
+        model: str | None = None,
         temperature: float = 0.4,
         max_output_tokens: int = 2000,
         expects_json: bool = False,
@@ -134,7 +134,7 @@ def stub_llm(monkeypatch):
         *,
         system_prompt: str,
         contents: list[dict],
-        model: str = llm_client.QUALITY_MODEL,
+        model: str | None = None,
         temperature: float = 0.6,
         max_output_tokens: int = 500,
         settings: Any | None = None,
