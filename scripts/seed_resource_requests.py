@@ -26,12 +26,13 @@ reads them as ported:
   schema stores per-criterion rows, because the total is derived and never stored. The
   six values are spread evenly over the total by ``_spread`` — sample data, not a mesa's
   judgement.
-* **The eighteen criterion slugs.** ``docs/resource_requests.md`` §4.3 requires a key and
-  forbids an index, and the vendored vocabulary emission of §9 does not exist yet. They
-  are minted here, mechanically from the Portuguese labels and prefixed by request type —
-  the prefix is not decoration: *Vínculo com um projeto de tradução ativo* is criterion 2
-  of both ``treinamento`` and ``equipamentos``, so an unprefixed slug would collide. When
-  §9's emission lands it must carry exactly these, and this list goes away.
+* **The eighteen criterion slugs came from here and no longer live here.** They were
+  minted in this file because §9's vendored emission did not exist yet, with the promise
+  that the emission would carry exactly these and the list would go away. BE-05 (OBT-454)
+  landed the emission carrying them letter for letter, so ``CRITERION_KEYS`` is now read
+  from ``app.services.resource_request``. The prefix by request type survives and is not
+  decoration: *Vínculo com um projeto de tradução ativo* is criterion 2 of both
+  ``treinamento`` and ``equipamentos``, so an unprefixed slug would collide.
 * **The two approval deductions.** *Comprometido* is a sum over the ledger, so the two
   cards sitting on ``aprovado`` need the movement that put them there; without it the
   board and the fund cards would disagree about the same money.
@@ -68,6 +69,7 @@ from app.db.models.resource_request import (
     RRSnapshot,
     RRStage,
 )
+from app.services.resource_request import CRITERION_KEYS
 
 SEED_FUNDS = [
     ("linguas", "Shema Línguas", Decimal("480000")),
@@ -76,33 +78,6 @@ SEED_FUNDS = [
     ("equip", "Shema OBT-Lab", Decimal("120000")),
     ("pesquisa", "Shema Ora-Bridge", Decimal("60000")),
 ]
-
-CRITERION_KEYS: dict[RRRequestType, list[str]] = {
-    RRRequestType.TRADUCAO: [
-        "traducao_necessidade_urgencia",
-        "traducao_receptividade_demanda",
-        "traducao_capacidade_equipe",
-        "traducao_viabilidade_cronograma",
-        "traducao_orcamento",
-        "traducao_alinhamento_eten",
-    ],
-    RRRequestType.TREINAMENTO: [
-        "treinamento_lacuna_capacitacao",
-        "treinamento_vinculo_projeto",
-        "treinamento_formato",
-        "treinamento_capacidade_equipe",
-        "treinamento_impacto",
-        "treinamento_custo_beneficio",
-    ],
-    RRRequestType.EQUIPAMENTOS: [
-        "equipamentos_necessidade",
-        "equipamentos_vinculo_projeto",
-        "equipamentos_adequacao_tecnica",
-        "equipamentos_custo_beneficio",
-        "equipamentos_manutencao",
-        "equipamentos_orcamento",
-    ],
-}
 
 LANGUAGE_PLACEHOLDERS = {"—", "Multi"}
 

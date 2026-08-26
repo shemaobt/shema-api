@@ -284,14 +284,31 @@ where that lands.
 
 **Half of it landed early, and only because the seed needed it** (BE-02, 25/aug/2026). The
 sample board cards carry a `/30` total and `rr_evaluation_scores` stores rows, so the seed
-could not be written without criterion keys. The eighteen slugs are minted in
-`scripts/seed_resource_requests.py` — mechanically from the Portuguese labels, **prefixed by
-request type**, because *Vínculo com um projeto de tradução ativo* is criterion 2 of both
-`treinamento` and `equipamentos` and an unprefixed slug would collide. They live in the seed
-and nowhere else on purpose: writing them into `app/services/resource_request/` would be the
-hand-copied second source §9 exists to prevent. The **26 budget category slugs are still
-unminted** — nothing in this issue needed one, `rr_budget_lines.category_key` is a plain
-string, and membership is BE-05's check against the vendored emission.
+could not be written without criterion keys. The eighteen slugs were minted in
+`scripts/seed_resource_requests.py` — **prefixed by request type**, because *Vínculo com um
+projeto de tradução ativo* is criterion 2 of both `treinamento` and `equipamentos` and an
+unprefixed slug would collide — and lived there and nowhere else on purpose, since writing
+them into `app/services/resource_request/` would have been the hand-copied second source §9
+exists to prevent.
+
+**Both lists are minted and the seed's copy is gone** (BE-05, OBT-454, 25/aug/2026). The
+frontend now carries a `key` on each of the 26 budget categories and each of the 18 criteria,
+in `budgetCategories.ts` and `criteria.ts`, and the emission of §9 brings both across; the
+seed imports `CRITERION_KEYS` from `app.services.resource_request` and the eighteen literals
+left the file, which is exactly what the paragraph above promised would happen.
+
+The two lists were minted differently and the difference is worth carrying: the **26 are
+mechanical** slugs of the Portuguese label (`Chips (SIM)` → `chips_sim`, asserted by a test
+over there that derives the slug and compares all 26), while the **18 are shortened** —
+`Necessidade e urgência da tradução` is `traducao_necessidade_urgencia`, not the whole
+sentence — because they are letter for letter the ones this repository had already minted,
+and copying them was the point.
+
+**Neither cost a `schemaVersion` bump over there**, because wave 1 still writes 26 budget
+rows and 6 scores by index; the key is additive. That is also why the frontend's **seven
+unkeyed vocabularies stayed unkeyed** — those *are* what a draft persists, so keying them
+costs a migration of stored drafts, and the emission carries their Portuguese label as the
+value instead. §10's item 3 stays open, and BE-05 validates what a client sends today.
 
 ---
 
@@ -634,6 +651,14 @@ recomputed-total drift — the last one being the only check that needs a *cross
 validator, which is exactly what `ValidationInfo.data` gives. No new error envelope is
 invented, and no existing client sees a new shape.
 
+**One limit found implementing it** (BE-05, OBT-454, 25/aug/2026). Pydantic locates an
+error by *structure*, so a bad answer inside the `fields` dictionary reports
+`loc: ["fields"]` and not `["fields", "lang_script"]`. Giving each answer its own location
+would mean making every answer an object on the wire, which is a payload shape nobody asked
+for — so the location stays `fields` and **the message names the offending keys**
+(`lang_script: resposta fora do vocabulário`). Every top-level claim — `stated_total`,
+`budget`, `declaration`, `team`, `checks` — locates on itself, exactly as measured above.
+
 ### 8.6 The app key is named once, and a test says so
 
 `tests/test_resource_requests/test_access.py::test_the_app_key_is_named_once_in_the_module`
@@ -686,10 +711,29 @@ Three properties it must have, and they are why the decision is worth writing do
    funds, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
    different length fails the check rather than misleading a reader.
 
-**This is not implemented here.** The emission is a build step in the frontend repository
-and the check is BE-05's, and OBT-450 ships a design plus a skeleton. It needs an issue —
-§10 carries it, with the note that it must land **before INT-02**, because that is the first
-moment a request document crosses the wire.
+~~**This is not implemented here.**~~ **Implemented by BE-05** (OBT-454, 25/aug/2026), in
+both halves. The frontend's `scripts/emit-vocabularies.mjs` loads `src/contract.ts` through
+the app's own resolver — Vite's `ssrLoadModule`, so no new dependency and no parser over
+TypeScript to age — and writes `docs/vocabularies.json`;
+`app/services/resource_request/vocabularies.json` is that file byte for byte, and
+`vocabularies.py` beside it is the only reader. `tests/test_resource_requests/test_vocabularies.py`
+carries the ten counts above and the key spaces of §4.3.
+
+Four things the implementation settled that the decision above did not say:
+
+- **It carries only what BE-05 reads.** The capability table of §5.4 is BE-03's and the
+  board's transition rules are BE-08's, and emitting them today would ship data nobody
+  reads. Each costs one line in the emitter on the day it has a reader.
+- **The seven unkeyed vocabularies emit their Portuguese label as the value**, because that
+  is what a client sends today. The stable keys the contract's §5.2 designs for them are
+  not emitted: they are not true yet, and the server validates what exists.
+- **`emitted_from` carries `-dirty`** when the emission ran over an uncommitted source, so
+  a provenance can never point at a commit that does not contain what was emitted.
+- **One map could not be emitted, and it is named rather than faked.** Which of the 45 text
+  keys each section owns is prose in the contract's §1.2 and inline in components over
+  there — no data structure states it. So `SECTION_TEXT_FIELDS` is written in
+  `vocabularies.py`, and a test partitions the 45 emitted keys against it in both
+  directions: an orphan row and an unowned section each fail.
 
 ---
 
@@ -713,8 +757,9 @@ that owns it and what it blocks.
 
 And five items with **no gate**, which need issues rather than answers:
 
-1. **The vocabulary JSON emission and the two unminted key lists** (§9, §4.3) — must land
-   before INT-02.
+1. ~~**The vocabulary JSON emission and the two unminted key lists** (§9, §4.3) — must land
+   before INT-02.~~ **Closed by BE-05** (OBT-454, 25/aug/2026): both lists are minted, the
+   emission exists and is vendored, and the seed's copy of the eighteen is gone.
 2. **The frontend's CI does not run its test suite** (§9), so the checksum test that guards
    its constants never runs on a pull request there. Its own repository's issue, and the
    reason this side's assertion is the one load-bearing check.
