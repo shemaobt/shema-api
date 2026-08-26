@@ -387,6 +387,7 @@ async def take_turn(
         transcript=outcome.transcript,
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
+        degraded=outcome.degraded,
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         bridge_mode=session.bridge_mode,
