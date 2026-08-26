@@ -1,5 +1,5 @@
 {
-  "emitted_from": "9136470c3f883d813edf7c5c67a55ca2b4860755",
+  "emitted_from": "2377e0229d95af29b192f4f7e71b1a941a414514",
   "vocabularies": {
     "etenListed": [
       {
@@ -685,6 +685,24 @@
         "id": "A1",
         "variant": "slim"
       }
+    ]
+  },
+  "tableRowKeys": {
+    "langs": [
+      "name",
+      "code"
+    ],
+    "team": [
+      "name",
+      "role",
+      "qual",
+      "ded"
+    ],
+    "chrono": [
+      "act",
+      "start",
+      "end",
+      "notes"
     ]
   },
   "partBComposition": {

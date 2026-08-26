@@ -120,6 +120,39 @@ def test_treinamento_needs_a5_and_the_others_may_not_send_it():
     )
 
 
+def test_traducao_has_no_langs_table_and_may_not_send_one():
+    """A1 renders *full* for ``traducao``: twelve text fields and no table of names."""
+    body = payload("traducao", langs=[{"name": "Ticuna", "code": "tca"}])
+
+    assert "has no langs table" in refusal(RequestSubmissionIn, body)
+
+
+@pytest.mark.parametrize(
+    ("table", "request_type"),
+    [("langs", "equipamentos"), ("team", "traducao"), ("chrono", "traducao")],
+)
+def test_a_row_may_not_carry_a_column_the_table_never_had(table, request_type):
+    """The ``fields`` rule one level down — a row is answers to columns.
+
+    Without it a row carried any key at all and was stored as though the question had
+    been put, which is the *absent means not asked* distinction the mesa reads losing
+    its meaning inside the tables (review of PR #253).
+    """
+    row = dict.fromkeys(v.TABLE_ROW_KEYS[table], "") | {"observacao": "inventada"}
+
+    assert f"{table} has no column: observacao" in refusal(
+        RequestDraftIn, payload(request_type, **{table: [row]})
+    )
+
+
+@pytest.mark.parametrize("table", ["langs", "team", "chrono"])
+def test_the_columns_a_table_does_have_are_accepted(table):
+    request_type = "treinamento"
+    row = dict.fromkeys(v.TABLE_ROW_KEYS[table], "x")
+
+    assert RequestDraftIn(**payload(request_type, **{table: [row]}))
+
+
 def test_a_key_the_type_never_renders_is_refused_even_in_a_draft():
     """Absent means *not asked*, and storing an answer to an unasked question erases that."""
     body = {"request_type": "equipamentos", "fields": {"people_name": "Ticuna"}}

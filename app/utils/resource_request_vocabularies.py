@@ -51,6 +51,15 @@ CRITERION_KEYS: dict[str, tuple[str, ...]] = {
     for request_type, criteria in _EMISSION["criteriaByType"].items()
 }
 
+#: The keys one row of each growing table may carry. Emitted from the frontend's own
+#: empty-row seeds, which is what a stored row is rebuilt from over there — a key
+#: outside them does not survive a round trip on that side either. The budget is absent
+#: because its row is not keyed by column: the category is the key, and it arrives as
+#: ``category_key`` on a typed line.
+TABLE_ROW_KEYS: dict[str, frozenset[str]] = {
+    table: frozenset(keys) for table, keys in _EMISSION["tableRowKeys"].items()
+}
+
 PART_A_SECTIONS: dict[str, tuple[dict[str, Any], ...]] = {
     request_type: tuple(sections) for request_type, sections in _EMISSION["partASections"].items()
 }
@@ -237,3 +246,33 @@ TYPES_WITH_TRAINING_PROFILE: frozenset[str] = frozenset(
     for request_type in REQUEST_TYPES
     if any(section["id"] == "A5" for section in PART_A_SECTIONS[request_type])
 )
+
+#: Same, for section 6's schedule table. All three render it today; reading it off the
+#: composition rather than saying so keeps the three tables answering one question.
+TYPES_WITH_CHRONO: frozenset[str] = frozenset(
+    request_type
+    for request_type in REQUEST_TYPES
+    if any(section["id"] == "6" for section in PART_B_SECTIONS[request_type])
+)
+
+#: Same, for A1's table of language names. It is the *slim* variant that renders it, so
+#: this reads the variant and not the section id: all three types render A1, and
+#: ``traducao`` renders the full one, which asks its language in twelve text fields and
+#: has no table at all.
+TYPES_WITH_LANGS: frozenset[str] = frozenset(
+    request_type
+    for request_type in REQUEST_TYPES
+    if any(
+        section["id"] == "A1" and section.get("variant") == "slim"
+        for section in PART_A_SECTIONS[request_type]
+    )
+)
+
+
+#: Table → the types that render it, so the three growing tables answer the *asked* half
+#: of the rule from one place. The *answerable* half is ``TABLE_ROW_KEYS`` above.
+TYPES_WITH_TABLE: dict[str, frozenset[str]] = {
+    "langs": TYPES_WITH_LANGS,
+    "team": TYPES_WITH_TEAM,
+    "chrono": TYPES_WITH_CHRONO,
+}

@@ -41,6 +41,8 @@ from app.utils.resource_request_vocabularies import (
     CRITERION_KEYS,
     MAX_SCORE_PER_CRITERION,
     REQUIRED_TEXT_FIELDS,
+    TABLE_ROW_KEYS,
+    TYPES_WITH_TABLE,
     TYPES_WITH_TEAM,
     TYPES_WITH_TRAINING_PROFILE,
     VOCABULARY_VALUES,
@@ -244,16 +246,31 @@ class RequestDraftIn(BaseModel):
             raise ValueError(f"{request_type.value} has no A5 section")
         return value
 
-    @field_validator("team")
+    @field_validator("langs", "team", "chrono")
     @classmethod
-    def _only_where_a4_renders(
+    def _asked_and_answerable_rows(
         cls, value: list[dict[str, str]], info: ValidationInfo
     ) -> list[dict[str, str]]:
+        """The rule ``fields`` gets, one level down — a row is answers to columns.
+
+        Both halves are read from the emission: which types render the table at all,
+        off the same Parte A/B composition ``section_field_keys`` reads, and which keys
+        one of its rows may carry, off the frontend's empty-row seeds. Without the
+        second half a row could carry any key with any value and be stored as though
+        the question had been put, which is the distinction the class docstring above
+        says the mesa reads.
+        """
+        table = str(info.field_name)
         request_type = info.data.get("request_type")
         if request_type is None:
             return value
-        if value and request_type.value not in TYPES_WITH_TEAM:
-            raise ValueError(f"{request_type.value} has no team table")
+        if value and request_type.value not in TYPES_WITH_TABLE[table]:
+            raise ValueError(f"{request_type.value} has no {table} table")
+
+        columns = TABLE_ROW_KEYS[table]
+        not_asked = {key for row in value for key in row} - columns
+        if not_asked:
+            raise ValueError(f"{table} has no column: {_named(not_asked)}")
         return value
 
     @field_validator("stated_total")

@@ -70,6 +70,29 @@ def test_six_criteria_per_type_and_no_key_shared_between_them():
     assert len(minted) == len(set(minted)) == 18
 
 
+def test_every_growing_table_carries_its_columns_and_its_types():
+    """Both halves of the *asked and answerable* rule for the three tables.
+
+    They are emitted rather than written here for the same reason the 26 categories are:
+    a column list typed on this side is the second source the mirror exists to prevent.
+    ``TYPES_WITH_TABLE`` is read off the same composition ``section_field_keys`` reads,
+    so a type that stops rendering a table stops accepting its rows in the same emission.
+    """
+    assert set(v.TABLE_ROW_KEYS) == set(v.TYPES_WITH_TABLE) == {"langs", "team", "chrono"}
+    for table, columns in v.TABLE_ROW_KEYS.items():
+        assert columns, table
+        assert v.TYPES_WITH_TABLE[table] <= set(v.REQUEST_TYPES)
+
+    assert v.TYPES_WITH_TABLE["langs"] == {"treinamento", "equipamentos"}
+    assert v.TYPES_WITH_TABLE["team"] == v.TYPES_WITH_TEAM
+    assert v.TYPES_WITH_TABLE["chrono"] == set(v.REQUEST_TYPES)
+
+
+def test_the_budget_is_not_among_the_keyed_row_tables():
+    """Its row is not keyed by column — the category is the key, and it travels typed."""
+    assert "budget" not in v.TABLE_ROW_KEYS
+
+
 def test_the_budget_keys_are_unique():
     assert len(set(v.BUDGET_CATEGORY_KEYS)) == len(v.BUDGET_CATEGORY_KEYS)
 

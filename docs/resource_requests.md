@@ -760,6 +760,19 @@ Four things the implementation settled that the decision above did not say:
   `vocabularies.py`, and a test partitions the 45 emitted keys against it in both
   directions: an orphan row and an unowned section each fail.
 
+**And a fifth, added in review: the emission also carries `tableRowKeys`.** The first round
+gave the *asked and answerable* rule to `fields` alone, so a row of `langs`, `team` or
+`chrono` could carry any key with any value and be stored as though the question had been
+put — the same **absent means not asked** distinction the mesa reads, losing its meaning one
+level down. Both halves are now data rather than prose: `TABLE_ROW_KEYS` comes from the
+frontend's own empty-row seeds (which is what `readRows` rebuilds every stored row from, so
+a key outside them does not survive a round trip on that side either), and
+`TYPES_WITH_TABLE` is read off the same Parte A/B composition `section_field_keys` reads —
+which is what closed the second gap in the same place, `langs` never having been gated by
+type at all while `team` and `checks` were. The budget is deliberately not among them: its
+row is not keyed by column, the category *is* the key, and it arrives as `category_key` on
+a typed line.
+
 ---
 
 ## 10. Open questions
