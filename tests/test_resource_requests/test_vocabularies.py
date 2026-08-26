@@ -41,7 +41,7 @@ def test_the_emission_says_where_it_came_from():
         ("project categories", 9, lambda: len(EMISSION["vocabularies"]["projectCategory"])),
         ("supported goals", 10, lambda: len(EMISSION["vocabularies"]["supportedGoal"])),
         ("budget categories", 26, lambda: len(v.BUDGET_CATEGORY_KEYS)),
-        ("funds", 5, lambda: len(v.FUND_IDS)),
+        ("funds", 1, lambda: len(v.FUND_IDS)),
         ("board columns", 6, lambda: len(v.BOARD_STATUS_IDS)),
         ("decisions", 4, lambda: len(EMISSION["vocabularies"]["decisionStates"])),
         ("request types", 3, lambda: len(v.REQUEST_TYPES)),
@@ -50,7 +50,13 @@ def test_the_emission_says_where_it_came_from():
     ],
 )
 def test_the_checksums_of_the_design(what, expected, actual):
-    """§9's list, verbatim. A list that comes back a different length fails here."""
+    """§9's list, verbatim. A list that comes back a different length fails here.
+
+    ``funds`` was 5 until GATE-01 answered (OBT-447, 26/aug/2026) and is expected to move
+    again when the client defines the next names (BE-10, OBT-471). It is asserted anyway:
+    the number moving is what makes a stale vendored copy visible, which is the whole job
+    of a checksum over data emitted somewhere else.
+    """
     assert actual() == expected, what
 
 

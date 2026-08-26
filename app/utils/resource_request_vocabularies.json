@@ -1,5 +1,5 @@
 {
-  "emitted_from": "2377e0229d95af29b192f4f7e71b1a941a414514",
+  "emitted_from": "2bac57a320239ed5fa9eab79ec3120fb93a14b32",
   "vocabularies": {
     "etenListed": [
       {
@@ -515,34 +515,6 @@
       "name": {
         "pt": "Shema Línguas",
         "en": "Shema Línguas"
-      }
-    },
-    {
-      "id": "treinamentos",
-      "name": {
-        "pt": "Shema BTAT",
-        "en": "Shema BTAT"
-      }
-    },
-    {
-      "id": "ready",
-      "name": {
-        "pt": "Shema Tripod",
-        "en": "Shema Tripod"
-      }
-    },
-    {
-      "id": "equip",
-      "name": {
-        "pt": "Shema OBT-Lab",
-        "en": "Shema OBT-Lab"
-      }
-    },
-    {
-      "id": "pesquisa",
-      "name": {
-        "pt": "Shema Ora-Bridge",
-        "en": "Shema Ora-Bridge"
       }
     }
   ],

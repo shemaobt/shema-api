@@ -738,9 +738,17 @@ Three properties it must have, and they are why the decision is worth writing do
    Minting those last slugs is part of this work, not a separate afterthought: without them
    BE-02 has nothing to put in `category_key` and `criterion_key`.
 3. **The counts are asserted**, the way the contract's own checksums are: 45 text keys, 9
-   project categories, 10 supported goals, 26 budget categories, 6 criteria per type, 5
-   funds, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
+   project categories, 10 supported goals, 26 budget categories, 6 criteria per type, **1
+   fund**, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
    different length fails the check rather than misleading a reader.
+
+   Two of those numbers carry a date. **Funds was 5 until GATE-01 answered** (OBT-447,
+   26/aug/2026): only *Shema Línguas* remains and the other four names are undecided, so the
+   emission carries one. The count is expected to move again — the client floated an editable
+   fund area (BE-10, OBT-471) — and moving it is the check working, not the check being
+   wrong. **Supported goals stays at 10 while the gate's other half is open**: whether *Ready
+   Vessels* survives among them is the one GATE-01 question still unanswered (§10), and it is
+   this number's owner the day it is.
 
 ~~**This is not implemented here.**~~ **Implemented by BE-05** (OBT-454, 25/aug/2026), in
 both halves. The frontend's `scripts/emit-vocabularies.mjs` loads `src/contract.ts` through
