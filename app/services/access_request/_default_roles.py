@@ -13,12 +13,14 @@ automatically at all is ``apps.auto_approve``, which is a separate decision.
 migration creates. It was missing here from launch, so every approval for it resolved the
 ``analyst`` fallback and raised ``RoleError`` instead of granting anything.
 
-Which apps need an entry follows from how they were seeded. An app taking ``DEFAULT_ROLES``
-from ``scripts/seed_apps_roles.py`` already defines ``analyst`` and so works on the
-fallback; an app listed in that script's ``APP_ROLES_OVERRIDE`` never does, because an
-override replaces the default set rather than extending it. Every override app therefore
-belongs here, and ``oral-collector`` and ``sound-necklace`` were missing for the same
-reason ``project-health`` was.
+Which apps need an entry follows from how they were registered. An app taking
+``DEFAULT_ROLES`` from ``scripts/seed_apps_roles.py`` already defines ``analyst`` and so
+survives on the fallback; an app listed in that script's ``APP_ROLES_OVERRIDE`` never does,
+because an override replaces the default set rather than extending it. An app registered by
+its own migration defines only what that migration inserts, and so needs an entry unless it
+happens to include ``analyst`` — none do. ``project-health``, ``oral-collector``,
+``sound-necklace`` and ``internalization-room`` were each missing for one of those two
+reasons.
 """
 
 DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
@@ -29,6 +31,7 @@ DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
     "resource-request-form": "equipe",
     "oral-collector": "member",
     "sound-necklace": "facilitator",
+    "internalization-room": "facilitator",
 }
 
 LEGACY_DEFAULT_ROLE = "analyst"

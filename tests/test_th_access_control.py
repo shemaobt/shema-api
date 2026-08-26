@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 import pytest
 from sqlalchemy import select
 
@@ -9,6 +12,7 @@ from app.services.access_request._default_roles import (
 from app.services.access_request.review_access_request import review_access_request
 from app.services.authorization.has_role import has_role
 from app.services.authorization.list_roles import list_roles
+from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, DEFAULT_ROLES, SEED_APPS
 from tests.baker import grant_app_role, make_access_request, make_role, make_user
 
 
@@ -48,35 +52,71 @@ def test_default_role_map_pins_translation_helper_to_user() -> None:
     assert default_role_for("some-unknown-app") == "analyst"
 
 
-#: The roles each app actually defines. Apps seeded by ``scripts/seed_apps_roles.py`` take
-#: its ``DEFAULT_ROLES`` unless they appear in its ``APP_ROLES_OVERRIDE``;
-#: ``translation-helper`` and ``project-health`` are seeded by their own migrations instead.
-#: Held here as a literal because ``scripts/`` is not an importable package.
-ROLES_DEFINED_BY_APP: dict[str, set[str]] = {
+#: Apps registered by their own Alembic migration rather than by the seed script, mapped to
+#: the roles that migration inserts. The seed script's apps are derived rather than listed —
+#: see ``_roles_defined_by_app``. ``test_migration_registered_apps_are_all_known`` fails if a
+#: migration registers an app missing from here, which is how the next one gets caught.
+ROLES_FROM_MIGRATIONS: dict[str, set[str]] = {
     "translation-helper": {"user"},
     "project-health": {"user", "admin"},
-    "oral-collector": {"member", "manager"},
     "annotation-studio": {"admin", "facilitator"},
-    "sound-necklace": {"facilitator", "project_admin"},
-    "resource-request-form": {"equipe", "mesa", "gestor"},
-    "meaning-map-generator": {"admin", "analyst", "reviewer", "annotator", "viewer"},
+    "internalization-room": {"facilitator", "admin"},
 }
+
+#: Migrations that INSERT INTO apps declare their key in a module constant named ``APP_KEY``
+#: or ``<PREFIX>_APP_KEY``; this finds those declarations without importing the migrations.
+_MIGRATION_APP_KEY = re.compile(r'^[A-Z_]*APP_KEY[A-Z_]* *= *"([a-z0-9-]+)"', re.MULTILINE)
+_VERSIONS_DIR = Path(__file__).resolve().parent.parent / "alembic" / "versions"
+
+
+def _roles_defined_by_app() -> dict[str, set[str]]:
+    """Every app the platform can approve access to, with the roles it actually defines.
+
+    Derived from ``scripts/seed_apps_roles.py`` rather than restated, so an app added to
+    ``SEED_APPS`` gets a case without anyone remembering to add one here. Migration-
+    registered apps are layered on top and win, since their migration creates the rows.
+    """
+    roles = {key: set(APP_ROLES_OVERRIDE.get(key, DEFAULT_ROLES)) for key, *_ in SEED_APPS}
+    return roles | ROLES_FROM_MIGRATIONS
+
+
+ROLES_DEFINED_BY_APP = _roles_defined_by_app()
+
+
+def test_migration_registered_apps_are_all_known() -> None:
+    """A migration that registers an app must have its roles recorded here.
+
+    Without this the parametrised guard below is only as good as someone's memory: an app it
+    has never heard of produces no case at all and the suite stays green. That is exactly how
+    ``internalization-room`` survived a change titled "every app".
+    """
+    registered = {
+        key
+        for path in _VERSIONS_DIR.glob("*.py")
+        if "INSERT INTO apps" in (text := path.read_text())
+        for key in _MIGRATION_APP_KEY.findall(text)
+    }
+    assert registered, "found no app-registering migrations — the discovery pattern broke"
+    assert registered <= set(ROLES_DEFINED_BY_APP), (
+        f"{sorted(registered - set(ROLES_DEFINED_BY_APP))} registered by migration but "
+        f"absent from ROLES_DEFINED_BY_APP — add the roles their migration inserts"
+    )
 
 
 @pytest.mark.parametrize("app_key", sorted(ROLES_DEFINED_BY_APP))
 def test_every_app_is_approvable(app_key: str) -> None:
-    """Approval resolves to a role the app defines, for every app — not just the known ones.
+    """Approval resolves to a role the app defines, for every app.
 
-    Guards a bug that has now recurred three times. ``default_role_for`` falls back to
+    Guards a bug that has now recurred four times. ``default_role_for`` falls back to
     ``analyst`` for any app missing from ``DEFAULT_ROLE_BY_APP_KEY``, and an app whose roles
-    were overridden in ``scripts/seed_apps_roles.py`` does not define ``analyst``, so
-    approval raised ``RoleError`` and the request granted nothing while still reading as
+    came from an override or from its own migration does not define ``analyst`` — so
+    approval raised ``RoleError`` and granted nothing while the request still read as
     reviewed. ``translation-helper`` was fixed when it hit this, ``project-health`` in the
-    commit before this one, and ``oral-collector`` and ``sound-necklace`` here.
+    commit before this one, and ``oral-collector``, ``sound-necklace`` and
+    ``internalization-room`` here.
 
-    Asserting against the roles each app defines, rather than against the map's own
-    contents, is what makes this fail for the next app instead of only the ones already
-    known to be broken.
+    The cases come from the seed script and the migration scan rather than from a list kept
+    by hand, because a hand-kept list cannot fail for an app nobody remembered to add.
     """
     resolved = default_role_for(app_key)
     assert resolved in ROLES_DEFINED_BY_APP[app_key], (
