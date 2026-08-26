@@ -48,6 +48,43 @@ def test_default_role_map_pins_translation_helper_to_user() -> None:
     assert default_role_for("some-unknown-app") == "analyst"
 
 
+#: The roles each app actually defines. Apps seeded by ``scripts/seed_apps_roles.py`` take
+#: its ``DEFAULT_ROLES`` unless they appear in its ``APP_ROLES_OVERRIDE``;
+#: ``translation-helper`` and ``project-health`` are seeded by their own migrations instead.
+#: Held here as a literal because ``scripts/`` is not an importable package.
+ROLES_DEFINED_BY_APP: dict[str, set[str]] = {
+    "translation-helper": {"user"},
+    "project-health": {"user", "admin"},
+    "oral-collector": {"member", "manager"},
+    "annotation-studio": {"admin", "facilitator"},
+    "sound-necklace": {"facilitator", "project_admin"},
+    "resource-request-form": {"equipe", "mesa", "gestor"},
+    "meaning-map-generator": {"admin", "analyst", "reviewer", "annotator", "viewer"},
+}
+
+
+@pytest.mark.parametrize("app_key", sorted(ROLES_DEFINED_BY_APP))
+def test_every_app_is_approvable(app_key: str) -> None:
+    """Approval resolves to a role the app defines, for every app — not just the known ones.
+
+    Guards a bug that has now recurred three times. ``default_role_for`` falls back to
+    ``analyst`` for any app missing from ``DEFAULT_ROLE_BY_APP_KEY``, and an app whose roles
+    were overridden in ``scripts/seed_apps_roles.py`` does not define ``analyst``, so
+    approval raised ``RoleError`` and the request granted nothing while still reading as
+    reviewed. ``translation-helper`` was fixed when it hit this, ``project-health`` in the
+    commit before this one, and ``oral-collector`` and ``sound-necklace`` here.
+
+    Asserting against the roles each app defines, rather than against the map's own
+    contents, is what makes this fail for the next app instead of only the ones already
+    known to be broken.
+    """
+    resolved = default_role_for(app_key)
+    assert resolved in ROLES_DEFINED_BY_APP[app_key], (
+        f"approving access to {app_key!r} would grant {resolved!r}, "
+        f"which it does not define — add it to DEFAULT_ROLE_BY_APP_KEY"
+    )
+
+
 @pytest.mark.asyncio
 async def test_review_approve_grants_user_role_for_translation_helper(db_session) -> None:
     """Smoke-tests the full request→approve→access path for translation-helper.
