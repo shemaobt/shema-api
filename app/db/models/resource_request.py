@@ -321,6 +321,12 @@ class RREvaluation(Base):
     answers: **one evaluation per snapshot per evaluator** is the floor both candidate
     answers share — "one per mesa" is the same constraint tightened, and tightening a
     constraint later costs a migration, where loosening one costs data.
+
+    That floor reaches exactly as far as the evaluator is known, and no further: two NULLs
+    are never equal in SQL, so a snapshot may carry any number of evaluations with no
+    principal — which is every row the seed writes. It is the right shape rather than a
+    hole, because the day an evaluation is authored at all is the day BE-06 stamps the
+    session onto it; until then there is no evaluator for a uniqueness rule to be about.
     """
 
     __tablename__ = "rr_evaluations"
@@ -383,6 +389,16 @@ class RRFundMovement(Base):
     ``request_id`` is nullable: an allocation puts money in a fund and answers to no
     request. ``created_by`` is nullable for the same reason ``rr_requests.created_by``
     is, and because the seed's sample allocations have no author.
+
+    It is the one user FK in this module that does **not** cascade to ``NULL``, and the
+    trigger above is why. ``ON DELETE SET NULL`` is an UPDATE on this table, so deleting a
+    person who moved money raised ``rr_fund_movements is append-only`` from inside
+    ``delete_user`` — measured, and the message named the wrong thing entirely. Leaving the
+    reference to restrict is the answer the ledger already implies: an entry names who made
+    it, and forgetting that is precisely what append-only forbids. The delete still fails,
+    now as a foreign-key violation that says which row is holding on; what to do with a
+    person who moved money — anonymise, deactivate, keep — is the audit-trail question
+    §10 already carries under GATE-02, and it is not a default to pick here.
     """
 
     __tablename__ = "rr_fund_movements"
@@ -401,7 +417,7 @@ class RRFundMovement(Base):
     )
     reason: Mapped[str] = mapped_column(Text, default="", server_default="")
     created_by: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        String(36), ForeignKey("users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

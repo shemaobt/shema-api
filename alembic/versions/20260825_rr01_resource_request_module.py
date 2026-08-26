@@ -142,9 +142,7 @@ def upgrade() -> None:
     op.create_table(
         "rr_snapshots",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column(
-            "request_id", sa.String(36), sa.ForeignKey("rr_requests.id"), nullable=False
-        ),
+        sa.Column("request_id", sa.String(36), sa.ForeignKey("rr_requests.id"), nullable=False),
         sa.Column("document", sa.JSON(), nullable=False, server_default="{}"),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
@@ -209,12 +207,7 @@ def upgrade() -> None:
             "reverses_id", sa.String(36), sa.ForeignKey("rr_fund_movements.id"), nullable=True
         ),
         sa.Column("reason", sa.Text(), nullable=False, server_default=""),
-        sa.Column(
-            "created_by",
-            sa.String(36),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
+        sa.Column("created_by", sa.String(36), sa.ForeignKey("users.id"), nullable=True),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),

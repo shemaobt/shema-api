@@ -34,6 +34,7 @@ from app.db.models.resource_request import (
     append_only_ddl,
 )
 from scripts.seed_resource_requests import SEED_CARDS, SEED_FUNDS, _spread
+from tests.baker import make_user
 
 _REVISION = (
     Path(__file__).resolve().parents[2]
@@ -179,6 +180,33 @@ async def test_a_movement_without_a_fund_is_refused(db_session: AsyncSession) ->
                 "VALUES ('m2', 'allocation', 1, 'BRL', '', CURRENT_TIMESTAMP)"
             )
         )
+        await db_session.commit()
+
+
+async def test_deleting_the_person_who_moved_money_is_refused(
+    db_session: AsyncSession, fund: RRFund
+) -> None:
+    """The ledger names who made an entry, and the reference restricts rather than nulls.
+
+    ``ON DELETE SET NULL`` here would be an UPDATE on an append-only table, so the delete
+    used to raise ``rr_fund_movements is append-only`` from inside ``delete_user`` — a
+    true sentence about the wrong thing. It now fails as what it is: a row still points
+    at that person.
+    """
+    author = await make_user(db_session, email="quem@moveu.test")
+    db_session.add(
+        RRFundMovement(
+            id="m4",
+            fund_id=fund.id,
+            kind=RRMovementKind.ALLOCATION,
+            amount=Decimal("10"),
+            created_by=author.id,
+        )
+    )
+    await db_session.commit()
+
+    await db_session.delete(author)
+    with pytest.raises(IntegrityError):
         await db_session.commit()
 
 
