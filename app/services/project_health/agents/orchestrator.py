@@ -18,10 +18,10 @@ from app.models.project_health import (
     TeamReport,
 )
 from app.services.project_health.agents.llm_client import (
-    FAST_MODEL,
-    QUALITY_MODEL,
     call_agent,
     call_chat,
+    fast_model,
+    quality_model,
     safe_parse_json,
 )
 from app.services.project_health.agents.prompts import (
@@ -48,7 +48,7 @@ async def plan_coverage(
     raw = await call_agent(
         system_prompt=await coverage_planner_prompt(db, language),
         user_content=f"Interview transcript so far:\n{transcript}",
-        model=FAST_MODEL,
+        model=fast_model(),
         temperature=0.4,
         max_output_tokens=2000,
         expects_json=True,
@@ -85,7 +85,7 @@ async def extract_evidence(
             f"Existing evidence count: {len(existing)}\n"
             "Extract new evidence from the most recent team response only."
         ),
-        model=FAST_MODEL,
+        model=fast_model(),
         temperature=0.4,
         max_output_tokens=2000,
         expects_json=True,
@@ -110,7 +110,7 @@ async def generate_facilitator_response(
     return await call_chat(
         system_prompt=system_prompt,
         contents=contents,
-        model=QUALITY_MODEL,
+        model=quality_model(),
         temperature=0.6,
         max_output_tokens=1500,
     )
@@ -120,7 +120,7 @@ async def check_guardrails(db: AsyncSession, proposed_response: str) -> dict[str
     raw = await call_agent(
         system_prompt=await guardrail_prompt(db),
         user_content=f'Proposed facilitator response:\n"{proposed_response}"',
-        model=FAST_MODEL,
+        model=fast_model(),
         temperature=0.2,
         max_output_tokens=1800,
         expects_json=True,
@@ -163,7 +163,7 @@ async def score_interview(db: AsyncSession, evidence: list[dict[str, Any]]) -> l
     raw = await call_agent(
         system_prompt=await scoring_prompt(db),
         user_content=f"Evidence items:\n{json.dumps(evidence, indent=2)}",
-        model=QUALITY_MODEL,
+        model=quality_model(),
         temperature=0.4,
         max_output_tokens=2200,
         expects_json=True,
@@ -194,7 +194,7 @@ async def extract_interview_context(
     raw = await call_agent(
         system_prompt=await interview_context_prompt(db),
         user_content=f"Interview transcript:\n{transcript}",
-        model=FAST_MODEL,
+        model=fast_model(),
         temperature=0.1,
         max_output_tokens=2000,
         expects_json=True,
@@ -230,7 +230,7 @@ async def generate_team_report(
             f"Project conversation transcript:\n{transcript}\n\n"
             f"Structured interview data:\n{payload}"
         ),
-        model=QUALITY_MODEL,
+        model=quality_model(),
         temperature=0.5,
         max_output_tokens=2400,
         expects_json=True,
@@ -274,7 +274,7 @@ async def generate_admin_report(
     raw = await call_agent(
         system_prompt=await admin_report_prompt(db),
         user_content=f"Scoring and evidence data:\n{payload}",
-        model=QUALITY_MODEL,
+        model=quality_model(),
         temperature=0.4,
         max_output_tokens=2200,
         expects_json=True,

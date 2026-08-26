@@ -11,8 +11,16 @@ from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
-FAST_MODEL = "gemini-3-flash-preview"
-QUALITY_MODEL = "gemini-3-flash-preview"
+
+def fast_model(settings: Settings | None = None) -> str:
+    """The cheaper tier: planning, evidence, guardrails, context extraction."""
+    return (settings or get_settings()).gemini_fast_model
+
+
+def quality_model(settings: Settings | None = None) -> str:
+    """The stronger tier: the facilitator's own words, scoring, and the reports."""
+    return (settings or get_settings()).gemini_quality_model
+
 
 T = TypeVar("T")
 
@@ -47,7 +55,7 @@ async def call_agent(
     *,
     system_prompt: str,
     user_content: str,
-    model: str = FAST_MODEL,
+    model: str | None = None,
     temperature: float = 0.4,
     max_output_tokens: int = 2000,
     expects_json: bool = False,
@@ -60,6 +68,7 @@ async def call_agent(
     prose, and `safe_parse_json` then falls back and the agent silently contributes nothing.
     """
     settings = settings or get_settings()
+    model = model or fast_model(settings)
     client = genai.Client(api_key=settings.google_api_key)
     response = await client.aio.models.generate_content(
         model=model,
@@ -79,12 +88,13 @@ async def call_chat(
     *,
     system_prompt: str,
     contents: list[dict],
-    model: str = QUALITY_MODEL,
+    model: str | None = None,
     temperature: float = 0.6,
     max_output_tokens: int = 500,
     settings: Settings | None = None,
 ) -> str:
     settings = settings or get_settings()
+    model = model or quality_model(settings)
     client = genai.Client(api_key=settings.google_api_key)
     response = await client.aio.models.generate_content(
         model=model,
