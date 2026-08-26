@@ -36,13 +36,14 @@ reads them as ported:
   cards sitting on ``aprovado`` need the movement that put them there; without it the
   board and the fund cards would disagree about the same money.
 
-And two chips it drops rather than invents. The card's **povo** has no key in the form
-for ``treinamento`` and ``equipamentos`` — A2 is rendered by ``traducao`` alone — and its
-**língua** reaches those two types only through A1-slim's table of language names, which
-``—`` and ``Multi`` are not. So four of the ten cards store neither. Writing them would
-say a section was asked when it never was, which is the distinction the sections document
-exists to keep, and it is the same finding the contract's §6.2 already records about the
-card's fund: the board card projects more than the form collects.
+And two chips it drops rather than invents, on the five cards that are not ``traducao``.
+The card's **povo** has no key in the form for ``treinamento`` and ``equipamentos`` at all
+— A2 is rendered by ``traducao`` alone — so all five drop it. Its **língua** reaches those
+two types only through A1-slim's table of language names, which ``—`` and ``Multi`` are
+not, so four of the five drop that too and only the Ticuna card keeps one. Writing either
+would say a section was asked when it never was, which is the distinction the sections
+document exists to keep, and it is the same finding the contract's §6.2 already records
+about the card's fund: the board card projects more than the form collects.
 """
 
 import asyncio

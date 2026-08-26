@@ -729,12 +729,12 @@ And five items with **no gate**, which need issues rather than answers:
    found writing the seed). The contract's §6.2 records this about the card's *fund*; the
    same is true of its **povo** and its **língua** for two of the three request types. A2 is
    rendered by `traducao` alone, so `people_name` does not exist for `treinamento` or
-   `equipamentos`, and those two reach a language only through A1-slim's table of language
-   names — which the fixture's `—` and `Multi` are not. Four of the ten sample cards
-   therefore store neither, because writing one would say a section was asked when it never
-   was. It belongs with the contract's §6.1 question about whether that chip survives beside
-   the *solicitante*, and it needs the same owner: **before INT-04**, which builds the card
-   against a real endpoint.
+   `equipamentos` and all five of the seed's non-`traducao` cards drop it; those two types
+   reach a language only through A1-slim's table of language names — which the fixture's `—`
+   and `Multi` are not — so four of those five drop that too. Writing either would say a
+   section was asked when it never was. It belongs with the contract's §6.1 question about
+   whether that chip survives beside the *solicitante*, and it needs the same owner:
+   **before INT-04**, which builds the card against a real endpoint.
 
 Two things this document changes elsewhere, and neither should be silent:
 
