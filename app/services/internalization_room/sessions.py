@@ -14,6 +14,7 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
 )
 from app.services.internalization_room.calibration import BridgeMode, is_selected_bridge_mode
+from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -72,8 +73,10 @@ async def create_session(
     """Open a session, on the passage this team is actually standing on.
 
     The meaning map is loaded before anything is written, so unapproved or unsupported
-    canon is refused before a session exists. A panorama has no coverage spine and never
-    completes: it prepares the team to enter the book, and asks no retelling of them.
+    canon is refused before a session exists — and so is a passage whose preservation layer
+    nobody has written, which would otherwise be walked against a completion floor missing
+    its top row. A panorama has no coverage spine and never completes: it prepares the team
+    to enter the book, and asks no retelling of them.
 
     ``pericope`` is optional and its absence is a question, not a default. It used to be
     ``DEFAULT_PERICOPE``, so a room that did not name a passage was answered the first one
@@ -100,7 +103,7 @@ async def create_session(
     pericope = resolve_pericope(pericope)
     panorama = is_panorama(pericope)
     if not panorama:
-        load_map(pericope)
+        require_walkable(load_map(pericope))
     if bridge_mode is not None and not is_selected_bridge_mode(bridge_mode):
         raise ValidationError(f"Unknown bridge mode {bridge_mode!r}")
     if bridge_mode is None:
