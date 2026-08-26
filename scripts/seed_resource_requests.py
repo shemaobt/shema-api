@@ -30,8 +30,8 @@ reads them as ported:
   minted in this file because §9's vendored emission did not exist yet, with the promise
   that the emission would carry exactly these and the list would go away. BE-05 (OBT-454)
   landed the emission carrying them letter for letter, so ``CRITERION_KEYS`` is now read
-  from ``app.services.resource_request``. The prefix by request type survives and is not
-  decoration: *Vínculo com um projeto de tradução ativo* is criterion 2 of both
+  from ``app.utils.resource_request_vocabularies``. The prefix by request type survives
+  and is not decoration: *Vínculo com um projeto de tradução ativo* is criterion 2 of both
   ``treinamento`` and ``equipamentos``, so an unprefixed slug would collide.
 * **The two approval deductions.** *Comprometido* is a sum over the ledger, so the two
   cards sitting on ``aprovado`` need the movement that put them there; without it the
