@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
+from app.core.exceptions import ValidationError
 from app.db.models.auth import AccessRequest, App, RefreshToken, Role, User, UserAppRole
 from app.db.models.book_context import (
     BCDApproval,
@@ -11,6 +12,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -36,6 +38,9 @@ from app.db.models.translation_helper import (
     THChatMessage,
 )
 from app.services.auth.hash_password import hash_password
+from app.services.internalization_room.calibration import BridgeMode
+from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.sessions import create_session
 from app.services.oral_collector.review_flags import (
     UNCLASSIFIED_GENRE_ID,
     recompute_review_flags,
@@ -853,3 +858,35 @@ async def make_bcd_generation_log(
     await db.commit()
     await db.refresh(log)
     return log
+
+
+async def open_ir_session(
+    db: AsyncSession, *, pericope: str, project_id: str | None = None
+) -> IRSession:
+    """A room session on one passage, opened the way the room opens it wherever it still can.
+
+    Since ENG-589 the room refuses a passage whose preservation layer nobody wrote, and eight
+    of Ruth's fourteen are in that state. Walking the whole book is therefore a position the
+    production path cannot reach with the canon as vendored today, so the fixtures that need
+    a team standing past P06 write those rows here instead of pretending the room opened them.
+    Every passage the room does still open is opened through it.
+    """
+    try:
+        return await create_session(db, pericope=pericope, project_id=project_id)
+    except ValidationError:
+        session = IRSession(
+            project_id=project_id,
+            pericope=pericope,
+            status=IRSessionStatus.IN_PROGRESS,
+            messages=[],
+            after_panorama=False,
+            coverage_state=initial_state(pericope),
+            kept_takes={},
+            back_translation={},
+            bridge_mode=BridgeMode.ADAPTIVE.value,
+            comprehension={},
+        )
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+        return session

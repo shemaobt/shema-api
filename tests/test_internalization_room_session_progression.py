@@ -37,7 +37,7 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.prepare_opening import hand_over
-from tests.baker import make_language, make_project
+from tests.baker import make_language, make_project, open_ir_session
 
 _codes = itertools.count()
 
@@ -57,9 +57,14 @@ def closed(pericope: str) -> dict[str, str]:
 
 
 async def having_closed(db: AsyncSession, team, *pericopes: str) -> None:
-    """Walk the team through these passages the way the room does, so nothing is inserted."""
+    """Walk the team through these passages the way the room does.
+
+    The coverage events are written by `apply_coverage`, never inserted. Since ENG-589 the
+    room refuses eight of the fourteen, so the session rows for those come from
+    `open_ir_session` — the end of the book is no longer a place the production path reaches.
+    """
     for pericope in pericopes:
-        session = await room.create_session(db, pericope=pericope, project_id=team.id)
+        session = await open_ir_session(db, pericope=pericope, project_id=team.id)
         await room.apply_coverage(db, session.id, closed(pericope))
 
 

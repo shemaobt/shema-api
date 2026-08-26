@@ -43,6 +43,7 @@ from tests.baker import (
     make_project,
     make_project_user_access,
     make_user,
+    open_ir_session,
 )
 
 TEAM_NOT_FOUND = "Team not found"
@@ -122,13 +123,14 @@ async def a_facilitator(db: AsyncSession, *, email="facilitator@example.com"):
 async def a_session_that_moved(
     db: AsyncSession, *, project_id: str | None, pericope: str, moved: dict[str, str]
 ):
-    """A session of this team that advanced these beads, through the production path.
+    """A session of this team that advanced these beads.
 
-    Built with `create_session` and `apply_coverage` rather than by inserting event rows, so
-    the fixture cannot agree with a route that reads the events differently from how they are
-    written.
+    The events are written by `apply_coverage` rather than inserted, so the fixture cannot
+    agree with a route that reads them differently from how they are written. The session row
+    itself comes from the room wherever the room still opens the passage — see
+    `open_ir_session`.
     """
-    session = await room.create_session(db, pericope=pericope, project_id=project_id)
+    session = await open_ir_session(db, pericope=pericope, project_id=project_id)
     await room.apply_coverage(db, session.id, moved)
     return session
 
