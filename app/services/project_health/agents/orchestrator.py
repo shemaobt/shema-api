@@ -51,6 +51,7 @@ async def plan_coverage(
         model=FAST_MODEL,
         temperature=0.4,
         max_output_tokens=2000,
+        expects_json=True,
     )
     default_hint = (
         "Collect any missing opening details first, then keep listening for concrete "
@@ -87,6 +88,7 @@ async def extract_evidence(
         model=FAST_MODEL,
         temperature=0.4,
         max_output_tokens=2000,
+        expects_json=True,
     )
     new_evidence: list[dict[str, Any]] = safe_parse_json(raw, [])
     if not isinstance(new_evidence, list):
@@ -120,7 +122,8 @@ async def check_guardrails(db: AsyncSession, proposed_response: str) -> dict[str
         user_content=f'Proposed facilitator response:\n"{proposed_response}"',
         model=FAST_MODEL,
         temperature=0.2,
-        max_output_tokens=600,
+        max_output_tokens=1800,
+        expects_json=True,
     )
     return safe_parse_json(raw, {"approved": True, "violations": [], "suggested_fix": ""})
 
@@ -163,6 +166,7 @@ async def score_interview(db: AsyncSession, evidence: list[dict[str, Any]]) -> l
         model=QUALITY_MODEL,
         temperature=0.4,
         max_output_tokens=2200,
+        expects_json=True,
     )
     fallback: list[dict[str, Any]] = [
         {
@@ -192,7 +196,8 @@ async def extract_interview_context(
         user_content=f"Interview transcript:\n{transcript}",
         model=FAST_MODEL,
         temperature=0.1,
-        max_output_tokens=900,
+        max_output_tokens=2000,
+        expects_json=True,
     )
     parsed: dict[str, Any] = safe_parse_json(raw, {})
     return InterviewContext.model_validate(parsed) if parsed else InterviewContext()
@@ -228,6 +233,7 @@ async def generate_team_report(
         model=QUALITY_MODEL,
         temperature=0.5,
         max_output_tokens=2400,
+        expects_json=True,
     )
     parsed = safe_parse_json(
         raw,
@@ -271,6 +277,7 @@ async def generate_admin_report(
         model=QUALITY_MODEL,
         temperature=0.4,
         max_output_tokens=2200,
+        expects_json=True,
     )
     fallback: dict[str, Any] = {
         "overall_sustainability_index": 3,
