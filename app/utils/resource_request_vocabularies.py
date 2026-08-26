@@ -1,10 +1,19 @@
 """The vendored emission, read once, plus the one map that has no source to come from.
 
-``vocabularies.json`` beside this file is `docs/vocabularies.json` of
+``resource_request_vocabularies.json`` beside this file is `docs/vocabularies.json` of
 ``shemaobt/resource-request-form``, copied byte for byte and carrying the frontend
 commit it was emitted from. It is data, never edited here: a hand-fixed value would be
 exactly the second source the contract-sync check exists to prevent. Re-vendor by
 running ``npm run emit:vocabularies`` over there and copying the file across.
+
+**In ``app/utils/`` and not in ``app/services/resource_request/``, which is where the
+design's §3 put it.** ``tests/test_app_boots.py`` forbids ``app/models/`` from importing
+the service layer — that inversion is what closed an import cycle once — and the Pydantic
+models are where §8.5 decided the field-level error lives, so they have to be able to read
+this. ``app/utils/description_rule.py`` is the precedent and the same shape: a domain rule
+that runs on two sides and must agree, read by a DTO module and by services alike. Neither
+this file nor ``resource_request_totals.py`` holds logic or touches the database, so
+nothing about them wanted the service layer in the first place.
 
 Everything below either reads that file or is asserted against it by
 ``tests/test_resource_requests/test_vocabularies.py``.
@@ -26,7 +35,7 @@ from pathlib import Path
 from typing import Any
 
 _EMISSION: dict[str, Any] = json.loads(
-    (Path(__file__).parent / "vocabularies.json").read_text(encoding="utf-8")
+    (Path(__file__).parent / "resource_request_vocabularies.json").read_text(encoding="utf-8")
 )
 
 EMITTED_FROM: str = _EMISSION["emitted_from"]

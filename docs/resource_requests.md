@@ -155,7 +155,7 @@ for the other's tables should be asked why.
 | `app/services/resource_request/` | BE-04…BE-08 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `app/services/project/`, `app/services/auth/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/resource_request/access.py` | BE-03 | Row-level scoping — the `app/services/annotation_studio/access.py` precedent. Anything past "does this user hold role X" is a service concern, never a router one. |
 | `app/services/resource_request/capabilities.py` | BE-03 | The capability→roles map of §5.4 — a pure table — and the `holds_capability` service function that reads a user's roles against it. |
-| `app/services/resource_request/vocabularies.json` | BE-05 | The vendored emission of §9 — the frontend's own lists, with the commit they came from. Data, not logic; the only non-Python file in the package. |
+| ~~`app/services/resource_request/vocabularies.json`~~ `app/utils/resource_request_vocabularies.{py,json}` and `app/utils/resource_request_totals.py` | BE-05 | The vendored emission of §9 and the two derived sums. **Moved out of the service package** — see the note under this table. |
 | `app/models/resource_request.py` | BE-04…BE-08 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models, separate `Create` / `Update` / `Response`. |
 | `app/db/models/resource_request.py` | BE-02 | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — see §8.1. |
 | `alembic/versions/20260NNN_rrNN_*.py` | BE-02 | Migrations. Single head, clean `downgrade -1`. |
@@ -163,6 +163,21 @@ for the other's tables should be asked why.
 
 ⚠️ `app/models/` is Pydantic and `app/db/models/` is SQLAlchemy. There is no
 `app/schemas/`. The naming trips every newcomer once.
+
+⚠️ **The vendored emission is in `app/utils/`, not in the service package, and this row is
+where the design rotted** (BE-05, OBT-454, 25/aug/2026). `tests/test_app_boots.py`
+forbids any module in `app/models/` from importing `app/services/` — that inversion is what
+closed an import cycle once — and §8.5 puts BE-05's field-level errors on Pydantic, in
+`app/models/`. So the models must be able to read the vocabularies, and the service package
+is the one place they may not read them from. §0's own tie-breaker applies: where this
+document and the repository's rules disagree about **how this repository is written**, the
+repository wins. `app/utils/description_rule.py` is the precedent and the same shape — a
+domain rule that runs on two sides and must agree, imported by a DTO module
+(`app/models/oc_recording.py`) and by services alike — and `app/utils/` is flat, so the
+files carry a `resource_request_` prefix rather than forming a package its siblings do not
+have. Neither file holds logic or touches the database, so nothing about them wanted the
+service layer to begin with. `app/services/resource_request/` will be created by BE-04,
+with the first operation that is one.
 
 **The plural is not free, and it is not uniform — the repo already decided it, per
 directory.** Two rules, both read off the siblings rather than chosen here:
@@ -715,8 +730,9 @@ Three properties it must have, and they are why the decision is worth writing do
 both halves. The frontend's `scripts/emit-vocabularies.mjs` loads `src/contract.ts` through
 the app's own resolver — Vite's `ssrLoadModule`, so no new dependency and no parser over
 TypeScript to age — and writes `docs/vocabularies.json`;
-`app/services/resource_request/vocabularies.json` is that file byte for byte, and
-`vocabularies.py` beside it is the only reader. `tests/test_resource_requests/test_vocabularies.py`
+`app/utils/resource_request_vocabularies.json` is that file byte for byte, and
+`resource_request_vocabularies.py` beside it is the only reader (§3 records why it is not
+in the service package). `tests/test_resource_requests/test_vocabularies.py`
 carries the ten counts above and the key spaces of §4.3.
 
 Four things the implementation settled that the decision above did not say:

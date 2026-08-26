@@ -21,8 +21,8 @@ from app.models.resource_request import (
     RequestDraftIn,
     RequestSubmissionIn,
 )
-from app.services.resource_request import sum_budget, sum_score
-from app.services.resource_request import vocabularies as v
+from app.utils import resource_request_vocabularies as v
+from app.utils.resource_request_totals import sum_budget, sum_score
 
 TYPES = list(v.REQUEST_TYPES)
 

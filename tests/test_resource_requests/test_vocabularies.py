@@ -19,9 +19,11 @@ from pathlib import Path
 import pytest
 
 from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType, RRStage
-from app.services.resource_request import vocabularies as v
+from app.utils import resource_request_vocabularies as v
 
-EMISSION = json.loads((Path(v.__file__).parent / "vocabularies.json").read_text(encoding="utf-8"))
+EMISSION = json.loads(
+    (Path(v.__file__).parent / "resource_request_vocabularies.json").read_text(encoding="utf-8")
+)
 
 
 def test_the_emission_says_where_it_came_from():

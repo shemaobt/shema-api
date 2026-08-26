@@ -24,8 +24,8 @@ is already refused on the way in, so both sides are exact ``Decimal`` values and
 is no rounding left to tolerate — a one-cent margin would only license a one-cent lie.
 
 Every vocabulary, key space and per-type composition comes from
-``app/services/resource_request/vocabularies.py``, which reads the frontend's own
-emission. Nothing in this file lists an option.
+``app/utils/resource_request_vocabularies.py``, which reads the frontend's own emission.
+Nothing in this file lists an option.
 """
 
 from collections.abc import Iterable
@@ -34,7 +34,8 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType
-from app.services.resource_request import (
+from app.utils.resource_request_totals import sum_budget, sum_score
+from app.utils.resource_request_vocabularies import (
     BUDGET_CATEGORY_KEYS,
     CHECK_VALUES,
     CRITERION_KEYS,
@@ -44,8 +45,6 @@ from app.services.resource_request import (
     TYPES_WITH_TRAINING_PROFILE,
     VOCABULARY_VALUES,
     section_field_keys,
-    sum_budget,
-    sum_score,
 )
 
 _BUDGET_CATEGORY_SET = frozenset(BUDGET_CATEGORY_KEYS)

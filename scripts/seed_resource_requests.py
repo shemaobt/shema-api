@@ -69,7 +69,7 @@ from app.db.models.resource_request import (
     RRSnapshot,
     RRStage,
 )
-from app.services.resource_request import CRITERION_KEYS
+from app.utils.resource_request_vocabularies import CRITERION_KEYS
 
 SEED_FUNDS = [
     ("linguas", "Shema Línguas", Decimal("480000")),
