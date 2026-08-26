@@ -226,6 +226,11 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     The pass is the only label that separates them, and the order has to come from it: the
     tablet's outbox drains whenever the link comes back, so the abandoned take can be
     written down after the take that replaced it.
+
+    Only chunk 1 is read. `_ready_session`'s whole-passage take carries neither a chunk nor
+    a pass, and `takes_of` orders on both columns without saying where NULLs belong, so
+    SQLite puts that row at the top of the packet and PostgreSQL at the bottom. Where it
+    lands is not what this pins down.
     """
     session = await _ready_session(db_session)
     db_session.add(
