@@ -23,7 +23,9 @@ async def test_review_approve_grants_user_role_for_project_health(db_session, ph
     This is the path that had been failing since the app launched in May 2026: approval
     resolved the ``analyst`` fallback, ``grant_app_role`` could not find that role on
     ``project-health``, and the request raised ``RoleError`` instead of granting anything.
-    Only the bootstrap admin written directly by the launch migration ever held access.
+    The only account that ever held access was written directly into ``user_app_roles`` by
+    ``20260518_0002_backfill_ph_bootstrap_admin`` — the grant in ``20260518_0001`` skips
+    silently when the bootstrap user does not yet exist, which in production it did not.
     """
     requester = await make_user(db_session, email="ph_req@test.com")
     admin = await make_user(db_session, email="ph_admin@test.com", is_platform_admin=True)
