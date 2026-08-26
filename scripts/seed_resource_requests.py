@@ -5,9 +5,11 @@ deterministic id before it is written. That matters more here than anywhere else
 repository, because ``rr_fund_movements`` is append-only — a second run that appended
 instead of skipping would double every balance and there is no UPDATE to undo it with.
 
-The data is the frontend's, at ``shemaobt/resource-request-form`` commit ``c56937c``:
-``src/constants/funds.ts`` for the five funds, ``src/fixtures/panel.ts`` for the
-allocations and the ten board cards, ``src/constants/criteria.ts`` for the criteria.
+The data is the frontend's, at ``shemaobt/resource-request-form`` commit ``c56937c`` —
+``src/fixtures/panel.ts`` for the ten board cards, ``src/constants/criteria.ts`` for the
+criteria. **The funds are the exception, and they moved after that commit**: GATE-01
+(OBT-447, 26/aug/2026) is the authority for the list and for which card draws from what,
+and the frontend applies that same answer in its own ``funds.ts`` and ``panel.ts``.
 Nothing here is real money or a real person — the fixture's ``solicitante`` names are
 invented there, deliberately, because a request carries personal data.
 
@@ -20,8 +22,10 @@ reads them as ported:
   *Audiovisual (ex.: JESUS Film)*, five of the nine in ``projectCategory``. The remaining
   five are read the same way from their own subject: a capacitação, a mentoria and the two
   Ready Vessels are ``treinamento``, the gravação is ``equipamentos``. The fund is
-  deliberately **not** used to derive any of it: the old↔new fund correspondence is
-  exactly what GATE-01 is still deciding.
+  deliberately **not** used to derive any of it, and since GATE-01 it could not be even
+  if someone wanted to: seven cards draw from the one fund and three draw from none, so
+  the field carries no signal about a type at all. The two *Ready Vessels* cards keep
+  their names — Ready Vessels stopped being a fund, not a project.
 * **The six scores behind each total.** The fixture carries a ``/30`` total and the
   schema stores per-criterion rows, because the total is derived and never stored. The
   six values are spread evenly over the total by ``_spread`` — sample data, not a mesa's
@@ -36,6 +40,12 @@ reads them as ported:
 * **The two approval deductions.** *Comprometido* is a sum over the ledger, so the two
   cards sitting on ``aprovado`` need the movement that put them there; without it the
   board and the fund cards would disagree about the same money.
+
+**Three of the ten carry no fund, and that is a state rather than a gap.** GATE-01
+answered that the mesa assigns the fund at triage, so a request in ``triagem``
+legitimately has none — and the three that carry none are exactly the three sitting in
+that column. It is what ``rr_requests.fund_id`` is nullable for, and this is where the
+column is first written both ways.
 
 And two chips it drops rather than invents, on the five cards that are not ``traducao``.
 The card's **povo** has no key in the form for ``treinamento`` and ``equipamentos`` at all
@@ -71,12 +81,22 @@ from app.db.models.resource_request import (
 )
 from app.utils.resource_request_vocabularies import CRITERION_KEYS
 
+#: The one fund GATE-01 answered (OBT-447, 26/aug/2026). Asked what each of the five
+#: PRD v1.1 §3 names covers, the client answered that only Línguas remains and the
+#: others would be decided later — **undecided, not retired**. A row written here is a
+#: card the panel renders, and a rendered fund name is an assertion about someone's
+#: money, so the four are not written at all.
+#:
+#: **The 480.000 is sample money, and the real figure is open by the client's own
+#: decision.** Asked for the real allocations, they answered that none exist yet and
+#: asked to leave them open: each fund is filled by the Gestores, whenever they do it.
+#: So a real deployment seeds no allocation whatsoever — its ledger starts at the first
+#: Gestor movement — and this number is here for the reason the frontend's own
+#: ``FUND_ALLOCATIONS`` records, sharpened by what this side adds. Zero would not render
+#: an empty fund: the two approved cards deduct 159.000, so the panel would open at
+#: **-159.000** in the low-funds state, an alarm about money nobody has put in yet.
 SEED_FUNDS = [
     ("linguas", "Shema Línguas", Decimal("480000")),
-    ("treinamentos", "Shema BTAT", Decimal("150000")),
-    ("ready", "Shema Tripod", Decimal("90000")),
-    ("equip", "Shema OBT-Lab", Decimal("120000")),
-    ("pesquisa", "Shema Ora-Bridge", Decimal("60000")),
 ]
 
 LANGUAGE_PLACEHOLDERS = {"—", "Multi"}
@@ -92,7 +112,7 @@ class SeedCard:
     solicitante: str
     lang: str
     people: str
-    fund: str
+    fund: str | None
     valor: Decimal
     stage: RRStage
     score: int | None = field(default=None)
@@ -130,7 +150,7 @@ SEED_CARDS = [
         solicitante="Juliana Prado",
         lang="—",
         people="Equipes JOCUM",
-        fund="treinamentos",
+        fund=None,
         valor=Decimal("38000"),
         stage=RRStage.TRIAGEM,
     ),
@@ -141,7 +161,7 @@ SEED_CARDS = [
         solicitante="Thiago Barcelos",
         lang="Multi",
         people="Jovens jocumeiros",
-        fund="ready",
+        fund="linguas",
         valor=Decimal("26000"),
         score=19,
         stage=RRStage.CONDICIONAL,
@@ -153,7 +173,7 @@ SEED_CARDS = [
         solicitante="Marina Vasconcelos",
         lang="Yanomami",
         people="Yanomami",
-        fund="pesquisa",
+        fund="linguas",
         valor=Decimal("31000"),
         score=24,
         stage=RRStage.APROVADO,
@@ -165,7 +185,7 @@ SEED_CARDS = [
         solicitante="Caio Ferreira",
         lang="Ticuna",
         people="Ticuna",
-        fund="equip",
+        fund=None,
         valor=Decimal("18000"),
         stage=RRStage.TRIAGEM,
     ),
@@ -200,7 +220,7 @@ SEED_CARDS = [
         solicitante="Priscila Tavares",
         lang="—",
         people="Rede Shemá",
-        fund="treinamentos",
+        fund="linguas",
         valor=Decimal("22000"),
         score=21,
         stage=RRStage.ANALISE,
@@ -212,7 +232,7 @@ SEED_CARDS = [
         solicitante="Eduardo Lins",
         lang="Multi",
         people="Jovens jocumeiros",
-        fund="ready",
+        fund=None,
         valor=Decimal("29000"),
         stage=RRStage.TRIAGEM,
     ),
@@ -261,10 +281,18 @@ def _snapshot_document(card: SeedCard) -> dict[str, Any]:
 
 
 async def _seed_funds(db: AsyncSession) -> None:
+    """Write the confirmed funds and their sample allocation.
+
+    ``provisional=False`` because GATE-01 answered this name: the flag says *the gate
+    has not confirmed the correspondence*, and leaving it true here would leave the one
+    row the gate did confirm marked as if it had not. Nothing reads the flag today —
+    that is BE-10's (OBT-471) to give it a reader or to drop it, and a column nobody
+    honours is the next reviewer's question either way.
+    """
     for fund_id, name, allocated in SEED_FUNDS:
         fund = (await db.execute(select(RRFund).where(RRFund.id == fund_id))).scalar_one_or_none()
         if not fund:
-            db.add(RRFund(id=fund_id, name=name, provisional=True))
+            db.add(RRFund(id=fund_id, name=name, provisional=False))
             await db.flush()
 
         movement_id = f"rr-seed-allocation-{fund_id}"
@@ -339,7 +367,7 @@ async def _seed_card(db: AsyncSession, card: SeedCard) -> None:
 
 
 async def seed() -> None:
-    """Write the five funds, their allocations and the ten sample board cards.
+    """Write the fund, its sample allocation and the ten sample board cards.
 
     No evaluation carries a decision. The board column a card sits in does not imply one
     — the mesa moves cards without evaluating them — and inverting that mapping is
