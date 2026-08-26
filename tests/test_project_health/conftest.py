@@ -49,6 +49,7 @@ def stub_llm(monkeypatch):
         model: str = llm_client.FAST_MODEL,
         temperature: float = 0.4,
         max_output_tokens: int = 2000,
+        expects_json: bool = False,
         settings: Any | None = None,
     ) -> str:
         prompt = system_prompt or ""
