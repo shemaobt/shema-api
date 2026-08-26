@@ -49,22 +49,37 @@ from app.utils.resource_request_vocabularies import (
 
 _BUDGET_CATEGORY_SET = frozenset(BUDGET_CATEGORY_KEYS)
 
-#: Money is ``Numeric(14, 2)`` in BE-02's schema, so a third decimal has nowhere to land.
+#: Money is ``Numeric(14, 2)`` in BE-02's schema, so a third decimal has nowhere to land —
+#: and neither does a thirteenth integer digit.
 _MONEY_EXPONENT = Decimal("0.01")
+_MONEY_LIMIT = Decimal(10) ** 12
 
 
 def _named(keys: Iterable[str]) -> str:
     return ", ".join(sorted(keys))
 
 
-def _reject_sub_cent(value: Decimal | None) -> Decimal | None:
-    """Money is ``Numeric(14, 2)``: a third decimal has nowhere to land.
+def _fits_the_money_column(value: Decimal | None) -> Decimal | None:
+    """Money is ``Numeric(14, 2)``: neither a third decimal nor a thirteenth integer
+    digit has anywhere to land.
 
     Refused rather than rounded, the same rule the stated total follows — the frontend
     renders up to three decimals and a value the server quietly reshaped would make the
     two sides disagree about what was sent.
+
+    The magnitude is checked **before** the quantize and not after, because ``quantize``
+    signals ``InvalidOperation`` once the result would need more digits than the decimal
+    context carries — ``"1E+30"`` reaches it — and Pydantic turns only ``ValueError``
+    into a validation error, so that arithmetic left here as a 500 instead of the 422
+    every other refusal in this module returns. ``is_finite`` guards the same signal for
+    ``NaN``, which Pydantic already refuses on its own; it is stated here so the function
+    is correct against a ``Decimal`` rather than against a default that could move.
     """
-    if value is not None and value != value.quantize(_MONEY_EXPONENT):
+    if value is None:
+        return value
+    if not value.is_finite() or abs(value) >= _MONEY_LIMIT:
+        raise ValueError(f"outside the range money is stored in: {value}")
+    if value != value.quantize(_MONEY_EXPONENT):
         raise ValueError(f"more than two decimal places: {value}")
     return value
 
@@ -89,7 +104,7 @@ class BudgetLineIn(BaseModel):
     @field_validator("quantity", "amount")
     @classmethod
     def _two_decimals(cls, value: Decimal | None) -> Decimal | None:
-        return _reject_sub_cent(value)
+        return _fits_the_money_column(value)
 
 
 class ScoreIn(BaseModel):
@@ -247,7 +262,7 @@ class RequestDraftIn(BaseModel):
         budget = info.data.get("budget")
         if value is None or budget is None:
             return value
-        _reject_sub_cent(value)
+        _fits_the_money_column(value)
         computed = sum_budget(line.amount for line in budget)
         if value != computed:
             raise ValueError(f"does not match the rows: they sum to {computed}")

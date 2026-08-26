@@ -309,8 +309,8 @@ exists to prevent.
 **Both lists are minted and the seed's copy is gone** (BE-05, OBT-454, 25/aug/2026). The
 frontend now carries a `key` on each of the 26 budget categories and each of the 18 criteria,
 in `budgetCategories.ts` and `criteria.ts`, and the emission of §9 brings both across; the
-seed imports `CRITERION_KEYS` from `app.services.resource_request` and the eighteen literals
-left the file, which is exactly what the paragraph above promised would happen.
+seed imports `CRITERION_KEYS` from `app.utils.resource_request_vocabularies` and the eighteen
+literals left the file, which is exactly what the paragraph above promised would happen.
 
 The two lists were minted differently and the difference is worth carrying: the **26 are
 mechanical** slugs of the Portuguese label (`Chips (SIM)` → `chips_sim`, asserted by a test
@@ -671,8 +671,16 @@ error by *structure*, so a bad answer inside the `fields` dictionary reports
 `loc: ["fields"]` and not `["fields", "lang_script"]`. Giving each answer its own location
 would mean making every answer an object on the wire, which is a payload shape nobody asked
 for — so the location stays `fields` and **the message names the offending keys**
-(`lang_script: resposta fora do vocabulário`). Every top-level claim — `stated_total`,
+(`lang_script: answer outside its vocabulary`). Every top-level claim — `stated_total`,
 `budget`, `declaration`, `team`, `checks` — locates on itself, exactly as measured above.
+
+**A second limit, found in review: riding on Pydantic means only `ValueError` is a 422.**
+`Decimal.quantize` signals `InvalidOperation`, which Pydantic does not convert, so the
+sub-cent guard turned `{"amount": "1E+30"}` into a 500 — the one payload in the module that
+answered with a stack trace instead of a refusal. The money guard now checks magnitude
+against what `Numeric(14, 2)` actually holds *before* it quantizes. The general rule for
+anything added here: a validator may raise only `ValueError`, and arithmetic inside one has
+to be reached with its own preconditions already checked.
 
 ### 8.6 The app key is named once, and a test says so
 
@@ -691,8 +699,9 @@ categories into a second source is precisely the drift the check exists to preve
 
 **Decision.** The frontend **emits** its vocabularies as JSON from the same
 `src/constants/` modules the product renders, and this repository **vendors** that file —
-committed, under `app/services/resource_request/`, carrying the frontend commit it was
-emitted from. Not a build-time fetch and not a generated Python module.
+committed, as `app/utils/resource_request_vocabularies.json`, carrying the frontend commit
+it was emitted from. Not a build-time fetch and not a generated Python module. (§3's table
+records why it sits in `app/utils/` and not in the service package.)
 
 The two-repository split is why it is a vendored file and not a shared source: neither CI job
 needs the other repository checked out, and a vocabulary change shows up as a reviewable diff

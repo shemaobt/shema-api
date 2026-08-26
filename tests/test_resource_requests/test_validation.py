@@ -225,6 +225,35 @@ def test_a_sub_cent_amount_is_refused_rather_than_rounded():
     )
 
 
+@pytest.mark.parametrize("amount", ["1E+30", "1000000000000"])
+def test_an_amount_too_large_for_the_column_is_refused_and_not_raised(amount):
+    """``Numeric(14, 2)`` holds twelve integer digits, and the guard runs before the
+    quantize.
+
+    ``quantize`` signals ``InvalidOperation`` — not ``ValueError`` — once the result
+    needs more digits than the decimal context carries, and Pydantic converts only
+    ``ValueError``, so before this the payload left as a 500 instead of the 422 every
+    other refusal here returns (review of PR #253).
+    """
+    body = {"category_key": v.BUDGET_CATEGORY_KEYS[0], "amount": Decimal(amount)}
+
+    assert "outside the range money is stored in" in refusal(BudgetLineIn, body)
+
+
+def test_the_largest_amount_the_column_holds_is_accepted():
+    body = {"category_key": v.BUDGET_CATEGORY_KEYS[0], "amount": Decimal("999999999999.99")}
+
+    assert BudgetLineIn(**body).amount == Decimal("999999999999.99")
+
+
+def test_an_oversized_stated_total_is_refused_on_its_own_field():
+    """The second door the same arithmetic reaches, and it locates on the claim."""
+    with pytest.raises(ValidationError) as caught:
+        RequestDraftIn(**payload("traducao", stated_total=Decimal("1E+30")))
+
+    assert [error["loc"] for error in caught.value.errors()] == [("stated_total",)]
+
+
 def test_a_negative_line_passes_a_draft_and_fails_a_submission():
     """The one rule that differs between the two doors, and it differs deliberately."""
     key = v.BUDGET_CATEGORY_KEYS[3]
