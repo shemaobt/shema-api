@@ -34,21 +34,24 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType
-from app.services.resource_request import sum_budget, sum_score
-from app.services.resource_request.vocabularies import (
+from app.services.resource_request import (
     BUDGET_CATEGORY_KEYS,
     CHECK_VALUES,
     CRITERION_KEYS,
     MAX_SCORE_PER_CRITERION,
-    MONEY_EXPONENT,
     REQUIRED_TEXT_FIELDS,
     TYPES_WITH_TEAM,
     TYPES_WITH_TRAINING_PROFILE,
     VOCABULARY_VALUES,
     section_field_keys,
+    sum_budget,
+    sum_score,
 )
 
 _BUDGET_CATEGORY_SET = frozenset(BUDGET_CATEGORY_KEYS)
+
+#: Money is ``Numeric(14, 2)`` in BE-02's schema, so a third decimal has nowhere to land.
+_MONEY_EXPONENT = Decimal("0.01")
 
 
 def _named(keys: Iterable[str]) -> str:
@@ -62,8 +65,8 @@ def _reject_sub_cent(value: Decimal | None) -> Decimal | None:
     renders up to three decimals and a value the server quietly reshaped would make the
     two sides disagree about what was sent.
     """
-    if value is not None and value != value.quantize(MONEY_EXPONENT):
-        raise ValueError(f"mais de duas casas decimais: {value}")
+    if value is not None and value != value.quantize(_MONEY_EXPONENT):
+        raise ValueError(f"more than two decimal places: {value}")
     return value
 
 
@@ -81,7 +84,7 @@ class BudgetLineIn(BaseModel):
     @classmethod
     def _known_category(cls, value: str) -> str:
         if value not in _BUDGET_CATEGORY_SET:
-            raise ValueError(f"categoria de orçamento desconhecida: {value}")
+            raise ValueError(f"unknown budget category: {value}")
         return value
 
     @field_validator("quantity", "amount")
@@ -113,7 +116,7 @@ class ChecksIn(BaseModel):
         allowed = CHECK_VALUES[str(info.field_name)]
         unknown = [option for option in value if option not in allowed]
         if unknown:
-            raise ValueError(f"opção desconhecida: {_named(unknown)}")
+            raise ValueError(f"unknown option: {_named(unknown)}")
         return value
 
 
@@ -129,7 +132,7 @@ class EvaluationIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_type: RRRequestType
-    scores: list[ScoreIn] = Field(default_factory=list)
+    scores: list[ScoreIn]
     decision: RRDecision | None = None
     comments: str = ""
     stated_total: int | None = None
@@ -143,13 +146,15 @@ class EvaluationIn(BaseModel):
         expected = set(CRITERION_KEYS[request_type.value])
         sent = [score.criterion_key for score in value]
         if len(sent) != len(set(sent)):
-            raise ValueError("critério repetido")
+            raise ValueError("criterion sent twice")
         missing = expected - set(sent)
         unknown = set(sent) - expected
         if unknown:
-            raise ValueError(f"critério que não é de {request_type.value}: {_named(unknown)}")
+            raise ValueError(
+                f"criterion does not belong to {request_type.value}: {_named(unknown)}"
+            )
         if missing:
-            raise ValueError(f"critério ausente: {_named(missing)}")
+            raise ValueError(f"missing criterion: {_named(missing)}")
         return value
 
     @field_validator("stated_total")
@@ -160,7 +165,7 @@ class EvaluationIn(BaseModel):
             return value
         computed = sum_score(score.score for score in scores)
         if value != computed:
-            raise ValueError(f"não bate com as notas: elas somam {computed}")
+            raise ValueError(f"does not match the scores: they sum to {computed}")
         return value
 
 
@@ -197,12 +202,12 @@ class RequestDraftIn(BaseModel):
         asked = section_field_keys(request_type.value)
         not_asked = set(value) - asked
         if not_asked:
-            raise ValueError(f"{request_type.value} não pergunta: {_named(not_asked)}")
+            raise ValueError(f"{request_type.value} does not ask: {_named(not_asked)}")
 
         for key, answer in value.items():
             allowed = VOCABULARY_VALUES.get(key)
             if allowed is not None and answer != "" and answer not in allowed:
-                raise ValueError(f"{key}: resposta fora do vocabulário")
+                raise ValueError(f"{key}: answer outside its vocabulary")
         return value
 
     @field_validator("budget")
@@ -210,7 +215,7 @@ class RequestDraftIn(BaseModel):
     def _no_repeated_category(cls, value: list[BudgetLineIn]) -> list[BudgetLineIn]:
         keys = [line.category_key for line in value]
         if len(keys) != len(set(keys)):
-            raise ValueError("categoria de orçamento repetida")
+            raise ValueError("budget category sent twice")
         return value
 
     @field_validator("checks")
@@ -222,7 +227,7 @@ class RequestDraftIn(BaseModel):
         if (value.teamtype or value.trainformat) and (
             request_type.value not in TYPES_WITH_TRAINING_PROFILE
         ):
-            raise ValueError(f"{request_type.value} não tem a seção A5")
+            raise ValueError(f"{request_type.value} has no A5 section")
         return value
 
     @field_validator("team")
@@ -234,7 +239,7 @@ class RequestDraftIn(BaseModel):
         if request_type is None:
             return value
         if value and request_type.value not in TYPES_WITH_TEAM:
-            raise ValueError(f"{request_type.value} não tem tabela de equipe")
+            raise ValueError(f"{request_type.value} has no team table")
         return value
 
     @field_validator("stated_total")
@@ -246,7 +251,7 @@ class RequestDraftIn(BaseModel):
         _reject_sub_cent(value)
         computed = sum_budget(line.amount for line in budget)
         if value != computed:
-            raise ValueError(f"não bate com as linhas: elas somam {computed}")
+            raise ValueError(f"does not match the rows: they sum to {computed}")
         return value
 
 
@@ -274,14 +279,14 @@ class RequestSubmissionIn(RequestDraftIn):
             if not value.get(key, "").strip()
         }
         if blank:
-            raise ValueError(f"sem resposta na submissão: {_named(blank)}")
+            raise ValueError(f"unanswered at submission: {_named(blank)}")
         return value
 
     @field_validator("declaration")
     @classmethod
     def _declared(cls, value: bool) -> bool:
         if not value:
-            raise ValueError("a declaração precisa estar aceita para submeter")
+            raise ValueError("the declaration must be accepted to submit")
         return value
 
     @field_validator("budget")
@@ -289,12 +294,12 @@ class RequestSubmissionIn(RequestDraftIn):
     def _all_twenty_six_and_nothing_negative(cls, value: list[BudgetLineIn]) -> list[BudgetLineIn]:
         missing = _BUDGET_CATEGORY_SET - {line.category_key for line in value}
         if missing:
-            raise ValueError(f"categoria ausente na submissão: {_named(missing)}")
+            raise ValueError(f"missing category at submission: {_named(missing)}")
         negative = [
             line.category_key for line in value if line.amount is not None and line.amount < 0
         ]
         if negative:
-            raise ValueError(f"valor negativo: {_named(negative)}")
+            raise ValueError(f"negative amount: {_named(negative)}")
         return value
 
     @field_validator("team")
@@ -306,7 +311,7 @@ class RequestSubmissionIn(RequestDraftIn):
         if request_type is None:
             return value
         if request_type.value in TYPES_WITH_TEAM and not value:
-            raise ValueError(f"{request_type.value} precisa de ao menos uma linha de equipe")
+            raise ValueError(f"{request_type.value} needs at least one team row")
         return value
 
     @field_validator("checks")
@@ -318,5 +323,5 @@ class RequestSubmissionIn(RequestDraftIn):
         if request_type.value in TYPES_WITH_TRAINING_PROFILE and not (
             value.teamtype and value.trainformat
         ):
-            raise ValueError("a seção A5 precisa de equipe treinada e formato")
+            raise ValueError("section A5 needs a trained team and a format")
         return value

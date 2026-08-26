@@ -21,7 +21,7 @@ A new question on the form fails there instead of passing quietly.
 """
 
 import json
-from decimal import Decimal
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -58,9 +58,6 @@ _VOCABULARY_OPTIONS: dict[str, tuple[str, ...]] = {
 MAX_SCORE_PER_CRITERION: int = _EMISSION["limits"]["maxScorePerCriterion"]
 MAX_TOTAL_SCORE: int = _EMISSION["limits"]["maxTotalScore"]
 CRITERIA_PER_TYPE: int = _EMISSION["limits"]["criteriaPerType"]
-
-#: Money is ``Numeric(14, 2)`` (BE-02), so a third decimal has nowhere to land.
-MONEY_EXPONENT: Decimal = Decimal("0.01")
 
 #: Parte C's three text keys. They are among the emitted 45 because wave 1 keeps the
 #: evaluation inside the draft — and that is the one shape wave 2 must not copy
@@ -166,6 +163,7 @@ def _slots(request_type: str) -> tuple[str, ...]:
     return tuple(slots)
 
 
+@cache
 def section_field_keys(request_type: str) -> frozenset[str]:
     """Every text key the sections of ``request_type`` actually render.
 

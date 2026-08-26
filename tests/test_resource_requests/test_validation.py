@@ -103,19 +103,19 @@ def test_a_draft_of_each_type_may_be_almost_empty(request_type):
 def test_equipamentos_has_no_team_table_and_may_not_send_one():
     body = payload("equipamentos", team=[{"name": "Ana", "role": "", "qual": "", "ded": ""}])
 
-    assert "não tem tabela de equipe" in refusal(RequestSubmissionIn, body)
+    assert "has no team table" in refusal(RequestSubmissionIn, body)
 
 
 @pytest.mark.parametrize("request_type", ["traducao", "treinamento"])
 def test_the_types_that_render_a_team_need_a_row_to_submit(request_type):
-    assert "linha de equipe" in refusal(RequestSubmissionIn, payload(request_type, team=[]))
+    assert "at least one team row" in refusal(RequestSubmissionIn, payload(request_type, team=[]))
 
 
 def test_treinamento_needs_a5_and_the_others_may_not_send_it():
-    assert "seção A5" in refusal(
+    assert "has no A5 section" in refusal(
         RequestSubmissionIn, payload("traducao", checks={"teamtype": ["tradutores"]})
     )
-    assert "A5 precisa" in refusal(
+    assert "section A5 needs" in refusal(
         RequestSubmissionIn, payload("treinamento", checks={"teamtype": [], "trainformat": []})
     )
 
@@ -124,7 +124,7 @@ def test_a_key_the_type_never_renders_is_refused_even_in_a_draft():
     """Absent means *not asked*, and storing an answer to an unasked question erases that."""
     body = {"request_type": "equipamentos", "fields": {"people_name": "Ticuna"}}
 
-    assert "não pergunta: people_name" in refusal(RequestDraftIn, body)
+    assert "does not ask: people_name" in refusal(RequestDraftIn, body)
 
 
 def test_the_same_key_is_accepted_for_the_type_that_does_render_it():
@@ -142,10 +142,12 @@ def test_the_signatures_and_the_declaration_are_submission_time_only(request_typ
 
     RequestDraftIn(**payload(request_type, fields=unsigned, declaration=False))
 
-    assert "sem resposta na submissão" in refusal(
+    assert "unanswered at submission" in refusal(
         RequestSubmissionIn, payload(request_type, fields=unsigned)
     )
-    assert "declaração" in refusal(RequestSubmissionIn, payload(request_type, declaration=False))
+    assert "declaration must be accepted" in refusal(
+        RequestSubmissionIn, payload(request_type, declaration=False)
+    )
 
 
 # ── Vocabularies ─────────────────────────────────────────────────────────────
@@ -155,8 +157,23 @@ def test_an_answer_outside_its_vocabulary_is_refused_and_the_valid_one_is_not():
     valid = v.VOCABULARY_VALUES["lang_script"][0]
 
     assert RequestDraftIn(request_type="traducao", fields={"lang_script": valid})
-    assert "lang_script: resposta fora do vocabulário" in refusal(
+    assert "lang_script: answer outside its vocabulary" in refusal(
         RequestDraftIn, {"request_type": "traducao", "fields": {"lang_script": "Cuneiforme"}}
+    )
+
+
+def test_the_vocabulary_holds_at_submission_too_and_not_only_in_the_draft():
+    """The draft's rules are not a lighter set that submission replaces.
+
+    Pydantic runs a base class's validators before a subclass's, so every shape rule
+    above still runs here — this is the assertion that says so, because a subclass that
+    happened to shadow one would look identical from the outside.
+    """
+    wrong = dict(answers("traducao"))
+    wrong["lang_script"] = "Cuneiforme"
+
+    assert "lang_script: answer outside its vocabulary" in refusal(
+        RequestSubmissionIn, payload("traducao", fields=wrong)
     )
 
 
@@ -168,14 +185,14 @@ def test_an_unanswered_select_stays_empty_rather_than_failing_its_vocabulary():
 def test_the_two_checkbox_sets_are_checked_against_their_own_lists():
     body = payload("treinamento", checks={"teamtype": ["arquitetos"], "trainformat": ["cursos"]})
 
-    assert "opção desconhecida: arquitetos" in refusal(RequestSubmissionIn, body)
+    assert "unknown option: arquitetos" in refusal(RequestSubmissionIn, body)
 
 
 # ── The 26 categories ────────────────────────────────────────────────────────
 
 
 def test_an_invented_category_is_refused():
-    assert "categoria de orçamento desconhecida: cafezinho" in refusal(
+    assert "unknown budget category: cafezinho" in refusal(
         BudgetLineIn, {"category_key": "cafezinho"}
     )
 
@@ -186,7 +203,7 @@ def test_a_submission_needs_all_twenty_six_and_a_draft_does_not():
 
     RequestDraftIn(**payload("traducao", budget=short, stated_total=None))
 
-    assert f"categoria ausente na submissão: {missing}" in refusal(
+    assert f"missing category at submission: {missing}" in refusal(
         RequestSubmissionIn, payload("traducao", budget=short)
     )
 
@@ -194,7 +211,7 @@ def test_a_submission_needs_all_twenty_six_and_a_draft_does_not():
 def test_the_same_category_twice_is_refused_at_draft_time():
     doubled = [*budget(), {"category_key": v.BUDGET_CATEGORY_KEYS[0], "amount": Decimal("1.00")}]
 
-    assert "categoria de orçamento repetida" in refusal(
+    assert "budget category sent twice" in refusal(
         RequestDraftIn, payload("traducao", budget=doubled, stated_total=None)
     )
 
@@ -203,7 +220,7 @@ def test_the_same_category_twice_is_refused_at_draft_time():
 
 
 def test_a_sub_cent_amount_is_refused_rather_than_rounded():
-    assert "mais de duas casas decimais" in refusal(
+    assert "more than two decimal places" in refusal(
         BudgetLineIn, {"category_key": v.BUDGET_CATEGORY_KEYS[0], "amount": Decimal("0.0001")}
     )
 
@@ -216,7 +233,7 @@ def test_a_negative_line_passes_a_draft_and_fails_a_submission():
 
     RequestDraftIn(**payload("traducao", budget=rows, stated_total=total))
 
-    assert f"valor negativo: {key}" in refusal(
+    assert f"negative amount: {key}" in refusal(
         RequestSubmissionIn, payload("traducao", budget=rows, stated_total=total)
     )
 
@@ -240,7 +257,7 @@ def test_a_total_one_cent_off_is_refused_and_the_message_carries_the_real_sum():
     """
     rows = budget({v.BUDGET_CATEGORY_KEYS[0]: Decimal("10.50")})
 
-    assert "elas somam 10.50" in refusal(
+    assert "they sum to 10.50" in refusal(
         RequestDraftIn, payload("traducao", budget=rows, stated_total=Decimal("10.51"))
     )
 
@@ -287,13 +304,13 @@ def test_a_criterion_from_another_type_is_refused():
     }
     body["scores"][0]["criterion_key"] = v.CRITERION_KEYS["traducao"][0]
 
-    assert "critério que não é de treinamento" in refusal(EvaluationIn, body)
+    assert "criterion does not belong to treinamento" in refusal(EvaluationIn, body)
 
 
 def test_a_missing_criterion_is_refused():
     body = {"request_type": "traducao", "scores": scores("traducao", [0] * 6)[:5]}
 
-    assert "critério ausente" in refusal(EvaluationIn, body)
+    assert "missing criterion" in refusal(EvaluationIn, body)
 
 
 @pytest.mark.parametrize("bad", [6, -1, 3.7])
@@ -324,7 +341,7 @@ def test_an_evaluation_total_that_disagrees_with_its_scores_is_refused():
         "stated_total": 29,
     }
 
-    assert "elas somam 30" in refusal(EvaluationIn, body)
+    assert "they sum to 30" in refusal(EvaluationIn, body)
 
 
 def test_a_decision_outside_the_four_strings_is_refused():
