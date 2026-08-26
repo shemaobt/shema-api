@@ -31,6 +31,7 @@ from app.db.models.resource_request import (
     RRMovementKind,
     RRRequest,
     RRSnapshot,
+    RRStage,
     append_only_ddl,
 )
 from scripts.seed_resource_requests import SEED_CARDS, SEED_FUNDS, _spread
@@ -233,13 +234,46 @@ async def seeded(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> A
     return db_session
 
 
-async def test_the_seed_writes_the_five_funds_and_the_ten_cards(seeded: AsyncSession) -> None:
+async def test_the_seed_writes_the_confirmed_fund_and_the_ten_cards(seeded: AsyncSession) -> None:
     funds = (await seeded.execute(select(RRFund))).scalars().all()
     assert {fund.id for fund in funds} == {fund_id for fund_id, _name, _alloc in SEED_FUNDS}
-    assert all(fund.provisional for fund in funds), "GATE-01 has not confirmed the names"
+    assert not any(fund.provisional for fund in funds), "GATE-01 confirmed every name seeded"
 
     requests = (await seeded.execute(select(RRRequest))).scalars().all()
     assert len(requests) == len(SEED_CARDS)
+
+
+async def test_only_the_cards_in_triagem_carry_no_fund(seeded: AsyncSession) -> None:
+    """Null is the state of a request the mesa has not assigned yet, never a gap.
+
+    GATE-01 answered that the mesa assigns the fund at triage, so the two halves are one
+    assertion: a card without a fund is in ``triagem``, and a card in ``triagem`` has no
+    fund. The second half is the one that would rot silently — re-pointing a card and
+    forgetting its column reads as data rather than as a bug.
+    """
+    requests = (await seeded.execute(select(RRRequest))).scalars().all()
+    without = {request.id for request in requests if request.fund_id is None}
+    in_triagem = {request.id for request in requests if request.stage is RRStage.TRIAGEM}
+
+    assert without == in_triagem
+    assert len(without) == 3
+    assert {request.fund_id for request in requests} - {None} == {"linguas"}
+
+
+async def test_no_approved_card_is_seeded_without_a_fund(seeded: AsyncSession) -> None:
+    """BE-11's invariant, on the only rows that exist to break it.
+
+    A request does not enter ``aprovado`` with no fund — the deduction would have no
+    ledger to land in. It is a service rule and deliberately not a CHECK, because the
+    same null is correct one column earlier, so the seed is where it is first honoured.
+    """
+    approved = (
+        (await seeded.execute(select(RRRequest).where(RRRequest.stage == RRStage.APROVADO)))
+        .scalars()
+        .all()
+    )
+    assert approved
+    assert all(request.fund_id is not None for request in approved)
 
 
 async def test_the_seeded_balances_are_the_prototypes(seeded: AsyncSession) -> None:
@@ -261,7 +295,7 @@ async def test_the_seeded_balances_are_the_prototypes(seeded: AsyncSession) -> N
         for (fund_id, kind), amount in by_kind.items()
         if kind is RRMovementKind.APPROVAL_DEDUCTION
     }
-    assert committed == {"linguas": Decimal("128000"), "pesquisa": Decimal("31000")}
+    assert committed == {"linguas": Decimal("159000")}
 
 
 async def test_the_seeded_scores_add_up_to_the_cards_total(seeded: AsyncSession) -> None:
