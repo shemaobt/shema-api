@@ -227,10 +227,10 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     tablet's outbox drains whenever the link comes back, so the abandoned take can be
     written down after the take that replaced it.
 
-    Only chunk 1 is read. `_ready_session`'s whole-passage take carries neither a chunk nor
-    a pass, and `takes_of` orders on both columns without saying where NULLs belong, so
-    SQLite puts that row at the top of the packet and PostgreSQL at the bottom. Where it
-    lands is not what this pins down.
+    The whole-passage take `_ready_session` leaves carries neither a chunk nor a pass, and
+    it is read here too: it comes first on every engine now that `takes_of` says where a
+    NULL belongs, which is the same reading order — the undivided recording before the
+    parts, and a take from before the room sent a pass before the ones that carry it.
     """
     session = await _ready_session(db_session)
     db_session.add(
@@ -257,13 +257,12 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
 
     artifact = await build_internalization_release(db_session, session)
 
-    parte_um = [
-        (take["pass_number"], take["sha256"])
+    seen = [
+        (take["chunk_index"], take["pass_number"], take["sha256"])
         for take in artifact["audio"]["rehearsal_takes"]
-        if take["chunk_index"] == 1
     ]
 
-    assert parte_um == [(1, "b" * 64), (2, "c" * 64)], (
+    assert seen == [(None, None, "a" * 64), (1, 1, "b" * 64), (1, 2, "c" * 64)], (
         "sem a passada, quem abrisse a passagem no Refine ouvia o ensaio abandonado como "
         "o primeiro da equipe, e pela chegada a ordem sairia trocada"
     )

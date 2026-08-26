@@ -188,10 +188,21 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
 
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
+
+    Both columns are nullable and the placement is named rather than left to the engine:
+    a take with no chunk is the undivided passage and a take with no pass predates the
+    room sending one, so either is the earliest thing in its own group. Unnamed, SQLite
+    read that the same way and PostgreSQL read it upside down, which put the oldest
+    recording of a session at the bottom of the packet on the only database that serves
+    a real team.
     """
     result = await db.execute(
         select(IRTake)
         .where(IRTake.session_id == session_id)
-        .order_by(IRTake.chunk_index, IRTake.pass_number, IRTake.created_at)
+        .order_by(
+            IRTake.chunk_index.asc().nulls_first(),
+            IRTake.pass_number.asc().nulls_first(),
+            IRTake.created_at,
+        )
     )
     return list(result.scalars().all())
