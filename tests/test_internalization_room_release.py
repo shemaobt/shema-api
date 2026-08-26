@@ -1,5 +1,7 @@
 """The Refine handoff artifact: fail-closed gates and a closed-world package."""
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,19 +76,32 @@ def _checked_telling_back() -> BackTranslationState:
     )
 
 
-def _ensaio_take(session_id: str) -> IRTake:
-    return IRTake(
+def _ensaio_take(
+    session_id: str,
+    *,
+    scope: str = "passagem-inteira",
+    pass_number: int | None = None,
+    chunk_index: int | None = None,
+    sha256: str = "a" * 64,
+    created_at: datetime | None = None,
+) -> IRTake:
+    take = IRTake(
         session_id=session_id,
         device_id="tablet-1",
         pericope=P,
         kind=IRTakeKind.ENSAIO,
-        scope="passagem-inteira",
-        storage_key=f"takes/{session_id}/ensaio",
+        scope=scope,
+        pass_number=pass_number,
+        chunk_index=chunk_index,
+        storage_key=f"takes/{session_id}/ensaio/{sha256}",
         size_bytes=2048,
-        sha256="a" * 64,
+        sha256=sha256,
         crc32c="AAAAAAA=",
         content_type="audio/mp4",
     )
+    if created_at is not None:
+        take.created_at = created_at
+    return take
 
 
 async def _ready_session(db: AsyncSession, **comprehension_kwargs):
@@ -198,6 +213,59 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
     assert archived["chunks"][0]["text"] == "tentativa antiga"
     assert archived["findings"][0]["kind"] == "missing"
     assert archived["evidence_sufficient"] is False
+
+
+@pytest.mark.asyncio
+async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
+    db_session: AsyncSession,
+) -> None:
+    """A re-record starts the parts at one again, so the rehearsal the team abandoned and
+    the one they kept both reach here as `parte-1`, chunk 1, and the audio is addressed by
+    its own hash, so both rows stay.
+
+    The pass is the only label that separates them, and the order has to come from it: the
+    tablet's outbox drains whenever the link comes back, so the abandoned take can be
+    written down after the take that replaced it.
+
+    The whole-passage take `_ready_session` leaves carries neither a chunk nor a pass, and
+    it is read here too: it comes first on every engine now that `takes_of` says where a
+    NULL belongs, which is the same reading order — the undivided recording before the
+    parts, and a take from before the room sent a pass before the ones that carry it.
+    """
+    session = await _ready_session(db_session)
+    db_session.add(
+        _ensaio_take(
+            session.id,
+            scope="parte-1",
+            pass_number=2,
+            chunk_index=1,
+            sha256="c" * 64,
+            created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
+        )
+    )
+    db_session.add(
+        _ensaio_take(
+            session.id,
+            scope="parte-1",
+            pass_number=1,
+            chunk_index=1,
+            sha256="b" * 64,
+            created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+
+    artifact = await build_internalization_release(db_session, session)
+
+    seen = [
+        (take["chunk_index"], take["pass_number"], take["sha256"])
+        for take in artifact["audio"]["rehearsal_takes"]
+    ]
+
+    assert seen == [(None, None, "a" * 64), (1, 1, "b" * 64), (1, 2, "c" * 64)], (
+        "sem a passada, quem abrisse a passagem no Refine ouvia o ensaio abandonado como "
+        "o primeiro da equipe, e pela chegada a ordem sairia trocada"
+    )
 
 
 def _told_back_with_an_open_finding() -> BackTranslationState:
