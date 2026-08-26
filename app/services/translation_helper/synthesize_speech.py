@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 
@@ -8,6 +9,7 @@ import httpx
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
+from app.services.platform.tts import SpeechStore
 from app.services.translation_helper.audio_cache import CachedAudio, audio_cache
 from app.services.translation_helper.detect_language import detect_language_code
 
@@ -185,6 +187,71 @@ def _make_client() -> httpx.AsyncClient:
     return _DEFAULT_CLIENT
 
 
+def _durable_keys(cache_key: str) -> tuple[str, str]:
+    """Bucket keys for a clip's audio and its sentence marks.
+
+    The marks are a sidecar rather than an envelope so the audio object stays exactly the
+    bytes the browser plays, addressable on its own.
+    """
+    return f"th-tts/{cache_key}.mp3", f"th-tts/{cache_key}.marks.json"
+
+
+def _decode_marks(raw: bytes | None) -> list[tuple[str, float]]:
+    """Sentence marks from their stored form, or an empty list if unreadable.
+
+    Unreadable marks cost the karaoke highlight on one clip; they must never cost the
+    audio, which is the part the listener actually needs.
+    """
+    if not raw:
+        return []
+    try:
+        return [(str(mark), float(time)) for mark, time in json.loads(raw)]
+    except Exception:
+        logger.warning("discarding unreadable cached sentence marks")
+        return []
+
+
+async def _read_durable(
+    store: SpeechStore, cache_key: str
+) -> tuple[bytes, list[tuple[str, float]]] | None:
+    """A previously synthesized clip from the bucket, or `None`.
+
+    Never raises: a bucket that is missing or unreachable means a cache miss and a fresh
+    synthesis, not a failed request.
+    """
+    audio_key, marks_key = _durable_keys(cache_key)
+    try:
+        audio = await store.get(audio_key)
+        if audio is None:
+            return None
+        return audio, _decode_marks(await store.get(marks_key))
+    except Exception:
+        logger.exception("failed to read cached TTS clip key=%s", audio_key)
+        return None
+
+
+async def _write_durable(
+    store: SpeechStore, cache_key: str, audio: bytes, timepoints: list[tuple[str, float]]
+) -> None:
+    """Store the clip, but never fail the request over it.
+
+    ElevenLabs has already been paid for these bytes; a missing bucket or a wrong IAM
+    binding would otherwise bill the synthesis and hand the caller nothing.
+    """
+    audio_key, marks_key = _durable_keys(cache_key)
+    try:
+        await store.put(audio_key, audio, "audio/mpeg")
+        await store.put(marks_key, json.dumps(timepoints).encode("utf-8"), "application/json")
+    except Exception:
+        logger.exception("failed to cache TTS clip key=%s", audio_key)
+
+
+def _default_store() -> SpeechStore:
+    from app.services.platform.storage import GcsPlatformStore
+
+    return GcsPlatformStore()
+
+
 async def synthesize_speech(
     text: str,
     *,
@@ -194,11 +261,19 @@ async def synthesize_speech(
     voice_settings: dict[str, float | bool] | None = None,
     client: httpx.AsyncClient | None = None,
     settings: Settings | None = None,
+    store: SpeechStore | None = None,
 ) -> tuple[CachedAudio, bool]:
     """Synthesize MP3 speech via ElevenLabs and return (cached entry, cached?).
 
+    Two caches sit in front of ElevenLabs. The in-process one answers repeat clicks on the
+    same worker without a network hop; the bucket behind it is what makes a clip survive a
+    deploy and be shared by every instance, which the in-process cache alone never could —
+    `tripod-backend` scales to twenty of them, so a second click routinely landed on a cold
+    worker and paid for the same audio twice.
+
     `voice_name` is passed through as an explicit ElevenLabs `voice_id` override
-    when provided, preserving the existing public signature.
+    when provided, preserving the existing public signature. `store` is injectable so tests
+    exercise the caching without GCS.
     """
     if not text or not text.strip():
         raise ValidationError("text must not be empty")
@@ -214,6 +289,16 @@ async def synthesize_speech(
         return cached, True
 
     cfg = settings or get_settings()
+    speech_store = store or (_default_store() if cfg.gcs_platform_bucket else None)
+    if speech_store is not None:
+        durable = await _read_durable(speech_store, cache_key)
+        if durable is not None:
+            audio_bytes, timepoints = durable
+            entry = audio_cache.put(
+                cache_key, audio_bytes, mime_type="audio/mpeg", timepoints=timepoints
+            )
+            return entry, True
+
     if not cfg.elevenlabs_api_key:
         raise ValidationError("ELEVENLABS_API_KEY is not configured")
 
@@ -254,4 +339,6 @@ async def synthesize_speech(
     timepoints = aggregate_sentence_marks(text, chars, starts)
 
     entry = audio_cache.put(cache_key, audio_bytes, mime_type="audio/mpeg", timepoints=timepoints)
+    if speech_store is not None:
+        await _write_durable(speech_store, cache_key, audio_bytes, timepoints)
     return entry, False

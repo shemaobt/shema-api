@@ -412,3 +412,111 @@ def test_aggregate_sentence_marks_keeps_anchors_moving_forward() -> None:
     times = [t for _, t in marks]
     assert times == sorted(times)
     assert len(set(times)) == 3
+
+
+class _MemoryStore:
+    """In-memory bucket — the seam that replaces GCS in tests."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+        self.writes = 0
+
+    async def get(self, key: str) -> bytes | None:
+        return self.objects.get(key)
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.writes += 1
+        self.objects[key] = data
+
+
+class _BrokenStore:
+    """A bucket that is missing, unreachable, or missing its IAM binding."""
+
+    async def get(self, key: str) -> bytes | None:
+        raise RuntimeError("bucket unreachable")
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        raise RuntimeError("bucket unreachable")
+
+
+def _tts_payload(audio: bytes = b"ID3-audio", text: str = "Alpha. Beta.") -> dict[str, Any]:
+    return {
+        "audio_base64": base64.b64encode(audio).decode("ascii"),
+        "alignment": {
+            "characters": list(text),
+            "character_start_times_seconds": [i * 0.1 for i in range(len(text))],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_clip_in_the_bucket_is_not_synthesized_again() -> None:
+    """The durable cache is the point: a cold worker must not re-pay ElevenLabs.
+
+    The in-process cache alone could never do this — tripod-backend runs up to twenty
+    instances and empties every one of them on deploy, so a second click routinely landed
+    somewhere cold and bought the same audio twice.
+    """
+    audio_cache.clear()
+    store = _MemoryStore()
+    client = SimpleNamespace(post=AsyncMock(side_effect=[_ok(_tts_payload())]))
+
+    first, was_cached = await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+    assert was_cached is False
+    assert client.post.await_count == 1
+
+    audio_cache.clear()  # a different instance, or the same one after a deploy
+    second, was_cached = await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+
+    assert was_cached is True
+    assert client.post.await_count == 1, "ElevenLabs was called again for a cached clip"
+    assert second.audio == first.audio
+    assert second.timepoints == first.timepoints, "karaoke marks must survive the bucket"
+
+
+@pytest.mark.asyncio
+async def test_a_broken_bucket_still_returns_audio() -> None:
+    """Caching is an optimisation. Losing it must not lose the request.
+
+    ElevenLabs has already been paid by this point; failing here would bill the synthesis
+    and hand the caller nothing.
+    """
+    audio_cache.clear()
+    client = SimpleNamespace(post=AsyncMock(side_effect=[_ok(_tts_payload())]))
+
+    entry, was_cached = await synthesize_speech(
+        "Alpha. Beta.",
+        language_code="en-US",
+        settings=_settings(),
+        client=client,
+        store=_BrokenStore(),
+    )
+
+    assert was_cached is False
+    assert entry.audio == b"ID3-audio"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_marks_still_serve_the_audio() -> None:
+    """Corrupt sentence marks cost the highlight on one clip, never the sound."""
+    audio_cache.clear()
+    store = _MemoryStore()
+    client = SimpleNamespace(post=AsyncMock(side_effect=[_ok(_tts_payload())]))
+    await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+    marks_key = next(k for k in store.objects if k.endswith(".marks.json"))
+    store.objects[marks_key] = b"{not json"
+
+    audio_cache.clear()
+    entry, was_cached = await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+
+    assert was_cached is True
+    assert entry.audio == b"ID3-audio"
+    assert entry.timepoints == []
