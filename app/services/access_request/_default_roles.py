@@ -8,10 +8,15 @@ therefore needs its own entry here.
 ``resource-request-form`` maps to ``equipe``: the frontend's own ``DEFAULT_ROLE`` in
 ``capabilities.ts``, and the least-privileged of its three. Whether approval happens
 automatically at all is ``apps.auto_approve``, which is a separate decision.
+
+``project-health`` maps to ``user``, the least-privileged of the two roles its launch
+migration creates. It was missing here from launch, so every approval for it resolved the
+``analyst`` fallback and raised ``RoleError`` instead of granting anything.
 """
 
 DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
     "translation-helper": "user",
+    "project-health": "user",
     "meaning-map-generator": "analyst",
     "annotation-studio": "facilitator",
     "resource-request-form": "equipe",
