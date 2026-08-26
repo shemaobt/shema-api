@@ -65,6 +65,73 @@ def _resolve_voice(language_code: str, voice_id_override: str | None) -> dict[st
     return config
 
 
+_WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
+
+#: How many opening words identify a sentence. One is not enough: in "…does this boy
+#: think he is? Does he think he will rule over us?" the second sentence's opening word
+#: is a whole word inside the first, so a one-word anchor fires seconds early and the
+#: error compounds down the message. Four words separate ordinary prose without
+#: demanding so much that normalization can break the match.
+_ANCHOR_WORDS = 4
+
+
+def _opening_words(sentence: str) -> list[str]:
+    """The sentence's first few words, case-folded."""
+    return [m.group(0).casefold() for m in _WORD_RE.finditer(sentence)][:_ANCHOR_WORDS]
+
+
+def _word_at(alignment_chars: list[str], j: int, word: str) -> int | None:
+    """Index just past `word` if it sits whole at `j`, else `None`.
+
+    Both boundaries are checked. Without the leading one an anchor can land mid-word;
+    without the trailing one a short opener like "do" matches inside "does".
+    """
+    n = len(alignment_chars)
+    if j > 0 and alignment_chars[j - 1].isalnum():
+        return None
+    k = j
+    for want in word:
+        if k >= n or alignment_chars[k].casefold() != want:
+            return None
+        k += 1
+    return None if k < n and alignment_chars[k].isalnum() else k
+
+
+def _phrase_starts_at(alignment_chars: list[str], j: int, words: list[str]) -> bool:
+    """Whether `words` run in order from `j`, separated by anything non-alphanumeric."""
+    n = len(alignment_chars)
+    k = j
+    for index, word in enumerate(words):
+        if index:
+            while k < n and not alignment_chars[k].isalnum():
+                k += 1
+        after = _word_at(alignment_chars, k, word)
+        if after is None:
+            return False
+        k = after
+    return True
+
+
+def _anchor_for(sentence: str, alignment_chars: list[str], cursor: int, n: int) -> int | None:
+    """Index of the synthesized character where `sentence` begins, or `None`.
+
+    Matching an opening phrase rather than a single character is what keeps the
+    highlight on the voice, and why it is a phrase rather than one word is recorded on
+    `_ANCHOR_WORDS`. A sentence carrying no word characters at all falls back to its
+    first character, which is all there is to match on.
+    """
+    words = _opening_words(sentence)
+    for j in range(cursor, n):
+        if not alignment_chars[j].strip():
+            continue
+        if words:
+            if _phrase_starts_at(alignment_chars, j, words):
+                return j
+        elif alignment_chars[j].casefold() == sentence.lstrip()[0].casefold():
+            return j
+    return None
+
+
 def aggregate_sentence_marks(
     text: str,
     alignment_chars: list[str],
@@ -94,16 +161,8 @@ def aggregate_sentence_marks(
         if not stripped:
             marks.append((f"s{idx}", 0.0))
             continue
-        target = stripped[0].casefold()
 
-        found: int | None = None
-        for j in range(cursor, n):
-            ch = alignment_chars[j]
-            if not ch.strip():
-                continue
-            if ch.casefold() == target:
-                found = j
-                break
+        found = _anchor_for(sentence, alignment_chars, cursor, n)
 
         if found is None:
             time = total * (idx / len(sentences))

@@ -378,3 +378,37 @@ def test_audio_cache_lru_eviction() -> None:
     assert cache.get("a") is None
     assert cache.get("b") is not None
     assert cache.get("c") is not None
+
+
+def test_aggregate_sentence_marks_anchors_on_the_whole_opening_word() -> None:
+    """A sentence anchors where it really starts, not on a stray matching letter.
+
+    Reported from the Joseph story: the highlight ran ahead of the voice and lit the
+    wrong sentence. Anchoring on a single character finds the first `d` after the
+    previous anchor, and "Does he think..." is preceded by "...does this boy think he
+    is?" — so the mark landed on that earlier `does` and every later sentence drifted
+    further ahead. Matching the opening word puts the anchor back on the sentence.
+    """
+    text = "Who does this boy think he is? Does he think he will rule over us?"
+    chars = list(text)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+
+    assert [m for m, _ in marks] == ["s0", "s1"]
+    # The second sentence begins at the "D" of "Does", index 31 — not at the "d" of
+    # "does" inside the first sentence, which sits at index 4.
+    assert marks[1][1] == pytest.approx(starts[text.index("Does he")])
+
+
+def test_aggregate_sentence_marks_keeps_anchors_moving_forward() -> None:
+    """Repeated openings must not collapse onto the same early position."""
+    text = "Go now. Go again. Go once more."
+    chars = list(text)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+
+    times = [t for _, t in marks]
+    assert times == sorted(times)
+    assert len(set(times)) == 3
