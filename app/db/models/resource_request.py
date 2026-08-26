@@ -148,13 +148,32 @@ def _guard_append_only(table: Table, connection: Connection, **_: Any) -> None:
 class RRFund(Base):
     """One of the Resource Circle's funds.
 
-    A table and not an enum because GATE-01 may still add, drop or rename one, and an
-    enum member costs a migration to extend. ``provisional`` carries exactly that: the
-    five rows the seed writes are the PRD's names laid over the prototype's ids, and the
-    gate has not confirmed the correspondence.
+    A table and not an enum because the list moves, and an enum member costs a migration
+    to extend. GATE-01 (OBT-447, 26/aug/2026) confirmed exactly one name — *Shema
+    Línguas* — and left the other four of PRD v1.1 §3 **undecided rather than retired**;
+    the client also floated an editable area for funds, which is BE-10 (OBT-471). So the
+    list is expected to grow, and a table is what lets it grow without a migration.
+
+    ``provisional`` says *the gate has not confirmed this name*. The one row the seed
+    writes is confirmed, so it is written ``False`` — and **nothing reads the flag**.
+    Giving it a reader or dropping it is BE-10's; a column nobody honours does not
+    become honest by staying.
+
+    **A fund is never deleted.** ``rr_fund_movements`` references it and the ledger is
+    append-only, so a fund that stopped being one has to stay readable for the movements
+    that already name it. Ready Vessels is the proof that this happens: GATE-01 ended it
+    as a fund and no row survives here, but the day one ends *after* it has taken money,
+    the answer is a flag and not a DELETE — also BE-10's, which is where the column and
+    its reader belong together.
 
     No balance columns. *Alocado* and *comprometido* are sums over ``rr_fund_movements``
     and *disponível* is their difference — store two, derive the third (BE-07).
+    **This must stay true, and GATE-01's D6 is where it would be lost:** the client asked
+    for an editable *alocado* carrying who edited it and when, and the literal reading of
+    that is ``allocated`` + ``updated_by`` + ``updated_at`` here. It is already built,
+    and not as columns — an ``ALLOCATION`` movement carries ``created_by``,
+    ``created_at`` and ``reason``, and a wrong one is corrected by a compensating
+    movement. **No follow-up adds a balance column to this table.**
     """
 
     __tablename__ = "rr_funds"
@@ -181,9 +200,15 @@ class RRRequest(Base):
     (BE-05), never stored.
 
     ``fund_id`` is nullable because **nothing in the form says which fund a request asks
-    from** (contract §6.2). Whether the team chooses, the type decides or the mesa
-    assigns at triage is Open · GATE-01; the column is where the answer lands in all
-    three shapes, so it exists, empty.
+    from** (contract §6.2), and GATE-01 (OBT-447, 26/aug/2026) answered why that stays
+    true: **the mesa assigns the fund at triage**, of the three shapes the gate offered,
+    and no field enters the form — the 45 questions stay 45. So a request arrives with
+    no fund and null is the legitimate state of one still in ``triagem``, never a gap.
+
+    The invariant that comes with the answer is **a request does not enter ``aprovado``
+    with ``fund_id IS NULL``** — a service rule for BE-08 (OBT-457) and deliberately
+    **not** a DDL CHECK, because the same null is correct one column earlier. BE-11
+    (OBT-470) owns it.
 
     ``created_by`` is nullable for GATE-02: variant 2 of the design's §5 has no stable
     principal behind a team, and a FK that cannot be satisfied would be the one thing the

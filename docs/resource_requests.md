@@ -482,9 +482,16 @@ taken inside the same transaction that appends the movement and writes the stage
 Two mesa members approving against one fund then serialize on that row: the first commits,
 the second recomputes the sum *after* the first is visible and gets a decidable answer.
 
-**What that answer is — refuse, or allow negative with a warning — is Open · GATE-01.**
-Do not choose it in code. Wave 1 already renders a negative *disponível*, so allowing it is
-not absurd; refusing it is not either. It is the mesa's practice, and it is one branch.
+**GATE-01 answered it — allow, with a warning, never refuse** (OBT-447 D5, 26/aug/2026).
+Both approvals succeed, the fund goes negative and the screen says so; the control is human.
+Wave 1 already did that by inheritance, and it is now a decision instead of an accident. **No
+`insufficient_funds` response shape is frozen anywhere in this module, and none is to be
+invented here.**
+
+**What the answer does not relax is the paragraph above it.** The two approvals still have to
+serialize on the fund row, or one deduction is lost and the sum lies about money. The answer
+removes the refusal *after* the lock, not the lock — *both succeed* and *both succeed and the
+total is right* are different guarantees, and the client decided only the first.
 
 ⚠️ **The test for this cannot run where the other tests run, and it fails silently.**
 `pytest` runs on SQLite (`tests/conftest.py` sets `sqlite+aiosqlite`), and SQLAlchemy
@@ -700,9 +707,7 @@ that owns it and what it blocks.
 
 | Question | Gate | Blocks |
 |---|---|---|
-| What each of the five funds covers, and the old↔new mapping; Ready Vessels' fate | **GATE-01** (OBT-447) | BE-07. BE-02's seed no longer waits: it writes the five rows with `provisional = true`, the PRD's names over the prototype's ids, exactly as OBT-451 allows for an open gate |
-| **Which fund a request asks from** — no field for it exists anywhere in the form; `funds_support` is an essay, not a reference. Team chooses / derived from type / mesa assigns at triage are three different columns in three different tables | **GATE-01** (OBT-447) | BE-07 — **it cannot debit a fund it was never told about**. BE-02 read it again and the three shapes converge on one place: `rr_requests.fund_id`, nullable. What the gate decides is *who writes it and when*, which is behaviour |
-| Insufficient funds on a concurrent approve: refuse, or allow negative with a warning (§7.3) | **GATE-01** (OBT-447) | BE-07 |
+| **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
 | How teams get access — accounts, leader-link, or anonymous + submit (§5.2). Decides whether `created_by` is a FK or nullable | **GATE-02** (OBT-448) | BE-03, BE-04 |
 | Whether the Gestor authors evaluations; whether `move_board` is the mesa's alone; whether the mesa may edit a team's request | **GATE-02** (OBT-448) | BE-03 — one cell each in §5.4's map |
 | One evaluation per mesa, or one per member | **GATE-02** (OBT-448) | BE-06. **Not the schema, and §4.1 says why**: the two answers are the same uniqueness at two tightnesses, `uq_rr_evaluations_snapshot_evaluator` is the one that holds under both, and tightening is a one-line migration on an empty table |
@@ -711,7 +716,24 @@ that owns it and what it blocks.
 | Online submission vs print/file vs both; where the attachment lives; what the team sees after submitting (§6) | **GATE-03** (OBT-449) | BE-04, INT-02 |
 | **How a team learns its decision.** PRD §10 lists it and **no issue in either wave owns it.** *Revisar e reenviar* is the case that breaks silently — BE-04's revision flow assumes the team comes back | **GATE-03** (OBT-449) | unowned |
 
-And five items with **no gate**, which need issues rather than answers:
+**Answered by GATE-01 on 26/aug/2026** (OBT-447), and no longer open. Recorded rather than
+deleted, because each one landed somewhere in this module:
+
+- **Which fund a request asks from** — **the mesa assigns it at triage**, of the three shapes
+  the gate offered. No field enters the form; `rr_requests.fund_id` stays nullable and null is
+  the legitimate state of a request still in `triagem`, which is what the seed's three
+  fundless cards exercise. The invariant that arrived with the answer — **a request does not
+  enter `aprovado` with `fund_id IS NULL`** — is a service rule and deliberately not a CHECK,
+  since the same null is correct one column earlier. **BE-11** (OBT-470) owns it.
+- **What each fund covers, and the old↔new mapping** — only *Shema Línguas* remains, and the
+  other four names are **undecided rather than retired**. The mapping closed by elimination
+  instead of by mapping, so no old category was paired with a new name. The seed writes the
+  one row with `provisional = false`. What the answer opened — an editable area for funds, and
+  the retired-fund flag item 7 below describes — is **BE-10** (OBT-471).
+- **Insufficient funds on a concurrent approve** — allowed with a warning, never refused
+  (§7.3). The lock stays; only the refusal is gone.
+
+And seven items with **no gate**, which need issues rather than answers:
 
 1. **The vocabulary JSON emission and the two unminted key lists** (§9, §4.3) — must land
    before INT-02.
@@ -735,6 +757,15 @@ And five items with **no gate**, which need issues rather than answers:
    section was asked when it never was. It belongs with the contract's §6.1 question about
    whether that chip survives beside the *solicitante*, and it needs the same owner:
    **before INT-04**, which builds the card against a real endpoint.
+7. **`rr_funds` carries no active/retired flag, and a fund can never be deleted** (BE-02,
+   26/aug/2026, from GATE-01's answer). `rr_fund_movements` references it and the ledger is
+   append-only, so a fund that stops being one has to stay readable for the movements that
+   already name it — a DELETE is not available and never will be. Ready Vessels is the proof
+   that a fund can end: it ceased to be one before it ever took money *here*, so no row
+   survives and nothing was needed. The day one ends **after** it has taken money, the answer
+   is a flag. **BE-10** (OBT-471) owns the editable fund area, which is where the column and
+   its reader belong together — a flag added without a reader would be the same unhonoured
+   column `provisional` already is.
 
 Two things this document changes elsewhere, and neither should be silent:
 

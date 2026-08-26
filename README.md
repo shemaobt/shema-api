@@ -175,10 +175,18 @@ For **`resource-request-form`** the roles are `equipe`, `mesa` and `gestor`, mir
 frontend's `capabilities.ts`. The first mesa accounts are granted with the command above — who
 they are is not settled yet and belongs to GATE-02 (OBT-448).
 
-`scripts/seed_resource_requests.py` fills the module's own tables with the prototype's five
-funds and ten board cards. It is idempotent and safe to re-run, which matters because
-`rr_fund_movements` is append-only and a doubled run could not be corrected with an UPDATE.
-The five funds land with `provisional = true` until GATE-01 (OBT-447) confirms the names.
+`scripts/seed_resource_requests.py` fills the module's own tables with the prototype's ten
+board cards and the one fund they draw from. It is idempotent and safe to re-run, which
+matters because `rr_fund_movements` is append-only and a doubled run could not be corrected
+with an UPDATE.
+
+GATE-01 (OBT-447, 26/aug/2026) confirmed **Shema Línguas** and left the other four names of
+PRD v1.1 §3 undecided, so one fund is written and `provisional = false`. Its allocation is
+**sample money** — asked for the real figures, the client answered that none exist yet and
+asked to leave them open, since the Gestores fill each fund themselves. A real deployment
+therefore seeds no allocation at all: its ledger starts at the first Gestor movement. Three
+of the ten cards carry no fund, which is not a gap — the mesa assigns one at triage, so a
+request in `triagem` legitimately has none.
 
 ### Data in the local database
 
