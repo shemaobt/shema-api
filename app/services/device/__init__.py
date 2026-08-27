@@ -6,6 +6,7 @@ from app.services.device.create_device import create_device
 from app.services.device.get_device import get_device
 from app.services.device.get_device_by_credential import get_device_by_credential
 from app.services.device.get_team_device import get_team_device
+from app.services.device.link_for_room_device import link_for_room_device
 from app.services.device.list_team_devices import list_team_devices
 from app.services.device.refresh_claim_code import refresh_claim_code
 from app.services.device.set_device_label import set_device_label
@@ -24,6 +25,7 @@ __all__ = [
     "get_device",
     "get_device_by_credential",
     "get_team_device",
+    "link_for_room_device",
     "list_team_devices",
     "refresh_claim_code",
     "set_device_label",

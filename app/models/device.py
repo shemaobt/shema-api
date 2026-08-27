@@ -137,6 +137,13 @@ class RoomDeviceCodeResponse(BaseModel):
         )
 
 
+class RoomDeviceLinkResponse(BaseModel):
+    """The team a tablet was linked to. Carries no credential, like ``DeviceSelfResponse``."""
+
+    project_id: str
+    label: str | None
+
+
 class DeviceLabelUpdateRequest(BaseModel):
     """The who-uses-it note. Free text, stored verbatim, empty allowed."""
 

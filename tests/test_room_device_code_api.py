@@ -5,10 +5,11 @@ script, no seed. So the flow the product describes — the tablet shows a code, 
 types it into the Desk, the link comes back to the tablet — has never been able to start,
 and the half that spends the code has only ever been exercised against a fixture.
 
-This is the half that hands a tablet a code to display. It carries no credential: the
+These two routes are the tablet's half. The first hands a tablet a code to display; the
+second is what it polls until a facilitator has spent it. Neither carries a credential: the
 device credential is issued to the Desk at claim time and stays there until ENG-455.
 
-The shared room key is what opens it, because a tablet nobody has linked yet holds
+The shared room key is what opens both, because a tablet nobody has linked yet holds
 nothing else. That is the same key every installation carries, and it is exactly as weak
 here as it is on every other room route — retiring it is ENG-455's, not this slice's.
 """
@@ -20,7 +21,8 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.device import claim_code, create_device
+from app.services.device import claim_code, claim_device, create_device
+from tests.baker import make_language, make_project
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -48,6 +50,11 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     transport = ASGITransport(app=test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+async def a_team(db: AsyncSession):
+    language = await make_language(db, name="Terena", code="ter")
+    return await make_project(db, language.id, name="Equipe Terena")
 
 
 async def test_a_tablet_nobody_has_linked_is_given_a_device_and_a_code_to_show(client):
@@ -95,3 +102,47 @@ async def test_a_device_this_server_never_minted_is_given_a_fresh_one(client):
 
     assert response.status_code == 200
     assert response.json()["device_id"] != "a-device-this-database-never-had"
+
+
+async def test_a_device_nobody_has_claimed_yet_answers_that_it_has_no_team(client, db_session):
+    minted = await create_device(db_session)
+
+    response = await client.get(
+        f"{PREFIX}/devices/{minted.device.id}/link", headers={"X-Room-Key": KEY}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_a_claimed_device_learns_its_team_without_anyone_typing_into_it(client, db_session):
+    project = await a_team(db_session)
+    minted = await create_device(db_session, label="back shelf")
+    await claim_device(db_session, code=minted.claim_code, project_id=project.id)
+
+    response = await client.get(
+        f"{PREFIX}/devices/{minted.device.id}/link", headers={"X-Room-Key": KEY}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"project_id": project.id, "label": "back shelf"}
+
+
+async def test_a_device_taken_out_of_service_has_no_team_to_report(client, db_session):
+    project = await a_team(db_session)
+    minted = await create_device(db_session)
+    await claim_device(db_session, code=minted.claim_code, project_id=project.id)
+    minted.device.unlinked_at = datetime.now(UTC)
+    await db_session.commit()
+
+    response = await client.get(
+        f"{PREFIX}/devices/{minted.device.id}/link", headers={"X-Room-Key": KEY}
+    )
+
+    assert response.status_code == 204
+
+
+async def test_a_device_id_this_server_does_not_know_is_not_a_link_it_is_missing(client):
+    response = await client.get(f"{PREFIX}/devices/nothing-here/link", headers={"X-Room-Key": KEY})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No device with that id."
