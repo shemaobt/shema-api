@@ -11,6 +11,7 @@ from app.core.exceptions import ValidationError
 from app.services.translation_helper.audio_cache import AudioCache, audio_cache
 from app.services.translation_helper.synthesize_speech import (
     VOICE_MAP,
+    _anchor_for,
     aggregate_sentence_marks,
     split_sentences,
     synthesize_speech,
@@ -520,3 +521,70 @@ async def test_unreadable_marks_still_serve_the_audio() -> None:
     assert was_cached is True
     assert entry.audio == b"ID3-audio"
     assert entry.timepoints == []
+
+
+def test_a_reshaped_word_does_not_lose_the_whole_sentence() -> None:
+    """The anchor shortens the phrase before giving up.
+
+    The phrase is matched against a stream the model has already normalized. Here the third
+    opening word is a numeral the model spoke as a word, so the four- and three-word phrases
+    cannot match; the two-word prefix still puts the anchor exactly where the sentence
+    starts. Without shortening, this sentence fell to the proportional guess and the
+    highlight landed nowhere near the voice.
+    """
+    text = "The team listened. We recorded 8 stories that year."
+    spoken = "The team listened. We recorded eight stories that year."
+    chars = list(spoken)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+
+    assert marks[1][1] == pytest.approx(starts[spoken.index("We recorded")])
+
+
+def test_a_one_word_sentence_still_anchors() -> None:
+    """The truncation floor governs how far a phrase may be cut, not how short a sentence is.
+
+    "Yes." and "Thank you." are whole sentences. An earlier version of the shortening applied
+    the two-word floor to the sentence itself, so a one-word sentence produced no attempt at
+    all and fell to the proportional guess.
+
+    The one-word sentence sits second on purpose: at index 0 the proportional fallback is
+    exactly 0.0, which is also the right answer, so a test there passes whether the sentence
+    anchored or not. `_anchor_for` is asserted directly for the same reason.
+    """
+    text = "We finished Ruth last year. Yes. The team was glad."
+    chars = list(text)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    assert _anchor_for("Yes.", chars, 0, len(chars)) == text.index("Yes.")
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+    assert marks[1][1] == pytest.approx(starts[text.index("Yes.")])
+
+
+def test_the_cache_key_changes_with_the_output_format() -> None:
+    """Every input that changes the bytes belongs in the key.
+
+    While the cache lived in one process for a day, omitting the format self-healed. Once
+    clips went to the bucket it would have served the old shape forever, with the hardcoded
+    audio/mpeg hiding the mismatch.
+    """
+    from app.services.translation_helper.synthesize_speech import _key_variant
+
+    mp3 = _settings()
+    other = _settings()
+    other.elevenlabs_output_format = "pcm_16000"
+
+    assert _key_variant(mp3, None, None, None) != _key_variant(other, None, None, None)
+
+
+def test_the_cache_key_ignores_the_order_tuning_was_written_in() -> None:
+    """The same tuning in a different order is the same audio, and must not be bought twice."""
+    from app.services.translation_helper.synthesize_speech import _key_variant
+
+    cfg = _settings()
+    one = _key_variant(cfg, None, None, {"stability": 0.4, "speed": 0.9})
+    two = _key_variant(cfg, None, None, {"speed": 0.9, "stability": 0.4})
+
+    assert one == two
