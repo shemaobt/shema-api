@@ -56,8 +56,13 @@ async def test_a_caller_that_parses_json_asks_the_model_for_json() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_prose_caller_is_left_in_prose_mode() -> None:
-    """The facilitator's reply is spoken to a person; JSON mode would ruin it."""
+async def test_prose_mode_is_the_default() -> None:
+    """JSON mode is opt-in, so a caller that does not parse its answer is never forced into it.
+
+    Every `call_agent` caller in the orchestrator parses its answer and passes `expects_json`;
+    the facilitator's spoken reply goes through `call_chat` and never reaches here. This pins
+    the default so a future prose caller does not inherit JSON mode by accident.
+    """
     client = _client(_response("It is nice to meet you, Maria."))
     with patch.object(llm_client.genai, "Client", return_value=client):
         await llm_client.call_agent(system_prompt="p", user_content="c", settings=_settings())

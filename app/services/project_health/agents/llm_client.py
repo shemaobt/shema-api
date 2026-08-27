@@ -77,6 +77,8 @@ async def call_agent(
     `expects_json` puts the model in JSON mode. Every caller that parses the answer should
     set it: without it the model is free to wrap the object in a fence or introduce it in
     prose, and `safe_parse_json` then falls back and the agent silently contributes nothing.
+    All seven orchestrator callers do; the facilitator's spoken reply is not one of them and
+    goes through `call_chat`.
     """
     settings = settings or get_settings()
     model = model or fast_model(settings)
