@@ -56,8 +56,13 @@ async def test_a_caller_that_parses_json_asks_the_model_for_json() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_prose_caller_is_left_in_prose_mode() -> None:
-    """The facilitator's reply is spoken to a person; JSON mode would ruin it."""
+async def test_prose_mode_is_the_default() -> None:
+    """JSON mode is opt-in, so a caller that does not parse its answer is never forced into it.
+
+    Every `call_agent` caller in the orchestrator parses its answer and passes `expects_json`;
+    the facilitator's spoken reply goes through `call_chat` and never reaches here. This pins
+    the default so a future prose caller does not inherit JSON mode by accident.
+    """
     client = _client(_response("It is nice to meet you, Maria."))
     with patch.object(llm_client.genai, "Client", return_value=client):
         await llm_client.call_agent(system_prompt="p", user_content="c", settings=_settings())
@@ -141,3 +146,36 @@ async def test_the_team_report_names_the_team_it_is_addressed_to(db_session, ph_
 
     assert response.project_name == "Terena OBT"
     assert response.team_name == "Terena Storytellers"
+
+
+@pytest.mark.asyncio
+async def test_thinking_is_bounded_so_the_answer_has_room() -> None:
+    """Unbounded thinking spends the whole cap and leaves the JSON truncated.
+
+    Measured in production before this was set: a 1800-token cap went 1728 to thinking and
+    57 to the answer; a 2000-token cap went 1917 and 68. The reasoning expands to fill
+    whatever it is given, so raising caps alone changes nothing.
+    """
+    client = _client(_response('{"ok": true}'))
+    with patch.object(llm_client.genai, "Client", return_value=client):
+        await llm_client.call_agent(
+            system_prompt="p", user_content="c", expects_json=True, settings=_settings()
+        )
+
+    config = client.aio.models.generate_content.await_args.kwargs["config"]
+    assert config.thinking_config is not None, "thinking must be bounded, not left to default"
+    assert config.thinking_config.thinking_level == types.ThinkingLevel.LOW
+
+
+@pytest.mark.asyncio
+async def test_the_facilitators_reply_is_also_watched_for_truncation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A cut-off reply reaches the team as a half-sentence; it should not pass unremarked."""
+    client = _client(_response("It is nice to meet", finish=types.FinishReason.MAX_TOKENS))
+    with caplog.at_level("WARNING"), patch.object(llm_client.genai, "Client", return_value=client):
+        await llm_client.call_chat(
+            system_prompt="p", contents=[], max_output_tokens=500, settings=_settings()
+        )
+
+    assert "truncated" in caplog.text

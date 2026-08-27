@@ -12,6 +12,16 @@ from app.core.config import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 
+#: How hard these agents think before answering. Production evidence made the case: with
+#: thinking unbounded, a 1800-token cap was spent 1728 on thinking and 57 on the answer, and
+#: a 2000-token cap 1917 on thinking and 68 on the answer — the reasoning expands to fill
+#: whatever budget it is given, and the JSON arrives truncated to a single `{`. Raising the
+#: caps alone therefore buys nothing. These agents extract and classify rather than reason at
+#: length; the answers they truncated needed 60 to 1000 tokens. `internalization_room/llm.py`
+#: already bounds its own thinking the same way.
+DEFAULT_THINKING = types.ThinkingLevel.LOW
+
+
 def fast_model(settings: Settings | None = None) -> str:
     """The cheaper tier: planning, evidence, guardrails, context extraction."""
     return (settings or get_settings()).gemini_fast_model
@@ -59,6 +69,7 @@ async def call_agent(
     temperature: float = 0.4,
     max_output_tokens: int = 2000,
     expects_json: bool = False,
+    thinking: types.ThinkingLevel = DEFAULT_THINKING,
     settings: Settings | None = None,
 ) -> str:
     """One turn with an agent, returning its raw text.
@@ -66,6 +77,8 @@ async def call_agent(
     `expects_json` puts the model in JSON mode. Every caller that parses the answer should
     set it: without it the model is free to wrap the object in a fence or introduce it in
     prose, and `safe_parse_json` then falls back and the agent silently contributes nothing.
+    All seven orchestrator callers do; the facilitator's spoken reply is not one of them and
+    goes through `call_chat`.
     """
     settings = settings or get_settings()
     model = model or fast_model(settings)
@@ -78,6 +91,7 @@ async def call_agent(
             temperature=temperature,
             max_output_tokens=max_output_tokens,
             response_mime_type="application/json" if expects_json else None,
+            thinking_config=types.ThinkingConfig(thinking_level=thinking),
         ),
     )
     _warn_if_truncated(response, model=model, cap=max_output_tokens)
@@ -91,6 +105,7 @@ async def call_chat(
     model: str | None = None,
     temperature: float = 0.6,
     max_output_tokens: int = 500,
+    thinking: types.ThinkingLevel = DEFAULT_THINKING,
     settings: Settings | None = None,
 ) -> str:
     settings = settings or get_settings()
@@ -103,8 +118,10 @@ async def call_chat(
             system_instruction=system_prompt,
             temperature=temperature,
             max_output_tokens=max_output_tokens,
+            thinking_config=types.ThinkingConfig(thinking_level=thinking),
         ),
     )
+    _warn_if_truncated(response, model=model, cap=max_output_tokens)
     return response.text or ""
 
 
