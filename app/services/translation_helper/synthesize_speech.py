@@ -76,8 +76,11 @@ _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 #: demanding so much that normalization can break the match.
 _ANCHOR_WORDS = 4
 
-#: Never fewer than this. A single word is what made the anchors ambiguous to begin with.
-_MIN_ANCHOR_WORDS = 2
+#: How short a *truncated* phrase may get. A sentence with fewer words than this anchors on
+#: all it has — see `_anchor_for`. The floor exists because truncating down to a single word
+#: is what made the anchors ambiguous to begin with, not because short sentences are a
+#: problem.
+_MIN_TRUNCATED_WORDS = 2
 
 
 def _opening_words(sentence: str) -> list[str]:
@@ -120,10 +123,17 @@ def _phrase_starts_at(alignment_chars: list[str], j: int, words: list[str]) -> b
 def _anchor_for(sentence: str, alignment_chars: list[str], cursor: int, n: int) -> int | None:
     """Index of the synthesized character where `sentence` begins, or `None`.
 
-    Matching an opening phrase rather than a single character is what keeps the
-    highlight on the voice, and why it is a phrase rather than one word is recorded on
-    `_ANCHOR_WORDS`. A sentence carrying no word characters at all falls back to its
-    first character, which is all there is to match on.
+    Matching an opening phrase rather than a single character is what keeps the highlight on
+    the voice, and why it is a phrase rather than one word is recorded on `_ANCHOR_WORDS`. A
+    sentence carrying no word characters at all falls back to its first character, which is
+    all there is to match on.
+
+    The phrase shortens before giving up. It is matched against a stream the model has
+    already normalized, so a single reshaped word — a numeral spelled out, an abbreviation
+    expanded — would otherwise drop the whole sentence to the proportional guess and put the
+    highlight nowhere near the voice. `_MIN_TRUNCATED_WORDS` is the floor for that
+    shortening; a sentence shorter than it anchors on every word it has, because the floor
+    is about how far a phrase may be cut and not about how short a sentence may be.
     """
     words = _opening_words(sentence)
     if not words:
@@ -133,14 +143,7 @@ def _anchor_for(sentence: str, alignment_chars: list[str], cursor: int, n: int) 
                 return j
         return None
 
-    # Shortening the phrase before giving up. The match is exact against a stream the model
-    # has already normalized, so a single reshaped word — a numeral spelled out, an
-    # abbreviation expanded — would otherwise drop the whole sentence to the proportional
-    # guess and put the highlight nowhere near the voice. Two words is the floor: one word
-    # is what made the anchors ambiguous in the first place.
-    # The floor governs how far a phrase may be truncated, not how short a sentence may be:
-    # "Yes." and "Thank you." are whole sentences and must still anchor on what they have.
-    floor = min(len(words), _MIN_ANCHOR_WORDS)
+    floor = min(len(words), _MIN_TRUNCATED_WORDS)
     for length in range(len(words), floor - 1, -1):
         prefix = words[:length]
         for j in range(cursor, n):

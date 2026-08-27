@@ -11,6 +11,7 @@ from app.core.exceptions import ValidationError
 from app.services.translation_helper.audio_cache import AudioCache, audio_cache
 from app.services.translation_helper.synthesize_speech import (
     VOICE_MAP,
+    _anchor_for,
     aggregate_sentence_marks,
     split_sentences,
     synthesize_speech,
@@ -542,15 +543,24 @@ def test_a_reshaped_word_does_not_lose_the_whole_sentence() -> None:
 
 
 def test_a_one_word_sentence_still_anchors() -> None:
-    """The truncation floor governs how far a phrase may be cut, not how short a sentence is."""
-    text = "Yes. We finished Ruth last year."
+    """The truncation floor governs how far a phrase may be cut, not how short a sentence is.
+
+    "Yes." and "Thank you." are whole sentences. An earlier version of the shortening applied
+    the two-word floor to the sentence itself, so a one-word sentence produced no attempt at
+    all and fell to the proportional guess.
+
+    The one-word sentence sits second on purpose: at index 0 the proportional fallback is
+    exactly 0.0, which is also the right answer, so a test there passes whether the sentence
+    anchored or not. `_anchor_for` is asserted directly for the same reason.
+    """
+    text = "We finished Ruth last year. Yes. The team was glad."
     chars = list(text)
     starts = [i * 0.1 for i in range(len(chars))]
 
-    marks = aggregate_sentence_marks(text, chars, starts)
+    assert _anchor_for("Yes.", chars, 0, len(chars)) == text.index("Yes.")
 
-    assert marks[0][1] == pytest.approx(0.0)
-    assert marks[1][1] == pytest.approx(starts[text.index("We finished")])
+    marks = aggregate_sentence_marks(text, chars, starts)
+    assert marks[1][1] == pytest.approx(starts[text.index("Yes.")])
 
 
 def test_the_cache_key_changes_with_the_output_format() -> None:
