@@ -76,6 +76,9 @@ _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 #: demanding so much that normalization can break the match.
 _ANCHOR_WORDS = 4
 
+#: Never fewer than this. A single word is what made the anchors ambiguous to begin with.
+_MIN_ANCHOR_WORDS = 2
+
 
 def _opening_words(sentence: str) -> list[str]:
     """The sentence's first few words, case-folded."""
@@ -123,14 +126,28 @@ def _anchor_for(sentence: str, alignment_chars: list[str], cursor: int, n: int) 
     first character, which is all there is to match on.
     """
     words = _opening_words(sentence)
-    for j in range(cursor, n):
-        if not alignment_chars[j].strip():
-            continue
-        if words:
-            if _phrase_starts_at(alignment_chars, j, words):
+    if not words:
+        target = sentence.lstrip()[0].casefold()
+        for j in range(cursor, n):
+            if alignment_chars[j].strip() and alignment_chars[j].casefold() == target:
                 return j
-        elif alignment_chars[j].casefold() == sentence.lstrip()[0].casefold():
-            return j
+        return None
+
+    # Shortening the phrase before giving up. The match is exact against a stream the model
+    # has already normalized, so a single reshaped word — a numeral spelled out, an
+    # abbreviation expanded — would otherwise drop the whole sentence to the proportional
+    # guess and put the highlight nowhere near the voice. Two words is the floor: one word
+    # is what made the anchors ambiguous in the first place.
+    # The floor governs how far a phrase may be truncated, not how short a sentence may be:
+    # "Yes." and "Thank you." are whole sentences and must still anchor on what they have.
+    floor = min(len(words), _MIN_ANCHOR_WORDS)
+    for length in range(len(words), floor - 1, -1):
+        prefix = words[:length]
+        for j in range(cursor, n):
+            if not alignment_chars[j].strip():
+                continue
+            if _phrase_starts_at(alignment_chars, j, prefix):
+                return j
     return None
 
 
@@ -142,10 +159,10 @@ def aggregate_sentence_marks(
     """Fold ElevenLabs character-level alignment into the sentence-mark shape
     consumed by the UI karaoke highlight (`s0`, `s1`, …).
 
-    For each sentence from `split_sentences(text)`, find the first synthesized
-    character whose case-folded value matches the sentence's first non-blank
-    char, advancing a cursor so later sentences cannot match earlier positions.
-    Falls back to a proportional time when matching cannot find an anchor.
+    For each sentence from `split_sentences(text)`, find where its opening words appear in
+    the synthesized character stream — see `_anchor_for` — advancing a cursor so later
+    sentences cannot match earlier positions. Falls back to a proportional time when no
+    anchor is found.
     """
     sentences = split_sentences(text)
     if not sentences:
@@ -252,6 +269,35 @@ def _default_store() -> SpeechStore:
     return GcsPlatformStore()
 
 
+def _key_variant(
+    settings: Settings,
+    voice_name: str | None,
+    model_id: str | None,
+    voice_settings: dict[str, float | bool] | None,
+) -> str:
+    """Everything besides the text and language that changes the synthesized bytes.
+
+    `output_format` belongs here and was missing. `platform/tts.py` states the trap plainly
+    on the key it mints — leave the format out and changing the setting keeps serving the old
+    clip in the old shape forever, with the hardcoded `audio/mpeg` hiding the mismatch. That
+    was survivable while the cache lived in one process for a day; it became permanent the
+    moment these clips started going to the bucket, so it is fixed here.
+
+    `voice_settings` is canonicalized rather than interpolated: the old f-string took the
+    dict's repr, so the same tuning written in a different order produced a different key and
+    paid for the same audio twice.
+    """
+    tuning = json.dumps(dict(sorted((voice_settings or {}).items())), separators=(",", ":"))
+    return "|".join(
+        [
+            voice_name or "",
+            model_id or settings.elevenlabs_tts_model,
+            settings.elevenlabs_output_format,
+            tuning,
+        ]
+    )
+
+
 async def synthesize_speech(
     text: str,
     *,
@@ -281,14 +327,15 @@ async def synthesize_speech(
     if language_code is None:
         language_code = detect_language_code(text)
 
+    cfg = settings or get_settings()
+
     cache_key = audio_cache.make_key(
-        text, language_code, f"{voice_name}|{model_id}|{voice_settings}"
+        text, language_code, _key_variant(cfg, voice_name, model_id, voice_settings)
     )
     cached = audio_cache.get(cache_key)
     if cached is not None:
         return cached, True
 
-    cfg = settings or get_settings()
     speech_store = store or (_default_store() if cfg.gcs_platform_bucket else None)
     if speech_store is not None:
         durable = await _read_durable(speech_store, cache_key)
