@@ -21,16 +21,23 @@ async def refresh_claim_code(db: AsyncSession, device: Device) -> str:
     the recovery, and undoing a failed draw must not expire every object the session is
     already holding.
 
+    The row is written **inside** the savepoint rather than before it, which is the whole
+    of the protection here. ``begin_nested`` snapshots the session on the way in, and that
+    snapshot flushes whatever is already dirty — so a device mutated a line earlier has its
+    UPDATE emitted outside the savepoint, where a collision deactivates the transaction and
+    the next attempt raises ``PendingRollbackError`` past ``except IntegrityError`` as a 500.
+    ``create_device`` is safe only because its ``db.add`` sits inside the block too.
+
     Only for a device nobody has claimed. A spent code is history the row keeps, and
     drawing over it would hand a second facilitator a way to claim a tablet that is
     already someone's.
     """
     for _ in range(_REDRAW_ATTEMPTS):
         code = claim_codes.generate_claim_code()
-        device.claim_code_hash = claim_codes.hash_claim_code(code)
-        device.claim_code_expires_at = claim_codes.utcnow() + claim_codes.CLAIM_CODE_TTL
         try:
             async with db.begin_nested():
+                device.claim_code_hash = claim_codes.hash_claim_code(code)
+                device.claim_code_expires_at = claim_codes.utcnow() + claim_codes.CLAIM_CODE_TTL
                 await db.flush()
         except IntegrityError:
             continue

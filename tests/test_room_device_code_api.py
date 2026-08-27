@@ -93,6 +93,26 @@ async def test_a_code_that_expired_is_redrawn_onto_the_device_that_showed_it(cli
     assert datetime.fromisoformat(body["expires_at"]) > datetime.now(UTC)
 
 
+async def test_a_redraw_whose_code_collides_is_drawn_again(client, db_session, monkeypatch):
+    already_out_there = await create_device(db_session)
+    mine = await create_device(db_session)
+    mine.device.claim_code_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.commit()
+
+    drawn = iter([already_out_there.claim_code, "PPP-QQQQ"])
+    monkeypatch.setattr(claim_code, "generate_claim_code", lambda: next(drawn))
+
+    response = await client.post(
+        f"{PREFIX}/devices/code",
+        headers={"X-Room-Key": KEY},
+        json={"device_id": mine.device.id},
+    )
+    monkeypatch.undo()
+
+    assert response.status_code == 200
+    assert response.json()["code"] == "PPP-QQQQ"
+
+
 async def test_a_device_this_server_never_minted_is_given_a_fresh_one(client):
     response = await client.post(
         f"{PREFIX}/devices/code",
