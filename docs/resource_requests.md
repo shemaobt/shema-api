@@ -228,14 +228,35 @@ evaluation with its own identity, its own authorship and its own read permission
 the single most expensive thing to get wrong here, because fixing it later is a migration
 plus an audit of who saw what.
 
-**Its uniqueness is the floor both gate answers share** (BE-02, 25/aug/2026). §10 listed
-"one evaluation per mesa, or one per member" as blocking the *schema* and not only the
-behaviour. It does not, and the reason is that the two answers are not two shapes: they are
-the same constraint at two tightnesses. `uq_rr_evaluations_snapshot_evaluator` is the looser
-one, and it holds under both — "one per mesa" is that constraint with the evaluator dropped,
-which is a one-line migration on a table that has no rows yet. The other order is what costs:
-loosening a constraint after the mesa has used it costs data, not a migration. So the gate
-now decides whether to tighten, and BE-06 is no longer waiting on a table.
+**Its uniqueness was the floor both gate answers share, and GATE-02 spent the line**
+(BE-02, 25/aug/2026, tightened 28/aug/2026). §10 listed "one evaluation per mesa, or one per
+member" as blocking the *schema*. It did not, because the two answers were not two shapes but
+the same constraint at two tightnesses: `uq_rr_evaluations_snapshot_evaluator` was the looser
+one and held under both, and tightening it on an empty table is one line where loosening it
+after the mesa has used it costs data. **D5 answered *"a mesa quem decide"*** (OBT-448,
+27/aug/2026), so the constraint is now `uq_rr_evaluations_snapshot` — one evaluation per
+snapshot, and the table is still empty.
+
+What the tightening takes away is worth naming, because it is the reason the looser form was
+not simply *wrong*: two NULLs are never equal in SQL, so the old constraint allowed a snapshot
+any number of **unauthored** evaluations — which is every row the seed writes. It now allows
+one, the seed writes one, and a test is written against exactly the row the old form let
+through.
+
+**And the answer arrived with two records, not one.** The client asked for *"uma tag ou
+assinatura de qual dos membros da mesa estava representando a mesa"* — that is
+`evaluator_id`, and the person signs **on behalf of** the mesa, which is what lets the
+evaluation be the mesa's and the signature be a person's. He also asked for *"registro de
+quem eram as pessoas da mesa presentes na tomada de decisão"*, which is neither that column
+nor derivable from it: it is `rr_evaluation_attendees`, cardinality N, **BE-02's shape and
+BE-06's to fill**. It has the form of **minutes, not of an audit trail** — it says who was in
+the room, so it carries no timestamp and no append-only trigger, and a room list written down
+wrong is corrected rather than compensated. Confusing it with §4.4's trail would build a
+table that answers the wrong question.
+
+A refusal it makes on purpose: `user_id` is a real FK, so a mesa member with no account
+cannot be recorded. That is the right failure rather than a gap, and BE-17 (OBT-477) — the
+half of D1 the client separated himself — is what closes it.
 
 ### 4.2 Request shape: a queried spine, and sections that are not columns — **Decided**
 
@@ -298,6 +319,39 @@ and nowhere else on purpose: writing them into `app/services/resource_request/` 
 hand-copied second source §9 exists to prevent. The **26 budget category slugs are still
 unminted** — nothing in this issue needed one, `rr_budget_lines.category_key` is a plain
 string, and membership is BE-05's check against the vendored emission.
+
+### 4.4 The edit trail — **Answered · GATE-02**, tables here and behaviour in BE-15
+
+D7 answered *"sim, sempre mantenha os históricos das mudanças, alterações etc."* (OBT-448,
+27/aug/2026), over **both** the solicitação and the avaliação, field by field. The feature is
+**BE-15**'s (OBT-475). **The tables are BE-02's**, and §10 is where that was written down
+before the answer existed: a history table is cheap before there is data and expensive after.
+Here that is literal — two `create_table` calls in a migration nobody has run, against a
+second migration plus the admission that everything edited in between went unrecorded. BE-15
+names this PR in its own text for the same reason.
+
+`rr_request_field_history` and `rr_evaluation_field_history` carry the same five columns:
+
+| Column | Why it is that and not something else |
+|---|---|
+| `field_key` | A string, not a column name. A request's fields live in **three** homes — six promoted columns on the spine, the 45 answers inside `rr_request_sections.content`, the 26 rows of `rr_budget_lines` — and one key space reaches all three where a design keyed on the catalogue reaches only the first. On the evaluation it is a criterion key, or `decision` / `comments`. |
+| `old_value`, `new_value` | Nullable text. **Both sides**, because D7's own example is *quem subiu uma nota de 2 para 5*; nullable because a field that had no value has no old side; text because the three homes hold strings, decimals, dates and integers, and a trail that records only some of them is not a trail. |
+| `changed_by` | `NOT NULL`, restricting on delete — the ledger's rule. A record of who changed something is worth nothing if the who can be forgotten, and D1 is what gives it a subject. |
+| `changed_at` | Server-defaulted, like every other stamp here. |
+
+**Both are append-only**, through the same trigger `rr_fund_movements` and `rr_snapshots`
+already use — one line in `APPEND_ONLY_TABLES`, not a service rule the second caller will not
+have. A history whose rows can be edited answers nothing.
+
+The trail follows the **request**, not the snapshot: the thing being audited is the editing,
+and a snapshot is by definition the version that stopped moving.
+
+**One column deliberately not added here.** D6 says recording a decision moves the card, and
+`rr_board_transitions` cannot today distinguish a move that came from a decision from a mesa
+member dragging a card — which is precisely the asymmetry D6 insists on. An
+`evaluation_id` there would tell them apart. It is **BE-08**'s (OBT-457) to add or to refuse,
+because it is the issue that writes both sides of that transaction; naming it is this
+document's job and building it is not.
 
 ---
 
@@ -811,11 +865,13 @@ in four of the seven the answer arrived with **more** than the question offered:
   decision implies a column, a column never implies a decision. The mesa may still drag a card
   it never evaluated, and a dragged card notifies nobody.
 - **Audit trail for edits: yes, always** (D7), over both the solicitação and the avaliação,
-  field by field. The third of the trail that had no owner has one: **BE-15** (OBT-475). Two
-  things travel with it. Its subject exists only because of D1 — a document with an owner is
-  what a trail is written about. And the generic `updated_by`/`updated_at` shape it asks for
-  **must not be retro-applied to `rr_funds`**, which has no allocated column and must not gain
-  one: the ledger of §7 is already the money's trail, append-only by design.
+  field by field. The third of the trail that had no owner has one: **BE-15** (OBT-475) — and
+  **the two tables it writes into are already here**, because this document's own line said
+  they are cheap before there is data and expensive after. §4.4 is where they are. Two things
+  travel with them. Their subject exists only because of D1 — a document with an owner is what
+  a trail is written about. And the generic `updated_by`/`updated_at` shape the answer asks
+  for **must not be retro-applied to `rr_funds`**, which has no allocated column and must not
+  gain one: the ledger of §7 is already the money's trail, append-only by design.
 - **The request travels online** (GATE-03 D1), the attachment becomes a **file** in a private
   bucket (D3 — **BE-14**, OBT-474), and the team sees **its status and nothing else** (D4).
   §6 carries all three.

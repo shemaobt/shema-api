@@ -57,6 +57,8 @@ about the card's fund: the board card projects more than the form collects.
 """
 
 import asyncio
+import os
+import sys
 import uuid
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -66,6 +68,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.db.models.auth import User
 from app.db.models.resource_request import (
     RREvaluation,
     RREvaluationScore,
@@ -305,7 +308,29 @@ def _snapshot_document(card: SeedCard) -> dict[str, Any]:
     }
 
 
-async def _seed_funds(db: AsyncSession) -> None:
+async def _author(db: AsyncSession, email: str) -> User:
+    """Resolve the account every seeded row is written by, or refuse to seed.
+
+    ``rr_requests.created_by`` and ``rr_fund_movements.created_by`` stopped being nullable
+    when GATE-02's D1 answered accounts, so the fixture needs an author the way a real
+    request does. It is **looked up and never created**, the shape ``seed_project.py``
+    already uses: inventing a person to satisfy a column would put a fabricated human in
+    ``users``, and the sample data is invented precisely so that no real one is.
+
+    Refusing is the honest failure. A seed that silently attached ten requests to whichever
+    account happened to be first would be sample data making a claim about a real person.
+    """
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None:
+        raise SystemExit(
+            f"Nenhuma conta com o e-mail {email!r}. O seed grava o autor de cada pedido e de "
+            "cada movimento, e não inventa um: crie a conta antes (scripts/grant_app_role.py) "
+            "ou passe outro e-mail."
+        )
+    return user
+
+
+async def _seed_funds(db: AsyncSession, author: User) -> None:
     """Write the confirmed funds and their sample allocation.
 
     ``provisional=False`` because GATE-01 answered this name: the flag says *the gate
@@ -332,11 +357,12 @@ async def _seed_funds(db: AsyncSession) -> None:
                     kind=RRMovementKind.ALLOCATION,
                     amount=allocated,
                     reason="Alocação de exemplo do protótipo",
+                    created_by=author.id,
                 )
             )
 
 
-async def _seed_card(db: AsyncSession, card: SeedCard) -> None:
+async def _seed_card(db: AsyncSession, card: SeedCard, author: User) -> None:
     request_id = f"rr-seed-request-{card.n}"
     request = (
         await db.execute(select(RRRequest).where(RRRequest.id == request_id))
@@ -353,6 +379,7 @@ async def _seed_card(db: AsyncSession, card: SeedCard) -> None:
             fund_id=card.fund,
             amount_requested=card.valor,
             tpp_name=card.solicitante,
+            created_by=author.id,
         )
     )
     await db.flush()
@@ -369,6 +396,7 @@ async def _seed_card(db: AsyncSession, card: SeedCard) -> None:
                 kind=RRMovementKind.APPROVAL_DEDUCTION,
                 amount=card.valor,
                 reason="Aprovação de exemplo do protótipo",
+                created_by=author.id,
             )
         )
 
@@ -391,19 +419,38 @@ async def _seed_card(db: AsyncSession, card: SeedCard) -> None:
         )
 
 
-async def seed() -> None:
+#: The account every seeded row is written by. An argument first, then the environment —
+#: there is deliberately no default, because a default would be a real e-mail address
+#: hard-coded in a repository, or a fake one that resolves to nobody and fails later than
+#: it should.
+AUTHOR_ENV = "RR_SEED_AUTHOR"
+
+
+async def seed(author_email: str) -> None:
     """Write the fund, its sample allocation and the ten sample board cards.
 
     No evaluation carries a decision. The board column a card sits in does not imply one
     — the mesa moves cards without evaluating them — and inverting that mapping is
     exactly the drift FE-22's contract §2.3 exists to prevent.
+
+    Nothing here writes an attendee list or a history row, and that is not an omission:
+    ``rr_evaluation_attendees`` is who was in the room and ``rr_*_field_history`` is who
+    changed what, and the seed never held a meeting and never edited anything. Inventing
+    either would be the fabricated data this fixture is careful not to be.
     """
     async with AsyncSessionLocal() as db:
-        await _seed_funds(db)
+        author = await _author(db, author_email)
+        await _seed_funds(db, author)
         for card in SEED_CARDS:
-            await _seed_card(db, card)
+            await _seed_card(db, card, author)
         await db.commit()
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    email = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(AUTHOR_ENV)
+    if not email:
+        raise SystemExit(
+            f"uso: python -m scripts.seed_resource_requests <e-mail do autor>  "
+            f"(ou defina {AUTHOR_ENV})"
+        )
+    asyncio.run(seed(email))
