@@ -42,10 +42,12 @@ def _parse(raw: str) -> dict[str, list[str]]:
     out. A passage the team worked on the Guide's terms could not close, which is most of
     how the preservation rules are worked at all.
 
-    The two early returns carry the third key for a duller reason: the caller indexes this
-    dict, so a short table there would raise `KeyError` out of the one path whose whole job
-    is to leave coverage untouched.
+    It is built once and every exit answers that one. The caller indexes the result, so an
+    exit answering a shorter dict raises `KeyError` out of the one path whose whole job is
+    to leave coverage untouched — which is what three hand-written copies of the same
+    literal were waiting to do the next time the scale grew.
     """
+    verdict: dict[str, list[str]] = {"surfaced": [], "partially_engaged": [], "engaged": []}
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
@@ -54,10 +56,9 @@ def _parse(raw: str) -> dict[str, list[str]]:
         parsed: Any = json.loads(text)
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
-        return {"surfaced": [], "partially_engaged": [], "engaged": []}
+        return verdict
     if not isinstance(parsed, dict):
-        return {"surfaced": [], "partially_engaged": [], "engaged": []}
-    verdict: dict[str, list[str]] = {"surfaced": [], "partially_engaged": [], "engaged": []}
+        return verdict
     decisions = parsed.get("decisions")
     if not isinstance(decisions, list):
         logger.warning("Coverage classifier returned no decisions list: %s", raw[:300])

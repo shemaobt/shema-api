@@ -136,16 +136,18 @@ def opened_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]
     up. Read as two of four, a scene the team echoed counted as never opened, practice was
     never invited for it, and the semantic side of `session_is_done` could not be reached
     by the teams the coverage floor had just been widened to admit.
+
+    So what is asked is the boundary rather than a list of states, and the next status to
+    arrive does not have to find this line by holding a team still. The default is
+    load-bearing: callers pass `session.coverage_state or {}`, so a bead the tracker has
+    never named has to read as unopened rather than as anything-but-`not_encountered`.
     """
     opened: dict[int, bool] = {}
     for element in elements_for(pericope):
         if element.scene is None:
             continue
-        touched = coverage_state.get(element.key) in (
-            CoverageStatus.SURFACED.value,
-            CoverageStatus.PARTIALLY_ENGAGED.value,
-            CoverageStatus.ENGAGED.value,
-        )
+        standing = coverage_state.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value)
+        touched = standing != CoverageStatus.NOT_ENCOUNTERED.value
         opened[element.scene] = opened.get(element.scene, False) or touched
     return [f"S{scene}" for scene in sorted(opened) if opened[scene]]
 

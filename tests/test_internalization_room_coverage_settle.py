@@ -291,16 +291,11 @@ def test_a_decision_carrying_an_unknown_status_is_named_in_the_log(caplog) -> No
     )
 
 
-def test_every_exit_of_the_parser_carries_the_keys_the_caller_indexes() -> None:
+def test_a_reply_the_parser_cannot_read_buckets_nothing_instead_of_failing() -> None:
     unreadable = _parse("desculpa, não consegui classificar")
     not_an_object = _parse(json.dumps(["surfaced", "engaged"]))
-    no_decisions = _parse(json.dumps({"retelling": {"scope": "S1", "approved": True}}))
 
-    assert unreadable.keys() == not_an_object.keys() == no_decisions.keys(), (
-        "cada saída escreve a sua própria mesa e o chamador indexa as três chaves, "
-        "então uma saída mais curta levanta KeyError justamente no caminho que existe "
-        "para não mexer em nada"
-    )
+    assert unreadable == not_an_object == {"surfaced": [], "partially_engaged": [], "engaged": []}
 
 
 async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) -> None:
