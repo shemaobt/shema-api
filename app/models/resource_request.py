@@ -35,7 +35,13 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType, RRStage
+from app.db.models.resource_request import (
+    RRCurrency,
+    RRDecision,
+    RRRequest,
+    RRRequestType,
+    RRStage,
+)
 from app.utils.resource_request_totals import sum_budget, sum_score
 from app.utils.resource_request_typed_fields import (
     SPINE_DAY_FIELDS,
@@ -351,15 +357,16 @@ class RequestOut(BaseModel):
     document: dict[str, Any]
 
     @classmethod
-    def of(cls, request: Any, document: dict[str, Any], **extra: Any) -> Self:
+    def of(cls, request: RRRequest, document: dict[str, Any], **extra: Any) -> Self:
         """Build the envelope from a request row.
 
         Here and not in the router because ``CLAUDE.md`` §2 keeps SQLAlchemy models out of
         the api layer, and shaping a response is this layer's job anyway. ``request`` is
-        typed ``Any`` rather than ``RRRequest`` for the reason the module's own layering
-        already forces: a DTO module may not reach into the service layer, and importing the
-        table class only to annotate a parameter would put a second kind of import here for
-        no check that Pydantic performs — the fields below are what validate.
+        typed, and the first version of this was not: the argument for ``Any`` was that
+        naming ``RRRequest`` would reach somewhere new, and it does not — this module already
+        imports four enums from ``app.db.models.resource_request``. Seven attribute reads off
+        an untyped parameter is where a renamed column stops being caught, which is the whole
+        of what mypy is for here (PR #269, review).
 
         ``Self`` and not ``RequestOut``, so the two subclasses keep their own type: the
         answer to a write carries ``discarded`` and the answer to a submission carries

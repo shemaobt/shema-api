@@ -21,6 +21,7 @@ from app.db.models.resource_request import (
     RRSnapshot,
 )
 from app.utils import resource_request_vocabularies as v
+from app.utils.resource_request_typed_fields import PROMOTED_TO_SPINE
 from tests.baker import make_user
 from tests.test_resource_requests.conftest import auth_header, grant
 
@@ -377,12 +378,23 @@ async def test_submitting_does_not_move_the_card(db_session, client, rrf_app) ->
 # ——— revision —————————————————————————————————————————————————————————————————————
 
 
-async def _decide(db_session, request_id: str, decision: RRDecision | None) -> None:
-    """Write the mesa's decision straight to the table — BE-06 is what will write it for real."""
+async def _decide(
+    db_session,
+    request_id: str,
+    decision: RRDecision | None,
+    evaluated_at: datetime | None = None,
+) -> None:
+    """Write the mesa's decision straight to the table — BE-06 is what will write it for real.
+
+    ``evaluated_at`` is stamped from the session by BE-06, and it is what orders two
+    decisions on one snapshot, so a test about ordering has to set it.
+    """
     snapshot = (
         await db_session.execute(select(RRSnapshot).where(RRSnapshot.request_id == request_id))
     ).scalar_one()
-    db_session.add(RREvaluation(snapshot_id=snapshot.id, decision=decision))
+    db_session.add(
+        RREvaluation(snapshot_id=snapshot.id, decision=decision, evaluated_at=evaluated_at)
+    )
     await db_session.commit()
 
 
@@ -439,6 +451,31 @@ async def test_a_revision_is_a_new_row_linked_to_what_was_evaluated(
     assert (await client.get(f"{REQUESTS}/{revision['id']}", headers=headers)).status_code == 200
 
 
+async def test_a_second_evaluation_on_one_snapshot_does_not_break_the_route(
+    db_session, client, rrf_app
+) -> None:
+    """``uq_rr_evaluations_snapshot_evaluator`` is *per evaluator*, and NULLs never collide.
+
+    The model says it in its own words — *"a snapshot may carry any number of evaluations
+    with no principal, which is every row the seed writes"* — so demanding exactly one row
+    would answer 500 instead of a revision the moment a second exists. **The most recently
+    evaluated decision is the one that counts**, which is why the older one here is the
+    conditional: if order did not decide, this would refuse.
+
+    Found in review of PR #269.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+    earlier = datetime.now(UTC) - timedelta(hours=1)
+    await _decide(db_session, created["id"], RRDecision.CONDITIONAL, evaluated_at=earlier)
+    await _decide(db_session, created["id"], RRDecision.REVISE, evaluated_at=datetime.now(UTC))
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)
+
+    assert res.status_code == 201, res.text
+
+
 async def test_a_revision_carries_the_content_forward(db_session, client, rrf_app) -> None:
     """It copies rather than points, because from here it is the team's to change."""
     headers = await as_team(db_session, rrf_app)
@@ -486,3 +523,36 @@ async def test_the_original_keeps_its_own_rows(db_session, client, rrf_app) -> N
 
     rows = (await db_session.execute(select(RRRequest))).scalars().all()
     assert len(rows) == 2
+
+
+async def test_a_section_only_edit_still_moves_the_saved_at_the_rule_compares(
+    db_session, client, rrf_app
+) -> None:
+    """The reconciliation rule is only as good as the instant it compares against.
+
+    ``onupdate`` fires when the ``rr_requests`` row is dirty, and a draft's ordinary edit is
+    not on that row: the six promoted answers rarely move after the first save, while the
+    section document and the budget lines — other tables — change every time. So the spine's
+    own timestamp would sit still through almost every save, an older offline copy would
+    compare as newer, and it would overwrite the newer work **silently** — which is the one
+    thing this whole rule exists not to do.
+
+    Found in review of PR #269.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+    first = created["updated_at"]
+
+    only_a_section = draft()
+    free_text = next(
+        key
+        for key in only_a_section["fields"]
+        if key not in PROMOTED_TO_SPINE and key not in v.VOCABULARY_VALUES
+    )
+    only_a_section["fields"][free_text] = "resposta nova"
+    res = await client.patch(f"{REQUESTS}/{created['id']}", json=only_a_section, headers=headers)
+
+    assert res.status_code == 200, res.text
+    assert res.json()["updated_at"] > first, (
+        "a section-only edit left updated_at where it was, so the next stale copy wins"
+    )

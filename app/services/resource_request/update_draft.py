@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import NamedTuple
 
 from sqlalchemy import delete
@@ -56,6 +56,14 @@ async def update_draft(
     silently; this loses the older work loudly, and the caller has the payload it just tried
     to send, so nothing is unrecoverable on that side.
 
+    **The stamp is written here rather than left to ``onupdate``**, and the rule above is
+    the reason. ``onupdate`` fires when the ``rr_requests`` row is dirty, and an ordinary
+    edit of a draft is not on that row: the six promoted answers rarely move after the first
+    save, while the section document and the budget lines — other tables — change every time.
+    The spine's timestamp would then sit still through almost every save, an older copy would
+    compare as newer, and it would overwrite the newer work **silently**, which is the one
+    thing this rule exists not to do. Found in review of PR #269.
+
     **A ``saved_at`` with no offset is refused rather than read as UTC**, and that is the one
     place this module parts company with ``app/utils/stored_time.py``. That module normalises
     a moment the *database* wrote, where UTC is the only thing this codebase ever stores; a
@@ -103,6 +111,8 @@ async def update_draft(
     await db.execute(delete(RRBudgetLine).where(RRBudgetLine.request_id == request_id))
     for line in parts.budget:
         db.add(RRBudgetLine(request_id=request_id, **line))
+
+    loaded.request.updated_at = datetime.now(UTC)
 
     await db.commit()
 
