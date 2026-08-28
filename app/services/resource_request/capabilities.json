@@ -1,0 +1,64 @@
+{
+  "emitted_from": "6fc9fd79bbb0b1af62a44378c70ea93bf262c74c",
+  "capabilities": [
+    "edit_requests",
+    "view_evaluation",
+    "edit_evaluation",
+    "manage_funds",
+    "move_board",
+    "assign_fund",
+    "allocate_funds"
+  ],
+  "screenCapabilities": [
+    "edit_requests",
+    "view_evaluation",
+    "edit_evaluation",
+    "manage_funds",
+    "move_board"
+  ],
+  "controlCapabilities": [
+    "assign_fund",
+    "allocate_funds"
+  ],
+  "roles": [
+    {
+      "id": "equipe",
+      "name": {
+        "pt": "Equipe do projeto",
+        "en": "Project team"
+      },
+      "can": [
+        "edit_requests"
+      ]
+    },
+    {
+      "id": "mesa",
+      "name": {
+        "pt": "Mesa · Resource Circle",
+        "en": "Board · Resource Circle"
+      },
+      "can": [
+        "edit_requests",
+        "view_evaluation",
+        "edit_evaluation",
+        "manage_funds",
+        "move_board",
+        "assign_fund"
+      ]
+    },
+    {
+      "id": "gestor",
+      "name": {
+        "pt": "Gestor dos Projetos",
+        "en": "Projects Manager"
+      },
+      "can": [
+        "edit_requests",
+        "view_evaluation",
+        "manage_funds",
+        "move_board",
+        "allocate_funds"
+      ]
+    }
+  ]
+}
