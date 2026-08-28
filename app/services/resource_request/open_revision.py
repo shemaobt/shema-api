@@ -29,19 +29,14 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
     evaluated has nothing to revise. Reading ``rr_evaluations.decision`` is this rule; the
     evaluation itself is BE-06's and nothing here writes one.
 
-    **A snapshot can carry more than one evaluation**, so the newest one decides rather than
-    the query demanding there be exactly one. ``uq_rr_evaluations_snapshot_evaluator`` is
-    *one per snapshot per evaluator*, and two NULL evaluators are never equal in SQL — the
-    model says so in its own words: *"a snapshot may carry any number of evaluations with no
-    principal — which is every row the seed writes"*. Asking for one row would answer 500
-    instead of a revision the moment a second exists. Found in review of PR #269.
-
-    **Ordered by ``evaluated_at``, because that is when the mesa decided**, and GATE-02 D5
-    answered *one evaluation per mesa*, so in the product there is one stamped row to find.
-    ``created_at`` and then ``id`` follow it only to make the answer deterministic among
-    rows BE-06 never stamped — a fixture-only state, where insertion order is the closest
-    thing to a meaning available and an arbitrary-but-stable id is better than an answer
-    that changes between two reads of the same data.
+    **Asking for exactly one evaluation is safe, and it was not always.** Review of PR #269
+    caught this reading a schema where the uniqueness was *one per snapshot per evaluator* —
+    and two NULL evaluators are never equal in SQL, so a snapshot could carry any number of
+    unauthored rows and this query would answer 500 instead of a revision. BE-02 has since
+    tightened the constraint to ``uq_rr_evaluations_snapshot``, which is GATE-02 D5's
+    *one evaluation per mesa* becoming a column rule, so the second row can no longer exist.
+    The defensive ordering that stood here went with it: carrying a tie-break for a state the
+    database refuses would be describing a hazard that is gone.
 
     The new draft copies the content rather than pointing at it, because from here it is the
     team's to change and the old one must not move.
@@ -61,14 +56,7 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
 
     decision = (
         await db.execute(
-            select(RREvaluation.decision)
-            .where(RREvaluation.snapshot_id == snapshot.id)
-            .order_by(
-                RREvaluation.evaluated_at.desc().nullslast(),
-                RREvaluation.created_at.desc(),
-                RREvaluation.id.desc(),
-            )
-            .limit(1)
+            select(RREvaluation.decision).where(RREvaluation.snapshot_id == snapshot.id)
         )
     ).scalar_one_or_none()
     if decision is not RRDecision.REVISE:

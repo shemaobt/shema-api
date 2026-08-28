@@ -451,31 +451,6 @@ async def test_a_revision_is_a_new_row_linked_to_what_was_evaluated(
     assert (await client.get(f"{REQUESTS}/{revision['id']}", headers=headers)).status_code == 200
 
 
-async def test_a_second_evaluation_on_one_snapshot_does_not_break_the_route(
-    db_session, client, rrf_app
-) -> None:
-    """``uq_rr_evaluations_snapshot_evaluator`` is *per evaluator*, and NULLs never collide.
-
-    The model says it in its own words — *"a snapshot may carry any number of evaluations
-    with no principal, which is every row the seed writes"* — so demanding exactly one row
-    would answer 500 instead of a revision the moment a second exists. **The most recently
-    evaluated decision is the one that counts**, which is why the older one here is the
-    conditional: if order did not decide, this would refuse.
-
-    Found in review of PR #269.
-    """
-    headers = await as_team(db_session, rrf_app)
-    created = await create(client, headers)
-    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
-    earlier = datetime.now(UTC) - timedelta(hours=1)
-    await _decide(db_session, created["id"], RRDecision.CONDITIONAL, evaluated_at=earlier)
-    await _decide(db_session, created["id"], RRDecision.REVISE, evaluated_at=datetime.now(UTC))
-
-    res = await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)
-
-    assert res.status_code == 201, res.text
-
-
 async def test_a_revision_carries_the_content_forward(db_session, client, rrf_app) -> None:
     """It copies rather than points, because from here it is the team's to change."""
     headers = await as_team(db_session, rrf_app)
