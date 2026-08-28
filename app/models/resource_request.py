@@ -29,11 +29,13 @@ Nothing in this file lists an option.
 """
 
 from collections.abc import Iterable
+from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType
+from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType, RRStage
 from app.utils.resource_request_totals import sum_budget, sum_score
 from app.utils.resource_request_typed_fields import (
     SPINE_DAY_FIELDS,
@@ -314,6 +316,61 @@ class RequestDraftIn(BaseModel):
         if value != computed:
             raise ValueError(f"does not match the rows: they sum to {computed}")
         return value
+
+
+class DiscardedOut(BaseModel):
+    """Told to a client whose copy lost, with both timestamps so it can say why.
+
+    Never a silent merge and never a silent overwrite: the issue asks for the warning to
+    name **which side won and when each was saved**, and those three fields are that
+    sentence. A client holding this still has the payload it tried to send.
+    """
+
+    winner: str
+    client_saved_at: datetime | None
+    server_saved_at: datetime
+
+
+class RequestOut(BaseModel):
+    """A request on the wire: mutable envelope outside, frozen-able document inside.
+
+    The split is the point. ``document`` is byte for byte what a submission freezes into
+    ``rr_snapshots`` and byte for byte what ``PATCH`` accepts back, so a round trip through
+    this API cannot reshape a team's answers. Everything beside it — the id, the stage, the
+    timestamps, the link back to what a revision revises — is state that moves, and is
+    deliberately outside the thing that must not.
+    """
+
+    id: str
+    stage: RRStage
+    created_by: str | None
+    revision_of_id: str | None
+    submitted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    document: dict[str, Any]
+
+
+class RequestSavedOut(RequestOut):
+    """A write's answer. ``discarded`` is null on the ordinary save."""
+
+    discarded: DiscardedOut | None = None
+
+
+class SubmissionOut(RequestOut):
+    """What submitting answers.
+
+    ``submitted_at`` is the server's stamp and ``snapshot_id`` names the frozen document, so
+    a client can show *received, on this date* without a second call.
+
+    **There is no receipt number, and its absence is a decision.** Whether a submission
+    returns a receipt and whether it carries a number is an open GATE-03 question that
+    contract §7 marks as blocking *the submission issue* — this one. Adding a number later
+    is additive; removing one after teams have seen it, after BE-13 has quoted it in an
+    e-mail and after it has become the way people refer to a request, is not.
+    """
+
+    snapshot_id: str
 
 
 class RequestSubmissionIn(RequestDraftIn):
