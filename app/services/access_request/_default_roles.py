@@ -5,9 +5,19 @@ Approval assigns a role by key, so an app missing from this map falls through to
 at approval time instead of a grant. Every app whose roles do not include ``analyst``
 therefore needs its own entry here.
 
-``resource-request-form`` maps to ``equipe``: the frontend's own ``DEFAULT_ROLE`` in
-``capabilities.ts``, and the least-privileged of its three. Whether approval happens
-automatically at all is ``apps.auto_approve``, which is a separate decision.
+``resource-request-form`` maps to ``equipe``, the least-privileged of its three roles.
+It justified itself by the frontend's ``DEFAULT_ROLE`` in ``capabilities.ts`` until
+FE-24 (OBT-466) removed that constant: the mocked session was its last reader, and a
+*papel default* sitting beside the capability table is what the next person reaches for
+when nobody has signed in. The mapping did not move — ``equipe`` is still the floor — only
+the reason it pointed at. It now stands on this app's own capability table
+(``app/services/resource_request/capabilities.py``), where ``equipe`` holds
+``edit_requests`` and nothing else.
+
+Whether approval happens automatically at all is ``apps.auto_approve``, and for this app
+it is true since ``20260828_rr02`` — GATE-02 D1, *"quem tiver uma conta"*. The two are one
+decision read in two places: the column says an account is granted without review, and the
+map here says which role it is granted.
 """
 
 DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
