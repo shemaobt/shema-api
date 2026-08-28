@@ -166,6 +166,27 @@ async def take_for_facilitator(db: AsyncSession, user: User, take_id: str) -> IR
     return take
 
 
+async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IRTake:
+    """The take, if it is one of this session's.
+
+    What the room presents is a key shipped inside the app bundle, identical in every
+    installation — it names no team. A take resolved by its identifier alone would
+    therefore be reachable by anybody holding the app, and the route this guards answers
+    with a signed URL, so what leaks is the audio and not a row. Naming the session is
+    what keeps a shared credential from being a key to the whole archive.
+
+    The refusal carries `take_by_id`'s message, so somebody else's take and no take at
+    all read alike and the answer is no inventory of what exists.
+    """
+    result = await db.execute(
+        select(IRTake).where(IRTake.id == take_id, IRTake.session_id == session_id)
+    )
+    take = result.scalar_one_or_none()
+    if take is None:
+        raise NotFoundError(_no_such_take(take_id))
+    return take
+
+
 async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
     """A short-lived signed URL, so the bytes never pass through the API.
 
