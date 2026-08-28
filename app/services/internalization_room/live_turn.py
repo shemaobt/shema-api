@@ -128,13 +128,22 @@ def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | Non
 
 
 def opened_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
-    """Scenes the Voice has already opened — at least one element surfaced or engaged."""
+    """Scenes the Voice has already opened — at least one element off `not_encountered`.
+
+    The list was written as `surfaced` or `engaged` when those were the only two statuses
+    a tracker could hold. `partially_engaged` reaches one now, and it is the strongest
+    evidence of the three that a scene was opened: the Guide raised it and the team took it
+    up. Read as two of four, a scene the team echoed counted as never opened, practice was
+    never invited for it, and the semantic side of `session_is_done` could not be reached
+    by the teams the coverage floor had just been widened to admit.
+    """
     opened: dict[int, bool] = {}
     for element in elements_for(pericope):
         if element.scene is None:
             continue
         touched = coverage_state.get(element.key) in (
             CoverageStatus.SURFACED.value,
+            CoverageStatus.PARTIALLY_ENGAGED.value,
             CoverageStatus.ENGAGED.value,
         )
         opened[element.scene] = opened.get(element.scene, False) or touched
