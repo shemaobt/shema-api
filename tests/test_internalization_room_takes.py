@@ -218,3 +218,42 @@ async def test_an_unverified_take_is_still_recorded(db_session: AsyncSession):
         "reproduzir o mesmo problema — uma linha sem verificação é algo que "
         "alguém pode ir olhar, uma tomada perdida não"
     )
+
+
+@pytest.mark.asyncio
+async def test_two_different_stretches_of_identical_audio_become_one_take(
+    db_session: AsyncSession,
+):
+    """The trap the next person will step on, written down as a case rather than as a comment.
+
+    Deduplication is by the hash of the bytes and the session, and the key carries neither the
+    scope nor the position — so two *different* stretches that happen to hold byte-identical
+    audio collapse into the first one's row, silently, and the second one comes back wearing
+    the first one's position.
+
+    This is why a stretch cannot be a take. It is measured here rather than argued: a segment
+    is a row that points at a take, so two segments over one recording are two rows and the
+    collapse costs nothing; a design where each stretch owned a file would lose the second one
+    the moment the audio repeated.
+    """
+    store = MemoryStore()
+
+    def _stretch(chunk_index: int):
+        return service.store_take(
+            db_session,
+            session_id="sessao-1",
+            device_id=DEVICE,
+            pericope="P03",
+            kind=IRTakeKind.RETRO,
+            scope="P03",
+            audio=b"os mesmos bytes exatos",
+            chunk_index=chunk_index,
+            store=store,
+        )
+
+    first = await _stretch(1)
+    second = await _stretch(2)
+
+    assert second.id == first.id
+    assert second.chunk_index == 1, "o segundo volta com a posição do primeiro, sem avisar"
+    assert len(store.objects) == 1

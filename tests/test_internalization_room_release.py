@@ -5,10 +5,9 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
-    Chunk,
     Finding,
     FindingKind,
     SupersededAttempt,
@@ -29,6 +28,7 @@ from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     build_internalization_release,
 )
+from app.services.internalization_room.segments import capture_segment, retire_every_segment
 from app.services.internalization_room.sessions import (
     create_session,
     save_back_translation,
@@ -63,14 +63,26 @@ def _supported_comprehension(pericope: str, *, carry_one: bool = False) -> Compr
     )
 
 
-def _checked_telling_back() -> BackTranslationState:
+async def _one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):
+    return await capture_segment(
+        db,
+        session,
+        take_id="ensaio-1",
+        starts_ms=0,
+        ends_ms=61000,
+        bridge_take_id="retro-1",
+        transcript=text,
+    )
+
+
+async def _checked_telling_back(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    told = await _one_stretch(db, session)
     return BackTranslationState(
         scope=P,
-        chunks=[Chunk(index=1, text="Noemi voltou com Rute", starts_ms=0, ends_ms=61000)],
         findings=[],
         evidence_sufficient=True,
         checked=True,
-        analysed_chunks=1,
+        analysed_segment_ids=[told.id],
         played_ranges=[[0, 61000]],
         clip_duration_ms=61000,
     )
@@ -108,7 +120,7 @@ async def _ready_session(db: AsyncSession, **comprehension_kwargs):
     session = await create_session(db, pericope=P, bridge_mode="guided_microchecks")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
-    await save_back_translation(db, session, _checked_telling_back())
+    await save_back_translation(db, session, await _checked_telling_back(db, session))
     db.add(_ensaio_take(session.id))
     await db.commit()
     return session
@@ -184,7 +196,7 @@ async def test_a_carried_point_travels_with_its_canonical_material(
 @pytest.mark.asyncio
 async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession) -> None:
     session = await _ready_session(db_session)
-    state = _checked_telling_back()
+    state = await _checked_telling_back(db_session, session)
     state.played_ranges = [[0, 20000]]
     await save_back_translation(db_session, session, state)
 
@@ -197,22 +209,30 @@ async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession)
 @pytest.mark.asyncio
 async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSession) -> None:
     session = await _ready_session(db_session)
-    state = _checked_telling_back()
+    state = await _checked_telling_back(db_session, session)
     state.superseded = [
         SupersededAttempt(
-            chunks=[Chunk(index=1, text="tentativa antiga")],
             findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
             evidence_sufficient=False,
         )
     ]
     await save_back_translation(db_session, session, state)
+    await retire_every_segment(db_session, session.id)
+    abandoned = await _one_stretch(db_session, session, "tentativa antiga")
+    await retire_every_segment(db_session, session.id)
+    kept = await _one_stretch(db_session, session)
 
     artifact = await build_internalization_release(db_session, session)
 
     archived = artifact["back_translation"]["superseded_attempts"][0]
-    assert archived["chunks"][0]["text"] == "tentativa antiga"
     assert archived["findings"][0]["kind"] == "missing"
     assert archived["evidence_sufficient"] is False
+    replaced = artifact["back_translation"]["superseded_segments"]
+    assert abandoned.id in [one["segment_id"] for one in replaced]
+    assert "tentativa antiga" in [one["text"] for one in replaced], (
+        "o que a equipe contou e depois refez continua viajando, marcado como não valendo mais"
+    )
+    assert [one["segment_id"] for one in artifact["back_translation"]["segments"]] == [kept.id]
 
 
 @pytest.mark.asyncio
@@ -268,28 +288,30 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     )
 
 
-def _told_back_with_an_open_finding() -> BackTranslationState:
+async def _told_back_with_an_open_finding(
+    db: AsyncSession, session: IRSession
+) -> BackTranslationState:
     """A telling-back the team finished and chose not to resolve.
 
-    `analysed_chunks` matches the chunks because the analyst did read it — that is what
+    `analysed_segment_ids` names the stretch because the analyst did read it — that is what
     makes the finding open rather than the verdict unasked.
 
     `checked` is written as `finding is None and evidence_sufficient`, so an open finding
     makes it false — which is the whole state this slice is about.
     """
+    told = await _one_stretch(db, session)
     return BackTranslationState(
         scope=P,
-        chunks=[Chunk(index=1, text="Noemi voltou com Rute", starts_ms=0, ends_ms=61000)],
         findings=[
             Finding(
                 kind=FindingKind.MEANING_CHANGE,
                 note="a equipe disse que Noemi voltou alegre",
-                chunk=1,
+                segment_id=told.id,
             )
         ],
         evidence_sufficient=True,
         checked=False,
-        analysed_chunks=1,
+        analysed_segment_ids=[told.id],
         played_ranges=[[0, 61000]],
         clip_duration_ms=61000,
     )
@@ -305,7 +327,9 @@ async def test_a_session_carrying_an_open_finding_still_releases(
     tablet with no way out, for a team that had done every piece of the work.
     """
     session = await _ready_session(db_session)
-    await save_back_translation(db_session, session, _told_back_with_an_open_finding())
+    await save_back_translation(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -320,6 +344,7 @@ async def test_a_session_that_never_told_anything_back_is_still_refused(
     """The door that has to stay shut: nothing was told back at all."""
     session = await _ready_session(db_session)
     await save_back_translation(db_session, session, BackTranslationState(scope=P))
+    await retire_every_segment(db_session, session.id)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -348,21 +373,25 @@ async def test_the_finding_travels_in_the_package_it_unblocked(
     see it — and unlike a blocked release, that looks resolved.
     """
     session = await _ready_session(db_session)
-    await save_back_translation(db_session, session, _told_back_with_an_open_finding())
+    await save_back_translation(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
 
     artifact = await build_internalization_release(db_session, session)
 
     carried = artifact["back_translation"]["findings"]
     assert [finding["kind"] for finding in carried] == ["meaning_change"]
     assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
-    assert carried[0]["chunk"] == 1
+    assert carried[0]["segment_id"] is not None
 
 
 @pytest.mark.asyncio
 async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     """One item leaves the list; its neighbours are not loosened with it."""
     session = await _ready_session(db_session)
-    await save_back_translation(db_session, session, _told_back_with_an_open_finding())
+    await save_back_translation(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
     session.bridge_mode = "calibration_pending"
     await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
@@ -393,11 +422,9 @@ async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     await save_back_translation(
         db_session,
         session,
-        BackTranslationState(
-            scope=P,
-            chunks=[Chunk(index=1, text="Noemi voltou com Rute", starts_ms=0, ends_ms=61000)],
-        ),
+        BackTranslationState(scope=P),
     )
+    await _one_stretch(db_session, session)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)

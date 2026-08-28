@@ -23,7 +23,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError
-from app.db.models.internalization_room import IRQuestion, IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import (
+    IRQuestion,
+    IRSegment,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
 from app.services.internalization_room.back_translation import played_ranges_cover_clip
 from app.services.internalization_room.calibration import BridgeMode
 from app.services.internalization_room.canon.book_material import vendor_pin
@@ -36,6 +42,7 @@ from app.services.internalization_room.comprehension.session_readiness import (
     evaluate_session_comprehension,
 )
 from app.services.internalization_room.coverage import floor_met
+from app.services.internalization_room.segments import final_segments, retired_segments
 from app.services.internalization_room.sessions import (
     back_translation_of,
     comprehension_of,
@@ -43,7 +50,10 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.internalization_room.takes import takes_of
 
-SCHEMA_VERSION = "tripod.internalization-release.v0.1"
+#: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
+#: than counted now, so the entries carry an id and the recording they are a slice of, and the
+#: key says ``segments`` because that is what they are.
+SCHEMA_VERSION = "tripod.internalization-release.v0.2"
 
 
 class InternalizationReleaseBlocked(ConflictError):
@@ -55,6 +65,24 @@ class InternalizationReleaseBlocked(ConflictError):
 def _package_sha256(artifact: dict[str, Any]) -> str:
     canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _segment_view(segment: IRSegment) -> dict[str, Any]:
+    """One stretch, with the address a reviewer needs to go and hear it.
+
+    ``take_id`` with ``starts_ms``/``ends_ms`` is the slice **inside that file**, never a
+    position over the concatenated passage — which is the whole reason a stretch can be
+    corrected without moving the ones after it.
+    """
+    return {
+        "segment_id": segment.id,
+        "take_id": segment.take_id,
+        "starts_ms": segment.starts_ms,
+        "ends_ms": segment.ends_ms,
+        "pass_number": segment.pass_number,
+        "parent_segment_id": segment.parent_id,
+        "text": segment.transcript,
+    }
 
 
 def _take_view(take: IRTake) -> dict[str, Any]:
@@ -106,6 +134,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         ledger=comprehension.ledger,
         practiced_scene_ids=comprehension.practiced_scene_ids,
     )
+    told_back = await final_segments(db, session.id)
+    replaced = await retired_segments(db, session.id)
     takes = await takes_of(db, session.id)
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
@@ -120,7 +150,7 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         blockers.append("coverage_floor_not_met")
     if not ensaio_takes:
         blockers.append("no_rehearsal_audio")
-    if not telling_back.chunks:
+    if not told_back:
         blockers.append("no_telling_back")
     elif telling_back.never_analysed:
         blockers.append("telling_back_never_analysed")
@@ -184,13 +214,18 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
             "checked": telling_back.checked,
             "evidence_sufficient": telling_back.evidence_sufficient,
             "retells": telling_back.retells,
-            "chunks": [chunk.model_dump(mode="json") for chunk in telling_back.chunks],
+            "segments": [_segment_view(segment) for segment in told_back],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
             "played_ranges": telling_back.played_ranges,
             "clip_duration_ms": telling_back.clip_duration_ms,
             "superseded_attempts": [
                 attempt.model_dump(mode="json") for attempt in telling_back.superseded
             ],
+            #: The stretches that stopped counting, replaced or abandoned, each still naming
+            #: the recording it was a slice of. They used to be copied into the attempt above
+            #: as text; they are rows now, and dropping them here would quietly take the
+            #: team's own history out of the handoff.
+            "superseded_segments": [_segment_view(segment) for segment in replaced],
             "retro_takes": [_take_view(take) for take in retro_takes],
         },
         "raised_questions": [
