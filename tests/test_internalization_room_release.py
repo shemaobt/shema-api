@@ -217,7 +217,7 @@ async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_rele
     package that carries it must not travel.
     """
     session = await _ready_session(db_session)
-    state = _checked_telling_back()
+    state = await _checked_telling_back(db_session, session)
     state.clip_duration_ms = 37000
     await save_back_translation(db_session, session, state)
 
