@@ -545,3 +545,149 @@ async def test_the_explanation_of_a_divided_stretch_still_travels_to_refine(
     assert [one.id for one in await service.final_segments(db_session, session_id)] != [
         whole["segment_id"]
     ], "e continua fora das unidades finais, que é o que a divisão quer dizer"
+
+
+# ---------------------------------------------------------------------------
+# Raised in review
+# ---------------------------------------------------------------------------
+
+
+async def test_the_pieces_keep_the_pass_the_stretch_they_came_from_was_told_on(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Dividing a stretch told on the second pass gives pieces still on the second pass.
+
+    They were born on the default, so the handoff reported material the team had already been
+    asked about once as if it were the first telling. Replacing carries the pass; dividing has
+    to carry it too, or the two verbs describe the same stretch differently.
+    """
+    session_id = await _session(client)
+    take_id = await _rehearse(client, session_id, b"o ensaio")
+    client.said.append("contado de novo depois de um achado")  # type: ignore[attr-defined]
+    retold = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers=HEADERS,
+        data={
+            "take_id": take_id,
+            "starts_ms": "0",
+            "ends_ms": "20000",
+            "retelling": "true",
+        },
+        files={"file": ("trecho.m4a", b"de novo", "audio/mp4")},
+    )
+    assert retold.json()["pass_number"] == 2, retold.text
+    whole = (await _units(client, session_id))[0]
+
+    await _divide(client, session_id, whole["segment_id"], 8000)
+
+    assert [one["pass_number"] for one in await _units(client, session_id)] == [2, 2]
+
+
+async def test_a_stretch_that_no_longer_counts_cannot_be_replaced(
+    client: httpx.AsyncClient,
+) -> None:
+    """A tablet that retries a replacement it already sent lands on the row it superseded.
+
+    Two things measured before this case was written, both reached through this route. The
+    successor takes the same position as the one already current, so the index that keeps one
+    position to one current stretch refuses the insert and the room receives a 500 it cannot
+    read. And once a telling-back has been started over there is no current row left to collide
+    with, so the same call quietly brings a stretch back from the recording the team threw away.
+    """
+    session_id, take_id, whole = await _one_told_stretch(client)
+    client.said.append("a explicação refeita")  # type: ignore[attr-defined]
+    done = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando de novo",
+    )
+    assert done.status_code == 200, done.text
+
+    client.said.append("uma terceira vez")  # type: ignore[attr-defined]
+    again = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=take_id,
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando outra vez",
+    )
+
+    assert again.status_code == 400, again.text
+    units = await _units(client, session_id)
+    assert len(units) == 1
+    assert [one["segment_id"] for one in units] != [whole["segment_id"]]
+
+
+async def test_a_stretch_that_no_longer_counts_cannot_be_divided_through_the_route(
+    client: httpx.AsyncClient,
+) -> None:
+    """The same door, the same refusal — reached before anything is written."""
+    session_id, _, whole = await _one_told_stretch(client)
+    fresh = await _rehearse(client, session_id, b"o ensaio regravado")
+    await _replace(
+        client, session_id, whole["segment_id"], take_id=fresh, starts_ms=0, ends_ms=9000
+    )
+
+    refused = await _divide(client, session_id, whole["segment_id"], 4000)
+
+    assert refused.status_code == 400, refused.text
+    assert len(await _units(client, session_id)) == 1
+
+
+async def test_a_re_recording_that_arrives_with_an_explanation_is_refused_before_anything_is_kept(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The combination is knowable from the request, so nothing should be spent on it.
+
+    It was refused, but only after the recording had been stored and the transcriber paid —
+    and the orphan take then travelled to Refine in `retro_takes`, as a telling-back of a
+    stretch that has none. Same argument as the slice that is not a slice: a malformed request
+    is the app's own bug, and refusing it costs the team nothing.
+    """
+    from sqlalchemy import select
+
+    from app.db.models.internalization_room import IRTake
+
+    session_id, _, whole = await _one_told_stretch(client)
+    fresh = await _rehearse(client, session_id, b"o ensaio regravado")
+    before = len(
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    refused = await _replace(
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=fresh,
+        starts_ms=0,
+        ends_ms=24000,
+        audio=b"a explicacao que nao pode vir junto",
+    )
+
+    assert refused.status_code == 400, refused.text
+    after = (
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(after) == before, "nada foi guardado para um pedido que termina em recusa"

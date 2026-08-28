@@ -16,7 +16,11 @@ from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
 from app.services.internalization_room.hearing import heard
-from app.services.internalization_room.segments import divide_segment, segment_for_session
+from app.services.internalization_room.segments import (
+    divide_segment,
+    segment_for_session,
+    slice_moved,
+)
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 
 router = APIRouter()
@@ -104,6 +108,13 @@ async def replace(
     transcriber that times out must not take the recording with it. And when nothing could be
     made out, **the stretch is not replaced at all** — swapping a good explanation for an empty
     one over a transcriber hiccup would lose the team's work to somebody else's outage.
+
+    What is *not* stored first is a request that cannot succeed. A different slice arriving with
+    an explanation is refused by `capture_segment` either way, but only after the recording had
+    been kept and the transcriber paid — and the orphan take then travelled to Refine among the
+    telling-backs. It is knowable from the stretch and the form fields, so it is answered before
+    anything is spent, which is the argument the telling-back route already makes for the slice
+    that is not a slice.
     """
     session = await room.get_session(db, session_id)
     segment = await segment_for_session(db, session.id, segment_id)
@@ -120,6 +131,12 @@ async def replace(
             replaces=segment,
         )
         return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+
+    if slice_moved(segment, rehearsal.id, starts_ms, ends_ms):
+        raise ValidationError(
+            "A stretch re-recorded in the mother tongue starts with no telling-back: send the "
+            "new recording on its own, and tell it back afterwards"
+        )
 
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:

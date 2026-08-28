@@ -19,6 +19,18 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRSegment, IRSession
 
 
+def slice_moved(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> bool:
+    """Whether a new version points at different audio from the one it replaces.
+
+    The one expression of "is this the mother tongue re-recorded, or only the explanation
+    redone", used by the invariant below and by the route that has to decide it before it
+    keeps anything.
+    """
+    return (
+        segment.take_id != take_id or segment.starts_ms != starts_ms or segment.ends_ms != ends_ms
+    )
+
+
 def refuse_a_slice_that_is_not_one(starts_ms: int, ends_ms: int) -> None:
     """A stretch has to be a piece of audio somebody can hear.
 
@@ -68,6 +80,12 @@ async def capture_segment(
     explanation in hand and no reason to think twice; a refusal is what makes the forbidden
     state unreachable.
 
+    **A stretch that no longer counts cannot be replaced.** A tablet retrying a replacement it
+    already sent lands on the row it superseded: the successor would take a position another
+    current row already holds, which the index refuses with a 500 nobody in the room can read —
+    and once a telling-back has been started over there is no current row left to collide with,
+    so the same call would quietly bring a stretch back from the recording the team threw away.
+
     **A stretch that was divided cannot be replaced as a unit.** Its children would go on
     pointing at the retired row, which the walk in `final_segments` starts too high up to
     reach, and they would drop out of the reading with nothing saying so. It is refused
@@ -80,19 +98,22 @@ async def capture_segment(
     """
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
 
-    if replaces is not None and (bridge_take_id is not None or transcript is not None):
-        moved = (
-            replaces.take_id != take_id
-            or replaces.starts_ms != starts_ms
-            or replaces.ends_ms != ends_ms
+    if (
+        replaces is not None
+        and (bridge_take_id is not None or transcript is not None)
+        and slice_moved(replaces, take_id, starts_ms, ends_ms)
+    ):
+        raise ValidationError(
+            "A stretch re-recorded in the mother tongue starts with no telling-back: "
+            "the explanation of the recording it replaces does not carry over"
         )
-        if moved:
-            raise ValidationError(
-                "A stretch re-recorded in the mother tongue starts with no telling-back: "
-                "the explanation of the recording it replaces does not carry over"
-            )
 
     if replaces is not None:
+        if replaces.superseded_at is not None:
+            raise ValidationError(
+                "This stretch no longer counts: it was already replaced, or the telling-back "
+                "it belonged to was started over"
+            )
         if any(row.parent_id == replaces.id for row in await _current(db, session.id)):
             raise ValidationError(
                 "A stretch that was divided is no longer a unit: replace one of the stretches "
@@ -161,6 +182,10 @@ async def divide_segment(
     is covered by its pieces, and cutting it again would make a sibling overlapping its own
     nephews. So is one that no longer counts — dividing what does not count yields pieces
     nobody would ever see.
+
+    The pieces keep the pass the stretch they came from was told on. Born on the default, a
+    division of something the team had already been asked about once would have travelled to
+    Refine looking like a first telling.
     """
     if segment.superseded_at is not None:
         raise ValidationError("A stretch that no longer counts cannot be divided")
@@ -180,6 +205,7 @@ async def divide_segment(
         take_id=segment.take_id,
         starts_ms=segment.starts_ms,
         ends_ms=at_ms,
+        pass_number=segment.pass_number,
         parent=segment,
     )
     tail = await capture_segment(
@@ -188,6 +214,7 @@ async def divide_segment(
         take_id=segment.take_id,
         starts_ms=at_ms,
         ends_ms=segment.ends_ms,
+        pass_number=segment.pass_number,
         parent=segment,
     )
     return [head, tail]
