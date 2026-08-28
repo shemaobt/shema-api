@@ -484,8 +484,10 @@ needed: one says the emission is old, the other says the vendored copy and the m
 
 ## 6. Seam B — how a request travels (GATE-03)
 
-GATE-03 has not closed either. Three options are on the table; each is drawn shallowly here,
-and the common part is marked.
+**GATE-03 closed on 27/aug/2026 (OBT-449) and chose (b): the team submits online.** The
+three options are kept rather than deleted, because what drawing all three bought is only
+visible next to the answer — and the answer moved nothing in §4. **BE-04 (OBT-453) built the
+middle column.**
 
 | | (a) mesa-entered | (b) team submits online | (c) both |
 |---|---|---|---|
@@ -493,9 +495,9 @@ and the common part is marked.
 | Routes | `POST/PATCH /requests` under `edit_requests`, whose holders GATE-02 decides; no submit route at all | `POST/PATCH /requests` for the author, `POST /requests/{id}/submit` | both, and submit accepts either author |
 | Where the snapshot is taken | on creation — the record *is* the received document | on `submit` | on `submit`, and on creation for a mesa-entered one |
 | The attachment | a note (`attachment_note`), the file arrives by another channel | an upload endpoint, or the note | the note is the floor; the upload is additive |
-| What the team sees afterwards | nothing — it is outside the system | **Open · GATE-03** | **Open · GATE-03** |
+| What the team sees afterwards | nothing — it is outside the system | **status only** (D4) — FE-28, and the notice is BE-13 | — |
 
-### 6.1 What is common to all three — safe to build now
+### 6.1 What was common to all three — and what BE-04 made of it
 
 - A request has an author and a creation time.
 - **Submission freezes a snapshot**, and evaluation points at the snapshot rather than at a
@@ -505,15 +507,64 @@ and the common part is marked.
   the whole flow assumes they come back.
 - `attachment_note` is already one of the contract's 45 keys, so **the note field exists in
   every option**. An upload endpoint is additive to it and never replaces it: a team on a
-  field connection that cannot upload still has to be able to say what it sent.
+  field connection that cannot upload still has to be able to say what it sent. The answer
+  was *a real file* (D3) and that is **BE-14** (OBT-474), which still waits on the client for
+  formats and a size cap; BE-04 carries the note, which is the floor this paragraph promised.
 
-### 6.2 What the gate actually changes
+**What BE-04 added to the list above, and it is the one thing this seam had not predicted.**
+Submission takes **no payload**. The draft is already on the server — that is what (b)
+means — so freezing what is stored, rather than what a last request carries, is what makes
+*the mesa evaluated what the team submitted* true without the two having to agree. It is
+free because `document()` **is** the payload shape: what comes out of the read path goes
+straight into `RequestSubmissionIn`, and the same bytes go into `rr_snapshots.document`.
 
-The route surface and the attachment's shape, and nothing else. If the answer is (a),
-BE-04's DoD items about team submission become mesa-entry endpoints and the issue shrinks —
-it says so itself. Nothing in §4 moves, and the nullable author column is GATE-02's cost
-(§5.2), not this gate's. That is the whole reason for drawing the seam before the answer
-arrives.
+`scripts/seed_resource_requests.py` used to build that shape itself. It was the second
+serializer §4.2 forbids by name, and it had already drifted — five of the spine's values
+where the real one carries all of them. It calls `document()` now.
+
+**Reconciliation is *latest save wins*, and the loser is told.** A draft filled offline and
+a server row that moved since are two saves, not two halves of one document: merging them
+would invent a paragraph neither side wrote. The `PATCH` carries the client's own
+`saved_at`; when the server's row is newer the incoming copy is **discarded** and the answer
+names which side won and when each was saved. Discarding is the harsh half — the alternative
+loses the newer work silently, and this loses the older work loudly, to a caller that still
+holds the payload it tried to send.
+
+**Row scope is not a capability, and this is where that was decided.** `edit_requests`
+belongs to all three roles (GATE-02 D4), so it says *may act on requests* and says nothing
+about which ones. `app/services/resource_request/_scope.py` is the one place in the module
+that reads a role rather than a capability, and it reads it for a **scope**: a caller who is
+only `equipe` reaches what it authored, anyone else reaches all of it. Written as *only
+equipe* rather than *is mesa or gestor* so the Líder de Base of BE-16 does not silently
+inherit the team's narrow view before anyone decides what he should see. The alternative —
+a `read_all_requests` row in contract §5.3 — would put a capability the client never saw
+into a client artefact.
+
+Two consequences worth stating because they are easy to get backwards. Out of scope answers
+**404 and not 403**, since a 403 confirms the id exists and that is the one thing a team must
+not learn about another team's request. And a request that has been submitted answers **409**
+to an edit: the way back in is a revision, which is a new row pointing at the snapshot the
+mesa read.
+
+### 6.2 What the gate actually changed — and the prediction it settled
+
+The route surface and the attachment's shape, and nothing else. **That held.** Nothing in §4
+moved, no aggregate was redesigned, and the (a) branch — which would have shrunk BE-04 to
+mesa-entry endpoints — was simply not taken. The nullable author column was GATE-02's cost
+(§5.2) and its answer left it filled in practice.
+
+Two open client questions land on this issue and neither blocked it, which is the same thing
+the gate's own closing comment said: *"nenhum muda a forma do agregado"*.
+
+- **Whether submitting returns a receipt, and whether it carries a number** (contract §7,
+  marked as blocking *the submission issue* — this one). `SubmissionOut` answers with the
+  request, the server's `submitted_at` and the snapshot id, and **invents no number**.
+  Adding one later is additive; removing one after teams have seen it, after BE-13 has
+  quoted it in an e-mail and after it has become how people refer to a request, is not.
+- **Whether the Ponto focal's signature becomes an electronic acceptance.** The Líder's half
+  is answered (BE-16); this one is not. `tpp_name` and `tpp_date` are a typed name and a
+  typed date today, which is what `RequestSubmissionIn` already demands. An answer changes
+  what those two columns *mean*, not their shape.
 
 ---
 
@@ -872,8 +923,20 @@ that owns it and what it blocks.
 | Question | Gate | Blocks |
 |---|---|---|
 | **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
-| Online submission vs print/file vs both; where the attachment lives; what the team sees after submitting (§6) | **GATE-03** (OBT-449) | BE-04, INT-02 |
-| **How a team learns its decision.** PRD §10 lists it and **no issue in either wave owns it.** *Revisar e reenviar* is the case that breaks silently — BE-04's revision flow assumes the team comes back | **GATE-03** (OBT-449) | unowned |
+
+**Answered by GATE-03 on 27/aug/2026** (OBT-449), and no longer open. Two rows left the
+table above:
+
+- **How the request travels** — the team submits online (D1), the budget detail becomes a
+  real file in a private bucket with signed-URL download (D3, **BE-14** · OBT-474, still
+  waiting on the client for formats and a cap), and the team follows its own request seeing
+  **status only** (D4, FE-28 · OBT-478). §6 is built.
+- **How a team learns its decision** — it now has owners, which is the part that had none:
+  e-mail **and** in-app, fired by the Parte C save and not by a card being dragged, on all
+  four decisions (D5). The sending infrastructure is **BE-12** (OBT-473) and the notices are
+  **BE-13** (OBT-480), in that order, and the Linear relation says so rather than only the
+  prose. It matters most for *revisar e reenviar*, which is the case this module's revision
+  flow assumes the team comes back from.
 
 **Answered by GATE-02 on 27/aug/2026** (OBT-448), and no longer open. Five rows left the
 table above; each landed somewhere:
