@@ -53,6 +53,7 @@ from collections.abc import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.internalization_room import PericopePosition, PericopeStanding
+from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import floor_met
 from app.services.internalization_room.coverage_events import furthest_by_passage
@@ -73,8 +74,16 @@ def resolve(reached: Reached, *, book: str = ROOM_BOOK) -> str | None:
 
     `None` is the end of the book and is a defined state, not an absence. Every caller has a
     behaviour for it and none of them wraps around to the first passage.
+
+    A passage the room would refuse is stepped over rather than landed on. Its floor can never
+    be met — no session can open on it to write a single event — so it was answered on every
+    resolution after the one before it closed, and the team was routed for good into a passage
+    that could only reply with a refusal. Stepping over is also what keeps this and the wheel
+    describing the same book: what a team can be sent to is exactly what it can be offered.
     """
     for meaning_map in load_book(book):
+        if unwalkable(meaning_map):
+            continue
         if not floor_met(reached.get(meaning_map.pericope_num, {}), meaning_map.pericope_num):
             return meaning_map.pericope_num
     return None
