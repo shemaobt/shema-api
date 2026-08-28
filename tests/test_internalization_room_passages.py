@@ -5,8 +5,20 @@ import pytest
 
 from app.api.internalization_room import passages as route
 from app.core.config import get_settings
-from app.services.internalization_room.canon.parse_map import load_book
+from app.core.exceptions import ValidationError
+from app.core.room_enums import ElementKind
+from app.services.internalization_room.canon.book_material import require_walkable
+from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.parse_map import (
+    SURVEYED_STATUS,
+    load_book,
+    load_map,
+)
 from app.services.internalization_room.passage_lines import line_for
+
+
+async def _instantly_voiced(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
+    return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
 
 
 def test_every_ruth_passage_has_a_line_to_be_named_by() -> None:
@@ -59,6 +71,61 @@ def test_the_room_finds_its_lines_with_the_tag_it_is_actually_configured_with() 
 @pytest.mark.parametrize("tag", ["pt", "pt-BR", "PT-br"])
 def test_the_region_never_decides_whether_a_passage_can_be_named(tag: str) -> None:
     assert line_for("P01", tag)
+
+
+async def test_the_wheel_offers_no_passage_the_session_would_refuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A team choosing by ear must be able to enter every spoke it hears.
+
+    The only filter was a spoken line existing, so the wheel advertised all fourteen while
+    `require_walkable` refused eight of them the moment a finger landed. The refusal reached
+    the team as a broken room, and a spoke that cannot be entered is worse than one that was
+    never offered.
+    """
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+
+    answer = await route.passages("Ruth")
+
+    refused = []
+    for view in answer.passages:
+        try:
+            require_walkable(load_map(view.pericope))
+        except ValidationError as error:
+            refused.append(str(error))
+    assert refused == [], (
+        "a roda oferecia passagens que a própria sessão recusa, e tocar numa delas dizia "
+        f"à equipe que a sala tinha quebrado: {refused}"
+    )
+
+
+async def test_the_wheel_still_offers_every_passage_that_does_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The counterweight, and the more expensive of the two failures.
+
+    A filter that overshoots empties the wheel, and the app does not read an empty wheel as a
+    canon that is not ready — it reads it as a book with nothing left in it, halts, and tells
+    the team to fetch a person. Six passages walk today and all six have to survive.
+    """
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+
+    answer = await route.passages("Ruth")
+
+    offered = [view.pericope for view in answer.passages]
+    opens = [
+        meaning_map.pericope_num
+        for meaning_map in load_book("Ruth")
+        if any(
+            element.kind is ElementKind.PRESERVED
+            for element in elements_for(meaning_map.pericope_num)
+        )
+        and meaning_map.sta_status == SURVEYED_STATUS
+    ]
+    assert offered == opens, (
+        "a roda tem que trazer exatamente as passagens que abrem: de menos e a equipe "
+        f"ouve que o livro acabou, de mais e ela toca numa que recusa — veio {offered}"
+    )
 
 
 async def test_every_passage_arrives_with_its_necklace_already_counted(

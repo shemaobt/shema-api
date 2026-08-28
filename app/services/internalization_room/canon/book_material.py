@@ -90,6 +90,29 @@ def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     return tuple(rules)
 
 
+def unwalkable(meaning_map: MeaningMap) -> str | None:
+    """Why this passage must not be walked, or ``None`` when it may be.
+
+    The same refusal, asked rather than raised. The wheel offers the passages a team can
+    choose from and the progression names the one it lands on next, and both have to know
+    which passages open at all — a copy of these two conditions in either of them would stop
+    matching this one the day a third signal joins.
+    """
+    pericope = meaning_map.pericope_num
+    book = meaning_map.book
+    if not any(rule.pericope == pericope for rule in preservation_rules(book)):
+        return (
+            f"{pericope}: no preservation layer in the {book} canon — the passage's "
+            "withholdings were never written, so its completion floor cannot be met"
+        )
+    if meaning_map.sta_status != SURVEYED_STATUS:
+        return (
+            f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
+            f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
+        )
+    return None
+
+
 def require_walkable(meaning_map: MeaningMap) -> None:
     """Refuse a passage no team should be walked through, and name which layer is missing.
 
@@ -104,18 +127,9 @@ def require_walkable(meaning_map: MeaningMap) -> None:
     carry both — no preservation layer *and* a pending survey — but agreement is not either
     one being read, and a layer written before the survey closes would otherwise walk.
     """
-    pericope = meaning_map.pericope_num
-    book = meaning_map.book
-    if not any(rule.pericope == pericope for rule in preservation_rules(book)):
-        raise ValidationError(
-            f"{pericope}: no preservation layer in the {book} canon — the passage's "
-            "withholdings were never written, so its completion floor cannot be met"
-        )
-    if meaning_map.sta_status != SURVEYED_STATUS:
-        raise ValidationError(
-            f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
-            f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
-        )
+    reason = unwalkable(meaning_map)
+    if reason is not None:
+        raise ValidationError(reason)
 
 
 def pericope_digest(meaning_map: MeaningMap) -> str:
