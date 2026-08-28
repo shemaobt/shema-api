@@ -156,10 +156,15 @@ async def finish(
 
     The answer is the D family instead — *"I could not make anything out, can you tell me
     again?"* — which is what the situation actually is, and is already on the tablet as audio.
+
+    Only the stretches the team actually explained are read. A stretch whose mother-tongue
+    recording was replaced is waiting to be told again and carries nothing they said, so it
+    is not evidence — and the same list numbers the analyst's reading and resolves its answer,
+    so a finding cannot land on one either.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
-    told = await room.final_segments(db, session.id)
+    told = room.told_back(await room.final_segments(db, session.id))
     if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
         state.played_ranges = payload.played_ranges
         state.clip_duration_ms = payload.clip_duration_ms

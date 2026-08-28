@@ -48,6 +48,16 @@ async def capture_segment(
     Refused rather than defaulted. A default is overridden by the next caller who has an
     explanation in hand and no reason to think twice; a refusal is what makes the forbidden
     state unreachable.
+
+    **A stretch that was divided cannot be replaced as a unit.** Its children would go on
+    pointing at the retired row, which the walk in `final_segments` starts too high up to
+    reach, and they would drop out of the reading with nothing saying so. It is refused
+    rather than repaired because the parent stopped being a unit the moment it was divided:
+    what gets re-recorded is a child, one at a time.
+
+    The retired row is stamped before the successor is inserted, not after. The two share a
+    position, and the index that keeps one position to one current stretch is checked per
+    statement — inserting first would put both of them under it at once.
     """
     if replaces is not None and (bridge_take_id is not None or transcript is not None):
         moved = (
@@ -62,6 +72,11 @@ async def capture_segment(
             )
 
     if replaces is not None:
+        if any(row.parent_id == replaces.id for row in await _current(db, session.id)):
+            raise ValidationError(
+                "A stretch that was divided is no longer a unit: replace one of the stretches "
+                "it was divided into, not the stretch itself"
+            )
         parent_id = replaces.parent_id
         ordinal = replaces.ordinal
     else:
@@ -70,9 +85,6 @@ async def capture_segment(
 
     segment_id = str(uuid.uuid4())
     if replaces is not None:
-        # Retired before the successor is inserted, not after. The two rows share a position,
-        # and the index that keeps one position to one current stretch is checked per
-        # statement — inserting first would put both of them under it at once.
         replaces.superseded_at = datetime.now(UTC)
         replaces.superseded_by_id = segment_id
         await db.flush()
@@ -124,6 +136,21 @@ async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
 
     walk(None)
     return ordered
+
+
+def told_back(segments: list[IRSegment]) -> list[IRSegment]:
+    """Of those stretches, the ones the team has actually explained in the bridge language.
+
+    A stretch whose mother-tongue recording was just replaced is a real unit and the tablet
+    has to see it, but it carries nothing the team said — and nothing is not a text. It
+    reached the analyst as a literal ``None``, a line nobody uttered, which the analyst then
+    compared against the map and could raise a finding on.
+
+    Kept separate from `final_segments` because the two questions are different: which
+    stretches count, and which of them are evidence. Both the numbering the analyst is given
+    and the reading of its answer come from this one list, so they cannot drift apart.
+    """
+    return [segment for segment in segments if segment.transcript is not None]
 
 
 async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:

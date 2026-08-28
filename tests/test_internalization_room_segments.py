@@ -604,3 +604,105 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
     assert await _told_so_far(client, session_id) == [], (
         "recomeçar a retrotradução deixa a sessão sem trecho corrente nenhum"
     )
+
+
+# ---------------------------------------------------------------------------
+# Raised in review: two states the service could reach and did not handle
+# ---------------------------------------------------------------------------
+
+
+async def test_a_stretch_that_was_divided_cannot_be_replaced_as_a_unit(
+    db_session: AsyncSession, bucket: MemoryStore
+) -> None:
+    """Replacing a divided stretch left its children pointing at a retired parent.
+
+    The walk starts at the roots, so those children sat under an id nothing reached and fell
+    out of the reading with nothing saying so — the team's work, gone from what the analyst
+    sees and from what the tablet resumes.
+
+    Refused, because the parent stopped being a unit the moment it was divided: what would be
+    re-recorded is the children, one at a time. F6 and F7 can give that a verb; they cannot be
+    handed a service that drops rows in the meantime.
+    """
+    session = await _room_session(db_session)
+    take = await _rehearsal(db_session, session, b"o ensaio")
+    other = await _rehearsal(db_session, session, b"o ensaio regravado")
+
+    whole = await service.capture_segment(
+        db_session, session, take_id=take.id, starts_ms=0, ends_ms=20000, transcript="o todo"
+    )
+    head = await service.capture_segment(
+        db_session, session, take_id=take.id, starts_ms=0, ends_ms=8000, parent=whole
+    )
+
+    with pytest.raises(ValidationError):
+        await service.capture_segment(
+            db_session, session, take_id=other.id, starts_ms=0, ends_ms=21000, replaces=whole
+        )
+
+    assert [one.id for one in await service.final_segments(db_session, session.id)] == [head.id]
+
+
+async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
+    db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A re-recorded stretch has nothing told back about it yet, and nothing is not a text.
+
+    It reached the analyst as a literal ``None`` — a line the team never said, which the
+    analyst compares against the map and can raise a finding on. The stretch is real and the
+    tablet must still see it; what it has no business being is evidence.
+    """
+    import sys
+
+    session = await _room_session(db_session)
+    take = await _rehearsal(db_session, session, b"o ensaio")
+    other = await _rehearsal(db_session, session, b"o ensaio regravado")
+
+    kept = await service.capture_segment(
+        db_session,
+        session,
+        take_id=take.id,
+        starts_ms=0,
+        ends_ms=9000,
+        transcript="Noemi mandou Rute voltar.",
+    )
+    waiting = await service.capture_segment(
+        db_session, session, take_id=take.id, starts_ms=9000, ends_ms=21000, transcript="a refazer"
+    )
+    await service.capture_segment(
+        db_session, session, take_id=other.id, starts_ms=0, ends_ms=12000, replaces=waiting
+    )
+
+    current = await service.final_segments(db_session, session.id)
+    readable = service.told_back(current)
+
+    assert len(current) == 2, "o trecho à espera continua sendo uma unidade para o tablet"
+    assert [one.id for one in readable] == [kept.id]
+
+    seen: dict[str, str] = {}
+
+    async def agent(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        seen["prompt"] = system_prompt
+        return (
+            '{"evidence_sufficient": true, "findings": '
+            '[{"kind": "missing", "chunk": 2, "note": "x"}]}'
+        )
+
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
+    )
+    analysis = await analyse_telling_back(
+        segments=readable,
+        scope=PASSAGE,
+        pericope_num=PASSAGE,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert "None" not in seen["prompt"].split("## The telling-back")[-1], (
+        "o analista não pode ler um 'None' como se a equipe tivesse dito isso"
+    )
+    assert analysis is not None
+    assert analysis.findings[0].segment_id is None, (
+        "e um achado não pode cair num trecho que ainda não foi contado"
+    )

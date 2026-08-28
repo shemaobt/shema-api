@@ -23,6 +23,7 @@ from app.services.internalization_room.segments import (
     parent_of,
     retired_segments,
     segment_by_id,
+    told_back,
 )
 from app.services.internalization_room.sessions import (
     append_exchange,
@@ -78,4 +79,5 @@ __all__ = [
     "sessions_waiting_on_a_person",
     "set_bridge_mode",
     "synthesize_facilitator_speech",
+    "told_back",
 ]
