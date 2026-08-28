@@ -1,16 +1,17 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import NamedTuple
 
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError
+from app.core.exceptions import ConflictError, ValidationError
 from app.db.models.auth import User
 from app.db.models.resource_request import RRBudgetLine, RRRequestSections
 from app.models.resource_request import RequestDraftIn
 from app.services.resource_request._document import split
 from app.services.resource_request._loading import Loaded, load
 from app.services.resource_request.get_request import get_request
+from app.utils.stored_time import as_utc
 
 
 class Discarded(NamedTuple):
@@ -55,6 +56,13 @@ async def update_draft(
     silently; this loses the older work loudly, and the caller has the payload it just tried
     to send, so nothing is unrecoverable on that side.
 
+    **A ``saved_at`` with no offset is refused rather than read as UTC**, and that is the one
+    place this module parts company with ``app/utils/stored_time.py``. That module normalises
+    a moment the *database* wrote, where UTC is the only thing this codebase ever stores; a
+    moment off the **wire** carries whatever the sender's clock had, and guessing wrong here
+    does not draw a time three hours off — it decides whose work is thrown away. The stored
+    side goes through ``as_utc``; the wire side has to say what it means.
+
     **A submitted request is not a draft.** Editing after submission would move the ground
     under an evaluation that points at a frozen snapshot; the way back in is a revision.
     """
@@ -66,8 +74,14 @@ async def update_draft(
             "is evaluating; open a revision instead."
         )
 
-    server_saved_at = _aware(loaded.request.updated_at)
-    if client_saved_at is not None and _aware(client_saved_at) < server_saved_at:
+    if client_saved_at is not None and client_saved_at.tzinfo is None:
+        raise ValidationError(
+            "saved_at needs an offset: send 2026-08-28T12:00:00Z or "
+            "2026-08-28T09:00:00-03:00, not a bare local time."
+        )
+
+    server_saved_at = as_utc(loaded.request.updated_at)
+    if client_saved_at is not None and client_saved_at < server_saved_at:
         return Saved(
             loaded=loaded,
             discarded=Discarded(
@@ -95,14 +109,3 @@ async def update_draft(
     written = await load(db, request_id)
     assert written is not None
     return Saved(loaded=written, discarded=None)
-
-
-def _aware(moment: datetime) -> datetime:
-    """SQLite hands back naive datetimes where PostgreSQL hands back aware ones.
-
-    Comparing the two raises, and it would raise in the suite rather than in production —
-    which is the wrong way round for a rule about losing someone's work. Naive values are
-    read as UTC, which is what both `server_default=func.now()` and an ISO timestamp off the
-    wire mean here.
-    """
-    return moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)

@@ -258,6 +258,34 @@ async def test_a_client_that_tracks_no_timestamp_simply_writes(db_session, clien
     assert res.json()["discarded"] is None
 
 
+async def test_a_saved_at_with_no_offset_is_refused_rather_than_guessed(
+    db_session, client, rrf_app
+) -> None:
+    """The one place this module parts company with ``app/utils/stored_time.py``.
+
+    That module reads a naive moment as UTC, and is right to: it normalises what the
+    *database* wrote, and UTC is the only thing this codebase stores. A moment off the
+    **wire** carries whatever the sender's clock had — and guessing wrong on this particular
+    field does not draw a time three hours off, it decides whose work is thrown away. A
+    ``saved_at`` sent as bare Brasília time would read three hours early and could discard
+    the newer save.
+
+    Cheap to comply with: JavaScript's own ``toISOString()`` already carries the ``Z``.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+
+    res = await client.patch(
+        f"{REQUESTS}/{created['id']}",
+        json=draft(),
+        params={"saved_at": "2026-08-28T12:00:00"},
+        headers=headers,
+    )
+
+    assert res.status_code == 400, res.text
+    assert "offset" in res.json()["detail"]
+
+
 # ——— submission ——————————————————————————————————————————————————————————————————
 
 
