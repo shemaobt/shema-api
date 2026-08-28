@@ -1,5 +1,12 @@
 """Seed the resource-request module with the prototype's sample funds and board cards.
 
+**The snapshot document comes from the module's own serializer** (BE-04, OBT-453), not
+from a shape built here. It used to be built here, and that was the second serializer
+``docs/resource_requests.md`` §4.2 forbids by name — a fixture whose snapshots are shaped
+differently from production's is exactly what sends the next reader down the wrong path,
+and this one had already drifted: it carried five of the spine's values and the real one
+carries all of them.
+
 Idempotent by design, like ``seed_apps_roles.py``: every row is looked up by a
 deterministic id before it is written. That matters more here than anywhere else in this
 repository, because ``rr_fund_movements`` is append-only — a second run that appended
@@ -79,6 +86,7 @@ from app.db.models.resource_request import (
     RRSnapshot,
     RRStage,
 )
+from app.services.resource_request._document import document
 from app.utils.resource_request_vocabularies import CRITERION_KEYS
 
 #: The one fund GATE-01 answered (OBT-447, 26/aug/2026). Asked what each of the five
@@ -265,21 +273,6 @@ def _sections(card: SeedCard) -> dict[str, Any]:
     return {"fields": fields, "langs": langs, "team": [], "chrono": [], "checks": {}}
 
 
-def _snapshot_document(card: SeedCard) -> dict[str, Any]:
-    """What submission freezes: the spine as submitted, the sections, the budget lines."""
-    return {
-        "request": {
-            "request_type": card.request_type.value,
-            "reg_name": card.name,
-            "currency": "BRL",
-            "amount_requested": str(card.valor),
-            "tpp_name": card.solicitante,
-        },
-        "sections": _sections(card),
-        "budget": [],
-    }
-
-
 async def _seed_funds(db: AsyncSession) -> None:
     """Write the confirmed funds and their sample allocation.
 
@@ -319,20 +312,20 @@ async def _seed_card(db: AsyncSession, card: SeedCard) -> None:
     if request:
         return
 
-    db.add(
-        RRRequest(
-            id=request_id,
-            request_type=card.request_type,
-            reg_name=card.name,
-            stage=card.stage,
-            fund_id=card.fund,
-            amount_requested=card.valor,
-            tpp_name=card.solicitante,
-        )
+    row = RRRequest(
+        id=request_id,
+        request_type=card.request_type,
+        reg_name=card.name,
+        stage=card.stage,
+        fund_id=card.fund,
+        amount_requested=card.valor,
+        tpp_name=card.solicitante,
     )
+    db.add(row)
     await db.flush()
 
-    db.add(RRRequestSections(request_id=request_id, content=_sections(card)))
+    sections = RRRequestSections(request_id=request_id, content=_sections(card))
+    db.add(sections)
     await db.flush()
 
     if card.stage is RRStage.APROVADO:
@@ -351,7 +344,7 @@ async def _seed_card(db: AsyncSession, card: SeedCard) -> None:
         return
 
     snapshot_id = f"rr-seed-snapshot-{card.n}"
-    db.add(RRSnapshot(id=snapshot_id, request_id=request_id, document=_snapshot_document(card)))
+    db.add(RRSnapshot(id=snapshot_id, request_id=request_id, document=document(row, sections, [])))
     await db.flush()
 
     evaluation_id = str(uuid.uuid4())
