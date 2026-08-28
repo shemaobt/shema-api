@@ -24,12 +24,15 @@ conversations, which is why the resolution reads those and not the trackers.
 
 ## What this does not fix, and saying so is the point
 
-**Nothing here will move a team in production today.** `classify_coverage._parse` reads
-`engaged` and `surfaced` off the model's reply while the prompt asks for `decisions[]`, so
-well-formed replies are dropped, no merge happens and no event is written. No passage
-reaches the floor, so nothing resolves past the first one — with this module in place
-exactly as without it. Measured in ENG-441 and left to the room line, which owns that file.
-This is the mechanism; it is stationary until that is fixed.
+**This module was stationary for its first two releases, and the reason has moved twice.**
+`classify_coverage._parse` first read `engaged` and `surfaced` off the top of the model's
+reply while the prompt asks for `decisions[]`, so every well-formed reply was dropped and
+no event was ever written — nothing resolved past the first passage, with this module in
+place exactly as without it. That was ENG-569. Its replacement then bucketed the array into
+two lists while the scale had grown to three, so `partially_engaged` alone was discarded:
+the narrower failure, and the one that mattered most, because the floor had been lowered to
+accept exactly that status. That was ENG-615. Both are fixed, and both lived in that file
+rather than in this one.
 
 **A passage that never closes is a wall, and no one is told.** Classification runs on an
 LLM off the voice path and fails silently: the tracker is left untouched and the turn moves
