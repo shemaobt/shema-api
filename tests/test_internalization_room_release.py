@@ -195,6 +195,27 @@ async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession)
 
 
 @pytest.mark.asyncio
+async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_release(
+    db_session: AsyncSession,
+) -> None:
+    """The shape the partial replacement creates: a shorter clip under an older report.
+
+    The report is complete and coherent about *something* — it just cannot be about the
+    61-second stretch it is filed against, because the clip is 37 seconds long. The
+    package that carries it must not travel.
+    """
+    session = await _ready_session(db_session)
+    state = _checked_telling_back()
+    state.clip_duration_ms = 37000
+    await save_back_translation(db_session, session, state)
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
+
+
+@pytest.mark.asyncio
 async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSession) -> None:
     session = await _ready_session(db_session)
     state = _checked_telling_back()
