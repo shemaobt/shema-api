@@ -129,6 +129,13 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     Reported ranges are merged and must cover [0, duration] with at most 750 ms of slack
     at either edge or between stretches. No report at all is a legacy client and passes —
     honesty about what we know, not a new wall for old tablets.
+
+    The merged reach has to *land on* the clip's end, not merely reach it: a report that
+    runs past the end by more than the same slack cannot be a report about this clip at
+    all. That is the signature of ranges belonging to a different audio — typically the
+    previous, longer clip, left standing when a piece was replaced under it — and taking
+    them as proof would bless as heard a clip nobody played. The slack is the same on
+    both sides because it is the same rounding on both sides.
     """
     if not played_ranges or not clip_duration_ms:
         return True
@@ -140,7 +147,7 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
         if start > cursor + PLAYBACK_TOLERANCE_MS:
             return False
         cursor = max(cursor, end)
-    return cursor >= clip_duration_ms - PLAYBACK_TOLERANCE_MS
+    return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
 
 
 def segments_block(chunks: list[Chunk]) -> str:
