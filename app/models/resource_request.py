@@ -35,6 +35,12 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 
 from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType
 from app.utils.resource_request_totals import sum_budget, sum_score
+from app.utils.resource_request_typed_fields import (
+    SPINE_DAY_FIELDS,
+    SPINE_MONEY_FIELDS,
+    parse_day,
+    parse_money,
+)
 from app.utils.resource_request_vocabularies import (
     BUDGET_CATEGORY_KEYS,
     CHECK_VALUES,
@@ -224,6 +230,30 @@ class RequestDraftIn(BaseModel):
             allowed = VOCABULARY_VALUES.get(key)
             if allowed is not None and answer != "" and answer not in allowed:
                 raise ValueError(f"{key}: answer outside its vocabulary")
+        return value
+
+    @field_validator("fields")
+    @classmethod
+    def _the_three_typed_answers_parse(cls, value: dict[str, str]) -> dict[str, str]:
+        """Three of the 45 stop being text when they land, so they have to be answerable.
+
+        ``amount_requested`` is ``Numeric(14, 2)`` on the spine and the two signature dates
+        are ``Date``. The wire carries all 45 as strings, which is right — the client is
+        filling a form. But ``"mil e duzentos"`` is not a refusal the service layer should
+        be discovering: it would be a 500 from a cast, where every other refusal in this
+        module is a located 422.
+
+        It **validates and returns the strings unchanged**; the conversion happens where the
+        columns are written. Both sides call the same parser, so *parses here* and *parses
+        there* cannot come apart — and keeping ``fields`` a ``dict[str, str]`` keeps the
+        contract's own statement of what the 45 are.
+        """
+        for key in SPINE_MONEY_FIELDS:
+            if key in value:
+                _fits_the_money_column(parse_money(value[key]))
+        for key in SPINE_DAY_FIELDS:
+            if key in value:
+                parse_day(value[key])
         return value
 
     @field_validator("budget")
