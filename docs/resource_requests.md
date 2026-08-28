@@ -857,6 +857,22 @@ rather than an invisible one. And **the frontend's CI running its own suite is a
 owner to find** — §10 carries it; until it closes, the emission is re-run and re-checked by
 hand whenever a vocabulary moves.
 
+**The first consequence collected on itself, and the failure was not staleness** (28/aug/2026).
+The vendored copy named `2bac57a`, a commit that existed only on the branch the frontend's PR
+#28 was *based* on — and that base never reached `main`: its content was reapplied inside
+another pull request and landed with a different sha, leaving the branch alive, not an
+ancestor of `main`, and the provenance pointing at a commit nobody would ever be able to
+check out from the merged history. The content was correct the whole time; what was broken
+was the ability to reproduce it, which is the entire job of the field. Re-based onto `main`
+and re-emitted, it now names `067458c`, and **only the provenance moved** — the eleven lists,
+the 26 categories, the 18 criteria and the 45 keys came back byte for byte, which is the
+independent confirmation that the three gates touched no vocabulary.
+
+The general rule it leaves behind, worth more than the incident: **a provenance is only worth
+the line it will merge into.** Naming a commit is not enough — it has to be a commit that
+survives the merge, and a branch that is not an ancestor of `main` is not proof that it will
+be one.
+
 Three properties it must have, and they are why the decision is worth writing down:
 
 1. **Emitted, never hand-written.** A JSON file typed by a human is the second source again.
