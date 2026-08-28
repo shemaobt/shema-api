@@ -316,14 +316,16 @@ class IRSegment(Base):
     No foreign keys, matching ``ir_takes``, ``ir_questions`` and ``ir_coverage_events``: the
     room tables carry ids across an app boundary and have never constrained them, and one
     table with a different rule is how the next person loses an afternoon.
+
+    There are two partial unique indexes and the second is not redundant: a unique index
+    treats NULLs as distinct, so the one naming ``parent_id`` enforces nothing at all for a
+    stretch nobody divided — which is most of them. Measured on the migration's own database
+    rather than assumed.
     """
 
     __tablename__ = "ir_segments"
     __table_args__ = (
         Index("ix_ir_segments_session_current", "session_id", "superseded_at"),
-        # Two of them, and the second is not redundant: a unique index treats NULLs as
-        # distinct, so the first one enforces nothing at all for a stretch nobody divided —
-        # which is most of them. Measured on the migration's own database, not assumed.
         Index(
             "uq_ir_segments_position",
             "session_id",

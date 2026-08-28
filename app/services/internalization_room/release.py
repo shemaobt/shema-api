@@ -110,6 +110,11 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     the ledger and the telling-back stayed on the tablet with no way out, for a team that
     had done every piece of the work.
 
+    ``superseded_segments`` carries the stretches that stopped counting, replaced or
+    abandoned, each still naming the recording it was a slice of. They used to be copied into
+    ``superseded_attempts`` as text; they are rows now, and dropping them here would quietly
+    take the team's own history out of the handoff.
+
     What the package says instead of refusing: ``checked`` false, ``evidence_sufficient``
     as the analyst left it, and every open finding in ``findings``. Judging the quality of
     a telling-back is not this artifact's job — carrying it honestly is.
@@ -221,10 +226,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
             "superseded_attempts": [
                 attempt.model_dump(mode="json") for attempt in telling_back.superseded
             ],
-            #: The stretches that stopped counting, replaced or abandoned, each still naming
-            #: the recording it was a slice of. They used to be copied into the attempt above
-            #: as text; they are rows now, and dropping them here would quietly take the
-            #: team's own history out of the handoff.
             "superseded_segments": [_segment_view(segment) for segment in replaced],
             "retro_takes": [_take_view(take) for take in retro_takes],
         },
