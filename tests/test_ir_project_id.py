@@ -360,11 +360,22 @@ async def test_the_back_translation_chunk_route_carries_the_sessions_project(
         json={"pericope": "OV"},
     )
     session_id = opened.json()["session_id"]
+    rehearsal = await client.post(
+        f"{PREFIX}/sessions/{session_id}/takes",
+        headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
+        data={"kind": "ensaio", "scope": "OV"},
+        files={"file": ("t.m4a", b"ensaio", "audio/mp4")},
+    )
 
     sent = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
         headers={"X-Room-Key": KEY, "X-Room-Device": SELF_ISSUED_DEVICE},
-        data={"retelling": "false"},
+        data={
+            "retelling": "false",
+            "take_id": rehearsal.json()["take_id"],
+            "starts_ms": "0",
+            "ends_ms": "9000",
+        },
         files={"file": ("c.m4a", b"chunk", "audio/mp4")},
     )
 

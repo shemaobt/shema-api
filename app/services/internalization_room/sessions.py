@@ -33,6 +33,7 @@ from app.services.internalization_room.coverage import (
 )
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.progression import active_passage
+from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
@@ -341,24 +342,27 @@ async def begin_back_translation_again(
     """Start the telling-back over on a freshly recorded clip, archiving the old attempt.
 
     Only the re-record reaches here. Telling one stretch again does not pass through: it
-    adds a chunk beside the others, and its budget is counted where that happens.
+    adds a stretch beside the others, and its budget is counted where that happens.
 
     The replaced attempt is kept, clearly marked as superseded, rather than erased: its
-    chunks and findings are the history the Refine artifact carries, and the team's open
-    questions must survive their own retake.
+    stretches and findings are the history the Refine artifact carries, and the team's open
+    questions must survive their own retake. The stretches stay where they are and stop
+    counting — nothing takes their place, because the clip they explained was thrown away —
+    and only what was never theirs is copied in here.
     """
     state = back_translation_of(session)
+    told = await final_segments(db, session.id)
     superseded = list(state.superseded)
-    if state.chunks or state.findings:
+    if told or state.findings:
         superseded.append(
             SupersededAttempt(
-                chunks=state.chunks,
                 findings=state.findings,
                 evidence_sufficient=state.evidence_sufficient,
                 played_ranges=state.played_ranges,
                 clip_duration_ms=state.clip_duration_ms,
             )
         )
+    await retire_every_segment(db, session.id)
     # The retell count carries across. `BackTranslationState(scope=...)` takes every other
     # default, so it went back to zero — and re-recording is a room-key route the team
     # drives by voice. The budget that exists so a loop cannot be a loop was reachable by

@@ -13,12 +13,11 @@ from app.models.internalization_room import (
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
-from app.services.internalization_room.back_translation import Chunk
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import MAX_RETELLS
-from app.services.internalization_room.takes import store_take
+from app.services.internalization_room.takes import rehearsal_take_of, store_take
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
@@ -34,8 +33,9 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 async def add_chunk(
     session_id: str,
     file: UploadFile = File(...),
-    starts_ms: int | None = Form(default=None),
-    ends_ms: int | None = Form(default=None),
+    take_id: str = Form(...),
+    starts_ms: int = Form(...),
+    ends_ms: int = Form(...),
     retelling: bool = Form(default=False),
     device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
@@ -55,16 +55,20 @@ async def add_chunk(
     the budget the room asks for a person instead of buying another analyst round. The
     chunk is kept either way — their work is never the thing thrown away.
 
-    `starts_ms`/`ends_ms` say which stretch of the team's recording this piece explains — where
-    they let it play and where they stopped it. They are optional so an older app keeps working,
-    but without them the piece is only an ordinal and nothing downstream can point at the audio.
+    `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
+    slice inside **that file** — where the team let it play and where they stopped it. All
+    three are required. The times used to be optional and counted over the whole passage as if
+    it were one recording, which is what made re-recording one stretch move every stretch after
+    it; a slice with no file to be a slice of would be the same defect under another name.
     """
     session = await room.get_session(db, session_id)
+    rehearsal = await rehearsal_take_of(db, session.id, take_id)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
     state = room.back_translation_of(session)
+    told = await room.final_segments(db, session.id)
     told_again = state.retells + 1 if retelling else state.retells
     pass_number = 2 if retelling else 1
 
@@ -73,7 +77,7 @@ async def add_chunk(
     # `ValidationError`, so a read timeout or a dropped connection to the transcriber
     # raised straight past this line, and the stretch was never stored. On a weak link the
     # tablet also gives up first, and a cancelled request dies at the same place.
-    await store_take(
+    retro = await store_take(
         db,
         session_id=session.id,
         device_id=device_id,
@@ -83,7 +87,7 @@ async def add_chunk(
         scope=state.scope or session.pericope,
         audio=audio_bytes,
         pass_number=pass_number,
-        chunk_index=len(state.chunks) + 1,
+        chunk_index=len(told) + 1,
         content_type=file.content_type or "audio/mp4",
     )
 
@@ -100,19 +104,20 @@ async def add_chunk(
             await room.mark_needs_person(db, session)
         return BackTranslationChunkResponse(
             session_id=session.id,
-            chunks=len(state.chunks),
+            chunks=len(told),
             captured=False,
             pass_number=pass_number,
             needs_person=spent,
         )
-    state.chunks.append(
-        Chunk(
-            index=len(state.chunks) + 1,
-            text=text,
-            pass_number=pass_number,
-            starts_ms=starts_ms,
-            ends_ms=ends_ms,
-        )
+    await room.capture_segment(
+        db,
+        session,
+        take_id=rehearsal.id,
+        starts_ms=starts_ms,
+        ends_ms=ends_ms,
+        bridge_take_id=retro.id,
+        transcript=text,
+        pass_number=pass_number,
     )
     state.scope = state.scope or session.pericope
     state.retells = told_again
@@ -123,7 +128,7 @@ async def add_chunk(
         await room.mark_needs_person(db, session)
     return BackTranslationChunkResponse(
         session_id=session.id,
-        chunks=len(state.chunks),
+        chunks=len(told) + 1,
         captured=True,
         pass_number=pass_number,
         needs_person=spent,
@@ -154,12 +159,13 @@ async def finish(
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
+    told = await room.final_segments(db, session.id)
     if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
         state.played_ranges = payload.played_ranges
         state.clip_duration_ms = payload.clip_duration_ms
         await room.save_back_translation(db, session, state)
 
-    if not state.chunks:
+    if not told:
         # An analyst asked to compare nothing against the map answers with no findings,
         # and no findings is what `checked` is made of — so pressing `terminei` over an
         # empty back translation blessed the passage and the app struck it off the wheel
@@ -178,22 +184,22 @@ async def finish(
             findings_remaining=0,
         )
 
-    if not state.already_analysed:
+    if not state.already_analysed(told):
         read = await room.analyse_telling_back(
-            chunks=state.chunks,
+            segments=told,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
             analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
             settings=get_settings(),
         )
         if read is None:
-            # Nothing is saved: `checked` stays as it was and `analysed_chunks` does not
+            # Nothing is saved: `checked` stays as it was and `analysed_segment_ids` does not
             # advance, so pressing `terminei` again actually re-runs the analyst instead of
             # serving a verdict nobody ever reached.
             raise UpstreamServiceError("a análise do contado de volta não pôde ser feita agora")
         state.findings = read.findings
         state.evidence_sufficient = read.evidence_sufficient
-        state.analysed_chunks = len(state.chunks)
+        state.analysed_segment_ids = [segment.id for segment in told]
     finding = state.current_finding
     state.checked = finding is None and state.evidence_sufficient
 
@@ -223,7 +229,7 @@ async def finish(
         fixed_line=outcome.fixed_line,
         checked=state.checked,
         finding_kind=finding.kind if finding else None,
-        finding_chunk=finding.chunk if finding else None,
+        finding_segment_id=finding.segment_id if finding else None,
         findings_remaining=len(state.findings),
         used_fail_safe=outcome.used_fail_safe,
     )
@@ -240,14 +246,14 @@ async def restart(
 ) -> BackTranslationRestartResponse:
     """The team threw the recording away and will rehearse again: the telling-back starts over.
 
-    The chunks of the abandoned clip are cleared here. While this had no route, the app reset
-    only its own list, so the next `finish` re-analysed the old clip together with the new one
-    and the analyst never saw a smaller transcript than the round before.
+    The stretches of the abandoned clip stop counting here. While this had no route, the app
+    reset only its own list, so the next `finish` re-analysed the old clip together with the
+    new one and the analyst never saw a smaller transcript than the round before.
     """
     session = await room.get_session(db, session_id)
-    state = await room.begin_back_translation_again(db, session)
+    await room.begin_back_translation_again(db, session)
     return BackTranslationRestartResponse(
         session_id=session.id,
-        chunks=len(state.chunks),
+        chunks=len(await room.final_segments(db, session.id)),
         needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
     )

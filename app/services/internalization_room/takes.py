@@ -183,6 +183,27 @@ async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
     )
 
 
+async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> IRTake:
+    """The rehearsal recording a stretch claims to have come out of, or a refusal.
+
+    A stretch is a slice of one file, so the file has to be one this session recorded in the
+    mother tongue. Checked rather than trusted: a slice of somebody else's recording, or of a
+    telling-back, is not a stretch of this passage at all, and stored unchecked it would read
+    downstream as one.
+    """
+    result = await db.execute(
+        select(IRTake).where(
+            IRTake.id == take_id,
+            IRTake.session_id == session_id,
+            IRTake.kind == IRTakeKind.ENSAIO,
+        )
+    )
+    take = result.scalar_one_or_none()
+    if take is None:
+        raise NotFoundError(f"Internalization room rehearsal take {take_id} not found")
+    return take
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     """Every take of a session, in reading order rather than in arrival order.
 
