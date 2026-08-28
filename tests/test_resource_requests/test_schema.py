@@ -25,11 +25,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import scripts.seed_resource_requests as seed_script
 from app.db.models.resource_request import (
     RREvaluation,
+    RREvaluationAttendee,
+    RREvaluationFieldHistory,
     RREvaluationScore,
     RRFund,
     RRFundMovement,
     RRMovementKind,
     RRRequest,
+    RRRequestFieldHistory,
     RRSnapshot,
     RRStage,
     append_only_ddl,
@@ -46,6 +49,17 @@ _REVISION = (
 
 
 @pytest.fixture()
+async def author(db_session: AsyncSession):
+    """The account every row that names an author is written by.
+
+    ``created_by`` stopped being nullable when GATE-02's D1 answered accounts, so a
+    fixture that used to be three lines of data now needs a person — which is the whole
+    change stated in the smallest place it shows.
+    """
+    return await make_user(db_session, email="autor@fixture.test")
+
+
+@pytest.fixture()
 async def fund(db_session: AsyncSession) -> RRFund:
     row = RRFund(id="linguas", name="Shema Línguas")
     db_session.add(row)
@@ -54,9 +68,13 @@ async def fund(db_session: AsyncSession) -> RRFund:
 
 
 @pytest.fixture()
-async def movement(db_session: AsyncSession, fund: RRFund) -> RRFundMovement:
+async def movement(db_session: AsyncSession, fund: RRFund, author) -> RRFundMovement:
     row = RRFundMovement(
-        id="m1", fund_id=fund.id, kind=RRMovementKind.ALLOCATION, amount=Decimal("480000")
+        id="m1",
+        fund_id=fund.id,
+        kind=RRMovementKind.ALLOCATION,
+        amount=Decimal("480000"),
+        created_by=author.id,
     )
     db_session.add(row)
     await db_session.commit()
@@ -64,14 +82,22 @@ async def movement(db_session: AsyncSession, fund: RRFund) -> RRFundMovement:
 
 
 @pytest.fixture()
-async def evaluation(db_session: AsyncSession) -> RREvaluation:
+async def evaluation(db_session: AsyncSession, author) -> RREvaluation:
     """Flushed one table at a time, because request and snapshot reference each other.
 
     ``rr_requests.revision_of_id`` points at a snapshot and ``rr_snapshots.request_id``
     points back, and no ``relationship()`` tells the unit of work which way to break the
     tie — so a single flush is free to write the evaluation before its snapshot exists.
     """
-    db_session.add(RRRequest(id="r1", request_type="traducao", stage="triagem", currency="BRL"))
+    db_session.add(
+        RRRequest(
+            id="r1",
+            request_type="traducao",
+            stage="triagem",
+            currency="BRL",
+            created_by=author.id,
+        )
+    )
     await db_session.flush()
     db_session.add(RRSnapshot(id="s1", request_id="r1"))
     await db_session.flush()
@@ -194,27 +220,33 @@ async def test_deleting_the_person_who_moved_money_is_refused(
     true sentence about the wrong thing. It now fails as what it is: a row still points
     at that person.
     """
-    author = await make_user(db_session, email="quem@moveu.test")
+    mover = await make_user(db_session, email="quem@moveu.test")
     db_session.add(
         RRFundMovement(
             id="m4",
             fund_id=fund.id,
             kind=RRMovementKind.ALLOCATION,
             amount=Decimal("10"),
-            created_by=author.id,
+            created_by=mover.id,
         )
     )
     await db_session.commit()
 
-    await db_session.delete(author)
+    await db_session.delete(mover)
     with pytest.raises(IntegrityError):
         await db_session.commit()
 
 
-async def test_a_movement_against_an_unknown_fund_is_refused(db_session: AsyncSession) -> None:
+async def test_a_movement_against_an_unknown_fund_is_refused(
+    db_session: AsyncSession, author
+) -> None:
     db_session.add(
         RRFundMovement(
-            id="m3", fund_id="nao-existe", kind=RRMovementKind.ALLOCATION, amount=Decimal("1")
+            id="m3",
+            fund_id="nao-existe",
+            kind=RRMovementKind.ALLOCATION,
+            amount=Decimal("1"),
+            created_by=author.id,
         )
     )
     with pytest.raises(IntegrityError):
@@ -222,7 +254,7 @@ async def test_a_movement_against_an_unknown_fund_is_refused(db_session: AsyncSe
 
 
 @pytest.fixture()
-async def seeded(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> AsyncSession:
+async def seeded(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, author) -> AsyncSession:
     """Run the seed against the test session instead of the application's own."""
 
     @asynccontextmanager
@@ -230,8 +262,53 @@ async def seeded(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> A
         yield db_session
 
     monkeypatch.setattr(seed_script, "AsyncSessionLocal", _session)
-    await seed_script.seed()
+    await seed_script.seed(author.email)
     return db_session
+
+
+async def test_the_seed_refuses_an_author_it_cannot_find(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refusing is the honest failure, and it has to be the loud one.
+
+    The alternative a hurried fix reaches for is attaching the ten cards to whichever
+    account is first, which is sample data making a claim about a real person — and the
+    column that forces the question exists precisely because D1 said every request has
+    an author.
+    """
+
+    @asynccontextmanager
+    async def _session():
+        yield db_session
+
+    monkeypatch.setattr(seed_script, "AsyncSessionLocal", _session)
+    with pytest.raises(SystemExit):
+        await seed_script.seed("ninguem@fixture.test")
+
+
+async def test_the_seed_names_an_author_on_every_row_that_has_one(
+    seeded: AsyncSession, author
+) -> None:
+    """Ten requests and three movements, and not one of them anonymous."""
+    requests = (await seeded.execute(select(RRRequest))).scalars().all()
+    movements = (await seeded.execute(select(RRFundMovement))).scalars().all()
+
+    assert requests and movements
+    assert {request.created_by for request in requests} == {author.id}
+    assert {movement.created_by for movement in movements} == {author.id}
+
+
+async def test_the_seed_writes_no_attendee_and_no_history(seeded: AsyncSession) -> None:
+    """The two tables GATE-02 added stay empty, and that is the point.
+
+    ``rr_evaluation_attendees`` records who was in the room and the two histories record
+    who changed what. The seed held no meeting and edited nothing, so writing either
+    would be exactly the fabricated data the invented ``solicitante`` names are careful
+    not to be.
+    """
+    for model in (RREvaluationAttendee, RRRequestFieldHistory, RREvaluationFieldHistory):
+        rows = (await seeded.execute(select(model))).scalars().all()
+        assert rows == []
 
 
 async def test_the_seed_writes_the_confirmed_fund_and_the_ten_cards(seeded: AsyncSession) -> None:
@@ -317,11 +394,13 @@ async def test_the_seed_records_no_decision(seeded: AsyncSession) -> None:
     assert decisions and all(decision is None for decision in decisions)
 
 
-async def test_running_the_seed_twice_does_not_double_the_ledger(seeded: AsyncSession) -> None:
+async def test_running_the_seed_twice_does_not_double_the_ledger(
+    seeded: AsyncSession, author
+) -> None:
     """The ledger is append-only, so a second run has nothing to correct with."""
     before = (await seeded.execute(select(func.sum(RRFundMovement.amount)))).scalar()
 
-    await seed_script.seed()
+    await seed_script.seed(author.email)
 
     after = (await seeded.execute(select(func.sum(RRFundMovement.amount)))).scalar()
     assert after == before
@@ -344,7 +423,12 @@ def test_the_migration_writes_the_same_guard_the_models_do() -> None:
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
 
-    assert migration.APPEND_ONLY_TABLES == ("rr_fund_movements", "rr_snapshots")
+    assert migration.APPEND_ONLY_TABLES == (
+        "rr_fund_movements",
+        "rr_snapshots",
+        "rr_request_field_history",
+        "rr_evaluation_field_history",
+    )
 
     for table in migration.APPEND_ONLY_TABLES:
         statements = append_only_ddl(table, "postgresql")
@@ -353,6 +437,138 @@ def test_the_migration_writes_the_same_guard_the_models_do() -> None:
             f"CREATE TRIGGER {table}_append_only BEFORE UPDATE OR DELETE ON {table} "
             "FOR EACH ROW EXECUTE FUNCTION rr_reject_write()"
         )
+
+
+async def test_a_snapshot_takes_one_evaluation_and_not_two(
+    db_session: AsyncSession, evaluation: RREvaluation
+) -> None:
+    """GATE-02 D5 — *"a mesa quem decide"*, so one evaluation per snapshot.
+
+    The constraint used to be ``(snapshot_id, evaluator_id)``, which allowed a snapshot
+    any number of **unauthored** evaluations, because two NULLs are never equal in SQL.
+    That was the floor both candidate answers shared, held while the gate was open; this
+    test is the tightening, and it is written against exactly the row the old constraint
+    let through.
+    """
+    db_session.add(RREvaluation(id="e2", snapshot_id=evaluation.snapshot_id))
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+
+
+async def test_a_request_cannot_be_written_without_an_author(
+    db_session: AsyncSession,
+) -> None:
+    """D1 answered accounts, so there is no such thing as an unowned request.
+
+    The trail of D7 is written about an owner, and a document with none is what the
+    variant this column was nullable for would have produced.
+    """
+    db_session.add(
+        RRRequest(id="sem-autor", request_type="traducao", stage="triagem", currency="BRL")
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+
+
+@pytest.fixture()
+async def request_history(
+    db_session: AsyncSession, evaluation: RREvaluation, author
+) -> RRRequestFieldHistory:
+    row = RRRequestFieldHistory(
+        id="h1",
+        request_id="r1",
+        field_key="reg_name",
+        old_value="",
+        new_value="Matsés",
+        changed_by=author.id,
+    )
+    db_session.add(row)
+    await db_session.commit()
+    return row
+
+
+async def test_a_history_row_cannot_be_rewritten(
+    db_session: AsyncSession, request_history: RRRequestFieldHistory
+) -> None:
+    """A trail whose rows can be edited answers nothing, so it takes the ledger's trigger.
+
+    Written through the connection rather than the ORM: the point is that the *database*
+    refuses, not that a service remembered to.
+    """
+    with pytest.raises(DatabaseError):
+        await db_session.execute(
+            text("UPDATE rr_request_field_history SET new_value = 'outro' WHERE id = :id"),
+            {"id": request_history.id},
+        )
+
+
+async def test_a_history_row_cannot_be_deleted(
+    db_session: AsyncSession, request_history: RRRequestFieldHistory
+) -> None:
+    with pytest.raises(DatabaseError):
+        await db_session.execute(
+            text("DELETE FROM rr_request_field_history WHERE id = :id"),
+            {"id": request_history.id},
+        )
+
+
+async def test_a_score_change_records_both_sides(
+    db_session: AsyncSession, evaluation: RREvaluation, author
+) -> None:
+    """D7's own example — *quem subiu uma nota de 2 para 5* — needs both sides stored.
+
+    ``field_key`` is the criterion key the scores table already uses, so a trail row and
+    a score row name the criterion the same way and nothing translates between them.
+    """
+    db_session.add(
+        RREvaluationFieldHistory(
+            id="eh1",
+            evaluation_id=evaluation.id,
+            field_key="traducao_orcamento",
+            old_value="2",
+            new_value="5",
+            changed_by=author.id,
+        )
+    )
+    await db_session.commit()
+
+    stored = await db_session.get(RREvaluationFieldHistory, "eh1")
+    assert stored is not None
+    assert (stored.old_value, stored.new_value) == ("2", "5")
+    assert stored.changed_by == author.id
+
+
+async def test_the_room_is_a_list_and_the_signature_is_one_person(
+    db_session: AsyncSession, evaluation: RREvaluation, author
+) -> None:
+    """D5 asked for two records, and neither derives from the other.
+
+    ``evaluator_id`` is who signed on behalf of the mesa; the attendees are who was in
+    the room. A member appears in the second without being the first, which is the whole
+    reason it is a table and not a column.
+    """
+    outro = await make_user(db_session, email="presente@fixture.test")
+    db_session.add_all(
+        [
+            RREvaluationAttendee(evaluation_id=evaluation.id, user_id=author.id),
+            RREvaluationAttendee(evaluation_id=evaluation.id, user_id=outro.id),
+        ]
+    )
+    await db_session.commit()
+
+    present = (
+        (
+            await db_session.execute(
+                select(RREvaluationAttendee).where(
+                    RREvaluationAttendee.evaluation_id == evaluation.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert {row.user_id for row in present} == {author.id, outro.id}
+    assert evaluation.evaluator_id is None
 
 
 def test_a_total_is_spread_without_breaking_the_range() -> None:

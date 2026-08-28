@@ -62,7 +62,12 @@ MOVEMENT_KIND = sa.Enum(
     "allocation", "commitment", "approval_deduction", "reversal", name="rr_movement_kind_enum"
 )
 
-APPEND_ONLY_TABLES = ("rr_fund_movements", "rr_snapshots")
+APPEND_ONLY_TABLES = (
+    "rr_fund_movements",
+    "rr_snapshots",
+    "rr_request_field_history",
+    "rr_evaluation_field_history",
+)
 
 APPEND_ONLY_FUNCTION = (
     "CREATE OR REPLACE FUNCTION rr_reject_write() RETURNS trigger AS $$ "
@@ -95,12 +100,7 @@ def upgrade() -> None:
         sa.Column("tpp_date", sa.Date(), nullable=True),
         sa.Column("leader_name", sa.String(160), nullable=False, server_default=""),
         sa.Column("leader_date", sa.Date(), nullable=True),
-        sa.Column(
-            "created_by",
-            sa.String(36),
-            sa.ForeignKey("users.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
+        sa.Column("created_by", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("revision_of_id", sa.String(36), nullable=True),
         sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
@@ -174,9 +174,7 @@ def upgrade() -> None:
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.UniqueConstraint(
-            "snapshot_id", "evaluator_id", name="uq_rr_evaluations_snapshot_evaluator"
-        ),
+        sa.UniqueConstraint("snapshot_id", name="uq_rr_evaluations_snapshot"),
     )
     op.create_index("ix_rr_evaluations_snapshot_id", "rr_evaluations", ["snapshot_id"])
 
@@ -207,7 +205,7 @@ def upgrade() -> None:
             "reverses_id", sa.String(36), sa.ForeignKey("rr_fund_movements.id"), nullable=True
         ),
         sa.Column("reason", sa.Text(), nullable=False, server_default=""),
-        sa.Column("created_by", sa.String(36), sa.ForeignKey("users.id"), nullable=True),
+        sa.Column("created_by", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
         sa.Column(
             "created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
@@ -244,6 +242,71 @@ def upgrade() -> None:
         ["request_id", "created_at"],
     )
 
+    op.create_table(
+        "rr_evaluation_attendees",
+        sa.Column(
+            "evaluation_id",
+            sa.String(36),
+            sa.ForeignKey("rr_evaluations.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id"), primary_key=True),
+    )
+
+    op.create_table(
+        "rr_request_field_history",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column(
+            "request_id",
+            sa.String(36),
+            sa.ForeignKey("rr_requests.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("field_key", sa.String(128), nullable=False),
+        sa.Column("old_value", sa.Text(), nullable=True),
+        sa.Column("new_value", sa.Text(), nullable=True),
+        sa.Column("changed_by", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column(
+            "changed_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+    )
+    op.create_index(
+        "ix_rr_request_field_history_request_id", "rr_request_field_history", ["request_id"]
+    )
+    op.create_index(
+        "ix_rr_request_field_history_request_changed",
+        "rr_request_field_history",
+        ["request_id", "changed_at"],
+    )
+
+    op.create_table(
+        "rr_evaluation_field_history",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column(
+            "evaluation_id",
+            sa.String(36),
+            sa.ForeignKey("rr_evaluations.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("field_key", sa.String(128), nullable=False),
+        sa.Column("old_value", sa.Text(), nullable=True),
+        sa.Column("new_value", sa.Text(), nullable=True),
+        sa.Column("changed_by", sa.String(36), sa.ForeignKey("users.id"), nullable=False),
+        sa.Column(
+            "changed_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
+        ),
+    )
+    op.create_index(
+        "ix_rr_evaluation_field_history_evaluation_id",
+        "rr_evaluation_field_history",
+        ["evaluation_id"],
+    )
+    op.create_index(
+        "ix_rr_evaluation_field_history_evaluation_changed",
+        "rr_evaluation_field_history",
+        ["evaluation_id", "changed_at"],
+    )
+
     op.create_foreign_key(
         "fk_rr_requests_revision_of", "rr_requests", "rr_snapshots", ["revision_of_id"], ["id"]
     )
@@ -263,6 +326,9 @@ def downgrade() -> None:
 
     op.drop_constraint("fk_rr_requests_revision_of", "rr_requests", type_="foreignkey")
 
+    op.drop_table("rr_evaluation_field_history")
+    op.drop_table("rr_request_field_history")
+    op.drop_table("rr_evaluation_attendees")
     op.drop_table("rr_board_transitions")
     op.drop_table("rr_fund_movements")
     op.drop_table("rr_evaluation_scores")
