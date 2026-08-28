@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Enum, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, Enum, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -283,6 +283,90 @@ class IRTake(Base):
     crc32c: Mapped[str] = mapped_column(String(16))
     content_type: Mapped[str] = mapped_column(String(64))
     verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+
+
+class IRSegment(Base):
+    """One stretch of a rehearsal recording, as a thing with its own address.
+
+    A stretch used to be a line in the JSON list on ``ir_sessions.back_translation``, so the
+    only way to name one was its position in that list. Everything that follows from
+    correcting a single stretch — which recording explains it, which slice of that recording,
+    which version counts, what it was divided out of — had nowhere to live.
+
+    **The slice is ``(take_id, starts_ms, ends_ms)``, and the two times are relative to that
+    one file.** Never global over the concatenated passage: it is the globalness, not the use
+    of intervals, that made re-recording one stretch shift every stretch after it. Relative to
+    an immutable file they never shift, and subdividing becomes writing rows rather than
+    cutting audio — which is what lets the room do it with no connection.
+
+    ``take_id`` is the mother tongue; ``bridge_take_id`` and ``transcript`` are the team's own
+    explanation of it in Portuguese, which is the only transcript that exists. The two travel
+    together or not at all: a new version of the native audio is born with neither, because
+    correcting only the native does not exist as a product state.
+
+    A version is a new row for the same position, not an edit in place. ``superseded_at`` is
+    what stops counting; ``superseded_by_id`` is what took its place, and it is null when the
+    stretch was abandoned rather than replaced — which is what starting a telling-back over
+    does to every stretch of a session at once. Two facts, and the second one does not always
+    exist, so one column could not carry both.
+
+    No foreign keys, matching ``ir_takes``, ``ir_questions`` and ``ir_coverage_events``: the
+    room tables carry ids across an app boundary and have never constrained them, and one
+    table with a different rule is how the next person loses an afternoon.
+    """
+
+    __tablename__ = "ir_segments"
+    __table_args__ = (
+        Index("ix_ir_segments_session_current", "session_id", "superseded_at"),
+        # Two of them, and the second is not redundant: a unique index treats NULLs as
+        # distinct, so the first one enforces nothing at all for a stretch nobody divided —
+        # which is most of them. Measured on the migration's own database, not assumed.
+        Index(
+            "uq_ir_segments_position",
+            "session_id",
+            "parent_id",
+            "ordinal",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+            sqlite_where=text("superseded_at IS NULL"),
+        ),
+        Index(
+            "uq_ir_segments_root_position",
+            "session_id",
+            "ordinal",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL AND parent_id IS NULL"),
+            sqlite_where=text("superseded_at IS NULL AND parent_id IS NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    #: Which stretch this one was divided out of. Null for a stretch nobody divided.
+    parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    #: Where it sits among its own siblings, 1-based. Position among the children of one
+    #: parent, or among the session's undivided stretches — never a number over the whole
+    #: session, so dividing one stretch renumbers nothing outside it.
+    ordinal: Mapped[int] = mapped_column(Integer)
+    take_id: Mapped[str] = mapped_column(String(36), index=True)
+    starts_ms: Mapped[int] = mapped_column(Integer)
+    ends_ms: Mapped[int] = mapped_column(Integer)
+    #: 1 for the first telling of a stretch, 2 when it was told again after a finding. Carried
+    #: unchanged from the JSON it replaces because the Refine artifact labels pass-1/pass-2 and
+    #: something downstream reads it. Under versions-as-rows a retell is arguably a new version
+    #: of the telling rather than a second pass, but that is F7's argument to have, not a
+    #: contract to change in the same diff that redefines the address.
+    pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    bridge_take_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    superseded_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+    superseded_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
