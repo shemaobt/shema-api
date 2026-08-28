@@ -210,3 +210,52 @@ async def test_a_transcriber_outage_still_spends_the_retell_budget(
 
     assert last is not None
     assert last.json()["needs_person"] is True
+
+
+@pytest.mark.parametrize(
+    ("starts_ms", "ends_ms"),
+    [(9000, 3000), (5000, 5000)],
+)
+async def test_a_stretch_whose_slice_is_not_a_slice_is_refused(
+    client: httpx.AsyncClient, db_session: AsyncSession, starts_ms: int, ends_ms: int
+) -> None:
+    """An end before the beginning is not an interval, and an end on the beginning is no audio.
+
+    Both were accepted in silence and became final units — a unit with no audio can never be
+    told back, so it can never be completed, and the first round waits on every final unit.
+    The bot caught one of these in the field, with the end before the beginning, which is why
+    this is a case and not a comment.
+    """
+    session_id, take_id = await _rehearsed(client)
+
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert refused.status_code == 400, refused.text
+    kept = (
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert kept == [], "e a recusa vem antes de guardar seja o que for"
+
+
+async def test_a_stretch_with_a_real_slice_is_still_accepted(
+    client: httpx.AsyncClient,
+) -> None:
+    """The positive control: a rule that refused every slice would pass the case above."""
+    session_id, take_id = await _rehearsed(client)
+
+    accepted = await _tell_back(client, session_id, take_id)
+
+    assert accepted.status_code == 200, accepted.text

@@ -16,6 +16,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.sessions import MAX_RETELLS
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 from app.services.internalization_room.voice_handles import clip_url
@@ -63,6 +64,7 @@ async def add_chunk(
     """
     session = await room.get_session(db, session_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
+    refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
