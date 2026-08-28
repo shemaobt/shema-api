@@ -28,7 +28,12 @@ from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     build_internalization_release,
 )
-from app.services.internalization_room.segments import capture_segment, retire_every_segment
+from app.services.internalization_room.segments import (
+    capture_segment,
+    divide_segment,
+    final_segments,
+    retire_every_segment,
+)
 from app.services.internalization_room.sessions import (
     create_session,
     save_back_translation,
@@ -451,3 +456,32 @@ async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
         await build_internalization_release(db_session, session)
 
     assert "telling_back_never_analysed" in blocked.value.blockers
+
+
+@pytest.mark.asyncio
+async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
+    db_session: AsyncSession,
+) -> None:
+    """A divided stretch is current and is not a leaf, so it was in neither list the artifact
+    carried — not the final units, not the retired ones — and what the team said about the
+    whole stretch left the handoff in silence.
+
+    The same class of loss the replaced stretches are carried against. Dividing is the team
+    hearing their own recording again and finding two ideas in it, which is them working, so
+    the first telling is kept rather than the division being refused.
+    """
+    session = await _ready_session(db_session)
+    whole = (await final_segments(db_session, session.id))[0]
+    await divide_segment(db_session, session, whole, at_ms=30000)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    carried = artifact["back_translation"]["divided_segments"]
+    assert [one["segment_id"] for one in carried] == [whole.id]
+    assert carried[0]["text"] == "Noemi voltou com Rute"
+    assert whole.id not in [
+        one["segment_id"] for one in artifact["back_translation"]["segments"]
+    ], "e ele continua fora das unidades finais, que é o que dividir quer dizer"
+    assert whole.id not in [
+        one["segment_id"] for one in artifact["back_translation"]["superseded_segments"]
+    ], "nem entre os aposentados, porque nada tomou o lugar dele"
