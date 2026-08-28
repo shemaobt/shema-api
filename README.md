@@ -172,13 +172,27 @@ approval is automatic is `apps.auto_approve`, off by default, and the role an ap
 comes from `DEFAULT_ROLE_BY_APP_KEY` in `app/services/access_request/_default_roles.py`.
 
 For **`resource-request-form`** the roles are `equipe`, `mesa` and `gestor`, mirroring the
-frontend's `capabilities.ts`. The first mesa accounts are granted with the command above — who
-they are is not settled yet and belongs to GATE-02 (OBT-448).
+frontend's `capabilities.ts`. GATE-02 (OBT-448, 27/aug/2026) answered that **anyone with an
+account** reaches the form — `apps.auto_approve = true` — while Parte C and the Painel stay
+closed by capability. The first mesa and Gestor accounts are still granted with the command
+above; turning that into a process is BE-17 (OBT-477), which blocks nothing. A fourth role,
+**Líder de Base**, arrives with BE-16 (OBT-476).
 
 `scripts/seed_resource_requests.py` fills the module's own tables with the prototype's ten
 board cards and the one fund they draw from. It is idempotent and safe to re-run, which
 matters because `rr_fund_movements` is append-only and a doubled run could not be corrected
 with an UPDATE.
+
+**It takes the e-mail of an existing account**, and refuses to run without one:
+
+```bash
+uv run python -m scripts.seed_resource_requests <email>   # ou RR_SEED_AUTHOR=<email>
+```
+
+Every request and every movement it writes names that person as author, because
+`created_by` stopped being nullable when the gate answered accounts. The account is
+**looked up, never created**: inventing one would put a fabricated human in `users`, which
+is exactly what the invented `solicitante` names in the fixture exist to avoid.
 
 GATE-01 (OBT-447, 26/aug/2026) confirmed **Shema Línguas** and left the other four names of
 PRD v1.1 §3 undecided, so one fund is written and `provisional = false`. Its allocation is

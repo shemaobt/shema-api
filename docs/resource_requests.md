@@ -19,6 +19,12 @@ markers, deliberately, so the two documents read the same way.
 | **Decided** | Settled here. A later issue that departs says so in its PR and edits this section. |
 | **Provisional** | Implemented or proposed for convenience, not because anyone decided it. Named so wave 2 does not inherit it by accident. |
 | **Open · GATE-0n** | Not decided. The gate issue is where the answer comes from — do not guess, and do not freeze a schema around a guess. |
+| **Answered · GATE-0n** | The client decided it, in that gate. The record of the answer lives in the gate document; what sits here is what the answer costs this module. A section carrying it is not open and is not ours to revisit. |
+
+The fourth marker is new, and it is what the three gates closing turned this document into.
+**Open · GATE-0n** was written expecting to be deleted; deleting it would have thrown away the
+part that is worth keeping — which shape was *not* chosen, and why the alternative cost
+nothing to carry. Each one became **Answered**, with the discarded variant kept beside it.
 
 Two tie-breakers, because this document is the junior of three:
 
@@ -124,7 +130,7 @@ a migration, not a refactor."*
 |---|---|---|
 | `projects` | **Not shared. No FK.** | A `tripod-api` project is a translation project with a `language_id` FK and a location. A *solicitação* is a funding request that can precede any project, and Tipo 3 (equipment) may never produce one. A request references a project the day the product asks it to, as a nullable FK added then. |
 | `languages` | **Not shared. No FK.** | The form's A1 stores language name, ISO code, family, dialects, speaker count and literacy rate as **free text typed by the team**, next to vocabulary answers for vitality and writing system (contract §1.2). `languages` is `name` plus a unique three-character `code`. A FK would reject exactly the population this product serves — the contract's own vocabulary has *língua ágrafa* as a first-class answer. Text fields. |
-| `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. If GATE-02 answers team access with an org, it becomes a nullable FK then. |
+| `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. This row carried a condition — *if GATE-02 answers team access with an org* — and **the gate answered with individual accounts** (D1), so the condition never fires. The one shape that could still reach for it is BE-16's Líder de Base, who endorses *"que o projeto pertence à base dele"*: a base is not an `organizations` row today, and whoever builds it decides whether it becomes one. |
 | `phases`, `project_phases` | **Not applicable.** | The board's six columns are this product's own key space (contract §4.1) and are not workflow phases of a translation project. |
 | `notifications` | **Not applicable in wave 2 as scoped.** | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, which **no issue owns** — see §10. If it gets an owner, this table is the first thing to read, not a new one to build. |
 | `permissions`, `role_permissions` | **Not usable.** | They exist as tables and are **not wired into `access_control.py`** — the guards check roles only. See §5.4. |
@@ -237,14 +243,35 @@ evaluation with its own identity, its own authorship and its own read permission
 the single most expensive thing to get wrong here, because fixing it later is a migration
 plus an audit of who saw what.
 
-**Its uniqueness is the floor both gate answers share** (BE-02, 25/aug/2026). §10 listed
-"one evaluation per mesa, or one per member" as blocking the *schema* and not only the
-behaviour. It does not, and the reason is that the two answers are not two shapes: they are
-the same constraint at two tightnesses. `uq_rr_evaluations_snapshot_evaluator` is the looser
-one, and it holds under both — "one per mesa" is that constraint with the evaluator dropped,
-which is a one-line migration on a table that has no rows yet. The other order is what costs:
-loosening a constraint after the mesa has used it costs data, not a migration. So the gate
-now decides whether to tighten, and BE-06 is no longer waiting on a table.
+**Its uniqueness was the floor both gate answers share, and GATE-02 spent the line**
+(BE-02, 25/aug/2026, tightened 28/aug/2026). §10 listed "one evaluation per mesa, or one per
+member" as blocking the *schema*. It did not, because the two answers were not two shapes but
+the same constraint at two tightnesses: `uq_rr_evaluations_snapshot_evaluator` was the looser
+one and held under both, and tightening it on an empty table is one line where loosening it
+after the mesa has used it costs data. **D5 answered *"a mesa quem decide"*** (OBT-448,
+27/aug/2026), so the constraint is now `uq_rr_evaluations_snapshot` — one evaluation per
+snapshot, and the table is still empty.
+
+What the tightening takes away is worth naming, because it is the reason the looser form was
+not simply *wrong*: two NULLs are never equal in SQL, so the old constraint allowed a snapshot
+any number of **unauthored** evaluations — which is every row the seed writes. It now allows
+one, the seed writes one, and a test is written against exactly the row the old form let
+through.
+
+**And the answer arrived with two records, not one.** The client asked for *"uma tag ou
+assinatura de qual dos membros da mesa estava representando a mesa"* — that is
+`evaluator_id`, and the person signs **on behalf of** the mesa, which is what lets the
+evaluation be the mesa's and the signature be a person's. He also asked for *"registro de
+quem eram as pessoas da mesa presentes na tomada de decisão"*, which is neither that column
+nor derivable from it: it is `rr_evaluation_attendees`, cardinality N, **BE-02's shape and
+BE-06's to fill**. It has the form of **minutes, not of an audit trail** — it says who was in
+the room, so it carries no timestamp and no append-only trigger, and a room list written down
+wrong is corrected rather than compensated. Confusing it with §4.4's trail would build a
+table that answers the wrong question.
+
+A refusal it makes on purpose: `user_id` is a real FK, so a mesa member with no account
+cannot be recorded. That is the right failure rather than a gap, and BE-17 (OBT-477) — the
+half of D1 the client separated himself — is what closes it.
 
 ### 4.2 Request shape: a queried spine, and sections that are not columns — **Decided**
 
@@ -325,13 +352,52 @@ unkeyed vocabularies stayed unkeyed** — those *are* what a draft persists, so 
 costs a migration of stored drafts, and the emission carries their Portuguese label as the
 value instead. §10's item 3 stays open, and BE-05 validates what a client sends today.
 
+### 4.4 The edit trail — **Answered · GATE-02**, tables here and behaviour in BE-15
+
+D7 answered *"sim, sempre mantenha os históricos das mudanças, alterações etc."* (OBT-448,
+27/aug/2026), over **both** the solicitação and the avaliação, field by field. The feature is
+**BE-15**'s (OBT-475). **The tables are BE-02's**, and §10 is where that was written down
+before the answer existed: a history table is cheap before there is data and expensive after.
+Here that is literal — two `create_table` calls in a migration nobody has run, against a
+second migration plus the admission that everything edited in between went unrecorded. BE-15
+names this PR in its own text for the same reason.
+
+`rr_request_field_history` and `rr_evaluation_field_history` carry the same five columns:
+
+| Column | Why it is that and not something else |
+|---|---|
+| `field_key` | A string, not a column name. A request's fields live in **three** homes — six promoted columns on the spine, the 45 answers inside `rr_request_sections.content`, the 26 rows of `rr_budget_lines` — and one key space reaches all three where a design keyed on the catalogue reaches only the first. On the evaluation it is a criterion key, or `decision` / `comments`. |
+| `old_value`, `new_value` | Nullable text. **Both sides**, because D7's own example is *quem subiu uma nota de 2 para 5*; nullable because a field that had no value has no old side; text because the three homes hold strings, decimals, dates and integers, and a trail that records only some of them is not a trail. |
+| `changed_by` | `NOT NULL`, restricting on delete — the ledger's rule. A record of who changed something is worth nothing if the who can be forgotten, and D1 is what gives it a subject. |
+| `changed_at` | Server-defaulted, like every other stamp here. |
+
+**Both are append-only**, through the same trigger `rr_fund_movements` and `rr_snapshots`
+already use — one line in `APPEND_ONLY_TABLES`, not a service rule the second caller will not
+have. A history whose rows can be edited answers nothing.
+
+The trail follows the **request**, not the snapshot: the thing being audited is the editing,
+and a snapshot is by definition the version that stopped moving.
+
+**One column deliberately not added here.** D6 says recording a decision moves the card, and
+`rr_board_transitions` cannot today distinguish a move that came from a decision from a mesa
+member dragging a card — which is precisely the asymmetry D6 insists on. An
+`evaluation_id` there would tell them apart. It is **BE-08**'s (OBT-457) to add or to refuse,
+because it is the issue that writes both sides of that transaction; naming it is this
+document's job and building it is not.
+
 ---
 
 ## 5. Seam A — authentication and access (GATE-02)
 
-GATE-02 has not closed. This section designs both variants shallowly so neither answer
-forces a redesign, and marks the large part that is common to both — which is where BE-02
-and BE-04 can safely build today.
+**GATE-02 closed on 27/aug/2026** (OBT-448), and it chose **variant 1**: every actor is a
+`users` row, and `apps.auto_approve = true` — *"quem tiver uma conta"* (D1). Both variants stay
+drawn below, because the point of having pre-drawn them is exactly this moment: the answer
+costs this section a marker and no design.
+
+The gate's own reading of what still blocks BE-03 is **nothing**. What came out of it as
+separate work — granting access to the three privileged roles — is **BE-17** (OBT-477), and it
+is not a prerequisite: `scripts/grant_app_role.py` covers the interval, as the first accounts
+were always going to be born.
 
 ### 5.1 Variant 1 — shared `shema-api` principals · **Decided**, and already built
 
@@ -340,10 +406,14 @@ default (*"`shema-api`'s existing auth is the default answer; deviating needs a 
 and BE-00 built it: `_deps.py` is the entire seam, and a request's author is a
 `users.id` FK.
 
-### 5.2 Variant 2 — separate principals · **Open · GATE-02**
+### 5.2 Variant 2 — separate principals · **Answered · GATE-02**, and not the shape chosen
 
-If the client answers *leader-link* or *anonymous fill + submit*, a team is not a `users`
-row. What changes:
+**Ruled out by D1.** Kept because a variant that was ruled out is the cheapest possible
+record of why the column below is what it is — and because it is the design that would have
+to be rebuilt if the client ever reopens *leader-link*.
+
+Had the client answered *leader-link* or *anonymous fill + submit*, a team would not be a
+`users` row. What would have changed:
 
 - A table of claims — a token, what it grants, when it expires, which request it is bound
   to — and a resolver that turns one into the same object `CurrentUser` produces.
@@ -354,40 +424,65 @@ What **does not** change, and this is the point of stating the variant at all: n
 signature, no service signature, and no row in the capability table. Every route already
 takes `user: CurrentUser`; a resolver that answers the same shape is a swap inside one file.
 
-The cost that must be named rather than discovered: an anonymous author has **no stable
-identity**, so `rr_requests.created_by` becomes nullable and the audit trail of §10 loses
-its subject. That is a product consequence, not a technical one, and it belongs in the gate.
+The cost this section named rather than let anyone discover — an anonymous author has **no
+stable identity**, so `rr_requests.created_by` would be nullable and the audit trail would
+lose its subject — is **not paid**. With `auto_approve` every person who fills the form is
+authenticated, so `created_by` is a **`NOT NULL` FK** to `users.id` on both request and
+movement. **BE-02 is where that stops being a sentence and becomes a column**, and it is the
+same answer that gave D7's audit trail its subject: the document has an owner, and the trail
+is written about that owner.
 
 ### 5.3 What both variants share — safe to build now
 
 The request's author column exists either way; only what it points at moves. The evaluation
 is always authored by a mesa principal, which exists in both variants. Every capability
-check, every row-scoping rule, and the whole of §4 are untouched by the gate. **BE-02 is
-not blocked by GATE-02** for anything but the nullability of one FK.
+check, every row-scoping rule, and the whole of §4 are untouched by the gate. **BE-02 was
+not blocked by GATE-02** for anything but the nullability of one FK — and the answer settled
+that one too, in the direction that removes the nullability rather than keeping it.
 
 ### 5.4 Capabilities are not roles — the delta the platform does not cover · **Decided**
 
 `require_app_access(app_key)` and `require_role(app_key, role_key)` answer exactly one
 question each: *does this user hold any role in this app*, and *does this user hold this
-one role*. The frontend's model is five capabilities across three roles:
+one role*. The frontend's model is **seven** capabilities across three roles — five when this
+section was written, and GATE-01 and GATE-02 moved it to seven:
 
-| Capability | `equipe` | `mesa` | `gestor` |
-|---|---|---|---|
-| `edit_requests` | ✅ | ✅ | ✅ |
-| `view_evaluation` | — | ✅ | ✅ |
-| `edit_evaluation` | — | ✅ | — |
-| `manage_funds` | — | ✅ | ✅ |
-| `move_board` | — | ✅ | — |
+| Capability | `equipe` | `mesa` | `gestor` | Settled by |
+|---|---|---|---|---|
+| `edit_requests` | ✅ | ✅ | ✅ | **GATE-02 D4** — *"a mesa pode alterar também"* |
+| `view_evaluation` | — | ✅ | ✅ | already decided |
+| `edit_evaluation` | — | ✅ | — | **GATE-02 D3** — *"Gestor: … só não aprova"* |
+| `manage_funds` | — | ✅ | ✅ | already decided |
+| `move_board` | — | ✅ | **✅** | **GATE-02 D3** — the cell that moved |
+| `assign_fund` | — | ✅ | — | **GATE-01 D4** — the mesa assigns the fund at triage |
+| `allocate_funds` | — | — | ✅ | **GATE-01 D6** — the first capability the mesa does not hold |
 
-Three of the five are held by **more than one role**, and `require_role` cannot express an
+Mirror it from `src/auth/capabilities.ts` field for field; that file is the owner and this is
+the copy. Two things about it are easy to get wrong from the table alone. **`manage_funds` is
+the Painel's entry gate**, not a money permission — narrowing it to make room for
+`allocate_funds` would take the whole panel away from the mesa. And **`assign_fund` and
+`allocate_funds` are control capabilities, not screen ones**: they live inside a surface some
+other capability already opened, which is why neither adds a route of its own.
+
+**A fourth role is coming and is not here yet.** GATE-02 D2 answered that the **Líder de
+Base** enters the system — the narrowest of the four, holding one endorsement capability and
+the reading it needs, with neither `edit_requests` nor `view_evaluation`. It is a new
+`role_key` in this repository (BE-00 seeded three), a fourth column in `capabilities.ts`, the
+screen where the endorsement happens, and the rule that an unendorsed request does not
+proceed. **BE-16** (OBT-476) owns all of it, and it is the only issue that touches both
+repositories.
+
+Four of the seven are held by **more than one role**, and `require_role` cannot express an
 OR. Guarding `view_evaluation` as `MesaUser` would refuse the Gestor, whose whole point is
 that asymmetry — it sees the evaluation and the money and changes neither the evaluation nor
 the board.
 
 Two more reasons not to guard on roles directly: `permissions` and `role_permissions` exist
 as tables but **are not wired into `access_control.py`**, so there is no finer platform
-primitive to reach for; and GATE-02 may still move a cell in that table, which must cost one
-line and not a sweep through the routers.
+primitive to reach for; and GATE-02 was expected to move a cell in that table, which had to
+cost one line and not a sweep through the routers. **It moved one** — `move_board` gained the
+Gestor — and BE-16 will add a whole column. The prediction held, and it is the reason the map
+is data.
 
 **Decision.** The map is data, in `app/services/resource_request/capabilities.py`, mirroring
 the table above field for field. Beside it, a service function `holds_capability(db, user_id,
@@ -418,18 +513,38 @@ both, and BE-03's CI check compares the map against FE-22's contract so the two 
 
 ## 6. Seam B — how a request travels (GATE-03)
 
-GATE-03 has not closed either. Three options are on the table; each is drawn shallowly here,
-and the common part is marked.
+**GATE-03 closed on 27/aug/2026** (OBT-449), and it chose **(b)**: *"equipe envia pelo
+sistema"* (D1). The other two columns stay drawn for the same reason §5.2 does — a discarded
+option is the cheapest record of why the chosen one looks the way it does.
 
-| | (a) mesa-entered | (b) team submits online | (c) both |
+| | (a) mesa-entered | **(b) team submits online · chosen** | (c) both |
 |---|---|---|---|
-| Who writes the draft | a mesa principal | the team | either |
-| Routes | `POST/PATCH /requests` under `edit_requests`, whose holders GATE-02 decides; no submit route at all | `POST/PATCH /requests` for the author, `POST /requests/{id}/submit` | both, and submit accepts either author |
-| Where the snapshot is taken | on creation — the record *is* the received document | on `submit` | on `submit`, and on creation for a mesa-entered one |
-| The attachment | a note (`attachment_note`), the file arrives by another channel | an upload endpoint, or the note | the note is the floor; the upload is additive |
-| What the team sees afterwards | nothing — it is outside the system | **Open · GATE-03** | **Open · GATE-03** |
+| Who writes the draft | a mesa principal | **the team** | either |
+| Routes | `POST/PATCH /requests` under `edit_requests`; no submit route at all | **`POST/PATCH /requests` for the author, `POST /requests/{id}/submit`** | both, and submit accepts either author |
+| Where the snapshot is taken | on creation — the record *is* the received document | **on `submit`** | on `submit`, and on creation for a mesa-entered one |
+| The attachment | a note (`attachment_note`), the file arrives by another channel | **an upload endpoint** — D3, *"anexa o arquivo no sistema"* | the note is the floor; the upload is additive |
+| What the team sees afterwards | nothing — it is outside the system | **the status, through its own account** — D4, and nothing else | — |
 
-### 6.1 What is common to all three — safe to build now
+Three answers ride on the chosen column, and each is somebody's issue rather than a line here:
+
+- **The attachment becomes a file** (D3). Not the existing `POST /api/uploads/image`, which
+  accepts images only, caps at 5 MB and returns a **public URL** — pointing a team's budget at
+  a public bucket. The pattern to copy is the Sound Necklace artifacts: content-addressed key,
+  private bucket, signed URL. **BE-14** (OBT-474). Formats and the size ceiling went back to
+  the client; the bucket, the key and the signed URL did not depend on that answer.
+- **The team sees status and nothing else** (D4) — *em análise*, *aprovado*, *aprovado com
+  condições*, *revisar e reenviar*, *não aprovado*. **Notes and mesa comments: never.** The
+  capability table does not move because of this, which was the declared risk of the question:
+  the team still holds no `view_evaluation`, and BE-04 still serves the document without the
+  evaluation nested inside it.
+- **The team is told, on both channels** (D5) — e-mail to the account address *and* in-app,
+  fired on the **saving of Parte C**, never on a column transition. **BE-12** (OBT-473) builds
+  the e-mail infrastructure and **BE-13** (OBT-480) the notification, in that order and not the
+  other: the existing `request_password_reset` sends synchronously, before the commit, with
+  `raise_for_status` — copied as it stands, a provider outage would make the mesa's decision
+  fail and roll back.
+
+### 6.1 What is common to all three — and what the answer made true
 
 - A request has an author and a creation time.
 - **Submission freezes a snapshot**, and evaluation points at the snapshot rather than at a
@@ -439,15 +554,28 @@ and the common part is marked.
   the whole flow assumes they come back.
 - `attachment_note` is already one of the contract's 45 keys, so **the note field exists in
   every option**. An upload endpoint is additive to it and never replaces it: a team on a
-  field connection that cannot upload still has to be able to say what it sent.
+  field connection that cannot upload still has to be able to say what it sent. Whether the
+  note survives beside the file is BE-14's call, and it is not a tidy-up: `attachment_note`
+  is one of the 45, so removing it **moves the contract's checksum**.
 
-### 6.2 What the gate actually changes
+**What the answer made true, and it is the least obvious consequence of (b):** the immutable
+snapshot now freezes **what the team wrote, at the instant the team sent it**. Under (a) it
+would have frozen a transcription, and every revision chain would have been anchored to one.
 
-The route surface and the attachment's shape, and nothing else. If the answer is (a),
-BE-04's DoD items about team submission become mesa-entry endpoints and the issue shrinks —
-it says so itself. Nothing in §4 moves, and the nullable author column is GATE-02's cost
-(§5.2), not this gate's. That is the whole reason for drawing the seam before the answer
-arrives.
+### 6.2 What the gate actually changed
+
+The route surface and the attachment's shape, and nothing else — **and the gate says so in
+its own words**: *"nenhuma resposta força redesenho de backend"*. Nothing in §4 moved. BE-04
+keeps its full shape rather than shrinking, `POST /requests/{id}/submit` exists, and the
+author column is **`NOT NULL`** by GATE-02's answer (§5.2) rather than nullable by this
+gate's. That is the whole reason for drawing the seam before the answer arrived: the answer
+cost this section a column heading.
+
+One thing it made false in the product, and it is worth naming here because it is the only
+one of its kind: the item-10 sentence — *"envie junto ao salvar/imprimir"* — is
+**client-approved copy that the client's own answer invalidated**. Rewriting it is bilingual
+and needs the client's approval again. It is a frontend issue, not this module's, and it is
+not polish.
 
 ---
 
@@ -798,13 +926,49 @@ that owns it and what it blocks.
 | Question | Gate | Blocks |
 |---|---|---|
 | **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
-| How teams get access — accounts, leader-link, or anonymous + submit (§5.2). Decides whether `created_by` is a FK or nullable | **GATE-02** (OBT-448) | BE-03, BE-04 |
-| Whether the Gestor authors evaluations; whether `move_board` is the mesa's alone; whether the mesa may edit a team's request | **GATE-02** (OBT-448) | BE-03 — one cell each in §5.4's map |
-| One evaluation per mesa, or one per member | **GATE-02** (OBT-448) | BE-06. **Not the schema, and §4.1 says why**: the two answers are the same uniqueness at two tightnesses, `uq_rr_evaluations_snapshot_evaluator` is the one that holds under both, and tightening is a one-line migration on an empty table |
-| Whether recording a decision moves the card, or only suggests the column | **GATE-02** (OBT-448) | BE-06, BE-08 |
-| Audit trail for edits to the solicitação and the avaliação — who changed which field, who raised a score from 2 to 5, when. BE-07 covers money and BE-08 covers board moves; **nothing covers edits** | **GATE-02** (OBT-448) | BE-02 — history tables are cheap to add before there is data and expensive after |
-| Online submission vs print/file vs both; where the attachment lives; what the team sees after submitting (§6) | **GATE-03** (OBT-449) | BE-04, INT-02 |
-| **How a team learns its decision.** PRD §10 lists it and **no issue in either wave owns it.** *Revisar e reenviar* is the case that breaks silently — BE-04's revision flow assumes the team comes back | **GATE-03** (OBT-449) | unowned |
+
+**Answered by GATE-02 and GATE-03 on 27/aug/2026** (OBT-448, OBT-449), and no longer open.
+Recorded rather than deleted, because each one landed somewhere in this module — and because
+in four of the seven the answer arrived with **more** than the question offered:
+
+- **How teams get access** — **accounts, and everyone gets one**: `apps.auto_approve = true`,
+  *"quem tiver uma conta"* (D1). Variants 2 and 3 fall, and with them the nullable author
+  column: `rr_requests.created_by` and `rr_fund_movements.created_by` are **`NOT NULL` FKs**.
+  **BE-02** carries that, and **BE-17** (OBT-477) carries the half the client separated
+  himself — how mesa, Gestor and Líder de Base *get* their accounts, which blocks nothing.
+- **What the Gestor does, and who may edit the team's text** — *"o Gestor pode alterar … só
+  não aprova"* (D3) and *"a mesa pode alterar também"* (D4). One cell moved: `move_board`
+  gained the Gestor. `edit_evaluation` stays denied to him — the restrictive default was
+  **confirmed, not overruled** — and `edit_requests` stays true for all three, which means
+  the capability guard on `/a` and `/b` that §5.4 reserved is work the answer **dispensed**.
+- **One evaluation per request** (D5), not one per member. And the answer did not stop at the
+  option: the client added *"uma tag ou assinatura de qual dos membros da mesa estava
+  representando a mesa"* and *"registro de quem eram as pessoas da mesa presentes"*. The first
+  is the `evaluator`, signing **on behalf of** the mesa. **The second is new data of
+  cardinality N** — a minutes-of-the-meeting list, not an audit trail, and confusing the two
+  would build a table that answers the wrong question. **BE-02 gives it a shape; BE-06 fills
+  it.**
+- **Recording a decision moves the card** (D6), automatically. §2.3's decision↔column mapping
+  stops being a correspondence table and becomes an execution path, and **when the decision is
+  `approved` the same write appends to the ledger** — so BE-06 and BE-08 stop being
+  independent and the write order starts to matter. The implication runs **one way only**: a
+  decision implies a column, a column never implies a decision. The mesa may still drag a card
+  it never evaluated, and a dragged card notifies nobody.
+- **Audit trail for edits: yes, always** (D7), over both the solicitação and the avaliação,
+  field by field. The third of the trail that had no owner has one: **BE-15** (OBT-475) — and
+  **the two tables it writes into are already here**, because this document's own line said
+  they are cheap before there is data and expensive after. §4.4 is where they are. Two things
+  travel with them. Their subject exists only because of D1 — a document with an owner is what
+  a trail is written about. And the generic `updated_by`/`updated_at` shape the answer asks
+  for **must not be retro-applied to `rr_funds`**, which has no allocated column and must not
+  gain one: the ledger of §7 is already the money's trail, append-only by design.
+- **The request travels online** (GATE-03 D1), the attachment becomes a **file** in a private
+  bucket (D3 — **BE-14**, OBT-474), and the team sees **its status and nothing else** (D4).
+  §6 carries all three.
+- **The team is told** (GATE-03 D5/D6), by e-mail *and* in-app, on the four decisions, fired
+  on the saving of Parte C. The row above said **unowned**; it now reads **BE-12** (OBT-473)
+  for the e-mail infrastructure and **BE-13** (OBT-480) for the notification, in that order —
+  the ordering is the requirement, not a preference (§6).
 
 **Answered by GATE-01 on 26/aug/2026** (OBT-447), and no longer open. Recorded rather than
 deleted, because each one landed somewhere in this module:
