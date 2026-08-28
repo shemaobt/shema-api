@@ -23,11 +23,16 @@ async def holds_capability(db: AsyncSession, user_id: str, app_key: str, capabil
     permission decision and not as the mistake it is.
 
     Two platform behaviours this deliberately does not paper over, both from the module
-    design §5.5. A **platform admin never reaches here** — ``require_app_access`` returns
-    early on ``is_platform_admin``, so the capability chain behind it never runs and no
-    negative test may use an admin account. And ``list_roles`` is read through
-    ``access_control``'s cache elsewhere but **not here**: this reads the database on every
-    call, so a grant made mid-request is visible immediately rather than after
+    design §5.5. A **platform admin never reaches here** — but not because the guard above
+    stops them: ``require_app_access`` returns early on ``is_platform_admin`` to *admit*
+    them, so the chain does run. What keeps an admin out of this function is the explicit
+    ``if user.is_platform_admin: return user`` inside ``require_capability`` itself, and
+    that line is load-bearing rather than redundant (PR #266, review). The consequence is
+    the same either way: no negative test may use an admin account.
+
+    And ``list_roles`` is read through ``access_control``'s cache elsewhere but **not
+    here**: this reads the database on every call, so a grant made mid-request is visible
+    immediately rather than after
     ``AUTH_CACHE_TTL_SECONDS``.
     """
     if capability not in CAPABILITY_ROLES:
