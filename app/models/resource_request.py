@@ -31,7 +31,7 @@ Nothing in this file lists an option.
 from collections.abc import Iterable
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
@@ -349,6 +349,34 @@ class RequestOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     document: dict[str, Any]
+
+    @classmethod
+    def of(cls, request: Any, document: dict[str, Any], **extra: Any) -> Self:
+        """Build the envelope from a request row.
+
+        Here and not in the router because ``CLAUDE.md`` §2 keeps SQLAlchemy models out of
+        the api layer, and shaping a response is this layer's job anyway. ``request`` is
+        typed ``Any`` rather than ``RRRequest`` for the reason the module's own layering
+        already forces: a DTO module may not reach into the service layer, and importing the
+        table class only to annotate a parameter would put a second kind of import here for
+        no check that Pydantic performs — the fields below are what validate.
+
+        ``Self`` and not ``RequestOut``, so the two subclasses keep their own type: the
+        answer to a write carries ``discarded`` and the answer to a submission carries
+        ``snapshot_id``, and a base-typed constructor would hand both back as the parent and
+        let a route promise a field it never returns.
+        """
+        return cls(
+            id=request.id,
+            stage=request.stage,
+            created_by=request.created_by,
+            revision_of_id=request.revision_of_id,
+            submitted_at=request.submitted_at,
+            created_at=request.created_at,
+            updated_at=request.updated_at,
+            document=document,
+            **extra,
+        )
 
 
 class RequestSavedOut(RequestOut):

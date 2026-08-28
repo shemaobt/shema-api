@@ -4,6 +4,9 @@ Thin by the house rule and thin in fact — every handler parses, calls one serv
 the answer. ``NotFoundError``, ``ConflictError`` and ``ValidationError`` all have global
 handlers, so nothing here maps a status code by hand.
 
+No SQLAlchemy model is named here either — ``CLAUDE.md`` §2 keeps them out of the api layer,
+and ``RequestOut.of`` is where a row becomes an envelope.
+
 **The guard is ``CanEditRequests`` on all of them, and the scope is not here.** All three
 roles hold that capability (GATE-02 D4: the mesa may edit what the team wrote), so it
 answers *may act on requests* and says nothing about which ones. Which rows a caller reaches
@@ -13,12 +16,11 @@ and a listing that filtered in two places would eventually filter differently in
 """
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
 from app.api.resource_requests._deps import APP_KEY, CanEditRequests, Db
-from app.db.models.resource_request import RRRequest
 from app.models.resource_request import (
     DiscardedOut,
     RequestDraftIn,
@@ -33,21 +35,8 @@ from app.services.resource_request._loading import Loaded
 router = APIRouter(tags=["resource requests"])
 
 
-def _envelope(request: RRRequest) -> dict[str, Any]:
-    """The mutable half, which every answer here carries and no snapshot does."""
-    return {
-        "id": request.id,
-        "stage": request.stage,
-        "created_by": request.created_by,
-        "revision_of_id": request.revision_of_id,
-        "submitted_at": request.submitted_at,
-        "created_at": request.created_at,
-        "updated_at": request.updated_at,
-    }
-
-
 def _out(loaded: Loaded) -> RequestOut:
-    return RequestOut(**_envelope(loaded.request), document=document(*loaded))
+    return RequestOut.of(loaded.request, document(*loaded))
 
 
 @router.post("/requests", status_code=status.HTTP_201_CREATED)
@@ -61,7 +50,7 @@ async def create_request(draft: RequestDraftIn, user: CanEditRequests, db: Db) -
 async def list_requests(user: CanEditRequests, db: Db) -> list[RequestOut]:
     """The spine only — the documents are not read by a listing and are not sent to one."""
     rows = await service.list_requests(db, user, APP_KEY)
-    return [RequestOut(**_envelope(row), document={}) for row in rows]
+    return [RequestOut.of(row, {}) for row in rows]
 
 
 @router.get("/requests/{request_id}")
@@ -87,21 +76,15 @@ async def update_request(
     """
     saved = await service.update_draft(db, request_id, draft, user, APP_KEY, saved_at)
     discarded = None if saved.discarded is None else DiscardedOut(**saved.discarded._asdict())
-    return RequestSavedOut(
-        **_envelope(saved.loaded.request),
-        document=document(*saved.loaded),
-        discarded=discarded,
-    )
+    return RequestSavedOut.of(saved.loaded.request, document(*saved.loaded), discarded=discarded)
 
 
 @router.post("/requests/{request_id}/submit")
 async def submit_request(request_id: str, user: CanEditRequests, db: Db) -> SubmissionOut:
     """No body: the draft is already here, and the snapshot freezes what was saved."""
     submitted = await service.submit_request(db, request_id, user, APP_KEY)
-    return SubmissionOut(
-        **_envelope(submitted.request),
-        document=submitted.snapshot.document,
-        snapshot_id=submitted.snapshot.id,
+    return SubmissionOut.of(
+        submitted.request, submitted.snapshot.document, snapshot_id=submitted.snapshot.id
     )
 
 
