@@ -48,6 +48,11 @@ explained yet, and the analyst may not read a subset, because its prompt defines
 *an element that appears in no stretch*. Reading half the work would raise findings about a hole
 the team is on their way to filling.
 
+**None of these names a number.** The gate fires whenever any final stretch is waiting, and
+nothing stops a team from re-recording two stretches before pressing `terminei` — measured: two
+can wait at once. These are fixed audio and can never carry a count, so a line that says "one
+stretch" would simply be false as often as not.
+
 The D family is the one to avoid here, and it is the tempting one because it sits eight lines
 away in the same endpoint. It says *"I could not hear you properly — could you say it again?"*,
 which is false (the room heard everything) and points at the wrong action (repeating what was
@@ -55,12 +60,12 @@ already told, rather than telling what was not).
 
 ### H.
 
-- "There's still one part for you to tell me. Let's finish that one first, and then I'll check it all together."
-- "There's a piece you haven't told me yet. Tell me that one, and then I'll look at the whole passage."
-- "One stretch is missing. Once you tell me, I'll check it all at once."
+- "There's still part of the passage for you to tell me. Let's finish that first, and then I'll check it all together."
+- "There's still some you haven't told me. Tell me that, and then I'll look at the whole passage."
+- "There's still a bit left to tell. When you're done, I'll check it all at once."
 
 ### H-pt. (Português brasileiro)
 
-- "Ainda falta uma parte para vocês me contarem. Vamos terminar essa primeiro, e depois eu confiro tudo junto."
-- "Tem um pedaço que vocês ainda não me contaram. Me contem esse, e aí eu olho a passagem inteira."
-- "Falta um trecho. Quando vocês me contarem, eu confiro tudo de uma vez."
+- "Ainda falta parte da passagem para vocês me contarem. Vamos terminar isso primeiro, e depois eu confiro tudo junto."
+- "Ainda tem pedaço que vocês não me contaram. Me contem, e aí eu olho a passagem inteira."
+- "Ainda falta contar um pouco. Quando vocês terminarem, eu confiro tudo de uma vez."
