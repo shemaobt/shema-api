@@ -329,9 +329,13 @@ value instead. §10's item 3 stays open, and BE-05 validates what a client sends
 
 ## 5. Seam A — authentication and access (GATE-02)
 
-GATE-02 has not closed. This section designs both variants shallowly so neither answer
-forces a redesign, and marks the large part that is common to both — which is where BE-02
-and BE-04 can safely build today.
+**GATE-02 closed on 27/aug/2026 (OBT-448) and chose variant 1**, which was already built.
+The section is kept rather than rewritten: the two variants were drawn so that no answer
+would force a redesign, and what that bought is only visible next to the answer. Variant 2
+below is now the record of work not needed, not a plan.
+
+**BE-03 (OBT-452) implemented what §5.4 designed** and the parts that moved say so in
+place.
 
 ### 5.1 Variant 1 — shared `shema-api` principals · **Decided**, and already built
 
@@ -340,10 +344,14 @@ default (*"`shema-api`'s existing auth is the default answer; deviating needs a 
 and BE-00 built it: `_deps.py` is the entire seam, and a request's author is a
 `users.id` FK.
 
-### 5.2 Variant 2 — separate principals · **Open · GATE-02**
+### 5.2 Variant 2 — separate principals · **Not taken** (GATE-02 D1)
 
-If the client answers *leader-link* or *anonymous fill + submit*, a team is not a `users`
-row. What changes:
+The client answered *"quem tiver uma conta"*: a team is a `users` row like everyone else,
+`apps.auto_approve` is true for this app (`20260828_rr02`) and whoever registers is granted
+`equipe`. So `rr_requests.created_by` is a non-nullable FK and the audit trail of §10 keeps
+its subject — which is what made GATE-02 D7's answer possible at all.
+
+What the other answer would have cost, kept because it is the argument for drawing both:
 
 - A table of claims — a token, what it grants, when it expires, which request it is bound
   to — and a resolver that turns one into the same object `CurrentUser` produces.
@@ -354,22 +362,24 @@ What **does not** change, and this is the point of stating the variant at all: n
 signature, no service signature, and no row in the capability table. Every route already
 takes `user: CurrentUser`; a resolver that answers the same shape is a swap inside one file.
 
-The cost that must be named rather than discovered: an anonymous author has **no stable
-identity**, so `rr_requests.created_by` becomes nullable and the audit trail of §10 loses
-its subject. That is a product consequence, not a technical one, and it belongs in the gate.
+The cost that had to be named rather than discovered: an anonymous author has **no stable
+identity**, so `rr_requests.created_by` would become nullable and the audit trail of §10
+would lose its subject. That was a product consequence, not a technical one, and it is why
+the question belonged in the gate rather than here.
 
 ### 5.3 What both variants share — safe to build now
 
 The request's author column exists either way; only what it points at moves. The evaluation
 is always authored by a mesa principal, which exists in both variants. Every capability
-check, every row-scoping rule, and the whole of §4 are untouched by the gate. **BE-02 is
-not blocked by GATE-02** for anything but the nullability of one FK.
+check, every row-scoping rule, and the whole of §4 are untouched by the gate. **BE-02 was
+not blocked by GATE-02** for anything but the nullability of one FK, and the answer left it
+non-nullable.
 
-### 5.4 Capabilities are not roles — the delta the platform does not cover · **Decided**
+### 5.4 Capabilities are not roles — the delta the platform does not cover · **Built** (BE-03)
 
 `require_app_access(app_key)` and `require_role(app_key, role_key)` answer exactly one
 question each: *does this user hold any role in this app*, and *does this user hold this
-one role*. The frontend's model is five capabilities across three roles:
+one role*. The frontend's model is **seven** capabilities across three roles:
 
 | Capability | `equipe` | `mesa` | `gestor` |
 |---|---|---|---|
@@ -377,29 +387,78 @@ one role*. The frontend's model is five capabilities across three roles:
 | `view_evaluation` | — | ✅ | ✅ |
 | `edit_evaluation` | — | ✅ | — |
 | `manage_funds` | — | ✅ | ✅ |
-| `move_board` | — | ✅ | — |
+| `move_board` | — | ✅ | ✅ |
+| `assign_fund` | — | ✅ | — |
+| `allocate_funds` | — | — | ✅ |
 
-Three of the five are held by **more than one role**, and `require_role` cannot express an
+**This table grew twice after it was first drawn here, and both moves were the client's.**
+GATE-01 (OBT-447, 26/aug/2026) added the last two rows — `assign_fund` to the mesa (D4) and
+`allocate_funds` to the Gestor (D6), which is the first capability the mesa does not hold.
+GATE-02 D3 (OBT-448, 27/aug/2026) gave `move_board` to the Gestor: the reading drawn here
+was that moving a card is deciding on a request rather than managing a resource, and the
+client said *"tem acesso a quase tudo em relação aos projetos, só não aprova"*.
+`edit_evaluation` stayed denied to him in the same answer — the restrictive default was
+**confirmed by the client, not merely left standing**, which is a different thing to
+inherit.
+
+⚠️ `manage_funds` is neither of the two fund capabilities: it is the Painel's entry gate,
+held by mesa and Gestor alike. Narrowing it to the Gestor on the theory that it is the money
+capability would remove the Painel from the mesa entirely.
+
+**The fourth role is not in this table on purpose.** FE-22's contract §5.3 carries a `líder`
+column and an `endorse_request` row and `capabilities.ts` exports neither — the contract is
+ahead of its own cited source. The Líder de Base, his capability, his read-without-edit view
+of Parte A/B and the undecided `?` cell of the mesa are **BE-16** (OBT-476). What is mirrored
+here is the source, not the prose about it.
+
+Three of the seven are held by **more than one role**, and `require_role` cannot express an
 OR. Guarding `view_evaluation` as `MesaUser` would refuse the Gestor, whose whole point is
 that asymmetry — it sees the evaluation and the money and changes neither the evaluation nor
 the board.
 
 Two more reasons not to guard on roles directly: `permissions` and `role_permissions` exist
 as tables but **are not wired into `access_control.py`**, so there is no finer platform
-primitive to reach for; and GATE-02 may still move a cell in that table, which must cost one
-line and not a sweep through the routers.
+primitive to reach for; and a client answer may still move a cell in that table, which must
+cost one line and not a sweep through the routers. GATE-02 moved one and GATE-01 added two,
+and the design held: three array elements and no router touched.
 
-**Decision.** The map is data, in `app/services/resource_request/capabilities.py`, mirroring
-the table above field for field. Beside it, a service function `holds_capability(db, user_id,
-capability)` reads the user's roles through `authorization_service` and answers against the
-map; `_deps.py` gains only the `require_capability(capability)` factory that wraps it in
-`Depends`. That split is the house rule applied literally — the query lives in a service and
-the api layer does dependency wiring — and it is the same shape `app/core/access_control.py`
-already has with `authorization_service`.
+**Decision, and what BE-03 built.** The map is data, in
+`app/services/resource_request/capabilities.py`, mirroring the table above field for field.
+Beside it, `holds_capability(db, user_id, app_key, capability)` reads the user's roles
+through `authorization_service` and answers against the map; `_deps.py` gained the
+`require_capability(capability)` factory that wraps it in `Depends`, plus one `Annotated`
+alias per capability so a later route annotates rather than assembles. That split is the
+house rule applied literally — the query lives in a service and the api layer does
+dependency wiring — and it is the same shape `app/core/access_control.py` already has.
+
+`app_key` is a **parameter** of the service rather than a constant beside it, so the literal
+stays named once in `_deps.py`, which is where all eight applications in this repository
+keep theirs and where `test_the_app_key_is_named_once_in_the_module` looks.
+
+**One table is written and the other is derived.** `ROLE_CAPABILITIES` is the frontend's own
+shape and the only thing typed by hand; `CAPABILITY_ROLES` is its inversion, which is the
+direction a guard asks in. Two hand-written tables would be two statements of one fact, and
+the day they disagreed every test would still be green.
 
 **Module-local, not `app/core/`** — `access_control.py` is shared surface for eight
-applications and this is one application's model until a second one needs it. BE-03 builds
-both, and BE-03's CI check compares the map against FE-22's contract so the two cannot drift.
+applications and this is one application's model until a second one needs it.
+
+**How the two stacks are held together** is §9's mechanism, applied to a second artefact:
+the frontend emits `docs/capabilities.json` from `src/auth/capabilities.ts` through the same
+`ssrLoadModule` load `emit-vocabularies.mjs` uses — that emitter reserved this half by name
+— this repository vendors the file beside the map carrying the frontend commit it came from,
+and `test_capabilities.py` compares the two in both directions.
+
+The map is deliberately **not read** from that file at runtime, and this is the one place
+that choice earns its keep: a vendored copy that arrived truncated would change who may
+approve money, silently, and the point of a mirror is to fail loudly.
+
+**One thing this artefact has that the vocabularies do not**: `npm run check:capabilities`
+runs in the frontend's own lint workflow, so a table changed without re-emitting fails a
+pull request *there* too. It does not close §10's item 2 — that CI still does not run the
+vitest suite — but it means this emission cannot go stale at the source, which is the
+weakness §9 had to design around. The two checks fail for different reasons and both are
+needed: one says the emission is old, the other says the vendored copy and the map disagree.
 
 ### 5.5 Two platform behaviours to design around
 
@@ -407,12 +466,19 @@ both, and BE-03's CI check compares the map against FE-22's contract so the two 
   `require_role` each return early on `user.is_platform_admin` before consulting a grant.
   Negative tests written per role must not use an admin account, and no capability check
   in this module can be assumed to have run for one.
-- **The two guards disagree for up to five minutes.** `require_app_access` memoises roles in
-  `app/core/auth_cache.py` (`TTLCache(maxsize=512, ttl=300)`); `require_role` reads the
-  database every time. So a call made *before* a grant caches an empty list, and the freshly
-  granted mesa member then passes `MesaUser` while `CurrentUser` still refuses.
-  `invalidate_roles(user_id)` is the exit, and BE-00's conftest already clears the cache
-  around every test for exactly this reason.
+- **A grant written outside this process is not seen until the entry ages out.** Both guards
+  now read one cached list per user and app (`app/core/auth_cache.py`), so they agree with
+  each other — the five-minute disagreement this section was written about is gone, and the
+  window itself is **thirty seconds**, not five minutes: `AUTH_CACHE_TTL_SECONDS`, cut by
+  ENG-551 as a measured trade rather than a library default. `grant_app_role` and
+  `revoke_role` call `invalidate_roles(user_id)`, which closes the door on the next request
+  for a change written here; one written in the Tripod Console or by hand waits out the
+  window. BE-00's conftest clears the cache around every test so a test can check both sides
+  of one user.
+
+  **`holds_capability` does not cache at all**, and that is the difference between *may this
+  account use the app* — asked on every request, worth caching — and *may it do this one
+  thing*, asked on the writes that matter.
 
 ---
 
@@ -693,7 +759,15 @@ to be reached with its own preconditions already checked.
 
 `tests/test_resource_requests/test_access.py::test_the_app_key_is_named_once_in_the_module`
 globs `app/api/resource_requests/*.py` and fails if any file but `_deps.py` contains the
-literal app key. Keep it that way: it is what makes GATE-02's answer a one-file change.
+literal app key. Keep it that way: it is what made GATE-02's answer a one-file change.
+
+**The service half stays out of the glob by not naming the key at all.** BE-03 gave the
+module a second half under `app/services/resource_request/`, and `holds_capability` takes
+`app_key` as a parameter rather than importing or re-declaring it — which is also what the
+other seven applications here do, and what keeps a service from importing out of `app/api/`.
+The one place outside the module that spells the literal is `20260828_rr02`, deliberately: a
+migration must not import from `app.`, since that builds a database engine at import time and
+an unrelated import error would fail the deploy before a statement runs.
 
 ---
 
@@ -798,13 +872,35 @@ that owns it and what it blocks.
 | Question | Gate | Blocks |
 |---|---|---|
 | **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
-| How teams get access — accounts, leader-link, or anonymous + submit (§5.2). Decides whether `created_by` is a FK or nullable | **GATE-02** (OBT-448) | BE-03, BE-04 |
-| Whether the Gestor authors evaluations; whether `move_board` is the mesa's alone; whether the mesa may edit a team's request | **GATE-02** (OBT-448) | BE-03 — one cell each in §5.4's map |
-| One evaluation per mesa, or one per member | **GATE-02** (OBT-448) | BE-06. **Not the schema, and §4.1 says why**: the two answers are the same uniqueness at two tightnesses, `uq_rr_evaluations_snapshot_evaluator` is the one that holds under both, and tightening is a one-line migration on an empty table |
-| Whether recording a decision moves the card, or only suggests the column | **GATE-02** (OBT-448) | BE-06, BE-08 |
-| Audit trail for edits to the solicitação and the avaliação — who changed which field, who raised a score from 2 to 5, when. BE-07 covers money and BE-08 covers board moves; **nothing covers edits** | **GATE-02** (OBT-448) | BE-02 — history tables are cheap to add before there is data and expensive after |
 | Online submission vs print/file vs both; where the attachment lives; what the team sees after submitting (§6) | **GATE-03** (OBT-449) | BE-04, INT-02 |
 | **How a team learns its decision.** PRD §10 lists it and **no issue in either wave owns it.** *Revisar e reenviar* is the case that breaks silently — BE-04's revision flow assumes the team comes back | **GATE-03** (OBT-449) | unowned |
+
+**Answered by GATE-02 on 27/aug/2026** (OBT-448), and no longer open. Five rows left the
+table above; each landed somewhere:
+
+- **How teams get access** — accounts, and `apps.auto_approve` grants `equipe` on
+  registration (D1). Variant 1, already built; `created_by` is a non-nullable FK. Written by
+  `20260828_rr02` (BE-03). **How mesa, Gestor and Líder accounts are granted as a *process*
+  is a separate issue the client asked for** — **BE-17** (OBT-477) — and until it exists
+  `scripts/grant_app_role.py` seeds them by hand, which is how the first accounts were always
+  going to be born. It never blocked BE-03.
+- **The three capability cells** (D3, D4) — the Gestor does **not** author evaluations, he
+  **does** move the board, and the mesa **may** edit a team's request. Two array elements in
+  §5.4's map, exactly as designed, plus a fourth role the answer created: the **Líder de
+  Base** (D2), narrowest of the four — he endorses and does nothing else. `endorse_request`,
+  his read-without-edit view of Parte A/B, and the undecided `?` cell of the mesa are
+  **BE-16** (OBT-476), and none of it is in this module's map yet.
+- **One evaluation per mesa** (D5), signed by whoever represented it, plus a field no option
+  offered: **who was present** when it was decided. That is minutes, not audit, and it is
+  **BE-06**'s. `uq_rr_evaluations_snapshot_evaluator` holds under the answer, so §4.1's bet
+  paid and no migration was needed.
+- **Recording a decision moves the card** (D6), automatically on write, and in `approved` it
+  writes to the ledger. **BE-06 and BE-08 stop being independent**, and it is the trigger
+  BE-13 (OBT-480) fires on.
+- **The audit trail** (D7) — yes, over the solicitação **and** the avaliação, on top of the
+  ownership D1 made possible. **BE-15** (OBT-475). ⚠️ It is **not** retro-applied to
+  `rr_funds`: there is no `allocated` column there and there must not be, or the *store two,
+  derive the third* of contract §3.2 breaks and two audit designs stand over the same money.
 
 **Answered by GATE-01 on 26/aug/2026** (OBT-447), and no longer open. Recorded rather than
 deleted, because each one landed somewhere in this module:
