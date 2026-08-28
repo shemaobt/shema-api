@@ -691,3 +691,46 @@ async def test_a_re_recording_that_arrives_with_an_explanation_is_refused_before
         .all()
     )
     assert len(after) == before, "nada foi guardado para um pedido que termina em recusa"
+
+
+async def test_the_service_refuses_a_moved_slice_carrying_an_explanation_on_its_own(
+    db_session: AsyncSession,
+) -> None:
+    """The product rule held at the service, with no route in front of it.
+
+    The route refuses this combination before anything is kept, which is right and is covered
+    above — but it means the guard underneath it is never reached from there. A second layer
+    nobody exercises is not defence in depth: it is a line somebody deletes in a refactor with
+    nothing to say so, and `capture_segment` is called from more than one place already.
+
+    So this one goes straight at the service: a new version pointing at different audio, handed
+    an explanation, has to be refused whoever asks.
+    """
+    from app.core.exceptions import ValidationError
+    from app.services.internalization_room.sessions import create_session
+
+    session = await create_session(db_session, pericope=PASSAGE, project_id="projeto-1")
+    told = await service.capture_segment(
+        db_session,
+        session,
+        take_id="ensaio-1",
+        starts_ms=0,
+        ends_ms=20000,
+        bridge_take_id="retro-1",
+        transcript="a explicação da gravação velha",
+    )
+
+    with pytest.raises(ValidationError):
+        await service.capture_segment(
+            db_session,
+            session,
+            take_id="ensaio-2",
+            starts_ms=0,
+            ends_ms=24000,
+            bridge_take_id="retro-2",
+            transcript="a explicação da gravação velha",
+            replaces=told,
+        )
+
+    kept = await service.final_segments(db_session, session.id)
+    assert [one.id for one in kept] == [told.id], "e a recusa não mexeu no que estava lá"
