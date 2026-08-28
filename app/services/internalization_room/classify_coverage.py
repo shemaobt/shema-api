@@ -30,11 +30,21 @@ def _scenes_block(pericope_num: str) -> str:
 
 
 def _parse(raw: str) -> dict[str, list[str]]:
-    """Bucket the classifier's decisions into the two lists `merge` advances.
+    """Bucket the classifier's decisions into the three lists `merge` advances.
 
     The reply's shape belongs to `prompts/classifier_system_prompt.md`, which asks for a
     `decisions` array. Reading two top-level status keys instead left both buckets empty on
     every well-formed reply, so no bead ever moved and no session ever reached done.
+
+    The table carries one slot per status the prompt can send, and it is the same table on
+    every exit. It held two while the prompt sent three, and `partially_engaged` — the one
+    status the completion floor was lowered to accept — fell through to the log on its way
+    out. A passage the team worked on the Guide's terms could not close, which is most of
+    how the preservation rules are worked at all.
+
+    The two early returns carry the third key for a duller reason: the caller indexes this
+    dict, so a short table there would raise `KeyError` out of the one path whose whole job
+    is to leave coverage untouched.
     """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
@@ -44,10 +54,10 @@ def _parse(raw: str) -> dict[str, list[str]]:
         parsed: Any = json.loads(text)
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
-        return {"engaged": [], "surfaced": []}
+        return {"surfaced": [], "partially_engaged": [], "engaged": []}
     if not isinstance(parsed, dict):
-        return {"engaged": [], "surfaced": []}
-    verdict: dict[str, list[str]] = {"engaged": [], "surfaced": []}
+        return {"surfaced": [], "partially_engaged": [], "engaged": []}
+    verdict: dict[str, list[str]] = {"surfaced": [], "partially_engaged": [], "engaged": []}
     decisions = parsed.get("decisions")
     if not isinstance(decisions, list):
         logger.warning("Coverage classifier returned no decisions list: %s", raw[:300])
@@ -105,5 +115,6 @@ async def classify_coverage(
         coverage_state,
         pericope_num=pericope_num,
         surfaced=verdict["surfaced"],
+        partially_engaged=verdict["partially_engaged"],
         engaged=verdict["engaged"],
     )
