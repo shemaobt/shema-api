@@ -13,6 +13,16 @@ them. Stated as *only equipe* and not as *is mesa or gestor* so that a fourth ro
 Líder de Base of BE-16 — does not silently inherit the team's narrow view before anyone has
 decided what he should see.
 
+**The rule subtracts rather than tests for membership, and that is the whole of it.** An
+account carries a row per grant, ``user_app_roles`` has no constraint on ``(user_id, app_id)``,
+and since ``20260828_rr02`` turned ``auto_approve`` on every account that registers is already
+``equipe`` — so a mesa member is ``equipe`` **plus** ``mesa``, and that is the ordinary account
+rather than an exotic one. ``granted - {TEAM_ROLE}`` asks whether anything besides the floor is
+held, which stays true for that account. Asked the other way round, as ``TEAM_ROLE in granted``,
+it would answer *team* for exactly the mesa member it was written to serve and hide the board
+from them. ``holds_capability`` reads the same union for capabilities, with the grant rules that
+stand beside it.
+
 A platform admin reaches everything, as they pass every other guard in this module
 unconditionally (``require_capability`` in ``_deps.py`` says the same, with the reason).
 """

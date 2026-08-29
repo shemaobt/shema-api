@@ -198,6 +198,29 @@ async def test_the_mesa_reaches_every_request(db_session, client, rrf_app) -> No
     assert len((await client.get(REQUESTS, headers=mesa)).json()) == 1
 
 
+async def test_a_mesa_member_who_is_also_equipe_still_reaches_every_request(
+    db_session, client, rrf_app
+) -> None:
+    """The account ``auto_approve`` actually produces, and the reason the rule subtracts.
+
+    Since ``20260828_rr02`` whoever registers is ``equipe``, so a mesa member holds ``equipe``
+    **plus** ``mesa`` — two rows, with no constraint on ``(user_id, app_id)`` to prevent it.
+    ``as_mesa`` above grants one role and cannot see this: ``reaches_every_request`` asks
+    ``granted - {TEAM_ROLE}``, and asked the other way round — ``TEAM_ROLE in granted`` — it
+    would answer *team* for exactly this account and hide the board from the mesa.
+    """
+    team = await as_team(db_session, rrf_app)
+    created = await create(client, team)
+
+    user = await make_user(db_session, email="mesa-e-equipe@rr.test")
+    await grant(db_session, user, rrf_app, "equipe")
+    await grant(db_session, user, rrf_app, "mesa")
+    both = await auth_header(db_session, user)
+
+    assert (await client.get(f"{REQUESTS}/{created['id']}", headers=both)).status_code == 200
+    assert len((await client.get(REQUESTS, headers=both)).json()) == 1
+
+
 # ——— reconciliation ——————————————————————————————————————————————————————————————
 
 
