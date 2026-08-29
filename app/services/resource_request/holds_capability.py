@@ -18,6 +18,27 @@ async def holds_capability(db: AsyncSession, user_id: str, app_key: str, capabil
     once, in ``_deps.py``, which is where every other application in this repository keeps
     its own and where ``test_the_app_key_is_named_once_in_the_module`` looks for it.
 
+    **The answer is taken over the UNION of the roles the account holds**, which is what
+    ``held & CAPABILITY_ROLES[capability]`` says and what the shape of the data requires: an
+    account carries a row per grant, ``user_app_roles`` has no constraint on ``(user_id,
+    app_id)``, and since ``20260828_rr02`` turned ``auto_approve`` on every account that
+    registers is already ``equipe``. So a mesa member is ``equipe`` **plus** ``mesa`` — the
+    floor accumulates instead of being replaced, and one role read alone would be the wrong
+    answer for the ordinary account rather than for an exotic one.
+
+    Two rules stand beside that and neither belongs in here. **``mesa`` and ``gestor`` are
+    never granted to the same account, and nobody grants themselves** — ours (28/aug/2026)
+    and not the client's words, applied where a grant is written; this function has to answer
+    correctly whether it exists or not, which is why
+    ``test_the_union_answers_where_one_role_alone_would_refuse`` writes the pair it forbids.
+    And the only hand-run grant path today, ``scripts/grant_app_role.py``, cannot produce a
+    second role at all: it matches on ``(user_id, app_id)`` and overwrites ``role_id``, so
+    granting ``mesa`` to somebody who is ``equipe`` **replaces** it. That is a live bug for
+    the eight applications the script serves and it has its own issue, **OBT-484** —
+    ``app/services/authorization/grant_app_role.py`` is the path that already matches on all
+    four columns, ``revoked_at`` included, which is why approval-time grants accumulate
+    correctly and only the script does not.
+
     An unknown ``capability`` raises rather than returning ``False``. A typo in a guard
     would otherwise refuse every user of a route forever, which reads in production as a
     permission decision and not as the mistake it is.
