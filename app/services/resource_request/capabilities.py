@@ -3,10 +3,12 @@
 **Why the module carries a map at all.** ``require_app_access(app_key)`` and
 ``require_role(app_key, role_key)`` answer exactly one question each — *does this user
 hold any role in this app*, and *does this user hold this one role*. The product's model
-is neither: three of the seven capabilities belong to **more than one role**, and
-``require_role`` cannot express an OR. Guarding ``view_evaluation`` as ``MesaUser`` would
-refuse the Gestor, which is the very asymmetry that gives that role its point — it sees
-the evaluation and the money and changes neither the evaluation nor the board.
+is neither: four of the seven capabilities belong to **more than one role** —
+``edit_requests``, ``view_evaluation``, ``manage_funds``, and ``move_board`` since GATE-02
+moved it — and ``require_role`` cannot express an OR. Guarding ``view_evaluation`` as
+``MesaUser`` would refuse the Gestor, which is the very asymmetry that gives that role its
+point — it sees the evaluation and the money and changes neither the evaluation nor the
+board.
 ``permissions`` and ``role_permissions`` exist as tables but are **not wired into**
 ``app/core/access_control.py``, so there is no finer platform primitive to reach for.
 

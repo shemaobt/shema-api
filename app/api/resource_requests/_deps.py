@@ -2,7 +2,7 @@
 
 ``CurrentUser`` gates on holding *any* role in the app, the three role aliases gate
 on a specific one, and the seven capability aliases gate on what the product
-actually models. Capabilities are the ones routes should reach for: three of the
+actually models. Capabilities are the ones routes should reach for: four of the
 seven belong to more than one role, and ``require_role`` cannot say OR — guarding
 ``view_evaluation`` as ``MesaUser`` would refuse the Gestor, which is the whole of
 that role's point. The table and the query behind them are
