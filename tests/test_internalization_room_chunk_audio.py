@@ -80,6 +80,33 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield c
 
 
+async def _rehearsed(client: httpx.AsyncClient) -> tuple[str, str]:
+    """A session with one rehearsal recording in it — a stretch is a slice of a file, so
+    there has to be a file before there can be a stretch."""
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
+    )
+    session_id = created.json()["session_id"]
+    kept = await client.post(
+        f"{PREFIX}/sessions/{session_id}/takes",
+        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        data={"kind": IRTakeKind.ENSAIO.value, "scope": "P01"},
+        files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
+    )
+    return session_id, kept.json()["take_id"]
+
+
+async def _tell_back(
+    client: httpx.AsyncClient, session_id: str, take_id: str, **extra: str
+) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000", **extra},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+
 async def test_a_transcriber_that_never_answers_does_not_take_the_stretch_with_it(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -96,52 +123,49 @@ async def test_a_transcriber_that_never_answers_does_not_take_the_stretch_with_i
 
     monkeypatch.setattr(bt_api, "heard", _never_answers)
 
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
-    )
-    session_id = created.json()["session_id"]
+    session_id, take_id = await _rehearsed(client)
 
     with pytest.raises(httpx.ReadTimeout):
-        await client.post(
-            f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-            headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
-            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-        )
+        await _tell_back(client, session_id, take_id)
 
     rows = (
-        (await db_session.execute(select(IRTake).where(IRTake.session_id == session_id)))
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
         .scalars()
         .all()
     )
     assert len(rows) == 1
-    assert list(client.bucket.objects.values()) == [AUDIO]  # type: ignore[attr-defined]
+    assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
 
 
 async def test_a_stretch_with_no_transcript_is_still_stored(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
-    )
-    session_id = created.json()["session_id"]
+    session_id, take_id = await _rehearsed(client)
 
-    answer = await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-    )
+    answer = await _tell_back(client, session_id, take_id)
 
     assert answer.status_code == 200
     assert answer.json()["captured"] is False
 
     rows = (
-        (await db_session.execute(select(IRTake).where(IRTake.session_id == session_id)))
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
         .scalars()
         .all()
     )
     assert len(rows) == 1
-    assert rows[0].kind is IRTakeKind.RETRO
-    assert list(client.bucket.objects.values()) == [AUDIO]  # type: ignore[attr-defined]
+    assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
 
 
 async def test_finishing_without_telling_anything_back_is_not_checking(
@@ -178,19 +202,11 @@ async def test_a_transcriber_outage_still_spends_the_retell_budget(
     `MAX_RETELLS` was never reached, so the room's only route to a person was unreachable
     exactly when the room was broken.
     """
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
-    )
-    session_id = created.json()["session_id"]
+    session_id, take_id = await _rehearsed(client)
 
     last = None
     for _ in range(4):
-        last = await client.post(
-            f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-            headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
-            data={"retelling": "true"},
-            files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-        )
+        last = await _tell_back(client, session_id, take_id, retelling="true")
 
     assert last is not None
     assert last.json()["needs_person"] is True

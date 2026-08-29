@@ -25,9 +25,10 @@ async def test_post_message_handles_malformed_llm_json(db_session, ph_app, monke
         *,
         system_prompt: str,
         user_content: str,
-        model: str = orchestrator.FAST_MODEL,
+        model: str | None = None,
         temperature: float = 0.4,
         max_output_tokens: int = 2000,
+        expects_json: bool = False,
         settings: Any | None = None,
     ) -> str:
         return "this is not valid json at all { broken"
@@ -36,7 +37,7 @@ async def test_post_message_handles_malformed_llm_json(db_session, ph_app, monke
         *,
         system_prompt: str,
         contents: list[dict],
-        model: str = orchestrator.QUALITY_MODEL,
+        model: str | None = None,
         temperature: float = 0.6,
         max_output_tokens: int = 500,
         settings: Any | None = None,

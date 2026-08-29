@@ -32,7 +32,11 @@ from app.services.platform.voices import language_hint
 
 logger = logging.getLogger(__name__)
 
-DISFLUENCY_MODEL = "gemini-3-flash-preview"
+
+def disfluency_model(settings: Settings) -> str:
+    """Step two of the Sound Necklace answer path (CLAUDE.md section 9)."""
+    return settings.gemini_fast_model
+
 
 #: Near-verbatim editing, not composition: the flash default of 1.0 would invite exactly the
 #: invention the prompt below spends fifteen lines forbidding.
@@ -172,7 +176,7 @@ async def clean_disfluency(
     try:
         provider = client or _default_client(cfg.google_api_key)
         response = await provider.aio.models.generate_content(
-            model=DISFLUENCY_MODEL,
+            model=disfluency_model(cfg),
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=DISFLUENCY_TEMPERATURE,
@@ -199,7 +203,7 @@ async def clean_disfluency(
 
     logger.info(
         "platform disfluency cleanup: model=%s language=%s chars_in=%d chars_out=%d",
-        DISFLUENCY_MODEL,
+        disfluency_model(cfg),
         language,
         len(text),
         len(cleaned),
