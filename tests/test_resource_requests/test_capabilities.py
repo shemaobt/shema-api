@@ -21,6 +21,7 @@ from __future__ import annotations
 import pytest
 
 from app.api.resource_requests._deps import APP_KEY
+from app.services.authorization import list_roles
 from app.services.resource_request import (
     CAPABILITIES,
     CAPABILITY_ROLES,
@@ -206,6 +207,70 @@ async def test_manage_funds_is_held_by_the_mesa_and_the_gestor_alike(
         )
 
         assert res.status_code == 200, f"{role} lost the Painel"
+
+
+@pytest.mark.parametrize("privileged", ("mesa", "gestor"))
+async def test_an_account_with_two_roles_answers_by_their_union(
+    db_session, client, rrf_app, privileged: str
+) -> None:
+    """Two roles on one account is the ordinary shape here, not a curiosity.
+
+    ``auto_approve`` is on since ``20260828_rr02`` — GATE-02 D1, *"quem tiver uma conta"* —
+    so every account that registers is already ``equipe`` before anybody grants it anything
+    else. A mesa member is ``equipe`` **plus** ``mesa``, and a Gestor is ``equipe`` plus
+    ``gestor``: the floor accumulates rather than being replaced, and ``user_app_roles``
+    carries a row per grant with no constraint on ``(user_id, app_id)`` to say otherwise.
+
+    Asserted through the whole table against the **union** of the two roles, because that is
+    what ``held & CAPABILITY_ROLES[capability]`` computes and the sweep above never exercised
+    — its fourteen accounts hold exactly one role each.
+    """
+    user = await make_user(db_session, email=f"equipe-{privileged}@rrf.test")
+    await grant(db_session, user, rrf_app, "equipe")
+    await grant(db_session, user, rrf_app, privileged)
+    headers = await auth_header(db_session, user)
+
+    assert sorted(await list_roles(db_session, user.id, APP_KEY)) == sorted(
+        [(APP_KEY, "equipe"), (APP_KEY, privileged)]
+    ), "the second grant replaced the first instead of adding to it"
+
+    union = ROLE_CAPABILITIES["equipe"] | ROLE_CAPABILITIES[privileged]
+    for capability in CAPABILITIES:
+        res = await client.get(CAP_PROBES[capability], headers=headers)
+
+        expected = 200 if capability in union else 403
+        assert res.status_code == expected, (
+            f"equipe+{privileged} · {capability}: got {res.status_code}, union says {expected}"
+        )
+
+
+async def test_the_union_answers_where_one_role_alone_would_refuse(
+    db_session, client, rrf_app
+) -> None:
+    """``mesa`` and ``gestor`` on one account — the only pair that tells a union apart.
+
+    ``equipe``'s one capability is held by both of the others, so the test above stays green
+    even if the guard read a single role and dropped the rest. This pair does not: reading
+    only the first leaves ``allocate_funds`` refused, reading only the last leaves
+    ``edit_evaluation`` and ``assign_fund`` refused, and all seven answer 200 **only** for an
+    answer taken over the union.
+
+    The exclusivity that keeps these two off one account is a rule of ours (28/aug/2026) and
+    not a sentence of the client's, and it is applied where a grant is written rather than
+    here — so this function has to answer correctly whether it exists or not, which is why
+    the combination it forbids is the one written here. Should it ever be enforced in the
+    schema, this test is where that is discovered, and the discriminating half moves to
+    whatever pair the rule then allows.
+    """
+    user = await make_user(db_session, email="mesa-gestor@rrf.test")
+    await grant(db_session, user, rrf_app, "mesa")
+    await grant(db_session, user, rrf_app, "gestor")
+    headers = await auth_header(db_session, user)
+
+    for capability in CAPABILITIES:
+        res = await client.get(CAP_PROBES[capability], headers=headers)
+
+        assert res.status_code == 200, f"the union lost {capability}"
 
 
 async def test_an_account_with_no_role_is_refused_by_the_app_gate(

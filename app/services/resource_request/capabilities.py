@@ -3,10 +3,12 @@
 **Why the module carries a map at all.** ``require_app_access(app_key)`` and
 ``require_role(app_key, role_key)`` answer exactly one question each — *does this user
 hold any role in this app*, and *does this user hold this one role*. The product's model
-is neither: three of the seven capabilities belong to **more than one role**, and
-``require_role`` cannot express an OR. Guarding ``view_evaluation`` as ``MesaUser`` would
-refuse the Gestor, which is the very asymmetry that gives that role its point — it sees
-the evaluation and the money and changes neither the evaluation nor the board.
+is neither: four of the seven capabilities belong to **more than one role** —
+``edit_requests``, ``view_evaluation``, ``manage_funds``, and ``move_board`` since GATE-02
+moved it — and ``require_role`` cannot express an OR. Guarding ``view_evaluation`` as
+``MesaUser`` would refuse the Gestor, which is the very asymmetry that gives that role its
+point — it sees the evaluation and the money and changes neither the evaluation nor the
+board.
 ``permissions`` and ``role_permissions`` exist as tables but are **not wired into**
 ``app/core/access_control.py``, so there is no finer platform primitive to reach for.
 
@@ -41,17 +43,37 @@ compares the two instead, so a drift is a red test rather than a quiet grant.
 * ``move_board`` includes the **Gestor** — GATE-02 D3 (OBT-448, 27/aug/2026). The
   pre-gate reading was that moving a card is deciding on a request rather than managing a
   resource; the client said the Gestor *"tem acesso a quase tudo em relação aos projetos,
-  só não aprova"*.
-* ``edit_evaluation`` stays **denied** to the Gestor — the same answer's other half.
-  Scoring and deciding are the mesa's. The restrictive default was confirmed by the
-  client, not merely left standing.
+  só não aprova"*. The confirmation below does **not** move it back: moving a card is still
+  not deciding (GATE-02 D6 — a decision writes a column, a column never implies a decision).
+* ``edit_evaluation`` stays **denied** to the Gestor, and since 28/aug/2026 the confirmation
+  exists in writing: *"ele nem pontua nem decide, essa função é exclusiva da mesa"*. That is
+  what settles the two sentences of 27/aug against each other — *"o Gestor pode alterar"*
+  and *"só não aprova"* — in favour of the second. Until that date this paragraph claimed a
+  confirmation that FE-22's contract §5.3 still listed as **pending**: the text was ahead
+  of its own proof, which is the failure worth naming, because a restrictive default that
+  merely stands and one the client chose are different facts and only one of them survives
+  somebody asking *why*.
 * ``assign_fund`` is **mesa-only** — GATE-01 D4 (OBT-447, 26/aug/2026), asked directly and
-  answered *a mesa*. The client's aside in D1, that the Gestor would define which fund a
-  project draws from, is on the record and is being re-asked by BE-11 (OBT-470); nothing
-  here may assume it.
+  answered *a mesa*, and **confirmed by the re-ask on 28/aug/2026**: *"somente a mesa"*. The
+  client's aside in D1, that the Gestor would define which fund a project draws from, does
+  not survive its own re-asking. The cell is no longer provisional and BE-11 (OBT-470) no
+  longer carries the question — it carries the invariant that a request does not reach
+  ``aprovado`` with ``fund_id IS NULL``.
 * ``allocate_funds`` is **gestor-only** — GATE-01 D6, which offered *"só o Gestor, ou
   qualquer membro da mesa"*. It is the first capability the mesa does not hold, and that
   asymmetry is what the answer says.
+
+**The eighth cell is decided and arrives with BE-10** (OBT-471). Asked what the fund area
+does the client answered *"os 3"* — create, rename, retire — that the one who creates is
+*"o Gestor"*, and that renaming and retiring have no permission of their own (*"seguem a de
+criar"*). That is **one** capability over three verbs, held by the Gestor alone. That it is
+a **control** capability and not a screen one is ours to decide — Daniel, 28/aug/2026 — and
+not a sentence of the client's: the answer says who may, not how this table is assembled. The
+choice has a mechanical consequence rather than an aesthetic one. Classified as a screen
+capability it would be held by no role that also holds every other screen capability, so
+``SCREEN_CAPABILITIES.every(holds)`` in the frontend's ``src/services/fixtures/accounts.ts``
+would match nobody and the mesa's fixture account would disappear — the same trap the ``?``
+cell of GATE-02 D3 sprang once already.
 
 ⚠️ **The catastrophic misreading available here is narrowing ``manage_funds`` to the
 Gestor**, on the theory that it is the money capability. It is the Painel's entry gate,

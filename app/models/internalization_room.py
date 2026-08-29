@@ -256,6 +256,26 @@ class CreateSessionRequest(BaseModel):
     bridge_mode: str | None = Field(default=None, max_length=24)
 
 
+class SegmentView(BaseModel):
+    """One stretch the team told back, addressed rather than counted.
+
+    `take_id` with `starts_ms`/`ends_ms` is the whole address of the audio: which rehearsal
+    recording, and which slice **of that file**. The app plays a stretch by playing that
+    slice, which it already knows how to do.
+    """
+
+    segment_id: str
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+    #: 1 for the first telling of a stretch, 2 when it was told again after a finding.
+    pass_number: int = 1
+    #: Whether the team has explained this stretch in the bridge language yet. False on a
+    #: stretch whose mother-tongue recording was replaced: the explanation of the recording
+    #: it replaced does not carry over, and the stretch is waiting to be told again.
+    told: bool = True
+
+
 class BackTranslationProgress(BaseModel):
     """Where a telling-back stopped, so a tablet can be handed it back.
 
@@ -265,14 +285,14 @@ class BackTranslationProgress(BaseModel):
     """
 
     scope: str = ""
-    #: One entry per stretch already told, in order, with the pass it was told on. The app
-    #: draws one bead per entry.
-    passes: list[int] = Field(default_factory=list)
-    #: Where each stretch sits in the rehearsal, so the room can play one back.
-    spans: list[list[int]] = Field(default_factory=list)
+    #: One entry per stretch that counts, in the order the team told them. The app draws one
+    #: bead per entry. It was two parallel lists — the passes and the spans — which named a
+    #: stretch only by lining up by position, and lined up with nothing once a stretch could
+    #: be replaced.
+    segments: list[SegmentView] = Field(default_factory=list)
     retells: int = 0
     checked: bool = False
-    finding_chunk: int | None = None
+    finding_segment_id: str | None = None
     finding_kind: str | None = None
     superseded_attempts: int = 0
 
@@ -306,6 +326,7 @@ class TurnResponse(BaseModel):
     transcript: str
     peer_cue: bool = False
     used_fail_safe: bool = False
+    degraded: bool = False
     coverage: CoverageView
     done: bool
     bridge_mode: str = "calibration_pending"
@@ -360,9 +381,9 @@ class BackTranslationVerdictResponse(BaseModel):
     mime_type: str = "audio/mpeg"
     checked: bool
     finding_kind: str | None = None
-    #: Which told-back piece the finding lands on, so the room can take the team straight to
-    #: that stretch of their recording instead of starting the whole passage over.
-    finding_chunk: int | None = None
+    #: Which stretch the finding lands on, by its own address, so the room can take the team
+    #: straight to that slice of their recording instead of starting the whole passage over.
+    finding_segment_id: str | None = None
     findings_remaining: int = 0
     used_fail_safe: bool = False
 

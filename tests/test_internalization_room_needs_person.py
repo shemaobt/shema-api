@@ -60,7 +60,6 @@ async def test_re_recording_does_not_hand_the_team_a_fresh_retell_budget(
     fresh = await service.begin_back_translation_again(db_session, session)
 
     assert fresh.retells == 2, "toda outra propriedade voltava ao padrão, e o orçamento junto"
-    assert fresh.chunks == []
 
 
 async def test_the_session_says_where_the_telling_back_stopped(
@@ -72,28 +71,33 @@ async def test_the_session_says_where_the_telling_back_stopped(
     and the team had to record the rehearsal again.
     """
     from app.api.internalization_room.sessions import _progress
-    from app.services.internalization_room.back_translation import (
-        BackTranslationState,
-        Chunk,
-    )
+    from app.services.internalization_room.back_translation import BackTranslationState
+    from app.services.internalization_room.segments import capture_segment
 
     session = await service.create_session(db_session, pericope="P01")
     await service.save_back_translation(
-        db_session,
-        session,
-        BackTranslationState(
-            scope="P01",
-            retells=1,
-            chunks=[
-                Chunk(index=1, text="um", pass_number=1, starts_ms=0, ends_ms=9000),
-                Chunk(index=2, text="dois", pass_number=2, starts_ms=9000, ends_ms=21000),
-            ],
-        ),
+        db_session, session, BackTranslationState(scope="P01", retells=1)
     )
+    for position, (text, pass_number, starts, ends) in enumerate(
+        [("um", 1, 0, 9000), ("dois", 2, 9000, 21000)], start=1
+    ):
+        await capture_segment(
+            db_session,
+            session,
+            take_id="ensaio-1",
+            starts_ms=starts,
+            ends_ms=ends,
+            bridge_take_id=f"retro-{position}",
+            transcript=text,
+            pass_number=pass_number,
+        )
 
-    told = _progress(session)
+    told = await _progress(db_session, session)
 
-    assert told.passes == [1, 2]
-    assert told.spans == [[0, 9000], [9000, 21000]]
+    assert [one.pass_number for one in told.segments] == [1, 2]
+    assert [[one.starts_ms, one.ends_ms] for one in told.segments] == [[0, 9000], [9000, 21000]]
+    assert [one.take_id for one in told.segments] == ["ensaio-1", "ensaio-1"], (
+        "cada trecho nomeia o arquivo de onde saiu, e não só onde parou de tocar"
+    )
     assert told.scope == "P01"
     assert told.retells == 1

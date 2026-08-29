@@ -31,6 +31,14 @@ what ran on this date, and should keep running exactly that.
 Reversible, and the downgrade is not decoration: turning this off is how an installation
 closes public registration again, and `false` is the column's own default, so down leaves
 the row exactly as `20260517_0001` created it.
+
+**And the day it is turned off is the client's, in writing.** Asked on 28/aug/2026 whether
+anyone who registers really gets in as `equipe` with no approval, the client answered *"sim
+por enquanto (mas vai mudar mais pra frente)"*. The *por enquanto* is the whole of why the
+downgrade is cargo rather than symmetry for its own sake: this row is expected to be written
+back, by the client's own answer and not by a guess of ours. What replaces open registration
+when that day comes — an invitation, a nomination, a link — is BE-17 (OBT-477), and it is
+that issue that will call `downgrade()` for a reason rather than as a rollback.
 """
 
 from __future__ import annotations

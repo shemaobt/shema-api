@@ -453,10 +453,10 @@ section was written, and GATE-01 and GATE-02 moved it to seven:
 |---|---|---|---|---|
 | `edit_requests` | ✅ | ✅ | ✅ | **GATE-02 D4** — *"a mesa pode alterar também"* |
 | `view_evaluation` | — | ✅ | ✅ | already decided |
-| `edit_evaluation` | — | ✅ | — | **GATE-02 D3** — *"Gestor: … só não aprova"* |
+| `edit_evaluation` | — | ✅ | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
 | `manage_funds` | — | ✅ | ✅ | already decided |
 | `move_board` | — | ✅ | **✅** | **GATE-02 D3** — the cell that moved |
-| `assign_fund` | — | ✅ | — | **GATE-01 D4** — the mesa assigns the fund at triage |
+| `assign_fund` | — | ✅ | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
 | `allocate_funds` | — | — | ✅ | **GATE-01 D6** — the first capability the mesa does not hold |
 
 Mirror it from `src/auth/capabilities.ts` field for field; that file is the owner and this is
@@ -465,6 +465,23 @@ the Painel's entry gate**, not a money permission — narrowing it to make room 
 `allocate_funds` would take the whole panel away from the mesa. And **`assign_fund` and
 `allocate_funds` are control capabilities, not screen ones**: they live inside a surface some
 other capability already opened, which is why neither adds a route of its own.
+
+**Two of those cells were re-asked on 28/aug/2026, and both came back where they were.**
+`edit_evaluation` had been recorded as *confirmed rather than merely left standing* while the
+FE-22's contract still listed the confirmation as pending — the text was ahead of its proof. The
+proof arrived: *"ele nem pontua nem decide, essa função é exclusiva da mesa"*, which settles
+27/aug's *"o Gestor pode alterar"* against its own *"só não aprova"* in favour of the second.
+And `assign_fund` was carrying GATE-01 D1's aside — that the Gestor would define which fund a
+project draws from — as a live re-ask; asked again, the answer was *"somente a mesa"*. Neither
+cell moves, `move_board` least of all: moving a card is still not deciding (D6).
+
+**An eighth cell is decided and arrives with BE-10** (OBT-471). The fund area does *"os 3"* —
+create, rename, retire — *"o Gestor"* creates, and renaming and retiring *"seguem a de criar"*:
+**one** capability over three verbs, the Gestor's alone. That it is a **control** capability and
+not a screen one is ours to decide (Daniel, 28/aug/2026) and not the client's sentence, and the
+consequence is mechanical: as a screen capability it would match no role in the frontend's
+`SCREEN_CAPABILITIES.every(holds)` and the mesa's fixture account would vanish — the trap the
+`?` cell of D3 sprang once already.
 
 **A fourth role is coming and is not here yet.** GATE-02 D2 answered that the **Líder de
 Base** enters the system — the narrowest of the four, holding one endorsement capability and
@@ -849,6 +866,15 @@ which asserts one head *and* that the join names every line that would otherwise
 Bringing `main` down the stack before writing a revision is what makes both true; the
 command is `git log --oneline -1 origin/main -- alembic/versions`, not memory.
 
+**It moved a second time, and the second time is what turns the observation into a rule**
+(29/aug/2026): `main` grew `20260828_seg01` off that same `join4` while this stack sat in
+review, so `20260825_rr01` — written against `join4` four days earlier — was re-pointed at
+`seg01`. Reading the head once, when the file is created, is not enough: the head keeps
+moving for as long as a stacked PR waits, so the parent is re-read at **every** merge of
+`main` down the stack. And nothing on this side says otherwise in the meantime — BE-01,
+BE-02 and BE-05 were all green, `migrations.yml` included, because each ran against its own
+base. The guard only speaks when `main` arrives, which is the moment to listen to it.
+
 ### 8.4 A request and its snapshot reference each other, so a flush needs telling
 
 `rr_snapshots.request_id` points at the request and `rr_requests.revision_of_id` points
@@ -1055,7 +1081,9 @@ in four of the seven the answer arrived with **more** than the question offered:
 - **What the Gestor does, and who may edit the team's text** — *"o Gestor pode alterar … só
   não aprova"* (D3) and *"a mesa pode alterar também"* (D4). One cell moved: `move_board`
   gained the Gestor. `edit_evaluation` stays denied to him — the restrictive default was
-  **confirmed, not overruled** — and `edit_requests` stays true for all three, which means
+  **confirmed, not overruled**, and since 28/aug/2026 the confirmation is a sentence with a
+  date on it: *"ele nem pontua nem decide, essa função é exclusiva da mesa"* — and
+  `edit_requests` stays true for all three, which means
   the capability guard on `/a` and `/b` that §5.4 reserved is work the answer **dispensed**.
 - **One evaluation per request** (D5), not one per member. And the answer did not stop at the
   option: the client added *"uma tag ou assinatura de qual dos membros da mesa estava
