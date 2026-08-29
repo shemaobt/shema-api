@@ -175,6 +175,12 @@ async def finish(
     the D family eight lines below: that one says the room could not hear, which is false here
     — it heard everything — and it asks the team to repeat what they already told instead of
     telling what they have not.
+
+    It is the one line of that file the room speaks rather than the app plays. The fail-safes
+    are shipped as audio because they have to work when nothing else does — no network, no
+    model — and this is not that: the gate fires with the server answering normally, before
+    the analyst is called, and the verdict a few lines below is already synthesized. Shipping
+    it would have meant a new app release before the team could hear anything at all.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
@@ -186,15 +192,18 @@ async def finish(
         await room.save_back_translation(db, session, state)
 
     if len(told) < len(final):
-        _, waiting = choose(
+        waiting, _ = choose(
             FailSafe.UNTOLD_STRETCH,
             get_settings().internalization_room_language_code,
-            turn=len(session.messages or []),
+            turn=state.waited,
         )
+        spoken = (await room.synthesize_facilitator_speech(waiting))[0]
+        state.waited += 1
+        await room.save_back_translation(db, session, state)
         return BackTranslationVerdictResponse(
             session_id=session.id,
-            audio_url="",
-            fixed_line=waiting,
+            audio_url=clip_url(spoken.key),
+            fixed_line="",
             checked=False,
             findings_remaining=0,
         )

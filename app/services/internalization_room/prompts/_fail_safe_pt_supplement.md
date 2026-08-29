@@ -38,20 +38,29 @@ drop the term entirely: "a pessoa que acompanha vocês".
 
 ## H. A stretch is still waiting to be told back
 
-**Not authored by the project, and not yet reviewed by Marcia.** Proposed 2026-08-28 with the
-first-round gate; the request for a reviewed and recorded version is with Henok. Until the audio
-ships inside the app, the room names a line the app does not hold — see the pull request for
-what that costs.
+**Not authored by the project. Approved by Henok as written, 2026-08-29.**
+
+**This one is spoken, not shipped.** Every other family here is played from audio inside the
+app, because a fail-safe has to work when nothing else does — no network, no model. H is not a
+fail-safe: the gate fires with the server answering normally, before the analyst is called, and
+the verdict a few lines later in the same endpoint is already synthesized. So the room says this
+one out loud, and no app release stands between the team and hearing it.
 
 Not a failure. Nothing broke and nothing was misheard: the team has a stretch they have not
 explained yet, and the analyst may not read a subset, because its prompt defines "missing" as
 *an element that appears in no stretch*. Reading half the work would raise findings about a hole
 the team is on their way to filling.
 
-**None of these names a number.** The gate fires whenever any final stretch is waiting, and
-nothing stops a team from re-recording two stretches before pressing `terminei` — measured: two
-can wait at once. These are fixed audio and can never carry a count, so a line that says "one
-stretch" would simply be false as often as not.
+**None of these names a number, and none of them may start to.** The gate fires whenever any
+final stretch is waiting, and nothing stops a team from re-recording two stretches before
+pressing `terminei` — measured: two can wait at once, so a line saying "one stretch" would be
+false as often as not.
+
+Being spoken rather than shipped does not make counting available. These three are approved as
+whole sentences, and a number dropped into one is no longer the sentence that was approved. It
+would also turn a line that is paid for once into one clip per count, since the synthesis cache
+is keyed on the text. Whatever the room says here has to be true for one stretch waiting and for
+five.
 
 The D family is the one to avoid here, and it is the tempting one because it sits eight lines
 away in the same endpoint. It says *"I could not hear you properly — could you say it again?"*,
