@@ -94,6 +94,11 @@ class BackTranslationState(BaseModel):
     #: the team can repeat at will, so the budget lives here — a counter the app cannot
     #: reach, which is what keeps a loop from being a loop.
     retells: int = 0
+    #: How many times the first-round gate has already turned the team back. It is what
+    #: rotates the waiting line, and it cannot be read off the conversation: the gate answers
+    #: before the turn loop, so no exchange is appended and a rotation keyed on the messages
+    #: stands still — the room would repeat one sentence word for word every press.
+    waited: int = 0
     #: Which stretches the analyst has already read, by address. `terminei` is not idempotent
     #: on its own — every press re-ran the analyst over a growing transcript — so a second
     #: press with nothing new told back reuses the verdict instead of paying for it again.

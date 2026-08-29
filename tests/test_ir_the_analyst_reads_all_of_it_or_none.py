@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.fail_safe import FailSafe
+from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
 
@@ -36,6 +36,7 @@ PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
+LANGUAGE = "pt"
 
 
 class MemoryStore:
@@ -93,11 +94,15 @@ def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
 
 
 @pytest.fixture(autouse=True)
-def a_room_that_can_speak(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The verdict speaker and the voice, so a case that reaches them reaches them fully.
+def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The verdict speaker and the voice, and every line the room was asked to say.
 
     A case that expects no verdict has to be refused by the gate, not by a missing model.
+    The words are kept because the answer carries only an address: what was said is not
+    readable from the response at all.
     """
+    spoken: list[str] = []
+
     from app.api.internalization_room import back_translation as bt_api
 
     # The package re-exports a `run_turn` function under the submodule's own name, so the
@@ -111,10 +116,12 @@ def a_room_that_can_speak(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(turn_module, "call_agent", speaker)
 
-    async def _voice(*_: Any, **__: Any):
-        return (type("Voiced", (), {"key": "uma-chave"})(), 0)
+    async def _voice(text: str, *_: Any, **__: Any):
+        spoken.append(text)
+        return (type("Voiced", (), {"key": f"clipe-{len(spoken)}"})(), 0)
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
+    return spoken
 
 
 @pytest.fixture()
@@ -263,20 +270,84 @@ async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
 
 @pytest.mark.asyncio
 async def test_the_room_tells_the_team_instead_of_going_quiet(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
-    """Scenario 2. A refusal the team cannot hear is a room that stopped working."""
+    """Scenario 2 of the gate, and scenario 1 of the speaking: the team hears something.
+
+    Written against playable audio rather than the name of a file, which is what this path
+    used to answer with. Naming a line the tablet may not carry is not the same as being
+    heard, and that is the whole of what changed.
+    """
     session_id, take_id = await _two_stretches_told(client)
     await _re_record_the_native(db_session, session_id, take_id=take_id)
 
     answered = await _finish(client, session_id)
     body = answered.json()
 
-    assert body["fixed_line"].startswith(str(FailSafe.UNTOLD_STRETCH)), (
-        "a fala tem de ser a desta situação: a família de 'não consegui ouvir' mente, porque "
-        "a sala ouviu tudo, e manda repetir o que já foi contado em vez de contar o que falta"
+    assert body["audio_url"], "a equipe tem de ter o que tocar, sem depender do pacote do app"
+    assert body["fixed_line"] == "", "endereço e fala pré-aprovada nunca vêm juntos"
+    assert spoken, "e alguma coisa tem de ter sido dita para haver endereço"
+
+
+@pytest.mark.asyncio
+async def test_what_the_room_says_is_the_waiting_line_and_not_another_familys(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
+) -> None:
+    """Scenario 2. The words, not just the fact that there were words.
+
+    The D family is the one this must never be: it says the room could not hear, which is
+    false — it heard everything — and it asks the team to repeat what they already told.
+    """
+    session_id, take_id = await _two_stretches_told(client)
+    await _re_record_the_native(db_session, session_id, take_id=take_id)
+
+    await _finish(client, session_id)
+
+    assert spoken[-1] in utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE)
+    assert spoken[-1] not in utterances(FailSafe.INAUDIBLE, LANGUAGE)
+
+
+@pytest.mark.asyncio
+async def test_the_room_does_not_say_the_same_thing_twice_running(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
+) -> None:
+    """Scenario 3, and the reason three lines were written instead of one.
+
+    Nothing about the session changes between two presses in this state — no exchange is
+    appended, because the gate answers before the turn loop — so a rotation keyed on the
+    conversation stands still and the room repeats itself word for word.
+    """
+    session_id, take_id = await _two_stretches_told(client)
+    await _re_record_the_native(db_session, session_id, take_id=take_id)
+
+    await _finish(client, session_id)
+    await _finish(client, session_id)
+
+    assert len(spoken) == 2
+    assert spoken[0] != spoken[1], (
+        "uma sala que responde duas vezes seguidas com a mesma frase soa como máquina "
+        "travada, que é a impressão que as três linhas existem para evitar"
     )
-    assert body["audio_url"] == "", "fala pré-aprovada e url nunca vêm juntas"
+    assert set(spoken) <= set(utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE))
+
+
+@pytest.mark.asyncio
+async def test_the_other_families_are_still_played_from_the_app(
+    client: httpx.AsyncClient, analyst: Analyst, spoken: list[str]
+) -> None:
+    """Scenario 5. Only this one line moved; the fail-safes stay where they belong.
+
+    They exist to work when the rest does not — no network, no model — so a slice that
+    quietly dragged them onto the synthesis path would take away the one property they
+    are for.
+    """
+    session_id = await _open_session(client)
+
+    body = (await _finish(client, session_id)).json()
+
+    assert body["fixed_line"].startswith(str(FailSafe.INAUDIBLE))
+    assert body["audio_url"] == ""
+    assert spoken == [], "nada foi sintetizado no caminho de 'não ouvi nada'"
 
 
 @pytest.mark.asyncio

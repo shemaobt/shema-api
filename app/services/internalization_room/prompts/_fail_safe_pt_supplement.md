@@ -38,10 +38,13 @@ drop the term entirely: "a pessoa que acompanha vocês".
 
 ## H. A stretch is still waiting to be told back
 
-**Not authored by the project, and not yet reviewed by Marcia.** Proposed 2026-08-28 with the
-first-round gate; the request for a reviewed and recorded version is with Henok. Until the audio
-ships inside the app, the room names a line the app does not hold — see the pull request for
-what that costs.
+**Not authored by the project. Approved by Henok as written, 2026-08-29.**
+
+**This one is spoken, not shipped.** Every other family here is played from audio inside the
+app, because a fail-safe has to work when nothing else does — no network, no model. H is not a
+fail-safe: the gate fires with the server answering normally, before the analyst is called, and
+the verdict a few lines later in the same endpoint is already synthesized. So the room says this
+one out loud, and no app release stands between the team and hearing it.
 
 Not a failure. Nothing broke and nothing was misheard: the team has a stretch they have not
 explained yet, and the analyst may not read a subset, because its prompt defines "missing" as
