@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon.parse_map import (
+    SURVEYED_STATUS,
     VENDOR,
     MeaningMap,
     load_book,
@@ -87,6 +88,34 @@ def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
                 )
             )
     return tuple(rules)
+
+
+def require_walkable(meaning_map: MeaningMap) -> None:
+    """Refuse a passage no team should be walked through, and name which layer is missing.
+
+    The completion floor is every concrete element of the map engaged — each scene, being,
+    place, object, time, significant absence, *and preserved element*. A passage with no
+    withholdings recorded gets a coverage spine with no `preserved:` beads and a
+    comprehension pack with no `preserved_element` checkpoints, meets that shortened floor,
+    and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
+    passage; running costs Refine a false assurance, which is the more expensive of the two.
+
+    The two signals are read separately on purpose. Ruth's last eight passages happen to
+    carry both — no preservation layer *and* a pending survey — but agreement is not either
+    one being read, and a layer written before the survey closes would otherwise walk.
+    """
+    pericope = meaning_map.pericope_num
+    book = meaning_map.book
+    if not any(rule.pericope == pericope for rule in preservation_rules(book)):
+        raise ValidationError(
+            f"{pericope}: no preservation layer in the {book} canon — the passage's "
+            "withholdings were never written, so its completion floor cannot be met"
+        )
+    if meaning_map.sta_status != SURVEYED_STATUS:
+        raise ValidationError(
+            f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
+            f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
+        )
 
 
 def pericope_digest(meaning_map: MeaningMap) -> str:

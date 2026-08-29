@@ -21,6 +21,7 @@ from app.services.internalization_room.takes import (
     listen_url,
     store_take,
     take_for_facilitator,
+    take_in_session,
     takes_of,
 )
 from app.utils.stored_time import as_utc
@@ -100,6 +101,31 @@ async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> Tak
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
     )
+
+
+@router.get(
+    "/sessions/{session_id}/takes/{take_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+    dependencies=[room_caller_dep],
+)
+async def room_listens_to_take(
+    session_id: str, take_id: str, db: AsyncSession = Depends(get_db)
+) -> RedirectResponse:
+    """Give the team back the telling it just recorded, by the same signed redirect.
+
+    The back translation goes up and, until this, went nowhere the room could reach: the
+    only route that handed out playable audio wanted a facilitator's login, and the team
+    never signs in. The screen that asks where the error lives plays the mother tongue
+    from the tablet's own files and this in the other button.
+
+    The take is named inside its session rather than on its own, because the credential
+    at this door is the same string on every tablet — `take_in_session` is where that
+    argument is written out.
+    """
+    take = await take_in_session(db, session_id, take_id)
+    return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)

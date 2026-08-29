@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.internalization_room import (
     back_translation,
+    devices,
     passages,
     questions,
     release,
@@ -12,6 +13,6 @@ from app.api.internalization_room import (
 
 router = APIRouter()
 
-for _sub in (voice, sessions, passages, back_translation, questions, takes, release):
+for _sub in (voice, sessions, passages, back_translation, questions, takes, release, devices):
     for route in _sub.router.routes:
         router.routes.append(route)

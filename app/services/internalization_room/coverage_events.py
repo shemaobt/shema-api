@@ -96,10 +96,11 @@ async def necklace_with_touches(
     ``project_id`` and is nobody's work rather than everybody's; it is filtered out by the
     same equality, which is the intended answer here and not a row lost in silence.
 
-    What it cannot do is see work the classifier discarded. ``classify_coverage`` reads keys
-    the prompt does not produce, so well-formed replies are dropped, no merge happens and no
-    event is written — measured in ENG-441 and left to the room line to fix. Until it is, this
-    answers a necklace that never moved, and answers it accurately.
+    What it cannot do is see work the classifier discarded, and for two releases that was
+    most of it: ``classify_coverage`` read keys the prompt does not produce (ENG-569), and
+    then routed the array it does produce through a table holding two of its three statuses
+    (ENG-615), so a bead the team worked on the Guide's terms was logged and thrown away.
+    Both are fixed. This answers the events that were written, which is all it ever claimed.
     """
     standing = func.row_number().over(
         partition_by=IRCoverageEvent.element_key,

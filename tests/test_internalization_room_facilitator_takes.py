@@ -14,7 +14,7 @@ import httpx
 import pytest
 from google_crc32c import Checksum
 from httpx import ASGITransport
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
@@ -250,4 +250,35 @@ async def test_a_reviewer_can_tell_the_stretches_apart(db_session: AsyncSession)
     assert seen == [(1, 1), (2, 1), (2, 2)], (
         "e a ordem tem de ser a da leitura, não a da chegada: uma retentativa cai depois "
         "de um trecho posterior"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_take_with_no_pass_holds_its_place_on_either_database(
+    db_session: AsyncSession, test_engine
+) -> None:
+    """A rehearsal recorded before the room sent a pass has to stay where it is.
+
+    `chunk_index` and `pass_number` are both nullable, and an unqualified ASC leaves where
+    the NULLs land to the engine: SQLite puts them first, PostgreSQL last. The suite only
+    ever ran the first, so the oldest recording of a session read as the newest on the one
+    database a team is actually served by. The order is named in the query now, and this
+    reads the statement itself, because no fixture on SQLite can tell the two apart.
+    """
+    emitted: list[str] = []
+
+    @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
+    def _remember(conn, cursor, statement, parameters, context, executemany) -> None:
+        emitted.append(statement)
+
+    try:
+        await service.takes_of(db_session, "s1")
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _remember)
+
+    ordered = [statement for statement in emitted if "ORDER BY" in statement]
+    assert ordered, "takes_of tem de ter chegado ao banco para haver o que ler"
+    assert ordered[-1].count("NULLS FIRST") == 2, (
+        "as duas colunas anuláveis precisam dizer onde o nulo cai, senão o pacote sai em "
+        "uma ordem no teste e na oposta em produção"
     )

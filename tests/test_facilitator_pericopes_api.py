@@ -37,6 +37,7 @@ from tests.baker import (
     make_project,
     make_project_user_access,
     make_user,
+    open_ir_session,
 )
 
 TEAM_NOT_FOUND = "Team not found"
@@ -91,7 +92,7 @@ async def a_facilitator(db: AsyncSession, *, email="facilitadora@example.com"):
 
 async def having_closed(db: AsyncSession, team, *passages: str) -> None:
     for passage in passages:
-        session = await room.create_session(db, pericope=passage, project_id=team.id)
+        session = await open_ir_session(db, pericope=passage, project_id=team.id)
         await room.apply_coverage(
             db, session.id, dict.fromkeys(element_keys(passage), PARTIALLY_ENGAGED)
         )

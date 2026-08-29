@@ -5,11 +5,10 @@ from typing import Any
 import pytest
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey
+from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
-    Chunk,
     Finding,
     FindingKind,
     analyse_telling_back,
@@ -29,10 +28,23 @@ def _settings() -> Settings:
     return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
 
 
-def _chunks() -> list[Chunk]:
+def _segment(number: int, text: str) -> IRSegment:
+    """One stretch, as far as the analyst is concerned: an address and what was told."""
+    return IRSegment(
+        id=f"segmento-{number}",
+        session_id="sessao-1",
+        ordinal=number,
+        take_id="ensaio-1",
+        starts_ms=(number - 1) * 9000,
+        ends_ms=number * 9000,
+        transcript=text,
+    )
+
+
+def _told() -> list[IRSegment]:
     return [
-        Chunk(index=1, text="Noemi mandou Rute voltar."),
-        Chunk(index=2, text="Rute disse que ia junto."),
+        _segment(1, "Noemi mandou Rute voltar."),
+        _segment(2, "Rute disse que ia junto."),
     ]
 
 
@@ -72,7 +84,7 @@ def patch_speaker(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_the_chunks_go_to_the_analyst_in_listening_order() -> None:
-    block = segments_block(_chunks())
+    block = segments_block(_told())
 
     assert block.splitlines()[0].startswith("1. Noemi")
     assert block.splitlines()[1].startswith("2. Rute")
@@ -87,7 +99,7 @@ async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> No
     patch_analyst(json.dumps({"findings": []}))
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -113,7 +125,7 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
     )
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -136,7 +148,7 @@ async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
     patch_analyst("desculpe, não consigo")
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -187,30 +199,51 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
 
 
 def test_a_verdict_is_not_bought_twice_for_the_same_telling_back() -> None:
-    state = BackTranslationState(scope=P, chunks=_chunks())
+    told = _told()
+    state = BackTranslationState(scope=P)
 
-    assert not state.already_analysed
+    assert not state.already_analysed(told)
 
-    state.analysed_chunks = len(state.chunks)
+    state.analysed_segment_ids = [segment.id for segment in told]
 
-    assert state.already_analysed
+    assert state.already_analysed(told)
 
 
 def test_one_more_piece_told_back_earns_a_fresh_reading() -> None:
-    state = BackTranslationState(scope=P, chunks=_chunks())
-    state.analysed_chunks = len(state.chunks)
+    told = _told()
+    state = BackTranslationState(scope=P)
+    state.analysed_segment_ids = [segment.id for segment in told]
 
-    state.chunks.append(Chunk(index=3, text="e voltaram juntas"))
+    assert not state.already_analysed([*told, _segment(3, "e voltaram juntas")])
 
-    assert not state.already_analysed
+
+def test_a_stretch_told_back_again_earns_a_fresh_reading_at_the_same_count() -> None:
+    """The case a count could not see, and the reason the addresses are stored instead.
+
+    Replacing one stretch leaves the number of stretches exactly where it was, so a verdict
+    keyed on "how many" would be served again for a telling-back the analyst has never read.
+    """
+    told = _told()
+    state = BackTranslationState(scope=P)
+    state.analysed_segment_ids = [segment.id for segment in told]
+
+    told[1] = _segment(9, "Rute disse que ia junto, e para onde.")
+
+    assert len(told) == 2
+    assert not state.already_analysed(told)
 
 
 @pytest.mark.asyncio
-async def test_the_analyst_carries_the_chunk_pointer_through(patch_analyst) -> None:
+async def test_the_analyst_pointer_is_resolved_to_the_stretch_it_names(patch_analyst) -> None:
+    """The analyst answers with a position and the room stores an address.
+
+    Asking a model to echo an identifier back trades a reliable field for one it can invent,
+    so the number stays in the prompt and is resolved here, where it was already validated.
+    """
     patch_analyst('{"findings":[{"kind":"missing","chunk":2,"note":"nao contaram a fome"}]}')
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -218,7 +251,9 @@ async def test_the_analyst_carries_the_chunk_pointer_through(patch_analyst) -> N
     )
 
     assert analysis is not None
-    assert [(f.kind, f.chunk) for f in analysis.findings] == [(FindingKind.MISSING, 2)]
+    assert [(f.kind, f.segment_id) for f in analysis.findings] == [
+        (FindingKind.MISSING, "segmento-2")
+    ]
 
 
 @pytest.mark.asyncio
@@ -233,7 +268,7 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     )
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -241,7 +276,7 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     )
 
     assert analysis is not None
-    assert [f.chunk for f in analysis.findings] == [None, None, None]
+    assert [f.segment_id for f in analysis.findings] == [None, None, None]
 
 
 @pytest.mark.asyncio
@@ -256,7 +291,7 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
     monkey.setattr(module, "call_agent", _explode)
     try:
         analysis = await analyse_telling_back(
-            chunks=_chunks(),
+            segments=_told(),
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
@@ -295,7 +330,7 @@ async def test_the_full_taxonomy_is_parsed(patch_analyst) -> None:
     )
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -323,7 +358,7 @@ async def test_a_silence_finding_is_folded_into_addition(patch_analyst) -> None:
     )
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -347,7 +382,7 @@ async def test_one_malformed_finding_rejects_the_whole_reading(patch_analyst) ->
     )
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -362,7 +397,7 @@ async def test_insufficiency_must_name_its_limit(patch_analyst) -> None:
     patch_analyst(json.dumps({"evidence_sufficient": False, "findings": []}))
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -386,7 +421,7 @@ async def test_a_sufficient_reading_cannot_carry_an_insufficiency_finding(
     )
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -412,7 +447,7 @@ async def test_a_thin_telling_back_is_an_open_limit_not_a_clean_check(
     )
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -432,7 +467,7 @@ async def test_a_legacy_reply_without_the_sufficiency_field_still_reads(
     patch_analyst(json.dumps({"findings": [{"kind": "missing", "note": "Orfa"}]}))
 
     analysis = await analyse_telling_back(
-        chunks=_chunks(),
+        segments=_told(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
@@ -455,6 +490,30 @@ def test_tolerance_forgives_the_edges_but_not_a_hole() -> None:
 
 def test_a_half_listened_clip_is_not_covered() -> None:
     assert not played_ranges_cover_clip([[0, 30000]], 61000)
+
+
+def test_playback_that_runs_past_the_clip_is_not_playback_of_that_clip() -> None:
+    """A cursor beyond the clip is the signature of ranges from a different audio.
+
+    Typically the previous, longer clip: the piece was replaced and the old listening
+    report stayed standing. Approving it would bless as "heard" a clip nobody played.
+    """
+    assert not played_ranges_cover_clip([[0, 45000]], 37000)
+
+
+def test_the_slack_is_still_slack_on_the_far_edge() -> None:
+    """The cure may not become the disease.
+
+    Playback reports round, and a report that overshoots the end by a fraction is the
+    same rounding the near edge is already forgiven for.
+    """
+    assert played_ranges_cover_clip([[0, 37700]], 37000)
+    assert not played_ranges_cover_clip([[0, 39000]], 37000)
+
+
+def test_stretches_with_a_tolerable_gap_still_cover_the_clip() -> None:
+    """Covered in pieces, with a hole small enough to be the gap between two taps."""
+    assert played_ranges_cover_clip([[0, 30000], [30500, 61000]], 61000)
 
 
 def test_a_legacy_client_without_a_report_passes() -> None:

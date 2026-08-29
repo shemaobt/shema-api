@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     google_maps_api_key: str = ""
     google_embedding_model: str = "gemini-embedding-001"
     google_llm_model: str = "gemini-3.1-pro-preview"
+    #: The two Gemini tiers every feature speaks through. They were literals in nine
+    #: modules, so the model behind Translation Helper, Project Health, the
+    #: Internalization Room, Sound Necklace and i18n could only be changed by editing and
+    #: deploying nine files — and all nine named a preview. A preview is withdrawn without
+    #: notice, and with no alerting in front of them the first sign would have been five
+    #: features failing at once. Here, moving off one is an environment variable.
+    gemini_fast_model: str = "gemini-3-flash-preview"
+    gemini_quality_model: str = "gemini-3-flash-preview"
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5

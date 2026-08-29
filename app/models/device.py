@@ -100,6 +100,50 @@ class TeamDeviceResponse(BaseModel):
         )
 
 
+class RoomDeviceCodeRequest(BaseModel):
+    """What a tablet sends when it already has a device row and only needs a live code.
+
+    Absent on the very first run, and present from then on: a tablet that keeps asking
+    without naming itself would leave a fresh unclaimed device behind every fifteen
+    minutes it sat on a table waiting for someone.
+    """
+
+    device_id: str | None = Field(default=None, max_length=36)
+
+
+class RoomDeviceCodeResponse(BaseModel):
+    """The code a tablet puts on its screen, and the device it was drawn for.
+
+    The plaintext code exists here and in ``MintedDevice`` and nowhere else — the row keeps
+    a hash — so this is the one moment it can be shown to anybody.
+    """
+
+    device_id: str
+    code: str
+    expires_at: datetime
+
+    @classmethod
+    def of(cls, device: Device, code: str) -> "RoomDeviceCodeResponse":
+        """The answer, with the expiry read the way `TeamDeviceResponse.of` reads its moments.
+
+        `as_utc` for the same reason it is used there: `DateTime(timezone=True)` reads back
+        naive on SQLite, and a tablet deciding when to draw a fresh code off a bare digit
+        string would read it as local time and sit on a dead code for hours.
+        """
+        return cls(
+            device_id=device.id,
+            code=code,
+            expires_at=as_utc(device.claim_code_expires_at),
+        )
+
+
+class RoomDeviceLinkResponse(BaseModel):
+    """The team a tablet was linked to. Carries no credential, like ``DeviceSelfResponse``."""
+
+    project_id: str
+    label: str | None
+
+
 class DeviceLabelUpdateRequest(BaseModel):
     """The who-uses-it note. Free text, stored verbatim, empty allowed."""
 
