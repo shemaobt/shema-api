@@ -110,6 +110,7 @@ class TurnOutcome:
     transcript: str
     peer_cue: bool = False
     used_fail_safe: bool = False
+    degraded: bool = False
     redrafts: int = 0
     issues: list[dict[str, Any]] = field(default_factory=list)
     #: Which pre-approved line was spoken, when one was. The app ships these as audio, so a
@@ -379,6 +380,7 @@ async def _voiced_after_validation(
         speech=speech,
         transcript=transcript,
         used_fail_safe=True,
+        degraded=True,
         redrafts=MAX_REDRAFTS,
         issues=issues,
         fixed_line=line,
@@ -419,6 +421,7 @@ async def run_turn(
             speech=speech,
             transcript="",
             used_fail_safe=True,
+            degraded=True,
             fixed_line=line,
         )
 
@@ -477,6 +480,7 @@ async def run_panorama_turn(
             speech=speech,
             transcript="",
             used_fail_safe=True,
+            degraded=True,
             fixed_line=line,
         )
 

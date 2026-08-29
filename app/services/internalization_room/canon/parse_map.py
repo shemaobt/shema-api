@@ -15,6 +15,7 @@ MAPS_DIR = VENDOR / "meaning-map"
 ROOM_BOOK = "Ruth"
 
 CONSUMABLE_STATUS = "complete"
+SURVEYED_STATUS = "complete"
 SUPPORTED_GENRE_GROUPS = frozenset({"NARRATIVE"})
 
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
@@ -69,6 +70,14 @@ class MeaningMap(BaseModel):
     genre_group: str
     genre: str
     status: str
+    sta_status: str
+    """How far the project's own survey of this passage got — `complete` or `pending`.
+
+    Read but not enforced here. A map is refused as canon at the door of the room rather
+    than at the door of the parser, because `load_book` parses the whole book in one call:
+    raising on a pending map would take the Book Panorama, the story-so-far and the passage
+    wheel down with it, including the passages whose survey is finished.
+    """
     arc_prose: str
     scenes: list[Scene]
     propositions: list[Proposition]
@@ -217,6 +226,7 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
         genre_group=genre_group,
         genre=str(meta.get("genre", "")),
         status=status,
+        sta_status=str(meta.get("sta-status", "")),
         arc_prose=arc.group(1).strip(),
         scenes=scenes,
         propositions=_parse_propositions(body),

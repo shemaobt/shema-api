@@ -296,6 +296,7 @@ async def test_an_assessor_that_cannot_be_reached_degrades_the_turn(
     turn, _ = await _the_team_answers(db_session, session)
 
     assert turn.outcome.used_fail_safe
+    assert turn.outcome.degraded
     assert turn.outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
 
@@ -350,6 +351,7 @@ async def test_three_assessor_failures_running_reach_the_hard_stop(
 
     assert spoken[-1] in utterances(FailSafe.HARD_STOP, "pt")
     assert turn.outcome.used_fail_safe
+    assert turn.outcome.degraded
     assert turn.outcome.needs_person
 
 

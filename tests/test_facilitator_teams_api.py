@@ -42,6 +42,7 @@ from tests.baker import (
     make_project,
     make_project_user_access,
     make_user,
+    open_ir_session,
 )
 
 TEAMS_URL = "/api/facilitator/teams"
@@ -134,9 +135,14 @@ async def a_session(
 
 
 async def having_closed(db: AsyncSession, team, *passages: str) -> None:
-    """Walk this team through these passages the way the room does, so nothing is inserted."""
+    """Walk this team through these passages the way the room does.
+
+    The coverage events — what these routes actually read — are still written by
+    `apply_coverage`, so the fixture cannot agree with a route that reads them differently
+    from how the room writes them. `open_ir_session` says what it inserts and when.
+    """
     for passage in passages:
-        session = await create_session(db, pericope=passage, project_id=team.id)
+        session = await open_ir_session(db, pericope=passage, project_id=team.id)
         await apply_coverage(
             db,
             session.id,
@@ -145,11 +151,12 @@ async def having_closed(db: AsyncSession, team, *passages: str) -> None:
 
 
 async def having_closed_the_book(db: AsyncSession, team) -> None:
-    """Walk this team to the end of Ruth through the production path.
+    """Walk this team to the end of Ruth.
 
-    Built with `create_session` and `apply_coverage` rather than by writing event rows, so a
-    fixture cannot agree with a resolution that reads the events differently from how the room
-    writes them. It is fourteen passages because "complete" now means the book, not a session.
+    The events are written by `apply_coverage` rather than inserted, so a fixture cannot agree
+    with a resolution that reads them differently from how the room writes them. It is fourteen
+    passages because "complete" now means the book, not a session — and since ENG-589 eight of
+    them are no longer passages the room will open, which is what `open_ir_session` covers.
     """
     from app.services.internalization_room import sessions as room
     from app.services.internalization_room.canon.elements import element_keys
@@ -158,7 +165,7 @@ async def having_closed_the_book(db: AsyncSession, team) -> None:
 
     for meaning_map in load_book(ROOM_BOOK):
         passage = meaning_map.pericope_num
-        session = await room.create_session(db, pericope=passage, project_id=team.id)
+        session = await open_ir_session(db, pericope=passage, project_id=team.id)
         await room.apply_coverage(
             db,
             session.id,

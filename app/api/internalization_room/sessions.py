@@ -17,6 +17,7 @@ from app.models.internalization_room import (
     FacilitatorSessionsResponse,
     FacilitatorSessionView,
     NeedsPersonResponse,
+    SegmentView,
     SessionStateResponse,
     SpokenSegment,
     TurnResponse,
@@ -104,34 +105,46 @@ def _coverage_view(session: IRSession) -> CoverageView:
     )
 
 
-def _state(session: IRSession) -> SessionStateResponse:
+async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
     return SessionStateResponse(
         session_id=session.id,
         pericope=session.pericope,
         status=str(session.status),
         coverage=_coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
-        back_translation=_progress(session),
+        back_translation=await _progress(db, session),
         bridge_mode=session.bridge_mode,
     )
 
 
-def _progress(session: IRSession) -> BackTranslationProgress:
+async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProgress:
     """What a tablet needs to pick a telling-back back up where it stopped.
 
     All of it was already on the session and none of it had a way out, so an app that
     forgot its session id — which is every restart, because the id lives only in memory —
     lost the retro entirely and had to record the rehearsal again.
+
+    The stretches come from `final_segments` and nothing here repeats its rule: what a tablet
+    resumes is the same reading the analyst gets.
     """
     state = room.back_translation_of(session)
     finding = state.current_finding
     return BackTranslationProgress(
         scope=state.scope,
-        passes=[chunk.pass_number for chunk in state.chunks],
-        spans=[[chunk.starts_ms or 0, chunk.ends_ms or 0] for chunk in state.chunks],
+        segments=[
+            SegmentView(
+                segment_id=segment.id,
+                take_id=segment.take_id,
+                starts_ms=segment.starts_ms,
+                ends_ms=segment.ends_ms,
+                pass_number=segment.pass_number,
+                told=segment.transcript is not None,
+            )
+            for segment in await room.final_segments(db, session.id)
+        ],
         retells=state.retells,
         checked=state.checked,
-        finding_chunk=finding.chunk if finding else None,
+        finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
         superseded_attempts=len(state.superseded),
     )
@@ -157,7 +170,7 @@ async def create_session(
             await db.commit()
     elif is_panorama(session.pericope):
         background.add_task(prepare_opening, session.id)
-    return _state(session)
+    return await _state(db, session)
 
 
 @router.get(
@@ -167,7 +180,7 @@ async def create_session(
 )
 async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
     session = await room.get_session(db, session_id)
-    return _state(session)
+    return await _state(db, session)
 
 
 @router.get("/facilitator/sessions", response_model=FacilitatorSessionsResponse)
@@ -387,6 +400,7 @@ async def take_turn(
         transcript=outcome.transcript,
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
+        degraded=outcome.degraded,
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         bridge_mode=session.bridge_mode,
