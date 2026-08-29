@@ -7,7 +7,6 @@ from app.core.exceptions import NotFoundError
 from app.db.models.internalization_room import IRSessionStatus
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
-    Chunk,
     Finding,
     FindingKind,
 )
@@ -23,6 +22,11 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.segments import (
+    capture_segment,
+    final_segments,
+    retired_segments,
+)
 from app.services.internalization_room.session_end import SessionState, end_of
 from app.services.internalization_room.sessions import (
     MAX_RETELLS,
@@ -206,20 +210,31 @@ async def test_a_session_needing_a_person_is_marked(db_session: AsyncSession) ->
     assert session.status is IRSessionStatus.NEEDS_PERSON
 
 
+async def _tell(db_session: AsyncSession, session, text: str):
+    """One stretch told back, so a case can have one without going through the route."""
+    told = await final_segments(db_session, session.id)
+    return await capture_segment(
+        db_session,
+        session,
+        take_id="ensaio-1",
+        starts_ms=len(told) * 9000,
+        ends_ms=(len(told) + 1) * 9000,
+        bridge_take_id="retro-1",
+        transcript=text,
+    )
+
+
 @pytest.mark.asyncio
 async def test_a_fresh_recording_throws_the_whole_telling_back_away(
     db_session: AsyncSession,
 ) -> None:
     session = await create_session(db_session, pericope=P)
-    await save_back_translation(
-        db_session,
-        session,
-        BackTranslationState(scope=P, retells=2, chunks=[Chunk(index=1, text="velho")]),
-    )
+    await save_back_translation(db_session, session, BackTranslationState(scope=P, retells=2))
+    await _tell(db_session, session, "velho")
 
     state = await begin_back_translation_again(db_session, session)
 
-    assert state.chunks == []
+    assert await final_segments(db_session, session.id) == []
     assert state.retells == 2, (
         "o contado de volta é jogado fora; o orçamento de recontagens não é parte dele. "
         "Zerá-lo punha nas mãos da equipe — por um toque em 'gravar de novo' — o contador "
@@ -255,23 +270,27 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
         session,
         BackTranslationState(
             scope=P,
-            chunks=[Chunk(index=1, text="Noemi mandou Rute voltar")],
             findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
             evidence_sufficient=False,
             retells=2,
         ),
     )
+    told = await _tell(db_session, session, "Noemi mandou Rute voltar")
 
     fresh = await begin_back_translation_again(db_session, session)
 
-    assert fresh.chunks == []
+    assert await final_segments(db_session, session.id) == []
     assert fresh.findings == []
     assert fresh.retells == 2
     assert len(fresh.superseded) == 1
     archived = fresh.superseded[0]
-    assert archived.chunks[0].text == "Noemi mandou Rute voltar"
     assert archived.findings[0].kind is FindingKind.MISSING
     assert not archived.evidence_sufficient
+    retired = await retired_segments(db_session, session.id)
+    assert [one.id for one in retired] == [told.id], (
+        "o trecho não é copiado para dentro do arquivo: ele fica onde está, "
+        "marcado como não valendo mais, e continua recuperável"
+    )
 
 
 @pytest.mark.asyncio
@@ -292,15 +311,19 @@ async def test_two_retakes_keep_both_histories_in_order(db_session: AsyncSession
     await save_back_translation(
         db_session,
         session,
-        BackTranslationState(scope=P, chunks=[Chunk(index=1, text="primeira tentativa")]),
+        BackTranslationState(scope=P, findings=[Finding(kind=FindingKind.MISSING, note="Orfa")]),
     )
+    await _tell(db_session, session, "primeira tentativa")
+
     state = await begin_back_translation_again(db_session, session)
-    state.chunks.append(Chunk(index=1, text="segunda tentativa"))
+    state.findings = [Finding(kind=FindingKind.ADDITION, note="Belém")]
     await save_back_translation(db_session, session, state)
+    await _tell(db_session, session, "segunda tentativa")
 
     fresh = await begin_back_translation_again(db_session, session)
 
-    assert [attempt.chunks[0].text for attempt in fresh.superseded] == [
+    assert [attempt.findings[0].note for attempt in fresh.superseded] == ["Orfa", "Belém"]
+    assert [one.transcript for one in await retired_segments(db_session, session.id)] == [
         "primeira tentativa",
         "segunda tentativa",
     ]

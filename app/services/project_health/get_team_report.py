@@ -23,6 +23,8 @@ async def get_team_report(db: AsyncSession, report_id: str) -> TeamReportRespons
     return TeamReportResponse(
         id=report_row.id,
         interview_id=report_row.interview_id,
+        project_name=interview_row.project_name,
+        team_name=interview_row.team_name,
         language=interview_row.language,
         team_report=TeamReport.model_validate(report_row.team_report),
         created_at=report_row.created_at,

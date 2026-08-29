@@ -1,17 +1,20 @@
 """the resource-request module's tables: requests, evaluations, funds, ledger, board
 
 Revision ID: 20260825_rr01
-Revises: 20260823_join4
+Revises: 20260828_seg01
 Create Date: 2026-08-25
 
-The parent is `20260823_join4`, the head `main` carries, and not `20260819_room08`, which
-this branch was cut above: `join4` already names `room08` as one of its two parents, so a
-revision hanging off `room08` would be a second head — invisible on a stacked PR, whose CI
-walks its own base, and fatal at the first `alembic upgrade head` after the branch reaches
-`main`. `tests/test_migration_graph.py` is the guard, and it came from `main` in the same
-merge that brought the parent.
+The parent is `20260828_seg01`, the head `main` carries today — and the **second** parent
+this revision has had. It was written against `20260823_join4` on 25/aug, and re-pointed on
+29/aug, when `main` grew `20260828_seg01` off that same `join4` while this branch waited in
+review: both were then heads. The failure is invisible where it is written, which is why it
+survived three green pull requests — a stacked PR's CI walks its own base, so
+`tests/test_migration_graph.py` is content there, and the graph forks only when `main` comes
+down the stack. So the parent is **re-read at every merge of `main`, not once when the file
+is created**; this file has now paid that twice. `20260819_room08`, which the branch was cut
+above, was never eligible either: `join4` already names it as one of its two parents.
 
-Written by hand, like the other 78 revisions here. `alembic/env.py` imports only
+Written by hand, like the other 81 revisions here. `alembic/env.py` imports only
 `app.core.database`, so its metadata is empty and `--autogenerate` would emit a
 migration dropping all 64 existing tables (docs/resource_requests.md §8.1).
 
@@ -48,7 +51,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260825_rr01"
-down_revision = "20260823_join4"
+down_revision = "20260828_seg01"
 branch_labels = None
 depends_on = None
 

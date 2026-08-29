@@ -166,6 +166,27 @@ async def take_for_facilitator(db: AsyncSession, user: User, take_id: str) -> IR
     return take
 
 
+async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IRTake:
+    """The take, if it is one of this session's.
+
+    What the room presents is a key shipped inside the app bundle, identical in every
+    installation — it names no team. A take resolved by its identifier alone would
+    therefore be reachable by anybody holding the app, and the route this guards answers
+    with a signed URL, so what leaks is the audio and not a row. Naming the session is
+    what keeps a shared credential from being a key to the whole archive.
+
+    The refusal carries `take_by_id`'s message, so somebody else's take and no take at
+    all read alike and the answer is no inventory of what exists.
+    """
+    result = await db.execute(
+        select(IRTake).where(IRTake.id == take_id, IRTake.session_id == session_id)
+    )
+    take = result.scalar_one_or_none()
+    if take is None:
+        raise NotFoundError(_no_such_take(take_id))
+    return take
+
+
 async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
     """A short-lived signed URL, so the bytes never pass through the API.
 
@@ -183,15 +204,47 @@ async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
     )
 
 
+async def rehearsal_take_of(db: AsyncSession, session_id: str, take_id: str) -> IRTake:
+    """The rehearsal recording a stretch claims to have come out of, or a refusal.
+
+    A stretch is a slice of one file, so the file has to be one this session recorded in the
+    mother tongue. Checked rather than trusted: a slice of somebody else's recording, or of a
+    telling-back, is not a stretch of this passage at all, and stored unchecked it would read
+    downstream as one.
+    """
+    result = await db.execute(
+        select(IRTake).where(
+            IRTake.id == take_id,
+            IRTake.session_id == session_id,
+            IRTake.kind == IRTakeKind.ENSAIO,
+        )
+    )
+    take = result.scalar_one_or_none()
+    if take is None:
+        raise NotFoundError(f"Internalization room rehearsal take {take_id} not found")
+    return take
+
+
 async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     """Every take of a session, in reading order rather than in arrival order.
 
     A retry lands after a later stretch, so the created-at order alone puts the takes in
     the wrong sequence for whoever reviews the session.
+
+    Both columns are nullable and the placement is named rather than left to the engine:
+    a take with no chunk is the undivided passage and a take with no pass predates the
+    room sending one, so either is the earliest thing in its own group. Unnamed, SQLite
+    read that the same way and PostgreSQL read it upside down, which put the oldest
+    recording of a session at the bottom of the packet on the only database that serves
+    a real team.
     """
     result = await db.execute(
         select(IRTake)
         .where(IRTake.session_id == session_id)
-        .order_by(IRTake.chunk_index, IRTake.pass_number, IRTake.created_at)
+        .order_by(
+            IRTake.chunk_index.asc().nulls_first(),
+            IRTake.pass_number.asc().nulls_first(),
+            IRTake.created_at,
+        )
     )
     return list(result.scalars().all())

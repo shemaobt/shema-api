@@ -792,6 +792,15 @@ which asserts one head *and* that the join names every line that would otherwise
 Bringing `main` down the stack before writing a revision is what makes both true; the
 command is `git log --oneline -1 origin/main -- alembic/versions`, not memory.
 
+**It moved a second time, and the second time is what turns the observation into a rule**
+(29/aug/2026): `main` grew `20260828_seg01` off that same `join4` while this stack sat in
+review, so `20260825_rr01` — written against `join4` four days earlier — was re-pointed at
+`seg01`. Reading the head once, when the file is created, is not enough: the head keeps
+moving for as long as a stacked PR waits, so the parent is re-read at **every** merge of
+`main` down the stack. And nothing on this side says otherwise in the meantime — BE-01,
+BE-02 and BE-05 were all green, `migrations.yml` included, because each ran against its own
+base. The guard only speaks when `main` arrives, which is the moment to listen to it.
+
 ### 8.4 A request and its snapshot reference each other, so a flush needs telling
 
 `rr_snapshots.request_id` points at the request and `rr_requests.revision_of_id` points

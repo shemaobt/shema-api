@@ -41,6 +41,7 @@ from tests.baker import (
     make_project,
     make_project_user_access,
     make_user,
+    open_ir_session,
 )
 
 TEAM_NOT_FOUND = "Team not found"
@@ -94,7 +95,7 @@ async def a_facilitator(db: AsyncSession, *, email: str, tongue: str = "Terena")
 
 
 async def moved(db: AsyncSession, team, *, pericope: str, keys: list[str]):
-    session = await room.create_session(db, pericope=pericope, project_id=team.id)
+    session = await open_ir_session(db, pericope=pericope, project_id=team.id)
     await room.apply_coverage(db, session.id, dict.fromkeys(keys, PARTIALLY_ENGAGED))
     return session
 
