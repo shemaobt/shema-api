@@ -37,13 +37,22 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
 def utterances(kind: FailSafe, language_code: str = "pt") -> list[str]:
     """The pre-approved lines for one situation, in the session language when written.
 
-    These are application strings, not a model call — the whole point of the fail-safe is
-    that nothing generative stands between the failure and what the team hears.
+    These are application strings and not a model call, which is the whole point of a
+    fail-safe: nothing generative stands between the failure and what the team hears. The
+    H family is the one exception, and it is not a fail-safe — see the supplement.
+
+    The file tags its blocks by primary language (`-pt`) while the room is configured with
+    a locale (`pt-BR`), so a regional code is tried and then its primary before falling
+    back to the authored English. Without that step every family answers in English for a
+    Brazilian team. That was invisible while only the *name* of a line crossed the wire —
+    the app held the audio and the indexes match between the two blocks — and it stops
+    being invisible the moment a line is synthesized from its text.
     """
     sections = _sections()
-    localized = sections.get((str(kind), language_code))
-    if localized:
-        return localized
+    for tag in (language_code, language_code.split("-")[0]):
+        localized = sections.get((str(kind), tag))
+        if localized:
+            return localized
     return sections.get((str(kind), None), [])
 
 
