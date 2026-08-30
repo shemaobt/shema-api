@@ -345,6 +345,20 @@ class RequestOut(BaseModel):
     this API cannot reshape a team's answers. Everything beside it — the id, the stage, the
     timestamps, the link back to what a revision revises — is state that moves, and is
     deliberately outside the thing that must not.
+
+    **The team's four-mark progress bar is served from these fields alone, and that is what
+    keeps it clear of §5.3.** *Rascunho → Enviado → Em análise → Decisão* reads out whole:
+    ``submitted_at`` separates the first two — the ``stage`` does not, because a draft
+    carries the column's ``triagem`` default and is not on the board yet — ``stage`` being
+    ``analise`` is the third, and the four decision stages are the fourth, from which the
+    last mark takes its label and its colour. **Nothing in ``rr_evaluations`` is read**: the
+    day the bar fetches a score or a comment to colour a mark, §5.3 was broken by a progress
+    bar.
+
+    **Four marks of journey and not of decision is ours to decide — Daniel, 28/aug/2026 —
+    and not the client's sentence.** The four ``RRDecision`` values are mutually exclusive,
+    so four boxes of which exactly one ever lights is not progress; it is a status wearing a
+    bar's clothes. It gets shown to the client with the screen in hand (FE-28).
     """
 
     id: str
