@@ -395,6 +395,11 @@ async def test_the_seed_allocates_nothing_and_the_balance_says_so(seeded: AsyncS
     balance read through the service is therefore **-159.000** — the two approved cards'
     deductions against an empty fund — which is the negative-with-warning state D5 chose
     over a refusal, seeded on purpose rather than papered over.
+
+    ``retired`` joined the tuple with BE-10 (OBT-471), and the exact comparison is what
+    reported it — which is the argument for comparing the whole shape rather than the three
+    figures: a field added to a balance read reaches this assertion before it reaches a
+    screen.
     """
     kinds = (await seeded.execute(select(RRFundMovement.kind).distinct())).scalars().all()
     assert RRMovementKind.ALLOCATION not in kinds
@@ -404,6 +409,7 @@ async def test_the_seed_allocates_nothing_and_the_balance_says_so(seeded: AsyncS
         {
             "id": "linguas",
             "name": "Shema Línguas",
+            "retired": False,
             "allocated": Decimal("0.00"),
             "committed": Decimal("159000.00"),
             "available": Decimal("-159000.00"),
