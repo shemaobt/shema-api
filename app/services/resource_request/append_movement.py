@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UnknownReferenceError, ValidationError
 from app.db.models.resource_request import RRFund, RRFundMovement, RRMovementKind
+from app.utils.resource_request_typed_fields import fits_the_money_column
 
 
 async def append_movement(
@@ -46,11 +47,23 @@ async def append_movement(
     whether an approval writes the request's own currency is BE-08's call, and a balance
     summed over two currencies is a question nobody has answered — not one to freeze in a
     signature here.
+
+    The amount goes through ``fits_the_money_column`` — the one statement of
+    ``Numeric(14, 2)``'s shape, shared with BE-05's payload models — and for the ledger's
+    own reason: PostgreSQL rounds a sub-cent value into the column while SQLite stores it
+    as sent (measured: ``10.999`` lands ``11.00`` and ``10.999`` respectively), so a
+    movement written unchecked would sum differently per dialect. It runs before the
+    ``<= 0`` comparison because even *comparing* a ``NaN`` raises ``InvalidOperation``,
+    and before the lock because a refusal should take no lock at all.
     """
     if kind is RRMovementKind.REVERSAL:
         raise ValidationError(
             "A reversal names the movement it compensates — use reverse_movement."
         )
+    try:
+        fits_the_money_column(amount)
+    except ValueError as refusal:
+        raise ValidationError(str(refusal)) from None
     if amount <= 0:
         raise ValidationError(f"A movement moves money, and {amount} moves none.")
 
