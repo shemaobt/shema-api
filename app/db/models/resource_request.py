@@ -328,6 +328,71 @@ class RRBudgetLine(Base):
     amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
 
 
+class RRAttachment(Base):
+    """The budget file a request carries — one current file, with its whole history.
+
+    GATE-03 D3 (27/aug/2026) made the attachment a real file — *"anexa o arquivo no
+    sistema"* — and the client answered the format question on 28/aug/2026: PDF,
+    spreadsheet and text document, ceiling delegated to us and recorded as 10 MB in
+    OBT-474. What may enter this table is decided in
+    ``app/services/resource_request/_attachment_rules.py``; what this table decides is
+    how a file is kept and replaced.
+
+    **A replacement supersedes, it never deletes.** The mesa may have read the file that
+    was here before, so the row that described it has to survive the way an audit row
+    does: a new upload stamps ``superseded_at`` on the current row and inserts its own.
+    The partial unique index is what makes *one file per request* a fact about current
+    rows only — ``request_id`` is unique **where** ``superseded_at IS NULL``, so history
+    accumulates under the same request while the present stays single. Both dialects get
+    the same index: ``postgresql_where`` for the migration's target and ``sqlite_where``
+    for the schema ``create_all`` builds under pytest.
+
+    ``storage_key`` is content-addressed (the sha256 is in the path), which is what makes
+    both directions of a replacement safe: a new file never overwrites the old one's
+    object, and re-uploading identical bytes lands on the same object rather than a
+    duplicate. The consequence worth stating: a superseded row and the current one may
+    share a key, so **no object is ever deleted on supersede** — sweeping the old row's
+    key could destroy the current file.
+
+    **No URL column, deliberately.** The bucket is private and a link to an object only
+    exists as a short-lived signed GET minted per read; a stored URL would either expire
+    in the row or be the public kind this issue exists to refuse.
+
+    ``uploaded_by`` restricts on delete like the ledger's ``created_by`` and for the same
+    reason: the file entered the record under somebody's name, and that name is part of
+    what the mesa relied on.
+
+    ``attachment_note`` is untouched by all of this: it stays one of the contract's 45
+    text keys inside ``rr_request_sections.content``, the free note beside the file — a
+    team that cannot upload still says what it sent.
+    """
+
+    __tablename__ = "rr_attachments"
+    __table_args__ = (
+        Index("ix_rr_attachments_request_created", "request_id", "created_at"),
+        Index(
+            "uq_rr_attachments_request_current",
+            "request_id",
+            unique=True,
+            postgresql_where=text("superseded_at IS NULL"),
+            sqlite_where=text("superseded_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    request_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("rr_requests.id", ondelete="CASCADE")
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(512))
+    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class RRSnapshot(Base):
     """The frozen document a submission produced, and what an evaluation points at.
 
