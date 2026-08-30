@@ -103,9 +103,12 @@ async def submit_request(request_id: str, user: CanEditRequests, db: Db) -> Subm
 
 @router.post("/requests/{request_id}/endorse")
 async def endorse_request(request_id: str, user: CanEndorseRequest, db: Db) -> RequestOut:
-    """No body: the endorsement is an act over what is stored, stamped from the session."""
-    endorsed = await service.endorse_request(db, request_id, user, APP_KEY)
-    return _out(await service.get_request(db, endorsed.id, user, APP_KEY))
+    """No body: the endorsement is an act over what is stored, stamped from the session.
+
+    No reload either: the service reads the request to check it and hands back what it
+    read, unlike the two routes above, whose row is new (PR #281, review).
+    """
+    return _out(await service.endorse_request(db, request_id, user, APP_KEY))
 
 
 @router.post("/requests/{request_id}/revise", status_code=status.HTTP_201_CREATED)

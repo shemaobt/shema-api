@@ -205,7 +205,7 @@ async def test_a_mesa_member_who_is_also_equipe_still_reaches_every_request(
 
     Since ``20260828_rr02`` whoever registers is ``equipe``, so a mesa member holds ``equipe``
     **plus** ``mesa`` — two rows, with no constraint on ``(user_id, app_id)`` to prevent it.
-    ``as_mesa`` above grants one role and cannot see this: ``reaches_every_request`` asks
+    ``as_mesa`` above grants one role and cannot see this: ``Reach.every`` asks
     ``granted - {TEAM_ROLE, LEADER_ROLE}``, and asked the other way round — ``TEAM_ROLE in
     granted`` — it would answer *team* for exactly this account and hide the board from the
     mesa. The Líder's own middle reach is ``test_endorsement.py``'s subject.

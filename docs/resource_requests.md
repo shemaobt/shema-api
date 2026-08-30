@@ -132,7 +132,7 @@ a migration, not a refactor."*
 | `languages` | **Not shared. No FK.** | The form's A1 stores language name, ISO code, family, dialects, speaker count and literacy rate as **free text typed by the team**, next to vocabulary answers for vitality and writing system (contract §1.2). `languages` is `name` plus a unique three-character `code`. A FK would reject exactly the population this product serves — the contract's own vocabulary has *língua ágrafa* as a first-class answer. Text fields. |
 | `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. This row carried a condition — *if GATE-02 answers team access with an org* — and **the gate answered with individual accounts** (D1), so the condition never fires. The one shape that could still reach for it is BE-16's Líder de Base, who endorses *"que o projeto pertence à base dele"*: a base is not an `organizations` row today, and whoever builds it decides whether it becomes one. |
 | `phases`, `project_phases` | **Not applicable.** | The board's six columns are this product's own key space (contract §4.1) and are not workflow phases of a translation project. |
-| `notifications` | **Not applicable in wave 2 as scoped.** | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, which **no issue owns** — see §10. If it gets an owner, this table is the first thing to read, not a new one to build. |
+| `notifications` | **BE-13's first read.** | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, which **BE-13** (OBT-480) owns since GATE-03 D5/D6 — see §10. It got its owner, and this table is the first thing that owner reads, not a new one to build. |
 | `permissions`, `role_permissions` | **Not usable.** | They exist as tables and are **not wired into `access_control.py`** — the guards check roles only. See §5.4. |
 
 ### 2.4 There is no Shemá module to coexist with — **finding**
@@ -303,6 +303,23 @@ Two things are decided and two are BE-02's:
   It is its own table rather than a column on `rr_requests` so the board and the lists never
   drag the document they do not read.
 
+**A copy is taken at an instant, and BE-16 is what made that worth writing down.** *Copy and
+not projection* is a statement about serializers — there is one builder, so the freeze cannot
+drift from the read path by being written twice. It was never a promise that a later read of
+a submitted request returns the snapshot's bytes, and since the endorsement exists it is not
+one: `endorse_request` writes `leader_name` and `leader_date` on the spine **after** the
+freeze. **The snapshot carries the document as submitted; the live request carries the
+endorsed line** (BE-16, OBT-476, 30/aug/2026 — PR #281, review). Three things agree on it:
+`rr_snapshots` is append-only in the database, so re-stamping is not an available shape; a
+second snapshot would break `open_revision`, which reads the latest one and would look for an
+evaluation on a document nobody evaluated; and only a submitted request is endorsable, so the
+endorsement is a fact that can only exist after the freeze. What answers *has this been
+endorsed* is the envelope — `endorsed_by`/`endorsed_at`, which BE-06 and BE-07 read beside
+whichever document they serve — and the display pair is that same fact rendered into the
+contract's 45 keys. It is the only value in the document that moves after submission;
+`update_draft` refuses every other edit, so a comparison of the two documents finds that one
+difference and no other.
+
 Three things are **not** free-form and stay relational:
 
 - **Budget lines are rows**, 26 of them, `(request_id, category_key, description, quantity,
@@ -446,18 +463,25 @@ that one too, in the direction that removes the nullability rather than keeping 
 
 `require_app_access(app_key)` and `require_role(app_key, role_key)` answer exactly one
 question each: *does this user hold any role in this app*, and *does this user hold this
-one role*. The frontend's model is **seven** capabilities across three roles — five when this
-section was written, and GATE-01 and GATE-02 moved it to seven:
+one role*. The frontend's model is **eight** capabilities across four roles — five when this
+section was written, GATE-01 and GATE-02 moved it to seven, and BE-16 added the one the
+fourth role exists for:
 
-| Capability | `equipe` | `mesa` | `gestor` | Settled by |
-|---|---|---|---|---|
-| `edit_requests` | ✅ | ✅ | ✅ | **GATE-02 D4** — *"a mesa pode alterar também"* |
-| `view_evaluation` | — | ✅ | ✅ | already decided |
-| `edit_evaluation` | — | ✅ | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
-| `manage_funds` | — | ✅ | ✅ | already decided |
-| `move_board` | — | ✅ | **✅** | **GATE-02 D3** — the cell that moved |
-| `assign_fund` | — | ✅ | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
-| `allocate_funds` | — | — | ✅ | **GATE-01 D6** — the first capability the mesa does not hold |
+| Capability | `equipe` | `mesa` | `gestor` | `lider` | Settled by |
+|---|---|---|---|---|---|
+| `edit_requests` | ✅ | ✅ | ✅ | — | **GATE-02 D4** — *"a mesa pode alterar também"* |
+| `view_evaluation` | — | ✅ | ✅ | — | already decided |
+| `edit_evaluation` | — | ✅ | — | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
+| `manage_funds` | — | ✅ | ✅ | — | already decided |
+| `move_board` | — | ✅ | **✅** | — | **GATE-02 D3** — the cell that moved |
+| `assign_fund` | — | ✅ | — | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
+| `allocate_funds` | — | — | ✅ | — | **GATE-01 D6** — the first capability the mesa does not hold |
+| `endorse_request` | — | — | — | **✅** | **GATE-02 D2** — the Líder's only verb (BE-16) |
+
+**Reading is not a row of this table and must not become one.** The Líder holds no
+`edit_requests` and still has to read what he signs, so `CanReadRequests` is an **OR** over
+`edit_requests` and `endorse_request` — the one alias in `_deps.py` built on two capabilities.
+Which rows that reading reaches is `_scope.py`'s and not a capability at all (§6.2).
 
 Mirror it from `src/auth/capabilities.ts` field for field; that file is the owner and this is
 the copy. Two things about it are easy to get wrong from the table alone. **`manage_funds` is
@@ -465,6 +489,9 @@ the Painel's entry gate**, not a money permission — narrowing it to make room 
 `allocate_funds` would take the whole panel away from the mesa. And **`assign_fund` and
 `allocate_funds` are control capabilities, not screen ones**: they live inside a surface some
 other capability already opened, which is why neither adds a route of its own.
+`endorse_request` is the third control capability and the exception to that second half — it
+sits on a screen the Líder reaches through `CanReadRequests`, and the act itself needs a
+route (`POST /requests/{id}/endorse`).
 
 **Two of those cells were re-asked on 28/aug/2026, and both came back where they were.**
 `edit_evaluation` had been recorded as *confirmed rather than merely left standing* while the
@@ -485,15 +512,17 @@ consequence is mechanical: as a screen capability it would match no role in the 
 `SCREEN_CAPABILITIES.every(holds)` and the mesa's fixture account would vanish — the trap the
 `?` cell of D3 sprang once already, and which the frontend now pins by test.
 
-**A fourth role is coming and is not here yet.** GATE-02 D2 answered that the **Líder de
-Base** enters the system — the narrowest of the four, holding one endorsement capability and
-the reading it needs, with neither `edit_requests` nor `view_evaluation`. It is a new
-`role_key` in this repository (BE-00 seeded three), a fourth column in `capabilities.ts`, the
-screen where the endorsement happens, and the rule that an unendorsed request does not
-proceed. **BE-16** (OBT-476) owns all of it, and it is the only issue that touches both
-repositories.
+**The fourth role is built** (BE-16, OBT-476, 30/aug/2026). GATE-02 D2 answered that the
+**Líder de Base** enters the system — the narrowest of the four, holding one endorsement
+capability and the reading it needs, with neither `edit_requests` nor `view_evaluation`. The
+`lider` `role_key` is seeded beside the three BE-00 wrote, `endorse_request` is the eighth
+capability and the mesa does not hold it, `POST /requests/{id}/endorse` is the act, and which
+rows he reads is `_scope.py`'s — every submitted request and no draft of another team. The
+rule that an unendorsed request does not proceed is written on `RRRequest` and enforced by
+BE-08's transition service, which is the one half that does not land here. It is the only
+issue that touches both repositories.
 
-Four of the seven are held by **more than one role**, and `require_role` cannot express an
+Four of the eight are held by **more than one role**, and `require_role` cannot express an
 OR. Guarding `view_evaluation` as `MesaUser` would refuse the Gestor, whose whole point is
 that asymmetry — it sees the evaluation and the money and changes neither the evaluation nor
 the board.
@@ -760,9 +789,11 @@ the second recomputes the sum *after* the first is visible and gets a decidable 
 
 **GATE-01 answered it — allow, with a warning, never refuse** (OBT-447 D5, 26/aug/2026).
 Both approvals succeed, the fund goes negative and the screen says so; the control is human.
-Wave 1 already did that by inheritance, and it is now a decision instead of an accident. **No
-`insufficient_funds` response shape is frozen anywhere in this module, and none is to be
-invented here.**
+Wave 1 already rendered a negative *disponível* by inheritance, and the gate made that the
+behaviour rather than a bug to fix — a decision instead of an accident. **No
+`insufficient_funds` response shape is frozen anywhere in this module, none exists anywhere
+in the product, and none is to be invented here.** It is still one branch, and BE-07 writes
+the warning one.
 
 **What the answer does not relax is the paragraph above it.** The two approvals still have to
 serialize on the fund row, or one deduction is lost and the sum lies about money. The answer
@@ -848,8 +879,8 @@ watch the database refuse `'rejected'`.
 
 The four decision strings are frozen by the contract and will not grow, which is what makes
 a native enum the right call for them. The six board columns are frozen too. Anything the
-client might extend — the fund list, while GATE-01 is open — should be a **table**, not an
-enum.
+client might extend — the fund list, frozen at **one** by GATE-01 with four names pending
+and BE-10's editable area coming — should be a **table**, not an enum.
 
 ### 8.3 Migrations: naming, one head, and a clean downgrade
 
@@ -1074,7 +1105,7 @@ that owns it and what it blocks.
 
 | Question | Gate | Blocks |
 |---|---|---|
-| **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
+| **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund (D3) — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
 
 **Answered by GATE-02 and GATE-03 on 27/aug/2026** (OBT-448, OBT-449), and no longer open.
 Recorded rather than deleted, because each one landed somewhere in this module — and because
@@ -1148,22 +1179,36 @@ table above; each landed somewhere:
   `rr_funds`: there is no `allocated` column there and there must not be, or the *store two,
   derive the third* of contract §3.2 breaks and two audit designs stand over the same money.
 
-**Answered by GATE-01 on 26/aug/2026** (OBT-447), and no longer open. Recorded rather than
-deleted, because each one landed somewhere in this module:
+**Answered by GATE-01 on 26/aug/2026** (OBT-447), and no longer open — it closed the money
+half of the table above and left the vocabulary half. Recorded rather than deleted, because
+each one landed somewhere in this module:
 
-- **Which fund a request asks from** — **the mesa assigns it at triage**, of the three shapes
-  the gate offered. No field enters the form; `rr_requests.fund_id` stays nullable and null is
-  the legitimate state of a request still in `triagem`, which is what the seed's three
-  fundless cards exercise. The invariant that arrived with the answer — **a request does not
-  enter `aprovado` with `fund_id IS NULL`** — is a service rule and deliberately not a CHECK,
-  since the same null is correct one column earlier. **BE-11** (OBT-470) owns it.
-- **What each fund covers, and the old↔new mapping** — only *Shema Línguas* remains, and the
-  other four names are **undecided rather than retired**. The mapping closed by elimination
-  instead of by mapping, so no old category was paired with a new name. The seed writes the
-  one row with `provisional = false`. What the answer opened — an editable area for funds, and
-  the retired-fund flag item 7 below describes — is **BE-10** (OBT-471).
+- **Which fund a request asks from** — **the mesa assigns it at triage** (D4), of the three
+  shapes the gate offered. No field enters the form and none joins the request document — the
+  45 keys stay 45 — so `rr_requests.fund_id` stays nullable by design, and null is the
+  legitimate state of a request still in `triagem`, which is what the seed's three fundless
+  cards exercise: two states not to conflate. The invariant that arrived with the answer —
+  **a request does not enter `aprovado` with `fund_id IS NULL`** — is a service rule and
+  deliberately not a CHECK, since the same null is correct one column earlier. **BE-11**
+  (OBT-470) owns the write, and carries in its DoD the re-ask of the client's aside that the
+  *Gestor* would define which fund goes to which project.
+- **What each fund covers, and the old↔new mapping** — only *Shema Línguas* remains a fund
+  (D1), and the other four names are **undecided rather than retired**: not approved either.
+  The mapping closed by elimination instead of by mapping — *"leave it as it is"* (D2) — so no
+  old category was paired with a new name. The seed writes the one row with
+  `provisional = false`. What the answer opened — an editable area for funds, and the
+  retired-fund flag item 7 below describes — is **BE-10** (OBT-471), which is also why §8.2
+  keeps the fund list a **table and never an enum**.
 - **Insufficient funds on a concurrent approve** — allowed with a warning, never refused
-  (§7.3). The lock stays; only the refusal is gone.
+  (D5, §7.3). The lock stays; only the refusal is gone, and it is one branch: the warning one.
+- **The Gestores enter the allocated value** (D6) — and `rr_funds` is where that answer could
+  have been lost. **Funds are born at zero**: the table gains no `allocated`, no `updated_by`
+  and no `updated_at`, because the literal reading of *an editable alocado carrying who and
+  when* is three columns, and three columns would break *store two, derive the third* and
+  stand a second audit design against GATE-02's. It is already built instead as an
+  `ALLOCATION` movement in the append-only ledger, whose `created_by`/`created_at`/`reason`
+  **are** the authorship, and a wrong one is corrected by a compensating movement. The
+  allocation write path is **BE-09** (OBT-469).
 
 And seven items with **no gate**, which need issues rather than answers:
 

@@ -48,6 +48,8 @@ A platform admin reaches everything, as they pass every other guard in this modu
 unconditionally (``require_capability`` in ``_deps.py`` says the same, with the reason).
 """
 
+from typing import NamedTuple
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
@@ -64,16 +66,37 @@ async def _granted_roles(db: AsyncSession, user: User, app_key: str) -> set[str]
     }
 
 
-async def reaches_every_request(db: AsyncSession, user: User, app_key: str) -> bool:
-    """Whether this caller sees the whole board's worth of requests, or something narrower."""
+class Reach(NamedTuple):
+    """How far a caller reaches, as the two answers the scope actually has.
+
+    **One value and not two functions**, because the two answers come from one fact — the
+    set of roles the account holds — and asking them separately meant reading that set
+    twice. ``_granted_roles`` does not memoise (``holds_capability`` says why it reads the
+    database on every call, and the cache the tests clear is ``require_app_access``'s), so
+    a caller that took both answers ran the same three-table join twice per request. That
+    is the ordinary team account since ``20260828_rr02`` turned ``auto_approve`` on:
+    everyone is ``equipe``, so ``every`` is false for every team member and the second
+    question was always asked. Read once, answered twice (PR #281, review).
+    """
+
+    #: The whole board's worth of requests — the mesa, the Gestor, the platform admin.
+    every: bool
+    #: The Líder's middle reach: every submitted request, no draft of another team.
+    submitted: bool
+
+
+async def reach(db: AsyncSession, user: User, app_key: str) -> Reach:
+    """The caller's reach, from one read of their roles.
+
+    A platform admin short-circuits before the query, as they pass every other guard in
+    this module — and both answers are true for them, though only ``every`` is ever read:
+    a reach that contains everything contains the submitted half of it.
+    """
     if user.is_platform_admin:
-        return True
+        return Reach(every=True, submitted=True)
 
-    return bool(await _granted_roles(db, user, app_key) - {TEAM_ROLE, LEADER_ROLE})
-
-
-async def reaches_submitted_requests(db: AsyncSession, user: User, app_key: str) -> bool:
-    """The Líder's reach: every submitted request, no draft — the reading an endorsement
-    demands, decided in the module docstring above. Asked only after
-    ``reaches_every_request`` said no, so membership is the right question here."""
-    return LEADER_ROLE in await _granted_roles(db, user, app_key)
+    granted = await _granted_roles(db, user, app_key)
+    return Reach(
+        every=bool(granted - {TEAM_ROLE, LEADER_ROLE}),
+        submitted=LEADER_ROLE in granted,
+    )

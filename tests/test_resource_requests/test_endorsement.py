@@ -4,8 +4,9 @@ GATE-02 D2 named the role and GATE-03 D2 put its act in the system (BE-16, OBT-4
 is under test here fails for three different reasons and is grouped that way: the **scope**
 — the Líder reaches every submitted request and no draft of another team (``_scope.py``'s
 written decision); the **act** — endorsing stamps ``endorsed_by``/``endorsed_at`` and
-births ``leader_name``/``leader_date``, with its two refusals; and the **fallout** — a
-revision goes back to the base unendorsed.
+births ``leader_name``/``leader_date``, with its two refusals; and the **fallout** — where
+the endorsed line lands of the two documents, and a revision going back to the base
+unendorsed.
 
 ⚠️ No negative test here uses a platform admin (``test_capabilities.py`` says why).
 """
@@ -14,12 +15,13 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.db.models.resource_request import RRDecision, RRRequest
+from app.db.models.resource_request import RRDecision, RRRequest, RRSnapshot
 from tests.baker import make_user
 from tests.test_resource_requests.conftest import auth_header, grant
 from tests.test_resource_requests.test_requests import (
     REQUESTS,
     _decide,
+    answers,
     as_team,
     create,
     draft,
@@ -75,7 +77,7 @@ async def test_a_lider_who_is_also_equipe_keeps_his_own_drafts_and_no_others(
     The two reaches add instead of the narrow one replacing the floor: his own draft stays
     his through ``created_by``, the submitted request arrives through the Líder's reach,
     and another team's draft stays invisible — which is what tells this union apart from
-    ``reaches_every_request``.
+    ``Reach.every``.
     """
     team = await as_team(db_session, rrf_app)
     others_draft = await create(client, team)
@@ -222,6 +224,48 @@ async def test_the_author_who_is_also_lider_may_endorse_his_own(
 
 
 # ——— the fallout —————————————————————————————————————————————————————————————————
+
+
+async def test_the_snapshot_keeps_what_was_submitted_and_the_live_row_carries_the_endorsement(
+    db_session, client, rrf_app
+) -> None:
+    """Which of the two documents carries the Líder's line — decided, and pinned here.
+
+    The endorsement lands **after** the freeze and can only land after it: only a submitted
+    request is endorsable, and ``rr_snapshots`` is append-only in the database. So the
+    snapshot goes on saying what the team sent and the read path shows the endorser
+    (PR #281, review). The two documents are compared **whole**, because the claim is not
+    merely that the line moved but that it is the only thing that ever does — everything
+    else a submitted request holds is frozen by ``update_draft``'s refusal.
+    """
+    team = await as_team(db_session, rrf_app)
+    typed = answers()
+    typed["leader_date"] = "2020-01-02"
+    created = await create(client, team, fields=typed)
+    submitted = (await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)).json()
+    lider = await as_lider(db_session, rrf_app, display_name="Eva da Base")
+
+    endorsed = (await client.post(f"{REQUESTS}/{created['id']}/endorse", headers=lider)).json()
+
+    frozen = (
+        await db_session.execute(
+            select(RRSnapshot).where(RRSnapshot.id == submitted["snapshot_id"])
+        )
+    ).scalar_one()
+    assert frozen.document["fields"]["leader_name"] == ""
+    assert frozen.document["fields"]["leader_date"] == "2020-01-02"
+
+    live = (await client.get(f"{REQUESTS}/{created['id']}", headers=lider)).json()["document"]
+    assert live["fields"]["leader_name"] == "Eva da Base"
+    assert live["fields"]["leader_date"] == endorsed["endorsed_at"][:10]
+
+    moved = {
+        key for key, value in live["fields"].items() if value != frozen.document["fields"][key]
+    }
+    assert moved == {"leader_name", "leader_date"}
+    assert {key: value for key, value in live.items() if key != "fields"} == {
+        key: value for key, value in frozen.document.items() if key != "fields"
+    }
 
 
 async def test_a_revision_goes_back_to_the_base_unendorsed(db_session, client, rrf_app) -> None:
