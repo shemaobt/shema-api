@@ -206,9 +206,11 @@ def test_the_signature_lines_are_no_longer_demanded_of_the_client(request_type):
 
     The client's answer of 28/aug/2026 — *aceite eletrônico* — made ``created_by`` and
     ``submitted_at`` the signature, so ``tpp_date`` would ask the client to type what
-    the server stamps, and the Líder's line belongs to BE-16's endorsement. A
-    submission blank on all three must validate; the keys stay askable, so a draft
-    that carries them is not refused either.
+    the server stamps, and the Líder's line is written by the server at the
+    endorsement — ``endorse_request.py`` stamps ``leader_name``/``leader_date`` from the
+    endorser's account and day (BE-16). A submission blank on all three must validate;
+    the keys stay askable, so a draft that carries them is not refused either, and
+    nothing reads a typed leader line as an endorsement.
     """
     unsigned = dict(answers(request_type))
     for key in ("tpp_date", "leader_name", "leader_date"):

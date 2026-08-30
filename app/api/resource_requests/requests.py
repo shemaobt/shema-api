@@ -7,12 +7,19 @@ handlers, so nothing here maps a status code by hand.
 No SQLAlchemy model is named here either — ``CLAUDE.md`` §2 keeps them out of the api layer,
 and ``RequestOut.of`` is where a row becomes an envelope.
 
-**The guard is ``CanEditRequests`` on all of them, and the scope is not here.** All three
-roles hold that capability (GATE-02 D4: the mesa may edit what the team wrote), so it
-answers *may act on requests* and says nothing about which ones. Which rows a caller reaches
-is decided in ``app/services/resource_request/_scope.py``, where the reason is written —
-putting it in the router would be an access rule outside the layer that owns access rules,
-and a listing that filtered in two places would eventually filter differently in each.
+**The writes guard on ``CanEditRequests``, the reads on ``CanReadRequests``, and the scope
+is not here.** The three original roles hold ``edit_requests`` (GATE-02 D4: the mesa may
+edit what the team wrote); the Líder de Base holds only ``endorse_request`` and reads what
+he signs (BE-16), which is why the two GETs take the OR alias and every route that changes
+a document does not. Both answer *may act on requests* and say nothing about which ones —
+which rows a caller reaches is decided in ``app/services/resource_request/_scope.py``,
+where the reason is written: putting it in the router would be an access rule outside the
+layer that owns access rules, and a listing that filtered in two places would eventually
+filter differently in each.
+
+The endorsement route guards on ``CanEndorseRequest`` and takes no body: like the submit
+above it, the act is the payload — who and when are stamped from the session, and a body
+that could carry them would be a body that could lie about who vouched.
 """
 
 from datetime import datetime
@@ -20,7 +27,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from app.api.resource_requests._deps import APP_KEY, CanEditRequests, Db
+from app.api.resource_requests._deps import (
+    APP_KEY,
+    CanEditRequests,
+    CanEndorseRequest,
+    CanReadRequests,
+    Db,
+)
 from app.models.resource_request import (
     DiscardedOut,
     RequestDraftIn,
@@ -47,14 +60,14 @@ async def create_request(draft: RequestDraftIn, user: CanEditRequests, db: Db) -
 
 
 @router.get("/requests")
-async def list_requests(user: CanEditRequests, db: Db) -> list[RequestOut]:
+async def list_requests(user: CanReadRequests, db: Db) -> list[RequestOut]:
     """The spine only — the documents are not read by a listing and are not sent to one."""
     rows = await service.list_requests(db, user, APP_KEY)
     return [RequestOut.of(row, {}) for row in rows]
 
 
 @router.get("/requests/{request_id}")
-async def read_request(request_id: str, user: CanEditRequests, db: Db) -> RequestOut:
+async def read_request(request_id: str, user: CanReadRequests, db: Db) -> RequestOut:
     return _out(await service.get_request(db, request_id, user, APP_KEY))
 
 
@@ -86,6 +99,13 @@ async def submit_request(request_id: str, user: CanEditRequests, db: Db) -> Subm
     return SubmissionOut.of(
         submitted.request, submitted.snapshot.document, snapshot_id=submitted.snapshot.id
     )
+
+
+@router.post("/requests/{request_id}/endorse")
+async def endorse_request(request_id: str, user: CanEndorseRequest, db: Db) -> RequestOut:
+    """No body: the endorsement is an act over what is stored, stamped from the session."""
+    endorsed = await service.endorse_request(db, request_id, user, APP_KEY)
+    return _out(await service.get_request(db, endorsed.id, user, APP_KEY))
 
 
 @router.post("/requests/{request_id}/revise", status_code=status.HTTP_201_CREATED)
