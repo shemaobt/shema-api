@@ -510,6 +510,27 @@ async def test_editing_a_revision_leaves_the_evaluated_snapshot_alone(
     assert frozen.document == submitted["document"]
 
 
+async def test_a_revision_opened_by_the_mesa_still_belongs_to_the_team(
+    db_session, client, rrf_app
+) -> None:
+    """Dono é quem criou o documento, and clicking *revise* is not creating it.
+
+    ``open_revision`` copies ``created_by`` from the original on purpose: a revision that
+    belonged to the mesa member who opened it would 404 the team out of its own document
+    — the owner's narrow scope reaches only what it authored.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+    await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+    await _decide(db_session, created["id"], RRDecision.REVISE)
+    mesa = await as_mesa(db_session, rrf_app)
+
+    revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=mesa)).json()
+
+    assert revision["created_by"] == created["created_by"]
+    assert (await client.get(f"{REQUESTS}/{revision['id']}", headers=headers)).status_code == 200
+
+
 async def test_the_original_keeps_its_own_rows(db_session, client, rrf_app) -> None:
     """A revision is additive: two requests exist afterwards, not one that moved."""
     headers = await as_team(db_session, rrf_app)
