@@ -72,3 +72,44 @@ async def test_get_language_or_404_raises_when_missing(db_session) -> None:
         await language_service.get_language_or_404(
             db_session, "00000000-0000-0000-0000-000000000000"
         )
+
+
+@pytest.mark.asyncio
+async def test_update_language_name_and_code(db_session) -> None:
+    created = await make_language(db_session, name="Kokama", code="kos")
+    updated = await language_service.update_language(
+        db_session, created.id, name="Kokama Renamed", code="KOK"
+    )
+    assert updated.name == "Kokama Renamed"
+    assert updated.code == "kok"
+
+
+@pytest.mark.asyncio
+async def test_update_language_partial_keeps_other_field(db_session) -> None:
+    created = await make_language(db_session, name="Kokama", code="kos")
+    updated = await language_service.update_language(db_session, created.id, name="Only Name")
+    assert updated.name == "Only Name"
+    assert updated.code == "kos"
+
+
+@pytest.mark.asyncio
+async def test_update_language_same_code_is_allowed(db_session) -> None:
+    created = await make_language(db_session, name="Kokama", code="kos")
+    updated = await language_service.update_language(db_session, created.id, code="kos")
+    assert updated.code == "kos"
+
+
+@pytest.mark.asyncio
+async def test_update_language_conflicting_code_raises(db_session) -> None:
+    await make_language(db_session, name="Other", code="oth")
+    target = await make_language(db_session, name="Kokama", code="kos")
+    with pytest.raises(ConflictError, match="code already exists"):
+        await language_service.update_language(db_session, target.id, code="oth")
+
+
+@pytest.mark.asyncio
+async def test_update_language_missing_raises_not_found(db_session) -> None:
+    with pytest.raises(NotFoundError, match=r"Language .* not found"):
+        await language_service.update_language(
+            db_session, "00000000-0000-0000-0000-000000000000", name="X"
+        )
