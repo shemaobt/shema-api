@@ -768,14 +768,18 @@ total is right* are different guarantees, and the client decided only the first.
 to `… WHERE rr_funds.id = %(id_1)s FOR UPDATE` on PostgreSQL and to `… WHERE rr_funds.id =
 ?` on SQLite. So a concurrency test written against the default suite would lock nothing and
 pass anyway, which is worse than not having one. BE-07's double-approve test needs
-PostgreSQL, and ~~the only workflow with a postgres service today is `migrations.yml`.
-Either that job grows a step or `test.yml` gains a service~~ **`test.yml` gained the
-service** (BE-07, OBT-456): `test_ledger_concurrency.py` runs only when
+PostgreSQL, and the only workflow with a postgres service today is `migrations.yml`.
+Either that job grows a step or `test.yml` gains a service. **The test exists and is
+gated** (BE-07, OBT-456): `test_ledger_concurrency.py` runs only when
 `RR_POSTGRES_TEST_URL` names a disposable PostgreSQL database and skips with that reason
-declared, and the workflow sets the variable so the skip is a local state, never CI's. The
-test holds the lock open on one session while a second attempts the same fund row, and
-asserts the second acquires only after the first commits — both succeed, the balance ends
-at **−300.00**, negative and correct.
+declared — verified green against PostgreSQL 14. It holds the lock open on one session
+while a second attempts the same fund row, and asserts the second acquires only after the
+first commits — both succeed, the balance ends at **−300.00**, negative and correct.
+**The `test.yml` wiring is written and could not ride BE-07's own branch**: no credential
+on the machine that built it carries the `workflow` scope, so the service block and the
+variable travel in the pull request's description for someone with the scope to land.
+Until that lands, the test runs wherever the variable is set, and CI shows the declared
+skip rather than a false green.
 
 **How BE-07 implemented the rest, in one paragraph.** The ledger has exactly two writers —
 `append_movement` for allocation, commitment and approval deduction, and
@@ -1192,10 +1196,10 @@ And seven items with **no gate**, which need issues rather than answers:
    Portuguese prose where BE-02 expects an enum.
 4. **`alembic/env.py` sees no tables** (§8.1) — repository-wide, affects seven other
    applications, not this module's to fix unilaterally.
-5. ~~**A PostgreSQL path for the test suite** (§7.3), without which BE-07's concurrency test
-   cannot exist.~~ **Closed by BE-07** (OBT-456): `test.yml` carries the postgres service and
-   `RR_POSTGRES_TEST_URL`, and the test skips with a declared reason where the variable is
-   absent.
+5. **A PostgreSQL path for the test suite** (§7.3) — **half-closed by BE-07** (OBT-456):
+   the concurrency test exists behind `RR_POSTGRES_TEST_URL` with a declared skip, and the
+   `test.yml` service block that would run it on every pull request is written but waits on
+   a push with the `workflow` scope — it rides in BE-07's PR description.
 6. **The board card projects two chips the form does not collect** (BE-02, 25/aug/2026,
    found writing the seed). The contract's §6.2 records this about the card's *fund*; the
    same is true of its **povo** and its **língua** for two of the three request types. A2 is
