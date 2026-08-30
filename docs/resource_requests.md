@@ -681,10 +681,15 @@ the gate's own closing comment said: *"nenhum muda a forma do agregado"*.
   request, the server's `submitted_at` and the snapshot id, and **invents no number**.
   Adding one later is additive; removing one after teams have seen it, after BE-13 has
   quoted it in an e-mail and after it has become how people refer to a request, is not.
-- **Whether the Ponto focal's signature becomes an electronic acceptance.** The Líder's half
-  is answered (BE-16); this one is not. `tpp_name` and `tpp_date` are a typed name and a
-  typed date today, which is what `RequestSubmissionIn` already demands. An answer changes
-  what those two columns *mean*, not their shape.
+- **Whether the Ponto focal's signature becomes an electronic acceptance — answered *sim*,
+  28/aug/2026 (OBT-483).** Submitting **is** signing: `created_by` says who and
+  `submitted_at` says when, both stamped by the server, and `submit_request` now refuses any
+  caller who is not the author — the mesa and the Gestor keep reading and editing under
+  GATE-02 D4 and do not sign in the team's name. `tpp_date`, `leader_name` and `leader_date`
+  left the required-at-submission set (`_ALWAYS_REQUIRED`); their columns stay, and
+  `tpp_name` stays demanded because it is the requester the mesa reads on the card — the
+  account that submits may not be the Ponto focal. The prediction above held: the answer
+  changed what the columns *mean*, and none of their shape.
 
 ---
 
