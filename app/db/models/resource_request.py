@@ -598,6 +598,15 @@ class RRBoardTransition(Base):
     one event; BE-08 writes both in a single transaction, and only a move onto
     ``aprovado`` — or off it — has a movement at all.
 
+    ``evaluation_id`` is the column the design's §4.4 handed to BE-08 to add or refuse,
+    and it is added (OBT-457): GATE-02 D6 insists a decision's move and a hand's drag are
+    different events — a decision implies a column, a column never implies a decision —
+    and without this column the two land in the trail indistinguishable whenever no money
+    moved. A decision-driven transition names the evaluation that caused it; a manual
+    move carries ``NULL``, which is exactly the asymmetry D6 describes. No ``ondelete``,
+    like ``movement_id``: an evaluation that moved a card is not unwound by disappearing,
+    and a delete that would orphan the trail fails naming the row that holds on.
+
     ``from_stage`` is nullable for the first row of a request's history, where there is
     no column it came from.
     """
@@ -616,6 +625,9 @@ class RRBoardTransition(Base):
     )
     movement_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("rr_fund_movements.id"), nullable=True
+    )
+    evaluation_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("rr_evaluations.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

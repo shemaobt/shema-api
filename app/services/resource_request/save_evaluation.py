@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from decimal import Decimal
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,12 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
 from app.db.models.resource_request import (
-    RRBoardTransition,
-    RRDecision,
     RREvaluation,
     RREvaluationAttendee,
     RREvaluationScore,
-    RRMovementKind,
 )
 from app.models.resource_request import EvaluationWriteIn
 from app.services.resource_request._decision_stage import DECISION_STAGE
@@ -21,7 +17,7 @@ from app.services.resource_request._evaluation import (
     latest_snapshot,
     load_evaluation,
 )
-from app.services.resource_request.append_movement import append_movement
+from app.services.resource_request._transition import guard_stage_entry, transition_stage
 from app.services.resource_request.get_request import get_request
 
 
@@ -47,7 +43,12 @@ async def save_evaluation(
     row's lock and flushes, never commits — (3) the stage event naming that movement, (4)
     the request's stage, and one commit under all four. The ledger precedes the stage event
     because ``rr_board_transitions.movement_id`` names the movement, so the FK decides the
-    order the issue's prose could not.
+    order the issue's prose could not. Since BE-08 (OBT-457) steps 2-4 are
+    ``transition_stage``, the same path a hand's drag takes — which is what keeps a
+    decision landing on a card the mesa already dragged into its column from deducting
+    twice or writing a second event: the transition is a no-op there, and only the
+    decision itself is recorded. The transition carries ``evaluation_id``, so the trail
+    tells a decision's move from a drag.
 
     **A recorded decision is not rewritten here.** Scores, comments, the ata and the
     ``team_note`` stay editable afterwards — D7 audits exactly those edits, through BE-15 —
@@ -107,16 +108,8 @@ async def save_evaluation(
         )
     deciding = payload.decision if recorded is None else None
 
-    approval: tuple[str, Decimal] | None = None
-    if deciding is RRDecision.APPROVED:
-        if request.fund_id is None:
-            raise ConflictError(
-                "A request does not enter aprovado with no fund: "
-                "the mesa assigns one at triage before approving."
-            )
-        if request.amount_requested is None:
-            raise ConflictError("A request does not enter aprovado with no amount requested.")
-        approval = (request.fund_id, request.amount_requested)
+    if deciding is not None:
+        guard_stage_entry(request, DECISION_STAGE[deciding])
 
     if evaluation is None:
         evaluation = RREvaluation(snapshot_id=snapshot.id)
@@ -148,29 +141,14 @@ async def save_evaluation(
         evaluation.decision = deciding
         evaluation.evaluated_at = datetime.now(UTC)
 
-        movement = None
-        if approval is not None:
-            fund_id, amount = approval
-            movement = await append_movement(
-                db,
-                fund_id=fund_id,
-                kind=RRMovementKind.APPROVAL_DEDUCTION,
-                amount=amount,
-                author_id=user.id,
-                reason=f"Mesa decision: {deciding.value}",
-                request_id=request.id,
-            )
-
-        db.add(
-            RRBoardTransition(
-                request_id=request.id,
-                from_stage=request.stage,
-                to_stage=DECISION_STAGE[deciding],
-                moved_by=user.id,
-                movement_id=movement.id if movement is not None else None,
-            )
+        await transition_stage(
+            db,
+            request=request,
+            to_stage=DECISION_STAGE[deciding],
+            moved_by=user.id,
+            reason=f"Mesa decision: {deciding.value}",
+            evaluation_id=evaluation.id,
         )
-        request.stage = DECISION_STAGE[deciding]
 
     await db.commit()
 
