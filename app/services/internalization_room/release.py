@@ -42,7 +42,11 @@ from app.services.internalization_room.comprehension.session_readiness import (
     evaluate_session_comprehension,
 )
 from app.services.internalization_room.coverage import floor_met
-from app.services.internalization_room.segments import final_segments, retired_segments
+from app.services.internalization_room.segments import (
+    divided_segments,
+    final_segments,
+    retired_segments,
+)
 from app.services.internalization_room.sessions import (
     back_translation_of,
     comprehension_of,
@@ -115,6 +119,13 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     ``superseded_attempts`` as text; they are rows now, and dropping them here would quietly
     take the team's own history out of the handoff.
 
+    ``divided_segments`` carries the same debt for the other way a stretch leaves the reading.
+    A stretch the team divided is current and is not a leaf, so it fell between both lists
+    above — and what they had said about the whole stretch, before they heard two ideas in it,
+    left the artifact in silence. Hearing it again and finding two ideas is the team working,
+    not the team erring, so what they said the first time is kept rather than the division
+    being refused.
+
     What the package says instead of refusing: ``checked`` false, ``evidence_sufficient``
     as the analyst left it, and every open finding in ``findings``. Judging the quality of
     a telling-back is not this artifact's job — carrying it honestly is.
@@ -141,6 +152,7 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     )
     told_back = await final_segments(db, session.id)
     replaced = await retired_segments(db, session.id)
+    divided = await divided_segments(db, session.id)
     takes = await takes_of(db, session.id)
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
@@ -227,6 +239,7 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
                 attempt.model_dump(mode="json") for attempt in telling_back.superseded
             ],
             "superseded_segments": [_segment_view(segment) for segment in replaced],
+            "divided_segments": [_segment_view(segment) for segment in divided],
             "retro_takes": [_take_view(take) for take in retro_takes],
         },
         "raised_questions": [
