@@ -435,9 +435,11 @@ class RequestSubmissionIn(RequestDraftIn):
     the norm for the profile — A1, A2 and A3 may all be submitted blank, and the mesa
     reads the blanks — so what is demanded here is the request itself: its project name,
     what it is for, the three essays the Parte C criteria score, the amount asked, the
-    declaration, and the two signatures with their dates. The list lives in
-    ``vocabularies.py`` so it can move in one place; it is BE-05's reading of the form
-    and not a requirement the PRD enumerates field by field.
+    declaration, and the requester's name. The paper form's signature dates and the
+    Líder's line are not demanded any more — submitting is the electronic acceptance
+    (OBT-483), and ``vocabularies.py`` says why where the list lives. The list lives
+    there so it can move in one place; it is BE-05's reading of the form and not a
+    requirement the PRD enumerates field by field.
     """
 
     @field_validator("fields")
