@@ -383,14 +383,23 @@ and a snapshot is by definition the version that stopped moving.
 member dragging a card — which is precisely the asymmetry D6 insists on. An
 `evaluation_id` there would tell them apart. It is **BE-08**'s (OBT-457) to add or to refuse,
 because it is the issue that writes both sides of that transaction; naming it is this
-document's job and building it is not.
+document's job and building it is not. **Added** (BE-08, 30/aug/2026, `20260830_rr04`): once
+the decision's move and the hand's drag converge on the same transition path
+(`app/services/resource_request/_transition.py`), they land in the same table —
+indistinguishable whenever no money moved — and only the column keeps D6's asymmetry legible
+in the trail. A decision-driven transition names its evaluation; a drag carries `NULL`. No
+`ON DELETE` action, like `movement_id` beside it: an evaluation that moved a card is not
+unwound by disappearing.
 
 ### 4.5 The decision's write path — **Decided** (BE-06, OBT-455), and the order BE-08 follows
 
 GATE-02 D6 made recording a decision an execution path: the Parte C save moves the card,
 and in `approved` the same write appends to the ledger. BE-06 built that path in
-`app/services/resource_request/save_evaluation.py`; BE-08 does not exist yet, so this
-section is the written order it inherits.
+`app/services/resource_request/save_evaluation.py`, and this section is the written order
+BE-08 inherited. **Followed** (BE-08, 30/aug/2026): steps 2-4 are now `transition_stage`
+in `_transition.py`, the one path a hand's drag also takes, so the order below is executed
+once rather than stated twice — and a decision landing on a card already dragged into its
+column deducts nothing and writes no second event.
 
 **The order, inside one transaction with one commit under all of it:**
 

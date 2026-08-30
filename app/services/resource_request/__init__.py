@@ -11,6 +11,8 @@ from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_requests import list_requests
+from app.services.resource_request.list_transitions import transitions_of_request
+from app.services.resource_request.move_request import BoardMoved, move_request
 from app.services.resource_request.movements_of_fund import movements_of_fund
 from app.services.resource_request.movements_of_request import movements_of_request
 from app.services.resource_request.open_revision import open_revision
@@ -25,6 +27,7 @@ __all__ = [
     "CAPABILITY_ROLES",
     "ROLES",
     "ROLE_CAPABILITIES",
+    "BoardMoved",
     "Discarded",
     "FundBalance",
     "RequestStatus",
@@ -37,6 +40,7 @@ __all__ = [
     "get_request",
     "holds_capability",
     "list_requests",
+    "move_request",
     "movements_of_fund",
     "movements_of_request",
     "open_revision",
@@ -44,5 +48,6 @@ __all__ = [
     "reverse_movement",
     "save_evaluation",
     "submit_request",
+    "transitions_of_request",
     "update_draft",
 ]

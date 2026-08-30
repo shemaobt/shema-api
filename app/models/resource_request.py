@@ -505,6 +505,72 @@ class SubmissionOut(RequestOut):
     snapshot_id: str
 
 
+class BoardMoveIn(BaseModel):
+    """A hand's move: the column the card goes to, and nothing else.
+
+    Who moved it and when are the server's stamps, from the session and the clock —
+    ``extra="forbid"`` turns a payload that tries to state either into a 422, the same
+    rule the evaluation write follows. There is no ``from``: the server knows where the
+    card is, and a client that could state the origin could state a stale one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    to: RRStage
+
+
+class FundDeltaOut(BaseModel):
+    """What one move did to one fund's *comprometido* — FE-15's ``FundDelta``, served.
+
+    Positive entering ``aprovado``, negative leaving it. Absent (the move's
+    ``fund_delta`` is null) when no money moved — the frontend's own two readings:
+    the movement did not touch ``aprovado``, or the card had no deduction to give back.
+    """
+
+    fund_id: str
+    committed_delta: Decimal
+
+
+class BoardMoveOut(BaseModel):
+    """What a move answered — FE-15's ``BoardTransition`` shape, minus the list.
+
+    ``moved`` is ``false`` when the card was already in the column: nothing was written
+    and ``from_stage``, ``transition_id``, ``movement_id`` and ``fund_delta`` are all
+    null — the pure function's *moved: null*, told apart from a real move rather than
+    merged with it. ``movement_id`` names the ledger entry the move wrote, so a client
+    can follow the money without a second guess at which entry was this move's.
+    """
+
+    request_id: str
+    stage: RRStage
+    moved: bool
+    from_stage: RRStage | None
+    transition_id: str | None
+    movement_id: str | None
+    fund_delta: FundDeltaOut | None
+
+
+class TransitionOut(BaseModel):
+    """One row of a request's board history: who moved what, when, from where to where.
+
+    ``evaluation_id`` says a decision caused the move (null on a hand's drag — GATE-02
+    D6's asymmetry, legible in the trail) and ``movement_id`` names the ledger entry it
+    wrote (null unless the move touched ``aprovado``). ``from_stage`` is null only on a
+    history's first row, where there was no column before.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    request_id: str
+    from_stage: RRStage | None
+    to_stage: RRStage
+    moved_by: str | None
+    evaluation_id: str | None
+    movement_id: str | None
+    created_at: datetime
+
+
 class FundOut(BaseModel):
     """A fund card's server truth: the name and the three figures FE-14 renders.
 
