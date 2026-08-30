@@ -16,6 +16,7 @@ draft builders are ``test_requests``'s own, imported rather than repeated.
 
 from __future__ import annotations
 
+import sys
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -27,6 +28,7 @@ from app.db.models.resource_request import (
     RRRequest,
     RRRequestFieldHistory,
 )
+from app.services.resource_request import list_fund_options as options_service
 from app.services.resource_request._fund_choices import options_from
 from tests.test_resource_requests.test_evaluations import (
     as_gestor,
@@ -34,6 +36,11 @@ from tests.test_resource_requests.test_evaluations import (
     put_evaluation,
 )
 from tests.test_resource_requests.test_requests import answers, as_mesa, as_team, create
+
+#: The package re-exports the ``assign_fund`` *function* under the name of its own module,
+#: so ``from … import assign_fund`` hands back the function and a ``setattr`` on it patches
+#: nothing. The module object itself is reached through ``sys.modules``.
+assign_fund_service = sys.modules["app.services.resource_request.assign_fund"]
 
 REQUESTS = "/api/resource-requests/requests"
 FUNDS = "/api/resource-requests/funds"
@@ -161,6 +168,74 @@ async def test_um_fundo_fora_da_lista_de_escolha_e_recusado(db_session, client, 
     res = await put_fund(client, mesa, card, "ora-bridge")
 
     assert res.status_code == 422, res.text
+
+
+async def test_um_fundo_que_existe_mas_saiu_da_lista_tambem_e_recusado(
+    db_session, client, rrf_app, monkeypatch
+) -> None:
+    """O par da BE-10 (OBT-471), fechado deste lado: ela aposenta **tirando da lista de
+    escolha** e diz na própria PR que o refuso duro é desta issue.
+
+    A aposentadoria em si não existe nesta base — ``retired_at`` chega com aquela branch —
+    então o que se prova aqui é a regra que é minha: o que a atribuição consulta é a lista
+    de escolha e não a existência da linha, de modo que um fundo que saiu dela é recusado
+    ainda estando na tabela, com a mesma resposta decidível de um id desconhecido. No dia
+    em que ``choosable_funds`` filtrar ``retired_at IS NULL``, este teste já é sobre um
+    fundo aposentado sem mudar uma linha."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    await make_fund(db_session, "linguas", "Shema Línguas")
+    await make_fund(db_session, "ready", "Ready Vessels")
+    card = await submitted(client, team)
+
+    async def sem_o_ready(db):
+        return [
+            fund
+            for fund in (await db.execute(select(RRFund).order_by(RRFund.name))).scalars().all()
+            if fund.id != "ready"
+        ]
+
+    monkeypatch.setattr(assign_fund_service, "choosable_funds", sem_o_ready)
+
+    recusado = await put_fund(client, mesa, card, "ready")
+    aceito = await put_fund(client, mesa, card, "linguas")
+
+    assert recusado.status_code == 422, recusado.text
+    assert aceito.status_code == 200, aceito.text
+
+
+async def test_um_pedido_que_ja_apontava_para_o_fundo_aposentado_segue_valido(
+    db_session, client, rrf_app, monkeypatch
+) -> None:
+    """Aposentar não invalida o que já estava atribuído: o pedido continua legível, o
+    seletor continua mostrando o fundo — marcado e não selecionável — e a aprovação
+    continua encontrando um fundo para debitar."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    await make_fund(db_session, "linguas", "Shema Línguas")
+    await make_fund(db_session, "ready", "Ready Vessels")
+    card = await submitted(client, team)
+    assert (await put_fund(client, mesa, card, "ready")).status_code == 200
+
+    async def sem_o_ready(db):
+        return [
+            fund
+            for fund in (await db.execute(select(RRFund).order_by(RRFund.name))).scalars().all()
+            if fund.id != "ready"
+        ]
+
+    monkeypatch.setattr(options_service, "choosable_funds", sem_o_ready)
+
+    res = await client.get(f"{REQUESTS}/{card}/fund-options", headers=mesa)
+    decisao = await put_evaluation(client, mesa, card, decision="approved")
+
+    assert res.status_code == 200, res.text
+    assert [(o["id"], o["assigned"], o["selectable"], o["retired"]) for o in res.json()] == [
+        ("linguas", False, True, False),
+        ("ready", True, False, True),
+    ]
+    assert decisao.status_code == 200, decisao.text
+    assert await committed(client, mesa, "ready") == Decimal("1200.00")
 
 
 # ——— a regra das duas portas —————————————————————————————————————————————————————
