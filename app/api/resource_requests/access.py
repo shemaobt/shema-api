@@ -27,7 +27,6 @@ from app.models.resource_request_access import (
     InviteRevokeRequest,
 )
 from app.services import resource_request_access as access_service
-from app.services.resource_request_access._invite_status import invite_status
 
 router = APIRouter()
 
@@ -84,19 +83,7 @@ async def create_invite(
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(get_current_user),
 ) -> InviteCreatedResponse:
-    invite, invite_url = await access_service.create_invite(
-        db, actor, APP_KEY, payload.email, payload.role_key
-    )
-    return InviteCreatedResponse(
-        id=invite.id,
-        email=invite.email,
-        role_key=payload.role_key,
-        status=invite_status(invite),
-        created_at=invite.created_at,
-        expires_at=invite.expires_at,
-        created_by=invite.created_by,
-        invite_url=invite_url,
-    )
+    return await access_service.create_invite(db, actor, APP_KEY, payload.email, payload.role_key)
 
 
 @router.post("/invites/revoke", response_model=InviteResponse)

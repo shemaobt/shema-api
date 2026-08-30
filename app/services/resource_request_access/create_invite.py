@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, RoleError
 from app.db.models.auth import AccessInvite, User
+from app.models.resource_request_access import InviteCreatedResponse
 from app.services.auth.hash_refresh_token import hash_refresh_token
 from app.services.authorization.get_app_by_key import get_app_by_key
 from app.services.authorization.get_role import get_role
 from app.services.common.email import send_access_invite_email
 from app.services.resource_request_access._gate import assert_can_grant
+from app.services.resource_request_access._invite_status import invite_status
 
 
 async def create_invite(
@@ -20,8 +22,8 @@ async def create_invite(
     app_key: str,
     email: str,
     role_key: str,
-) -> tuple[AccessInvite, str]:
-    """Write a single-use invite and mail its link; returns (invite, invite_url).
+) -> InviteCreatedResponse:
+    """Write a single-use invite and mail its link; the answer carries the link.
 
     The row is committed before the letter leaves and sending is best-effort,
     so a dead provider cannot roll the invite back — and the returned URL lets
@@ -79,4 +81,13 @@ async def create_invite(
         invite_url=invite_url,
         app_name=app.name,
     )
-    return invite, invite_url
+    return InviteCreatedResponse(
+        id=invite.id,
+        email=invite.email,
+        role_key=role.role_key,
+        status=invite_status(invite),
+        created_at=invite.created_at,
+        expires_at=invite.expires_at,
+        created_by=invite.created_by,
+        invite_url=invite_url,
+    )
