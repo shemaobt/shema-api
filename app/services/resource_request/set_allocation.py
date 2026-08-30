@@ -34,7 +34,9 @@ async def set_allocation(
     A negative alocado is refused before anything is read: the field states money put
     into a fund, and no answer of ``fund_balances`` can make a negative one right. The
     wire meets this rule earlier, as ``AllocationIn``'s field-level 422; here it guards
-    the callers that do not come through the wire.
+    the callers that do not come through the wire — and the finiteness check comes first
+    because ``NaN < 0`` signals ``InvalidOperation``, the §8.5 arithmetic one operator
+    earlier, in ``append_movement``'s own words.
 
     Unlike the two writers it composes, this **is** the operation, so it commits — the
     FE-24 draft-store reasoning inverted: a partial correction left uncommitted would be
@@ -43,6 +45,8 @@ async def set_allocation(
     editing at once serialize and the second computes its difference against the first's
     committed sum, never against a sum that is moving under it.
     """
+    if not amount.is_finite():
+        raise ValidationError(f"Not an amount of money: {amount}")
     if amount < 0:
         raise ValidationError(f"An alocado states money put in, and {amount} is less than none.")
 

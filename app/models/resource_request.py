@@ -498,9 +498,14 @@ class AllocationIn(BaseModel):
     @field_validator("amount")
     @classmethod
     def _a_value_a_fund_can_hold(cls, value: Decimal) -> Decimal | None:
-        if value < 0:
-            raise ValueError(f"an alocado states money put in, and {value} is less than none")
-        return _fits_the_money_column(value)
+        """The fit runs first because the comparison is the arithmetic that can blow:
+        ``NaN < 0`` signals ``InvalidOperation``, and ``_fits_the_money_column`` is the
+        function already hardened to refuse before any Decimal operation can — §8.5's
+        lesson, one operator earlier again."""
+        checked = _fits_the_money_column(value)
+        if checked is not None and checked < 0:
+            raise ValueError(f"an alocado states money put in, and {checked} is less than none")
+        return checked
 
 
 class AllocationOut(BaseModel):

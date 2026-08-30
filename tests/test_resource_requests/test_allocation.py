@@ -227,12 +227,14 @@ async def test_money_that_does_not_fit_the_column_is_refused(
     db_session, client, rrf_app, fund
 ) -> None:
     """First place a client POSTs money straight into ``Numeric(14, 2)``: a third decimal
-    and a thirteenth integer digit are refused, not rounded — BE-05's rule."""
+    and a thirteenth integer digit are refused, not rounded — BE-05's rule. ``1E+30``
+    and ``NaN`` are the §8.5 fixtures, the values whose *refusal arithmetic* can blow:
+    each must come out as the module's 422, never a 500."""
     _, headers = await as_role(db_session, rrf_app, "gestor", "gestora8@rrf.test")
 
-    for amount in ("10.001", "1000000000000.00"):
+    for amount in ("10.001", "1000000000000.00", "1E+30", "NaN"):
         answer = await client.put(ALLOCATION, headers=headers, json={"amount": amount})
-        assert answer.status_code == 422
+        assert answer.status_code == 422, amount
 
 
 # ——— the gate ————————————————————————————————————————————————————————————————————
