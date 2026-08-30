@@ -468,15 +468,19 @@ class AllocationIn(BaseModel):
 
     @field_validator("amount")
     @classmethod
-    def _a_value_a_fund_can_hold(cls, value: Decimal) -> Decimal | None:
+    def _a_value_a_fund_can_hold(cls, value: Decimal) -> Decimal:
         """The fit runs first because the comparison is the arithmetic that can blow:
         ``NaN < 0`` signals ``InvalidOperation``, and ``fits_the_money_column`` is the
         function already hardened to refuse before any Decimal operation can — §8.5's
-        lesson, one operator earlier again."""
-        checked = fits_the_money_column(value)
-        if checked is not None and checked < 0:
-            raise ValueError(f"an alocado states money put in, and {checked} is less than none")
-        return checked
+        lesson, one operator earlier again.
+
+        It is called for the refusal and its return discarded, the way ``stated_total``
+        and the ledger's writer already call it: ``amount`` is required, so there is no
+        ``None`` to carry, and an after-validator's return is not re-validated."""
+        fits_the_money_column(value)
+        if value < 0:
+            raise ValueError(f"an alocado states money put in, and {value} is less than none")
+        return value
 
 
 class AllocationOut(BaseModel):
