@@ -35,6 +35,25 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     it is not a malformed request body — the body is empty — it is a stored draft that is not
     finished, and it deserves to say so.
 
+    **This is where the electronic acceptance is recorded, and it needs no field.** Asked
+    what replaces the Ponto focal's handwritten signature, the client answered *"aceite
+    eletrônico"* (28/aug/2026), and what stands in its place is the act itself:
+    ``created_by`` says who, ``submitted_at`` says when, both stamped by the server and
+    neither typable through a payload — this route takes none. No column and no field were
+    added, because the acceptance was already the shape this endpoint had. What the answer
+    does move is outside this function: ``tpp_date`` is due to stop being required at
+    submission — ``_ALWAYS_REQUIRED`` in ``resource_request_vocabularies.py`` still carries
+    it, and that list is BE-05's — and the printed signature line goes from the form
+    (frontend).
+
+    **There is no window, no deadline and no cycle lock, and the absence is written rather
+    than left to be noticed.** Asked whether submission is open all year, the client answered
+    *"não por enquanto"*: nothing here compares a date with a calendar, and that is the rule
+    and not an omission. The day a window exists it is a refusal **inside this function**,
+    before the snapshot is written — never a filter on the read path, which would hide a
+    request that was legitimately submitted. Only that half was answered; whether there is a
+    paper archive to migrate is still open and was never this function's.
+
     Nothing here moves the card. A submitted request is in ``triagem`` because that is where
     it was created, and every stage change afterwards is BE-08's with its ledger movement
     attached.
