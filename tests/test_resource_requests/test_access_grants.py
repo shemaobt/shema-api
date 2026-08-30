@@ -181,9 +181,7 @@ async def test_self_grant_is_refused_on_both_verbs_even_for_the_admin(
     assert self_revoke_admin.status_code == 400
 
 
-async def test_granting_to_a_user_that_does_not_exist_is_a_422(
-    db_session, client, rrf_app
-) -> None:
+async def test_granting_to_a_user_that_does_not_exist_is_a_422(db_session, client, rrf_app) -> None:
     _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin6@rrf.test")
 
     res = await client.post(
@@ -199,7 +197,7 @@ async def test_the_overview_is_visible_to_those_who_concede_and_hidden_below(
     db_session, client, rrf_app
 ) -> None:
     """FE-30's screen: gestor and admin read it; equipe is refused."""
-    gestor, gestor_headers = await _actor(db_session, rrf_app, "gestor", "gestor4@rrf.test")
+    _gestor, gestor_headers = await _actor(db_session, rrf_app, "gestor", "gestor4@rrf.test")
     _equipe, equipe_headers = await _actor(db_session, rrf_app, "equipe", "equipe2@rrf.test")
 
     seen = await client.get(ACCESS, headers=gestor_headers)
