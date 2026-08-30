@@ -202,8 +202,18 @@ def section_field_keys(request_type: str) -> frozenset[str]:
 #: renders: the contract's *empty means not answered* is the norm for the profile — the
 #: mesa reads a blank — so this list stays as short as the request itself allows. It is
 #: the project's name, what the request is for, the three essays the Parte C criteria
-#: score, the amount asked, and the two signatures with their dates. Everything in A1,
-#: A2 and A3 may be submitted blank.
+#: score, the amount asked, and the requester's name. Everything in A1, A2 and A3 may be
+#: submitted blank.
+#:
+#: **The paper form's signature block is not in this set, and the client moved it out**
+#: (OBT-483, 28/aug/2026): the Ponto focal's signature is an *aceite eletrônico* —
+#: submitting **is** signing, and ``created_by`` plus ``submitted_at`` are the who and
+#: the when, both stamped by the server. So ``tpp_date`` asks the client to type what
+#: the server already knows, and ``leader_name``/``leader_date`` belong to the Líder's
+#: endorsement (BE-16), not to the team's typing. The three **columns** stay on
+#: ``rr_requests`` and the three keys stay askable — a draft may carry them — they are
+#: just no longer demanded. ``tpp_name`` stays: it is the requester the mesa reads on
+#: the card, and the account that submits may not be the Ponto focal.
 #:
 #: **This set is BE-05's reading, not a requirement the PRD enumerates field by field.**
 #: It lives in one place so the client can move it in one place.
@@ -214,9 +224,6 @@ _ALWAYS_REQUIRED: tuple[str, ...] = (
     "funds_support",
     "amount_requested",
     "tpp_name",
-    "tpp_date",
-    "leader_name",
-    "leader_date",
 )
 
 
