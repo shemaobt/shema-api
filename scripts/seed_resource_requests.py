@@ -98,16 +98,17 @@ from app.utils.resource_request_vocabularies import CRITERION_KEYS
 #: card the panel renders, and a rendered fund name is an assertion about someone's
 #: money, so the four are not written at all.
 #:
-#: **The 480.000 is sample money, and the real figure is open by the client's own
-#: decision.** Asked for the real allocations, they answered that none exist yet and
-#: asked to leave them open: each fund is filled by the Gestores, whenever they do it.
-#: So a real deployment seeds no allocation whatsoever — its ledger starts at the first
-#: Gestor movement — and this number is here for the reason the frontend's own
-#: ``FUND_ALLOCATIONS`` records, sharpened by what this side adds. Zero would not render
-#: an empty fund: the two approved cards deduct 159.000, so the panel would open at
-#: **-159.000** in the low-funds state, an alarm about money nobody has put in yet.
+#: **It is born with allocated 0, and the seed writes no ALLOCATION** (BE-07, OBT-456).
+#: GATE-01 D6 has funds born empty and the Gestores filling them, so the prototype's
+#: 480.000 is the frontend's dev fixture (``FUND_ALLOCATIONS`` in ``panel.ts``) and
+#: never a seed value. An earlier version seeded it anyway, priced against the panel's
+#: look — the two approved cards deduct 159.000, so an empty fund opens the panel at
+#: **-159.000** — and that price is now paid knowingly: a negative *disponível* is the
+#: warning state GATE-01 D5 chose over a refusal, and it says the true thing, that money
+#: was promised which nobody has put in. The first Gestor allocation (BE-09, OBT-469) is
+#: what fills it.
 SEED_FUNDS = [
-    ("linguas", "Shema Línguas", Decimal("480000")),
+    ("linguas", "Shema Línguas"),
 ]
 
 LANGUAGE_PLACEHOLDERS = {"—", "Multi"}
@@ -298,8 +299,8 @@ async def _author(db: AsyncSession, email: str) -> User:
     return user
 
 
-async def _seed_funds(db: AsyncSession, author: User) -> None:
-    """Write the confirmed funds and their sample allocation.
+async def _seed_funds(db: AsyncSession) -> None:
+    """Write the confirmed funds, empty — the ledger starts at the first Gestor movement.
 
     ``provisional=False`` because GATE-01 answered this name: the flag says *the gate
     has not confirmed the correspondence*, and leaving it true here would leave the one
@@ -307,27 +308,11 @@ async def _seed_funds(db: AsyncSession, author: User) -> None:
     that is BE-10's (OBT-471) to give it a reader or to drop it, and a column nobody
     honours is the next reviewer's question either way.
     """
-    for fund_id, name, allocated in SEED_FUNDS:
+    for fund_id, name in SEED_FUNDS:
         fund = (await db.execute(select(RRFund).where(RRFund.id == fund_id))).scalar_one_or_none()
         if not fund:
             db.add(RRFund(id=fund_id, name=name, provisional=False))
             await db.flush()
-
-        movement_id = f"rr-seed-allocation-{fund_id}"
-        existing = (
-            await db.execute(select(RRFundMovement).where(RRFundMovement.id == movement_id))
-        ).scalar_one_or_none()
-        if not existing:
-            db.add(
-                RRFundMovement(
-                    id=movement_id,
-                    fund_id=fund_id,
-                    kind=RRMovementKind.ALLOCATION,
-                    amount=allocated,
-                    reason="Alocação de exemplo do protótipo",
-                    created_by=author.id,
-                )
-            )
 
 
 async def _seed_card(db: AsyncSession, card: SeedCard, author: User) -> None:
@@ -395,7 +380,7 @@ AUTHOR_ENV = "RR_SEED_AUTHOR"
 
 
 async def seed(author_email: str) -> None:
-    """Write the fund, its sample allocation and the ten sample board cards.
+    """Write the fund, empty, and the ten sample board cards.
 
     No evaluation carries a decision. The board column a card sits in does not imply one
     — the mesa moves cards without evaluating them — and inverting that mapping is
@@ -408,7 +393,7 @@ async def seed(author_email: str) -> None:
     """
     async with AsyncSessionLocal() as db:
         author = await _author(db, author_email)
-        await _seed_funds(db, author)
+        await _seed_funds(db)
         for card in SEED_CARDS:
             await _seed_card(db, card, author)
         await db.commit()
