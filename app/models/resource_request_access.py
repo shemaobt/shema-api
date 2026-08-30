@@ -8,7 +8,7 @@ signup or login without guessing.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 InviteStatus = Literal["pending", "expired", "used", "revoked"]
 
@@ -44,7 +44,7 @@ class AccessAssignmentResponse(BaseModel):
 
 
 class InviteCreateRequest(BaseModel):
-    email: str
+    email: EmailStr
     role_key: str
 
 

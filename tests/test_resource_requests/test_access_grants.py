@@ -29,8 +29,8 @@ async def _actor(db_session, rrf_app, role_key: str | None, email: str):
 async def test_a_gestor_grants_equipe_and_the_grant_names_its_author(
     db_session, client, rrf_app
 ) -> None:
-    gestor, headers = await _actor(db_session, rrf_app, "gestor", "gestor@rrf.test")
-    target = await make_user(db_session, email="new-equipe@rrf.test")
+    gestor, headers = await _actor(db_session, rrf_app, "gestor", "gestor@rrf.example")
+    target = await make_user(db_session, email="new-equipe@rrf.example")
 
     res = await client.post(
         f"{ACCESS}/grants",
@@ -49,8 +49,8 @@ async def test_a_gestor_grants_equipe_and_the_grant_names_its_author(
 async def test_a_platform_admin_grants_without_holding_any_role_here(
     db_session, client, rrf_app
 ) -> None:
-    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin@rrf.test")
-    target = await make_user(db_session, email="named-mesa@rrf.test")
+    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin@rrf.example")
+    target = await make_user(db_session, email="named-mesa@rrf.example")
 
     res = await client.post(
         f"{ACCESS}/grants",
@@ -63,10 +63,10 @@ async def test_a_platform_admin_grants_without_holding_any_role_here(
 
 
 async def test_equipe_and_mesa_cannot_grant(db_session, client, rrf_app) -> None:
-    target = await make_user(db_session, email="wanted@rrf.test")
+    target = await make_user(db_session, email="wanted@rrf.example")
     for role_key in ("equipe", "mesa"):
         _actor_user, headers = await _actor(
-            db_session, rrf_app, role_key, f"{role_key}-actor@rrf.test"
+            db_session, rrf_app, role_key, f"{role_key}-actor@rrf.example"
         )
 
         res = await client.post(
@@ -80,8 +80,8 @@ async def test_equipe_and_mesa_cannot_grant(db_session, client, rrf_app) -> None
 
 async def test_the_gestor_who_concedes_cannot_revoke(db_session, client, rrf_app) -> None:
     """The asymmetry is the answer, not an oversight."""
-    _gestor, headers = await _actor(db_session, rrf_app, "gestor", "gestor2@rrf.test")
-    target = await make_user(db_session, email="held@rrf.test")
+    _gestor, headers = await _actor(db_session, rrf_app, "gestor", "gestor2@rrf.example")
+    target = await make_user(db_session, email="held@rrf.example")
     await grant(db_session, target, rrf_app, "equipe")
 
     res = await client.post(
@@ -96,8 +96,8 @@ async def test_the_gestor_who_concedes_cannot_revoke(db_session, client, rrf_app
 async def test_an_admin_revokes_and_the_revocation_names_its_author(
     db_session, client, rrf_app
 ) -> None:
-    admin, headers = await _actor(db_session, rrf_app, "admin", "padmin2@rrf.test")
-    target = await make_user(db_session, email="leaving@rrf.test")
+    admin, headers = await _actor(db_session, rrf_app, "admin", "padmin2@rrf.example")
+    target = await make_user(db_session, email="leaving@rrf.example")
     await grant(db_session, target, rrf_app, "mesa")
 
     res = await client.post(
@@ -119,10 +119,10 @@ async def test_an_admin_revokes_and_the_revocation_names_its_author(
 
 
 async def test_mesa_and_gestor_exclude_each_other_both_ways(db_session, client, rrf_app) -> None:
-    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin3@rrf.test")
-    holds_mesa = await make_user(db_session, email="holds-mesa@rrf.test")
+    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin3@rrf.example")
+    holds_mesa = await make_user(db_session, email="holds-mesa@rrf.example")
     await grant(db_session, holds_mesa, rrf_app, "mesa")
-    holds_gestor = await make_user(db_session, email="holds-gestor@rrf.test")
+    holds_gestor = await make_user(db_session, email="holds-gestor@rrf.example")
     await grant(db_session, holds_gestor, rrf_app, "gestor")
 
     to_gestor = await client.post(
@@ -141,8 +141,8 @@ async def test_mesa_and_gestor_exclude_each_other_both_ways(db_session, client, 
 
 
 async def test_equipe_is_the_floor_and_accumulates(db_session, client, rrf_app) -> None:
-    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin4@rrf.test")
-    target = await make_user(db_session, email="stacking@rrf.test")
+    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin4@rrf.example")
+    target = await make_user(db_session, email="stacking@rrf.example")
     await grant(db_session, target, rrf_app, "gestor")
 
     res = await client.post(
@@ -157,8 +157,8 @@ async def test_equipe_is_the_floor_and_accumulates(db_session, client, rrf_app) 
 async def test_self_grant_is_refused_on_both_verbs_even_for_the_admin(
     db_session, client, rrf_app
 ) -> None:
-    admin, admin_headers = await _actor(db_session, rrf_app, "admin", "padmin5@rrf.test")
-    gestor, gestor_headers = await _actor(db_session, rrf_app, "gestor", "gestor3@rrf.test")
+    admin, admin_headers = await _actor(db_session, rrf_app, "admin", "padmin5@rrf.example")
+    gestor, gestor_headers = await _actor(db_session, rrf_app, "gestor", "gestor3@rrf.example")
 
     self_grant_admin = await client.post(
         f"{ACCESS}/grants",
@@ -182,7 +182,7 @@ async def test_self_grant_is_refused_on_both_verbs_even_for_the_admin(
 
 
 async def test_granting_to_a_user_that_does_not_exist_is_a_422(db_session, client, rrf_app) -> None:
-    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin6@rrf.test")
+    _admin, headers = await _actor(db_session, rrf_app, "admin", "padmin6@rrf.example")
 
     res = await client.post(
         f"{ACCESS}/grants",
@@ -197,14 +197,14 @@ async def test_the_overview_is_visible_to_those_who_concede_and_hidden_below(
     db_session, client, rrf_app
 ) -> None:
     """FE-30's screen: gestor and admin read it; equipe is refused."""
-    _gestor, gestor_headers = await _actor(db_session, rrf_app, "gestor", "gestor4@rrf.test")
-    _equipe, equipe_headers = await _actor(db_session, rrf_app, "equipe", "equipe2@rrf.test")
+    _gestor, gestor_headers = await _actor(db_session, rrf_app, "gestor", "gestor4@rrf.example")
+    _equipe, equipe_headers = await _actor(db_session, rrf_app, "equipe", "equipe2@rrf.example")
 
     seen = await client.get(ACCESS, headers=gestor_headers)
     refused = await client.get(ACCESS, headers=equipe_headers)
 
     assert seen.status_code == 200
     granted = {(g["email"], g["role_key"]) for g in seen.json()["grants"]}
-    assert ("gestor4@rrf.test", "gestor") in granted
-    assert ("equipe2@rrf.test", "equipe") in granted
+    assert ("gestor4@rrf.example", "gestor") in granted
+    assert ("equipe2@rrf.example", "equipe") in granted
     assert refused.status_code == 403

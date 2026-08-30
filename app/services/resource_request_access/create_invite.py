@@ -33,8 +33,6 @@ async def create_invite(
     await assert_can_grant(db, actor, app_key)
 
     normalized_email = email.strip().lower()
-    if not normalized_email:
-        raise RoleError("An e-mail address is required.")
     if normalized_email == actor.email.lower():
         raise RoleError("You cannot invite yourself.")
 

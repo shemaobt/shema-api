@@ -74,18 +74,18 @@ def test_the_app_key_is_named_once_in_the_module() -> None:
 
 
 async def test_the_guard_admits_a_granted_account(db_session, client, rrf_app) -> None:
-    user = await make_user(db_session, email="mesa@rrf.test")
+    user = await make_user(db_session, email="mesa@rrf.example")
     await grant(db_session, user, rrf_app, "mesa")
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
 
     assert res.status_code == 200
-    assert res.json() == {"email": "mesa@rrf.test"}
+    assert res.json() == {"email": "mesa@rrf.example"}
 
 
 async def test_the_guard_refuses_an_account_with_no_role(db_session, client, rrf_app) -> None:
     """The message matters as much as the status — it is what tells a person what to do."""
-    user = await make_user(db_session, email="norole@rrf.test")
+    user = await make_user(db_session, email="norole@rrf.example")
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
 
@@ -99,7 +99,7 @@ async def test_the_guard_does_not_carry_a_role_over_from_another_app(
 ) -> None:
     """Access is per application; holding `mesa` somewhere else is not holding it here."""
     other = await make_app(db_session, app_key="some-other-app", name="Other")
-    user = await make_user(db_session, email="elsewhere@rrf.test")
+    user = await make_user(db_session, email="elsewhere@rrf.example")
     await grant_app_role(db_session, user, other, role_key="mesa")
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
@@ -114,7 +114,7 @@ async def test_the_role_alias_refuses_the_wrong_role(db_session, client, rrf_app
     Passing the first is not passing the second — the distinction BE-03 builds its
     capability checks on.
     """
-    user = await make_user(db_session, email=f"{role_key}@rrf.test")
+    user = await make_user(db_session, email=f"{role_key}@rrf.example")
     await grant(db_session, user, rrf_app, role_key)
 
     headers = await auth_header(db_session, user)
@@ -128,7 +128,7 @@ async def test_the_role_alias_refuses_the_wrong_role(db_session, client, rrf_app
 async def test_the_guard_admits_a_platform_admin_without_a_grant(
     db_session, client, rrf_app
 ) -> None:
-    user = await make_user(db_session, email="admin@rrf.test", is_platform_admin=True)
+    user = await make_user(db_session, email="admin@rrf.example", is_platform_admin=True)
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
 
@@ -141,7 +141,7 @@ async def test_the_guard_answers_401_not_403_when_anonymous(client, rrf_app) -> 
 
 async def test_my_roles_reports_the_granted_role_for_this_app(db_session, client, rrf_app) -> None:
     """The call FE-24 makes to hydrate a session."""
-    user = await make_user(db_session, email="hydrate@rrf.test")
+    user = await make_user(db_session, email="hydrate@rrf.example")
     await grant(db_session, user, rrf_app, "gestor")
 
     res = await client.get(
@@ -155,7 +155,7 @@ async def test_my_roles_reports_the_granted_role_for_this_app(db_session, client
 
 async def test_my_roles_is_empty_for_an_account_with_no_grant(db_session, client, rrf_app) -> None:
     """An empty array, not a 403: my-roles reports, it does not guard."""
-    user = await make_user(db_session, email="empty@rrf.test")
+    user = await make_user(db_session, email="empty@rrf.example")
 
     res = await client.get(
         f"/api/auth/my-roles?app_key={APP_KEY}",

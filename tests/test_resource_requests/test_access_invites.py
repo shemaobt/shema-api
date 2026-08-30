@@ -5,6 +5,10 @@ active user, which is exactly whom a link serves. Covered here: who may write
 one, the single raw token that never touches the database, the public lookup
 that routes a stranger to signup, single use, expiry, revocation, and the
 letter leaving through BE-12's door *after* the row is committed.
+
+Addresses are ``@rrf.example`` and never ``@rrf.test``: ``InviteCreateRequest``
+validates with ``EmailStr``, and ``email-validator`` refuses the reserved ``.test``
+TLD outright — a fixture address on it would 422 for a reason no test is about.
 """
 
 from __future__ import annotations
@@ -23,18 +27,18 @@ from tests.test_resource_requests.conftest import auth_header, grant
 ACCESS = "/api/resource-requests/access"
 
 
-async def _gestor(db_session, rrf_app, email: str = "inviter@rrf.test"):
+async def _gestor(db_session, rrf_app, email: str = "inviter@rrf.example"):
     user = await make_user(db_session, email=email)
     await grant(db_session, user, rrf_app, "gestor")
     return user, await auth_header(db_session, user)
 
 
-async def _admin(db_session, email: str = "padmin@rrf.test"):
+async def _admin(db_session, email: str = "padmin@rrf.example"):
     user = await make_user(db_session, email=email, is_platform_admin=True)
     return user, await auth_header(db_session, user)
 
 
-async def _invite(client, headers, email: str = "stranger@rrf.test", role_key: str = "equipe"):
+async def _invite(client, headers, email: str = "stranger@rrf.example", role_key: str = "equipe"):
     res = await client.post(
         f"{ACCESS}/invites", json={"email": email, "role_key": role_key}, headers=headers
     )
@@ -55,7 +59,7 @@ async def test_a_gestor_invites_and_only_the_hash_lands_in_the_database(
 
     token = _token_of(body)
     row = (await db_session.execute(select(AccessInvite))).scalar_one()
-    assert row.email == "stranger@rrf.test"
+    assert row.email == "stranger@rrf.example"
     assert row.token_hash != token
     assert token not in row.token_hash
     assert body["status"] == "pending"
@@ -76,7 +80,7 @@ async def test_the_letter_leaves_through_be12s_door_with_the_link_inside(
     [(url, kwargs)] = recorded
     assert url == "https://api.resend.com/emails"
     payload = kwargs["json"]
-    assert payload["to"] == ["stranger@rrf.test"]
+    assert payload["to"] == ["stranger@rrf.example"]
     assert body["invite_url"] in payload["html"]
 
 
@@ -95,21 +99,21 @@ async def test_a_dead_provider_does_not_revert_the_committed_invite(
     body = await _invite(client, headers)
 
     row = (await db_session.execute(select(AccessInvite))).scalar_one()
-    assert row.email == "stranger@rrf.test"
+    assert row.email == "stranger@rrf.example"
     assert "token=" in body["invite_url"]
 
 
 async def test_equipe_cannot_invite_and_inviting_yourself_is_refused(
     db_session, client, rrf_app
 ) -> None:
-    equipe = await make_user(db_session, email="equipe@rrf.test")
+    equipe = await make_user(db_session, email="equipe@rrf.example")
     await grant(db_session, equipe, rrf_app, "equipe")
     equipe_headers = await auth_header(db_session, equipe)
     gestor, gestor_headers = await _gestor(db_session, rrf_app)
 
     below = await client.post(
         f"{ACCESS}/invites",
-        json={"email": "x@rrf.test", "role_key": "equipe"},
+        json={"email": "x@rrf.example", "role_key": "equipe"},
         headers=equipe_headers,
     )
     themselves = await client.post(
@@ -122,6 +126,30 @@ async def test_equipe_cannot_invite_and_inviting_yourself_is_refused(
     assert themselves.status_code == 400
 
 
+async def test_an_address_that_is_not_an_address_is_refused_at_the_door(
+    db_session, client, rrf_app
+) -> None:
+    """``EmailStr`` answers before the service does, so no row is written.
+
+    The row is what would matter: a live invite for an address no letter can
+    reach also blocks the next invite to that address as a duplicate.
+    """
+    _inviter, headers = await _gestor(db_session, rrf_app)
+
+    malformed = await client.post(
+        f"{ACCESS}/invites",
+        json={"email": "stranger@rrf", "role_key": "equipe"},
+        headers=headers,
+    )
+    empty = await client.post(
+        f"{ACCESS}/invites", json={"email": "", "role_key": "equipe"}, headers=headers
+    )
+
+    assert malformed.status_code == 422
+    assert empty.status_code == 422
+    assert (await db_session.execute(select(AccessInvite))).scalars().all() == []
+
+
 async def test_a_second_pending_invite_for_the_same_email_and_role_is_refused(
     db_session, client, rrf_app
 ) -> None:
@@ -130,7 +158,7 @@ async def test_a_second_pending_invite_for_the_same_email_and_role_is_refused(
 
     res = await client.post(
         f"{ACCESS}/invites",
-        json={"email": "stranger@rrf.test", "role_key": "equipe"},
+        json={"email": "stranger@rrf.example", "role_key": "equipe"},
         headers=headers,
     )
 
@@ -147,7 +175,7 @@ async def test_the_public_lookup_sends_a_stranger_to_signup(db_session, client, 
     assert res.status_code == 200
     description = res.json()
     assert description["status"] == "pending"
-    assert description["email"] == "stranger@rrf.test"
+    assert description["email"] == "stranger@rrf.example"
     assert description["account_exists"] is False
     assert description["role_key"] == "equipe"
     assert description["app_name"] == "Resource Request Form"
@@ -157,8 +185,8 @@ async def test_the_public_lookup_recognises_an_existing_account(
     db_session, client, rrf_app
 ) -> None:
     _inviter, headers = await _gestor(db_session, rrf_app)
-    await make_user(db_session, email="known@rrf.test")
-    body = await _invite(client, headers, email="known@rrf.test")
+    await make_user(db_session, email="known@rrf.example")
+    body = await _invite(client, headers, email="known@rrf.example")
 
     res = await client.get(f"{ACCESS}/invites/{_token_of(body)}")
 
@@ -176,7 +204,7 @@ async def test_accepting_grants_the_role_in_the_inviters_name_and_spends_the_inv
     inviter, headers = await _gestor(db_session, rrf_app)
     body = await _invite(client, headers, role_key="mesa")
     token = _token_of(body)
-    joiner = await make_user(db_session, email="stranger@rrf.test")
+    joiner = await make_user(db_session, email="stranger@rrf.example")
     joiner_headers = await auth_header(db_session, joiner)
 
     accepted = await client.post(f"{ACCESS}/invites/{token}/accept", headers=joiner_headers)
@@ -196,7 +224,7 @@ async def test_accepting_grants_the_role_in_the_inviters_name_and_spends_the_inv
 async def test_a_link_in_the_wrong_hands_is_refused(db_session, client, rrf_app) -> None:
     _inviter, headers = await _gestor(db_session, rrf_app)
     body = await _invite(client, headers)
-    other = await make_user(db_session, email="someone-else@rrf.test")
+    other = await make_user(db_session, email="someone-else@rrf.example")
 
     res = await client.post(
         f"{ACCESS}/invites/{_token_of(body)}/accept",
@@ -215,7 +243,7 @@ async def test_an_expired_invite_neither_reads_pending_nor_accepts(
     row = (await db_session.execute(select(AccessInvite))).scalar_one()
     row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
     await db_session.commit()
-    joiner = await make_user(db_session, email="stranger@rrf.test")
+    joiner = await make_user(db_session, email="stranger@rrf.example")
 
     lookup = await client.get(f"{ACCESS}/invites/{token}")
     accept = await client.post(
@@ -250,7 +278,7 @@ async def test_only_the_admin_recalls_a_pending_invite_and_the_door_stays_shut(
     row = (await db_session.execute(select(AccessInvite))).scalar_one()
     assert row.revoked_by == admin.id
 
-    joiner = await make_user(db_session, email="stranger@rrf.test")
+    joiner = await make_user(db_session, email="stranger@rrf.example")
     accept = await client.post(
         f"{ACCESS}/invites/{token}/accept", headers=await auth_header(db_session, joiner)
     )
@@ -261,7 +289,7 @@ async def test_only_the_admin_recalls_a_pending_invite_and_the_door_stays_shut(
 async def test_an_accepted_invite_is_past_recalling(db_session, client, rrf_app) -> None:
     _inviter, headers = await _gestor(db_session, rrf_app)
     body = await _invite(client, headers)
-    joiner = await make_user(db_session, email="stranger@rrf.test")
+    joiner = await make_user(db_session, email="stranger@rrf.example")
     accepted = await client.post(
         f"{ACCESS}/invites/{_token_of(body)}/accept",
         headers=await auth_header(db_session, joiner),
@@ -280,7 +308,7 @@ async def test_exclusivity_holds_at_acceptance_time_too(db_session, client, rrf_
     """The holder's roles may change between the letter and the click."""
     _inviter, headers = await _gestor(db_session, rrf_app)
     body = await _invite(client, headers, role_key="mesa")
-    joiner = await make_user(db_session, email="stranger@rrf.test")
+    joiner = await make_user(db_session, email="stranger@rrf.example")
     await grant(db_session, joiner, rrf_app, "gestor")
 
     res = await client.post(
@@ -302,5 +330,5 @@ async def test_open_invites_appear_on_the_overview_with_their_status(
     assert res.status_code == 200
     invites = res.json()["invites"]
     assert [(i["id"], i["email"], i["status"]) for i in invites] == [
-        (body["id"], "stranger@rrf.test", "pending")
+        (body["id"], "stranger@rrf.example", "pending")
     ]
