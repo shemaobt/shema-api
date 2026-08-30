@@ -276,6 +276,32 @@ class SegmentView(BaseModel):
     told: bool = True
 
 
+class DivideSegmentRequest(BaseModel):
+    """Where the team wants the stretch cut.
+
+    Milliseconds from the start of the recording, the same origin the stretch's own bounds
+    use — never an offset into the stretch. Two origins for one timeline is the defect the
+    segment exists to remove.
+    """
+
+    at_ms: int
+
+
+class SegmentsResponse(BaseModel):
+    """Every stretch that counts after a division or a replacement, for the tablet to redraw.
+
+    The whole list rather than what was just written: a client patching its own list would be
+    keeping a second copy of a rule that lives in one place on this side.
+    """
+
+    session_id: str
+    segments: list[SegmentView] = Field(default_factory=list)
+    #: False when audio was sent and nothing could be made out of it. The stretch is then left
+    #: exactly as it was — replacing a good explanation with an empty one over a transcriber
+    #: outage would lose the team's work to somebody else's failure.
+    captured: bool = True
+
+
 class BackTranslationProgress(BaseModel):
     """Where a telling-back stopped, so a tablet can be handed it back.
 
