@@ -1,9 +1,12 @@
-"""Reading an evaluation whole, because nothing useful reads a piece of it.
+"""Reading an evaluation: whole for the mesa, two columns for the team.
 
 The evaluation row, its six score rows and its ata are one aggregate stored in three
-tables — the ``_loading.py`` reasoning one aggregate over. Every caller that serves an
-evaluation serves all three, so the load is written once, together with the snapshot
+tables — the ``_loading.py`` reasoning one aggregate over. Every caller that *serves an
+evaluation* serves all three, so the load is written once, together with the snapshot
 lookup both the readers and the writer start from.
+
+``team_outcome`` is the one caller that does not, and it is here rather than beside its
+service so that the columns a team may read stay next to the ones it may not.
 
 Scores come back in the criterion order of the request's own type, read from the vendored
 emission — the order the mesa sees them in Parte C — with a key the current list does not
@@ -18,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.resource_request import (
+    RRDecision,
     RREvaluation,
     RREvaluationAttendee,
     RREvaluationScore,
@@ -30,6 +34,11 @@ class EvaluationRecord(NamedTuple):
     evaluation: RREvaluation
     scores: list[RREvaluationScore]
     attendees: list[str]
+
+
+class TeamOutcome(NamedTuple):
+    decision: RRDecision | None
+    team_note: str | None
 
 
 async def latest_snapshot(db: AsyncSession, request_id: str) -> RRSnapshot | None:
@@ -81,3 +90,32 @@ async def load_evaluation(
     )
 
     return EvaluationRecord(evaluation=evaluation, scores=scores, attendees=attendees)
+
+
+async def team_outcome(db: AsyncSession, request_id: str) -> TeamOutcome:
+    """The two fields of the evaluation a team may read — two columns, one statement.
+
+    ``request_status`` is the route a team refreshes on its own request, and it consumes
+    exactly these two. Reaching them through ``latest_snapshot`` and ``load_evaluation``
+    cost four statements, and the first of the four selected the snapshot row whole to use
+    its ``id`` — dragging the frozen ``document``, the entire submitted request, across the
+    wire to be discarded.
+
+    The outer join keeps the semantics ``latest_snapshot`` gives, and that is the reason it
+    is an outer one: the answer belongs to the **latest** snapshot, so a newer snapshot
+    nobody has evaluated answers *no decision yet* rather than falling back to what the
+    mesa decided about the previous one. No snapshot at all answers the same pair, because
+    to a team *not submitted* and *not decided* are the same sentence — the stage is what
+    tells them apart, and ``request_status`` reads that from the spine.
+    """
+    row = (
+        await db.execute(
+            select(RREvaluation.decision, RREvaluation.team_note)
+            .select_from(RRSnapshot)
+            .outerjoin(RREvaluation, RREvaluation.snapshot_id == RRSnapshot.id)
+            .where(RRSnapshot.request_id == request_id)
+            .order_by(RRSnapshot.created_at.desc())
+            .limit(1)
+        )
+    ).first()
+    return TeamOutcome(None, None) if row is None else TeamOutcome(row.decision, row.team_note)
