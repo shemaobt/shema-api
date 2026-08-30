@@ -594,6 +594,62 @@ class FundOut(BaseModel):
     available: Decimal
 
 
+class FundAssignmentIn(BaseModel):
+    """The mesa's triage decision: which fund this request draws from (GATE-01 D4).
+
+    One required field, and no way to state who assigned it or when — both are the
+    server's stamps, and ``extra="forbid"`` turns the attempt into a 422, the rule every
+    write in this module follows.
+
+    ``fund_id`` is not nullable, so this endpoint assigns and swaps and never clears.
+    Clearing the fund of an approved card would be an un-approval written as an edit, and
+    un-approving is the board's transaction with its compensating movement.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    fund_id: str
+
+
+class FundAssignmentOut(BaseModel):
+    """What the assignment did — and, on a swap of an approved card, to which balances.
+
+    ``changed`` is ``false`` when the request already pointed at that fund: nothing was
+    written, ``assigned_at`` is null and both lists are empty, the same shape a board move
+    answers for a card already in its column.
+
+    ``fund_deltas`` carries **two** entries when an approved request changes fund —
+    negative on the fund it left, positive on the one it joined — and none otherwise. It is
+    a list and not the board move's single ``fund_delta`` because this is the one operation
+    in the module that moves two funds at once.
+    """
+
+    request_id: str
+    fund_id: str
+    previous_fund_id: str | None
+    changed: bool
+    assigned_by: str
+    assigned_at: datetime | None
+    fund_deltas: list[FundDeltaOut]
+    movement_ids: list[str]
+
+
+class FundOptionOut(BaseModel):
+    """One row of the mesa's fund selector, with why it may or may not be picked.
+
+    ``retired`` is the row BE-10 (OBT-471) will create by taking a fund out of the choices:
+    it is still shown, because this request draws from it and a selector that hid it would
+    render an assignment as an absence, and ``selectable`` is ``false`` because it is no
+    longer on offer for anything new.
+    """
+
+    id: str
+    name: str
+    assigned: bool
+    selectable: bool
+    retired: bool
+
+
 class MovementOut(BaseModel):
     """One ledger entry on the wire: what moved, who moved it, when, and why.
 
