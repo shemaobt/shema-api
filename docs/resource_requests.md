@@ -708,7 +708,12 @@ texto (limite de mb tem que ser algo razoável)"* — and the ceiling the client
 is recorded in the issue as **10 MB**. The ten content types are validated by declared
 type **and** signature, never by extension; the four ZIP containers are told apart from
 the inside (`mimetype` for ODF, `[Content_Types].xml` for OOXML), .xls/.doc by the OLE2
-stream marker, and .csv/.txt — which have no signature — by the UTF-8 proof.
+stream marker, and .csv/.txt — which have no signature — by a text proof: no C0 control
+bytes outside tab, CR and LF, and a decode as **UTF-8 or cp1252**, because Excel on a
+pt-BR Windows exports .csv in the code page and a header cell reading `orçamento` would
+otherwise be a 400 on one of the formats the client named as *planilha*. The proof is a
+byte-level scan and not a loop over a decoded string: at the 10 MB ceiling that is 102 ms
+of blocked event loop instead of 5.8 s.
 `app/services/resource_request/_attachment_rules.py` carries all of it, including why
 the sniffing library is `filetype` (pure Python; `python-magic` would put `libmagic`
 into the Docker image).

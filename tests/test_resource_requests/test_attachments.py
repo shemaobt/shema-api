@@ -67,6 +67,7 @@ def ole2_file(marker_at_512: bytes) -> bytes:
 PDF = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n"
 RTF = b"{\\rtf1\\ansi Orcamento}"
 CSV = b"categoria,valor\npapel,12.50\n"
+CSV_CP1252 = "categoria,orçamento\npapel,12.50\n".encode("cp1252")
 TXT = "orçamento em texto simples\n".encode()
 XLSX = ooxml_file("spreadsheetml")
 DOCX = ooxml_file("wordprocessingml")
@@ -232,21 +233,37 @@ async def test_zip_containers_are_told_apart_from_the_inside(
     ("declared", "data"),
     [
         ("text/plain", b"texto\x00binario"),
-        ("text/csv", b"a,b\n\xff\xfe invalid utf-8"),
+        ("text/csv", b"a,b\n\x81\x8d nem utf-8 nem cp1252"),
     ],
-    ids=["control-byte", "not-utf8"],
+    ids=["control-byte", "undecodable"],
 )
 async def test_the_two_signatureless_types_are_proven_as_text(
     db_session, client, rrf_app, storage, declared: str, data: bytes
 ) -> None:
-    """.csv and .txt have no magic number; the proof is UTF-8 with no control bytes
-    outside tab, CR and LF — a binary renamed to .txt fails exactly that."""
+    """.csv and .txt have no magic number; the proof is text with no control bytes
+    outside tab, CR and LF, decodable as UTF-8 or cp1252 — a binary renamed to .txt fails
+    exactly that. ``\\x81`` and ``\\x8d`` are undefined in both codecs, which is what keeps
+    the decode arm reachable after the cp1252 fallback."""
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
 
     res = await put_file(client, created["id"], headers, data, declared)
     assert res.status_code == 400
     assert storage.objects == {}
+
+
+async def test_a_cp1252_spreadsheet_export_is_accepted(
+    db_session, client, rrf_app, storage
+) -> None:
+    """Excel on a pt-BR Windows writes .csv as cp1252, and a header cell reading
+    ``orçamento`` is one byte away from failing a strict UTF-8 decode — a 400 on one of
+    the formats the client named as *planilha*. The control-byte proof is untouched."""
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+
+    res = await put_file(client, created["id"], headers, CSV_CP1252, "text/csv")
+    assert res.status_code == 201, res.text
+    assert storage.objects[next(iter(storage.objects))][0] == CSV_CP1252
 
 
 # ——— the 10 MB ceiling, refused before storage is touched ————————————————————————
