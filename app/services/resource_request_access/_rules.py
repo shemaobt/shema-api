@@ -5,13 +5,7 @@ seats and the client's model has a person on one side of the table at a time;
 ``equipe`` is the floor and accumulates beside either. The check runs at grant
 time — both at naming and at invite acceptance — because acceptance can happen
 long after the invite was written, against a user whose roles have changed.
-
-The timestamp helper exists because ``DateTime(timezone=True)`` reads back
-naive on SQLite and aware on Postgres; a naive value here is by construction
-UTC.
 """
-
-from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,8 +41,3 @@ async def assert_role_compatible(
             f"'{role_key}' and '{counterpart}' are mutually exclusive: "
             f"revoke '{counterpart}' before granting '{role_key}'."
         )
-
-
-def as_aware_utc(value: datetime) -> datetime:
-    """Read a stored moment back onto the UTC clock it was written on."""
-    return value if value.tzinfo else value.replace(tzinfo=UTC)

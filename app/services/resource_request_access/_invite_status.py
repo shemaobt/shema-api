@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 from app.db.models.auth import AccessInvite
 from app.models.resource_request_access import InviteStatus
-from app.services.resource_request_access._rules import as_aware_utc
+from app.utils.stored_time import as_utc
 
 
 def invite_status(invite: AccessInvite) -> InviteStatus:
@@ -17,6 +17,6 @@ def invite_status(invite: AccessInvite) -> InviteStatus:
         return "revoked"
     if invite.accepted_at is not None:
         return "used"
-    if as_aware_utc(invite.expires_at) <= datetime.now(UTC):
+    if as_utc(invite.expires_at) <= datetime.now(UTC):
         return "expired"
     return "pending"
