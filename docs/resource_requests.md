@@ -502,13 +502,15 @@ And `assign_fund` was carrying GATE-01 D1's aside — that the Gestor would defi
 project draws from — as a live re-ask; asked again, the answer was *"somente a mesa"*. Neither
 cell moves, `move_board` least of all: moving a card is still not deciding (D6).
 
-**A ninth cell is decided and arrives with BE-10** (OBT-471). The fund area does *"os 3"* —
-create, rename, retire — *"o Gestor"* creates, and renaming and retiring *"seguem a de criar"*:
-**one** capability over three verbs, the Gestor's alone. That it is a **control** capability and
+**The `administer_funds` cell landed with FE-29 (OBT-481, 30/aug/2026), ahead of BE-10's
+endpoints** (OBT-471). The fund area does *"os 3"* — create, rename, retire — *"o Gestor"*
+creates, and renaming and retiring *"seguem a de criar"*: **one** capability over three verbs,
+the Gestor's alone, in the map, the emission and the vendored copy since that issue, so BE-10's
+guard has a table to stand on before any route exists. That it is a **control** capability and
 not a screen one is ours to decide (Daniel, 28/aug/2026) and not the client's sentence, and the
 consequence is mechanical: as a screen capability it would match no role in the frontend's
 `SCREEN_CAPABILITIES.every(holds)` and the mesa's fixture account would vanish — the trap the
-`?` cell of D3 sprang once already.
+`?` cell of D3 sprang once already, and which the frontend now pins by test.
 
 **The fourth role is built** (BE-16, OBT-476, 30/aug/2026). GATE-02 D2 answered that the
 **Líder de Base** enters the system — the narrowest of the four, holding one endorsement

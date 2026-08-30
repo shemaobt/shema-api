@@ -1,5 +1,5 @@
 {
-  "emitted_from": "51b357d07ec6a4bbccd75390118cbf3519f71432",
+  "emitted_from": "065871a7092f54fec8040a1ad2c78e5d61f82bb6",
   "capabilities": [
     "edit_requests",
     "view_evaluation",
@@ -8,7 +8,8 @@
     "move_board",
     "assign_fund",
     "allocate_funds",
-    "endorse_request"
+    "endorse_request",
+    "administer_funds"
   ],
   "screenCapabilities": [
     "edit_requests",
@@ -20,7 +21,8 @@
   "controlCapabilities": [
     "assign_fund",
     "allocate_funds",
-    "endorse_request"
+    "endorse_request",
+    "administer_funds"
   ],
   "roles": [
     {
@@ -59,7 +61,8 @@
         "view_evaluation",
         "manage_funds",
         "move_board",
-        "allocate_funds"
+        "allocate_funds",
+        "administer_funds"
       ]
     },
     {

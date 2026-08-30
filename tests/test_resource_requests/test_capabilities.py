@@ -114,7 +114,7 @@ def test_every_capability_has_a_probe() -> None:
 async def test_the_guard_answers_the_table(
     db_session, client, rrf_app, role: str, capability: str
 ) -> None:
-    """The whole table, asserted end to end through HTTP — 32 cells, one per case.
+    """The whole table, asserted end to end through HTTP — 36 cells, one per case.
 
     The map is read here rather than restated, so this proves the guard obeys whatever the
     table says; the mirror above is what proves the table is the right one.
@@ -151,6 +151,7 @@ async def test_a_team_token_reaches_no_evaluation_and_no_fund(db_session, client
         "assign_fund",
         "allocate_funds",
         "endorse_request",
+        "administer_funds",
     ):
         res = await client.get(CAP_PROBES[capability], headers=headers)
         assert res.status_code == 403, f"equipe reached {capability}"

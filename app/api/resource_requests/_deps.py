@@ -1,9 +1,9 @@
 """Shared dependencies for resource-request routers.
 
 ``CurrentUser`` gates on holding *any* role in the app, the three role aliases gate
-on a specific one, and the eight capability aliases gate on what the product
+on a specific one, and the nine capability aliases gate on what the product
 actually models. Capabilities are the ones routes should reach for: four of the
-eight belong to more than one role, and ``require_role`` cannot say OR — guarding
+nine belong to more than one role, and ``require_role`` cannot say OR — guarding
 ``view_evaluation`` as ``MesaUser`` would refuse the Gestor, which is the whole of
 that role's point. The table and the query behind them are
 ``app/services/resource_request/capabilities.py``; what lives here is the wiring.
@@ -105,4 +105,5 @@ CanMoveBoard = Annotated[User, require_capability("move_board")]
 CanAssignFund = Annotated[User, require_capability("assign_fund")]
 CanAllocateFunds = Annotated[User, require_capability("allocate_funds")]
 CanEndorseRequest = Annotated[User, require_capability("endorse_request")]
+CanAdministerFunds = Annotated[User, require_capability("administer_funds")]
 CanReadRequests = Annotated[User, require_any_capability("edit_requests", "endorse_request")]
