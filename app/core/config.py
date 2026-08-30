@@ -75,7 +75,12 @@ class Settings(BaseSettings):
     azure_tenant_id: str = ""
     azure_client_id: str = ""
     azure_client_secret: str = ""
-    email_from_address: str = "support@shemaywam.com"
+    #: The address Resend was hard-coded to send from before BE-12 unified both
+    #: providers on this setting. Nothing sets ``EMAIL_FROM_ADDRESS`` in ``deploy.yml``
+    #: or the compose, so this default *is* the production sender: moving it migrates
+    #: the domain's verified sender, and a sender the provider rejects surfaces only
+    #: as a log line, never as an error to the caller.
+    email_from_address: str = "noreply@shemaywam.com"
 
     @property
     def cors_origin_list(self) -> list[str]:
