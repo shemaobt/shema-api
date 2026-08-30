@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     inngest_signing_key: str = ""
 
     password_reset_token_expire_minutes: int = 60
+    access_invite_expire_days: int = 7
     email_provider: str = "log"
     resend_api_key: str = ""
 

@@ -66,6 +66,7 @@ async def client(db_session):
     from fastapi import APIRouter, FastAPI
 
     from app.api.auth import router as auth_router
+    from app.api.resource_requests.access import router as access_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
@@ -81,6 +82,7 @@ async def client(db_session):
 
     test_app = FastAPI()
     test_app.include_router(probe, prefix="/api/resource-requests")
+    test_app.include_router(access_router, prefix="/api/resource-requests/access")
     test_app.include_router(auth_router, prefix="/api/auth")
     register_exception_handlers(test_app)
 
