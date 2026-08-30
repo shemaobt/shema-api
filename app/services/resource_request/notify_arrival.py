@@ -9,9 +9,9 @@ from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_rr_app_id import get_rr_app_id
 from app.services.resource_request._notices import (
     Letter,
-    app_name,
     board_watchers,
     letter,
+    product_name,
     request_name,
 )
 
@@ -44,7 +44,7 @@ async def notify_arrival(
     app_id = await get_rr_app_id(db)
     name = request_name(request)
     body = f"{name} was submitted and is waiting in triagem."
-    chrome = await app_name(db, app_id)
+    chrome = await product_name(db, app_id)
 
     letters: list[Letter] = []
     for watcher in watchers:

@@ -96,7 +96,7 @@ async def post(letters: list[Letter]) -> int:
     return accepted
 
 
-async def app_name(db: AsyncSession, app_id: str) -> str:
+async def product_name(db: AsyncSession, app_id: str) -> str:
     """The registry row's own name, for the e-mail chrome.
 
     Read rather than written down: ``scripts/seed_apps_roles.py`` owns that string, and a

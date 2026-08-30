@@ -8,7 +8,12 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRDecision, RRRequest
 from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_rr_app_id import get_rr_app_id
-from app.services.resource_request._notices import Letter, app_name, letter, request_name
+from app.services.resource_request._notices import (
+    Letter,
+    letter,
+    product_name,
+    request_name,
+)
 
 EVENT_TYPE = "rr_decision"
 
@@ -107,7 +112,7 @@ async def notify_decision(
             to=team.email,
             subject=title,
             template="rr_decision.html.jinja",
-            app_name=await app_name(db, app_id),
+            app_name=await product_name(db, app_id),
             greeting=team.display_name or team.email,
             headline=title,
             request_name=name,
