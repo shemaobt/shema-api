@@ -161,7 +161,7 @@ for the other's tables should be asked why.
 | `app/services/resource_request/` | BE-04…BE-08 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `app/services/project/`, `app/services/auth/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/resource_request/access.py` | BE-03 | Row-level scoping — the `app/services/annotation_studio/access.py` precedent. Anything past "does this user hold role X" is a service concern, never a router one. |
 | `app/services/resource_request/capabilities.py` | BE-03 | The capability→roles map of §5.4 — a pure table — and the `holds_capability` service function that reads a user's roles against it. |
-| `app/services/resource_request/vocabularies.json` | BE-05 | The vendored emission of §9 — the frontend's own lists, with the commit they came from. Data, not logic; the only non-Python file in the package. |
+| ~~`app/services/resource_request/vocabularies.json`~~ `app/utils/resource_request_vocabularies.{py,json}` and `app/utils/resource_request_totals.py` | BE-05 | The vendored emission of §9 and the two derived sums. **Moved out of the service package** — see the note under this table. |
 | `app/models/resource_request.py` | BE-04…BE-08 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models, separate `Create` / `Update` / `Response`. |
 | `app/db/models/resource_request.py` | BE-02 | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — see §8.1. |
 | `alembic/versions/20260NNN_rrNN_*.py` | BE-02 | Migrations. Single head, clean `downgrade -1`. |
@@ -169,6 +169,21 @@ for the other's tables should be asked why.
 
 ⚠️ `app/models/` is Pydantic and `app/db/models/` is SQLAlchemy. There is no
 `app/schemas/`. The naming trips every newcomer once.
+
+⚠️ **The vendored emission is in `app/utils/`, not in the service package, and this row is
+where the design rotted** (BE-05, OBT-454, 25/aug/2026). `tests/test_app_boots.py`
+forbids any module in `app/models/` from importing `app/services/` — that inversion is what
+closed an import cycle once — and §8.5 puts BE-05's field-level errors on Pydantic, in
+`app/models/`. So the models must be able to read the vocabularies, and the service package
+is the one place they may not read them from. §0's own tie-breaker applies: where this
+document and the repository's rules disagree about **how this repository is written**, the
+repository wins. `app/utils/description_rule.py` is the precedent and the same shape — a
+domain rule that runs on two sides and must agree, imported by a DTO module
+(`app/models/oc_recording.py`) and by services alike — and `app/utils/` is flat, so the
+files carry a `resource_request_` prefix rather than forming a package its siblings do not
+have. Neither file holds logic or touches the database, so nothing about them wanted the
+service layer to begin with. `app/services/resource_request/` will be created by BE-04,
+with the first operation that is one.
 
 **The plural is not free, and it is not uniform — the repo already decided it, per
 directory.** Two rules, both read off the siblings rather than chosen here:
@@ -311,14 +326,31 @@ where that lands.
 
 **Half of it landed early, and only because the seed needed it** (BE-02, 25/aug/2026). The
 sample board cards carry a `/30` total and `rr_evaluation_scores` stores rows, so the seed
-could not be written without criterion keys. The eighteen slugs are minted in
-`scripts/seed_resource_requests.py` — mechanically from the Portuguese labels, **prefixed by
-request type**, because *Vínculo com um projeto de tradução ativo* is criterion 2 of both
-`treinamento` and `equipamentos` and an unprefixed slug would collide. They live in the seed
-and nowhere else on purpose: writing them into `app/services/resource_request/` would be the
-hand-copied second source §9 exists to prevent. The **26 budget category slugs are still
-unminted** — nothing in this issue needed one, `rr_budget_lines.category_key` is a plain
-string, and membership is BE-05's check against the vendored emission.
+could not be written without criterion keys. The eighteen slugs were minted in
+`scripts/seed_resource_requests.py` — **prefixed by request type**, because *Vínculo com um
+projeto de tradução ativo* is criterion 2 of both `treinamento` and `equipamentos` and an
+unprefixed slug would collide — and lived there and nowhere else on purpose, since writing
+them into `app/services/resource_request/` would have been the hand-copied second source §9
+exists to prevent.
+
+**Both lists are minted and the seed's copy is gone** (BE-05, OBT-454, 25/aug/2026). The
+frontend now carries a `key` on each of the 26 budget categories and each of the 18 criteria,
+in `budgetCategories.ts` and `criteria.ts`, and the emission of §9 brings both across; the
+seed imports `CRITERION_KEYS` from `app.utils.resource_request_vocabularies` and the eighteen
+literals left the file, which is exactly what the paragraph above promised would happen.
+
+The two lists were minted differently and the difference is worth carrying: the **26 are
+mechanical** slugs of the Portuguese label (`Chips (SIM)` → `chips_sim`, asserted by a test
+over there that derives the slug and compares all 26), while the **18 are shortened** —
+`Necessidade e urgência da tradução` is `traducao_necessidade_urgencia`, not the whole
+sentence — because they are letter for letter the ones this repository had already minted,
+and copying them was the point.
+
+**Neither cost a `schemaVersion` bump over there**, because wave 1 still writes 26 budget
+rows and 6 scores by index; the key is additive. That is also why the frontend's **seven
+unkeyed vocabularies stayed unkeyed** — those *are* what a draft persists, so keying them
+costs a migration of stored drafts, and the emission carries their Portuguese label as the
+value instead. §10's item 3 stays open, and BE-05 validates what a client sends today.
 
 ### 4.4 The edit trail — **Answered · GATE-02**, tables here and behaviour in BE-15
 
@@ -780,6 +812,22 @@ recomputed-total drift — the last one being the only check that needs a *cross
 validator, which is exactly what `ValidationInfo.data` gives. No new error envelope is
 invented, and no existing client sees a new shape.
 
+**One limit found implementing it** (BE-05, OBT-454, 25/aug/2026). Pydantic locates an
+error by *structure*, so a bad answer inside the `fields` dictionary reports
+`loc: ["fields"]` and not `["fields", "lang_script"]`. Giving each answer its own location
+would mean making every answer an object on the wire, which is a payload shape nobody asked
+for — so the location stays `fields` and **the message names the offending keys**
+(`lang_script: answer outside its vocabulary`). Every top-level claim — `stated_total`,
+`budget`, `declaration`, `team`, `checks` — locates on itself, exactly as measured above.
+
+**A second limit, found in review: riding on Pydantic means only `ValueError` is a 422.**
+`Decimal.quantize` signals `InvalidOperation`, which Pydantic does not convert, so the
+sub-cent guard turned `{"amount": "1E+30"}` into a 500 — the one payload in the module that
+answered with a stack trace instead of a refusal. The money guard now checks magnitude
+against what `Numeric(14, 2)` actually holds *before* it quantizes. The general rule for
+anything added here: a validator may raise only `ValueError`, and arithmetic inside one has
+to be reached with its own preconditions already checked.
+
 ### 8.6 The app key is named once, and a test says so
 
 `tests/test_resource_requests/test_access.py::test_the_app_key_is_named_once_in_the_module`
@@ -797,8 +845,9 @@ categories into a second source is precisely the drift the check exists to preve
 
 **Decision.** The frontend **emits** its vocabularies as JSON from the same
 `src/constants/` modules the product renders, and this repository **vendors** that file —
-committed, under `app/services/resource_request/`, carrying the frontend commit it was
-emitted from. Not a build-time fetch and not a generated Python module.
+committed, as `app/utils/resource_request_vocabularies.json`, carrying the frontend commit
+it was emitted from. Not a build-time fetch and not a generated Python module. (§3's table
+records why it sits in `app/utils/` and not in the service package.)
 
 The two-repository split is why it is a vendored file and not a shared source: neither CI job
 needs the other repository checked out, and a vocabulary change shows up as a reviewable diff
@@ -819,6 +868,22 @@ rather than an invisible one. And **the frontend's CI running its own suite is a
 owner to find** — §10 carries it; until it closes, the emission is re-run and re-checked by
 hand whenever a vocabulary moves.
 
+**The first consequence collected on itself, and the failure was not staleness** (28/aug/2026).
+The vendored copy named `2bac57a`, a commit that existed only on the branch the frontend's PR
+#28 was *based* on — and that base never reached `main`: its content was reapplied inside
+another pull request and landed with a different sha, leaving the branch alive, not an
+ancestor of `main`, and the provenance pointing at a commit nobody would ever be able to
+check out from the merged history. The content was correct the whole time; what was broken
+was the ability to reproduce it, which is the entire job of the field. Re-based onto `main`
+and re-emitted, it now names `067458c`, and **only the provenance moved** — the eleven lists,
+the 26 categories, the 18 criteria and the 45 keys came back byte for byte, which is the
+independent confirmation that the three gates touched no vocabulary.
+
+The general rule it leaves behind, worth more than the incident: **a provenance is only worth
+the line it will merge into.** Naming a commit is not enough — it has to be a commit that
+survives the merge, and a branch that is not an ancestor of `main` is not proof that it will
+be one.
+
 Three properties it must have, and they are why the decision is worth writing down:
 
 1. **Emitted, never hand-written.** A JSON file typed by a human is the second source again.
@@ -828,14 +893,55 @@ Three properties it must have, and they are why the decision is worth writing do
    Minting those last slugs is part of this work, not a separate afterthought: without them
    BE-02 has nothing to put in `category_key` and `criterion_key`.
 3. **The counts are asserted**, the way the contract's own checksums are: 45 text keys, 9
-   project categories, 10 supported goals, 26 budget categories, 6 criteria per type, 1
-   fund, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
+   project categories, 10 supported goals, 26 budget categories, 6 criteria per type, **1
+   fund**, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
    different length fails the check rather than misleading a reader.
 
-**This is not implemented here.** The emission is a build step in the frontend repository
-and the check is BE-05's, and OBT-450 ships a design plus a skeleton. It needs an issue —
-§10 carries it, with the note that it must land **before INT-02**, because that is the first
-moment a request document crosses the wire.
+   Two of those numbers carry a date. **Funds was 5 until GATE-01 answered** (OBT-447,
+   26/aug/2026): only *Shema Línguas* remains and the other four names are undecided, so the
+   emission carries one. The count is expected to move again — the client floated an editable
+   fund area (BE-10, OBT-471) — and moving it is the check working, not the check being
+   wrong. **Supported goals stays at 10 while the gate's other half is open**: whether *Ready
+   Vessels* survives among them is the one GATE-01 question still unanswered (§10), and it is
+   this number's owner the day it is.
+
+~~**This is not implemented here.**~~ **Implemented by BE-05** (OBT-454, 25/aug/2026), in
+both halves. The frontend's `scripts/emit-vocabularies.mjs` loads `src/contract.ts` through
+the app's own resolver — Vite's `ssrLoadModule`, so no new dependency and no parser over
+TypeScript to age — and writes `docs/vocabularies.json`;
+`app/utils/resource_request_vocabularies.json` is that file byte for byte, and
+`resource_request_vocabularies.py` beside it is the only reader (§3 records why it is not
+in the service package). `tests/test_resource_requests/test_vocabularies.py`
+carries the ten counts above and the key spaces of §4.3.
+
+Four things the implementation settled that the decision above did not say:
+
+- **It carries only what BE-05 reads.** The capability table of §5.4 is BE-03's and the
+  board's transition rules are BE-08's, and emitting them today would ship data nobody
+  reads. Each costs one line in the emitter on the day it has a reader.
+- **The seven unkeyed vocabularies emit their Portuguese label as the value**, because that
+  is what a client sends today. The stable keys the contract's §5.2 designs for them are
+  not emitted: they are not true yet, and the server validates what exists.
+- **`emitted_from` carries `-dirty`** when the emission ran over an uncommitted source, so
+  a provenance can never point at a commit that does not contain what was emitted.
+- **One map could not be emitted, and it is named rather than faked.** Which of the 45 text
+  keys each section owns is prose in the contract's §1.2 and inline in components over
+  there — no data structure states it. So `SECTION_TEXT_FIELDS` is written in
+  `vocabularies.py`, and a test partitions the 45 emitted keys against it in both
+  directions: an orphan row and an unowned section each fail.
+
+**And a fifth, added in review: the emission also carries `tableRowKeys`.** The first round
+gave the *asked and answerable* rule to `fields` alone, so a row of `langs`, `team` or
+`chrono` could carry any key with any value and be stored as though the question had been
+put — the same **absent means not asked** distinction the mesa reads, losing its meaning one
+level down. Both halves are now data rather than prose: `TABLE_ROW_KEYS` comes from the
+frontend's own empty-row seeds (which is what `readRows` rebuilds every stored row from, so
+a key outside them does not survive a round trip on that side either), and
+`TYPES_WITH_TABLE` is read off the same Parte A/B composition `section_field_keys` reads —
+which is what closed the second gap in the same place, `langs` never having been gated by
+type at all while `team` and `checks` were. The budget is deliberately not among them: its
+row is not keyed by column, the category *is* the key, and it arrives as `category_key` on
+a typed line.
 
 ---
 
@@ -924,8 +1030,9 @@ each one landed somewhere in this module:
 
 And seven items with **no gate**, which need issues rather than answers:
 
-1. **The vocabulary JSON emission and the two unminted key lists** (§9, §4.3) — must land
-   before INT-02.
+1. ~~**The vocabulary JSON emission and the two unminted key lists** (§9, §4.3) — must land
+   before INT-02.~~ **Closed by BE-05** (OBT-454, 25/aug/2026): both lists are minted, the
+   emission exists and is vendored, and the seed's copy of the eighteen is gone.
 2. **The frontend's CI does not run its test suite** (§9), so the checksum test that guards
    its constants never runs on a pull request there. Its own repository's issue, and the
    reason this side's assertion is the one load-bearing check.
