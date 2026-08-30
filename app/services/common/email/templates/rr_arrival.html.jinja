@@ -1,0 +1,7 @@
+{% extends "_base.html.jinja" %}
+{% block content %}
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">Hi {{ greeting }},</p>
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">A new request was submitted and is waiting in <strong>triagem</strong>.</p>
+  <p style="color: #333; font-size: 16px; line-height: 1.5;"><strong>{{ request_name }}</strong> &middot; {{ request_type }}</p>
+  <p style="color: #666; font-size: 14px; line-height: 1.5;">Sign in to the {{ app_name }} to read it.</p>
+{% endblock %}

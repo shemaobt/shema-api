@@ -17,6 +17,8 @@ from app.services.resource_request.list_movements import (
 from app.services.resource_request.list_requests import list_requests
 from app.services.resource_request.list_transitions import transitions_of_request
 from app.services.resource_request.move_request import BoardMoved, move_request
+from app.services.resource_request.notify_arrival import notify_arrival
+from app.services.resource_request.notify_decision import notify_decision
 from app.services.resource_request.open_revision import open_revision
 from app.services.resource_request.request_status import RequestStatus, request_status
 from app.services.resource_request.reverse_movement import reverse_movement
@@ -45,6 +47,8 @@ __all__ = [
     "move_request",
     "movements_of_fund",
     "movements_of_request",
+    "notify_arrival",
+    "notify_decision",
     "open_revision",
     "request_status",
     "reverse_movement",
