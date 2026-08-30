@@ -4,11 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError
 from app.db.models.auth import User
-from app.db.models.resource_request import RRRequest
+from app.services.resource_request._loading import Loaded
 from app.services.resource_request.get_request import get_request
 
 
-async def endorse_request(db: AsyncSession, request_id: str, user: User, app_key: str) -> RRRequest:
+async def endorse_request(db: AsyncSession, request_id: str, user: User, app_key: str) -> Loaded:
     """The Líder de Base's act: vouch, in the system, that this project is his base's.
 
     GATE-02 D2 described the whole of it — *"tipo uma caixinha pra ele assinalar e
@@ -51,6 +51,11 @@ async def endorse_request(db: AsyncSession, request_id: str, user: User, app_key
     Where an unendorsed request stops — ``triagem``, with ``recusado`` as its only exit —
     is written on ``RRRequest`` and enforced by BE-08's transition service; nothing here
     moves the card, exactly as submitting does not.
+
+    It answers the ``Loaded`` it already read rather than the row alone, so the route shapes
+    its response from the three rows in hand instead of reading them again (PR #281,
+    review). Safe here and not in ``update_draft``: nothing but the spine moved, so the
+    sections and the budget lines it carries are still the ones on disk.
     """
     loaded = await get_request(db, request_id, user, app_key)
     request = loaded.request
@@ -72,4 +77,4 @@ async def endorse_request(db: AsyncSession, request_id: str, user: User, app_key
 
     await db.commit()
     await db.refresh(request)
-    return request
+    return loaded
