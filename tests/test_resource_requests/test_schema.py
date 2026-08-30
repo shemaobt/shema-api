@@ -37,6 +37,7 @@ from app.db.models.resource_request import (
     RRStage,
     append_only_ddl,
 )
+from app.services.resource_request import fund_balances
 from scripts.seed_resource_requests import SEED_CARDS, SEED_FUNDS, _spread
 from tests.baker import make_user
 
@@ -289,7 +290,7 @@ async def test_the_seed_refuses_an_author_it_cannot_find(
 async def test_the_seed_names_an_author_on_every_row_that_has_one(
     seeded: AsyncSession, author
 ) -> None:
-    """Ten requests and three movements, and not one of them anonymous."""
+    """Ten requests and two movements, and not one of them anonymous."""
     requests = (await seeded.execute(select(RRRequest))).scalars().all()
     movements = (await seeded.execute(select(RRFundMovement))).scalars().all()
 
@@ -313,7 +314,7 @@ async def test_the_seed_writes_no_attendee_and_no_history(seeded: AsyncSession) 
 
 async def test_the_seed_writes_the_confirmed_fund_and_the_ten_cards(seeded: AsyncSession) -> None:
     funds = (await seeded.execute(select(RRFund))).scalars().all()
-    assert {fund.id for fund in funds} == {fund_id for fund_id, _name, _alloc in SEED_FUNDS}
+    assert {fund.id for fund in funds} == {fund_id for fund_id, _name in SEED_FUNDS}
     assert not any(fund.provisional for fund in funds), "GATE-01 confirmed every name seeded"
 
     requests = (await seeded.execute(select(RRRequest))).scalars().all()
@@ -353,26 +354,28 @@ async def test_no_approved_card_is_seeded_without_a_fund(seeded: AsyncSession) -
     assert all(request.fund_id is not None for request in approved)
 
 
-async def test_the_seeded_balances_are_the_prototypes(seeded: AsyncSession) -> None:
-    """Alocado and comprometido as sums over the ledger, never as columns."""
-    totals = (
-        await seeded.execute(
-            select(
-                RRFundMovement.fund_id, RRFundMovement.kind, func.sum(RRFundMovement.amount)
-            ).group_by(RRFundMovement.fund_id, RRFundMovement.kind)
-        )
-    ).all()
-    by_kind = {(fund_id, kind): amount for fund_id, kind, amount in totals}
+async def test_the_seed_allocates_nothing_and_the_balance_says_so(seeded: AsyncSession) -> None:
+    """The fund is born empty and the two approvals promise money nobody has put in.
 
-    for fund_id, _name, allocated in SEED_FUNDS:
-        assert by_kind[(fund_id, RRMovementKind.ALLOCATION)] == allocated
+    GATE-01 D6 has funds born at zero with the Gestores allocating, so the seed writes no
+    ``ALLOCATION`` at all and the prototype's 480.000 stays a frontend dev fixture. The
+    balance read through the service is therefore **-159.000** — the two approved cards'
+    deductions against an empty fund — which is the negative-with-warning state D5 chose
+    over a refusal, seeded on purpose rather than papered over.
+    """
+    kinds = (await seeded.execute(select(RRFundMovement.kind).distinct())).scalars().all()
+    assert RRMovementKind.ALLOCATION not in kinds
 
-    committed = {
-        fund_id: amount
-        for (fund_id, kind), amount in by_kind.items()
-        if kind is RRMovementKind.APPROVAL_DEDUCTION
-    }
-    assert committed == {"linguas": Decimal("159000")}
+    balances = await fund_balances(seeded)
+    assert [balance._asdict() for balance in balances] == [
+        {
+            "id": "linguas",
+            "name": "Shema Línguas",
+            "allocated": Decimal("0.00"),
+            "committed": Decimal("159000.00"),
+            "available": Decimal("-159000.00"),
+        }
+    ]
 
 
 async def test_the_seeded_scores_add_up_to_the_cards_total(seeded: AsyncSession) -> None:
