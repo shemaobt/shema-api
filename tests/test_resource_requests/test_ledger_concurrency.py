@@ -5,8 +5,9 @@ same statement reads ``… FOR UPDATE`` on PostgreSQL and loses the clause on SQ
 (design §7.3). A version of this test on the default suite would therefore lock nothing
 and pass anyway, which is worse than not having one. So it runs only when
 ``RR_POSTGRES_TEST_URL`` names a PostgreSQL database, and skips with that reason
-declared; ``test.yml`` provides the database in CI, so the skip is a local state and not
-the test's usual one.
+declared. The ``test.yml`` service block that would set the variable on every pull request
+is written but waits on a push with the ``workflow`` scope, so until that lands the test
+runs wherever the variable is set and CI shows the declared skip.
 
 ⚠️ The database must be **disposable** — the test drops and recreates the tables it
 needs. Point the variable at a scratch database, never at one holding data.
@@ -45,7 +46,8 @@ pytestmark = pytest.mark.skipif(
     reason=(
         "needs PostgreSQL: SQLAlchemy drops FOR UPDATE silently on SQLite, so this test "
         f"would lock nothing and pass for the wrong reason there — set {POSTGRES_URL_ENV} "
-        "to a disposable PostgreSQL database to run it (test.yml does, in CI)"
+        "to a disposable PostgreSQL database to run it; CI does not set it today, so this "
+        "skip is what CI shows"
     ),
 )
 
