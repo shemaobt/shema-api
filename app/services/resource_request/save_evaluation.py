@@ -85,9 +85,7 @@ async def save_evaluation(
 
     if payload.attendees:
         found = set(
-            (
-                await db.execute(select(User.id).where(User.id.in_(payload.attendees)))
-            ).scalars()
+            (await db.execute(select(User.id).where(User.id.in_(payload.attendees)))).scalars()
         )
         missing = sorted(set(payload.attendees) - found)
         if missing:

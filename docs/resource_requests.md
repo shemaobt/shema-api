@@ -383,7 +383,13 @@ and a snapshot is by definition the version that stopped moving.
 member dragging a card — which is precisely the asymmetry D6 insists on. An
 `evaluation_id` there would tell them apart. It is **BE-08**'s (OBT-457) to add or to refuse,
 because it is the issue that writes both sides of that transaction; naming it is this
-document's job and building it is not.
+document's job and building it is not. **Added** (BE-08, 30/aug/2026, `20260830_rr04`): once
+the decision's move and the hand's drag converge on the same transition path
+(`app/services/resource_request/_transition.py`), they land in the same table —
+indistinguishable whenever no money moved — and only the column keeps D6's asymmetry legible
+in the trail. A decision-driven transition names its evaluation; a drag carries `NULL`. No
+`ON DELETE` action, like `movement_id` beside it: an evaluation that moved a card is not
+unwound by disappearing.
 
 ---
 
