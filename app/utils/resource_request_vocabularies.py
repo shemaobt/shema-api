@@ -18,6 +18,16 @@ nothing about them wanted the service layer in the first place.
 Everything below either reads that file or is asserted against it by
 ``tests/test_resource_requests/test_vocabularies.py``.
 
+**One list the emission carries is deliberately not named here, and it is the funds.**
+BE-10 (OBT-471) made a fund a row the Gestor creates, so the emitted list is a picture of
+what the frontend shipped with and can never be the set of valid ids — a ``FUND_IDS``
+constant sitting in this module would be a validation list waiting to be used as one, and
+using it would refuse every fund the client typed. The emission is still checksummed for
+its length, in ``test_vocabularies.py``, straight off ``EMISSION["funds"]`` — the shape
+``projectCategory``, ``supportedGoal`` and ``decisionStates`` already use for the same
+reason: a count is what makes a stale vendored copy visible, and a name here would be a
+promise the database no longer keeps.
+
 **One thing is written here rather than read, and it is the section→field map.** The
 emission carries the per-type composition of Parte A and Parte B, because those are
 data structures in the frontend; it cannot carry *which* of the 45 text keys each
@@ -43,7 +53,6 @@ EMITTED_FROM: str = _EMISSION["emitted_from"]
 REQUEST_TYPES: tuple[str, ...] = tuple(_EMISSION["requestTypes"])
 TEXT_FIELD_KEYS: frozenset[str] = frozenset(_EMISSION["textFieldKeys"])
 BUDGET_CATEGORY_KEYS: tuple[str, ...] = tuple(c["key"] for c in _EMISSION["budgetCategories"])
-FUND_IDS: frozenset[str] = frozenset(f["id"] for f in _EMISSION["funds"])
 BOARD_STATUS_IDS: tuple[str, ...] = tuple(s["id"] for s in _EMISSION["boardStatuses"])
 
 CRITERION_KEYS: dict[str, tuple[str, ...]] = {
