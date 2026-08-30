@@ -75,7 +75,7 @@ async def test_a_lider_who_is_also_equipe_keeps_his_own_drafts_and_no_others(
     The two reaches add instead of the narrow one replacing the floor: his own draft stays
     his through ``created_by``, the submitted request arrives through the Líder's reach,
     and another team's draft stays invisible — which is what tells this union apart from
-    ``reaches_every_request``.
+    ``Reach.every``.
     """
     team = await as_team(db_session, rrf_app)
     others_draft = await create(client, team)
