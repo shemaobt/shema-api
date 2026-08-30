@@ -212,11 +212,19 @@ def test_the_signature_lines_are_no_longer_demanded_of_the_client(request_type):
     the keys stay askable, so a draft that carries them is not refused either, and
     nothing reads a typed leader line as an endorsement.
     """
-    unsigned = dict(answers(request_type))
-    for key in ("tpp_date", "leader_name", "leader_date"):
-        unsigned[key] = ""
+    lines = ("tpp_date", "leader_name", "leader_date")
+    unsigned = dict(answers(request_type)) | dict.fromkeys(lines, "")
+    signed = dict(answers(request_type)) | {
+        "tpp_date": "2026-08-25",
+        "leader_name": "Marta",
+        "leader_date": "2026-08-26",
+    }
 
-    assert RequestSubmissionIn(**payload(request_type, fields=unsigned))
+    submitted = RequestSubmissionIn(**payload(request_type, fields=unsigned))
+    assert [submitted.fields[key] for key in lines] == ["", "", ""]
+
+    draft = RequestDraftIn(**payload(request_type, fields=signed))
+    assert [draft.fields[key] for key in lines] == ["2026-08-25", "Marta", "2026-08-26"]
 
 
 # ── Vocabularies ─────────────────────────────────────────────────────────────
