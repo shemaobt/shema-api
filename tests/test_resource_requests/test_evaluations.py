@@ -64,8 +64,11 @@ async def submitted_request(client, headers) -> dict:
 
 
 async def give_fund(db_session, request_id: str, fund_id: str = "linguas") -> None:
-    """The mesa assigns the fund at triage (GATE-01 D4); the route for it is BE-11's,
-    so until it exists a test writes the column the way the mesa's screen will."""
+    """The mesa assigns the fund at triage (GATE-01 D4). The route for it exists since
+    BE-11 (OBT-470) — ``PUT /requests/{id}/fund`` — and this shortcut stays for the tests
+    that are not about the assignment: it sets up a precondition in one statement instead
+    of driving a second endpoint, and ``test_fund_assignment.py`` pins that the two write
+    the same column."""
     if (await db_session.execute(select(RRFund).where(RRFund.id == fund_id))).scalar_one_or_none() is None:
         db_session.add(RRFund(id=fund_id, name="Shema Línguas"))
     request = (
