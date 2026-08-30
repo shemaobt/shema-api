@@ -72,6 +72,18 @@ _ODF_TYPES = frozenset(
     }
 )
 
+#: The ceiling on the *one* member this module decompresses. The 10 MB attachment limit
+#: bounds the compressed bytes only, and a few hundred KB of deflated zeros expand to
+#: gigabytes — the hostile file the module docstring is written against. Both members read
+#: here are small by construction: an ODF `mimetype` is one line, and even a workbook with
+#: a thousand sheets writes a `[Content_Types].xml` of some 130 KB.
+#:
+#: **There is deliberately no ceiling on the archive's total declared size.** Nothing here
+#: decompresses a second member — `ZipFile()` reads the central directory only — so the
+#: total is not exposure, and a real .xlsx compresses an order of magnitude, which is
+#: exactly the file such a ceiling would refuse.
+_MAX_MEMBER_BYTES = 1024 * 1024
+
 _TEXT_TYPES = frozenset({"text/csv", "text/plain"})
 
 #: The C0 control bytes a text file has no business carrying. Tab, LF and CR are text;
@@ -160,7 +172,14 @@ def _prove_text(canonical: str, data: bytes) -> None:
 
 
 def _prove_zip_container(canonical: str, data: bytes) -> None:
-    """Open the ZIP and read who it says it is — the outer magic proves only *a ZIP*."""
+    """Open the ZIP and read who it says it is — the outer magic proves only *a ZIP*.
+
+    The member is read under ``_MAX_MEMBER_BYTES``, braces and belt. The declared
+    ``file_size`` is checked first because it costs no decompression at all; the read is
+    bounded anyway because that number is the attacker's own text — a deflate stream
+    expands to whatever it expands to, whatever the central directory claims — so the
+    bound is what actually holds the memory, and the declaration only saves the work.
+    """
     if not data.startswith(_ZIP_MAGIC):
         raise _refused(canonical)
     try:
@@ -171,9 +190,18 @@ def _prove_zip_container(canonical: str, data: bytes) -> None:
     with archive:
         member = "mimetype" if canonical in _ODF_TYPES else "[Content_Types].xml"
         try:
-            content = archive.read(member)
+            declared_size = archive.getinfo(member).file_size
         except KeyError:
             raise _refused(canonical) from None
+        if declared_size > _MAX_MEMBER_BYTES:
+            raise _refused(canonical)
+        try:
+            with archive.open(member) as entry:
+                content = entry.read(_MAX_MEMBER_BYTES + 1)
+        except (zipfile.BadZipFile, EOFError):
+            raise _refused(canonical) from None
+    if len(content) > _MAX_MEMBER_BYTES:
+        raise _refused(canonical)
 
     if canonical in _ODF_TYPES:
         if content.decode("ascii", errors="replace").strip() != canonical:

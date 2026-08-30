@@ -714,6 +714,14 @@ pt-BR Windows exports .csv in the code page and a header cell reading `orçament
 otherwise be a 400 on one of the formats the client named as *planilha*. The proof is a
 byte-level scan and not a loop over a decoded string: at the 10 MB ceiling that is 102 ms
 of blocked event loop instead of 5.8 s.
+
+**The 10 MB ceiling bounds the compressed bytes only**, so the one member the module
+decompresses is read under its own 1 MB bound — the declared `file_size` first, because
+it costs no decompression, and a bounded `read()` behind it, because that declaration is
+uploader-typed like every other byte in the archive. Measured on a crafted 32 KB archive
+whose member declares 100 bytes and expands to 32 MB: 77 MB of peak allocation becomes
+2 MB. There is deliberately no ceiling on the archive's *total* declared size — nothing
+here opens a second member, and a real .xlsx compresses an order of magnitude.
 `app/services/resource_request/_attachment_rules.py` carries all of it, including why
 the sniffing library is `filetype` (pure Python; `python-magic` would put `libmagic`
 into the Docker image).

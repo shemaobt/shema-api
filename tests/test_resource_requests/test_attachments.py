@@ -14,14 +14,19 @@ from __future__ import annotations
 
 import hashlib
 import io
+import tracemalloc
 import zipfile
 
 import pytest
 from sqlalchemy import select
 
+from app.core.exceptions import ValidationError
 from app.db.models.resource_request import RRAttachment
 from app.services.oral_collector import gcs_utils
-from app.services.resource_request._attachment_rules import MAX_ATTACHMENT_BYTES
+from app.services.resource_request._attachment_rules import (
+    MAX_ATTACHMENT_BYTES,
+    _prove_zip_container,
+)
 from app.services.resource_request._attachment_storage import GCS_RR_BUCKET
 from app.utils import resource_request_vocabularies as v
 from tests.baker import make_user
@@ -38,12 +43,29 @@ def attachment_url(request_id: str) -> str:
 # ——— ten minimal real files ——————————————————————————————————————————————————————
 
 
-def zip_with(entries: dict[str, bytes]) -> bytes:
+def zip_with(entries: dict[str, bytes], compression: int = zipfile.ZIP_STORED) -> bytes:
     buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+    with zipfile.ZipFile(buffer, "w", compression) as archive:
         for name, content in entries.items():
             archive.writestr(name, content)
     return buffer.getvalue()
+
+
+def declaring_size(archive: bytes, member: str, size: int) -> bytes:
+    """The same archive with one member's central-directory uncompressed size rewritten.
+
+    A ZIP header is uploader-typed bytes like every other byte in the file, so this is
+    what a crafted archive does: claim one thing about a member and carry another. The
+    field is at offset 24 of the central-directory file header (APPNOTE 4.3.12).
+    """
+    signature, name = b"PK\x01\x02", member.encode()
+    offset = archive.find(signature)
+    while offset != -1:
+        name_length = int.from_bytes(archive[offset + 28 : offset + 30], "little")
+        if archive[offset + 46 : offset + 46 + name_length] == name:
+            return archive[: offset + 24] + size.to_bytes(4, "little") + archive[offset + 28 :]
+        offset = archive.find(signature, offset + 1)
+    raise AssertionError(f"{member} is not in the central directory")
 
 
 def odf_file(mime: str) -> bytes:
@@ -264,6 +286,49 @@ async def test_a_cp1252_spreadsheet_export_is_accepted(
     res = await put_file(client, created["id"], headers, CSV_CP1252, "text/csv")
     assert res.status_code == 201, res.text
     assert storage.objects[next(iter(storage.objects))][0] == CSV_CP1252
+
+
+# ——— the archive that lies about what it costs to open ——————————————————————————
+
+
+async def test_a_member_declaring_gigabytes_is_refused_before_it_is_decompressed(
+    db_session, client, rrf_app, storage
+) -> None:
+    """The 10 MB ceiling bounds the *compressed* bytes only. This archive is 300-odd
+    bytes, carries a perfectly valid ``mimetype`` member, and declares it at 4 GB — read
+    unbounded it would be exactly the file the module docstring is written against."""
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+
+    bomb = declaring_size(ODS, "mimetype", 4_000_000_000)
+    assert len(bomb) == len(ODS)
+
+    res = await put_file(
+        client, created["id"], headers, bomb, "application/vnd.oasis.opendocument.spreadsheet"
+    )
+    assert res.status_code == 400
+    assert storage.objects == {}
+
+
+def test_a_member_that_lies_low_and_expands_is_read_under_a_bound() -> None:
+    """``file_size`` is uploader-typed too, so it is braces and not the belt. Declared at
+    100 bytes, this member's deflate stream expands to 32 MB; ``zipfile`` truncates the
+    *result* to the declared 100 but only after the decompressor allocated the whole
+    expansion, which is what the bounded read removes. Measured, because both versions
+    refuse the file and a status code cannot see the difference."""
+    bomb = declaring_size(
+        zip_with({"mimetype": b"\0" * (32 * 1024 * 1024)}, zipfile.ZIP_DEFLATED), "mimetype", 100
+    )
+    assert len(bomb) < 128 * 1024
+
+    tracemalloc.start()
+    try:
+        with pytest.raises(ValidationError):
+            _prove_zip_container("application/vnd.oasis.opendocument.spreadsheet", bomb)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert peak < 4 * 1024 * 1024, f"decompressed {peak} bytes for a member declared at 100"
 
 
 # ——— the 10 MB ceiling, refused before storage is touched ————————————————————————
