@@ -3,7 +3,7 @@
 **Why the module carries a map at all.** ``require_app_access(app_key)`` and
 ``require_role(app_key, role_key)`` answer exactly one question each — *does this user
 hold any role in this app*, and *does this user hold this one role*. The product's model
-is neither: four of the seven capabilities belong to **more than one role** —
+is neither: four of the eight capabilities belong to **more than one role** —
 ``edit_requests``, ``view_evaluation``, ``manage_funds``, and ``move_board`` since GATE-02
 moved it — and ``require_role`` cannot express an OR. Guarding ``view_evaluation`` as
 ``MesaUser`` would refuse the Gestor, which is the very asymmetry that gives that role its
@@ -80,14 +80,32 @@ Gestor**, on the theory that it is the money capability. It is the Painel's entr
 which mesa and Gestor hold alike; taking it from the mesa would remove the Painel from the
 mesa entirely.
 
-**The fourth role is not here on purpose.** FE-22's contract §5.3 carries a ``líder``
-column and an ``endorse_request`` row, and neither exists in ``capabilities.ts`` — the
-contract is ahead of its own cited source. The Líder de Base, his capability, his screen
-and the undecided ``?`` cell of the mesa all belong to **BE-16** (OBT-476). The mirror
-follows the source, not the prose about it.
+**The fourth role arrived with BE-16** (OBT-476, 30/aug/2026): the **Líder de Base** of
+GATE-02 D2 — *"só assina/verifica o projeto — tipo uma caixinha pra ele assinalar e
+confirmar que o projeto realmente pertence à base dele"* — the narrowest of the four,
+``endorse_request`` and nothing else. Two cells were decided here rather than read off a
+client answer, and both are recorded in contract §5.3:
+
+* ``endorse_request`` is **lider-only** — the mesa's ``?`` cell closes as denied. The
+  endorsement attests that the project belongs to the Líder's base, a fact the mesa is in
+  no position to attest, and its value to the mesa is precisely that someone outside it
+  signs before analysis begins: the mesa endorsing to itself would empty the act it
+  reads. Same principle that makes ``submit_request`` refuse everyone but the author
+  (OBT-483) — a signature is not a permission, and no grant transfers it.
+* On the frontend's two lists it is a **control** capability, not a screen one: the
+  caixinha lives in Part B's section 11, a screen the session opens for every role, so it
+  opens no screen of its own — and ``SCREEN_CAPABILITIES`` not moving is what keeps the
+  mesa's fixture account matching, the very trap the eighth-cell paragraph above already
+  named for BE-10's capability.
+
+Reading is not a row of this table and must not become one (``_scope.py`` §5.3 reasoning):
+it rides on ``edit_requests`` for the three roles that write, and on ``endorse_request``
+for the Líder, who reads what he signs — ``require_any_capability`` in ``_deps.py`` is
+that OR, and the Líder's reach itself (submitted requests, no drafts) is decided in
+``_scope.py``, in writing.
 """
 
-#: The seven ids of the frontend's ``CAPABILITIES``, in its order.
+#: The eight ids of the frontend's ``CAPABILITIES``, in its order.
 CAPABILITIES: tuple[str, ...] = (
     "edit_requests",
     "view_evaluation",
@@ -96,10 +114,11 @@ CAPABILITIES: tuple[str, ...] = (
     "move_board",
     "assign_fund",
     "allocate_funds",
+    "endorse_request",
 )
 
-#: The three ``role_key`` values ``scripts/seed_apps_roles.py`` writes for this app.
-ROLES: tuple[str, ...] = ("equipe", "mesa", "gestor")
+#: The four ``role_key`` values ``scripts/seed_apps_roles.py`` writes for this app.
+ROLES: tuple[str, ...] = ("equipe", "mesa", "gestor", "lider")
 
 #: The hand-written half. Field for field, the frontend's ``ROLES[].can``.
 ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -123,6 +142,7 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "allocate_funds",
         }
     ),
+    "lider": frozenset({"endorse_request"}),
 }
 
 #: The inversion, derived: the roles that hold each capability. Every capability appears,

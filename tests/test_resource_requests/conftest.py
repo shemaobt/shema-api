@@ -32,6 +32,7 @@ from app.api.resource_requests._deps import (
     CanAssignFund,
     CanEditEvaluation,
     CanEditRequests,
+    CanEndorseRequest,
     CanManageFunds,
     CanMoveBoard,
     CanViewEvaluation,
@@ -84,7 +85,7 @@ def _clear_role_cache():
 
 @pytest.fixture()
 async def rrf_app(db_session):
-    """The app registry row plus its three roles — what ``seed_apps_roles.py`` writes.
+    """The app registry row plus its four roles — what ``seed_apps_roles.py`` writes.
 
     ``auto_approve`` is on because ``20260828_rr02`` turns it on: GATE-02 D1 answered that
     whoever registers gets in, as ``equipe``. The fixture carries the row production has,
@@ -94,7 +95,12 @@ async def rrf_app(db_session):
         db_session, app_key=APP_KEY, name="Resource Request Form", auto_approve=True
     )
 
-    for role_key, label in (("equipe", "Equipe"), ("mesa", "Mesa"), ("gestor", "Gestor")):
+    for role_key, label in (
+        ("equipe", "Equipe"),
+        ("mesa", "Mesa"),
+        ("gestor", "Gestor"),
+        ("lider", "Líder de Base"),
+    ):
         await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
 
     return app
@@ -162,6 +168,10 @@ async def client(db_session):
 
     @probe.get("/_probe/cap/allocate_funds")
     async def _probe_allocate_funds(user: CanAllocateFunds) -> dict[str, str]:
+        return {"email": user.email}
+
+    @probe.get("/_probe/cap/endorse_request")
+    async def _probe_endorse_request(user: CanEndorseRequest) -> dict[str, str]:
         return {"email": user.email}
 
     test_app = FastAPI()
