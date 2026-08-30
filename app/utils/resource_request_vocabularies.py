@@ -209,10 +209,12 @@ def section_field_keys(request_type: str) -> frozenset[str]:
 #: (OBT-483, 28/aug/2026): the Ponto focal's signature is an *aceite eletrônico* —
 #: submitting **is** signing, and ``created_by`` plus ``submitted_at`` are the who and
 #: the when, both stamped by the server. So ``tpp_date`` asks the client to type what
-#: the server already knows, and ``leader_name``/``leader_date`` belong to the Líder's
-#: endorsement (BE-16), not to the team's typing. The three **columns** stay on
-#: ``rr_requests`` and the three keys stay askable — a draft may carry them — they are
-#: just no longer demanded. ``tpp_name`` stays: it is the requester the mesa reads on
+#: the server already knows, and ``leader_name``/``leader_date`` are born from the
+#: Líder's endorsement — ``endorse_request.py`` writes them from the endorser's account
+#: and day (BE-16), never from the team's typing. The three **columns** stay on
+#: ``rr_requests`` and the three keys stay askable — a draft may carry them, and nothing
+#: reads a typed leader line as an endorsement: the act is ``endorsed_at``, which only
+#: the endorsement writes. ``tpp_name`` stays: it is the requester the mesa reads on
 #: the card, and the account that submits may not be the Ponto focal.
 #:
 #: **This set is BE-05's reading, not a requirement the PRD enumerates field by field.**

@@ -205,9 +205,10 @@ async def test_a_mesa_member_who_is_also_equipe_still_reaches_every_request(
 
     Since ``20260828_rr02`` whoever registers is ``equipe``, so a mesa member holds ``equipe``
     **plus** ``mesa`` — two rows, with no constraint on ``(user_id, app_id)`` to prevent it.
-    ``as_mesa`` above grants one role and cannot see this: ``reaches_every_request`` asks
-    ``granted - {TEAM_ROLE}``, and asked the other way round — ``TEAM_ROLE in granted`` — it
-    would answer *team* for exactly this account and hide the board from the mesa.
+    ``as_mesa`` above grants one role and cannot see this: ``Reach.every`` asks
+    ``granted - {TEAM_ROLE, LEADER_ROLE}``, and asked the other way round — ``TEAM_ROLE in
+    granted`` — it would answer *team* for exactly this account and hide the board from the
+    mesa. The Líder's own middle reach is ``test_endorsement.py``'s subject.
     """
     team = await as_team(db_session, rrf_app)
     created = await create(client, team)
@@ -567,7 +568,13 @@ async def test_a_revision_is_a_new_row_linked_to_what_was_evaluated(
 
 
 async def test_a_revision_carries_the_content_forward(db_session, client, rrf_app) -> None:
-    """It copies rather than points, because from here it is the team's to change."""
+    """It copies rather than points, because from here it is the team's to change.
+
+    All of it but one line: the Líder's display pair goes back **blank**, even where a
+    draft had typed it — since BE-16 the endorsement is what writes ``leader_name``/
+    ``leader_date``, so a revision starts with the line its own endorsement will fill,
+    and ``test_endorsement.py`` owns that half of the story.
+    """
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
     before = (await client.get(f"{REQUESTS}/{created['id']}", headers=headers)).json()
@@ -576,7 +583,11 @@ async def test_a_revision_carries_the_content_forward(db_session, client, rrf_ap
 
     revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)).json()
 
-    assert revision["document"] == before["document"]
+    unendorsed = dict(
+        before["document"],
+        fields={**before["document"]["fields"], "leader_name": "", "leader_date": ""},
+    )
+    assert revision["document"] == unendorsed
 
 
 async def test_editing_a_revision_leaves_the_evaluated_snapshot_alone(

@@ -5,6 +5,7 @@ from app.services.resource_request.capabilities import (
     ROLES,
 )
 from app.services.resource_request.create_draft import create_draft
+from app.services.resource_request.endorse_request import endorse_request
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_requests import list_requests
@@ -21,6 +22,7 @@ __all__ = [
     "Saved",
     "Submitted",
     "create_draft",
+    "endorse_request",
     "get_request",
     "holds_capability",
     "list_requests",
