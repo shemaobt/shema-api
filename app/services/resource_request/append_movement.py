@@ -5,9 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import UnknownReferenceError, ValidationError
 from app.db.models.resource_request import RRFund, RRFundMovement, RRMovementKind
-
-_CENT = Decimal("0.01")
-_MONEY_LIMIT = Decimal(10) ** 12
+from app.utils.resource_request_typed_fields import fits_the_money_column
 
 
 async def append_movement(
@@ -50,23 +48,24 @@ async def append_movement(
     summed over two currencies is a question nobody has answered — not one to freeze in a
     signature here.
 
-    The amount is refused where it does not fit ``Numeric(14, 2)``, the same rule BE-05
-    applies to payloads and for the ledger's own reason: PostgreSQL rounds a sub-cent
-    value into the column while SQLite stores it as sent, so a movement written unchecked
-    would sum differently per dialect. ``is_finite`` comes first because a ``NaN``
-    *comparison* raises ``InvalidOperation`` — the ``quantize`` lesson of design §8.5,
-    one operator earlier. Checked before the lock: a refusal takes no lock at all.
+    The amount goes through ``fits_the_money_column`` — the one statement of
+    ``Numeric(14, 2)``'s shape, shared with BE-05's payload models — and for the ledger's
+    own reason: PostgreSQL rounds a sub-cent value into the column while SQLite stores it
+    as sent (measured: ``10.999`` lands ``11.00`` and ``10.999`` respectively), so a
+    movement written unchecked would sum differently per dialect. It runs before the
+    ``<= 0`` comparison because even *comparing* a ``NaN`` raises ``InvalidOperation``,
+    and before the lock because a refusal should take no lock at all.
     """
     if kind is RRMovementKind.REVERSAL:
         raise ValidationError(
             "A reversal names the movement it compensates — use reverse_movement."
         )
-    if not amount.is_finite():
-        raise ValidationError(f"Not an amount of money: {amount}")
+    try:
+        fits_the_money_column(amount)
+    except ValueError as refusal:
+        raise ValidationError(str(refusal)) from None
     if amount <= 0:
         raise ValidationError(f"A movement moves money, and {amount} moves none.")
-    if abs(amount) >= _MONEY_LIMIT or amount != amount.quantize(_CENT):
-        raise ValidationError(f"Does not fit the ledger's Numeric(14, 2): {amount}")
 
     fund = (
         await db.execute(select(RRFund).where(RRFund.id == fund_id).with_for_update())
