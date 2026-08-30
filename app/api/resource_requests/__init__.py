@@ -17,7 +17,9 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.api.resource_requests.attachments import router as attachments_router
 from app.api.resource_requests.requests import router as requests_router
 
 router = APIRouter()
 router.include_router(requests_router)
+router.include_router(attachments_router)
