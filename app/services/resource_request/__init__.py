@@ -13,11 +13,9 @@ from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
-from app.services.resource_request.list_movements import (
-    movements_of_fund,
-    movements_of_request,
-)
 from app.services.resource_request.list_requests import list_requests
+from app.services.resource_request.movements_of_fund import movements_of_fund
+from app.services.resource_request.movements_of_request import movements_of_request
 from app.services.resource_request.open_revision import open_revision
 from app.services.resource_request.reverse_movement import reverse_movement
 from app.services.resource_request.set_allocation import set_allocation

@@ -20,15 +20,17 @@ the service layer — ``tests/test_app_boots.py`` enforces it, after an import c
 that way once — so the shared half sits here, which is the same reasoning that put
 ``resource_request_vocabularies.py`` here.
 
-Parsing only. The **range** of money is ``_fits_the_money_column``'s in the DTO module,
-which refuses a third decimal rather than rounding it; splitting that check across two
-files would be two statements of one rule.
+The **range** of money lives here too, since BE-07: ``fits_the_money_column`` was the DTO
+module's alone while the DTO was its only caller, and the ledger's writer is the second —
+a payload and a movement are refused by the same statement of ``Numeric(14, 2)``'s shape,
+never by two that can drift.
 """
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 _TWO_PLACES = Decimal("0.01")
+_MONEY_LIMIT = Decimal(10) ** 12
 
 #: Answers that land in a ``String`` column of ``rr_requests``, unchanged.
 SPINE_TEXT_FIELDS: tuple[str, ...] = ("reg_name", "tpp_name", "leader_name")
@@ -71,6 +73,34 @@ def parse_day(answer: str) -> date | None:
         return date.fromisoformat(text)
     except ValueError:
         raise ValueError(f"not a date in YYYY-MM-DD: {answer!r}") from None
+
+
+def fits_the_money_column(value: Decimal | None) -> Decimal | None:
+    """Money is ``Numeric(14, 2)``: neither a third decimal nor a thirteenth integer
+    digit has anywhere to land.
+
+    Refused rather than rounded, the same rule the stated total follows — the frontend
+    renders up to three decimals and a value the server quietly reshaped would make the
+    two sides disagree about what was sent. The refusal is a ``ValueError``: Pydantic
+    turns it into the located 422 the DTO module answers with, and the ledger's writer
+    re-raises it as this API's ``ValidationError``.
+
+    The magnitude is checked **before** the quantize and not after, because ``quantize``
+    signals ``InvalidOperation`` once the result would need more digits than the decimal
+    context carries — ``"1E+30"`` reaches it — and Pydantic turns only ``ValueError``
+    into a validation error, so that arithmetic left here as a 500 instead of the 422
+    every other refusal in this module returns. ``is_finite`` guards the same signal for
+    ``NaN``, which Pydantic already refuses on its own; it is stated here so the function
+    is correct against a ``Decimal`` rather than against a default that could move — and
+    for the ledger it is load-bearing, since even comparing a ``NaN`` raises.
+    """
+    if value is None:
+        return value
+    if not value.is_finite() or abs(value) >= _MONEY_LIMIT:
+        raise ValueError(f"outside the range money is stored in: {value}")
+    if value != value.quantize(_TWO_PLACES):
+        raise ValueError(f"more than two decimal places: {value}")
+    return value
 
 
 def render_money(value: Decimal | None) -> str:
