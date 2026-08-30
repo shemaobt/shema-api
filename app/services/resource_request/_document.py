@@ -21,6 +21,14 @@ mismatch; storing it would be storing a derived number.
 The envelope around the document — id, stage, timestamps, the revision link — is mutable
 state, is not part of the frozen thing, and is built by the DTOs rather than here.
 
+**Nothing the mesa writes enters this document, and one thing decided on 28/aug/2026 will
+try.** The ``team_note`` — the mesa's short message to the team on a *revisar* and on a
+*condicional* — belongs to the evaluation aggregate (BE-06), is served beside the request and
+never inside it. Put here, the team's own document would carry text the team did not write,
+and it would be the first byte of the evaluation crossing the line §4.1 keeps. The §5.3
+capability table does not move for it either: the team does not start reading the evaluation,
+it starts reading a message addressed to it.
+
 **Absent is not empty**, and the contract's *empty means not answered, absent means not
 asked* is a difference the mesa reads. It costs nothing here for one measured reason: all
 three request types ask all six promoted answers — A0's name, item 9's amount and item 11's
