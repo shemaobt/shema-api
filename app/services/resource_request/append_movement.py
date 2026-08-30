@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import UnknownReferenceError, ValidationError
 from app.db.models.resource_request import RRFund, RRFundMovement, RRMovementKind
 
+_CENT = Decimal("0.01")
+_MONEY_LIMIT = Decimal(10) ** 12
+
 
 async def append_movement(
     db: AsyncSession,
@@ -46,13 +49,24 @@ async def append_movement(
     whether an approval writes the request's own currency is BE-08's call, and a balance
     summed over two currencies is a question nobody has answered — not one to freeze in a
     signature here.
+
+    The amount is refused where it does not fit ``Numeric(14, 2)``, the same rule BE-05
+    applies to payloads and for the ledger's own reason: PostgreSQL rounds a sub-cent
+    value into the column while SQLite stores it as sent, so a movement written unchecked
+    would sum differently per dialect. ``is_finite`` comes first because a ``NaN``
+    *comparison* raises ``InvalidOperation`` — the ``quantize`` lesson of design §8.5,
+    one operator earlier. Checked before the lock: a refusal takes no lock at all.
     """
     if kind is RRMovementKind.REVERSAL:
         raise ValidationError(
             "A reversal names the movement it compensates — use reverse_movement."
         )
+    if not amount.is_finite():
+        raise ValidationError(f"Not an amount of money: {amount}")
     if amount <= 0:
         raise ValidationError(f"A movement moves money, and {amount} moves none.")
+    if abs(amount) >= _MONEY_LIMIT or amount != amount.quantize(_CENT):
+        raise ValidationError(f"Does not fit the ledger's Numeric(14, 2): {amount}")
 
     fund = (
         await db.execute(select(RRFund).where(RRFund.id == fund_id).with_for_update())
