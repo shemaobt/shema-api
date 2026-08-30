@@ -157,6 +157,7 @@ for the other's tables should be asked why.
 | `app/api/resource_requests/requests.py` | BE-04 | Draft, submission, revision routes. |
 | `app/api/resource_requests/evaluations.py` | BE-06 | Evaluation routes. Mesa-gated at the door. |
 | `app/api/resource_requests/funds.py` | BE-07 | Fund and balance reads, movement history. |
+| `app/api/resource_requests/allocations.py` | BE-09 | The alocado: the Gestor's write path (`allocate_funds`) and the read FE-26 renders. |
 | `app/api/resource_requests/board.py` | BE-08 | Stage transitions. |
 | `app/services/resource_request/` | BE-04…BE-08 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `app/services/project/`, `app/services/auth/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/resource_request/access.py` | BE-03 | Row-level scoping — the `app/services/annotation_studio/access.py` precedent. Anything past "does this user hold role X" is a service concern, never a router one. |
