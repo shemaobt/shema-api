@@ -38,7 +38,7 @@ from app.db.models.resource_request import (
     append_only_ddl,
 )
 from app.services.resource_request import fund_balances
-from scripts.seed_resource_requests import SEED_CARDS, SEED_FUNDS, _spread
+from scripts.seed_resource_requests import SEED_CARDS, _spread
 from tests.baker import make_user
 
 _REVISION = (
@@ -256,7 +256,16 @@ async def test_a_movement_against_an_unknown_fund_is_refused(
 
 @pytest.fixture()
 async def seeded(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, author) -> AsyncSession:
-    """Run the seed against the test session instead of the application's own."""
+    """Run the seed against the test session instead of the application's own.
+
+    The fund row is written here rather than by the seed, because since BE-10 (OBT-471)
+    ``20260830_rr04`` owns it and the suite builds its schema with ``create_all``, which
+    runs no migration. Arranging it is the honest translation of *the migration ran*, and
+    the state the seed is entitled to expect; the refusal test below covers the other
+    side.
+    """
+    db_session.add(RRFund(id=seed_script.CONFIRMED_FUND_ID, name="Shema Línguas"))
+    await db_session.flush()
 
     @asynccontextmanager
     async def _session():
@@ -312,13 +321,37 @@ async def test_the_seed_writes_no_attendee_and_no_history(seeded: AsyncSession) 
         assert rows == []
 
 
-async def test_the_seed_writes_the_confirmed_fund_and_the_ten_cards(seeded: AsyncSession) -> None:
+async def test_the_seed_writes_the_ten_cards_and_invents_no_fund(seeded: AsyncSession) -> None:
+    """The fund count does not move: since BE-10 the seed writes cards, never funds.
+
+    A fund row is an assertion about someone's money, which is exactly the assertion
+    GATE-01 declined to make about the other four names — so a seed that grew one would
+    be the fixture making it on the client's behalf.
+    """
     funds = (await seeded.execute(select(RRFund))).scalars().all()
-    assert {fund.id for fund in funds} == {fund_id for fund_id, _name in SEED_FUNDS}
-    assert not any(fund.provisional for fund in funds), "GATE-01 confirmed every name seeded"
+    assert {fund.id for fund in funds} == {seed_script.CONFIRMED_FUND_ID}
+    assert all(fund.retired_at is None for fund in funds)
 
     requests = (await seeded.execute(select(RRRequest))).scalars().all()
     assert len(requests) == len(SEED_CARDS)
+
+
+async def test_the_seed_refuses_a_database_that_was_not_migrated(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, author
+) -> None:
+    """Without the migration's row, seven cards would fail on a foreign key.
+
+    Refusing by name is the ``_author`` shape: an ``IntegrityError`` names a constraint to
+    somebody whose actual mistake was not running ``alembic upgrade head``.
+    """
+
+    @asynccontextmanager
+    async def _session():
+        yield db_session
+
+    monkeypatch.setattr(seed_script, "AsyncSessionLocal", _session)
+    with pytest.raises(SystemExit):
+        await seed_script.seed(author.email)
 
 
 async def test_only_the_cards_in_triagem_carry_no_fund(seeded: AsyncSession) -> None:

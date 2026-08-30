@@ -298,10 +298,12 @@ def test_rr_funds_still_has_no_allocated_and_no_editor_columns() -> None:
     on ``rr_funds`` — must stay unbuilt, or *store two, derive the third* breaks and a
     second audit design stands up against GATE-02 D7's. The base pinned it in the model's
     own docstring; this is the pin as a test, exact so a new balance column of any name
-    fails it."""
+    fails it. BE-10 (OBT-471) traded ``provisional`` for ``retired_at`` inside the same
+    exact set, which is what an exact set is for: a life-cycle flag passes review, a
+    balance column cannot slip in beside it."""
     assert {column.name for column in RRFund.__table__.columns} == {
         "id",
         "name",
-        "provisional",
+        "retired_at",
         "created_at",
     }

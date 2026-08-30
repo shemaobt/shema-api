@@ -421,15 +421,62 @@ class FundOut(BaseModel):
 
     Money serializes as strings on the wire — Pydantic's own ``Decimal`` handling, kept
     because a JSON float is exactly the representation the ledger's ``Numeric`` exists to
-    avoid. ``provisional`` is deliberately not here: nothing reads that flag, and a field
-    served to no reader is BE-10's to add with the reader (OBT-471).
+    avoid.
+
+    ``retired`` is the field BE-10 (OBT-471) added *with* its reader, which is what
+    ``provisional`` never had and why that column is gone rather than served here. A
+    retired fund still travels: its *comprometido* is money the ledger holds, and
+    filtering it out of this read would erase that money from the Painel. It is the list
+    of choice that drops it, on this flag.
     """
 
     id: str
     name: str
+    retired: bool
     allocated: Decimal
     committed: Decimal
     available: Decimal
+
+
+class FundNameIn(BaseModel):
+    """What a caller may say about a fund: what it is called, and nothing else.
+
+    One payload for creating and for renaming, because the two say the same sentence — the
+    id is never in it. Minting it is ``create_fund``'s (``uuid4().hex``, opaque so a rename
+    cannot be tempted to touch it) and an id arriving from a client would be a name space
+    the client owns. ``extra="forbid"`` is what makes that refusal audible rather than
+    silent: a payload carrying ``id`` answers 422 naming the field instead of being
+    quietly ignored.
+
+    The length is the column's own ``String(120)``. Emptiness is refused here **and** in
+    the service, the same two-door shape ``AllocationIn`` and ``set_allocation`` keep: the
+    wire gets a field-level 422, and a caller that does not come through the wire still
+    cannot write a nameless fund.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+
+
+class FundAdminOut(BaseModel):
+    """A fund as its administration screen holds it: id, name, and whether it ended.
+
+    No money. The three figures are ``FundOut``'s, summed over the ledger on every read,
+    and repeating them in the answer to a rename would say that renaming a fund is an
+    event in its balance. ``retired_at`` travels as the timestamp rather than as a boolean
+    for the reason the column is one: *when it ended* is what a movement dated last year
+    raises.
+
+    ``id`` travels even though no screen shows it — the client needs it to address the
+    next call, which is a different thing from displaying it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    retired_at: datetime | None
 
 
 class MovementOut(BaseModel):

@@ -92,11 +92,14 @@ from app.db.models.resource_request import (
 from app.services.resource_request._document import document
 from app.utils.resource_request_vocabularies import CRITERION_KEYS
 
-#: The one fund GATE-01 answered (OBT-447, 26/aug/2026). Asked what each of the five
-#: PRD v1.1 §3 names covers, the client answered that only Línguas remains and the
-#: others would be decided later — **undecided, not retired**. A row written here is a
-#: card the panel renders, and a rendered fund name is an assertion about someone's
-#: money, so the four are not written at all.
+#: The fund the ten cards hang from. **This script no longer writes it** — BE-10
+#: (OBT-471) moved the row to ``20260830_rr04``, because a fund line stopped being seed
+#: data the day the Gestor started typing them: what the migration writes is the one name
+#: GATE-01 confirmed, and everything after it is created through the API.
+#:
+#: The id stays ``linguas`` and is the one readable fund id in the product — the vendored
+#: emission carries it and every card below writes it, so minting a uuid for this row
+#: would make three places disagree. Every other id is opaque (``uuid4().hex``).
 #:
 #: **It is born with allocated 0, and the seed writes no ALLOCATION** (BE-07, OBT-456).
 #: GATE-01 D6 has funds born empty and the Gestores filling them, so the prototype's
@@ -107,9 +110,7 @@ from app.utils.resource_request_vocabularies import CRITERION_KEYS
 #: warning state GATE-01 D5 chose over a refusal, and it says the true thing, that money
 #: was promised which nobody has put in. The first Gestor allocation (BE-09, OBT-469) is
 #: what fills it.
-SEED_FUNDS = [
-    ("linguas", "Shema Línguas"),
-]
+CONFIRMED_FUND_ID = "linguas"
 
 LANGUAGE_PLACEHOLDERS = {"—", "Multi"}
 
@@ -299,20 +300,27 @@ async def _author(db: AsyncSession, email: str) -> User:
     return user
 
 
-async def _seed_funds(db: AsyncSession) -> None:
-    """Write the confirmed funds, empty — the ledger starts at the first Gestor movement.
+async def _require_confirmed_fund(db: AsyncSession) -> None:
+    """Check that the migration's fund row is there — and never write it (BE-10, OBT-471).
 
-    ``provisional=False`` because GATE-01 answered this name: the flag says *the gate
-    has not confirmed the correspondence*, and leaving it true here would leave the one
-    row the gate did confirm marked as if it had not. Nothing reads the flag today —
-    that is BE-10's (OBT-471) to give it a reader or to drop it, and a column nobody
-    honours is the next reviewer's question either way.
+    Seven of the ten cards name this fund, so the script cannot run without it; but it is
+    no longer this script's row to create. ``20260830_rr04`` writes it, every fund after it
+    is created by the Gestor through the API, and a seed that wrote one anyway would be
+    the fixture inventing a fund — the same claim about someone's money the four undecided
+    names are careful not to make.
+
+    Refusing loudly is the ``_author`` shape: the alternative is an ``IntegrityError`` from
+    the seventh card's foreign key, which names a constraint to somebody who forgot to
+    migrate.
     """
-    for fund_id, name in SEED_FUNDS:
-        fund = (await db.execute(select(RRFund).where(RRFund.id == fund_id))).scalar_one_or_none()
-        if not fund:
-            db.add(RRFund(id=fund_id, name=name, provisional=False))
-            await db.flush()
+    fund = (
+        await db.execute(select(RRFund).where(RRFund.id == CONFIRMED_FUND_ID))
+    ).scalar_one_or_none()
+    if fund is None:
+        raise SystemExit(
+            f"O fundo {CONFIRMED_FUND_ID!r} não existe. Ele é escrito pela migration "
+            "20260830_rr04, não por este seed: rode `uv run alembic upgrade head` antes."
+        )
 
 
 async def _seed_card(db: AsyncSession, card: SeedCard, author: User) -> None:
@@ -380,7 +388,7 @@ AUTHOR_ENV = "RR_SEED_AUTHOR"
 
 
 async def seed(author_email: str) -> None:
-    """Write the fund, empty, and the ten sample board cards.
+    """Write the ten sample board cards against the fund the migration already wrote.
 
     No evaluation carries a decision. The board column a card sits in does not imply one
     — the mesa moves cards without evaluating them — and inverting that mapping is
@@ -393,7 +401,7 @@ async def seed(author_email: str) -> None:
     """
     async with AsyncSessionLocal() as db:
         author = await _author(db, author_email)
-        await _seed_funds(db)
+        await _require_confirmed_fund(db)
         for card in SEED_CARDS:
             await _seed_card(db, card, author)
         await db.commit()

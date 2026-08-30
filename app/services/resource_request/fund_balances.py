@@ -13,6 +13,7 @@ _ZERO = Decimal("0.00")
 class FundBalance(NamedTuple):
     id: str
     name: str
+    retired: bool
     allocated: Decimal
     committed: Decimal
     available: Decimal
@@ -32,6 +33,12 @@ async def fund_balances(db: AsyncSession) -> list[FundBalance]:
     state every fund is born in since GATE-01 D6 — and a negative *disponível* is a valid
     answer, not an error: D5 chose a warning over a refusal, and the refusal shape this
     module deliberately does not have starts with a balance read that cannot go negative.
+
+    **Retired funds are listed, not filtered** (BE-10, OBT-471). What retirement takes
+    away is being chosen, and dropping the fund from this read would take away something
+    else: its *comprometido* would leave the Painel while the ledger still holds it, so
+    money already promised would disappear from the only screen that shows it. ``retired``
+    travels instead, and the list of choice is the subset a caller filters on it.
 
     Callable inside the transaction that holds a fund's ``FOR UPDATE`` lock, which is how
     BE-08 computes the warning against a sum that is not moving under it.
@@ -70,6 +77,7 @@ async def fund_balances(db: AsyncSession) -> list[FundBalance]:
             FundBalance(
                 id=fund.id,
                 name=fund.name,
+                retired=fund.retired_at is not None,
                 allocated=allocated,
                 committed=committed,
                 available=allocated - committed,
