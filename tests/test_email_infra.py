@@ -6,7 +6,7 @@ import logging
 import httpx
 from sqlalchemy import select
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.db.models.auth import PasswordResetToken
 from app.services.auth.request_password_reset import request_password_reset
 from app.services.common.email import render_email, send_email
@@ -79,6 +79,10 @@ async def test_send_email_hands_recipient_subject_and_sender_to_resend(monkeypat
     assert payload["subject"] == "A subject from outside"
     assert payload["html"] == "<p>body</p>"
     assert payload["from"] == f"Resource Circle <{settings.email_from_address}>"
+
+
+def test_the_default_sender_is_the_address_resend_was_always_given() -> None:
+    assert Settings.model_fields["email_from_address"].default == "noreply@shemaywam.com"
 
 
 async def test_a_provider_outage_is_reported_not_raised(monkeypatch) -> None:
