@@ -379,6 +379,14 @@ class RREvaluation(Base):
     behind it separately: the person **signs on behalf of the mesa**, so the evaluation is
     the mesa's and the signature is a person's. Who was in the room when it was decided is
     a different fact and a different table — ``rr_evaluation_attendees``.
+
+    ``team_note`` is the mesa's message **to the team** (client, 28/aug/2026: *"caso tenha
+    a necessidade de revisão a equipe recebe um aviso"*) — the one field of this aggregate
+    a team is allowed to read, served through the status projection and never through the
+    evaluation itself. It lives here and not on the request because the mesa writes it in
+    Parte C, under ``edit_evaluation``; nullable because *no note* and *an empty note* are
+    different facts, the same reason a score is nullable. Added by ``20260830_rr03``
+    (BE-06, OBT-455).
     """
 
     __tablename__ = "rr_evaluations"
@@ -393,6 +401,7 @@ class RREvaluation(Base):
     )
     decision: Mapped[RRDecision | None] = mapped_column(_DECISION, nullable=True)
     comments: Mapped[str] = mapped_column(Text, default="", server_default="")
+    team_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
