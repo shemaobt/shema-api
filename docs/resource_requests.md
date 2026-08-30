@@ -738,7 +738,7 @@ database enum should not be a typographic choice. The mapping is total in both d
 contract's §5.1 as written, so §10 carries it as a contract update rather than a silent
 divergence.
 
-### 7.3 Concurrency: what gets locked — **Decided; BE-07 implements**
+### 7.3 Concurrency: what gets locked — **Decided; implemented by BE-07**
 
 Balances are sums, so there is **no balance column to lock**. The row that exists and can be
 locked is the fund itself:
@@ -768,9 +768,30 @@ total is right* are different guarantees, and the client decided only the first.
 to `… WHERE rr_funds.id = %(id_1)s FOR UPDATE` on PostgreSQL and to `… WHERE rr_funds.id =
 ?` on SQLite. So a concurrency test written against the default suite would lock nothing and
 pass anyway, which is worse than not having one. BE-07's double-approve test needs
-PostgreSQL, and the only workflow with a postgres service today is `migrations.yml`. Either
-that job grows a step or `test.yml` gains a service. Recorded here so BE-07 does not
-discover it by writing a test that passes for the wrong reason.
+PostgreSQL, and ~~the only workflow with a postgres service today is `migrations.yml`.
+Either that job grows a step or `test.yml` gains a service~~ **`test.yml` gained the
+service** (BE-07, OBT-456): `test_ledger_concurrency.py` runs only when
+`RR_POSTGRES_TEST_URL` names a disposable PostgreSQL database and skips with that reason
+declared, and the workflow sets the variable so the skip is a local state, never CI's. The
+test holds the lock open on one session while a second attempts the same fund row, and
+asserts the second acquires only after the first commits — both succeed, the balance ends
+at **−300.00**, negative and correct.
+
+**How BE-07 implemented the rest, in one paragraph.** The ledger has exactly two writers —
+`append_movement` for allocation, commitment and approval deduction, and
+`reverse_movement` for the compensating entry, which copies fund, request, amount and
+currency from the movement it reverses (a caller that could state the amount could
+mis-state it; a partial correction is a full reversal plus a new entry). Both take the
+`FOR UPDATE` above, both **flush and never commit** — the caller owns the transaction,
+which is the contract BE-08's stage-change-plus-movement atomicity is built on. A reversal
+is not reversed, and a movement is not reversed twice. Balances are `fund_balances`, a
+grouped sum where a reversal counts against the bucket of the movement it names (read off
+`reverses_id`, not off a sign convention); the read surface is `GET /funds`,
+`GET /funds/{id}/movements` and `GET /requests/{id}/movements`, all gated on
+`manage_funds` — a team follows its status and never the ledger (GATE-03 D4). The seed
+now writes the fund **empty**: GATE-01 D6 has funds born at zero with the Gestores
+allocating, so the prototype's 480.000 stayed a frontend dev fixture and the seeded panel
+opens at −159.000 — D5's warning state, telling the truth about money nobody put in.
 
 ---
 
@@ -1171,8 +1192,10 @@ And seven items with **no gate**, which need issues rather than answers:
    Portuguese prose where BE-02 expects an enum.
 4. **`alembic/env.py` sees no tables** (§8.1) — repository-wide, affects seven other
    applications, not this module's to fix unilaterally.
-5. **A PostgreSQL path for the test suite** (§7.3), without which BE-07's concurrency test
-   cannot exist.
+5. ~~**A PostgreSQL path for the test suite** (§7.3), without which BE-07's concurrency test
+   cannot exist.~~ **Closed by BE-07** (OBT-456): `test.yml` carries the postgres service and
+   `RR_POSTGRES_TEST_URL`, and the test skips with a declared reason where the variable is
+   absent.
 6. **The board card projects two chips the form does not collect** (BE-02, 25/aug/2026,
    found writing the seed). The contract's §6.2 records this about the card's *fund*; the
    same is true of its **povo** and its **língua** for two of the three request types. A2 is
