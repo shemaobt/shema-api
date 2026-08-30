@@ -15,14 +15,18 @@ from sqlalchemy import select
 
 from app.api.resource_requests._deps import APP_KEY
 from app.db.models.auth import Role
+from app.services.access_request import create_access_request
 from app.services.access_request._default_roles import default_role_for
+from app.services.authorization import list_roles
 from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS
 from tests.baker import grant_app_role, make_app, make_user
-from tests.test_resource_requests.conftest import MESA_PROBE, PROBE, auth_header, grant
-
-#: The ids in resource-request-form/src/constants/capabilities.ts, in its order.
-#: BE-03 replaces this literal with a CI check against FE-22's contract.
-FRONTEND_ROLE_IDS = ["equipe", "mesa", "gestor"]
+from tests.test_resource_requests.conftest import (
+    FRONTEND_ROLE_IDS,
+    MESA_PROBE,
+    PROBE,
+    auth_header,
+    grant,
+)
 
 
 def test_the_app_key_is_the_one_the_frontend_sends() -> None:
@@ -45,6 +49,10 @@ def test_the_seeded_app_carries_the_url_fe25_emails_are_built_from() -> None:
 
 
 def test_the_seeded_roles_are_the_frontends_role_ids() -> None:
+    """No longer a literal typed here: ``FRONTEND_ROLE_IDS`` is read from the emission the
+    frontend produces from ``src/auth/capabilities.ts``. A role renamed over there fails
+    this, which is the check BE-00 left this test waiting for.
+    """
     assert APP_ROLES_OVERRIDE[APP_KEY] == FRONTEND_ROLE_IDS
 
 
@@ -60,6 +68,23 @@ def test_an_approved_access_request_grants_a_role_this_app_has() -> None:
     """
     assert default_role_for(APP_KEY) == "equipe"
     assert default_role_for(APP_KEY) in APP_ROLES_OVERRIDE[APP_KEY]
+
+
+async def test_registering_gets_you_in_as_equipe_without_review(db_session, rrf_app) -> None:
+    """GATE-02 D1, end to end: *"quem tiver uma conta"*.
+
+    ``20260828_rr02`` sets ``apps.auto_approve`` and ``_default_roles`` names the role; this
+    asserts what the pair actually does, which is the guarantee the client bought. The
+    migration itself is not exercised — the suite runs on SQLite and builds its schema from
+    the models — so the fixture carries the row the migration writes.
+    """
+    user = await make_user(db_session, email="signup@rrf.test")
+
+    request = await create_access_request(db_session, user.id, APP_KEY)
+
+    assert request.status == "approved"
+    assert request.review_reason == "auto-approved"
+    assert await list_roles(db_session, user.id, APP_KEY) == [(APP_KEY, "equipe")]
 
 
 def test_the_app_key_is_named_once_in_the_module() -> None:
