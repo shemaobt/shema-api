@@ -98,8 +98,8 @@ client answer, and both are recorded in contract §5.3:
 * On the frontend's two lists it is a **control** capability, not a screen one: the
   caixinha lives in Part B's section 11, a screen the session opens for every role, so it
   opens no screen of its own — and ``SCREEN_CAPABILITIES`` not moving is what keeps the
-  mesa's fixture account matching, the very trap the eighth-cell paragraph above already
-  named for BE-10's capability.
+  mesa's fixture account matching, the very trap the ``administer_funds`` paragraph above
+  already names.
 
 Reading is not a row of this table and must not become one (``_scope.py`` §5.3 reasoning):
 it rides on ``edit_requests`` for the three roles that write, and on ``endorse_request``
