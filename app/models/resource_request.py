@@ -412,11 +412,17 @@ class SubmissionOut(RequestOut):
     ``submitted_at`` is the server's stamp and ``snapshot_id`` names the frozen document, so
     a client can show *received, on this date* without a second call.
 
-    **There is no receipt number, and its absence is a decision.** Whether a submission
-    returns a receipt and whether it carries a number is an open GATE-03 question that
-    contract §7 marks as blocking *the submission issue* — this one. Adding a number later
-    is additive; removing one after teams have seen it, after BE-13 has quoted it in an
-    e-mail and after it has become the way people refer to a request, is not.
+    **The receipt is the date and the time, and the question is closed.** Asked on
+    28/aug/2026 what a submission hands back on the spot, the client answered *"data e
+    hora"* — so ``submitted_at`` **is** the receipt, and this class already returned it.
+    Contract §7 marked the question as blocking *the submission issue*, this one; it closes
+    with the shape unmoved, and BE-13 quotes that date in the e-mail it sends.
+
+    **``snapshot_id`` is not a receipt number and must not be shown as one.** It names the
+    frozen document, which is what a client needs to fetch what was submitted; the day it
+    appears on a screen as *your request is 3f9a…* it has become the way people refer to a
+    request, and a real number can no longer replace it. A number for people stays additive
+    afterwards — the point of the answer is that **nothing waits for it**.
     """
 
     snapshot_id: str
