@@ -82,6 +82,12 @@ async def assign_fund(
     would be an un-approval written as an edit, and un-approving is the board's transaction
     with its own movement.
 
+    **Submission is deliberately not a precondition**, unlike a board move. The mesa
+    already reads and edits a request the team has not sent (GATE-02 D4), so refusing to
+    name its fund would be a stricter rule about a smaller thing; and the state this
+    endpoint exists to make reachable is guarded where it matters — approving still runs
+    through ``require_assigned_fund``, whenever the fund arrived.
+
     **Who assigned it, when, and from which fund to which** is a row of
     ``rr_request_field_history`` keyed ``fund_id``: append-only, ``changed_by`` from the
     session, both sides of the change recorded. The trail's general feature is BE-15's
