@@ -132,7 +132,7 @@ a migration, not a refactor."*
 | `languages` | **Not shared. No FK.** | The form's A1 stores language name, ISO code, family, dialects, speaker count and literacy rate as **free text typed by the team**, next to vocabulary answers for vitality and writing system (contract §1.2). `languages` is `name` plus a unique three-character `code`. A FK would reject exactly the population this product serves — the contract's own vocabulary has *língua ágrafa* as a first-class answer. Text fields. |
 | `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. This row carried a condition — *if GATE-02 answers team access with an org* — and **the gate answered with individual accounts** (D1), so the condition never fires. The one shape that could still reach for it is BE-16's Líder de Base, who endorses *"que o projeto pertence à base dele"*: a base is not an `organizations` row today, and whoever builds it decides whether it becomes one. |
 | `phases`, `project_phases` | **Not applicable.** | The board's six columns are this product's own key space (contract §4.1) and are not workflow phases of a translation project. |
-| `notifications` | **Not applicable in wave 2 as scoped.** | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, which **no issue owns** — see §10. If it gets an owner, this table is the first thing to read, not a new one to build. |
+| `notifications` | **BE-13's first read.** | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, which **BE-13** (OBT-480) owns since GATE-03 D5/D6 — see §10. It got its owner, and this table is the first thing that owner reads, not a new one to build. |
 | `permissions`, `role_permissions` | **Not usable.** | They exist as tables and are **not wired into `access_control.py`** — the guards check roles only. See §5.4. |
 
 ### 2.4 There is no Shemá module to coexist with — **finding**
@@ -529,9 +529,11 @@ taken inside the same transaction that appends the movement and writes the stage
 Two mesa members approving against one fund then serialize on that row: the first commits,
 the second recomputes the sum *after* the first is visible and gets a decidable answer.
 
-**What that answer is — refuse, or allow negative with a warning — is Open · GATE-01.**
-Do not choose it in code. Wave 1 already renders a negative *disponível*, so allowing it is
-not absurd; refusing it is not either. It is the mesa's practice, and it is one branch.
+**What that answer is — Answered · GATE-01 (D5): allow negative, with a warning, never a
+refusal.** Both approvals succeed, the fund goes negative and the screen says so — the
+control is human, and no `insufficient_funds` error shape exists anywhere in the product.
+Wave 1 already rendered a negative *disponível*; the gate made that the behaviour rather
+than a bug to fix. It is still one branch, and BE-07 writes the warning one.
 
 ⚠️ **The test for this cannot run where the other tests run, and it fails silently.**
 `pytest` runs on SQLite (`tests/conftest.py` sets `sqlite+aiosqlite`), and SQLAlchemy
@@ -593,8 +595,8 @@ under SQLite in CI.
 
 The four decision strings are frozen by the contract and will not grow, which is what makes
 a native enum the right call for them. The six board columns are frozen too. Anything the
-client might extend — the fund list, while GATE-01 is open — should be a **table**, not an
-enum.
+client might extend — the fund list, frozen at **one** by GATE-01 with four names pending
+and BE-10's editable area coming — should be a **table**, not an enum.
 
 ### 8.3 Migrations: naming, one head, and a clean downgrade
 
@@ -678,8 +680,8 @@ Three properties it must have, and they are why the decision is worth writing do
    Minting those last slugs is part of this work, not a separate afterthought: without them
    BE-02 has nothing to put in `category_key` and `criterion_key`.
 3. **The counts are asserted**, the way the contract's own checksums are: 45 text keys, 9
-   project categories, 10 supported goals, 26 budget categories, 6 criteria per type, 5
-   funds, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
+   project categories, 10 supported goals, 26 budget categories, 6 criteria per type, 1
+   fund, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
    different length fails the check rather than misleading a reader.
 
 **This is not implemented here.** The emission is a build step in the frontend repository
@@ -696,9 +698,26 @@ that owns it and what it blocks.
 
 | Question | Gate | Blocks |
 |---|---|---|
-| What each of the five funds covers, and the old↔new mapping; Ready Vessels' fate | **GATE-01** (OBT-447) | BE-02's seed, BE-07 |
-| **Which fund a request asks from** — no field for it exists anywhere in the form; `funds_support` is an essay, not a reference. Team chooses / derived from type / mesa assigns at triage are three different columns in three different tables | **GATE-01** (OBT-447) | BE-02, BE-07 — **BE-07 cannot debit a fund it was never told about** |
-| Insufficient funds on a concurrent approve: refuse, or allow negative with a warning (§7.3) | **GATE-01** (OBT-447) | BE-07 |
+| Whether *Ready Vessels* stays among the ten `supportedGoal` options, now that it is no longer a fund — the one half of GATE-01 still unanswered | **GATE-01** (OBT-447) | BE-02's seed, BE-05 — a vocabulary question now, not a money one |
+
+**Answered by GATE-01 on 26/aug/2026** (OBT-447), which closed the money half of this table
+and left the vocabulary half above:
+
+- **Only Shema Línguas remains a fund** (D1); the other four names are undecided — not
+  retired, not approved — and the old↔new mapping closed by elimination: *"leave it as it
+  is"* (D2). The list the client extends later has an owner, **BE-10** (OBT-471), which is
+  why §8.2 keeps the fund list a table and never an enum. Ready Vessels ceased to exist as
+  a fund (D3); its other half is the one row still open above.
+- **The mesa assigns the fund, at triage** (D4) — the third of the three columns the
+  question offered. No field joins the request document — the 45 keys stay 45 — and a
+  request in `triagem` legitimately has no fund yet, so the FK is nullable by design: two
+  states not to conflate. **BE-11** (OBT-470) owns the write, and carries in its DoD the
+  re-ask of the client's aside that the *Gestor* would define which fund goes to which
+  project.
+- **A concurrent double-approve is allowed, with a warning — never blocked** (D5). §7.3
+  carries what that costs BE-07, and it is one branch: the warning one.
+- **The Gestores enter the allocated value** (D6) — funds are born at zero, and the
+  allocation write path with its authorship is **BE-09** (OBT-469).
 
 **Answered by GATE-02 and GATE-03 on 27/aug/2026** (OBT-448, OBT-449), and no longer open.
 Recorded rather than deleted, because each one landed somewhere in this module — and because
