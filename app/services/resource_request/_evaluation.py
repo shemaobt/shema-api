@@ -57,16 +57,16 @@ async def load_evaluation(
     scores = list(
         (
             await db.execute(
-                select(RREvaluationScore).where(
-                    RREvaluationScore.evaluation_id == evaluation.id
-                )
+                select(RREvaluationScore).where(RREvaluationScore.evaluation_id == evaluation.id)
             )
         )
         .scalars()
         .all()
     )
     canonical = {key: index for index, key in enumerate(CRITERION_KEYS[request_type])}
-    scores.sort(key=lambda row: (canonical.get(row.criterion_key, len(canonical)), row.criterion_key))
+    scores.sort(
+        key=lambda row: (canonical.get(row.criterion_key, len(canonical)), row.criterion_key)
+    )
 
     attendees = sorted(
         (

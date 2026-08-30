@@ -392,6 +392,85 @@ in the trail. A decision-driven transition names its evaluation; a drag carries 
 `ON DELETE` action, like `movement_id` beside it: an evaluation that moved a card is not
 unwound by disappearing.
 
+### 4.5 The decision's write path — **Decided** (BE-06, OBT-455), and the order BE-08 follows
+
+GATE-02 D6 made recording a decision an execution path: the Parte C save moves the card,
+and in `approved` the same write appends to the ledger. BE-06 built that path in
+`app/services/resource_request/save_evaluation.py`, and this section is the written order
+BE-08 inherited. **Followed** (BE-08, 30/aug/2026): steps 2-4 are now `transition_stage`
+in `_transition.py`, the one path a hand's drag also takes, so the order below is executed
+once rather than stated twice — and a decision landing on a card already dragged into its
+column deducts nothing and writes no second event.
+
+**The order, inside one transaction with one commit under all of it:**
+
+1. **The decision on the evaluation row** — with `evaluator_id` and `evaluated_at` stamped
+   from the session and the server clock, never from the payload.
+2. **The ledger movement, when the decision is `approved`** — `append_movement`, which
+   takes the fund row's `FOR UPDATE` and flushes, never commits. The amount is the spine's
+   `amount_requested` (item 9 — what a fund commits on approval, per BE-02's own docstring);
+   the currency stays the column's default, which §7.2's open question about mixed-currency
+   sums left deliberately unfrozen.
+3. **The stage event** — the `rr_board_transitions` row, carrying `from_stage`, `to_stage`
+   from the decision↔column mapping (`_decision_stage.py`), `moved_by`, and `movement_id`
+   naming the movement of step 2.
+4. **The request's `stage`.**
+
+The issue's own prose said *decisão → evento de etapa → apêndice no razão*; the built order
+swaps its last two steps because the schema decides it —
+`rr_board_transitions.movement_id` is an FK to the movement, so the event **names** the
+movement and cannot be written before it. Same transaction either way, which is the half
+that was the requirement.
+
+Three rules that travel with the order:
+
+- **The implication runs one way.** A decision implies a column; a column never implies a
+  decision. `_decision_stage.py` is a map over `RRDecision`, total in the direction that
+  executes, with no entry to invent in the direction that must not — the mesa may still
+  drag a card it never evaluated, and BE-08's hand-moves write no decision.
+- **A recorded decision is not rewritten through the evaluation.** Scores, comments, the
+  ata and the `team_note` stay editable afterwards — D7 audits exactly those edits — and a
+  save carrying the same decision again re-fires nothing. Nor do those later edits
+  re-sign: `evaluator_id` freezes with the decision, because D5's *tag* names who
+  represented the mesa when it decided — who edited afterwards is BE-15's fact. A save
+  carrying a *different* decision is refused (409): undoing an `approved` is a compensating movement plus a board
+  move, which is BE-08's transaction, and building half of it inside the evaluation would
+  either lose money or build BE-08 without its issue.
+- **Approving with `fund_id IS NULL` fails, decidably** (409), before anything is written.
+  The invariant is GATE-01 D4's and its owner is BE-11 (OBT-470); this path is where it
+  bites first, so BE-06 enforces and tests it here, and BE-11 owns the rule wherever else
+  a request can reach `aprovado`.
+
+**Criteria versioning is decided: the key is the identity, and the text is presentation.**
+The DoD asked for one of two shapes in writing — freeze the labels the mesa read, or
+declare the key the identity — and it is the second, for three reasons that agree. The
+labels are bilingual pairs, so freezing "the label the mesa read" would have to pick a
+language the mesa did not pick — it reads both. The eighteen keys are already the stable
+axis everything shares: `rr_evaluation_scores.criterion_key`,
+`rr_evaluation_field_history.field_key` and the vendored emission name a criterion the
+same way, so a reworded label changes what every evaluation *displays* — old and new alike,
+which is what a clarification wants — and changes what none of them *is*. And the type
+prefix on the slug (`traducao_necessidade_urgencia`) keeps a key honest in review: a label
+edit that changes the criterion's meaning under an unmoved key shows up as a slug that no
+longer says what its label says. The consequences, stated so nobody re-derives them: a
+**rewording** costs a frontend label edit and a re-vendored emission, and touches no stored
+row; a **change of meaning** mints a new key, and evaluations scored under the old one keep
+it — a key never leaves the vendored history while a score row names it, the same
+superseded-not-deleted rule the fund table set in contract §3.1. `load_evaluation` already
+reads it that way: a stored key the current list does not carry sorts last and displays,
+because it is history, not an error.
+
+**D7's trail is not instrumented here, and that is written rather than left to be noticed.**
+The evaluation write updates rows and creates none in `rr_evaluation_field_history`; the
+field-by-field diffing — old value, new value, who, when — is BE-15's (OBT-475), and it
+**wraps this write** when it arrives rather than this issue planting half of it. Two
+reasons: a trail written by one caller and not by the next is worse than none, and BE-15
+owns the diffing rule (which of the three homes a key lives in, how a replaced score row
+reads as a change and not as a delete-plus-insert) — planting an ad-hoc version here would
+stand a second design where §4.4 already names one owner. Until BE-15 lands, edits to an
+evaluation are visible only as its `updated_at` moving, and that gap is BE-15's issue by
+name.
+
 ---
 
 ## 5. Seam A — authentication and access (GATE-02)

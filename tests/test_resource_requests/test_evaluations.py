@@ -41,9 +41,7 @@ REQUESTS = "/api/resource-requests/requests"
 def evaluation(request_type: str = "traducao", **over: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "request_type": request_type,
-        "scores": [
-            {"criterion_key": key, "score": 4} for key in v.CRITERION_KEYS[request_type]
-        ],
+        "scores": [{"criterion_key": key, "score": 4} for key in v.CRITERION_KEYS[request_type]],
         "comments": "avaliado",
     }
     payload.update(over)
@@ -69,7 +67,9 @@ async def give_fund(db_session, request_id: str, fund_id: str = "linguas") -> No
     that are not about the assignment: it sets up a precondition in one statement instead
     of driving a second endpoint, and ``test_fund_assignment.py`` pins that the two write
     the same column."""
-    if (await db_session.execute(select(RRFund).where(RRFund.id == fund_id))).scalar_one_or_none() is None:
+    if (
+        await db_session.execute(select(RRFund).where(RRFund.id == fund_id))
+    ).scalar_one_or_none() is None:
         db_session.add(RRFund(id=fund_id, name="Shema Línguas"))
     request = (
         await db_session.execute(select(RRRequest).where(RRRequest.id == request_id))
@@ -190,9 +190,7 @@ async def test_a_criterion_of_another_type_is_refused(db_session, client, rrf_ap
         client,
         mesa,
         created["id"],
-        scores=[
-            {"criterion_key": key, "score": 3} for key in v.CRITERION_KEYS["treinamento"]
-        ],
+        scores=[{"criterion_key": key, "score": 3} for key in v.CRITERION_KEYS["treinamento"]],
     )
     foreign_type = await put_evaluation(client, mesa, created["id"], request_type="treinamento")
 
@@ -334,9 +332,7 @@ async def test_approving_appends_to_the_ledger_in_the_same_write(
     assert request.stage.value == "aprovado"
 
 
-async def test_approving_with_no_fund_fails_and_writes_nothing(
-    db_session, client, rrf_app
-) -> None:
+async def test_approving_with_no_fund_fails_and_writes_nothing(db_session, client, rrf_app) -> None:
     """GATE-01 D4's invariant, bitten on this write path: decidable, and nothing half-saved."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
@@ -389,6 +385,26 @@ async def test_the_same_decision_saved_again_re_fires_nothing(db_session, client
     assert again.json()["comments"] == "nota revista"
     assert len((await db_session.execute(select(RRFundMovement))).scalars().all()) == 1
     assert len((await db_session.execute(select(RRBoardTransition))).scalars().all()) == 1
+
+
+async def test_the_signature_freezes_with_the_decision(db_session, client, rrf_app) -> None:
+    """Before the decision, whoever last wrote speaks for the mesa; the save that records
+    the decision signs it, and edits after it change the row without changing D5's tag —
+    who edited afterwards is BE-15's fact, not the signature's."""
+    team = await as_team(db_session, rrf_app)
+    mesa_a = await as_mesa(db_session, rrf_app, email="mesa.a@rr.test")
+    mesa_b = await as_mesa(db_session, rrf_app, email="mesa.b@rr.test")
+    created = await submitted_request(client, team)
+
+    drafted = (await put_evaluation(client, mesa_a, created["id"])).json()
+    decided = (await put_evaluation(client, mesa_b, created["id"], decision="declined")).json()
+    edited = (
+        await put_evaluation(client, mesa_a, created["id"], decision="declined", comments="revista")
+    ).json()
+
+    assert decided["evaluator_id"] != drafted["evaluator_id"]
+    assert edited["comments"] == "revista"
+    assert edited["evaluator_id"] == decided["evaluator_id"]
 
 
 async def test_revise_end_to_end_opens_a_revision(db_session, client, rrf_app) -> None:

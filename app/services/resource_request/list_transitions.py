@@ -16,7 +16,7 @@ async def transitions_of_request(db: AsyncSession, request_id: str) -> list[RRBo
 
     An unknown id answers 404 rather than an empty list — for an internal surface a card
     that never moved and a mistyped id are different situations. No row scoping, like
-    ``list_movements``: the route gates on ``manage_funds``, whose holders reach every
+    ``movements_of_fund``: the route gates on ``manage_funds``, whose holders reach every
     request, and GATE-03 D4 keeps a team at its status and away from the board.
     """
     request = (
