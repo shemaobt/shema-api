@@ -18,8 +18,9 @@ copy of the 26-row payload would drift exactly the way second serializers do.
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.db.models.resource_request import (
     RRBoardTransition,
@@ -29,6 +30,7 @@ from app.db.models.resource_request import (
     RRFundMovement,
     RRMovementKind,
     RRRequest,
+    RRSnapshot,
 )
 from app.utils import resource_request_vocabularies as v
 from tests.baker import make_user
@@ -474,3 +476,82 @@ async def test_status_before_any_evaluation_is_the_journey_alone(
     assert body["stage"] == "triagem"
     assert body["decision"] is None
     assert body["team_note"] is None
+
+
+async def test_the_status_read_does_not_load_the_evaluation_whole(
+    db_session, client, rrf_app, test_engine
+) -> None:
+    """The route a team refreshes reads two columns of the evaluation, not three tables.
+
+    ``request_status`` consumes ``decision`` and ``team_note`` and nothing else, and it
+    used to reach them through ``load_evaluation`` — which fires the six score rows and the
+    ata, after a snapshot read that carries the whole frozen document to use its ``id``.
+    Four statements, three of them loaded and dropped.
+
+    The property is asserted rather than a total: counting every statement would count the
+    door's own lookups, which are not this route's business and would redden this case for
+    a reason it is not about. That the two aggregate tables are never touched, and that the
+    evaluation is read once, is what *narrow* means here.
+    """
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await submitted_request(client, team)
+    await put_evaluation(
+        client, mesa, created["id"], decision="revise", team_note="detalhe o orçamento"
+    )
+
+    statements: list[str] = []
+
+    @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
+    def _record(conn, cursor, statement, parameters, context, executemany) -> None:
+        statements.append(statement)
+
+    try:
+        res = await client.get(f"{REQUESTS}/{created['id']}/status", headers=team)
+    finally:
+        event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
+
+    assert res.status_code == 200, res.text
+    assert res.json()["decision"] == "revise"
+    assert res.json()["team_note"] == "detalhe o orçamento"
+
+    scores = [s for s in statements if "rr_evaluation_scores" in s]
+    attendees = [s for s in statements if "rr_evaluation_attendees" in s]
+    evaluations = [s for s in statements if "rr_evaluations" in s]
+    assert scores == [], f"o status leu as notas: {scores}"
+    assert attendees == [], f"o status leu a ata: {attendees}"
+    assert len(evaluations) == 1, f"a avaliacao foi lida {len(evaluations)} vezes"
+
+
+async def test_status_reads_the_latest_snapshot_and_not_an_older_decision(
+    db_session, client, rrf_app
+) -> None:
+    """The join is an outer one on purpose: a snapshot nobody evaluated answers *no
+    decision yet*, it does not fall back to what the mesa decided about the one before.
+
+    Only ``submit_request`` writes snapshots and it refuses a second one, so the second
+    snapshot is written here the way a resubmission would — the case the ``order_by`` and
+    the ``limit`` exist for, which no route can reach today.
+    """
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await submitted_request(client, team)
+    await put_evaluation(client, mesa, created["id"], decision="declined")
+
+    frozen = (
+        await db_session.execute(select(RRSnapshot).where(RRSnapshot.request_id == created["id"]))
+    ).scalar_one()
+    db_session.add(
+        RRSnapshot(
+            request_id=created["id"],
+            document={},
+            created_at=frozen.created_at + timedelta(minutes=1),
+        )
+    )
+    await db_session.commit()
+
+    res = await client.get(f"{REQUESTS}/{created['id']}/status", headers=team)
+
+    assert res.status_code == 200, res.text
+    assert res.json()["decision"] is None
+    assert res.json()["team_note"] is None
