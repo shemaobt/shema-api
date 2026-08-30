@@ -19,6 +19,37 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRSegment, IRSession
 
 
+def slice_moved(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> bool:
+    """Whether a new version points at different audio from the one it replaces.
+
+    The one expression of "is this the mother tongue re-recorded, or only the explanation
+    redone", used by the invariant below and by the route that has to decide it before it
+    keeps anything.
+    """
+    return (
+        segment.take_id != take_id or segment.starts_ms != starts_ms or segment.ends_ms != ends_ms
+    )
+
+
+def refuse_a_slice_that_is_not_one(starts_ms: int, ends_ms: int) -> None:
+    """A stretch has to be a piece of audio somebody can hear.
+
+    An end before the beginning is not an interval, and an end on the beginning is no audio at
+    all. Both were accepted in silence and became final units — and a unit with no audio can
+    never be told back, so it can never be completed, so the first round waits on it for good.
+    The same argument that makes a cut on the border a refusal, arriving at the same place from
+    the other side.
+
+    One expression, called from the invariant below and from the route that tells a stretch
+    back, where it runs before any bytes are kept: a malformed slice is the app's own bug and
+    retrying costs the team nothing, unlike a transcriber that went away mid-request.
+    """
+    if ends_ms <= starts_ms:
+        raise ValidationError(
+            f"A stretch from {starts_ms} ms to {ends_ms} ms is not a slice of anything"
+        )
+
+
 async def capture_segment(
     db: AsyncSession,
     session: IRSession,
@@ -49,6 +80,12 @@ async def capture_segment(
     explanation in hand and no reason to think twice; a refusal is what makes the forbidden
     state unreachable.
 
+    **A stretch that no longer counts cannot be replaced.** A tablet retrying a replacement it
+    already sent lands on the row it superseded: the successor would take a position another
+    current row already holds, which the index refuses with a 500 nobody in the room can read —
+    and once a telling-back has been started over there is no current row left to collide with,
+    so the same call would quietly bring a stretch back from the recording the team threw away.
+
     **A stretch that was divided cannot be replaced as a unit.** Its children would go on
     pointing at the retired row, which the walk in `final_segments` starts too high up to
     reach, and they would drop out of the reading with nothing saying so. It is refused
@@ -59,19 +96,24 @@ async def capture_segment(
     position, and the index that keeps one position to one current stretch is checked per
     statement — inserting first would put both of them under it at once.
     """
-    if replaces is not None and (bridge_take_id is not None or transcript is not None):
-        moved = (
-            replaces.take_id != take_id
-            or replaces.starts_ms != starts_ms
-            or replaces.ends_ms != ends_ms
+    refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
+
+    if (
+        replaces is not None
+        and (bridge_take_id is not None or transcript is not None)
+        and slice_moved(replaces, take_id, starts_ms, ends_ms)
+    ):
+        raise ValidationError(
+            "A stretch re-recorded in the mother tongue starts with no telling-back: "
+            "the explanation of the recording it replaces does not carry over"
         )
-        if moved:
-            raise ValidationError(
-                "A stretch re-recorded in the mother tongue starts with no telling-back: "
-                "the explanation of the recording it replaces does not carry over"
-            )
 
     if replaces is not None:
+        if replaces.superseded_at is not None:
+            raise ValidationError(
+                "This stretch no longer counts: it was already replaced, or the telling-back "
+                "it belonged to was started over"
+            )
         if any(row.parent_id == replaces.id for row in await _current(db, session.id)):
             raise ValidationError(
                 "A stretch that was divided is no longer a unit: replace one of the stretches "
@@ -106,6 +148,112 @@ async def capture_segment(
     await db.commit()
     await db.refresh(segment)
     return segment
+
+
+async def divide_segment(
+    db: AsyncSession, session: IRSession, segment: IRSegment, *, at_ms: int
+) -> list[IRSegment]:
+    """Cut one stretch in two at a point the team chose, and answer with the pieces.
+
+    ``at_ms`` is in the same coordinates as ``starts_ms`` and ``ends_ms`` — milliseconds from
+    the start of **that recording**, never an offset into the stretch. A number that only means
+    something with another number beside it is the global timeline under a new name, which is
+    the defect the segment was introduced to remove.
+
+    The pieces are ``[starts_ms, at_ms)`` and ``[at_ms, ends_ms)``. Half-open, so the
+    millisecond of the cut belongs to the **second** piece and the two tile the original
+    exactly: closed on both sides would count that millisecond twice, open on both would drop
+    it. It is also how the room already writes consecutive stretches — one ends on the value
+    the next begins on — so this is the reading that makes what exists correct rather than
+    ambiguous. Anybody tempted to "fix" it to closed on both sides should read this first.
+
+    **The cut must fall strictly inside**, and that is not tidiness. A cut on either border
+    makes a piece of no duration, and a piece of no duration is a final unit that can never be
+    completed: no audio to hear, so nothing to tell back, so no explanation, ever. The first
+    round only releases when every final unit has one, so a tap a millisecond wide of the mark
+    would jam the passage for good — and the team has no verb to undo it.
+
+    There is deliberately **no minimum duration**. Any floor would be a number invented here
+    rather than measured, the team picks the cut by tapping while they listen, and the room has
+    no screen to explain a refusal with: a floor would arrive as a mute "no". Zero is refused
+    because at zero the piece does not exist; every other bound would be policy.
+
+    A stretch that was already divided is refused, for the reason its replacement is: its audio
+    is covered by its pieces, and cutting it again would make a sibling overlapping its own
+    nephews. So is one that no longer counts — dividing what does not count yields pieces
+    nobody would ever see.
+
+    The pieces keep the pass the stretch they came from was told on. Born on the default, a
+    division of something the team had already been asked about once would have travelled to
+    Refine looking like a first telling.
+    """
+    if segment.superseded_at is not None:
+        raise ValidationError("A stretch that no longer counts cannot be divided")
+    if any(row.parent_id == segment.id for row in await _current(db, session.id)):
+        raise ValidationError(
+            "This stretch was already divided: divide one of the stretches it was divided into"
+        )
+    if not segment.starts_ms < at_ms < segment.ends_ms:
+        raise ValidationError(
+            f"A cut at {at_ms} ms falls on or outside the stretch "
+            f"({segment.starts_ms} to {segment.ends_ms} ms): it would make a piece with no audio"
+        )
+
+    head = await capture_segment(
+        db,
+        session,
+        take_id=segment.take_id,
+        starts_ms=segment.starts_ms,
+        ends_ms=at_ms,
+        pass_number=segment.pass_number,
+        parent=segment,
+    )
+    tail = await capture_segment(
+        db,
+        session,
+        take_id=segment.take_id,
+        starts_ms=at_ms,
+        ends_ms=segment.ends_ms,
+        pass_number=segment.pass_number,
+        parent=segment,
+    )
+    return [head, tail]
+
+
+async def segment_for_session(db: AsyncSession, session_id: str, segment_id: str) -> IRSegment:
+    """One stretch of **this** session, by its address.
+
+    The room key is one string shipped in every tablet, so it says nothing about whose work is
+    being reached; the session in the path is what does. Scoped here rather than by the caller,
+    because a lookup that returns any stretch to anybody is a lookup every route has to
+    remember to fence.
+
+    One message for absent, for somebody else's and for never having existed, the way
+    ``_no_such_session`` and ``_no_such_take`` already answer (ENG-534). It echoes back the id
+    the caller sent, which tells them nothing they did not already know.
+    """
+    result = await db.execute(
+        select(IRSegment).where(IRSegment.id == segment_id, IRSegment.session_id == session_id)
+    )
+    segment = result.scalar_one_or_none()
+    if segment is None:
+        raise NotFoundError(f"Internalization room segment {segment_id} not found")
+    return segment
+
+
+async def divided_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
+    """The stretches that were divided: current, and no longer a leaf.
+
+    They fall between the two lists the handoff used to carry — not final units, because they
+    were divided, and not retired, because nothing replaced them. What the team said about the
+    whole stretch, before they heard two ideas in it, vanished from the artifact in silence.
+
+    The same class of loss as a replaced stretch, which the handoff carries on purpose. The
+    verb that creates the state is what has to carry it.
+    """
+    rows = await _current(db, session_id)
+    divided = {row.parent_id for row in rows if row.parent_id is not None}
+    return [row for row in rows if row.id in divided]
 
 
 async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
