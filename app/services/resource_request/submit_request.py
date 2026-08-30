@@ -4,7 +4,7 @@ from typing import NamedTuple
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, ValidationError
+from app.core.exceptions import AuthorizationError, ConflictError, ValidationError
 from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest, RRSnapshot
 from app.models.resource_request import RequestSubmissionIn
@@ -40,11 +40,24 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     eletrônico"* (28/aug/2026), and what stands in its place is the act itself:
     ``created_by`` says who, ``submitted_at`` says when, both stamped by the server and
     neither typable through a payload — this route takes none. No column and no field were
-    added, because the acceptance was already the shape this endpoint had. What the answer
-    does move is outside this function: ``tpp_date`` is due to stop being required at
-    submission — ``_ALWAYS_REQUIRED`` in ``resource_request_vocabularies.py`` still carries
-    it, and that list is BE-05's — and the printed signature line goes from the form
-    (frontend).
+    added, because the acceptance was already the shape this endpoint had.
+
+    **Because submitting is signing, only the author submits — and that refusal lives
+    here, not in the router's guard.** ``CanEditRequests`` is held by all three roles
+    (GATE-02 D4: the mesa may edit what the team wrote), and ``_scope.py`` lets the mesa
+    and the Gestor reach every draft — both stay true: they keep reading and editing. What
+    they may not do is press a button that signs in ``created_by``'s name, so the check
+    compares the caller to the author rather than asking what the caller may do. It binds
+    the platform admin too, deliberately, where every guard in ``_deps.py`` waves them
+    through: those answer *may act here*, an installation rule; this one answers *whose
+    name goes on the acceptance*, which no grant can transfer. The message says the real
+    reason — not *no permission* but *only the person who filled it signs*.
+
+    The signature lines the paper form carried follow from the same answer, in
+    ``resource_request_vocabularies.py`` (OBT-483): ``tpp_date``, ``leader_name`` and
+    ``leader_date`` are out of ``_ALWAYS_REQUIRED`` — the acceptance replaces them —
+    while ``tpp_name`` stays required, because it is the requester the mesa reads on the
+    card and the account submitting may not be the Ponto focal.
 
     **There is no window, no deadline and no cycle lock, and the absence is written rather
     than left to be noticed.** Asked whether submission is open all year, the client answered
@@ -59,6 +72,13 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     attached.
     """
     loaded = await get_request(db, request_id, user, app_key)
+
+    if loaded.request.created_by != user.id:
+        raise AuthorizationError(
+            "Submitting is the electronic acceptance, and only the account that filled "
+            "this draft signs it. Reading and editing stay open; signing in the "
+            "author's name does not."
+        )
 
     if loaded.request.submitted_at is not None:
         raise ConflictError("This request was already submitted.")
