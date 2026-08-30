@@ -3,7 +3,7 @@
 **Why the module carries a map at all.** ``require_app_access(app_key)`` and
 ``require_role(app_key, role_key)`` answer exactly one question each — *does this user
 hold any role in this app*, and *does this user hold this one role*. The product's model
-is neither: four of the eight capabilities belong to **more than one role** —
+is neither: four of the nine capabilities belong to **more than one role** —
 ``edit_requests``, ``view_evaluation``, ``manage_funds``, and ``move_board`` since GATE-02
 moved it — and ``require_role`` cannot express an OR. Guarding ``view_evaluation`` as
 ``MesaUser`` would refuse the Gestor, which is the very asymmetry that gives that role its
@@ -63,17 +63,20 @@ compares the two instead, so a drift is a red test rather than a quiet grant.
   qualquer membro da mesa"*. It is the first capability the mesa does not hold, and that
   asymmetry is what the answer says.
 
-**The eighth cell is decided and arrives with BE-10** (OBT-471). Asked what the fund area
-does the client answered *"os 3"* — create, rename, retire — that the one who creates is
-*"o Gestor"*, and that renaming and retiring have no permission of their own (*"seguem a de
-criar"*). That is **one** capability over three verbs, held by the Gestor alone. That it is
-a **control** capability and not a screen one is ours to decide — Daniel, 28/aug/2026 — and
-not a sentence of the client's: the answer says who may, not how this table is assembled. The
+**``administer_funds`` is in the table since FE-29** (OBT-481, 30/aug/2026), ahead of the
+endpoints BE-10 (OBT-471) will guard with it. Asked what the fund area does the client
+answered *"os 3"* — create, rename, retire — that the one who creates is *"o Gestor"*, and
+that renaming and retiring have no permission of their own (*"seguem a de criar"*). That is
+**one** capability over three verbs, held by the Gestor alone. That it is a **control**
+capability and not a screen one is ours to decide — Daniel, 28/aug/2026 — and not a
+sentence of the client's: the answer says who may, not how this table is assembled. The
 choice has a mechanical consequence rather than an aesthetic one. Classified as a screen
 capability it would be held by no role that also holds every other screen capability, so
 ``SCREEN_CAPABILITIES.every(holds)`` in the frontend's ``src/services/fixtures/accounts.ts``
 would match nobody and the mesa's fixture account would disappear — the same trap the ``?``
-cell of GATE-02 D3 sprang once already.
+cell of GATE-02 D3 sprang once already. The frontend now pins both halves by test: the
+classification (the mesa's fixture account still resolves) and the reach (whoever
+administers funds also opens the Painel, because the fund area lives inside it, FE-26).
 
 ⚠️ **The catastrophic misreading available here is narrowing ``manage_funds`` to the
 Gestor**, on the theory that it is the money capability. It is the Painel's entry gate,
@@ -105,7 +108,7 @@ that OR, and the Líder's reach itself (submitted requests, no drafts) is decide
 ``_scope.py``, in writing.
 """
 
-#: The eight ids of the frontend's ``CAPABILITIES``, in its order.
+#: The nine ids of the frontend's ``CAPABILITIES``, in its order.
 CAPABILITIES: tuple[str, ...] = (
     "edit_requests",
     "view_evaluation",
@@ -115,6 +118,7 @@ CAPABILITIES: tuple[str, ...] = (
     "assign_fund",
     "allocate_funds",
     "endorse_request",
+    "administer_funds",
 )
 
 #: The four ``role_key`` values ``scripts/seed_apps_roles.py`` writes for this app.
@@ -140,6 +144,7 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "manage_funds",
             "move_board",
             "allocate_funds",
+            "administer_funds",
         }
     ),
     "lider": frozenset({"endorse_request"}),

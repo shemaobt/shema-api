@@ -9,12 +9,12 @@ link produces.
 Mounting a probe rather than the whole app keeps the module route-free until the issue
 that is supposed to give it routes, and still exercises the real chain.
 
-**The seven capability probes hang off the named aliases, not off
+**The nine capability probes hang off the named aliases, not off
 ``require_capability("…")`` rebuilt here.** Those aliases are what BE-04 onwards will
 annotate a route with, so an alias wired to the wrong capability is a real defect, and a
 probe that built its own dependency would test the factory while leaving the wiring
 unread. ``test_capabilities.py`` asserts that every capability in the map has a probe, so
-the seven cannot quietly become six.
+the nine cannot quietly become eight.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from httpx import ASGITransport
 
 from app.api.resource_requests._deps import (
     APP_KEY,
+    CanAdministerFunds,
     CanAllocateFunds,
     CanAssignFund,
     CanEditEvaluation,
@@ -172,6 +173,10 @@ async def client(db_session):
 
     @probe.get("/_probe/cap/endorse_request")
     async def _probe_endorse_request(user: CanEndorseRequest) -> dict[str, str]:
+        return {"email": user.email}
+
+    @probe.get("/_probe/cap/administer_funds")
+    async def _probe_administer_funds(user: CanAdministerFunds) -> dict[str, str]:
         return {"email": user.email}
 
     test_app = FastAPI()
