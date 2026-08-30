@@ -384,6 +384,26 @@ async def test_the_same_decision_saved_again_re_fires_nothing(db_session, client
     assert len((await db_session.execute(select(RRBoardTransition))).scalars().all()) == 1
 
 
+async def test_the_signature_freezes_with_the_decision(db_session, client, rrf_app) -> None:
+    """Before the decision, whoever last wrote speaks for the mesa; the save that records
+    the decision signs it, and edits after it change the row without changing D5's tag —
+    who edited afterwards is BE-15's fact, not the signature's."""
+    team = await as_team(db_session, rrf_app)
+    mesa_a = await as_mesa(db_session, rrf_app, email="mesa.a@rr.test")
+    mesa_b = await as_mesa(db_session, rrf_app, email="mesa.b@rr.test")
+    created = await submitted_request(client, team)
+
+    drafted = (await put_evaluation(client, mesa_a, created["id"])).json()
+    decided = (await put_evaluation(client, mesa_b, created["id"], decision="declined")).json()
+    edited = (
+        await put_evaluation(client, mesa_a, created["id"], decision="declined", comments="revista")
+    ).json()
+
+    assert decided["evaluator_id"] != drafted["evaluator_id"]
+    assert edited["comments"] == "revista"
+    assert edited["evaluator_id"] == decided["evaluator_id"]
+
+
 async def test_revise_end_to_end_opens_a_revision(db_session, client, rrf_app) -> None:
     """The whole chain against ``open_revision``: the mesa asks through the real endpoint,
     the card lands on *revisar*, and the team's next move is a new draft."""

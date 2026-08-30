@@ -420,8 +420,10 @@ Three rules that travel with the order:
   drag a card it never evaluated, and BE-08's hand-moves write no decision.
 - **A recorded decision is not rewritten through the evaluation.** Scores, comments, the
   ata and the `team_note` stay editable afterwards — D7 audits exactly those edits — and a
-  save carrying the same decision again re-fires nothing. A save carrying a *different*
-  one is refused (409): undoing an `approved` is a compensating movement plus a board
+  save carrying the same decision again re-fires nothing. Nor do those later edits
+  re-sign: `evaluator_id` freezes with the decision, because D5's *tag* names who
+  represented the mesa when it decided — who edited afterwards is BE-15's fact. A save
+  carrying a *different* decision is refused (409): undoing an `approved` is a compensating movement plus a board
   move, which is BE-08's transaction, and building half of it inside the evaluation would
   either lose money or build BE-08 without its issue.
 - **Approving with `fund_id IS NULL` fails, decidably** (409), before anything is written.

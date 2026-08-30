@@ -38,6 +38,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from app.db.models.resource_request import (
     RRCurrency,
     RRDecision,
+    RREvaluation,
+    RREvaluationScore,
     RRMovementKind,
     RRRequest,
     RRRequestType,
@@ -257,6 +259,32 @@ class EvaluationOut(BaseModel):
     evaluated_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+    @classmethod
+    def of(
+        cls,
+        evaluation: RREvaluation,
+        scores: list[RREvaluationScore],
+        attendees: list[str],
+    ) -> Self:
+        """Build the envelope from the aggregate's three parts — the ``RequestOut.of``
+        precedent, here for the same reason: ``CLAUDE.md`` §2 keeps SQLAlchemy models out
+        of the api layer, and deriving the ``/30`` at shaping time is what keeps it a
+        computation and never a column."""
+        return cls(
+            id=evaluation.id,
+            snapshot_id=evaluation.snapshot_id,
+            evaluator_id=evaluation.evaluator_id,
+            decision=evaluation.decision,
+            comments=evaluation.comments,
+            team_note=evaluation.team_note,
+            scores=[ScoreOut(criterion_key=row.criterion_key, score=row.score) for row in scores],
+            total=sum_score(row.score for row in scores),
+            attendees=attendees,
+            evaluated_at=evaluation.evaluated_at,
+            created_at=evaluation.created_at,
+            updated_at=evaluation.updated_at,
+        )
 
 
 class RequestStatusOut(BaseModel):

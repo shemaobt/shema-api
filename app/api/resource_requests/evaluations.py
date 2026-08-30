@@ -33,37 +33,16 @@ from app.models.resource_request import (
     EvaluationOut,
     EvaluationWriteIn,
     RequestStatusOut,
-    ScoreOut,
 )
 from app.services import resource_request as service
-from app.services.resource_request._evaluation import EvaluationRecord
-from app.utils.resource_request_totals import sum_score
 
 router = APIRouter(tags=["resource requests"])
-
-
-def _out(record: EvaluationRecord) -> EvaluationOut:
-    evaluation, scores, attendees = record
-    return EvaluationOut(
-        id=evaluation.id,
-        snapshot_id=evaluation.snapshot_id,
-        evaluator_id=evaluation.evaluator_id,
-        decision=evaluation.decision,
-        comments=evaluation.comments,
-        team_note=evaluation.team_note,
-        scores=[ScoreOut(criterion_key=row.criterion_key, score=row.score) for row in scores],
-        total=sum_score(row.score for row in scores),
-        attendees=attendees,
-        evaluated_at=evaluation.evaluated_at,
-        created_at=evaluation.created_at,
-        updated_at=evaluation.updated_at,
-    )
 
 
 @router.get("/requests/{request_id}/evaluation")
 async def read_evaluation(request_id: str, user: CanViewEvaluation, db: Db) -> EvaluationOut:
     """The whole aggregate, with the /30 derived on this read and stored nowhere."""
-    return _out(await service.get_evaluation(db, request_id, user, APP_KEY))
+    return EvaluationOut.of(*await service.get_evaluation(db, request_id, user, APP_KEY))
 
 
 @router.put("/requests/{request_id}/evaluation")
@@ -74,7 +53,7 @@ async def save_evaluation(
 
     Evaluator and instant come from the session; the payload cannot state either.
     """
-    return _out(await service.save_evaluation(db, request_id, payload, user, APP_KEY))
+    return EvaluationOut.of(*await service.save_evaluation(db, request_id, payload, user, APP_KEY))
 
 
 @router.get("/requests/{request_id}/status")

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, UnknownReferenceError, ValidationError
@@ -36,10 +36,19 @@ async def save_evaluation(
     nothing to evaluate before submission — an evaluation scores a frozen document, never a
     draft still moving.
 
-    **Evaluator and instant come from the session, never the payload.** Every save stamps
-    ``evaluator_id`` from the bearer token — whoever last signed, on behalf of the mesa —
-    and recording the decision stamps ``evaluated_at`` from the server clock. The payload
-    cannot carry either: ``extra="forbid"`` refuses the attempt as a 422.
+    **Evaluator and instant come from the session, never the payload.** While no decision
+    is recorded, every save re-signs ``evaluator_id`` from the bearer token — whoever last
+    wrote speaks for the mesa — so the save that carries the decision is the one that
+    signs it, together with ``evaluated_at`` from the server clock. **Once recorded, the
+    signature freezes with the decision**: a later edit changes the row without changing
+    who represented the mesa, because that is what D5's *tag* means — who edited what
+    afterwards is the trail's fact (BE-15), not the signature's. The payload can carry
+    neither stamp: ``extra="forbid"`` refuses the attempt as a 422.
+
+    Scores and the ata are **reconciled in place** — updated where a row exists, added
+    where none does, deleted where the payload stopped naming one — never dropped and
+    re-inserted under the same key, which is also what lets the ata be *corrected rather
+    than compensated*, the minutes rule from the schema's own docstring.
 
     **The write order of a decision is the contract BE-08 follows** (documented in
     ``docs/resource_requests.md`` §4.5): (1) the decision on the evaluation row, (2) the
@@ -119,28 +128,50 @@ async def save_evaluation(
     if evaluation is None:
         evaluation = RREvaluation(snapshot_id=snapshot.id)
         db.add(evaluation)
-    evaluation.evaluator_id = user.id
+    if recorded is None:
+        evaluation.evaluator_id = user.id
     evaluation.comments = payload.comments
     evaluation.team_note = payload.team_note
     await db.flush()
 
-    await db.execute(
-        delete(RREvaluationScore).where(RREvaluationScore.evaluation_id == evaluation.id)
-    )
-    for score in payload.scores:
-        db.add(
-            RREvaluationScore(
-                evaluation_id=evaluation.id,
-                criterion_key=score.criterion_key,
-                score=score.score,
+    stored_scores = {
+        row.criterion_key: row
+        for row in (
+            await db.execute(
+                select(RREvaluationScore).where(RREvaluationScore.evaluation_id == evaluation.id)
             )
-        )
+        ).scalars()
+    }
+    for score in payload.scores:
+        stored = stored_scores.pop(score.criterion_key, None)
+        if stored is None:
+            db.add(
+                RREvaluationScore(
+                    evaluation_id=evaluation.id,
+                    criterion_key=score.criterion_key,
+                    score=score.score,
+                )
+            )
+        else:
+            stored.score = score.score
+    for leftover in stored_scores.values():
+        await db.delete(leftover)
 
-    await db.execute(
-        delete(RREvaluationAttendee).where(RREvaluationAttendee.evaluation_id == evaluation.id)
-    )
+    stored_attendees = {
+        row.user_id: row
+        for row in (
+            await db.execute(
+                select(RREvaluationAttendee).where(
+                    RREvaluationAttendee.evaluation_id == evaluation.id
+                )
+            )
+        ).scalars()
+    }
     for attendee in payload.attendees:
-        db.add(RREvaluationAttendee(evaluation_id=evaluation.id, user_id=attendee))
+        if stored_attendees.pop(attendee, None) is None:
+            db.add(RREvaluationAttendee(evaluation_id=evaluation.id, user_id=attendee))
+    for absent in stored_attendees.values():
+        await db.delete(absent)
 
     if deciding is not None:
         evaluation.decision = deciding
