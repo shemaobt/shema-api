@@ -6,6 +6,7 @@ from app.api.internalization_room import (
     passages,
     questions,
     release,
+    segments,
     sessions,
     takes,
     voice,
@@ -13,6 +14,16 @@ from app.api.internalization_room import (
 
 router = APIRouter()
 
-for _sub in (voice, sessions, passages, back_translation, questions, takes, release, devices):
+for _sub in (
+    voice,
+    sessions,
+    passages,
+    back_translation,
+    segments,
+    questions,
+    takes,
+    release,
+    devices,
+):
     for route in _sub.router.routes:
         router.routes.append(route)

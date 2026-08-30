@@ -16,6 +16,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.prompts import get_prompt_text
+from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.sessions import MAX_RETELLS
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 from app.services.internalization_room.voice_handles import clip_url
@@ -63,6 +64,7 @@ async def add_chunk(
     """
     session = await room.get_session(db, session_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
+    refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
@@ -161,14 +163,50 @@ async def finish(
     recording was replaced is waiting to be told again and carries nothing they said, so it
     is not evidence — and the same list numbers the analyst's reading and resolves its answer,
     so a finding cannot land on one either.
+
+    And while any stretch is still waiting, nothing is read at all. The analyst's prompt calls
+    an element missing when it appears in *no* stretch and forbids joining one stretch to
+    another, so a subset contradicts the definition it works by: everything living in the
+    stretch left out comes back as a finding about a hole the team is on their way to filling.
+    Worse, a subset that reads clean is indistinguishable from a whole one that reads clean,
+    and `checked` is what strikes the passage off the wheel for good.
+
+    The H family says so out loud rather than leaving the team with silence. Deliberately not
+    the D family eight lines below: that one says the room could not hear, which is false here
+    — it heard everything — and it asks the team to repeat what they already told instead of
+    telling what they have not.
+
+    It is the one line of that file the room speaks rather than the app plays. The fail-safes
+    are shipped as audio because they have to work when nothing else does — no network, no
+    model — and this is not that: the gate fires with the server answering normally, before
+    the analyst is called, and the verdict a few lines below is already synthesized. Shipping
+    it would have meant a new app release before the team could hear anything at all.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
-    told = room.told_back(await room.final_segments(db, session.id))
+    final = await room.final_segments(db, session.id)
+    told = room.told_back(final)
     if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
         state.played_ranges = payload.played_ranges
         state.clip_duration_ms = payload.clip_duration_ms
         await room.save_back_translation(db, session, state)
+
+    if len(told) < len(final):
+        waiting, _ = choose(
+            FailSafe.UNTOLD_STRETCH,
+            get_settings().internalization_room_language_code,
+            turn=state.waited,
+        )
+        spoken = (await room.synthesize_facilitator_speech(waiting))[0]
+        state.waited += 1
+        await room.save_back_translation(db, session, state)
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            audio_url=clip_url(spoken.key),
+            fixed_line="",
+            checked=False,
+            findings_remaining=0,
+        )
 
     if not told:
         # An analyst asked to compare nothing against the map answers with no findings,

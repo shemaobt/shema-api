@@ -19,10 +19,13 @@ from app.services.internalization_room.run_turn import (
 )
 from app.services.internalization_room.segments import (
     capture_segment,
+    divide_segment,
+    divided_segments,
     final_segments,
     parent_of,
     retired_segments,
     segment_by_id,
+    segment_for_session,
     told_back,
 )
 from app.services.internalization_room.sessions import (
@@ -61,6 +64,8 @@ __all__ = [
     "classify_coverage",
     "comprehension_of",
     "create_session",
+    "divide_segment",
+    "divided_segments",
     "final_segments",
     "findings_block",
     "get_session",
@@ -75,6 +80,7 @@ __all__ = [
     "save_back_translation",
     "save_comprehension",
     "segment_by_id",
+    "segment_for_session",
     "session_is_done",
     "sessions_waiting_on_a_person",
     "set_bridge_mode",
