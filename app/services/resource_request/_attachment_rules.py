@@ -72,12 +72,6 @@ _ODF_TYPES = frozenset(
     }
 )
 
-#: Types whose whole-file signature `filetype` reads directly: PDF and RTF by their
-#: leading magic, .xls/.doc by the OLE2 magic plus the stream marker at byte 512.
-_FILETYPE_TYPES = frozenset(
-    {"application/pdf", "application/rtf", "application/vnd.ms-excel", "application/msword"}
-)
-
 _TEXT_TYPES = frozenset({"text/csv", "text/plain"})
 
 #: The C0 control characters a text file has no business carrying. Tab, LF and CR are
@@ -169,11 +163,12 @@ def _prove_zip_container(canonical: str, data: bytes) -> None:
 
 
 def _prove_by_filetype(canonical: str, data: bytes) -> None:
-    """PDF, RTF and the two OLE2 formats, through ``filetype``'s matchers.
+    """The remaining four — PDF, RTF, .xls, .doc — through ``filetype``'s matchers.
 
-    .xls and .doc share the OLE2 magic, so a bare magic check could not split them; the
-    library's two matchers read the stream marker at byte 512 (Word's FIB, Excel's BOF),
-    which is the inside-the-container check those formats admit.
+    PDF and RTF carry a leading magic the library reads whole. .xls and .doc share the
+    OLE2 magic, so a bare magic check could not split them; the library's two matchers
+    read the stream marker at byte 512 (Word's FIB, Excel's BOF), which is the
+    inside-the-container check those formats admit.
     """
     if canonical in {"application/vnd.ms-excel", "application/msword"} and not data.startswith(
         _OLE2_MAGIC
