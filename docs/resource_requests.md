@@ -569,6 +569,8 @@ needed: one says the emission is old, the other says the vendored copy and the m
 sistema"* (D1). The other two columns stay drawn for the same reason §5.2 does — a discarded
 option is the cheapest record of why the chosen one looks the way it does.
 
+**BE-04 (OBT-453) built the middle column.**
+
 | | (a) mesa-entered | **(b) team submits online · chosen** | (c) both |
 |---|---|---|---|
 | Who writes the draft | a mesa principal | **the team** | either |
@@ -628,6 +630,61 @@ one of its kind: the item-10 sentence — *"envie junto ao salvar/imprimir"* —
 **client-approved copy that the client's own answer invalidated**. Rewriting it is bilingual
 and needs the client's approval again. It is a frontend issue, not this module's, and it is
 not polish.
+
+**What BE-04 added to the list above, and it is the one thing this seam had not predicted.**
+Submission takes **no payload**. The draft is already on the server — that is what (b)
+means — so freezing what is stored, rather than what a last request carries, is what makes
+*the mesa evaluated what the team submitted* true without the two having to agree. It is
+free because `document()` **is** the payload shape: what comes out of the read path goes
+straight into `RequestSubmissionIn`, and the same bytes go into `rr_snapshots.document`.
+
+`scripts/seed_resource_requests.py` used to build that shape itself. It was the second
+serializer §4.2 forbids by name, and it had already drifted — five of the spine's values
+where the real one carries all of them. It calls `document()` now.
+
+**Reconciliation is *latest save wins*, and the loser is told.** A draft filled offline and
+a server row that moved since are two saves, not two halves of one document: merging them
+would invent a paragraph neither side wrote. The `PATCH` carries the client's own
+`saved_at`; when the server's row is newer the incoming copy is **discarded** and the answer
+names which side won and when each was saved. Discarding is the harsh half — the alternative
+loses the newer work silently, and this loses the older work loudly, to a caller that still
+holds the payload it tried to send.
+
+**Row scope is not a capability, and this is where that was decided.** `edit_requests`
+belongs to all three roles (GATE-02 D4), so it says *may act on requests* and says nothing
+about which ones. `app/services/resource_request/_scope.py` is the one place in the module
+that reads a role rather than a capability, and it reads it for a **scope**: a caller who is
+only `equipe` reaches what it authored, anyone else reaches all of it. Written as *only
+equipe* rather than *is mesa or gestor* so the Líder de Base of BE-16 does not silently
+inherit the team's narrow view before anyone decides what he should see. The alternative —
+a `read_all_requests` row in contract §5.3 — would put a capability the client never saw
+into a client artefact.
+
+Two consequences worth stating because they are easy to get backwards. Out of scope answers
+**404 and not 403**, since a 403 confirms the id exists and that is the one thing a team must
+not learn about another team's request. And a request that has been submitted answers **409**
+to an edit: the way back in is a revision, which is a new row pointing at the snapshot the
+mesa read.
+
+### 6.2 What the gate actually changed — and the prediction it settled
+
+The route surface and the attachment's shape, and nothing else. **That held.** Nothing in §4
+moved, no aggregate was redesigned, and the (a) branch — which would have shrunk BE-04 to
+mesa-entry endpoints — was simply not taken. The nullable author column was GATE-02's cost
+(§5.2) and its answer left it filled in practice.
+
+Two open client questions land on this issue and neither blocked it, which is the same thing
+the gate's own closing comment said: *"nenhum muda a forma do agregado"*.
+
+- **Whether submitting returns a receipt, and whether it carries a number** (contract §7,
+  marked as blocking *the submission issue* — this one). `SubmissionOut` answers with the
+  request, the server's `submitted_at` and the snapshot id, and **invents no number**.
+  Adding one later is additive; removing one after teams have seen it, after BE-13 has
+  quoted it in an e-mail and after it has become how people refer to a request, is not.
+- **Whether the Ponto focal's signature becomes an electronic acceptance.** The Líder's half
+  is answered (BE-16); this one is not. `tpp_name` and `tpp_date` are a typed name and a
+  typed date today, which is what `RequestSubmissionIn` already demands. An answer changes
+  what those two columns *mean*, not their shape.
 
 ---
 

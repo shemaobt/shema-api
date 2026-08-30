@@ -1,14 +1,13 @@
 """The module's router, mounted in ``app/main.py`` under ``/api/resource-requests``.
 
-It carries no routes yet — BE-02 brings the tables, BE-03 the capability checks, BE-04
-onwards the endpoints. What exists here first is the anchor: a route added by a later
-issue reaches the outside world without touching ``app/main.py``, and without re-deciding
-a prefix that ``tests/test_resource_requests/conftest.py`` already assumes.
+It carried no routes until BE-04, and the anchor is what let those arrive without touching
+``app/main.py`` and without re-deciding a prefix ``tests/test_resource_requests/conftest.py``
+already assumed. ``requests.py`` is the request lifecycle; later issues include their own
+beside it rather than growing one file.
 
-Mounting a router with no routes registers nothing — no path on the application, no entry
-in OpenAPI. So ``tests/test_resource_requests/test_mount.py`` proves the wiring by hanging
-a route off this object and looking for it on a freshly built app, rather than by asking
-for a response that does not exist yet.
+``test_mount.py`` still proves the wiring by hanging its own route off this object, which is
+the check that survives a module with no routes — and the one that keeps working the day
+this file's own routes are the thing being moved.
 
 The layout those routes land in, and which issue owns each of them, is
 ``docs/resource_requests.md``.
@@ -18,4 +17,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.api.resource_requests.requests import router as requests_router
+
 router = APIRouter()
+router.include_router(requests_router)

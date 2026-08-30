@@ -29,12 +29,26 @@ Nothing in this file lists an option.
 """
 
 from collections.abc import Iterable
+from datetime import datetime
 from decimal import Decimal
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from app.db.models.resource_request import RRCurrency, RRDecision, RRRequestType
+from app.db.models.resource_request import (
+    RRCurrency,
+    RRDecision,
+    RRRequest,
+    RRRequestType,
+    RRStage,
+)
 from app.utils.resource_request_totals import sum_budget, sum_score
+from app.utils.resource_request_typed_fields import (
+    SPINE_DAY_FIELDS,
+    SPINE_MONEY_FIELDS,
+    parse_day,
+    parse_money,
+)
 from app.utils.resource_request_vocabularies import (
     BUDGET_CATEGORY_KEYS,
     CHECK_VALUES,
@@ -226,6 +240,30 @@ class RequestDraftIn(BaseModel):
                 raise ValueError(f"{key}: answer outside its vocabulary")
         return value
 
+    @field_validator("fields")
+    @classmethod
+    def _the_three_typed_answers_parse(cls, value: dict[str, str]) -> dict[str, str]:
+        """Three of the 45 stop being text when they land, so they have to be answerable.
+
+        ``amount_requested`` is ``Numeric(14, 2)`` on the spine and the two signature dates
+        are ``Date``. The wire carries all 45 as strings, which is right — the client is
+        filling a form. But ``"mil e duzentos"`` is not a refusal the service layer should
+        be discovering: it would be a 500 from a cast, where every other refusal in this
+        module is a located 422.
+
+        It **validates and returns the strings unchanged**; the conversion happens where the
+        columns are written. Both sides call the same parser, so *parses here* and *parses
+        there* cannot come apart — and keeping ``fields`` a ``dict[str, str]`` keeps the
+        contract's own statement of what the 45 are.
+        """
+        for key in SPINE_MONEY_FIELDS:
+            if key in value:
+                _fits_the_money_column(parse_money(value[key]))
+        for key in SPINE_DAY_FIELDS:
+            if key in value:
+                parse_day(value[key])
+        return value
+
     @field_validator("budget")
     @classmethod
     def _no_repeated_category(cls, value: list[BudgetLineIn]) -> list[BudgetLineIn]:
@@ -284,6 +322,110 @@ class RequestDraftIn(BaseModel):
         if value != computed:
             raise ValueError(f"does not match the rows: they sum to {computed}")
         return value
+
+
+class DiscardedOut(BaseModel):
+    """Told to a client whose copy lost, with both timestamps so it can say why.
+
+    Never a silent merge and never a silent overwrite: the issue asks for the warning to
+    name **which side won and when each was saved**, and those three fields are that
+    sentence. A client holding this still has the payload it tried to send.
+    """
+
+    winner: str
+    client_saved_at: datetime | None
+    server_saved_at: datetime
+
+
+class RequestOut(BaseModel):
+    """A request on the wire: mutable envelope outside, frozen-able document inside.
+
+    The split is the point. ``document`` is byte for byte what a submission freezes into
+    ``rr_snapshots`` and byte for byte what ``PATCH`` accepts back, so a round trip through
+    this API cannot reshape a team's answers. Everything beside it — the id, the stage, the
+    timestamps, the link back to what a revision revises — is state that moves, and is
+    deliberately outside the thing that must not.
+
+    **The team's four-mark progress bar is served from these fields alone, and that is what
+    keeps it clear of §5.3.** *Rascunho → Enviado → Em análise → Decisão* reads out whole:
+    ``submitted_at`` separates the first two — the ``stage`` does not, because a draft
+    carries the column's ``triagem`` default and is not on the board yet — ``stage`` being
+    ``analise`` is the third, and the four decision stages are the fourth, from which the
+    last mark takes its label and its colour. **Nothing in ``rr_evaluations`` is read**: the
+    day the bar fetches a score or a comment to colour a mark, §5.3 was broken by a progress
+    bar.
+
+    **Four marks of journey and not of decision is ours to decide — Daniel, 28/aug/2026 —
+    and not the client's sentence.** The four ``RRDecision`` values are mutually exclusive,
+    so four boxes of which exactly one ever lights is not progress; it is a status wearing a
+    bar's clothes. It gets shown to the client with the screen in hand (FE-28).
+    """
+
+    id: str
+    stage: RRStage
+    created_by: str | None
+    revision_of_id: str | None
+    submitted_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    document: dict[str, Any]
+
+    @classmethod
+    def of(cls, request: RRRequest, document: dict[str, Any], **extra: Any) -> Self:
+        """Build the envelope from a request row.
+
+        Here and not in the router because ``CLAUDE.md`` §2 keeps SQLAlchemy models out of
+        the api layer, and shaping a response is this layer's job anyway. ``request`` is
+        typed, and the first version of this was not: the argument for ``Any`` was that
+        naming ``RRRequest`` would reach somewhere new, and it does not — this module already
+        imports four enums from ``app.db.models.resource_request``. Seven attribute reads off
+        an untyped parameter is where a renamed column stops being caught, which is the whole
+        of what mypy is for here (PR #269, review).
+
+        ``Self`` and not ``RequestOut``, so the two subclasses keep their own type: the
+        answer to a write carries ``discarded`` and the answer to a submission carries
+        ``snapshot_id``, and a base-typed constructor would hand both back as the parent and
+        let a route promise a field it never returns.
+        """
+        return cls(
+            id=request.id,
+            stage=request.stage,
+            created_by=request.created_by,
+            revision_of_id=request.revision_of_id,
+            submitted_at=request.submitted_at,
+            created_at=request.created_at,
+            updated_at=request.updated_at,
+            document=document,
+            **extra,
+        )
+
+
+class RequestSavedOut(RequestOut):
+    """A write's answer. ``discarded`` is null on the ordinary save."""
+
+    discarded: DiscardedOut | None = None
+
+
+class SubmissionOut(RequestOut):
+    """What submitting answers.
+
+    ``submitted_at`` is the server's stamp and ``snapshot_id`` names the frozen document, so
+    a client can show *received, on this date* without a second call.
+
+    **The receipt is the date and the time, and the question is closed.** Asked on
+    28/aug/2026 what a submission hands back on the spot, the client answered *"data e
+    hora"* — so ``submitted_at`` **is** the receipt, and this class already returned it.
+    Contract §7 marked the question as blocking *the submission issue*, this one; it closes
+    with the shape unmoved, and BE-13 quotes that date in the e-mail it sends.
+
+    **``snapshot_id`` is not a receipt number and must not be shown as one.** It names the
+    frozen document, which is what a client needs to fetch what was submitted; the day it
+    appears on a screen as *your request is 3f9a…* it has become the way people refer to a
+    request, and a real number can no longer replace it. A number for people stays additive
+    afterwards — the point of the answer is that **nothing waits for it**.
+    """
+
+    snapshot_id: str
 
 
 class RequestSubmissionIn(RequestDraftIn):

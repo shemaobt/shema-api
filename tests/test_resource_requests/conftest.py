@@ -102,7 +102,12 @@ async def rrf_app(db_session):
 
 @pytest.fixture()
 async def client(db_session):
-    """An ASGI client running the probe router and the real auth router.
+    """An ASGI client running the probe router, the module's own router and auth.
+
+    The module router is mounted at the same prefix the application mounts it at, so the
+    lifecycle tests exercise the real paths — ``/api/resource-requests/requests`` — through
+    the real dependency chain. The probes keep their own ``/_probe`` space beside it: they
+    test the guards where no route needs to exist, and they outlive any particular route.
 
     The real exception handlers are registered, so ``AuthorizationError`` reaches the
     wire as the 403 a client would actually receive.
@@ -117,6 +122,7 @@ async def client(db_session):
     from fastapi import APIRouter, FastAPI
 
     from app.api.auth import router as auth_router
+    from app.api.resource_requests import router as module_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
@@ -160,6 +166,7 @@ async def client(db_session):
 
     test_app = FastAPI()
     test_app.include_router(probe, prefix="/api/resource-requests")
+    test_app.include_router(module_router, prefix="/api/resource-requests")
     test_app.include_router(auth_router, prefix="/api/auth")
     register_exception_handlers(test_app)
 

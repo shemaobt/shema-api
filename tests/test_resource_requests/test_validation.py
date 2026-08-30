@@ -41,10 +41,18 @@ def budget(amounts: dict[str, Decimal] | None = None) -> list[dict[str, object]]
 
 
 def answers(request_type: str) -> dict[str, str]:
-    """Every required field answered, and nothing that the type does not ask."""
+    """Every required field answered, and nothing that the type does not ask.
+
+    Three of the required keys are not free text, because three of them are columns rather
+    than answers: the two signature dates are ``Date`` and ``amount_requested`` is
+    ``Numeric(14, 2)``. The dates were already spelled out here; the amount joined them when
+    BE-04 (OBT-453) gave the promoted keys a parser, so that ``"mil e duzentos"`` is a
+    located 422 rather than a cast blowing up in the service layer.
+    """
     filled = dict.fromkeys(v.REQUIRED_TEXT_FIELDS[request_type], "preenchido")
     filled["tpp_date"] = "2026-08-25"
     filled["leader_date"] = "2026-08-25"
+    filled["amount_requested"] = "1200.00"
     for key in filled:
         allowed = v.VOCABULARY_VALUES.get(key)
         if allowed:
