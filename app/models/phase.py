@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.db.models.phase import PhaseStatus
+
 
 class PhaseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -29,13 +31,13 @@ class ProjectPhaseResponse(BaseModel):
     phase_id: str
     phase_name: str
     phase_description: str | None
-    status: str
+    status: PhaseStatus
 
     model_config = {"from_attributes": True}
 
 
 class ProjectPhaseStatusUpdate(BaseModel):
-    status: str = Field(min_length=1, max_length=20)
+    status: PhaseStatus
 
 
 class DependencyCreate(BaseModel):
@@ -58,7 +60,3 @@ class PhasesWithDepsResponse(BaseModel):
 class ProjectPhasesWithDepsResponse(BaseModel):
     phases: list[ProjectPhaseResponse]
     dependencies: dict[str, list[str]]
-
-
-class AttachPhaseRequest(BaseModel):
-    phase_id: str

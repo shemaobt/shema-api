@@ -11,3 +11,10 @@ async def assert_project_access(db: AsyncSession, user: User, project_id: str) -
     allowed = await project_service.can_access_project(db, user.id, project_id)
     if not allowed:
         raise AuthorizationError("You do not have access to this project")
+
+
+async def assert_project_manager(db: AsyncSession, user: User, project_id: str) -> None:
+    if user.is_platform_admin:
+        return
+    if not await project_service.is_project_manager(db, user.id, project_id):
+        raise AuthorizationError("You do not manage this project")
