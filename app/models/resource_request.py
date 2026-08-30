@@ -200,6 +200,83 @@ class EvaluationIn(BaseModel):
         return value
 
 
+class EvaluationWriteIn(EvaluationIn):
+    """What the mesa saves from Parte C — BE-05's validation plus the two fields BE-06 adds.
+
+    ``attendees`` is GATE-02 D5's ata: the user ids of the mesa members present when the
+    decision was taken. Ids and not typed names, because ``rr_evaluation_attendees.user_id``
+    is a real FK and a member with no account is not recordable — the right refusal, and
+    BE-17 (OBT-477) is what closes it. Existence is checked in the service so the refusal
+    is a decidable 422 naming the id, never an IntegrityError's 500.
+
+    ``team_note`` is the mesa's message to the team, nullable because *no note* and *an
+    empty note* are different facts. It is written here, under ``edit_evaluation``, and read
+    by the team only through the status projection.
+
+    Evaluator and instant are still absent, inherited from the parent's own rule: the
+    server stamps them from the session, and ``extra="forbid"`` is what turns a payload
+    that tries into a 422.
+    """
+
+    team_note: str | None = None
+    attendees: list[str] = Field(default_factory=list)
+
+    @field_validator("attendees")
+    @classmethod
+    def _no_repeated_attendee(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("attendee sent twice")
+        return value
+
+
+class ScoreOut(BaseModel):
+    """One criterion's score on the wire, keyed exactly as it is stored."""
+
+    criterion_key: str
+    score: int | None
+
+
+class EvaluationOut(BaseModel):
+    """The mesa's evaluation on the wire — served only behind ``view_evaluation``.
+
+    ``total`` is derived by ``sum_score`` on this read and stored nowhere, like every
+    other derived number in the module. ``evaluator_id`` and ``evaluated_at`` are the
+    server's stamps: who signed on behalf of the mesa, and when the decision was recorded
+    — ``evaluated_at`` stays null while the evaluation is still a draft without one.
+    """
+
+    id: str
+    snapshot_id: str
+    evaluator_id: str | None
+    decision: RRDecision | None
+    comments: str
+    team_note: str | None
+    scores: list[ScoreOut]
+    total: int
+    attendees: list[str]
+    evaluated_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RequestStatusOut(BaseModel):
+    """What a team is told about its request — GATE-03 D4's *status and nothing else*.
+
+    Exactly four fields, and the count is the contract: ``stage`` and ``submitted_at``
+    are the journey, ``decision`` is the outcome the team is entitled to, and
+    ``team_note`` is the one sentence of the evaluation aggregate addressed to the team.
+    No scores, no comments, no attendees, no evaluator — adding a field here is handing
+    the team a piece of the evaluation, which is §5.3 broken by a projection.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: RRStage
+    submitted_at: datetime | None
+    decision: RRDecision | None
+    team_note: str | None
+
+
 class RequestDraftIn(BaseModel):
     """A request as it is being filled. Shape is enforced; completeness is not.
 
