@@ -21,6 +21,18 @@ mismatch; storing it would be storing a derived number.
 The envelope around the document — id, stage, timestamps, the revision link — is mutable
 state, is not part of the frozen thing, and is built by the DTOs rather than here.
 
+**A copy is taken at an instant, and exactly one value moves after it.** The sentence above
+is about serializers: there is one builder, so the freeze cannot drift from the read path by
+being written twice. It is not a promise that a later read of a submitted request returns
+the snapshot's bytes, and since BE-16 it is not one — the endorsement writes ``leader_name``
+and ``leader_date`` on the spine *after* the freeze, so the live document shows the Líder's
+line and ``rr_snapshots.document`` goes on saying what the team sent. **The snapshot carries
+the document as submitted; the live request carries the endorsed line** (PR #281, review),
+and ``endorse_request`` is where the reasons are. It is the only such value:
+``update_draft`` refuses every other edit to a submitted request and ``rr_snapshots`` is
+append-only in the database, so whoever compares the two documents finds that one difference
+and no other.
+
 **Nothing the mesa writes enters this document, and one thing decided on 28/aug/2026 will
 try.** The ``team_note`` — the mesa's short message to the team on a *revisar* and on a
 *condicional* — belongs to the evaluation aggregate (BE-06), is served beside the request and

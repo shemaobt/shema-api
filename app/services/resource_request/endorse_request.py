@@ -27,6 +27,22 @@ async def endorse_request(db: AsyncSession, request_id: str, user: User, app_key
     contract's 45), but nothing reads a typed leader line as an endorsement — the rule
     reads ``endorsed_at``, which only this function writes.
 
+    **The live request carries the endorsed line; the snapshot keeps the document as
+    submitted.** This writes on the spine *after* the freeze, so ``rr_snapshots.document``
+    goes on saying what the team sent — ``leader_name`` empty, ``leader_date`` whatever the
+    team typed — while the read path shows the endorser. That is the decision and not an
+    oversight (PR #281, review), and three things agree on it. ``rr_snapshots`` is
+    append-only **in the database**, so re-stamping the frozen document is not an option
+    that exists; a second snapshot would be worse, since ``open_revision`` reads the latest
+    one and would then look for an evaluation on a document nobody evaluated. And the
+    ordering settles it without either: only a submitted request is endorsable, so the
+    endorsement is a fact that can only exist after the freeze and can never be part of the
+    frozen thing. What answers *has this been endorsed* is the envelope —
+    ``endorsed_by``/``endorsed_at``, beside ``submitted_at``, which is where mutable state
+    lives (``_document.py``) — and the display pair is that same fact rendered into the
+    contract's 45 keys. It is the one and only value in the document that moves after
+    submission; ``update_draft`` refuses every other edit to a submitted request.
+
     **Only a submitted request is endorsable.** A draft is the team's work still moving,
     and an endorsement of a moving document would vouch for whatever it becomes — the same
     reasoning that makes the snapshot freeze at submission. The Líder cannot even reach
