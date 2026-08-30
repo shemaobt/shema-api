@@ -24,6 +24,7 @@ than repeated.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from decimal import Decimal
 
@@ -386,7 +387,17 @@ async def test_desaprovar_pelo_quadro_compensa_a_deducao_da_decisao(
 ) -> None:
     """The other direction: BE-06's decision wrote the deduction, the mesa's drag out of
     ``aprovado`` writes the compensating movement — and the trail tells the two moves
-    apart by ``evaluation_id``."""
+    apart by ``evaluation_id``.
+
+    **Rows are identified by what they are, never by their position in a list**, and that
+    is not style: ``created_at`` is ``server_default=func.now()``, which on SQLite — where
+    this suite runs — compiles to ``CURRENT_TIMESTAMP`` at **second** resolution, so two
+    rows written inside one second carry the same instant and ``order_by(created_at, id)``
+    tiebreaks on a random uuid4. Written positionally this assertion passed or failed by
+    coin flip. On PostgreSQL ``now()`` is microsecond-resolution and the endpoint's
+    ordering is exact, which is why the ordering itself is asserted where the moves are
+    seconds apart (``test_o_historico_e_consultavel_por_pedido``) and never here.
+    """
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
     card = await board_card(db_session, client, team, "1200.00", "linguas")
@@ -397,37 +408,21 @@ async def test_desaprovar_pelo_quadro_compensa_a_deducao_da_decisao(
     assert res.status_code == 200, res.text
     assert Decimal(res.json()["fund_delta"]["committed_delta"]) == Decimal("-1200")
 
-    movements = (
-        (
-            await db_session.execute(
-                select(RRFundMovement).order_by(RRFundMovement.created_at, RRFundMovement.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    assert [movement.kind for movement in movements] == [
-        RRMovementKind.APPROVAL_DEDUCTION,
-        RRMovementKind.REVERSAL,
-    ]
-    assert movements[1].reverses_id == movements[0].id
-    assert movements[1].amount == movements[0].amount
+    movements = (await db_session.execute(select(RRFundMovement))).scalars().all()
+    by_kind = {movement.kind: movement for movement in movements}
+    assert set(by_kind) == {RRMovementKind.APPROVAL_DEDUCTION, RRMovementKind.REVERSAL}
+    deduction = by_kind[RRMovementKind.APPROVAL_DEDUCTION]
+    reversal = by_kind[RRMovementKind.REVERSAL]
+    assert reversal.reverses_id == deduction.id
+    assert reversal.amount == deduction.amount
 
-    trail = (
-        (
-            await db_session.execute(
-                select(RRBoardTransition).order_by(
-                    RRBoardTransition.created_at, RRBoardTransition.id
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    assert len(trail) == 2
-    assert trail[0].evaluation_id is not None
-    assert trail[1].evaluation_id is None
-    assert trail[1].movement_id == movements[1].id
+    trail = (await db_session.execute(select(RRBoardTransition))).scalars().all()
+    by_stage = {row.to_stage: row for row in trail}
+    assert len(trail) == 2 and set(by_stage) == {RRStage.APROVADO, RRStage.REVISAR}
+    assert by_stage[RRStage.APROVADO].evaluation_id is not None
+    assert by_stage[RRStage.APROVADO].movement_id == deduction.id
+    assert by_stage[RRStage.REVISAR].evaluation_id is None
+    assert by_stage[RRStage.REVISAR].movement_id == reversal.id
 
     fund = await linguas(client, mesa)
     assert Decimal(fund["committed"]) == Decimal("0")
@@ -438,11 +433,21 @@ async def test_desaprovar_pelo_quadro_compensa_a_deducao_da_decisao(
 
 async def test_o_historico_e_consultavel_por_pedido(db_session, client, rrf_app) -> None:
     """*Quem moveu o quê, quando, de onde para onde* — oldest first, with the money
-    moves naming their movements and the hand moves carrying no evaluation."""
+    moves naming their movements and the hand moves carrying no evaluation.
+
+    This is the one test that asserts the **order**, so it is the one that has to earn
+    it: the moves are spaced past a second because ``created_at`` is ``CURRENT_TIMESTAMP``
+    on SQLite and rows inside one second are indistinguishable to the endpoint's
+    ``order_by`` (the sibling test above records the whole mechanism). Spaced, the
+    instants really differ and *oldest first* is a claim about the query rather than about
+    uuid luck.
+    """
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
     card = await board_card(db_session, client, team, "52000.00", "linguas")
-    for stage in ("analise", "aprovado", "revisar"):
+    for index, stage in enumerate(("analise", "aprovado", "revisar")):
+        if index:
+            await asyncio.sleep(1.05)
         assert (await move(client, mesa, card, stage)).status_code == 200
 
     res = await client.get(f"{REQUESTS}/{card}/transitions", headers=mesa)
