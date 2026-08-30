@@ -445,6 +445,61 @@ class MovementOut(BaseModel):
     created_at: datetime
 
 
+class AllocationIn(BaseModel):
+    """The alocado as the Gestor states it — the field's value, never a delta.
+
+    GATE-01 D6's editable field shows a total and the edit states the new one; what that
+    becomes in the ledger (one ``ALLOCATION``, or a compensating correction) is
+    ``set_allocation``'s to decide, not the payload's to say. **Zero is a value** — the
+    state every fund is born in — and a negative one is refused here, field-located, the
+    same 422 every other refusal of this module answers. The money rule is
+    ``fits_the_money_column``, because this is the first place a client POSTs money that
+    lands in ``Numeric(14, 2)`` directly rather than through a budget line.
+
+    ``reason`` is the author's why, carried onto each movement the edit writes; who and
+    when never travel here — they are the session's and the row's own (BE-06's rule,
+    already this module's).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Decimal
+    reason: str = ""
+
+    @field_validator("amount")
+    @classmethod
+    def _a_value_a_fund_can_hold(cls, value: Decimal) -> Decimal:
+        """The fit runs first because the comparison is the arithmetic that can blow:
+        ``NaN < 0`` signals ``InvalidOperation``, and ``fits_the_money_column`` is the
+        function already hardened to refuse before any Decimal operation can — §8.5's
+        lesson, one operator earlier again.
+
+        It is called for the refusal and its return discarded, the way ``stated_total``
+        and the ledger's writer already call it: ``amount`` is required, so there is no
+        ``None`` to carry, and an after-validator's return is not re-validated."""
+        fits_the_money_column(value)
+        if value < 0:
+            raise ValueError(f"an alocado states money put in, and {value} is less than none")
+        return value
+
+
+class AllocationOut(BaseModel):
+    """What FE-26 renders: the alocado summed, and D6's who-and-when mark.
+
+    ``allocated`` is ``fund_balances``' sum, serialized the way ``FundOut`` already
+    serializes money — a string on the wire, never a JSON float. ``allocated_by`` is the
+    author's e-mail (the identifier the frontend renders and stores; the ledger's history
+    keeps the user id) and ``allocated_at`` the row's own stamp; both are ``None`` on a
+    fund nobody has allocated, because a mark on a value nobody entered would be
+    fabricated authorship.
+    """
+
+    fund_id: str
+    allocated: Decimal
+    allocated_by: str | None
+    allocated_at: datetime | None
+
+
 class RequestSubmissionIn(RequestDraftIn):
     """A request being submitted. Everything above, plus what a draft may still lack.
 
