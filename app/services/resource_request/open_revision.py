@@ -29,6 +29,17 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
     evaluated has nothing to revise. Reading ``rr_evaluations.decision`` is this rule; the
     evaluation itself is BE-06's and nothing here writes one.
 
+    **A *conditional* decision does not reopen a draft, and after 28/aug/2026 that has to
+    be written here.** The client's answer about revision — *"caso tenha a necessidade de
+    revisão a equipe recebe um aviso"* — names *revisar* and *condicional* in one breath, so
+    whoever arrives at this function carrying it expects both to reopen. They do not do the
+    same thing: *revisar* sends the document back to be rewritten, and *condicional* approves
+    with a condition attached and leaves the document exactly as it was evaluated. The
+    **notice** covers both and is BE-13's; the **new row** is *revisar*'s alone. Widening the
+    check to ``RRDecision.CONDITIONAL`` would let a team edit a request the mesa has already
+    approved, and ``test_only_a_revise_decision_opens_a_revision`` is parametrized over that
+    decision precisely so the widening fails a test rather than passing review.
+
     **Asking for exactly one evaluation is safe, and it was not always.** Review of PR #269
     caught this reading a schema where the uniqueness was *one per snapshot per evaluator* —
     and two NULL evaluators are never equal in SQL, so a snapshot could carry any number of
