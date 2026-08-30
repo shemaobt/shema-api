@@ -453,7 +453,7 @@ class AllocationIn(BaseModel):
     ``set_allocation``'s to decide, not the payload's to say. **Zero is a value** — the
     state every fund is born in — and a negative one is refused here, field-located, the
     same 422 every other refusal of this module answers. The money rule is
-    ``_fits_the_money_column``, because this is the first place a client POSTs money that
+    ``fits_the_money_column``, because this is the first place a client POSTs money that
     lands in ``Numeric(14, 2)`` directly rather than through a budget line.
 
     ``reason`` is the author's why, carried onto each movement the edit writes; who and
@@ -470,10 +470,10 @@ class AllocationIn(BaseModel):
     @classmethod
     def _a_value_a_fund_can_hold(cls, value: Decimal) -> Decimal | None:
         """The fit runs first because the comparison is the arithmetic that can blow:
-        ``NaN < 0`` signals ``InvalidOperation``, and ``_fits_the_money_column`` is the
+        ``NaN < 0`` signals ``InvalidOperation``, and ``fits_the_money_column`` is the
         function already hardened to refuse before any Decimal operation can — §8.5's
         lesson, one operator earlier again."""
-        checked = _fits_the_money_column(value)
+        checked = fits_the_money_column(value)
         if checked is not None and checked < 0:
             raise ValueError(f"an alocado states money put in, and {checked} is less than none")
         return checked
