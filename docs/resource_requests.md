@@ -476,13 +476,15 @@ And `assign_fund` was carrying GATE-01 D1's aside — that the Gestor would defi
 project draws from — as a live re-ask; asked again, the answer was *"somente a mesa"*. Neither
 cell moves, `move_board` least of all: moving a card is still not deciding (D6).
 
-**An eighth cell is decided and arrives with BE-10** (OBT-471). The fund area does *"os 3"* —
-create, rename, retire — *"o Gestor"* creates, and renaming and retiring *"seguem a de criar"*:
-**one** capability over three verbs, the Gestor's alone. That it is a **control** capability and
+**The `administer_funds` cell landed with FE-29 (OBT-481, 30/aug/2026), ahead of BE-10's
+endpoints** (OBT-471). The fund area does *"os 3"* — create, rename, retire — *"o Gestor"*
+creates, and renaming and retiring *"seguem a de criar"*: **one** capability over three verbs,
+the Gestor's alone, in the map, the emission and the vendored copy since that issue, so BE-10's
+guard has a table to stand on before any route exists. That it is a **control** capability and
 not a screen one is ours to decide (Daniel, 28/aug/2026) and not the client's sentence, and the
 consequence is mechanical: as a screen capability it would match no role in the frontend's
 `SCREEN_CAPABILITIES.every(holds)` and the mesa's fixture account would vanish — the trap the
-`?` cell of D3 sprang once already.
+`?` cell of D3 sprang once already, and which the frontend now pins by test.
 
 **A fourth role is coming and is not here yet.** GATE-02 D2 answered that the **Líder de
 Base** enters the system — the narrowest of the four, holding one endorsement capability and
@@ -682,10 +684,15 @@ the gate's own closing comment said: *"nenhum muda a forma do agregado"*.
   request, the server's `submitted_at` and the snapshot id, and **invents no number**.
   Adding one later is additive; removing one after teams have seen it, after BE-13 has
   quoted it in an e-mail and after it has become how people refer to a request, is not.
-- **Whether the Ponto focal's signature becomes an electronic acceptance.** The Líder's half
-  is answered (BE-16); this one is not. `tpp_name` and `tpp_date` are a typed name and a
-  typed date today, which is what `RequestSubmissionIn` already demands. An answer changes
-  what those two columns *mean*, not their shape.
+- **Whether the Ponto focal's signature becomes an electronic acceptance — answered *sim*,
+  28/aug/2026 (OBT-483).** Submitting **is** signing: `created_by` says who and
+  `submitted_at` says when, both stamped by the server, and `submit_request` now refuses any
+  caller who is not the author — the mesa and the Gestor keep reading and editing under
+  GATE-02 D4 and do not sign in the team's name. `tpp_date`, `leader_name` and `leader_date`
+  left the required-at-submission set (`_ALWAYS_REQUIRED`); their columns stay, and
+  `tpp_name` stays demanded because it is the requester the mesa reads on the card — the
+  account that submits may not be the Ponto focal. The prediction above held: the answer
+  changed what the columns *mean*, and none of their shape.
 
 ---
 

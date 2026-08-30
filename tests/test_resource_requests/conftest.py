@@ -9,12 +9,12 @@ link produces.
 Mounting a probe rather than the whole app keeps the module route-free until the issue
 that is supposed to give it routes, and still exercises the real chain.
 
-**The seven capability probes hang off the named aliases, not off
+**The nine capability probes hang off the named aliases, not off
 ``require_capability("…")`` rebuilt here.** Those aliases are what BE-04 onwards will
 annotate a route with, so an alias wired to the wrong capability is a real defect, and a
 probe that built its own dependency would test the factory while leaving the wiring
 unread. ``test_capabilities.py`` asserts that every capability in the map has a probe, so
-the seven cannot quietly become six.
+the nine cannot quietly become eight.
 """
 
 from __future__ import annotations
@@ -28,10 +28,12 @@ from httpx import ASGITransport
 
 from app.api.resource_requests._deps import (
     APP_KEY,
+    CanAdministerFunds,
     CanAllocateFunds,
     CanAssignFund,
     CanEditEvaluation,
     CanEditRequests,
+    CanEndorseRequest,
     CanManageFunds,
     CanMoveBoard,
     CanViewEvaluation,
@@ -84,7 +86,7 @@ def _clear_role_cache():
 
 @pytest.fixture()
 async def rrf_app(db_session):
-    """The app registry row plus its three roles — what ``seed_apps_roles.py`` writes.
+    """The app registry row plus its four roles — what ``seed_apps_roles.py`` writes.
 
     ``auto_approve`` is on because ``20260828_rr02`` turns it on: GATE-02 D1 answered that
     whoever registers gets in, as ``equipe``. The fixture carries the row production has,
@@ -94,7 +96,12 @@ async def rrf_app(db_session):
         db_session, app_key=APP_KEY, name="Resource Request Form", auto_approve=True
     )
 
-    for role_key, label in (("equipe", "Equipe"), ("mesa", "Mesa"), ("gestor", "Gestor")):
+    for role_key, label in (
+        ("equipe", "Equipe"),
+        ("mesa", "Mesa"),
+        ("gestor", "Gestor"),
+        ("lider", "Líder de Base"),
+    ):
         await make_role(db_session, app.id, role_key=role_key, label=label, is_system=True)
 
     return app
@@ -162,6 +169,14 @@ async def client(db_session):
 
     @probe.get("/_probe/cap/allocate_funds")
     async def _probe_allocate_funds(user: CanAllocateFunds) -> dict[str, str]:
+        return {"email": user.email}
+
+    @probe.get("/_probe/cap/endorse_request")
+    async def _probe_endorse_request(user: CanEndorseRequest) -> dict[str, str]:
+        return {"email": user.email}
+
+    @probe.get("/_probe/cap/administer_funds")
+    async def _probe_administer_funds(user: CanAdministerFunds) -> dict[str, str]:
         return {"email": user.email}
 
     test_app = FastAPI()

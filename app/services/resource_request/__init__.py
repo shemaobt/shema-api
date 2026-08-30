@@ -10,6 +10,7 @@ from app.services.resource_request.capabilities import (
     ROLES,
 )
 from app.services.resource_request.create_draft import create_draft
+from app.services.resource_request.endorse_request import endorse_request
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
@@ -35,6 +36,7 @@ __all__ = [
     "allocation_of_fund",
     "append_movement",
     "create_draft",
+    "endorse_request",
     "fund_balances",
     "get_request",
     "holds_capability",
