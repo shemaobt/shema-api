@@ -11,20 +11,31 @@ BE-06 will thread through them.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.resource_request import (
+    RRBudgetLine,
     RRDecision,
     RREvaluation,
     RREvaluationFieldHistory,
     RREvaluationScore,
     RRRequest,
     RRRequestFieldHistory,
+    RRRequestSections,
     RRSnapshot,
 )
+from app.models.resource_request import BudgetLineIn, ChecksIn, RequestDraftIn
 from app.services.resource_request import evaluation_fields, record_evaluation_trail
+from app.services.resource_request._document import document, split
+from app.services.resource_request._trail import (
+    _BUDGET_CELLS,
+    _CHECK_GROUPS,
+    document_fields,
+)
+from app.utils.resource_request_vocabularies import CHECK_VALUES
 from tests.baker import make_user
 from tests.test_resource_requests.conftest import auth_header, grant
 from tests.test_resource_requests.test_requests import (
@@ -42,9 +53,6 @@ async def trail_rows(db_session: AsyncSession, request_id: str) -> list[RRReques
         .order_by(RRRequestFieldHistory.changed_at, RRRequestFieldHistory.field_key)
     )
     return list(rows.scalars().all())
-
-
-# ——— what a save records ————————————————————————————————————————————————————————
 
 
 async def test_an_edit_records_who_changed_what_from_what_to_what(
@@ -189,7 +197,51 @@ async def test_two_saves_read_back_in_order(db_session, client, rrf_app) -> None
     ]
 
 
-# ——— the read surface ————————————————————————————————————————————————————————————
+def a_document() -> dict[str, Any]:
+    """A real ``document()``, built out of a split the way ``update_draft`` builds one."""
+    parts = split(RequestDraftIn.model_validate(draft()))
+    return document(
+        RRRequest(id="r-doc", **parts.spine),
+        RRRequestSections(request_id="r-doc", content=parts.sections),
+        [RRBudgetLine(request_id="r-doc", **line) for line in parts.budget],
+    )
+
+
+def test_every_key_of_a_document_reaches_the_trail() -> None:
+    """``_TABLES`` and ``_CHECK_GROUPS`` are a hand-copy of ``document()``'s own shape, and
+    a key added there and not here would simply never be trailed — silently, which is the
+    one thing D7 must not be.
+
+    Two halves, because either alone is satisfiable by a mistake: the key sets have to
+    agree, and every key has to actually move the flattened output. A tenth key fails the
+    first, a name copied into the wrong table fails the second.
+    """
+    doc = a_document()
+    moved: dict[str, Any] = {
+        "request_type": "treinamento",
+        "currency": "USD",
+        "declaration": not doc["declaration"],
+        "fields": {**doc["fields"], "reg_name": "outro nome"},
+        "langs": [{"name": "Xerente", "code": "xer"}],
+        "team": [{"name": "Bruno", "role": "revisão"}],
+        "chrono": [{"act": "oficina"}],
+        "checks": {**doc["checks"], "teamtype": [CHECK_VALUES["teamtype"][0]]},
+        "budget": [{**doc["budget"][0], "amount": "9.00"}],
+    }
+
+    assert set(doc) == set(moved), "a document key this test was never taught"
+
+    unchanged = document_fields(doc)
+    for key, value in moved.items():
+        assert document_fields({**doc, key: value}) != unchanged, f"{key} moves no trail key"
+
+
+def test_the_two_nested_key_spaces_are_the_dtos_own() -> None:
+    """``checks`` and a budget line carry key spaces of their own, hand-copied for the same
+    reason and closed against the DTOs that define them — a third checkbox group or a
+    fourth budget cell would otherwise be as silent as a tenth document key."""
+    assert set(ChecksIn.model_fields) == set(_CHECK_GROUPS)
+    assert set(BudgetLineIn.model_fields) - {"category_key"} == set(_BUDGET_CELLS)
 
 
 async def test_the_owner_reads_its_own_trail(db_session, client, rrf_app) -> None:
@@ -240,9 +292,6 @@ async def test_the_mesa_reads_any_requests_trail(db_session, client, rrf_app) ->
 
     assert res.status_code == 200
     assert res.json() == []
-
-
-# ——— the avaliação's half, at the service level ——————————————————————————————————
 
 
 async def evaluation_fixture(db_session: AsyncSession, author_id: str) -> RREvaluation:
