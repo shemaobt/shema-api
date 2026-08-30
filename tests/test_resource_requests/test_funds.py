@@ -76,6 +76,27 @@ async def test_a_movement_that_moves_nothing_is_refused(db_session, fund, author
             )
 
 
+async def test_an_amount_that_does_not_fit_the_column_is_refused(db_session, fund, author) -> None:
+    """The BE-05 rule at the ledger's own door, and each shape a refusal rather than a 500.
+
+    A sub-cent amount would be rounded into ``Numeric(14, 2)`` by PostgreSQL and stored as
+    sent by SQLite — a movement that sums differently per dialect. ``NaN`` is the sharper
+    trap: comparing it raises ``InvalidOperation``, which Pydantic does not convert and no
+    handler renders, so without the guard it would be the one input answered with a stack
+    trace.
+    """
+    for amount in (Decimal("10.999"), Decimal("1E+30"), Decimal("NaN")):
+        with pytest.raises(ValidationError):
+            await append_movement(
+                db_session,
+                fund_id=fund.id,
+                kind=RRMovementKind.ALLOCATION,
+                amount=amount,
+                author_id=author.id,
+                reason="não cabe",
+            )
+
+
 async def test_a_movement_against_an_unknown_fund_is_refused(db_session, author) -> None:
     with pytest.raises(UnknownReferenceError):
         await append_movement(
@@ -206,16 +227,20 @@ async def test_the_writers_leave_the_transaction_to_the_caller(db_session, fund,
 # ——— balances are sums, whatever the sequence ————————————————————————————————————
 
 
-async def test_the_balances_agree_with_any_sequence_of_movements(db_session, author) -> None:
-    """The property the DoD asks for: over random sequences, the service's balances equal
+async def test_the_balances_agree_with_any_sequence_of_movements(
+    db_session, client, rrf_app, author
+) -> None:
+    """The property the DoD asks for: over random sequences, the balance endpoint equals
     an independent fold of the same movements.
 
     The fold below is written from the rule's statement — an allocation raises *alocado*,
     a commitment or approval deduction raises *comprometido*, a reversal lowers the bucket
-    of the movement it names — and never from the SQL, so the two can disagree. Amounts
-    are whole numbers because the suite runs on SQLite, which stores ``Numeric`` as float:
-    integers stay exact there, and what is under test is the bucket arithmetic, not
-    decimal storage — the PostgreSQL path exercises real ``numeric``.
+    of the movement it names — and never from the SQL, so the two can disagree. The
+    comparison runs twice, against the service and against ``GET /funds``, so the wire —
+    where ``Decimal`` becomes a string — is held to the same sums. Amounts are whole
+    numbers because the suite runs on SQLite, which stores ``Numeric`` as float: integers
+    stay exact there, and what is under test is the bucket arithmetic, not decimal
+    storage — the PostgreSQL path exercises real ``numeric``.
     """
     rng = random.Random(456)
     fund_ids = ["fundo-a", "fundo-b", "fundo-c"]
@@ -266,6 +291,18 @@ async def test_the_balances_agree_with_any_sequence_of_movements(db_session, aut
         assert balances[fund_id].allocated == expected[fund_id]["allocated"]
         assert balances[fund_id].committed == expected[fund_id]["committed"]
         assert balances[fund_id].available == (
+            expected[fund_id]["allocated"] - expected[fund_id]["committed"]
+        )
+
+    headers = await as_role(db_session, rrf_app, "mesa", "mesa-prop@ledger.test")
+    res = await client.get(FUNDS, headers=headers)
+    assert res.status_code == 200, res.text
+    cards = {card["id"]: card for card in res.json()}
+    assert set(cards) == set(fund_ids)
+    for fund_id in fund_ids:
+        assert Decimal(cards[fund_id]["allocated"]) == expected[fund_id]["allocated"]
+        assert Decimal(cards[fund_id]["committed"]) == expected[fund_id]["committed"]
+        assert Decimal(cards[fund_id]["available"]) == (
             expected[fund_id]["allocated"] - expected[fund_id]["committed"]
         )
 
