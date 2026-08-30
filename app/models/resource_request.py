@@ -38,6 +38,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from app.db.models.resource_request import (
     RRCurrency,
     RRDecision,
+    RRMovementKind,
     RRRequest,
     RRRequestType,
     RRStage,
@@ -426,6 +427,51 @@ class SubmissionOut(RequestOut):
     """
 
     snapshot_id: str
+
+
+class FundOut(BaseModel):
+    """A fund card's server truth: the name and the three figures FE-14 renders.
+
+    ``allocated`` and ``committed`` are sums over the ledger and ``available`` is their
+    difference, all computed by ``fund_balances`` on every read — none of the three is a
+    column anywhere (contract §3.2). ``available`` travels rather than being left to the
+    client because the subtraction is the rule, not presentation, and a second
+    implementation of it is a second place for it to be wrong.
+
+    Money serializes as strings on the wire — Pydantic's own ``Decimal`` handling, kept
+    because a JSON float is exactly the representation the ledger's ``Numeric`` exists to
+    avoid. ``provisional`` is deliberately not here: nothing reads that flag, and a field
+    served to no reader is BE-10's to add with the reader (OBT-471).
+    """
+
+    id: str
+    name: str
+    allocated: Decimal
+    committed: Decimal
+    available: Decimal
+
+
+class MovementOut(BaseModel):
+    """One ledger entry on the wire: what moved, who moved it, when, and why.
+
+    ``created_by``/``created_at``/``reason`` are the row's own authorship — for an
+    ``ALLOCATION`` they *are* GATE-01 D6's "who edited it and when". ``reverses_id``
+    names the movement a compensation undoes, so a history reads as what happened
+    rather than as a net.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    fund_id: str
+    request_id: str | None
+    kind: RRMovementKind
+    amount: Decimal
+    currency: RRCurrency
+    reverses_id: str | None
+    reason: str
+    created_by: str
+    created_at: datetime
 
 
 class RequestSubmissionIn(RequestDraftIn):
