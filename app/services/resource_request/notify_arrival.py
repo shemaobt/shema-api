@@ -65,7 +65,6 @@ async def notify_arrival(
                 template="rr_arrival.html.jinja",
                 app_name=chrome,
                 greeting=watcher.display_name or watcher.email,
-                headline=TITLE,
                 request_name=name,
                 request_type=request.request_type.value,
             )

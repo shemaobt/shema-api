@@ -114,7 +114,6 @@ async def notify_decision(
             template="rr_decision.html.jinja",
             app_name=await product_name(db, app_id),
             greeting=team.display_name or team.email,
-            headline=title,
             request_name=name,
             sentence=sentence,
             team_note=note,
