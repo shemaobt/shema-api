@@ -303,3 +303,51 @@ def findings_block(finding: Finding | None) -> str:
     if finding is None:
         return "(nenhum achado — o contado de volta está completo)"
     return f"- {finding.kind}: {finding.note}"
+
+
+CLOSING_ON_SCREEN = """- End by handing the choice to the screen, not by asking for a spoken \
+answer. This stretch is on screen with its two voices side by side: theirs, in their own \
+language, and the telling in {session_language}. Ask the boundary question above, then in one \
+short sentence tell them they can listen to both and tap the microphone of the voice that has \
+to speak again. Do not ask them to say the answer out loud, and do not offer any other next \
+step — the screen offers exactly those two, and naming a third promises something they cannot \
+do. Remaining findings wait for the next round. Never a checklist, never a speech."""
+
+CLOSING_PLAIN = """- End with exactly one answerable question or invitation. Remaining \
+findings wait for the next round. Never a checklist, never a speech."""
+#: Word for word what this prompt closed with before the screen existed. A turn with no finding
+#: at all affirms and names the badge; both other closings explain themselves in terms of *this
+#: finding*, and there is none — `findings_block` is saying so in the same prompt.
+
+CLOSING_SPOKEN = """- End with exactly one answerable question or invitation, and let them \
+answer in words. This finding does not land on one stretch, so there is no stretch on screen \
+and no two voices to choose between — the next conversational turn will respond to what they \
+say. Remaining findings wait for the next round. Never a checklist, never a speech."""
+
+
+def closing_block(finding: Finding | None) -> str:
+    """How the Speaker is told to end this turn: handing to the screen, or asking out loud.
+
+    Chosen here rather than by the Speaker reading a branch, because the finding carries the
+    deciding fact and the prompt does not: `findings_block` sends kind and note, never the
+    address. A prompt that branched would be asking a model not to promise a choice the screen
+    will not offer; injecting one closing means the wrong instruction is never in front of it.
+
+    The deciding fact is not whether the finding has an address — it is whether a boundary
+    question was asked. `unclear` names a stretch and still asks only for that piece again, and
+    the screen exists to answer *"is it in your recording, or did it come in with the telling?"*.
+    Where that question is not put, there is no choice to hand over.
+
+    Returned with `{session_language}` still in it, for whoever fills the template to
+    substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here
+    would mean two defaults that agree by luck, and the day a caller passes a language to the
+    turn the closing would go on saying Portuguese. It is not left as a `{{...}}` placeholder
+    because `render` fills in one pass: one arriving inside an injected value is never seen
+    again and reaches the model as literal braces.
+    """
+    if finding is None:
+        return CLOSING_PLAIN
+    asks_where_the_error_lives = (
+        finding.segment_id is not None and finding.kind not in EVIDENCE_LIMIT_KINDS
+    )
+    return CLOSING_ON_SCREEN if asks_where_the_error_lives else CLOSING_SPOKEN

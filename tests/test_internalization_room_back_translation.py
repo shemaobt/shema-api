@@ -5,13 +5,18 @@ from typing import Any
 import pytest
 
 from app.core.config import Settings
+from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
+    CLOSING_ON_SCREEN,
+    CLOSING_PLAIN,
+    CLOSING_SPOKEN,
     BackTranslationState,
     Finding,
     FindingKind,
     analyse_telling_back,
+    closing_block,
     findings_block,
     played_ranges_cover_clip,
     segments_block,
@@ -180,8 +185,10 @@ def test_no_findings_reads_as_complete() -> None:
 async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> None:
     agent = patch_speaker("No que você me contou, Orfa não apareceu.")
 
+    finding = Finding(kind=FindingKind.MISSING, note="Orfa")
     outcome = await run_verdict_turn(
-        findings_text=findings_block(Finding(kind=FindingKind.MISSING, note="Orfa")),
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
         scope=P,
         pericope_num=P,
         messages=[],
@@ -524,3 +531,169 @@ def test_a_legacy_client_without_a_report_passes() -> None:
 
 def test_an_empty_report_with_a_duration_does_not_pass() -> None:
     assert not played_ranges_cover_clip([[5000, 5000]], 61000)
+
+
+# ---------------------------------------------------------------------------
+# The verdict hands the choice to the screen — S3c
+# ---------------------------------------------------------------------------
+
+
+def _on_a_stretch(kind: FindingKind, note: str = "Orfa") -> Finding:
+    return Finding(kind=kind, note=note, segment_id="segmento-2")
+
+
+async def _verdict_for(finding: Finding, patch_speaker) -> str:
+    """The system prompt the Speaker was actually handed for this finding.
+
+    Asserted against the prompt rather than the answer: what must never happen is the model
+    *seeing* an instruction to promise a choice the screen will not offer. Reading the draft
+    back would only ever sample one generation of it.
+    """
+    agent = patch_speaker("No que você me contou, algo não apareceu.")
+    await run_verdict_turn(
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    return str(agent.seen[0])
+
+
+@pytest.mark.asyncio
+async def test_a_finding_on_a_stretch_hands_the_choice_to_the_screen(patch_speaker) -> None:
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.ADDITION), patch_speaker)
+
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") in spoken_to
+    assert CLOSING_SPOKEN not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_a_finding_with_no_stretch_keeps_asking_out_loud(patch_speaker) -> None:
+    """Scenario 4, the middle of the slice.
+
+    Without a stretch there is nothing on screen to choose between, and a turn that offered
+    the choice anyway would promise a gesture the team cannot make.
+    """
+    homeless = Finding(kind=FindingKind.ADDITION, note="Orfa", segment_id=None)
+
+    spoken_to = await _verdict_for(homeless, patch_speaker)
+
+    assert CLOSING_SPOKEN in spoken_to
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_speaker) -> None:
+    """`unclear` names a stretch and still asks nothing to hand over.
+
+    Its instruction is to ask for that piece again, with no boundary question — and the
+    screen exists to answer a boundary question. So the deciding fact is not whether the
+    finding has an address, it is whether one was asked.
+    """
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.UNCLEAR), patch_speaker)
+
+    assert CLOSING_SPOKEN in spoken_to
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speaker) -> None:
+    """Scenario 2. The one law, which the new closing may not loosen along with the rest."""
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.MEANING_CHANGE), patch_speaker)
+
+    assert "never know what their recording says" in spoken_to
+    assert "o que você me contou" in spoken_to
+    assert "Never mention the map, findings, analysis" in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_insufficient_evidence_is_never_the_teams_failure(patch_speaker) -> None:
+    """Scenario 3, first half: the instruction survives the rewrite."""
+    thin = Finding(kind=FindingKind.INSUFFICIENT_EVIDENCE, note="pouco contado")
+
+    spoken_to = await _verdict_for(thin, patch_speaker)
+
+    assert "never their failure and never a difference" in spoken_to
+    assert "too little to check is not a clean check" in spoken_to
+
+
+def test_thin_evidence_is_not_read_as_a_clean_check() -> None:
+    """Scenario 3, second half: and it does not reach `checked` either."""
+    state = BackTranslationState(
+        scope=P,
+        evidence_sufficient=False,
+        findings=[Finding(kind=FindingKind.INSUFFICIENT_EVIDENCE, note="pouco contado")],
+    )
+
+    assert (state.current_finding is None and state.evidence_sufficient) is False
+
+
+@pytest.mark.asyncio
+async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> None:
+    """A row saved before the slot existed would swallow the closing without a word.
+
+    `get_prompt_text` prefers the stored row, and `render` drops a value whose placeholder is
+    not in the template — so the turn would go on asking for a spoken answer while the screen
+    waits for a tap, and nothing anywhere would say so.
+    """
+    patch_speaker("No que você me contou, algo não apareceu.")
+    stored_before_this_slot_existed = SPEAKER.replace("{{CLOSING}}", "")
+
+    with pytest.raises(ValidationError):
+        await run_verdict_turn(
+            findings_text=findings_block(_on_a_stretch(FindingKind.ADDITION)),
+            closing=closing_block(_on_a_stretch(FindingKind.ADDITION)),
+            scope=P,
+            pericope_num=P,
+            messages=[],
+            speaker_prompt=stored_before_this_slot_existed,
+            validator_prompt=VALIDATOR,
+            settings=_settings(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_with_no_finding_is_not_told_about_one(patch_speaker) -> None:
+    """The closing may not talk about a finding on the turn that has none.
+
+    `findings_block` is saying "(nenhum achado)" in the same prompt, and this is the turn that
+    only affirms and names the badge. It closes the way it always did.
+    """
+    spoken_to = await _verdict_for(None, patch_speaker)
+
+    assert CLOSING_PLAIN in spoken_to
+    assert CLOSING_SPOKEN not in spoken_to
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker) -> None:
+    """One source for the language, not two defaults that agree by luck.
+
+    The closing names the bridge language out loud, and the template names it a few lines
+    above. If they came from different places, the day a caller passes a language to the turn
+    the closing would go on saying Portuguese in an English prompt.
+    """
+    agent = patch_speaker("No que você me contou, algo não apareceu.")
+    finding = _on_a_stretch(FindingKind.ADDITION)
+
+    await run_verdict_turn(
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        session_language="Swahili",
+        settings=_settings(),
+    )
+
+    spoken_to = str(agent.seen[0])
+    assert "the telling in Swahili" in spoken_to
+    assert "{session_language}" not in spoken_to
+    assert "the telling in Portuguese" not in spoken_to
