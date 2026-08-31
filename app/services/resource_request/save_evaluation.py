@@ -17,8 +17,10 @@ from app.services.resource_request._evaluation import (
     latest_snapshot,
     load_evaluation,
 )
+from app.services.resource_request._notices import Letter, post
 from app.services.resource_request._transition import guard_stage_entry, transition_stage
 from app.services.resource_request.get_request import get_request
+from app.services.resource_request.notify_decision import notify_decision
 
 
 async def save_evaluation(
@@ -49,6 +51,15 @@ async def save_evaluation(
     twice or writing a second event: the transition is a no-op there, and only the
     decision itself is recorded. The transition carries ``evaluation_id``, so the trail
     tells a decision's move from a drag.
+
+    **The team is told here, and only here** (GATE-03 D5, BE-13). The trigger is this
+    write and never a column transition: a decision implies a column, a column never
+    implies a decision, so a card the mesa drags by hand notifies nobody. The in-app notice
+    is staged inside the same transaction as the decision — it commits with it or not at
+    all — and the e-mail leaves **after** that commit, best-effort, so a provider outage
+    cannot revert what the mesa decided. Re-saving the same decision re-fires nothing, for
+    the same reason the transition is a no-op: ``deciding`` is ``None`` unless this save is
+    the one that records it.
 
     **A recorded decision is not rewritten here.** Scores, comments, the ata and the
     ``team_note`` stay editable afterwards — D7 audits exactly those edits, through BE-15 —
@@ -85,9 +96,7 @@ async def save_evaluation(
 
     if payload.attendees:
         found = set(
-            (
-                await db.execute(select(User.id).where(User.id.in_(payload.attendees)))
-            ).scalars()
+            (await db.execute(select(User.id).where(User.id.in_(payload.attendees)))).scalars()
         )
         missing = sorted(set(payload.attendees) - found)
         if missing:
@@ -137,6 +146,7 @@ async def save_evaluation(
     for attendee in payload.attendees:
         db.add(RREvaluationAttendee(evaluation_id=evaluation.id, user_id=attendee))
 
+    letters: list[Letter] = []
     if deciding is not None:
         evaluation.decision = deciding
         evaluation.evaluated_at = datetime.now(UTC)
@@ -150,7 +160,17 @@ async def save_evaluation(
             evaluation_id=evaluation.id,
         )
 
+        letters = await notify_decision(
+            db,
+            request=request,
+            decision=deciding,
+            team_note=evaluation.team_note,
+            actor_id=user.id,
+        )
+
     await db.commit()
+
+    await post(letters)
 
     record = await load_evaluation(db, snapshot.id, request.request_type.value)
     assert record is not None

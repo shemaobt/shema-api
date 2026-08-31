@@ -50,9 +50,7 @@ async def move_request(
 
 
 @router.get("/requests/{request_id}/transitions")
-async def request_transitions(
-    request_id: str, user: CanManageFunds, db: Db
-) -> list[TransitionOut]:
+async def request_transitions(request_id: str, user: CanManageFunds, db: Db) -> list[TransitionOut]:
     """The request's board history, oldest first — decisions and drags, told apart."""
     rows = await service.transitions_of_request(db, request_id)
     return [TransitionOut.model_validate(row) for row in rows]

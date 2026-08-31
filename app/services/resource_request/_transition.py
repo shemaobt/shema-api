@@ -83,9 +83,7 @@ async def _unreversed_deduction(db: AsyncSession, request_id: str) -> RRFundMove
     no-op), so deductions and reversals alternate; the newest is read defensively rather
     than assumed alone.
     """
-    reversed_ids = select(RRFundMovement.reverses_id).where(
-        RRFundMovement.reverses_id.is_not(None)
-    )
+    reversed_ids = select(RRFundMovement.reverses_id).where(RRFundMovement.reverses_id.is_not(None))
     stmt = (
         select(RRFundMovement)
         .where(

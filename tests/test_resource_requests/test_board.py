@@ -237,9 +237,7 @@ async def test_approving_with_no_fund_fails_decidably(db_session, client, rrf_ap
 
     assert res.status_code == 409
     assert "fund" in res.json()["detail"]
-    request = (
-        await db_session.execute(select(RRRequest).where(RRRequest.id == card))
-    ).scalar_one()
+    request = (await db_session.execute(select(RRRequest).where(RRRequest.id == card))).scalar_one()
     assert request.stage.value == "triagem"
     assert (await db_session.execute(select(RRFundMovement))).scalars().all() == []
     assert (await db_session.execute(select(RRBoardTransition))).scalars().all() == []
@@ -248,9 +246,7 @@ async def test_approving_with_no_fund_fails_decidably(db_session, client, rrf_ap
 # ——— a regra de ouro: os vetores do FE-15 contra a API ———————————————————————————
 
 
-async def test_aprovar_compromete_exatamente_o_valor_do_pedido(
-    db_session, client, rrf_app
-) -> None:
+async def test_aprovar_compromete_exatamente_o_valor_do_pedido(db_session, client, rrf_app) -> None:
     ids, mesa = await panel(db_session, client, rrf_app)
 
     res = await move(client, mesa, ids[2], "aprovado")
@@ -512,9 +508,7 @@ async def test_uma_falha_entre_o_razao_e_a_etapa_desfaz_os_dois(
         await service_move(db_session, card, RRStage.APROVADO, mesa_user, APP_KEY)
     await db_session.rollback()
 
-    request = (
-        await db_session.execute(select(RRRequest).where(RRRequest.id == card))
-    ).scalar_one()
+    request = (await db_session.execute(select(RRRequest).where(RRRequest.id == card))).scalar_one()
     assert request.stage.value == "triagem"
     assert (await db_session.execute(select(RRFundMovement))).scalars().all() == []
     assert (await db_session.execute(select(RRBoardTransition))).scalars().all() == []
