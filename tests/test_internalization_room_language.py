@@ -173,6 +173,7 @@ async def test_the_service_refuses_a_language_the_room_does_not_speak(
 def test_a_locale_the_room_does_not_speak_is_not_quietly_narrowed_to_one_it_does() -> None:
     assert normalize("pt-BR") == "pt"
     assert normalize("PT") == "pt"
-    assert normalize("es-419") is None
+    assert normalize("es-419") == "es"
     assert normalize("ja") is None
+    assert normalize("fr-CA") is None
     assert normalize(None) is None

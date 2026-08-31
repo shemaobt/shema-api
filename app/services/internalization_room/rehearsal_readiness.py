@@ -21,6 +21,7 @@ from app.services.internalization_room.oral_decision import (
 _READINESS_CUE = {
     "pt": "Agora o aplicativo vai mostrar onde gravar o primeiro ensaio na língua de vocês.",
     "en": "The app will now show you where to record the first rehearsal in your own language.",
+    "es": "Ahora la aplicación les va a mostrar dónde grabar el primer ensayo en su lengua.",
 }
 _CONSENT_QUESTION = {
     "pt": (
@@ -31,6 +32,7 @@ _CONSENT_QUESTION = {
         "Would you like to go on now and record the first rehearsal in your own language? "
         "Say yes or no."
     ),
+    "es": ("¿Quieren seguir ahora y grabar el primer ensayo en su lengua? Digan sí o no."),
 }
 _CONSENT_DECLINED = {
     "pt": (
@@ -38,6 +40,9 @@ _CONSENT_DECLINED = {
         "Vocês decidem quando estiverem prontos."
     ),
     "en": ("That is fine. We can keep talking and rehearsing. You decide when you are ready."),
+    "es": (
+        "Está bien. Podemos seguir conversando y ensayando. Ustedes deciden cuándo estén listos."
+    ),
 }
 
 

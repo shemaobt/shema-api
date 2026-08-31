@@ -150,6 +150,9 @@ _PRACTICE_PROMPT = {
         "Now rehearse this scene together in your own language. "
         "When you have finished, just say: done."
     ),
+    "es": (
+        "Ahora ensayen juntos esta escena en su lengua. Cuando terminen, digan solamente: listo."
+    ),
 }
 
 

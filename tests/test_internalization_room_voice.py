@@ -85,7 +85,11 @@ async def test_the_delivery_is_tuned_rather_than_left_to_the_defaults() -> None:
     client = _client()
 
     await synthesize_facilitator_speech(
-        "Eu escuto até o fim.", client=client, store=MemoryStore(), settings=_settings()
+        "Eu escuto até o fim.",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
+        language="pt",
     )
 
     tuning = client.post.await_args.kwargs["json"]["voice_settings"]
@@ -99,10 +103,18 @@ async def test_a_repeated_line_is_never_bought_twice() -> None:
     settings = _settings()
 
     _, first = await synthesize_facilitator_speech(
-        "Eu escuto até o fim.", client=client, store=store, settings=settings
+        "Eu escuto até o fim.",
+        client=client,
+        store=store,
+        settings=settings,
+        language="pt",
     )
     _, second = await synthesize_facilitator_speech(
-        "Eu escuto até o fim.", client=client, store=store, settings=settings
+        "Eu escuto até o fim.",
+        client=client,
+        store=store,
+        settings=settings,
+        language="pt",
     )
 
     assert (first, second) == (False, True)
@@ -113,7 +125,11 @@ async def test_a_cold_process_still_finds_the_line_in_the_bucket() -> None:
     """The old in-process cache started empty on every worker and every deploy."""
     warm = MemoryStore()
     await synthesize_facilitator_speech(
-        "A sala continua aqui.", client=_client(), store=warm, settings=_settings()
+        "A sala continua aqui.",
+        client=_client(),
+        store=warm,
+        settings=_settings(),
+        language="pt",
     )
 
     cold = MemoryStore()
@@ -121,7 +137,11 @@ async def test_a_cold_process_still_finds_the_line_in_the_bucket() -> None:
     client = _client()
 
     _, cached = await synthesize_facilitator_speech(
-        "A sala continua aqui.", client=client, store=cold, settings=_settings()
+        "A sala continua aqui.",
+        client=client,
+        store=cold,
+        settings=_settings(),
+        language="pt",
     )
 
     assert cached is True
@@ -133,13 +153,18 @@ async def test_retuning_the_voice_does_not_serve_the_old_delivery() -> None:
     client = _client(_ok(b"firme"), _ok(b"mais-solto"))
 
     await synthesize_facilitator_speech(
-        "Vamos juntos.", client=client, store=store, settings=_settings()
+        "Vamos juntos.",
+        client=client,
+        store=store,
+        settings=_settings(),
+        language="pt",
     )
     speech, cached = await synthesize_facilitator_speech(
         "Vamos juntos.",
         client=client,
         store=store,
         settings=_settings(internalization_room_voice_stability=0.9),
+        language="pt",
     )
 
     assert cached is False

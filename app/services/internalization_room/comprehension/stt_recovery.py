@@ -47,6 +47,10 @@ _REDUCE_BURDEN = {
         "That was hard to hear. Would you rather try with one short question, "
         "or leave this point kept for Refine?"
     ),
+    "es": (
+        "Costó oír bien. ¿Prefieren intentarlo con una pregunta corta, "
+        "o dejar este punto guardado para Refine?"
+    ),
 }
 
 

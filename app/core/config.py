@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     #: Brazilian-cloned voice reading English is the failure ``platform/voices.py`` argues
     #: against at length.
     internalization_room_voice_id: str = "83Nae6GFQiNslSbuzmE7"
-    internalization_room_voice_id_en: str = "gfRt6Z3Z8aTbpLfexQ7N"
+    internalization_room_voice_id_en: str = "x52Gqgso2pdbdr7KngsJ"
+    internalization_room_voice_id_es: str = "fYypSok4m8xKqKsDwS7O"
     #: What a caller that names no language gets. Not "the language the room speaks" any
     #: more — the app names that on the session, because it is the tablet that knows which
     #: language the team in front of it reads its own settings in.

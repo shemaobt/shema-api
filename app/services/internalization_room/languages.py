@@ -16,7 +16,7 @@ line, because silence is the one outcome worse than the wrong language.
 
 from __future__ import annotations
 
-ROOM_LANGUAGES: tuple[str, ...] = ("en", "pt")
+ROOM_LANGUAGES: tuple[str, ...] = ("en", "es", "pt")
 
 FLOOR = "en"
 

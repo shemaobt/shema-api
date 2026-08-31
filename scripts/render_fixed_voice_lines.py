@@ -41,9 +41,12 @@ MANIFEST = "manifest.json"
 #: Lines the app plays outside a turn: they are not fail-safes and do not live in the prompt,
 #: but they must be in the bundle, because the room says them before it can do anything at all.
 #:
-#: `sem_conexao` and `toque_para_comecar` ship beside them and are deliberately absent here.
-#: Their audio was rendered before this script existed and their wording was never written
-#: down, so declaring a guess would make the next render overwrite approved audio with it.
+#: `sem_conexao` and `toque_para_comecar` are absent from Portuguese and only from Portuguese.
+#: Their Portuguese audio was rendered before this script existed and their wording was never
+#: written down, so declaring a guess here would make the next render overwrite approved audio
+#: with it. The other languages have no approved audio to overwrite, so theirs is written here
+#: like any other line — a room that cannot say it has no connection, or cannot invite a team
+#: to begin, is a room that opens in silence.
 #:
 #: A language with none written renders none, rather than borrowing another language's words.
 STANDALONE: dict[str, dict[str, str]] = {
@@ -60,6 +63,12 @@ STANDALONE: dict[str, dict[str, str]] = {
         ),
     },
     "en": {
+        "sem_conexao": (
+            "I cannot reach the room right now. "
+            "It is not anything you did — we just have no connection. "
+            "We can wait a moment and try again."
+        ),
+        "toque_para_comecar": ("Whenever you are ready, touch the circle and we begin."),
         "gravacao_presa": (
             "There is a recording of yours I have not been able to store yet. "
             "It is not lost, it is here with me. "
@@ -69,6 +78,24 @@ STANDALONE: dict[str, dict[str, str]] = {
             "I need to hear you to work, and the microphone is switched off for me. "
             "Ask someone to allow the microphone in this tablet's settings. "
             "Until then I cannot carry on."
+        ),
+    },
+    "es": {
+        "sem_conexao": (
+            "No puedo llegar a la sala en este momento. "
+            "No es nada que ustedes hayan hecho — simplemente no hay conexión. "
+            "Podemos esperar un momento e intentarlo de nuevo."
+        ),
+        "toque_para_comecar": ("Cuando estén listos, toquen el círculo y empezamos."),
+        "gravacao_presa": (
+            "Hay una grabación de ustedes que todavía no he podido guardar. "
+            "No se perdió, está aquí conmigo. "
+            "Pídanle a alguien que le eche un vistazo cuando pueda."
+        ),
+        "microfone": (
+            "Necesito oírlos para trabajar, y el micrófono está apagado para mí. "
+            "Pídanle a alguien que permita el micrófono en los ajustes de esta tableta. "
+            "Mientras tanto no puedo seguir."
         ),
     },
 }

@@ -14,7 +14,7 @@ that adding a language is one entry rather than a search for every place a voice
 from __future__ import annotations
 
 from app.core.config import Settings
-from app.services.internalization_room.languages import FLOOR
+from app.core.exceptions import ValidationError
 
 
 def room_voices(settings: Settings) -> dict[str, str]:
@@ -22,10 +22,19 @@ def room_voices(settings: Settings) -> dict[str, str]:
     return {
         "pt": settings.internalization_room_voice_id,
         "en": settings.internalization_room_voice_id_en,
+        "es": settings.internalization_room_voice_id_es,
     }
 
 
 def voice_for(language: str, *, settings: Settings) -> str:
-    """The voice for one language, falling back to the floor's rather than to silence."""
-    voices = room_voices(settings)
-    return voices.get(language) or voices[FLOOR]
+    """The voice for one language.
+
+    Refuses a language with no voice of its own instead of borrowing another's, which is the
+    stance ``platform/voices.py`` takes and for the same reason: a voice keeps its accent in
+    any language it speaks, so a borrowed one does not make the room speak that language — it
+    makes it speak that language wrongly, to a team that cannot tell us so.
+    """
+    voice = room_voices(settings).get(language)
+    if not voice:
+        raise ValidationError(f"No voice configured for the room in {language!r}")
+    return voice

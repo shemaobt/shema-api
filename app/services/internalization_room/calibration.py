@@ -281,6 +281,10 @@ _CALIBRATION_QUESTION = {
         "When we work through the passages, which suits you better: "
         "telling it back in your own words, or one short question at a time?"
     ),
+    "es": (
+        "Cuando trabajemos los pasajes, ¿qué les queda mejor: "
+        "contarlo con sus propias palabras, o recibir una pregunta corta a la vez?"
+    ),
 }
 
 _CALIBRATION_ACKNOWLEDGEMENT: dict[str, dict[BridgeMode, str]] = {
@@ -310,6 +314,20 @@ _CALIBRATION_ACKNOWLEDGEMENT: dict[str, dict[BridgeMode, str]] = {
         BridgeMode.ADAPTIVE: (
             "Good. We will start simply and adjust how long the questions are as we go. "
             "Now let us look at the book as a whole."
+        ),
+    },
+    "es": {
+        BridgeMode.FULL_RETELL: (
+            "Bien. En los pasajes van a poder contarlo con sus propias palabras. "
+            "Ahora vamos al panorama del libro."
+        ),
+        BridgeMode.GUIDED_MICROCHECKS: (
+            "Bien. En los pasajes voy a hacer una pregunta corta a la vez. "
+            "Ahora vamos al panorama del libro."
+        ),
+        BridgeMode.ADAPTIVE: (
+            "Bien. Vamos a empezar de un modo sencillo y ajustamos el tamaño de las "
+            "preguntas cuando haga falta. Ahora vamos al panorama del libro."
         ),
     },
 }
