@@ -63,6 +63,8 @@ async def test_an_over_budget_draft_fails_safe_even_with_a_passing_verdict(
     monkeypatch.setattr(module, "call_agent", agent)
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="a fome chegou",
         coverage_state={},
         messages=[{"role": "guide", "text": "abertura"}],
@@ -87,6 +89,8 @@ async def test_the_budget_is_off_unless_asked_for(
     monkeypatch.setattr(module, "call_agent", agent)
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="a fome chegou",
         coverage_state={},
         messages=[],

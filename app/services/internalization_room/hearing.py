@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.core.config import Settings
 from app.core.exceptions import ValidationError
+from app.services.internalization_room.languages import FLOOR
 from app.services.translation_helper.transcribe_audio import (
     transcribe_audio,
     transcribe_audio_detailed,
@@ -14,7 +15,11 @@ from app.services.translation_helper.transcribe_audio import (
 
 logger = logging.getLogger(__name__)
 
-_BRIDGE_LANGUAGE_CODES = {"pt", "por"}
+_BRIDGE_LANGUAGE_CODES = {
+    "pt": {"pt", "por"},
+    "en": {"en", "eng"},
+    "es": {"es", "spa"},
+}
 
 _BRACKETED = re.compile(r"\[[^\]]{0,60}\]|[♪♫]")
 _ONLY_PARENTHETICAL = re.compile(r"^\s*\([^)]{0,60}\)\s*$")
@@ -42,15 +47,21 @@ def spoken_words_only(text: str) -> str:
 class HeardSpeech(BaseModel):
     """A transcript plus the trusted transport facts the comprehension flow reads.
 
-    ``mother_tongue`` intervenes only at a deliberately high threshold (0.98) and only on
-    substantial speech, so an imperfect ordinary Portuguese detection cannot derail the
-    conversation — and it is never a claim that the app understood the content.
+    ``mother_tongue`` means the team spoke something other than the language *this session*
+    is being run in, which is what ``bridge_language`` carries. It used to mean "not
+    Portuguese", and a room speaking any other language would have met every substantial
+    utterance with the off-bridge fail-safe and never called the Guide at all.
+
+    It intervenes only at a deliberately high threshold (0.98) and only on substantial
+    speech, so an imperfect ordinary detection cannot derail the conversation — and it is
+    never a claim that the app understood the content.
     ``uncertain`` is used only to under-count: an uncertain transcript is repeated, never
     judged as misunderstanding; the threshold is lower for one- or two-word answers so a
     valid name in guided mode is not punished merely for being unfamiliar.
     """
 
     text: str = ""
+    bridge_language: str = FLOOR
     language_code: str | None = None
     language_probability: float | None = None
     transcript_confidence: float | None = None
@@ -60,10 +71,11 @@ class HeardSpeech(BaseModel):
         words = self.text.split()
         substantial = len(words) >= 3 or len(self.text.strip()) >= 16
         detected = (self.language_code or "").strip().lower().split("-")[0]
+        spoken = _BRIDGE_LANGUAGE_CODES.get(self.bridge_language, _BRIDGE_LANGUAGE_CODES[FLOOR])
         return bool(
             substantial
             and detected
-            and detected not in _BRIDGE_LANGUAGE_CODES
+            and detected not in spoken
             and self.language_probability is not None
             and self.language_probability >= 0.98
         )
@@ -113,18 +125,25 @@ async def heard_speech(
     *,
     filename: str | None = None,
     mime_type: str | None = None,
+    language: str = FLOOR,
     settings: Settings | None = None,
 ) -> HeardSpeech:
-    """`heard`, keeping the provider metadata the comprehension flow needs."""
+    """`heard`, keeping the provider metadata the comprehension flow needs.
+
+    ``language`` is the session's, and it is only ever the yardstick: the transcriber is
+    still left to detect what it actually heard, because the whole point of the measurement
+    is to notice a team that has slipped out of the language the room is speaking.
+    """
     try:
         result = await transcribe_audio_detailed(
             audio, filename=filename, mime_type=mime_type, settings=settings
         )
     except ValidationError as failure:
         logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
-        return HeardSpeech()
+        return HeardSpeech(bridge_language=language)
     return HeardSpeech(
         text=spoken_words_only(result.text),
+        bridge_language=language,
         language_code=result.language_code,
         language_probability=result.language_probability,
         transcript_confidence=result.transcript_confidence,

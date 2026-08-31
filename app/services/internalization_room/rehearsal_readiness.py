@@ -12,32 +12,63 @@ import re
 import unicodedata
 
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.languages import FLOOR
 from app.services.internalization_room.oral_decision import (
     oral_clause_is_non_committal,
     oral_utterance_is_interrogative,
 )
 
-REHEARSAL_READINESS_CUE = (
-    "Agora o aplicativo vai mostrar onde gravar o primeiro ensaio na língua de vocês."
-)
-REHEARSAL_CONSENT_QUESTION = (
-    "Vocês querem seguir agora para gravar o primeiro ensaio na língua de vocês? Digam sim ou não."
-)
-REHEARSAL_CONSENT_DECLINED_LINE = (
-    "Tudo bem. Podemos continuar conversando e ensaiando. Vocês decidem quando estiverem prontos."
-)
+_READINESS_CUE = {
+    "pt": "Agora o aplicativo vai mostrar onde gravar o primeiro ensaio na língua de vocês.",
+    "en": "The app will now show you where to record the first rehearsal in your own language.",
+}
+_CONSENT_QUESTION = {
+    "pt": (
+        "Vocês querem seguir agora para gravar o primeiro ensaio na língua de vocês? "
+        "Digam sim ou não."
+    ),
+    "en": (
+        "Would you like to go on now and record the first rehearsal in your own language? "
+        "Say yes or no."
+    ),
+}
+_CONSENT_DECLINED = {
+    "pt": (
+        "Tudo bem. Podemos continuar conversando e ensaiando. "
+        "Vocês decidem quando estiverem prontos."
+    ),
+    "en": ("That is fine. We can keep talking and rehearsing. You decide when you are ready."),
+}
 
 
 def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", value)).strip().casefold()
 
 
+def rehearsal_readiness_cue(language: str = FLOOR) -> str:
+    return _READINESS_CUE.get(language, _READINESS_CUE[FLOOR])
+
+
+def rehearsal_consent_question(language: str = FLOOR) -> str:
+    return _CONSENT_QUESTION.get(language, _CONSENT_QUESTION[FLOOR])
+
+
+def rehearsal_consent_declined_line(language: str = FLOOR) -> str:
+    return _CONSENT_DECLINED.get(language, _CONSENT_DECLINED[FLOOR])
+
+
 def is_exact_rehearsal_consent_question(text: str) -> bool:
-    return _normalize(text) == _normalize(REHEARSAL_CONSENT_QUESTION)
+    """Whether a line the room already said was the consent question, in any language.
+
+    Any language's and not this session's, because the text being matched was written on an
+    earlier turn: matching only the current language would make the room stop recognising a
+    question it had itself just asked.
+    """
+    return _normalize(text) in {_normalize(said) for said in _CONSENT_QUESTION.values()}
 
 
 def is_exact_rehearsal_readiness_cue(text: str) -> bool:
-    return _normalize(text) == _normalize(REHEARSAL_READINESS_CUE)
+    return _normalize(text) in {_normalize(said) for said in _READINESS_CUE.values()}
 
 
 def _normalize_decision(value: str) -> str:

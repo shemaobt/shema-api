@@ -5,14 +5,15 @@ modest adaptive track at the one-shot boundary and the Voice never re-offers the
 """
 
 from app.services.internalization_room.calibration import (
-    BRIDGE_CALIBRATION_QUESTION,
     BridgeMode,
     bridge_calibration_acknowledgement,
+    bridge_calibration_question,
     is_selected_bridge_mode,
     resolve_bridge_mode_for_turn,
     resolve_initial_calibration,
     resolve_one_shot_calibration,
 )
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 
 
 def test_a_clear_full_retell_preference_is_explicit() -> None:
@@ -127,13 +128,35 @@ def test_only_selected_modes_pass_the_intake_boundary() -> None:
 
 
 def test_the_menu_offers_methods_not_ability_labels() -> None:
-    lowered = BRIDGE_CALIBRATION_QUESTION.lower()
+    lowered = bridge_calibration_question("pt").lower()
     for label in ("nível", "básico", "avançado", "fraco", "fluente"):
         assert label not in lowered
 
 
 def test_every_acknowledgement_is_fixed_and_moves_to_the_panorama() -> None:
     for mode in (BridgeMode.FULL_RETELL, BridgeMode.GUIDED_MICROCHECKS, BridgeMode.ADAPTIVE):
-        line = bridge_calibration_acknowledgement(mode)
+        line = bridge_calibration_acknowledgement(mode, "pt")
         assert line.startswith("Certo.")
         assert "panorama do livro" in line
+
+
+def test_the_method_choice_is_asked_and_answered_in_every_language_the_room_claims() -> None:
+    asked = {spoken: bridge_calibration_question(spoken) for spoken in ROOM_LANGUAGES}
+
+    assert len(set(asked.values())) == len(ROOM_LANGUAGES), (
+        "um idioma reivindicado caiu na pergunta de outro: a equipe escolhe o método "
+        f"ouvindo uma frase que não é da língua da sessão — {asked}"
+    )
+    for spoken in ROOM_LANGUAGES:
+        said = {
+            bridge_calibration_acknowledgement(mode, spoken)
+            for mode in (
+                BridgeMode.FULL_RETELL,
+                BridgeMode.GUIDED_MICROCHECKS,
+                BridgeMode.ADAPTIVE,
+            )
+        }
+        assert len(said) == 3, (
+            f"as três respostas caíram para a mesma frase em {spoken!r}: a equipe escolhe "
+            "um método e ouve de volta a confirmação de outro"
+        )

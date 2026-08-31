@@ -52,7 +52,11 @@ async def test_the_rooms_configured_voice_is_the_one_that_speaks() -> None:
     store = MemoryStore()
 
     speech, cached = await synthesize_facilitator_speech(
-        "Que bom ter vocês aqui.", client=client, store=store, settings=_settings()
+        "Que bom ter vocês aqui.",
+        language="pt",
+        client=client,
+        store=store,
+        settings=_settings(),
     )
 
     assert speech.audio == b"audio"
@@ -65,7 +69,11 @@ async def test_the_language_is_stated_rather_than_guessed() -> None:
     client = _client()
 
     await synthesize_facilitator_speech(
-        "Vamos contar de novo?", client=client, store=MemoryStore(), settings=_settings()
+        "Vamos contar de novo?",
+        language="pt",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
     )
 
     body = client.post.await_args.kwargs["json"]
@@ -143,6 +151,7 @@ async def test_a_different_voice_id_is_honoured() -> None:
 
     await synthesize_facilitator_speech(
         "Outra voz.",
+        language="pt",
         client=client,
         store=MemoryStore(),
         settings=_settings(internalization_room_voice_id="OtherVoiceId123"),

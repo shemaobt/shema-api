@@ -25,9 +25,9 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.calibration import (
-    BRIDGE_CALIBRATION_QUESTION,
     BridgeMode,
     bridge_calibration_acknowledgement,
+    bridge_calibration_question,
     resolve_bridge_mode_for_turn,
     resolve_one_shot_calibration,
 )
@@ -35,6 +35,7 @@ from app.services.internalization_room.canon.book_material import build_book_mat
 from app.services.internalization_room.canon.elements import absence_index
 from app.services.internalization_room.coverage import counts
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
+from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prepare_opening import (
     hand_over,
     prepare_opening,
@@ -53,9 +54,9 @@ router = APIRouter()
 _SEGMENT_ROLES = ("panorama", "scene")
 
 
-async def _clip_or_none(text: str) -> str | None:
+async def _clip_or_none(text: str, *, language: str) -> str | None:
     try:
-        entry, _ = await room.synthesize_facilitator_speech(text)
+        entry, _ = await room.synthesize_facilitator_speech(text, language=language)
     except Exception:
         logger.warning("A movement of the opening could not be voiced; sending it whole")
         return None
@@ -64,6 +65,8 @@ async def _clip_or_none(text: str) -> str | None:
 
 async def _voice_the_turn(
     outcome: room.TurnOutcome,
+    *,
+    language: str,
 ) -> tuple[SynthesizedSpeech | None, list[SpokenSegment]]:
     """The turn's audio: the whole line, and the opening's movements beside it.
 
@@ -76,11 +79,15 @@ async def _voice_the_turn(
         return None, []
 
     async def whole_line() -> SynthesizedSpeech:
-        entry, _ = await room.synthesize_facilitator_speech(outcome.speech)
+        entry, _ = await room.synthesize_facilitator_speech(outcome.speech, language=language)
         return entry
 
     async def movements() -> list[str | None]:
-        return list(await asyncio.gather(*(_clip_or_none(part) for part in outcome.movements)))
+        return list(
+            await asyncio.gather(
+                *(_clip_or_none(part, language=language) for part in outcome.movements)
+            )
+        )
 
     whole, parts = await asyncio.gather(whole_line(), movements())
     keys = [key for key in parts if key is not None]
@@ -114,6 +121,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         done=session.status is IRSessionStatus.DONE,
         back_translation=await _progress(db, session),
         bridge_mode=session.bridge_mode,
+        language=session.language,
     )
 
 
@@ -163,6 +171,7 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         bridge_mode=payload.bridge_mode,
+        language=payload.language,
     )
     if payload.after_session:
         previous = await room.get_session(db, payload.after_session)
@@ -255,7 +264,11 @@ async def _say_it_again(session: IRSession) -> TurnResponse:
         ),
         "",
     )
-    voiced = (await room.synthesize_facilitator_speech(last))[0] if last else None
+    voiced = (
+        (await room.synthesize_facilitator_speech(last, language=session.language))[0]
+        if last
+        else None
+    )
     return TurnResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
@@ -303,7 +316,10 @@ async def take_turn(
         if len(audio_bytes) > MAX_AUDIO_BYTES:
             raise ValidationError("Audio payload exceeds 25 MB limit")
         speech_heard = await heard_speech(
-            audio_bytes, filename=file.filename, mime_type=file.content_type
+            audio_bytes,
+            filename=file.filename,
+            mime_type=file.content_type,
+            language=session.language,
         )
     transcript = speech_heard.text
 
@@ -333,7 +349,7 @@ async def take_turn(
             resolved = resolve_one_shot_calibration(choice_speech)
             session = await room.set_bridge_mode(db, session, resolved.mode.value)
             outcome = TurnOutcome(
-                speech=bridge_calibration_acknowledgement(resolved.mode),
+                speech=bridge_calibration_acknowledgement(resolved.mode, session.language),
                 transcript=transcript,
             )
         else:
@@ -345,6 +361,8 @@ async def take_turn(
             outcome = await room.run_panorama_turn(
                 transcript=transcript,
                 messages=session.messages or [],
+                session_language=LANGUAGE_NAMES[session.language],
+                language_code=session.language,
                 panorama_prompt=await get_prompt_text(db, IRPromptKey.BOOK_PANORAMA),
                 validator_prompt=validator_prompt,
                 book=book,
@@ -358,7 +376,7 @@ async def take_turn(
                 and not outcome.used_fail_safe
                 and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value
             ):
-                outcome.speech = f"{outcome.speech} {BRIDGE_CALIBRATION_QUESTION}"
+                outcome.speech = f"{outcome.speech} {bridge_calibration_question(session.language)}"
     else:
         turn = await room.run_comprehension_turn(
             db,
@@ -371,7 +389,7 @@ async def take_turn(
         )
         outcome = turn.outcome
 
-    voiced, segments = await _voice_the_turn(outcome)
+    voiced, segments = await _voice_the_turn(outcome, language=session.language)
     if turn is not None:
         session = await room.set_bridge_mode(db, session, turn.bridge_mode)
         session = await room.save_comprehension(db, session, turn.state)

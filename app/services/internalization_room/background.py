@@ -6,6 +6,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.exceptions import TranscriptionDefect
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room.classify_coverage import classify_coverage
+from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.sessions import apply_coverage, get_session
@@ -32,6 +33,7 @@ async def settle_coverage(
                 guide_response=guide_response,
                 classifier_prompt=classifier_prompt,
                 pericope_num=pericope_num,
+                session_language=LANGUAGE_NAMES[session.language],
             )
             await apply_coverage(db, session_id, updated)
     except Exception:
@@ -60,7 +62,9 @@ async def transcribe_question(*, question_id: str, audio: bytes) -> None:
     """
     try:
         async with AsyncSessionLocal() as db:
-            await transcribe_for_the_desk(db, await get_question(db, question_id), audio)
+            question = await get_question(db, question_id)
+            spoken = (await get_session(db, question.session_id)).language
+            await transcribe_for_the_desk(db, question, audio, language=spoken)
     except TranscriptionDefect:
         logger.exception("Transcription of question %s broke on our side", question_id)
     except Exception:

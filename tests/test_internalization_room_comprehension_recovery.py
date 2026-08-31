@@ -6,9 +6,9 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
-    MOTHER_TONGUE_PRACTICE_PROMPT,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
+    mother_tongue_practice_prompt,
 )
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.comprehension.probe_plan import NoUsableReportAttempt
@@ -19,7 +19,7 @@ from app.services.internalization_room.comprehension.stt_recovery import (
 )
 from app.services.internalization_room.rehearsal_readiness import (
     RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-    REHEARSAL_CONSENT_QUESTION,
+    rehearsal_consent_question,
     resolve_rehearsal_consent,
     should_offer_recording_consent,
 )
@@ -166,7 +166,7 @@ def test_naming_both_branches_stays_unclear() -> None:
 
 
 def test_pronto_after_the_exact_practice_prompt_confirms() -> None:
-    assert confirms_completed_mother_tongue_practice(MOTHER_TONGUE_PRACTICE_PROMPT, "pronto")
+    assert confirms_completed_mother_tongue_practice(mother_tongue_practice_prompt("pt"), "pronto")
 
 
 def test_a_bare_sim_confirms_only_a_direct_practice_question() -> None:
@@ -178,7 +178,7 @@ def test_a_bare_sim_confirms_only_a_direct_practice_question() -> None:
 
 def test_a_denied_practice_never_confirms() -> None:
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "não terminamos de ensaiar na nossa língua"
+        mother_tongue_practice_prompt("pt"), "não terminamos de ensaiar na nossa língua"
     )
 
 
@@ -190,55 +190,60 @@ def test_a_future_plan_never_confirms() -> None:
 
 
 def test_a_plain_report_of_finished_practice_confirms() -> None:
-    assert confirms_completed_mother_tongue_practice(MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos")
+    assert confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("pt"), "já ensaiamos"
+    )
 
 
 def test_the_completion_word_confirms_inside_a_longer_utterance() -> None:
     assert confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "pronto, terminamos"
+        mother_tongue_practice_prompt("pt"), "pronto, terminamos"
     )
     assert confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "a gente leu, depois ensaiou junto, pronto, pode seguir"
+        mother_tongue_practice_prompt("pt"),
+        "a gente leu, depois ensaiou junto, pronto, pode seguir",
     )
 
 
 def test_asking_about_practice_never_confirms() -> None:
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos?"
+        mother_tongue_practice_prompt("pt"), "já ensaiamos?"
     )
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "a gente tem que ensaiar agora?"
+        mother_tongue_practice_prompt("pt"), "a gente tem que ensaiar agora?"
     )
 
 
 def test_a_postponed_practice_never_confirms() -> None:
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "acho que a gente pode ensaiar depois"
+        mother_tongue_practice_prompt("pt"), "acho que a gente pode ensaiar depois"
     )
-    assert not confirms_completed_mother_tongue_practice(MOTHER_TONGUE_PRACTICE_PROMPT, "ainda não")
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("pt"), "ainda não"
+    )
 
 
 def test_a_negated_practice_never_confirms() -> None:
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "ainda não ensaiamos"
+        mother_tongue_practice_prompt("pt"), "ainda não ensaiamos"
     )
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "não, pronto não"
+        mother_tongue_practice_prompt("pt"), "não, pronto não"
     )
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "não, pronto"
+        mother_tongue_practice_prompt("pt"), "não, pronto"
     )
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "sim, mas ainda não"
+        mother_tongue_practice_prompt("pt"), "sim, mas ainda não"
     )
     assert not confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "pronto, mas ainda não"
+        mother_tongue_practice_prompt("pt"), "pronto, mas ainda não"
     )
 
 
 def test_wanting_another_round_does_not_undo_a_finished_practice() -> None:
     assert confirms_completed_mother_tongue_practice(
-        MOTHER_TONGUE_PRACTICE_PROMPT, "já ensaiamos, mas queremos de novo"
+        mother_tongue_practice_prompt("pt"), "já ensaiamos, mas queremos de novo"
     )
 
 
@@ -272,7 +277,7 @@ def test_consent_needs_the_exact_question_and_probe() -> None:
     assert (
         resolve_rehearsal_consent(
             probe=_CONSENT_PROBE,
-            previous_guide_utterance=REHEARSAL_CONSENT_QUESTION,
+            previous_guide_utterance=rehearsal_consent_question("pt"),
             team_utterance="sim",
             reliable_bridge_speech=True,
         )
@@ -290,7 +295,7 @@ def test_consent_needs_the_exact_question_and_probe() -> None:
     assert (
         resolve_rehearsal_consent(
             probe=_semantic_probe(),
-            previous_guide_utterance=REHEARSAL_CONSENT_QUESTION,
+            previous_guide_utterance=rehearsal_consent_question("pt"),
             team_utterance="sim",
             reliable_bridge_speech=True,
         )
@@ -302,7 +307,7 @@ def test_declining_consent_is_recognized() -> None:
     assert (
         resolve_rehearsal_consent(
             probe=_CONSENT_PROBE,
-            previous_guide_utterance=REHEARSAL_CONSENT_QUESTION,
+            previous_guide_utterance=rehearsal_consent_question("pt"),
             team_utterance="ainda não",
             reliable_bridge_speech=True,
         )
@@ -314,7 +319,7 @@ def test_uncertain_speech_never_consents() -> None:
     assert (
         resolve_rehearsal_consent(
             probe=_CONSENT_PROBE,
-            previous_guide_utterance=REHEARSAL_CONSENT_QUESTION,
+            previous_guide_utterance=rehearsal_consent_question("pt"),
             team_utterance="sim",
             reliable_bridge_speech=False,
         )

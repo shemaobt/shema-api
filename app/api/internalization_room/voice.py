@@ -25,7 +25,7 @@ router = APIRouter()
     dependencies=[room_caller_dep],
 )
 async def speak(payload: FacilitatorSpeakRequest, response: Response) -> FacilitatorSpeakResponse:
-    entry, cached = await synthesize_facilitator_speech(payload.text)
+    entry, cached = await synthesize_facilitator_speech(payload.text, language=payload.language)
     response.headers["ETag"] = entry.etag
     response.headers["X-Tts-Cached"] = "1" if cached else "0"
     return FacilitatorSpeakResponse(

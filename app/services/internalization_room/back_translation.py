@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.core.config import Settings, get_settings
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
 from app.services.internalization_room.render import render
 
@@ -262,7 +263,7 @@ async def analyse_telling_back(
     scope: str,
     pericope_num: str,
     analyst_prompt: str,
-    session_language: str = "Portuguese",
+    session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
 ) -> BtAnalysis | None:
     """Compare the bridge-language telling-back against the map. Never voiced.

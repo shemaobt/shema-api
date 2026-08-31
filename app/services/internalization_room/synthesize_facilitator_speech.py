@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.voices import voice_for
 from app.services.platform.tts import SpeechStore, SynthesizedSpeech
 from app.services.platform.tts import synthesize_speech as platform_speech
 
@@ -10,15 +11,23 @@ from app.services.platform.tts import synthesize_speech as platform_speech
 async def synthesize_facilitator_speech(
     text: str,
     *,
+    language: str | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
     settings: Settings | None = None,
 ) -> tuple[SynthesizedSpeech, bool]:
     """Speak one facilitator line in the internalization room's own voice.
 
-    The room has a single voice for every line the team hears, so the voice and language
-    are server-side configuration rather than request parameters — the app never chooses
-    how the facilitator sounds.
+    The language is the caller's, because it is the session's, because it is the tablet's.
+    A caller that names none gets the floor. The voice follows the language rather than being
+    chosen alongside it: the app never picks how the facilitator sounds, only which language
+    it sounds in.
+
+    That the voice moves with the language is also what keeps the cache honest. The bucket
+    key is content-addressed over text, voice, model, format and tuning but not language, so
+    one voice speaking two languages would serve the first language's bytes for the second's
+    request. A voice per language puts the language in the key without changing its shape,
+    and every clip already bought stays addressable.
 
     The model is pinned here rather than shared with the rest of the platform because only
     the turbo and flash families honour `language_code`; `eleven_multilingual_v2` detects
@@ -35,10 +44,11 @@ async def synthesize_facilitator_speech(
     paid ElevenLabs again for a sentence it had just spoken.
     """
     cfg = settings or get_settings()
+    spoken = language or cfg.internalization_room_default_language
     speech = await platform_speech(
         text,
-        language=cfg.internalization_room_language_code,
-        voice_id=cfg.internalization_room_voice_id,
+        language=spoken,
+        voice_id=voice_for(spoken, settings=cfg),
         model=cfg.internalization_room_tts_model,
         voice_settings={
             "stability": cfg.internalization_room_voice_stability,

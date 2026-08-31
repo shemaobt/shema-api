@@ -155,6 +155,8 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     agent = patch_agent(FakeAgent(verdicts=[]))
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="   ",
         coverage_state=initial_state(P),
         messages=[],
@@ -180,6 +182,8 @@ async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     )
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="A fome chegou e eles partiram.",
         coverage_state=initial_state(P),
         messages=[],
@@ -211,6 +215,8 @@ async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None
     )
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="quantos filhos?",
         coverage_state=initial_state(P),
         messages=[],
@@ -238,6 +244,8 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     )
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="me conta mais sobre Rute",
         coverage_state=initial_state(P),
         messages=[],
@@ -273,6 +281,8 @@ async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearin
     )
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="me conta mais sobre Rute",
         coverage_state=initial_state(P),
         messages=[],
@@ -298,6 +308,8 @@ async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> Non
     patch_agent(Garbage(verdicts=[]))
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="alguma coisa",
         coverage_state=initial_state(P),
         messages=[],
@@ -324,6 +336,8 @@ async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_ag
         )
     )
     await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="pergunta",
         coverage_state=initial_state(P),
         messages=[],
