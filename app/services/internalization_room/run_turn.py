@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.core.exceptions import ValidationError
 from app.services.internalization_room.bridge_language import strays_from
 from app.services.internalization_room.canon.book_material import story_so_far
 from app.services.internalization_room.canon.parse_map import load_map
@@ -506,6 +507,10 @@ async def run_panorama_turn(
     )
 
 
+#: The slot a stored prompt row must carry for the closing to reach the Speaker.
+CLOSING_SLOT = "{{CLOSING}}"
+
+
 async def run_verdict_turn(
     *,
     findings_text: str,
@@ -524,9 +529,20 @@ async def run_verdict_turn(
 
     The Speaker never sees the recording, only what the team told back, so its judgment is
     always about the telling-back. Runs through the Validator like every other voiced turn.
+
+    The missing slot is refused rather than rendered around. `get_prompt_text` prefers the
+    stored row, a row written before the slot existed does not have it, and `render` drops a
+    value whose placeholder is absent without a word — so the closing would simply never reach
+    the Speaker, and the turn would go on asking for a spoken answer while the screen waits for
+    a tap. Nothing anywhere would say so.
     """
     cfg = settings or get_settings()
     map_block = meaning_map_block(pericope_num, book)
+    if CLOSING_SLOT not in speaker_prompt:
+        raise ValidationError(
+            f"The verdict speaker prompt has no {CLOSING_SLOT}: the closing would be dropped "
+            "and the turn would ask for an answer the screen no longer collects"
+        )
 
     return await _voiced_after_validation(
         speaker_system=render(
@@ -535,7 +551,7 @@ async def run_verdict_turn(
             SCOPE=scope,
             MEANING_MAP=map_block,
             FINDINGS=findings_text,
-            CLOSING=closing,
+            CLOSING=closing.format(session_language=session_language),
         ),
         validator_prompt=validator_prompt,
         standard_of_truth=map_block,

@@ -5,10 +5,12 @@ from typing import Any
 import pytest
 
 from app.core.config import Settings
+from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
     CLOSING_ON_SCREEN,
+    CLOSING_PLAIN,
     CLOSING_SPOKEN,
     BackTranslationState,
     Finding,
@@ -628,3 +630,70 @@ def test_thin_evidence_is_not_read_as_a_clean_check() -> None:
     )
 
     assert (state.current_finding is None and state.evidence_sufficient) is False
+
+
+@pytest.mark.asyncio
+async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> None:
+    """A row saved before the slot existed would swallow the closing without a word.
+
+    `get_prompt_text` prefers the stored row, and `render` drops a value whose placeholder is
+    not in the template — so the turn would go on asking for a spoken answer while the screen
+    waits for a tap, and nothing anywhere would say so.
+    """
+    patch_speaker("No que você me contou, algo não apareceu.")
+    stored_before_this_slot_existed = SPEAKER.replace("{{CLOSING}}", "")
+
+    with pytest.raises(ValidationError):
+        await run_verdict_turn(
+            findings_text=findings_block(_on_a_stretch(FindingKind.ADDITION)),
+            closing=closing_block(_on_a_stretch(FindingKind.ADDITION)),
+            scope=P,
+            pericope_num=P,
+            messages=[],
+            speaker_prompt=stored_before_this_slot_existed,
+            validator_prompt=VALIDATOR,
+            settings=_settings(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_with_no_finding_is_not_told_about_one(patch_speaker) -> None:
+    """The closing may not talk about a finding on the turn that has none.
+
+    `findings_block` is saying "(nenhum achado)" in the same prompt, and this is the turn that
+    only affirms and names the badge. It closes the way it always did.
+    """
+    spoken_to = await _verdict_for(None, patch_speaker)
+
+    assert CLOSING_PLAIN in spoken_to
+    assert CLOSING_SPOKEN not in spoken_to
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker) -> None:
+    """One source for the language, not two defaults that agree by luck.
+
+    The closing names the bridge language out loud, and the template names it a few lines
+    above. If they came from different places, the day a caller passes a language to the turn
+    the closing would go on saying Portuguese in an English prompt.
+    """
+    agent = patch_speaker("No que você me contou, algo não apareceu.")
+    finding = _on_a_stretch(FindingKind.ADDITION)
+
+    await run_verdict_turn(
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        session_language="Swahili",
+        settings=_settings(),
+    )
+
+    spoken_to = str(agent.seen[0])
+    assert "the telling in Swahili" in spoken_to
+    assert "{session_language}" not in spoken_to
+    assert "the telling in Portuguese" not in spoken_to

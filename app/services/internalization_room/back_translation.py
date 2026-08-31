@@ -313,13 +313,19 @@ to speak again. Do not ask them to say the answer out loud, and do not offer any
 step — the screen offers exactly those two, and naming a third promises something they cannot \
 do. Remaining findings wait for the next round. Never a checklist, never a speech."""
 
+CLOSING_PLAIN = """- End with exactly one answerable question or invitation. Remaining \
+findings wait for the next round. Never a checklist, never a speech."""
+#: Word for word what this prompt closed with before the screen existed. A turn with no finding
+#: at all affirms and names the badge; both other closings explain themselves in terms of *this
+#: finding*, and there is none — `findings_block` is saying so in the same prompt.
+
 CLOSING_SPOKEN = """- End with exactly one answerable question or invitation, and let them \
 answer in words. This finding does not land on one stretch, so there is no stretch on screen \
 and no two voices to choose between — the next conversational turn will respond to what they \
 say. Remaining findings wait for the next round. Never a checklist, never a speech."""
 
 
-def closing_block(finding: Finding | None, session_language: str = "Portuguese") -> str:
+def closing_block(finding: Finding | None) -> str:
     """How the Speaker is told to end this turn: handing to the screen, or asking out loud.
 
     Chosen here rather than by the Speaker reading a branch, because the finding carries the
@@ -332,14 +338,16 @@ def closing_block(finding: Finding | None, session_language: str = "Portuguese")
     the screen exists to answer *"is it in your recording, or did it come in with the telling?"*.
     Where that question is not put, there is no choice to hand over.
 
-    The language is substituted here rather than left as a template placeholder: `render` fills
-    in one pass, so a placeholder arriving inside an injected value is never seen again and
-    reaches the model as literal braces.
+    Returned with `{session_language}` still in it, for whoever fills the template to
+    substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here
+    would mean two defaults that agree by luck, and the day a caller passes a language to the
+    turn the closing would go on saying Portuguese. It is not left as a `{{...}}` placeholder
+    because `render` fills in one pass: one arriving inside an injected value is never seen
+    again and reaches the model as literal braces.
     """
+    if finding is None:
+        return CLOSING_PLAIN
     asks_where_the_error_lives = (
-        finding is not None
-        and finding.segment_id is not None
-        and finding.kind not in EVIDENCE_LIMIT_KINDS
+        finding.segment_id is not None and finding.kind not in EVIDENCE_LIMIT_KINDS
     )
-    closing = CLOSING_ON_SCREEN if asks_where_the_error_lives else CLOSING_SPOKEN
-    return closing.format(session_language=session_language)
+    return CLOSING_ON_SCREEN if asks_where_the_error_lives else CLOSING_SPOKEN
