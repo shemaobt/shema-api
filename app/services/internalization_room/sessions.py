@@ -90,16 +90,17 @@ async def create_session(
     and refusing a session without one would take every room in the field offline to gain a
     column value. Work with no project has no history to read, so it starts at the beginning.
 
-    Raises ``ConflictError`` when the team has closed every passage and none was named. That
-    is the end of the book, and it is a defined state rather than a wrap-around: the request
-    is well formed and the team exists, so 409 rather than 400 or 404, and naming a passage is
-    the way back in.
+    Raises ``ConflictError`` when the team has closed every passage that opens and none was
+    named. That is the end of the book, and it is a defined state rather than a wrap-around:
+    the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
+    a passage is the way back in. The end it names is the end of the walkable book, which is
+    the only end a team can reach — a passage `require_walkable` refuses can never be closed.
     """
     if pericope is None:
         pericope = await active_passage(db, project_id=project_id)
         if pericope is None:
             raise ConflictError(
-                "This team has finished every passage of the book; name one to open a session"
+                "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
     panorama = is_panorama(pericope)

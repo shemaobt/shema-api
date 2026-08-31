@@ -177,7 +177,7 @@ async def test_a_team_that_closed_every_passage_it_could_walk_is_refused_the_sam
     team = await a_team(db_session, name="Andou tudo que dava")
     await having_closed(db_session, team, *WALKABLE)
 
-    with pytest.raises(ConflictError):
+    with pytest.raises(ConflictError, match="can walk"):
         await room.create_session(db_session, project_id=team.id)
 
 
