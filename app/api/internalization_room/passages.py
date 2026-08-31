@@ -6,6 +6,7 @@ from app.api.internalization_room._deps import room_caller_dep
 from app.core.config import Settings, get_settings
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
+from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.passage_lines import line_for
@@ -47,6 +48,11 @@ async def passages(book: str) -> BookPassagesResponse:
     a line for is left out rather than offered as a number: the room would have nothing to
     say when the team touched it.
 
+    A passage the session would refuse is left out on the same grounds. The wheel is the only
+    way in, and it offered all fourteen while `require_walkable` turned eight of them away —
+    so a finger landing on one bought a refusal the app could only read as a broken room. A
+    spoke that cannot be entered is worse than a spoke that was never offered.
+
     The lines are synthesized through the same cache as every other spoken line, which is
     content-addressed — a book is paid for once and then answers every replica and deploy.
 
@@ -64,7 +70,7 @@ async def passages(book: str) -> BookPassagesResponse:
     speakable = [
         (meaning_map.pericope_num, line)
         for meaning_map in load_book(book)
-        if (line := line_for(meaning_map.pericope_num, language))
+        if not unwalkable(meaning_map) and (line := line_for(meaning_map.pericope_num, language))
     ]
     said = await asyncio.gather(
         *(
