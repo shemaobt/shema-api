@@ -14,7 +14,11 @@
 > **Length.** One breath. This is heard many times while the team turns the wheel looking for
 > the passage they want, so it must not become a paragraph to sit through.
 
-> ⚠️ **STATUS: DRAFT — awaiting Márcia's validation.** These were derived from each map's
+> **One block per language.** The room speaks the language the tablet is set to, so every
+> language it claims needs all fourteen lines. A language with none written falls back to the
+> floor rather than emptying the wheel — an empty wheel tells a team the book is finished.
+
+> ⚠️ **STATUS: DRAFT — awaiting validation.** These were derived from each map's
 > `pericope-title`. Nothing here has been approved to be spoken to a team.
 
 ---
@@ -24,41 +28,83 @@
 ### P01-pt
 - "A fome, e a família que sai de Belém."
 
+### P01-en
+- "The famine, and the family that leaves Bethlehem."
+
 ### P02-pt
 - "A estrada de volta, e Rute que não solta a mão de Noemi."
+
+### P02-en
+- "The road back, and Ruth who will not let go of Naomi."
 
 ### P03-pt
 - "O último apelo de Noemi, e a promessa de Rute."
 
+### P03-en
+- "Naomi's last appeal, and Ruth's promise."
+
 ### P04-pt
 - "A chegada em Belém, e Noemi que troca o próprio nome."
+
+### P04-en
+- "The arrival in Bethlehem, and Naomi who changes her own name."
 
 ### P05-pt
 - "Rute sai para respigar, e o campo em que ela chega."
 
+### P05-en
+- "Ruth goes out to glean, and the field she comes to."
+
 ### P06-pt
 - "Boaz fala com Rute no campo."
+
+### P06-en
+- "Boaz speaks to Ruth in the field."
 
 ### P07-pt
 - "O que Rute leva para casa, e o nome do resgatador."
 
+### P07-en
+- "What Ruth carries home, and the name of the redeemer."
+
 ### P08-pt
 - "O plano de Noemi, e Rute que aceita inteiro."
+
+### P08-en
+- "Naomi's plan, and Ruth who accepts all of it."
 
 ### P09-pt
 - "A noite na eira, e o juramento."
 
+### P09-en
+- "The night on the threshing floor, and the oath."
+
 ### P10-pt
 - "A madrugada, as seis medidas, e esperar sentada."
+
+### P10-en
+- "The dawn, the six measures, and sitting down to wait."
 
 ### P11-pt
 - "A porta da cidade, e a sandália."
 
+### P11-en
+- "The gate of the town, and the sandal."
+
 ### P12-pt
 - "«Vocês são testemunhas», e a bênção na porta."
+
+### P12-en
+- "«You are witnesses», and the blessing at the gate."
 
 ### P13-pt
 - "Obede nasce, e a criança no colo de Noemi."
 
+### P13-en
+- "Obed is born, and the child on Naomi's lap."
+
 ### P14-pt
 - "As gerações, até Davi."
+
+### P14-en
+- "The generations, down to David."
