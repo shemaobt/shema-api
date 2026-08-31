@@ -158,6 +158,7 @@ for the other's tables should be asked why.
 | `app/api/resource_requests/evaluations.py` | BE-06 | Evaluation routes. Mesa-gated at the door. |
 | `app/api/resource_requests/funds.py` | BE-07 | Fund and balance reads, movement history. |
 | `app/api/resource_requests/board.py` | BE-08 | Stage transitions. |
+| `app/api/resource_requests/fund_assignment.py` | BE-11 | The mesa's triage decision — which fund a request draws from — and the selector for it. Gated on `assign_fund`, the one capability the Gestor does not hold on the money side. |
 | `app/services/resource_request/` | BE-04…BE-08 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `app/services/project/`, `app/services/auth/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/resource_request/access.py` | BE-03 | Row-level scoping — the `app/services/annotation_studio/access.py` precedent. Anything past "does this user hold role X" is a service concern, never a router one. |
 | `app/services/resource_request/capabilities.py` | BE-03 | The capability→roles map of §5.4 — a pure table — and the `holds_capability` service function that reads a user's roles against it. |
@@ -1264,8 +1265,14 @@ each one landed somewhere in this module:
   cards exercise: two states not to conflate. The invariant that arrived with the answer —
   **a request does not enter `aprovado` with `fund_id IS NULL`** — is a service rule and
   deliberately not a CHECK, since the same null is correct one column earlier. **BE-11**
-  (OBT-470) owns the write, and carries in its DoD the re-ask of the client's aside that the
-  *Gestor* would define which fund goes to which project.
+  (OBT-470) owns the write, and has built it: the rule is
+  `app/services/resource_request/_fund_assignment.py`, read by both approval doors through
+  `guard_stage_entry`, and the column it demands is written by `PUT /requests/{id}/fund`,
+  recorded as a `rr_request_field_history` row keyed `fund_id` and moving both balances in one
+  transaction when the request being reassigned is already approved. The re-ask its DoD
+  carried — the client's aside that the *Gestor* would define which fund goes to which
+  project — **came back on 28/aug/2026 as *"somente a mesa"***, so the route is gated on
+  `assign_fund` and the Gestor does not hold it.
 - **What each fund covers, and the old↔new mapping** — only *Shema Línguas* remains a fund
   (D1), and the other four names are **undecided rather than retired**: not approved either.
   The mapping closed by elimination instead of by mapping — *"leave it as it is"* (D2) — so no

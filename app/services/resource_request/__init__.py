@@ -1,4 +1,7 @@
+from app.services.resource_request._fund_assignment import require_assigned_fund
+from app.services.resource_request._fund_choices import FundOption
 from app.services.resource_request.append_movement import append_movement
+from app.services.resource_request.assign_fund import FundAssignment, FundMoved, assign_fund
 from app.services.resource_request.capabilities import (
     CAPABILITIES,
     CAPABILITY_ROLES,
@@ -10,6 +13,7 @@ from app.services.resource_request.fund_balances import FundBalance, fund_balanc
 from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
+from app.services.resource_request.list_fund_options import fund_options
 from app.services.resource_request.list_requests import list_requests
 from app.services.resource_request.list_transitions import transitions_of_request
 from app.services.resource_request.move_request import BoardMoved, move_request
@@ -29,13 +33,18 @@ __all__ = [
     "ROLE_CAPABILITIES",
     "BoardMoved",
     "Discarded",
+    "FundAssignment",
     "FundBalance",
+    "FundMoved",
+    "FundOption",
     "RequestStatus",
     "Saved",
     "Submitted",
     "append_movement",
+    "assign_fund",
     "create_draft",
     "fund_balances",
+    "fund_options",
     "get_evaluation",
     "get_request",
     "holds_capability",
@@ -45,6 +54,7 @@ __all__ = [
     "movements_of_request",
     "open_revision",
     "request_status",
+    "require_assigned_fund",
     "reverse_movement",
     "save_evaluation",
     "submit_request",

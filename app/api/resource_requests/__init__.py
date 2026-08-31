@@ -19,6 +19,7 @@ from fastapi import APIRouter
 
 from app.api.resource_requests.board import router as board_router
 from app.api.resource_requests.evaluations import router as evaluations_router
+from app.api.resource_requests.fund_assignment import router as fund_assignment_router
 from app.api.resource_requests.funds import router as funds_router
 from app.api.resource_requests.requests import router as requests_router
 
@@ -26,4 +27,5 @@ router = APIRouter()
 router.include_router(requests_router)
 router.include_router(evaluations_router)
 router.include_router(funds_router)
+router.include_router(fund_assignment_router)
 router.include_router(board_router)

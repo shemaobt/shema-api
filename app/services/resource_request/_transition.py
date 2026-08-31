@@ -17,9 +17,12 @@ decision implies a column, a column never implies a decision, and dragging out o
 ``aprovado`` is precisely how an approval is undone (its compensating movement rides the
 same transaction). What is refused is not an edge of the graph but a state of the
 request: a draft is not on the board (``move_request``), and nothing enters ``aprovado``
-without a fund and an amount to deduct — GATE-01 D4's invariant, BE-11's rule, fired
-here because this is the transition it guards. Deliberately a service rule and **not** a
-DDL CHECK: the same ``NULL`` is legitimate one column earlier.
+without a fund and an amount to deduct. The fund half is **not stated here** — it is
+GATE-01 D4's invariant and BE-11's rule, and it lives in ``_fund_assignment.py``, which
+is what makes it one rule over the two doors GATE-02 D6 opened rather than the same
+sentence written twice. It fires *through* this module because ``guard_stage_entry`` is
+where a stage change becomes an entry into ``aprovado``, for a decision's move and a
+hand's drag alike.
 
 **The ledger effect is the export's golden rule, as movements.** Only ``aprovado``
 commits funds: entering it appends an ``APPROVAL_DEDUCTION`` for the request's
@@ -45,6 +48,7 @@ from app.db.models.resource_request import (
     RRRequest,
     RRStage,
 )
+from app.services.resource_request._fund_assignment import require_assigned_fund
 from app.services.resource_request.append_movement import append_movement
 from app.services.resource_request.reverse_movement import reverse_movement
 
@@ -66,17 +70,13 @@ def guard_stage_entry(request: RRRequest, to_stage: RRStage) -> tuple[str, Decim
     """
     if to_stage is not RRStage.APROVADO or request.stage is RRStage.APROVADO:
         return None
-    if request.fund_id is None:
-        raise ConflictError(
-            "A request does not enter aprovado with no fund: "
-            "the mesa assigns one at triage before approving."
-        )
+    fund_id = require_assigned_fund(request)
     if request.amount_requested is None:
         raise ConflictError("A request does not enter aprovado with no amount requested.")
-    return (request.fund_id, request.amount_requested)
+    return (fund_id, request.amount_requested)
 
 
-async def _unreversed_deduction(db: AsyncSession, request_id: str) -> RRFundMovement | None:
+async def unreversed_deduction(db: AsyncSession, request_id: str) -> RRFundMovement | None:
     """The deduction still standing for this request — at most one by construction.
 
     Entering ``aprovado`` twice without leaving is impossible (a same-stage change is a
@@ -139,7 +139,7 @@ async def transition_stage(
         )
         committed_delta = movement.amount
     elif request.stage is RRStage.APROVADO:
-        deduction = await _unreversed_deduction(db, request.id)
+        deduction = await unreversed_deduction(db, request.id)
         if deduction is not None:
             movement = await reverse_movement(
                 db, movement_id=deduction.id, author_id=moved_by, reason=reason
