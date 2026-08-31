@@ -4,7 +4,19 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-RUN apt-get update && apt-get install -y gcc ffmpeg && rm -rf /var/lib/apt/lists/*
+# `--no-install-recommends` matches `Dockerfile:17` and `.github/workflows/test.yml:34`, which
+# already pass it; this line was the last holdout. Without it `ffmpeg` pulls its full recommends
+# closure — mesa, GTK 3, X11, SDL2, LLVM, the VA/VDPAU video drivers. An API container uses none
+# of them, and production ships none of them: a dev image carrying packages prod lacks is how a
+# missing production dependency stays hidden until it reaches production.
+#
+# It also shrinks, but does not remove, the exposure to a separate network-side failure. The CDN
+# serving deb.debian.org can begin refusing connections partway through a long fetch, and a
+# refusal with nothing to catch it kills the layer. `Acquire::Retries`, `Acquire::Queue-Mode` and
+# `Acquire::http::Pipeline-Depth` were each measured against a refusal window and none rescued
+# one — narrower than saying they do nothing — so none is set here. Re-running the build is the
+# remedy when it happens.
+RUN apt-get update && apt-get install -y --no-install-recommends gcc ffmpeg && rm -rf /var/lib/apt/lists/*
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV UV_LINK_MODE=copy
