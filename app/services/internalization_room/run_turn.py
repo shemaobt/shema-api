@@ -509,6 +509,7 @@ async def run_panorama_turn(
 async def run_verdict_turn(
     *,
     findings_text: str,
+    closing: str,
     scope: str,
     pericope_num: str,
     messages: list[dict[str, Any]],
@@ -534,6 +535,7 @@ async def run_verdict_turn(
             SCOPE=scope,
             MEANING_MAP=map_block,
             FINDINGS=findings_text,
+            CLOSING=closing,
         ),
         validator_prompt=validator_prompt,
         standard_of_truth=map_block,

@@ -8,10 +8,13 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
+    CLOSING_ON_SCREEN,
+    CLOSING_SPOKEN,
     BackTranslationState,
     Finding,
     FindingKind,
     analyse_telling_back,
+    closing_block,
     findings_block,
     played_ranges_cover_clip,
     segments_block,
@@ -180,8 +183,10 @@ def test_no_findings_reads_as_complete() -> None:
 async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> None:
     agent = patch_speaker("No que você me contou, Orfa não apareceu.")
 
+    finding = Finding(kind=FindingKind.MISSING, note="Orfa")
     outcome = await run_verdict_turn(
-        findings_text=findings_block(Finding(kind=FindingKind.MISSING, note="Orfa")),
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
         scope=P,
         pericope_num=P,
         messages=[],
@@ -524,3 +529,102 @@ def test_a_legacy_client_without_a_report_passes() -> None:
 
 def test_an_empty_report_with_a_duration_does_not_pass() -> None:
     assert not played_ranges_cover_clip([[5000, 5000]], 61000)
+
+
+# ---------------------------------------------------------------------------
+# The verdict hands the choice to the screen — S3c
+# ---------------------------------------------------------------------------
+
+
+def _on_a_stretch(kind: FindingKind, note: str = "Orfa") -> Finding:
+    return Finding(kind=kind, note=note, segment_id="segmento-2")
+
+
+async def _verdict_for(finding: Finding, patch_speaker) -> str:
+    """The system prompt the Speaker was actually handed for this finding.
+
+    Asserted against the prompt rather than the answer: what must never happen is the model
+    *seeing* an instruction to promise a choice the screen will not offer. Reading the draft
+    back would only ever sample one generation of it.
+    """
+    agent = patch_speaker("No que você me contou, algo não apareceu.")
+    await run_verdict_turn(
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    return str(agent.seen[0])
+
+
+@pytest.mark.asyncio
+async def test_a_finding_on_a_stretch_hands_the_choice_to_the_screen(patch_speaker) -> None:
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.ADDITION), patch_speaker)
+
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") in spoken_to
+    assert CLOSING_SPOKEN not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_a_finding_with_no_stretch_keeps_asking_out_loud(patch_speaker) -> None:
+    """Scenario 4, the middle of the slice.
+
+    Without a stretch there is nothing on screen to choose between, and a turn that offered
+    the choice anyway would promise a gesture the team cannot make.
+    """
+    homeless = Finding(kind=FindingKind.ADDITION, note="Orfa", segment_id=None)
+
+    spoken_to = await _verdict_for(homeless, patch_speaker)
+
+    assert CLOSING_SPOKEN in spoken_to
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_speaker) -> None:
+    """`unclear` names a stretch and still asks nothing to hand over.
+
+    Its instruction is to ask for that piece again, with no boundary question — and the
+    screen exists to answer a boundary question. So the deciding fact is not whether the
+    finding has an address, it is whether one was asked.
+    """
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.UNCLEAR), patch_speaker)
+
+    assert CLOSING_SPOKEN in spoken_to
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speaker) -> None:
+    """Scenario 2. The one law, which the new closing may not loosen along with the rest."""
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.MEANING_CHANGE), patch_speaker)
+
+    assert "never know what their recording says" in spoken_to
+    assert "o que você me contou" in spoken_to
+    assert "Never mention the map, findings, analysis" in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_insufficient_evidence_is_never_the_teams_failure(patch_speaker) -> None:
+    """Scenario 3, first half: the instruction survives the rewrite."""
+    thin = Finding(kind=FindingKind.INSUFFICIENT_EVIDENCE, note="pouco contado")
+
+    spoken_to = await _verdict_for(thin, patch_speaker)
+
+    assert "never their failure and never a difference" in spoken_to
+    assert "too little to check is not a clean check" in spoken_to
+
+
+def test_thin_evidence_is_not_read_as_a_clean_check() -> None:
+    """Scenario 3, second half: and it does not reach `checked` either."""
+    state = BackTranslationState(
+        scope=P,
+        evidence_sufficient=False,
+        findings=[Finding(kind=FindingKind.INSUFFICIENT_EVIDENCE, note="pouco contado")],
+    )
+
+    assert (state.current_finding is None and state.evidence_sufficient) is False

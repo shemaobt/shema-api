@@ -2,6 +2,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     analyse_telling_back,
+    closing_block,
     findings_block,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
@@ -62,6 +63,7 @@ __all__ = [
     "begin_back_translation_again",
     "capture_segment",
     "classify_coverage",
+    "closing_block",
     "comprehension_of",
     "create_session",
     "divide_segment",
