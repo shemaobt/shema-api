@@ -6,14 +6,16 @@ these lines travel with the app. The cost of that is a frozen copy, and the guar
 silent freeze is this file.
 """
 
+import re
 from pathlib import Path
 
 import pytest
 
 import scripts.render_fixed_voice_lines as render
-from app.services.internalization_room.fail_safe import FailSafe, choose, utterances
+from app.services.internalization_room.fail_safe import FailSafe, choose, localized
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 
-BUNDLE = Path(__file__).resolve().parents[2] / "internalization-room/assets/audio/fixed"
+BUNDLE = Path(__file__).resolve().parents[2] / "internalization-room/assets/audio"
 
 
 @pytest.mark.skip(
@@ -21,19 +23,69 @@ BUNDLE = Path(__file__).resolve().parents[2] / "internalization-room/assets/audi
     "Re-enable with `uv run python scripts/render_fixed_voice_lines.py --check`, which still "
     "works and still exits non-zero on drift."
 )
-def test_every_line_the_room_can_speak_is_rendered_and_current() -> None:
-    complaints = render.drift(BUNDLE, "pt")
+@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
+def test_every_line_the_room_can_speak_is_rendered_and_current(spoken: str) -> None:
+    complaints = render.drift(BUNDLE, spoken)
     assert complaints == [], (
         "as falas fixas saíram de sincronia com o prompt — rode "
         "`uv run python scripts/render_fixed_voice_lines.py`"
     )
 
 
-def test_the_catalogue_covers_every_kind_that_has_portuguese() -> None:
-    catalogue = render.catalogue("pt")
+@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
+def test_the_catalogue_covers_every_kind_the_room_claims_to_speak(spoken: str) -> None:
+    """Um idioma reivindicado e não escrito é uma sala que troca de língua no meio.
+
+    Medido com `localized` e não com `utterances`: `utterances` cai para o bloco inglês e
+    por isso nunca volta vazio, o que a torna segura para falar e inútil como medida.
+    """
+    catalogue = render.catalogue(spoken)
     for kind in FailSafe:
-        for index in range(len(utterances(kind, "pt"))):
+        if kind in render.NEVER_SHIPPED:
+            continue
+        written = localized(kind, spoken)
+        assert written, (
+            f"a sala diz que fala {spoken!r} e a família {kind} não tem falas escritas nesse "
+            "idioma — a equipe ouviria a falha em outra língua"
+        )
+        for index in range(len(written)):
             assert f"{kind}{index}" in catalogue
+
+
+@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
+def test_the_stretch_line_is_spoken_and_never_shipped(spoken: str) -> None:
+    """O suplemento diz em negrito: *"This one is spoken, not shipped."*"""
+    assert not any(name.startswith("H") for name in render.catalogue(spoken))
+
+
+def test_every_language_ships_the_same_lines_so_a_turn_in_one_is_a_turn_in_all() -> None:
+    """O servidor manda `fixed_line` por nome, e o app resolve o nome no pacote do idioma.
+
+    Só os nomes que o servidor pode mandar. As falas soltas não chegam por turno — o app as
+    toca sozinho — e o português é o único idioma sem `sem_conexao` e `toque_para_comecar`
+    escritos, porque o áudio dele foi gravado antes deste script e a letra nunca foi anotada.
+    """
+    named = re.compile(r"^[A-Z]\d+$")
+    shipped = {
+        spoken: {name for name in render.catalogue(spoken) if named.match(name)}
+        for spoken in ROOM_LANGUAGES
+    }
+
+    assert len(set(map(frozenset, shipped.values()))) == 1, (
+        "um idioma ficou sem uma fala que outro tem; o nome chega do servidor no meio de um "
+        f"turno e o app não acha o arquivo, então a sala emudece: {shipped}"
+    )
+
+
+def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all() -> None:
+    """Nenhuma fala solta empresta a letra de outro idioma: ou está escrita, ou não vai."""
+    for spoken in ROOM_LANGUAGES:
+        written = render.STANDALONE.get(spoken, {})
+        catalogue = render.catalogue(spoken)
+        for name in ("sem_conexao", "toque_para_comecar", "gravacao_presa", "microfone"):
+            assert (name in catalogue) == (name in written), (
+                f"{name} em {spoken!r} entrou no pacote sem letra escrita nesse idioma"
+            )
 
 
 def test_a_repeated_failure_does_not_repeat_the_same_sentence() -> None:

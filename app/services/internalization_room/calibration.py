@@ -17,6 +17,7 @@ import enum
 import re
 from dataclasses import dataclass
 
+from app.services.internalization_room.languages import FLOOR
 from app.services.internalization_room.oral_decision import (
     normalize_oral_decision,
     oral_clause_has_negation,
@@ -271,26 +272,84 @@ def bridge_mode_validator_context(mode: BridgeMode) -> str:
     return f"[APP-OWNED SESSION STATE — not team speech]\n{bridge_mode_status_line(mode)}"
 
 
-BRIDGE_CALIBRATION_QUESTION = (
-    "Quando trabalharmos as passagens, qual jeito fica melhor para vocês: "
-    "contar naturalmente em português ou receber uma pergunta curta de cada vez?"
-)
+_CALIBRATION_QUESTION = {
+    "pt": (
+        "Quando trabalharmos as passagens, qual jeito fica melhor para vocês: "
+        "contar naturalmente em português ou receber uma pergunta curta de cada vez?"
+    ),
+    "en": (
+        "When we work through the passages, which suits you better: "
+        "telling it back in your own words, or one short question at a time?"
+    ),
+    "es": (
+        "Cuando trabajemos los pasajes, ¿qué les queda mejor: "
+        "contarlo con sus propias palabras, o recibir una pregunta corta a la vez?"
+    ),
+}
 
-
-def bridge_calibration_acknowledgement(mode: BridgeMode) -> str:
-    """Fast app-owned acknowledgement for the panorama's one and only method-choice
-    answer. It never travels through the Guide-Validator cycle."""
-    if mode is BridgeMode.FULL_RETELL:
-        return (
+_CALIBRATION_ACKNOWLEDGEMENT: dict[str, dict[BridgeMode, str]] = {
+    "pt": {
+        BridgeMode.FULL_RETELL: (
             "Certo. Nas passagens, vocês poderão contar naturalmente em português. "
             "Agora vamos ao panorama do livro."
-        )
-    if mode is BridgeMode.GUIDED_MICROCHECKS:
-        return (
+        ),
+        BridgeMode.GUIDED_MICROCHECKS: (
             "Certo. Nas passagens, vou fazer uma pergunta curta de cada vez. "
             "Agora vamos ao panorama do livro."
-        )
-    return (
-        "Certo. Vamos começar de um jeito simples e ajustar o tamanho das perguntas "
-        "quando for preciso. Agora vamos ao panorama do livro."
-    )
+        ),
+        BridgeMode.ADAPTIVE: (
+            "Certo. Vamos começar de um jeito simples e ajustar o tamanho das perguntas "
+            "quando for preciso. Agora vamos ao panorama do livro."
+        ),
+    },
+    "en": {
+        BridgeMode.FULL_RETELL: (
+            "Good. In the passages you can tell it back in your own words. "
+            "Now let us look at the book as a whole."
+        ),
+        BridgeMode.GUIDED_MICROCHECKS: (
+            "Good. In the passages I will ask one short question at a time. "
+            "Now let us look at the book as a whole."
+        ),
+        BridgeMode.ADAPTIVE: (
+            "Good. We will start simply and adjust how long the questions are as we go. "
+            "Now let us look at the book as a whole."
+        ),
+    },
+    "es": {
+        BridgeMode.FULL_RETELL: (
+            "Bien. En los pasajes van a poder contarlo con sus propias palabras. "
+            "Ahora vamos al panorama del libro."
+        ),
+        BridgeMode.GUIDED_MICROCHECKS: (
+            "Bien. En los pasajes voy a hacer una pregunta corta a la vez. "
+            "Ahora vamos al panorama del libro."
+        ),
+        BridgeMode.ADAPTIVE: (
+            "Bien. Vamos a empezar de un modo sencillo y ajustamos el tamaño de las "
+            "preguntas cuando haga falta. Ahora vamos al panorama del libro."
+        ),
+    },
+}
+
+
+def bridge_calibration_question(language: str = FLOOR) -> str:
+    """The one method-choice question, in the language this session is being run in."""
+    return _CALIBRATION_QUESTION.get(language, _CALIBRATION_QUESTION[FLOOR])
+
+
+def is_bridge_calibration_question(text: str) -> bool:
+    """Whether a line the room already said was the method-choice question.
+
+    Any language's, not this session's. The text being matched was written on an earlier
+    turn and is compared as an exact string, so a room whose language moved between deploys
+    would otherwise stop recognising its own question and ask it again.
+    """
+    return text.strip() in {said.strip() for said in _CALIBRATION_QUESTION.values()}
+
+
+def bridge_calibration_acknowledgement(mode: BridgeMode, language: str = FLOOR) -> str:
+    """Fast app-owned acknowledgement for the panorama's one and only method-choice
+    answer. It never travels through the Guide-Validator cycle."""
+    said = _CALIBRATION_ACKNOWLEDGEMENT.get(language, _CALIBRATION_ACKNOWLEDGEMENT[FLOOR])
+    return said.get(mode, said[BridgeMode.ADAPTIVE])

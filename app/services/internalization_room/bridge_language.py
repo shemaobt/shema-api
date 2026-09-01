@@ -4,6 +4,8 @@ import logging
 
 from langdetect import DetectorFactory, LangDetectException, detect_langs
 
+from app.services.internalization_room.languages import FLOOR
+
 logger = logging.getLogger(__name__)
 
 DetectorFactory.seed = 0
@@ -12,7 +14,7 @@ MIN_LENGTH_TO_JUDGE = 40
 MIN_CONFIDENCE_TO_REFUSE = 0.90
 
 
-def strays_from(text: str, language_code: str = "pt") -> bool:
+def strays_from(text: str, language_code: str = FLOOR) -> bool:
     """Whether a drafted line is confidently in some language other than the room's.
 
     The Meaning Map is written in English and the team hears everything only once, so a

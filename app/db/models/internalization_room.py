@@ -87,6 +87,15 @@ class IRSession(Base):
     bridge_mode: Mapped[str] = mapped_column(
         String(24), default="calibration_pending", server_default="calibration_pending"
     )
+    #: Which language the room speaks to this team, chosen by the tablet when the session
+    #: opened and never afterwards. A per-request choice would let the room change language
+    #: underneath a team because somebody changed a phone setting mid-passage, and half a
+    #: passage in each language is worse than the whole of it in either.
+    #:
+    #: Not ``Project.language_id``. That column records the team's own language for the rest
+    #: of the platform and the room does not read it: the device decides, because the device
+    #: is what the facilitator set up in front of them.
+    language: Mapped[str] = mapped_column(String(8), default="en", server_default="en")
     #: Declared with the ``server_default`` its own migration already writes. The model said
     #: only ``default=dict``, which is Python-side and never reaches the DDL, so a table built
     #: from the metadata got a NOT NULL column with no default and any insert that did not

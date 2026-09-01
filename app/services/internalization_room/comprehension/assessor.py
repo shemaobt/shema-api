@@ -32,6 +32,7 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceObservation,
     EvidenceResult,
 )
+from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
 from app.services.internalization_room.oral_decision import (
     oral_clause_has_negation,
@@ -445,7 +446,7 @@ async def assess_turn(
     team_utterance: str,
     mode: BridgeMode,
     speech_recognition_uncertain: bool,
-    session_language: str = "Portuguese",
+    session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
 ) -> TurnAssessment:
     """One pass over the answer to the previously voiced probe.

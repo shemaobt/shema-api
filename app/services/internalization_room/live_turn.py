@@ -51,9 +51,9 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
-    MOTHER_TONGUE_PRACTICE_PROMPT,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
+    mother_tongue_practice_prompt,
     practiced_scenes_authorized_by_probe,
 )
 from app.services.internalization_room.comprehension.probe import (
@@ -77,19 +77,20 @@ from app.services.internalization_room.comprehension.session_readiness import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.comprehension.stt_recovery import (
-    STT_RECOVERY_REDUCE_BURDEN_LINE,
     plan_stt_recovery,
     resolve_stt_recovery_choice,
+    stt_recovery_reduce_burden_line,
 )
 from app.services.internalization_room.coverage import CoverageStatus, floor_met
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.rehearsal_readiness import (
-    REHEARSAL_CONSENT_DECLINED_LINE,
-    REHEARSAL_CONSENT_QUESTION,
-    REHEARSAL_READINESS_CUE,
     explicitly_requests_recording_handoff,
+    rehearsal_consent_declined_line,
+    rehearsal_consent_question,
+    rehearsal_readiness_cue,
     resolve_rehearsal_consent,
     should_offer_recording_consent,
 )
@@ -263,6 +264,7 @@ async def run_comprehension_turn(
         allowed = [c for c in checkpoints if c.id in set(prior_probe.checkpoint_ids)]
         assessment = await assess_turn(
             assessor_prompt=await get_prompt_text(db, IRPromptKey.COMPREHENSION_ASSESSOR),
+            session_language=LANGUAGE_NAMES[session.language],
             observation_id_prefix=_observation_id("assess"),
             probe_id=prior_probe.id,
             method=prior_probe.method,
@@ -527,17 +529,17 @@ async def run_comprehension_turn(
 
     app_owned_line: str | None = None
     if not opening and eligible and consent_decision == "accepted":
-        app_owned_line = REHEARSAL_READINESS_CUE
+        app_owned_line = rehearsal_readiness_cue(session.language)
     elif (
         prior_probe is not None
         and prior_probe.purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT
         and consent_decision == "declined"
     ):
-        app_owned_line = REHEARSAL_CONSENT_DECLINED_LINE
+        app_owned_line = rehearsal_consent_declined_line(session.language)
     elif next_probe is not None and next_probe.purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT:
-        app_owned_line = REHEARSAL_CONSENT_QUESTION
+        app_owned_line = rehearsal_consent_question(session.language)
     elif next_probe is not None and next_probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE:
-        app_owned_line = MOTHER_TONGUE_PRACTICE_PROMPT
+        app_owned_line = mother_tongue_practice_prompt(session.language)
 
     contract = render_active_probe_contract(
         next_probe,
@@ -555,20 +557,20 @@ async def run_comprehension_turn(
 
     hard_stop = False
     if mother_tongue:
-        line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, turn=len(messages))
+        line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
         outcome = TurnOutcome(
             speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
         )
     elif not opening and (empty or uncertain):
         if stt_plan.action == "reduce_burden":
             outcome = TurnOutcome(
-                speech=STT_RECOVERY_REDUCE_BURDEN_LINE,
+                speech=stt_recovery_reduce_burden_line(session.language),
                 transcript=transcript,
                 used_fail_safe=True,
                 degraded=True,
             )
         else:
-            line, fixed = choose(FailSafe.INAUDIBLE, turn=len(messages))
+            line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
             outcome = TurnOutcome(
                 speech=line,
                 transcript=transcript,
@@ -585,7 +587,9 @@ async def run_comprehension_turn(
                 session.id,
             )
         line, fixed = choose(
-            FailSafe.HARD_STOP if hard_stop else FailSafe.UNREPAIRABLE, turn=len(messages)
+            FailSafe.HARD_STOP if hard_stop else FailSafe.UNREPAIRABLE,
+            session.language,
+            turn=len(messages),
         )
         outcome = TurnOutcome(
             speech=line,
@@ -606,6 +610,8 @@ async def run_comprehension_turn(
             transcript=transcript,
             coverage_state=session.coverage_state or {},
             messages=messages,
+            session_language=LANGUAGE_NAMES[session.language],
+            language_code=session.language,
             guide_prompt=guide_prompt,
             validator_prompt=validator_prompt,
             pericope_num=pericope,

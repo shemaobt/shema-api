@@ -20,17 +20,17 @@ EN = (
 
 
 def test_portuguese_passes() -> None:
-    assert strays_from(PT) is False
+    assert strays_from(PT, language_code="pt") is False
 
 
 def test_english_is_refused() -> None:
-    assert strays_from(EN) is True
+    assert strays_from(EN, language_code="pt") is True
 
 
 @pytest.mark.parametrize("line", ["Vamos.", "Contem de novo.", "", "   "])
 def test_a_line_too_short_to_judge_is_never_refused(line: str) -> None:
     """Silencing the facilitator costs more than one odd word."""
-    assert strays_from(line) is False
+    assert strays_from(line, language_code="pt") is False
 
 
 def test_a_foreign_name_does_not_condemn_the_sentence() -> None:
@@ -44,7 +44,7 @@ def test_a_foreign_name_does_not_condemn_the_sentence() -> None:
         "O mapa escreve o nome dela como Ruth, mas na fala de vocês ela é Rute, e é "
         "assim que vamos contar essa história daqui em diante."
     )
-    assert strays_from(mostly_pt) is False
+    assert strays_from(mostly_pt, language_code="pt") is False
 
 
 def test_the_map_terms_belong_in_portuguese() -> None:
@@ -53,7 +53,7 @@ def test_the_map_terms_belong_in_portuguese() -> None:
         "O mapa chama esse trecho de ausência significativa, e é justamente o silêncio "
         "que a gente precisa guardar quando contar de novo."
     )
-    assert strays_from(rendered) is False
+    assert strays_from(rendered, language_code="pt") is False
 
 
 def test_the_room_can_be_run_in_another_bridge_language() -> None:

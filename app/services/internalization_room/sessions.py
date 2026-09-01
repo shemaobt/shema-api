@@ -32,6 +32,7 @@ from app.services.internalization_room.coverage import (
     is_panorama,
 )
 from app.services.internalization_room.coverage_events import record_transitions
+from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
@@ -70,6 +71,7 @@ async def create_session(
     after_panorama: bool = False,
     project_id: str | None = None,
     bridge_mode: str | None = None,
+    language: str | None = None,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
@@ -84,6 +86,13 @@ async def create_session(
     with full confidence — every team, every time, fourteen passages deep into a book none of
     them had ever left. Naming one still works and is obeyed: resolution fills a silence, it
     does not overrule a request.
+
+    ``language`` is which language the room will speak to this team, and it is decided here
+    and nowhere later. The tablet reads it off its own locale and names it once; every turn on
+    this session then answers in it. Carrying it per request instead would let the language
+    move under a team because somebody opened the phone settings mid-passage. A caller that
+    names none takes the floor; one that names a language the room does not speak is refused,
+    because answering it in another language is a wrong answer the caller cannot detect.
 
     ``project_id`` is whose it is, when the device said so. Null is a normal answer, not a
     failure: the room app identifies itself with a device credential only from ENG-454 onward,
@@ -108,6 +117,9 @@ async def create_session(
         require_walkable(load_map(pericope))
     if bridge_mode is not None and not is_selected_bridge_mode(bridge_mode):
         raise ValidationError(f"Unknown bridge mode {bridge_mode!r}")
+    spoken = normalize(language)
+    if language is not None and spoken is None:
+        raise ValidationError(f"The room does not speak {language!r}")
     if bridge_mode is None:
         bridge_mode = (
             BridgeMode.CALIBRATION_PENDING.value if panorama else BridgeMode.ADAPTIVE.value
@@ -124,6 +136,7 @@ async def create_session(
         kept_takes={},
         back_translation={},
         bridge_mode=bridge_mode,
+        language=spoken or floor(),
         comprehension={},
     )
     db.add(session)

@@ -13,6 +13,7 @@ import re
 import unicodedata
 
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.languages import FLOOR
 from app.services.internalization_room.oral_decision import (
     oral_clause_has_negation,
     oral_clause_is_non_committal,
@@ -140,13 +141,33 @@ def confirms_completed_mother_tongue_practice(
     return direct_confirmation and any(_AFFIRMATIVE.match(segment) for segment in segments)
 
 
-MOTHER_TONGUE_PRACTICE_PROMPT = (
-    "Agora ensaiem juntos esta cena na língua de vocês. Quando terminarem, digam somente: pronto."
-)
+_PRACTICE_PROMPT = {
+    "pt": (
+        "Agora ensaiem juntos esta cena na língua de vocês. "
+        "Quando terminarem, digam somente: pronto."
+    ),
+    "en": (
+        "Now rehearse this scene together in your own language. "
+        "When you have finished, just say: done."
+    ),
+    "es": (
+        "Ahora ensayen juntos esta escena en su lengua. Cuando terminen, digan solamente: listo."
+    ),
+}
+
+
+def mother_tongue_practice_prompt(language: str = FLOOR) -> str:
+    return _PRACTICE_PROMPT.get(language, _PRACTICE_PROMPT[FLOOR])
 
 
 def is_exact_mother_tongue_practice_prompt(text: str) -> bool:
-    return _normalize(text) == _normalize(MOTHER_TONGUE_PRACTICE_PROMPT)
+    """Whether a line the room already said was the practice prompt, in any language.
+
+    Any language's, for the same reason the rehearsal matchers take all of them: the text
+    was written on an earlier turn, and a room that only recognised the current language
+    would fail to recognise its own question.
+    """
+    return _normalize(text) in {_normalize(said) for said in _PRACTICE_PROMPT.values()}
 
 
 def confident_non_bridge_audio_completes_scoped_practice(
