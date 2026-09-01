@@ -418,6 +418,14 @@ class BackTranslationVerdictResponse(BaseModel):
     #: Which stretch the finding lands on, by its own address, so the room can take the team
     #: straight to that slice of their recording instead of starting the whole passage over.
     finding_segment_id: str | None = None
+    #: Which stretch was recorded in the mother tongue but never told back, by its own
+    #: address, when that is what stopped the reading. Its own field rather than
+    #: `finding_segment_id` because the two ask the room for different things: a finding is
+    #: a stretch the team told and the analyst has a correction about, and this is a stretch
+    #: with no telling-back at all. Reading one from the absence of the other is the
+    #: inference that cost a team their morning — the app had no address, inferred "start
+    #: over", and threw away every recording of the passage.
+    untold_segment_id: str | None = None
     findings_remaining: int = 0
     used_fail_safe: bool = False
 

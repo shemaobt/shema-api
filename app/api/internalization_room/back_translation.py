@@ -192,7 +192,8 @@ async def finish(
         state.clip_duration_ms = payload.clip_duration_ms
         await room.save_back_translation(db, session, state)
 
-    if len(told) < len(final):
+    untold = room.first_untold(final)
+    if untold is not None:
         waiting, _ = choose(
             FailSafe.UNTOLD_STRETCH,
             session.language,
@@ -206,6 +207,7 @@ async def finish(
             audio_url=clip_url(spoken.key),
             fixed_line="",
             checked=False,
+            untold_segment_id=untold.id,
             findings_remaining=0,
         )
 
