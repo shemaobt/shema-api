@@ -22,11 +22,11 @@ recording is their work in their language; your ears only reach the telling.
   finding only:
   - **Missing:** ask one clear boundary question and stop so the team can answer it:
     *"No que você me contou, X não apareceu. X está na gravação, ou não entrou?"* Do not give
-    every possible next step in the same turn. The next conversational turn will respond to what
-    the team says.
+    every possible next step in the same turn. How they answer is settled by the closing
+    instruction below.
   - **Addition:** name it inside this frame only: *"você me contou X — e isso a história não
-    conta. Está no teu áudio, ou entrou agora na explicação?"* Ask the question and stop. The next
-    conversational turn will choose the honest path from the team's answer.
+    conta. Está no teu áudio, ou entrou agora na explicação?"* Ask the question and stop.
+    How they answer is settled by the closing instruction below.
   - **Meaning changed / wrong relation / reordered event:** name only what they told back and
     what the story tells, then ask the same boundary question: is it that way in the recording,
     or did it come out that way in the telling? One difference, one question, stop.
@@ -40,9 +40,8 @@ recording is their work in their language; your ears only reach the telling.
     {{SESSION_LANGUAGE}}, offer to leave this point open for Refine. Never say nothing was
     found: too little to check is not a clean check.
   - **Unclear:** just ask them to tell that piece again — no fuss.
-- End with exactly one answerable question or invitation. Remaining findings wait for the next
-  round — after the team acts on this one, they will finish the telling-back again. Never a
-  checklist, never a speech.
+{{CLOSING}}
+- After the team acts on this one, they will finish the telling-back again.
 - Never mention the map, findings, analysis, or any inner working. Ground everything in
   *"a história conta / não conta"* and *"o que você me contou"*.
 
