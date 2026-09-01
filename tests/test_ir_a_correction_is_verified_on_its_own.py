@@ -424,13 +424,19 @@ async def test_retelling_a_stretch_in_other_words_is_not_a_refusal(
     )
 
     await _tell_that_stretch_again(client, session_id, first, saying=in_other_words)
+    # The closing reading is not what this case is about, so it is told to find nothing: what
+    # is under test is whether the verification accepted the retelling, not what a whole
+    # reading makes of the passage afterwards.
+    analyst.answer = '{"evidence_sufficient": true, "findings": []}'
     answered = await _finish(client, session_id)
     body = answered.json()
 
-    assert body["findings_remaining"] == 0, (
-        "recontar com outras palavras é o que uma correção honesta faz; recusá-la prende a "
-        "equipe num laço de regravar sem entender o motivo"
+    assert len(analyst.full_readings) == 2, (
+        "só uma lista esvaziada pela verificação chega à leitura final, então chegar lá é a "
+        "prova de que a correção foi aceita — recusá-la prende a equipe num laço de regravar "
+        "sem entender o motivo"
     )
+    assert body["findings_remaining"] == 0
     asked = analyst.verifications[0]
     assert "wording" in asked.lower()
 
@@ -514,3 +520,141 @@ async def test_bringing_in_what_the_map_does_not_tell_is_refused(
     assert body["findings_remaining"] >= 1
     assert body["checked"] is False
     assert body["finding_kind"] == "addition"
+
+
+# ---------------------------------------------------------------------------
+# The passage is only checked after a clean whole reading — ENG-680
+# ---------------------------------------------------------------------------
+#
+# Verifying corrections one stretch at a time is cheap and right for "did this finding go?",
+# but it sees a piece of the set. Two things escape it: a correction can answer, by accident,
+# a finding raised on another stretch; and whether the telling-back as a whole is too thin to
+# judge only exists looking at all of it. So the last word is always a whole reading — the
+# fast test while you work, the whole suite before you close.
+
+
+async def _the_last_finding_answered(
+    client: httpx.AsyncClient, db: AsyncSession, analyst: ReaderOfTellings
+) -> str:
+    """One finding, raised whole and answered by a correction the verification accepts.
+
+    Leaves the room at exactly the moment this slice is about: nothing is outstanding, and
+    nothing but stretch-by-stretch verification has looked at the work since the first reading.
+    """
+    session_id, first = await _a_finding_raised_on_the_first_stretch(client, db, analyst)
+    await _tell_that_stretch_again(
+        client, session_id, first, saying="Noemi e Orfa voltaram de Moabe para Belém."
+    )
+    return session_id
+
+
+@pytest.mark.asyncio
+async def test_clean_verifications_do_not_check_the_passage_on_their_own(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
+) -> None:
+    """Acceptance 1, and the case the whole slice rests on.
+
+    A verification answers the finding it was shown and nothing else. Letting it close the
+    passage would strike it off the wheel for good — there is no undo — on the word of a
+    reading that never saw the other stretches.
+    """
+    session_id = await _the_last_finding_answered(client, db_session, analyst)
+    analyst.answer = '{"evidence_sufficient": true, "findings": []}'
+
+    answered = await _finish(client, session_id)
+
+    assert answered.status_code == 200, answered.text
+    assert len(analyst.full_readings) == 2, (
+        "sem uma leitura completa depois da última correção, a passagem estaria sendo "
+        "conferida pela palavra de quem só viu um trecho"
+    )
+    closing_reading = analyst.full_readings[-1]
+    assert SECOND_TELLING in closing_reading
+    assert THIRD_TELLING in closing_reading
+
+
+@pytest.mark.asyncio
+async def test_a_closing_reading_that_finds_something_sends_the_team_back(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
+) -> None:
+    """Acceptance 2. What only the whole reading can see reaches the team like anything else."""
+    session_id = await _the_last_finding_answered(client, db_session, analyst)
+    analyst.answer = json.dumps(
+        {
+            "evidence_sufficient": True,
+            "findings": [{"kind": "missing", "chunk": 3, "note": "Judá não apareceu."}],
+        }
+    )
+
+    answered = await _finish(client, session_id)
+    body = answered.json()
+
+    assert body["checked"] is False
+    assert body["findings_remaining"] == 1
+    assert body["finding_kind"] == "missing"
+
+
+@pytest.mark.asyncio
+async def test_a_clean_closing_reading_checks_the_passage(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
+) -> None:
+    """Acceptance 3. The gate is a gate, not a wall: a clean whole reading does close it."""
+    session_id = await _the_last_finding_answered(client, db_session, analyst)
+    analyst.answer = '{"evidence_sufficient": true, "findings": []}'
+
+    answered = await _finish(client, session_id)
+    body = answered.json()
+
+    assert body["checked"] is True
+    assert body["findings_remaining"] == 0
+    assert len(analyst.full_readings) == 2, (
+        "e é a leitura completa que a conferiu, não a verificação"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_closing_reading_is_not_paid_for_twice(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
+) -> None:
+    """Acceptance 4, and a control on cost.
+
+    Without it the gate becomes a whole reading on every press, and the expense the
+    stretch-by-stretch verification just removed walks back in through the side door.
+    """
+    session_id = await _the_last_finding_answered(client, db_session, analyst)
+    analyst.answer = '{"evidence_sufficient": true, "findings": []}'
+    await _finish(client, session_id)
+    readings_when_it_closed = len(analyst.full_readings)
+    verifications_when_it_closed = len(analyst.verifications)
+
+    again = await _finish(client, session_id)
+
+    assert again.json()["checked"] is True
+    assert len(analyst.full_readings) == readings_when_it_closed, (
+        "nada mudou desde a leitura que conferiu, então não há nada novo para ler"
+    )
+    assert len(analyst.verifications) == verifications_when_it_closed, (
+        "e nada novo para verificar tampouco"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_team_that_got_it_right_first_time_pays_for_one_reading(
+    client: httpx.AsyncClient, analyst: ReaderOfTellings
+) -> None:
+    """Acceptance 3 read from the other side, and a control on fairness.
+
+    The gate exists because verifications see a piece of the set. A first reading is not a
+    piece of anything — it already saw all of it. Charging that team a second whole reading
+    would punish exactly the path the room wants.
+    """
+    session_id = await _three_stretches_told(client)
+    analyst.answer = '{"evidence_sufficient": true, "findings": []}'
+
+    answered = await _finish(client, session_id)
+    body = answered.json()
+
+    assert body["checked"] is True
+    assert body["findings_remaining"] == 0
+    assert len(analyst.full_readings) == 1
+    assert analyst.verifications == []
