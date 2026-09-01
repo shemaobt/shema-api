@@ -252,6 +252,7 @@ async def finish(
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],
+        telling_back=room.segments_block(told),
         speaker_prompt=await get_prompt_text(db, IRPromptKey.BT_VERDICT_SPEAKER),
         validator_prompt=await get_prompt_text(db, IRPromptKey.VALIDATOR),
         settings=get_settings(),
