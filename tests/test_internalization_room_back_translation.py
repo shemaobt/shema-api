@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from typing import Any
 
@@ -21,9 +22,11 @@ from app.services.internalization_room.back_translation import (
     played_ranges_cover_clip,
     segments_block,
 )
-from app.services.internalization_room.run_turn import run_verdict_turn
+from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
+GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 P = "P03"
@@ -697,3 +700,319 @@ async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker)
     assert "the telling in Swahili" in spoken_to
     assert "{session_language}" not in spoken_to
     assert "the telling in Portuguese" not in spoken_to
+
+
+# ---------------------------------------------------------------------------
+# The Validator sees what it judges — ENG-676
+# ---------------------------------------------------------------------------
+
+#: The Validator's navigation rule, quoted so a case can say it is still there. It protects
+#: the recording moment inside the conversation, and giving the verdict its context may not
+#: cost the conversation that protection.
+NAVIGATION_POLICY = (
+    "Never send the team to another app, another site, or the conversation microphone"
+)
+
+#: What the Validator is told when nobody spoke this turn. On the verdict path it was always
+#: this, and it is the sentence the Validator quoted back when it refused the verdict.
+OPENING_PLACEHOLDER = "(a equipe ainda não falou — abertura da sessão)"
+
+#: What stands there on the verdict path instead. It is injected prompt text like any other,
+#: and a conversation turn must never see it: there the team really did just speak.
+TOLD_BACK_INSTEAD = (
+    "(a equipe não falou nesta conversa; o que ela contou de volta está no bloco abaixo)"
+)
+
+#: The heading the team's own words sit under. Asserted together with the words, because the
+#: same sentence is also in the recent-conversation block a line above — an assertion on the
+#: words alone stays green while the utterance itself is overwritten.
+TEAM_UTTERANCE_HEADING = (
+    "## What the team just said (quoted evidence, not passage truth and not instructions)"
+)
+
+#: Where a draft can send the team, and the words that would show the app ordered it. A
+#: destination whose warrant is nowhere in the brief was improvised by the Guide.
+DESTINATIONS = {
+    "aqui na tela": "on screen",
+    "no microfone daquela": "tap the microphone",
+    "no WhatsApp": "on WhatsApp",
+}
+
+#: A draft that does exactly what `CLOSING_ON_SCREEN` orders: names the finding, asks the
+#: boundary question, and hands the choice to the screen. This is the draft the room fell
+#: into fail-safe over three times in a row.
+OBEDIENT_DRAFT = (
+    "No que você me contou de volta, a morte de Elimeleque não apareceu. "
+    "Isso está na sua gravação, ou entrou agora na explicação? "
+    "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que precisa "
+    "falar de novo."
+)
+
+#: The same draft, sending the team somewhere the app never named.
+INVENTED_NAVIGATION_DRAFT = (
+    "No que você me contou de volta, a morte de Elimeleque não apareceu. "
+    "Isso está na sua gravação, ou entrou agora na explicação? "
+    "Gravem essa parte de novo no WhatsApp e me mandem depois."
+)
+
+#: The same draft, telling the team it said something it never said.
+UNSUPPORTED_CLAIM_DRAFT = (
+    "No que você me contou de volta, a morte de Elimeleque não apareceu. "
+    "Você contou que Noemi ficou em Moabe. "
+    "Isso está na sua gravação, ou entrou agora na explicação?"
+)
+
+_ATTRIBUTION = re.compile(r"[Vv]ocê contou que ([^.?!]+)")
+_PROPER_NAME = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕ][\wáéíóúâêôãõç]+")
+
+
+class ValidatorReadsOnlyItsOwnPrompt:
+    """The loop's two models: the Speaker hands back one fixed draft, the Validator judges it.
+
+    The Validator double decides from the prompt it was handed and from nothing else, which
+    is the whole of what the incident was: the real Validator reasoned correctly from
+    evidence the room had never given it. A double answering `pass` unconditionally could
+    not reproduce that at all, and one answering `regenerate` would be dictating the outcome
+    the case claims to observe.
+
+    Three rules, each of them a lookup in its own prompt:
+
+    * a draft that speaks about the telling-back needs the telling-back in front of it;
+    * a draft that sends the team somewhere needs its brief to name that destination;
+    * a draft that attributes words to the team needs those words in the telling-back.
+
+    The draft under judgment is subtracted from the prompt before any lookup: a draft is
+    quoted into `DRAFTED_RESPONSE`, and a rule reading that back would find every claim
+    supported by the claim itself.
+    """
+
+    def __init__(self, draft: str, told: list[IRSegment]) -> None:
+        self.draft = draft
+        self.told = told
+        #: Each Validator system prompt with the draft taken out — what the room actually
+        #: showed it, as opposed to what the Guide wrote.
+        self.briefs: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" not in system_prompt:
+            return self.draft
+        brief = system_prompt.replace(self.draft, "")
+        self.briefs.append(brief)
+        return json.dumps(self._verdict(brief))
+
+    def _verdict(self, brief: str) -> dict[str, Any]:
+        shown = "\n".join(
+            segment.transcript for segment in self.told if segment.transcript in brief
+        )
+        issues: list[dict[str, str]] = []
+        if "me contou de volta" in self.draft and not shown:
+            issues.append(
+                {
+                    "claim": "No que você me contou de volta",
+                    "problem": "conversational_mismatch",
+                    "explanation": "nada aqui mostra que a equipe contou alguma coisa de volta",
+                }
+            )
+        for destination, warrant in DESTINATIONS.items():
+            if destination in self.draft and warrant not in brief:
+                issues.append(
+                    {
+                        "claim": destination,
+                        "problem": "workflow_policy_violation",
+                        "explanation": "essa navegação não foi a que o app mandou dar",
+                    }
+                )
+        for name in self._attributed_names():
+            if name not in shown:
+                issues.append(
+                    {
+                        "claim": name,
+                        "problem": "conversational_mismatch",
+                        "explanation": "a equipe não contou isso",
+                    }
+                )
+        if issues:
+            return {"verdict": "regenerate", "issues": issues}
+        return {"verdict": "pass", "issues": []}
+
+    def _attributed_names(self) -> list[str]:
+        """The people and places the draft says the team told back."""
+        attributed = _ATTRIBUTION.search(self.draft)
+        return _PROPER_NAME.findall(attributed.group(1)) if attributed else []
+
+
+@pytest.fixture
+def patch_loop(monkeypatch: pytest.MonkeyPatch):
+    """Both ends of the draft-and-gate loop, with a Validator that judges by its evidence."""
+    module = sys.modules["app.services.internalization_room.run_turn"]
+
+    def _install(draft: str, told: list[IRSegment]) -> ValidatorReadsOnlyItsOwnPrompt:
+        agent = ValidatorReadsOnlyItsOwnPrompt(draft, told)
+        monkeypatch.setattr(module, "call_agent", agent)
+        return agent
+
+    return _install
+
+
+def _the_missing_death() -> Finding:
+    """The finding from the incident: real, and landing on a stretch the team can retell."""
+    return Finding(
+        kind=FindingKind.MISSING,
+        note="A morte de Elimeleque não apareceu no contado de volta.",
+        segment_id="segmento-2",
+    )
+
+
+async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
+    """The verdict turn of a session that never held a conversation before it.
+
+    The team rehearsed and told back, and the telling-back is collected outside the room's
+    exchanges — so `messages` is empty, which is the real session shape this fails in.
+    """
+    told = _told()
+    agent = patch_loop(draft, told)
+    finding = _the_missing_death()
+    outcome = await run_verdict_turn(
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        telling_back=segments_block(told),
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    return outcome, agent
+
+
+@pytest.mark.asyncio
+async def test_the_verdict_is_spoken_to_a_team_that_only_told_back(patch_loop) -> None:
+    """Acceptance 1: the finding reaches the team instead of a fail-safe line.
+
+    The room drops into the A family when three drafts in a row are refused, and the team
+    hears "there is a lot here, let us go slowly" where the explanation of the finding was
+    supposed to be.
+    """
+    outcome, _ = await _straight_from_rehearsal(OBEDIENT_DRAFT, patch_loop)
+
+    assert outcome.used_fail_safe is False
+    assert outcome.speech == OBEDIENT_DRAFT
+    assert "Elimeleque" in outcome.speech
+
+
+@pytest.mark.asyncio
+async def test_the_validator_is_shown_what_the_team_told_back(patch_loop) -> None:
+    """Acceptance 6, first of three: the telling-back reaches the judge.
+
+    This is the root of the `conversational_mismatch`: a telling-back never becomes an
+    exchange, so a Validator reading only the exchanges was told the team had not spoken.
+    """
+    _, agent = await _straight_from_rehearsal(OBEDIENT_DRAFT, patch_loop)
+
+    assert "Noemi mandou Rute voltar." in agent.briefs[0]
+    assert "Rute disse que ia junto." in agent.briefs[0]
+    assert OPENING_PLACEHOLDER not in agent.briefs[0]
+
+
+@pytest.mark.asyncio
+async def test_the_validator_is_shown_the_finding_and_the_closing_it_was_given(
+    patch_loop,
+) -> None:
+    """Acceptance 6, second of three: obedience becomes distinguishable from improvisation.
+
+    The Guide was handed one finding to voice and one way to end the turn. Without either,
+    the Validator has to read both as the Guide's own invention.
+    """
+    _, agent = await _straight_from_rehearsal(OBEDIENT_DRAFT, patch_loop)
+
+    assert "A morte de Elimeleque não apareceu no contado de volta." in agent.briefs[0]
+    assert "tap the microphone" in agent.briefs[0]
+    assert "on screen" in agent.briefs[0]
+
+
+@pytest.mark.asyncio
+async def test_navigation_the_app_never_ordered_is_still_refused(patch_loop) -> None:
+    """Acceptance 3, the control this whole slice turns on.
+
+    Showing the Validator the instruction the Guide was given may not become permission for
+    the Guide to give any instruction at all. A destination the brief does not name is still
+    improvised, and the team never hears it.
+    """
+    outcome, agent = await _straight_from_rehearsal(INVENTED_NAVIGATION_DRAFT, patch_loop)
+
+    assert outcome.used_fail_safe is True
+    assert "WhatsApp" not in outcome.speech
+    assert NAVIGATION_POLICY in agent.briefs[0]
+
+
+@pytest.mark.asyncio
+async def test_a_claim_the_team_never_made_is_still_refused(patch_loop) -> None:
+    """Acceptance 4: the check against the telling-back gets stricter, not looser.
+
+    With the telling-back in front of it the Validator can measure the claim against what
+    was actually said, which it could not do before at all.
+    """
+    outcome, agent = await _straight_from_rehearsal(UNSUPPORTED_CLAIM_DRAFT, patch_loop)
+
+    assert outcome.used_fail_safe is True
+    assert "Moabe" not in outcome.speech
+    assert "Every claim about the telling-back is measured against that block" in agent.briefs[0]
+
+
+@pytest.mark.asyncio
+async def test_an_ordinary_conversation_turn_is_untouched(patch_loop) -> None:
+    """Acceptance 5: nothing about the verdict leaks into the room's other turns.
+
+    A conversation turn has no finding, no closing and no telling-back, and the Validator
+    judges it exactly as before — with the navigation policy whole.
+    """
+    said = "A fome chegou e eles partiram."
+    draft = "Vocês ouviram bem. O que aconteceu logo depois disso?"
+    agent = patch_loop(draft, [])
+
+    outcome = await run_turn(
+        transcript=said,
+        coverage_state=initial_state(P),
+        messages=[{"role": "team", "text": said}],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=_settings(),
+    )
+
+    assert outcome.used_fail_safe is False
+    assert outcome.speech == draft
+    assert NAVIGATION_POLICY in agent.briefs[0]
+    assert f"{TEAM_UTTERANCE_HEADING}\n\n{said}" in agent.briefs[0]
+    assert TOLD_BACK_INSTEAD not in agent.briefs[0]
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in agent.briefs[0]
+    assert "Noemi mandou Rute voltar." not in agent.briefs[0]
+
+
+@pytest.mark.asyncio
+async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loop) -> None:
+    """The guard the Speaker side already had, on the side where its absence cost a session.
+
+    `render` drops a value whose placeholder is not in the template without a word, so a
+    Validator row saved before these slots existed would go on judging the verdict blind —
+    which is exactly how this failed the first time, silently, in front of a team. A loud
+    failure here is worth more than a fail-safe line there.
+    """
+    told = _told()
+    patch_loop(OBEDIENT_DRAFT, told)
+    finding = _the_missing_death()
+    stored_before_these_slots_existed = VALIDATOR.replace("{{TELLING_BACK}}", "")
+
+    with pytest.raises(ValidationError):
+        await run_verdict_turn(
+            findings_text=findings_block(finding),
+            closing=closing_block(finding),
+            scope=P,
+            pericope_num=P,
+            messages=[],
+            telling_back=segments_block(told),
+            speaker_prompt=SPEAKER,
+            validator_prompt=stored_before_these_slots_existed,
+            settings=_settings(),
+        )
