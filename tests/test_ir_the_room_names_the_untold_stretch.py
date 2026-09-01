@@ -204,7 +204,7 @@ async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
     )
 
 
-async def _three_stretches_told(client: httpx.AsyncClient) -> tuple[str, str]:
+async def _three_stretches_told(client: httpx.AsyncClient) -> str:
     """A passage told back in three stretches, in the order the team told them."""
     session_id = await _open_session(client)
     take_id = await _record(client, session_id, b"a equipe ensaiou a passagem inteira")
@@ -224,7 +224,7 @@ async def _three_stretches_told(client: httpx.AsyncClient) -> tuple[str, str]:
             ends_ms=ends_ms,
             audio=b"um trecho",
         )
-    return session_id, take_id
+    return session_id
 
 
 async def _standing(db: AsyncSession, session_id: str) -> list[IRSegment]:
@@ -274,7 +274,7 @@ async def test_the_room_names_the_stretch_that_was_never_told_back(
     Without it the app has nowhere to send the team but the beginning, and the beginning
     costs them every recording of the passage.
     """
-    session_id, _take_id = await _three_stretches_told(client)
+    session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
     waiting = await _re_record_the_native(db_session, session_id, standing[1])
 
@@ -295,7 +295,7 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     the reverse of the order the team tells in, so an answer that reads back the newest row,
     or any row at all, is not the same as an answer that reads the passage.
     """
-    session_id, _take_id = await _three_stretches_told(client)
+    session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
     later = await _re_record_the_native(db_session, session_id, standing[2])
     earlier = await _re_record_the_native(db_session, session_id, standing[0])
@@ -319,13 +319,19 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     the analyst still never sees a subset, the team still hears the waiting line, and
     `checked` — which is what the app strikes the passage off the wheel by — stays false.
     """
-    session_id, _take_id = await _three_stretches_told(client)
+    session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
     await _re_record_the_native(db_session, session_id, standing[1])
 
     body = (await _finish(client, session_id)).json()
 
-    assert body["checked"] is False
+    assert body["untold_segment_id"] is not None
+    assert body["checked"] is False, "um endereço não é uma passagem conferida"
+    assert body["finding_kind"] is None, "e não é um achado do analista, que nem rodou"
+    assert body["finding_segment_id"] is None, (
+        "os dois endereços nunca vêm juntos: o app tem de saber qual dos dois casos é sem "
+        "inferir um pela ausência do outro"
+    )
     assert analyst.readings == 0, "o analista continua sem ver um subconjunto"
     assert body["audio_url"], "a equipe continua tendo o que tocar"
     assert spoken[-1] in utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE), (
@@ -338,7 +344,7 @@ async def test_a_telling_back_with_every_stretch_told_names_no_stretch(
     client: httpx.AsyncClient, analyst: Analyst
 ) -> None:
     """Case 4. The ordinary path is untouched: a verdict, and no address."""
-    session_id, _take_id = await _three_stretches_told(client)
+    session_id = await _three_stretches_told(client)
 
     body = (await _finish(client, session_id)).json()
 
@@ -358,7 +364,7 @@ async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     the row that took its place — and sending them back to it would be sending them to work
     they have finished.
     """
-    session_id, _take_id = await _three_stretches_told(client)
+    session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
 
     retired_with_no_telling = await _re_record_the_native(db_session, session_id, standing[0])
@@ -371,4 +377,29 @@ async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     assert body["untold_segment_id"] != retired_with_no_telling.id, (
         "uma versão retirada não é um trecho por contar: quem só olha a tabela crua manda "
         "a equipe refazer o que ela já refez"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_stretch_divided_in_two_is_named_by_its_first_half(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    """Hardening beyond the plan: dividing is the other way a hole opens.
+
+    A stretch split in two hands back two halves with nothing the team said on either, and
+    the halves stand where their parent stood. So the order of the passage stops being a
+    column and becomes a walk: the first half of the first stretch comes before a stretch
+    that was already there, even though it was written to the table last.
+    """
+    session_id = await _three_stretches_told(client)
+    standing = await _standing(db_session, session_id)
+    await _re_record_the_native(db_session, session_id, standing[2])
+    session = await get_session(db_session, session_id)
+    head, tail = await service.divide_segment(db_session, session, standing[0], at_ms=4000)
+
+    body = (await _finish(client, session_id)).json()
+
+    assert body["untold_segment_id"] == head.id
+    assert body["untold_segment_id"] != tail.id, (
+        "a metade da frente vem antes da de trás, e as duas vêm antes do que já estava lá"
     )

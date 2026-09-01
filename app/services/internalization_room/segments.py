@@ -311,12 +311,12 @@ def first_untold(segments: list[IRSegment]) -> IRSegment | None:
 
     Earliest, because a team tells a passage in its own sequence: sent to a hole in the
     middle while an earlier one is still open, they work backwards through their own
-    recording. The order is the caller's — `final_segments` walks the hierarchy — so a
-    replacement written long after its neighbours is still found where its position is.
+    recording. Earliest by position, which is not the same as earliest in the take — a
+    stretch re-recorded against a different slice keeps the position it had.
 
-    Taking the list rather than the session id is what keeps a retired version out of the
-    answer: only stretches that already count are ever looked at, so a version whose
-    telling-back was never written and which was replaced anyway is not a hole.
+    The caller decides which stretches are in scope, and none of the selection rules are
+    repeated here: `finish` passes `final_segments`, so what is walked is already current
+    and already in the order the team told in.
     """
     return next((segment for segment in segments if segment.transcript is None), None)
 
