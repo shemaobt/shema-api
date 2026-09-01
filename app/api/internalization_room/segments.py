@@ -21,6 +21,7 @@ from app.services.internalization_room.segments import (
     segment_for_session,
     slice_moved,
 )
+from app.services.internalization_room.sessions import MAX_RETELLS
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 
 router = APIRouter()
@@ -142,6 +143,9 @@ async def replace(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
+    state = room.back_translation_of(session)
+    told_again = state.retells + 1
+
     retro = await store_take(
         db,
         session_id=session.id,
@@ -157,9 +161,19 @@ async def replace(
     )
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+
+    state.retells = told_again
+    await room.save_back_translation(db, session, state)
+    spent = told_again >= MAX_RETELLS
+    if spent:
+        await room.mark_needs_person(db, session)
+
     if not text.strip():
         return SegmentsResponse(
-            session_id=session.id, segments=await _units(db, session.id), captured=False
+            session_id=session.id,
+            segments=await _units(db, session.id),
+            captured=False,
+            needs_person=spent,
         )
 
     await room.capture_segment(
@@ -173,4 +187,6 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
-    return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+    return SegmentsResponse(
+        session_id=session.id, segments=await _units(db, session.id), needs_person=spent
+    )
