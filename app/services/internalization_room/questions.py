@@ -116,11 +116,11 @@ async def transcribe_for_the_desk(
     the same thing to a raised hand. The card appears with audio and no transcript, and the
     facilitator answers it by listening, which is what they did before this column existed.
 
-    **``ValidationError`` is in that tuple deliberately, and it is not hiding a defect of
     The language is the session's rather than the room's, and it is a hint and not a
     detection request: letting the provider guess is how a question comes back transcribed
     phonetically into a neighbouring language, and the facilitator reads that.
 
+    **``ValidationError`` is in that tuple deliberately, and it is not hiding a defect of
     ours behind "the audio was bad".** Four places can raise it on this path, and none of
     them is a mistake in this repository: an empty payload, which `raise_question` refuses
     several lines above and a test holds; an empty language, which cannot happen because the

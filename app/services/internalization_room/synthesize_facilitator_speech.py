@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.languages import floor
 from app.services.internalization_room.voices import voice_for
 from app.services.platform.tts import SpeechStore, SynthesizedSpeech
 from app.services.platform.tts import synthesize_speech as platform_speech
@@ -44,7 +45,7 @@ async def synthesize_facilitator_speech(
     paid ElevenLabs again for a sentence it had just spoken.
     """
     cfg = settings or get_settings()
-    spoken = language or cfg.internalization_room_default_language
+    spoken = language or floor(cfg)
     speech = await platform_speech(
         text,
         language=spoken,

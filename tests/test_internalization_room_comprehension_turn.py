@@ -32,6 +32,7 @@ from app.services.internalization_room.comprehension.stt_recovery import (
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.rehearsal_readiness import (
     RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
@@ -39,7 +40,7 @@ from app.services.internalization_room.rehearsal_readiness import (
     rehearsal_consent_question,
     rehearsal_readiness_cue,
 )
-from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
+from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK, detects_peer_cue
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
@@ -277,6 +278,21 @@ async def test_the_opening_turn_belongs_to_the_guide(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
+def test_the_room_hands_the_talking_over_in_every_language_it_claims(spoken: str) -> None:
+    """A linha cujo propósito inteiro é passar a palavra para a equipe.
+
+    `peer_cue` é detectado relendo a frase que o próprio app escreveu, então cada idioma
+    precisa das suas expressões. Faltando as do espanhol, `peer_cue` voltava falso em todo
+    turno de uma sessão em espanhol — e o teste ao lado abre com `language="pt"`, então a
+    suíte seguia verde por cima disso.
+    """
+    assert detects_peer_cue(mother_tongue_practice_prompt(spoken)), (
+        f"a sala convida a equipe a ensaiar entre si em {spoken!r} e não marca o convite, "
+        "então a tela não entra em modo de conversa e a equipe fica olhando o círculo"
+    )
+
+
 async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
     db_session: AsyncSession, approve_all: None
 ) -> None:

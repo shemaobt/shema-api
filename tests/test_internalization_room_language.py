@@ -18,8 +18,9 @@ from fastapi import FastAPI
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import ValidationError
-from app.services.internalization_room.languages import FLOOR, normalize
+from app.services.internalization_room.languages import FLOOR, floor, normalize
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
@@ -39,6 +40,7 @@ async def client(
 ):
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
+    from app.api.internalization_room import voice as voice_api
     from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
@@ -61,6 +63,7 @@ async def client(
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(voice_api, "synthesize_facilitator_speech", _speech)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -168,6 +171,65 @@ async def test_the_service_refuses_a_language_the_room_does_not_speak(
 ) -> None:
     with pytest.raises(ValidationError):
         await create_session(db_session, pericope="OV", language="ja")
+
+
+async def test_the_floor_setting_reaches_the_session_and_the_wheel_and_not_only_the_voice(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Segurar uma frota em português enquanto o app que nomeia idioma ainda não saiu é a
+    razão de o piso ser ajustável. Um piso que só o sintetizador honrasse deixaria as sessões
+    e a roda respondendo inglês por baixo dele — exatamente a falha que ele existe para evitar.
+    """
+    monkeypatch.setattr(
+        get_settings(), "internalization_room_default_language", "pt", raising=False
+    )
+
+    opened = await create_session(db_session, pericope="OV")
+
+    assert opened.language == "pt"
+    assert floor() == "pt"
+
+
+def test_a_floor_the_room_cannot_speak_falls_back_instead_of_reaching_a_team() -> None:
+    """Um erro de digitação num ambiente não pode reivindicar um idioma que a sala não fala."""
+    settings = get_settings()
+    original = settings.internalization_room_default_language
+    try:
+        object.__setattr__(settings, "internalization_room_default_language", "kl")
+        assert floor() == FLOOR
+    finally:
+        object.__setattr__(settings, "internalization_room_default_language", original)
+
+
+async def test_the_voice_route_reads_a_regional_tag_the_way_the_session_does(
+    client: httpx.AsyncClient, spoken: list[dict[str, Any]]
+) -> None:
+    """Três portas recebem idioma; esta era a única que pulava o módulo escrito para isso.
+
+    A afirmação é sobre a tag que chega embaixo, não sobre o status: as vozes são indexadas
+    por idioma primário, então `pt-BR` cru não acha voz nenhuma e a rota respondia 400 — vindo
+    do mesmo locale de tablet que `POST /sessions` aceita e guarda como `pt`.
+    """
+    said = await client.post(
+        f"{PREFIX}/voice/speak",
+        headers={"X-Room-Key": KEY},
+        json={"text": "Bem-vindos.", "language": "pt-BR"},
+    )
+
+    assert said.status_code == 200, said.text[:200]
+    assert [call["language"] for call in spoken if "synthesized" in call] == ["pt"]
+
+
+async def test_the_voice_route_refuses_a_language_the_room_does_not_speak(
+    client: httpx.AsyncClient,
+) -> None:
+    refused = await client.post(
+        f"{PREFIX}/voice/speak",
+        headers={"X-Room-Key": KEY},
+        json={"text": "Bem-vindos.", "language": "fr"},
+    )
+
+    assert refused.status_code == 400, refused.text[:200]
 
 
 def test_a_locale_the_room_does_not_speak_is_not_quietly_narrowed_to_one_it_does() -> None:

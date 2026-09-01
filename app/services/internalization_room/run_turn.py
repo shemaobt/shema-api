@@ -107,6 +107,12 @@ _PEER_CUE_PHRASES = (
     "talk it over",
     "rehearse",
     "in your own language",
+    "entre ustedes",
+    "conversen",
+    "ensayen",
+    "ensaye",
+    "en su lengua",
+    "en su propia lengua",
 )
 
 

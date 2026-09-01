@@ -32,7 +32,7 @@ from app.services.internalization_room.coverage import (
     is_panorama,
 )
 from app.services.internalization_room.coverage_events import record_transitions
-from app.services.internalization_room.languages import FLOOR, normalize
+from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
@@ -136,7 +136,7 @@ async def create_session(
         kept_takes={},
         back_translation={},
         bridge_mode=bridge_mode,
-        language=spoken or FLOOR,
+        language=spoken or floor(),
         comprehension={},
     )
     db.add(session)

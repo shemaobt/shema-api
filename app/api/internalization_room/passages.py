@@ -11,7 +11,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.canon.parse_map import load_book
-from app.services.internalization_room.languages import FLOOR, normalize
+from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.passage_lines import line_for
 from app.services.internalization_room.voice_handles import clip_url
 
@@ -49,7 +49,7 @@ async def _voiced(
 )
 async def passages(
     book: str,
-    language: Annotated[str, Query(max_length=8)] = FLOOR,
+    language: Annotated[str | None, Query(max_length=8)] = None,
 ) -> BookPassagesResponse:
     """The passages of a book, each with the line the room says to name it out loud.
 
@@ -78,10 +78,10 @@ async def passages(
     than all fourteen, because the room's ElevenLabs key carries its own quota and a cold
     book should not spend it in one breath. Story order is the order they come back in.
     """
-    spoken = normalize(language)
+    settings = get_settings()
+    spoken = floor(settings) if language is None else normalize(language)
     if spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
-    settings = get_settings()
     in_flight = asyncio.Semaphore(MAX_LINES_IN_FLIGHT)
     speakable = [
         (meaning_map.pericope_num, line)
