@@ -228,7 +228,27 @@ async def finish(
             findings_remaining=0,
         )
 
-    if not state.already_analysed(told):
+    correction = room.correction_to_verify(state, told, await room.retired_segments(db, session.id))
+    if correction is not None:
+        answered, earlier, corrected = correction
+        verified = await room.verify_correction(
+            finding=answered,
+            earlier=earlier,
+            corrected=corrected,
+            scope=state.scope or session.pericope,
+            pericope_num=session.pericope,
+            correction_prompt=await get_prompt_text(db, IRPromptKey.BT_CORRECTION),
+            session_language=LANGUAGE_NAMES[session.language],
+            settings=get_settings(),
+        )
+        if verified is None:
+            # Nothing is saved, exactly as on the reading below: a verification that never
+            # happened must not read as one that passed. Dropping the finding here would take
+            # it off the list for good, and the team would never be asked about it again.
+            raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
+        state.findings = room.findings_after_correction(state.findings, verified, corrected)
+        state.analysed_segment_ids = [segment.id for segment in told]
+    elif not state.already_analysed(told):
         read = await room.analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
