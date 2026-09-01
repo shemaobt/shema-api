@@ -182,6 +182,23 @@ async def finish(
     model — and this is not that: the gate fires with the server answering normally, before
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
+
+    **No passage is checked on stretch-by-stretch verifications alone.** A verification answers
+    the finding it was shown and nothing else, so a list it emptied has never been measured
+    against the set — and two things live only in the set: a correction can answer, by
+    accident, a finding raised on another stretch, and whether the telling-back is too thin to
+    judge at all. So when nothing is outstanding and only verifications have looked since the
+    last whole reading, one whole reading runs, and it is the one that decides. The fast test
+    while working; the whole suite before closing.
+
+    It is not paid for twice. The reading turns the flag off and takes the signature with it,
+    so pressing `terminei` again with nothing changed reaches neither branch — and a team that
+    got it right the first time never turns the flag on at all, so it is checked on one reading
+    and not two.
+
+    A closing reading that could not be made saves nothing, exactly as the reading above it
+    does: a passage checked because the analyst was unreachable would be struck off the wheel
+    on an outage, and a finished passage never comes back.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
@@ -248,6 +265,7 @@ async def finish(
             raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
         state.findings = room.findings_after_correction(state.findings, verified, corrected)
         state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = True
     elif not state.already_analysed(told):
         read = await room.analyse_telling_back(
             segments=told,
@@ -265,6 +283,26 @@ async def finish(
         state.findings = read.findings
         state.evidence_sufficient = read.evidence_sufficient
         state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = False
+
+    if state.current_finding is None and state.verified_since_whole_reading:
+        closing = await room.analyse_telling_back(
+            segments=told,
+            scope=state.scope or session.pericope,
+            pericope_num=session.pericope,
+            analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
+            session_language=LANGUAGE_NAMES[session.language],
+            settings=get_settings(),
+        )
+        if closing is None:
+            raise UpstreamServiceError(
+                "a leitura final do contado de volta não pôde ser feita agora"
+            )
+        state.findings = closing.findings
+        state.evidence_sufficient = closing.evidence_sufficient
+        state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = False
+
     finding = state.current_finding
     state.checked = finding is None and state.evidence_sufficient
 

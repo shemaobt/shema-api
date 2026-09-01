@@ -109,6 +109,16 @@ class BackTranslationState(BaseModel):
     #: have been served the verdict of the one it replaced. `None` is never read at all, which
     #: an empty list is not.
     analysed_segment_ids: list[str] | None = None
+    #: Whether a stretch-by-stretch verification has run since the last whole reading. It is
+    #: what the closing gate turns on: a verification answers the finding it was shown and
+    #: nothing else, so a list emptied by verifications alone has never been measured against
+    #: the set. Two things live only in the set — a correction can answer, by accident, a
+    #: finding raised on another stretch, and whether the telling-back is too thin to judge at
+    #: all — and `checked` strikes the passage off the wheel for good, with no undo.
+    #:
+    #: A first reading never turns it on, which is what keeps a team that got it right the
+    #: first time paying for one reading and not two.
+    verified_since_whole_reading: bool = False
 
     @property
     def current_finding(self) -> Finding | None:
