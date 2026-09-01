@@ -3,8 +3,11 @@ from app.services.internalization_room.back_translation import (
     Finding,
     analyse_telling_back,
     closing_block,
+    correction_to_verify,
+    findings_after_correction,
     findings_block,
     segments_block,
+    verify_correction,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.live_turn import (
@@ -66,10 +69,12 @@ __all__ = [
     "classify_coverage",
     "closing_block",
     "comprehension_of",
+    "correction_to_verify",
     "create_session",
     "divide_segment",
     "divided_segments",
     "final_segments",
+    "findings_after_correction",
     "findings_block",
     "get_session",
     "get_session_for_facilitator",
@@ -90,4 +95,5 @@ __all__ = [
     "set_bridge_mode",
     "synthesize_facilitator_speech",
     "told_back",
+    "verify_correction",
 ]
