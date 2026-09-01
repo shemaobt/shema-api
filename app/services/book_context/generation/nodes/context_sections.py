@@ -4,9 +4,12 @@ import json
 import logging
 from typing import Any
 
+from langchain_core.exceptions import OutputParserException
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.book_context import BCDGenerationLog
+from app.models.book_context import PlaceType
 from app.services.book_context.generation.llm import call_llm
 from app.services.book_context.generation.nodes.utils import summarize_participants
 from app.services.book_context.generation.schemas import (
@@ -20,6 +23,76 @@ from app.services.book_context.generation.types import BHSAEntity
 logger = logging.getLogger(__name__)
 
 PLACE_BATCH_SIZE = 60
+
+_VALID_PLACE_TYPES = {member.value for member in PlaceType}
+
+
+def _strip_markdown_fences(raw: str) -> str:
+    text = raw.strip()
+    if not text.startswith("```"):
+        return text
+    lines = text.split("\n")
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines)
+
+
+def _normalize_place_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    type_value = entry.get("type")
+    if type_value not in _VALID_PLACE_TYPES:
+        entry["_legacy_type"] = type_value
+        entry["type"] = PlaceType.OTHER.value
+    return entry
+
+
+def _parse_and_normalize_places(raw: str) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(_strip_markdown_fences(raw))
+    except (TypeError, ValueError):
+        logger.warning("Fallback parser could not load LLM place payload as JSON")
+        return []
+    if isinstance(payload, dict):
+        items = payload.get("places", [])
+    elif isinstance(payload, list):
+        items = payload
+    else:
+        return []
+    return [_normalize_place_entry(dict(entry)) for entry in items if isinstance(entry, dict)]
+
+
+_EMPTY_CONTEXT_SECTIONS: dict[str, Any] = {
+    "theological_spine": "",
+    "places": [],
+    "objects": [],
+    "institutions": [],
+    "genre_context": {},
+    "maintenance_notes": {},
+}
+
+
+def _parse_and_normalize_context_sections(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(_strip_markdown_fences(raw))
+    except (TypeError, ValueError):
+        logger.warning("Fallback parser could not load LLM context_sections payload as JSON")
+        return dict(_EMPTY_CONTEXT_SECTIONS)
+    if not isinstance(payload, dict):
+        return dict(_EMPTY_CONTEXT_SECTIONS)
+    raw_places = payload.get("places", []) or []
+    places = [
+        _normalize_place_entry(dict(entry)) for entry in raw_places if isinstance(entry, dict)
+    ]
+    return {
+        "theological_spine": payload.get("theological_spine", "") or "",
+        "places": places,
+        "objects": [o for o in (payload.get("objects") or []) if isinstance(o, dict)],
+        "institutions": [i for i in (payload.get("institutions") or []) if isinstance(i, dict)],
+        "genre_context": payload.get("genre_context") or {},
+        "maintenance_notes": payload.get("maintenance_notes") or {},
+    }
+
 
 CONTEXT_SECTIONS_PROMPT = """\
 You are a biblical scholar completing the Book Context Document for {book_name} ({genre}).
@@ -374,8 +447,16 @@ async def _generate_place_batch(
         book_name=book_name,
         place_entities=json.dumps(entities, indent=2),
     )
-    result = await call_llm(prompt, output_schema=PlacesRegisterSchema)
-    return [p.model_dump() for p in result.places]
+    try:
+        result = await call_llm(prompt, output_schema=PlacesRegisterSchema)
+        return [p.model_dump() for p in result.places]
+    except (ValidationError, OutputParserException) as exc:
+        logger.warning(
+            "LLM emitted out-of-enum place payload; falling back to raw parse: %s",
+            exc,
+        )
+        raw = await call_llm(prompt, output_schema=None)
+        return _parse_and_normalize_places(raw)
 
 
 async def generate_context_sections(
@@ -395,15 +476,23 @@ async def generate_context_sections(
         )
         if state.get("user_feedback"):
             prompt += "\n\n## User Feedback (address these concerns)\n" + state["user_feedback"]
-        result = await call_llm(prompt, output_schema=ContextSectionsSchema)
-        return {
-            "theological_spine": result.theological_spine,
-            "places": [p.model_dump() for p in result.places],
-            "objects": [o.model_dump() for o in result.objects],
-            "institutions": [i.model_dump() for i in result.institutions],
-            "genre_context": result.genre_context.model_dump(),
-            "maintenance_notes": result.maintenance_notes.model_dump(),
-        }
+        try:
+            result = await call_llm(prompt, output_schema=ContextSectionsSchema)
+            return {
+                "theological_spine": result.theological_spine,
+                "places": [p.model_dump() for p in result.places],
+                "objects": [o.model_dump() for o in result.objects],
+                "institutions": [i.model_dump() for i in result.institutions],
+                "genre_context": result.genre_context.model_dump(),
+                "maintenance_notes": result.maintenance_notes.model_dump(),
+            }
+        except (ValidationError, OutputParserException) as exc:
+            logger.warning(
+                "LLM emitted invalid context_sections payload; falling back to raw parse: %s",
+                exc,
+            )
+            raw = await call_llm(prompt, output_schema=None)
+            return _parse_and_normalize_context_sections(raw)
 
     logger.info(
         "Splitting %d place entities into batches of ~%d",
@@ -421,7 +510,23 @@ async def generate_context_sections(
         log.output_summary = "Generating theology, objects, institutions..."
         await db.commit()
 
-    sections = await call_llm(no_places_prompt, output_schema=ContextSectionsBatchSchema)
+    try:
+        sections_result = await call_llm(no_places_prompt, output_schema=ContextSectionsBatchSchema)
+        sections_data: dict[str, Any] = {
+            "theological_spine": sections_result.theological_spine,
+            "places": [p.model_dump() for p in sections_result.places],
+            "objects": [o.model_dump() for o in sections_result.objects],
+            "institutions": [i.model_dump() for i in sections_result.institutions],
+            "genre_context": sections_result.genre_context.model_dump(),
+            "maintenance_notes": sections_result.maintenance_notes.model_dump(),
+        }
+    except (ValidationError, OutputParserException) as exc:
+        logger.warning(
+            "LLM emitted invalid context_sections_batch payload; falling back to raw parse: %s",
+            exc,
+        )
+        raw = await call_llm(no_places_prompt, output_schema=None)
+        sections_data = _parse_and_normalize_context_sections(raw)
 
     batches = [
         place_entities[i : i + PLACE_BATCH_SIZE]
@@ -447,18 +552,17 @@ async def generate_context_sections(
                 seen_names.add(name)
                 all_places.append(p)
 
-    for p in sections.places:
-        entry = p.model_dump()
+    for entry in sections_data.get("places", []):
         name = entry.get("name", "")
         if name and name not in seen_names:
             seen_names.add(name)
             all_places.append(entry)
 
     return {
-        "theological_spine": sections.theological_spine,
+        "theological_spine": sections_data.get("theological_spine", ""),
         "places": all_places,
-        "objects": [o.model_dump() for o in sections.objects],
-        "institutions": [i.model_dump() for i in sections.institutions],
-        "genre_context": sections.genre_context.model_dump(),
-        "maintenance_notes": sections.maintenance_notes.model_dump(),
+        "objects": sections_data.get("objects", []),
+        "institutions": sections_data.get("institutions", []),
+        "genre_context": sections_data.get("genre_context", {}),
+        "maintenance_notes": sections_data.get("maintenance_notes", {}),
     }
