@@ -301,6 +301,26 @@ def told_back(segments: list[IRSegment]) -> list[IRSegment]:
     return [segment for segment in segments if segment.transcript is not None]
 
 
+def first_untold(segments: list[IRSegment]) -> IRSegment | None:
+    """The earliest stretch that counts and carries no telling-back, or nothing if none does.
+
+    The complement of `told_back` over the same list, and it lives beside it for the same
+    reason the two are one function apart: which stretches count, and which of them are
+    evidence, are answered in one place so the count that stops the analyst and the address
+    the team is sent to cannot disagree.
+
+    Earliest, because a team tells a passage in its own sequence: sent to a hole in the
+    middle while an earlier one is still open, they work backwards through their own
+    recording. The order is the caller's — `final_segments` walks the hierarchy — so a
+    replacement written long after its neighbours is still found where its position is.
+
+    Taking the list rather than the session id is what keeps a retired version out of the
+    answer: only stretches that already count are ever looked at, so a version whose
+    telling-back was never written and which was replaced anyway is not a hole.
+    """
+    return next((segment for segment in segments if segment.transcript is None), None)
+
+
 async def retired_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     """The stretches that stopped counting, oldest first.
 
