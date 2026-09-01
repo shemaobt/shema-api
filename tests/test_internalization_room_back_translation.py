@@ -877,6 +877,8 @@ async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
     agent = patch_loop(draft, told)
     finding = _the_missing_death()
     outcome = await run_verdict_turn(
+        session_language="Portuguese",
+        language_code="pt",
         findings_text=findings_block(finding),
         closing=closing_block(finding),
         scope=P,
@@ -976,6 +978,8 @@ async def test_an_ordinary_conversation_turn_is_untouched(patch_loop) -> None:
     agent = patch_loop(draft, [])
 
     outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript=said,
         coverage_state=initial_state(P),
         messages=[{"role": "team", "text": said}],
@@ -1010,6 +1014,8 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
 
     with pytest.raises(ValidationError):
         await run_verdict_turn(
+            session_language="Portuguese",
+            language_code="pt",
             findings_text=findings_block(finding),
             closing=closing_block(finding),
             scope=P,
