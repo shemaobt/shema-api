@@ -42,7 +42,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             used_fail_safe=False,
         )
 
-    async def _speech(_text: str) -> tuple[SynthesizedSpeech, bool]:
+    async def _speech(_text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         entry = SynthesizedSpeech(
             audio=b"audio",
             mime_type="audio/mpeg",
@@ -70,7 +70,9 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
 async def test_the_opening_turn_carries_no_body_at_all(client: httpx.AsyncClient) -> None:
     created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV"}
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": "OV", "language": "pt"},
     )
     assert created.status_code == 200
     session_id = created.json()["session_id"]
@@ -104,7 +106,9 @@ async def test_a_marked_opening_arrives_as_two_clips_and_still_as_one(
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
 
     created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV"}
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": "OV", "language": "pt"},
     )
     session_id = created.json()["session_id"]
 
@@ -142,7 +146,9 @@ async def test_a_team_walking_back_in_hears_where_the_room_was(
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
 
     created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV"}
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": "OV", "language": "pt"},
     )
     session_id = created.json()["session_id"]
 

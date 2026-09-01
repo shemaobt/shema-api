@@ -63,15 +63,15 @@ def load_prompt(key: IRPromptKey) -> str:
 def fail_safe_utterances() -> str:
     """App-side strings, not a model call — kept beside the prompts they replace.
 
-    The authored file is concatenated with our Portuguese supplement, which is kept separate
-    so the authored one stays byte-identical to the project's own copy. Order matters only in
-    that the reader prefers a language-tagged block, and each section has at most one.
+    The authored file is concatenated with our own supplements, one per language, which are
+    kept separate so the authored one stays byte-identical to the project's own copy. Order
+    matters only in that the reader prefers a language-tagged block, and each section has at
+    most one per language.
     """
-    authored = (_PROMPTS_DIR / "fail_safe_utterances.md").read_text(encoding="utf-8")
-    supplement = _PROMPTS_DIR / "_fail_safe_pt_supplement.md"
-    if not supplement.exists():
-        return authored
-    return f"{authored}\n\n{supplement.read_text(encoding='utf-8')}"
+    parts = [(_PROMPTS_DIR / "fail_safe_utterances.md").read_text(encoding="utf-8")]
+    for supplement in sorted(_PROMPTS_DIR.glob("_fail_safe_*_supplement.md")):
+        parts.append(supplement.read_text(encoding="utf-8"))
+    return "\n\n".join(parts)
 
 
 def default_prompt(key: IRPromptKey) -> dict[str, str]:

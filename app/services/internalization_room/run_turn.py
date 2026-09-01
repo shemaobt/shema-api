@@ -13,6 +13,7 @@ from app.services.internalization_room.canon.book_material import story_so_far
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import remaining
 from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
 from app.services.internalization_room.render import render
 
@@ -122,6 +123,16 @@ _PEER_CUE_PHRASES = (
     "ensaie",
     "na língua de vocês",
     "na lingua de voces",
+    "among yourselves",
+    "talk it over",
+    "rehearse",
+    "in your own language",
+    "entre ustedes",
+    "conversen",
+    "ensayen",
+    "ensaye",
+    "en su lengua",
+    "en su propia lengua",
 )
 
 
@@ -429,8 +440,8 @@ async def run_turn(
     validator_prompt: str,
     pericope_num: str,
     book: str = "Ruth",
-    session_language: str = "Portuguese",
-    language_code: str = "pt",
+    session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     opening: bool = False,
     already_met: bool = False,
     settings: Settings | None = None,
@@ -492,8 +503,8 @@ async def run_panorama_turn(
     validator_prompt: str,
     book: str,
     book_material: str,
-    session_language: str = "Portuguese",
-    language_code: str = "pt",
+    session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     opening: bool = False,
     settings: Settings | None = None,
     validator_context: str = "",
@@ -560,8 +571,8 @@ async def run_verdict_turn(
     validator_prompt: str,
     telling_back: str = "",
     book: str = "Ruth",
-    session_language: str = "Portuguese",
-    language_code: str = "pt",
+    session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     settings: Settings | None = None,
 ) -> TurnOutcome:
     """Voice the back-translation verdict — one finding, then stop.
@@ -625,7 +636,7 @@ async def run_verdict_turn(
 
 def _redraft_note(
     issues: list[dict[str, Any]],
-    session_language: str = "português",
+    session_language: str = LANGUAGE_NAMES[FLOOR],
     ceiling: SpeechBudget | None = None,
 ) -> str:
     """What to tell a Guide whose draft did not pass, written in the session's own language.

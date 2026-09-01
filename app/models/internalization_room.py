@@ -11,6 +11,8 @@ MAX_TTS_CHARS = 3000
 
 class FacilitatorSpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_TTS_CHARS)
+    #: Which language to speak it in. Absent takes the floor, English.
+    language: str | None = Field(default=None, max_length=8)
 
 
 class FacilitatorSpeakResponse(BaseModel):
@@ -254,6 +256,10 @@ class CreateSessionRequest(BaseModel):
     #: Which panorama session preceded this one, so its prepared opening can be handed over.
     after_session: str | None = Field(default=None, max_length=36)
     bridge_mode: str | None = Field(default=None, max_length=24)
+    #: Which language the room should speak to this team, read by the app off the tablet.
+    #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
+    #: a language the room does not speak is refused rather than quietly answered in another.
+    language: str | None = Field(default=None, max_length=8)
 
 
 class SegmentView(BaseModel):
@@ -331,6 +337,8 @@ class SessionStateResponse(BaseModel):
     done: bool
     back_translation: BackTranslationProgress = Field(default_factory=BackTranslationProgress)
     bridge_mode: str = "calibration_pending"
+    #: Said back so the app can see which language it actually got, the way `bridge_mode` is.
+    language: str = "en"
 
 
 class SpokenSegment(BaseModel):
@@ -468,9 +476,10 @@ class InboxQuestionView(BaseModel):
     every card that its only consumer never reads.
 
     **Three languages rather than one**, which is the same shape ``LabelledElement`` and the
-    coverage legend take. Nothing in this API negotiates a language — no ``Accept-Language``,
-    no ``?lang=`` on any room or facilitator route — so serving a single label would mean
-    inventing negotiation here. The client picks, as it already does everywhere else.
+    coverage legend take. The room negotiates a language for what it *says* — named on the
+    session, and on the wheel that precedes any session — but not for what it *labels*: a
+    bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
+    all three are served and the client picks, as it already does everywhere else.
 
     **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
     passages and four of them are translated, so on the other ten every bead carries English

@@ -4,6 +4,7 @@ import base64
 import binascii
 
 from app.core.config import Settings
+from app.services.internalization_room.voices import room_voices
 
 _PREFIX = "tts/"
 _QUESTIONS_PREFIX = "internalization-room/questions/"
@@ -34,14 +35,18 @@ def from_handle(handle: str, *, settings: Settings) -> str | None:
     """Recover the key, or None when the handle does not address this room's voice.
 
     A handle is a key in disguise, so it is an instruction from the client about which
-    object to read. It is checked against the room's own voice rather than trusted: the
+    object to read. It is checked against the room's own voices rather than trusted: the
     bucket holds every app's speech, and nothing else in it is this route's business.
+
+    Voices, plural, since the room speaks one language per voice. Widening this to a prefix
+    that covers them all would reach the whole bucket; the set stays exact, so a language the
+    room does not speak addresses nothing.
     """
     key = _decode(handle)
     if key is None:
         return None
-    expected = f"{_PREFIX}{settings.internalization_room_voice_id}/"
-    if not key.startswith(expected) or ".." in key:
+    ours = {f"{_PREFIX}{voice}/" for voice in room_voices(settings).values() if voice}
+    if not any(key.startswith(expected) for expected in ours) or ".." in key:
         return None
     return key
 

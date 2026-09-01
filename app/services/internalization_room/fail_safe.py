@@ -5,6 +5,7 @@ import re
 from functools import lru_cache
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
+from app.services.internalization_room.languages import FLOOR
 
 
 class FailSafe(enum.StrEnum):
@@ -34,7 +35,7 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     return parsed
 
 
-def utterances(kind: FailSafe, language_code: str = "pt") -> list[str]:
+def utterances(kind: FailSafe, language_code: str = FLOOR) -> list[str]:
     """The pre-approved lines for one situation, in the session language when written.
 
     These are application strings and not a model call, which is the whole point of a
@@ -49,19 +50,41 @@ def utterances(kind: FailSafe, language_code: str = "pt") -> list[str]:
     being invisible the moment a line is synthesized from its text.
     """
     sections = _sections()
-    for tag in (language_code, language_code.split("-")[0]):
-        localized = sections.get((str(kind), tag))
-        if localized:
-            return localized
+    written = localized(kind, language_code)
+    if written:
+        return written
     return sections.get((str(kind), None), [])
 
 
-def first(kind: FailSafe, language_code: str = "pt") -> str:
+def localized(kind: FailSafe, language_code: str) -> list[str]:
+    """The lines written *for this language*, and nothing borrowed from another.
+
+    ``utterances`` never comes back empty, because it falls back to the authored block —
+    which is what makes it safe to speak and useless as a measurement. This is the same
+    lookup without that fallback, so a guard can ask whether a language the room claims to
+    speak has actually had its lines written.
+
+    The untagged authored block counts as the floor's own and not as a borrowing: the file
+    says of it *"Written here in English; localize per session language"*, so it is English
+    that happens to be untagged rather than English standing in for something unwritten.
+    """
+    sections = _sections()
+    primary = language_code.split("-")[0]
+    for tag in (language_code, primary):
+        written = sections.get((str(kind), tag))
+        if written:
+            return written
+    if primary == FLOOR:
+        return sections.get((str(kind), None), [])
+    return []
+
+
+def first(kind: FailSafe, language_code: str = FLOOR) -> str:
     lines = utterances(kind, language_code)
     return lines[0] if lines else ""
 
 
-def choose(kind: FailSafe, language_code: str = "pt", *, turn: int = 0) -> tuple[str, str]:
+def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str, str]:
     """One line for this situation, and the name the app knows it by.
 
     Rotating with the turn is what the authored file asks for — *"vary them, don't repeat

@@ -190,6 +190,8 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
 
     finding = Finding(kind=FindingKind.MISSING, note="Orfa")
     outcome = await run_verdict_turn(
+        session_language="Portuguese",
+        language_code="pt",
         findings_text=findings_block(finding),
         closing=closing_block(finding),
         scope=P,
@@ -554,6 +556,8 @@ async def _verdict_for(finding: Finding, patch_speaker) -> str:
     """
     agent = patch_speaker("No que você me contou, algo não apareceu.")
     await run_verdict_turn(
+        session_language="Portuguese",
+        language_code="pt",
         findings_text=findings_block(finding),
         closing=closing_block(finding),
         scope=P,

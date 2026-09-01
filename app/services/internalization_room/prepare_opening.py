@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import OPENING_BUDGET, run_turn
@@ -38,8 +39,9 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     """
     try:
         async with AsyncSessionLocal() as db:
+            panorama = await get_session(db, panorama_session_id)
+            spoken = panorama.language
             if pericope is None:
-                panorama = await get_session(db, panorama_session_id)
                 pericope = await active_passage(db, project_id=panorama.project_id)
             if pericope is None:
                 logger.info("Nothing left to prepare: the team has closed every passage")
@@ -53,13 +55,15 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 pericope_num=pericope,
                 opening=True,
                 already_met=True,
+                session_language=LANGUAGE_NAMES[spoken],
+                language_code=spoken,
                 settings=get_settings(),
                 budget=OPENING_BUDGET,
             )
             if outcome.used_fail_safe:
                 logger.info("Not keeping a fail-safe as the prepared opening")
                 return
-            speech, _ = await synthesize_facilitator_speech(outcome.speech)
+            speech, _ = await synthesize_facilitator_speech(outcome.speech, language=spoken)
             panorama = await get_session(db, panorama_session_id)
             panorama.prepared_speech = outcome.speech
             panorama.prepared_audio_key = speech.key
@@ -85,10 +89,18 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     A line with no passage recorded is refused. That is every row written before ENG-450, and
     the bias is the floor's: what is unknown is not waved through. The cost is one session
     writing its own opening.
+
+    A line written in another language is refused on the same grounds as another passage's.
+    The two sessions can differ — a panorama opened on a tablet set to one language, the
+    passage entered after somebody changed that setting — and handing the line over anyway
+    would have a team meet their passage's framing in a language the rest of the session does
+    not speak.
     """
     if not prepared.prepared_speech or not prepared.prepared_audio_key:
         return False
     if prepared.prepared_pericope is None or prepared.prepared_pericope != opening.pericope:
+        return False
+    if prepared.language != opening.language:
         return False
     opening.prepared_speech = prepared.prepared_speech
     opening.prepared_audio_key = prepared.prepared_audio_key

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.comprehension.evidence import EvidenceMethod
+from app.services.internalization_room.languages import FLOOR
 from app.services.internalization_room.oral_decision import (
     OralChoicePattern,
     resolve_oral_choice,
@@ -37,10 +38,24 @@ class SttRecoveryDecision(BaseModel):
     preserve_semantic_probe: bool
 
 
-STT_RECOVERY_REDUCE_BURDEN_LINE = (
-    "Ficou difícil de ouvir. Vocês preferem tentar com uma pergunta curta, "
-    "ou deixar este ponto guardado para o Refine?"
-)
+_REDUCE_BURDEN = {
+    "pt": (
+        "Ficou difícil de ouvir. Vocês preferem tentar com uma pergunta curta, "
+        "ou deixar este ponto guardado para o Refine?"
+    ),
+    "en": (
+        "That was hard to hear. Would you rather try with one short question, "
+        "or leave this point kept for Refine?"
+    ),
+    "es": (
+        "Costó oír bien. ¿Prefieren intentarlo con una pregunta corta, "
+        "o dejar este punto guardado para Refine?"
+    ),
+}
+
+
+def stt_recovery_reduce_burden_line(language: str = FLOOR) -> str:
+    return _REDUCE_BURDEN.get(language, _REDUCE_BURDEN[FLOOR])
 
 
 def plan_stt_recovery(

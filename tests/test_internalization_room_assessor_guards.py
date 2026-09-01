@@ -245,7 +245,7 @@ def _settings() -> Settings:
 
 
 async def _a_room_waiting_on_an_answer(db: AsyncSession) -> IRSession:
-    session = await create_session(db, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(db, language="pt", pericope=P, bridge_mode="guided_microchecks")
     session = await append_exchange(
         db, session, team_utterance="", guide_response="Quem aparece nesta parte?"
     )

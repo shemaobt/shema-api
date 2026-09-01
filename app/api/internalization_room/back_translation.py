@@ -15,6 +15,7 @@ from app.models.internalization_room import (
 from app.services import internalization_room as room
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.sessions import MAX_RETELLS
@@ -194,10 +195,10 @@ async def finish(
     if len(told) < len(final):
         waiting, _ = choose(
             FailSafe.UNTOLD_STRETCH,
-            get_settings().internalization_room_language_code,
+            session.language,
             turn=state.waited,
         )
-        spoken = (await room.synthesize_facilitator_speech(waiting))[0]
+        spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
         state.waited += 1
         await room.save_back_translation(db, session, state)
         return BackTranslationVerdictResponse(
@@ -216,7 +217,7 @@ async def finish(
         # anything, which is the line family written for exactly this.
         _, line = choose(
             FailSafe.INAUDIBLE,
-            get_settings().internalization_room_language_code,
+            session.language,
             turn=len(session.messages or []),
         )
         return BackTranslationVerdictResponse(
@@ -233,6 +234,7 @@ async def finish(
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
             analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
+            session_language=LANGUAGE_NAMES[session.language],
             settings=get_settings(),
         )
         if read is None:
@@ -255,13 +257,17 @@ async def finish(
         telling_back=room.segments_block(told),
         speaker_prompt=await get_prompt_text(db, IRPromptKey.BT_VERDICT_SPEAKER),
         validator_prompt=await get_prompt_text(db, IRPromptKey.VALIDATOR),
+        session_language=LANGUAGE_NAMES[session.language],
+        language_code=session.language,
         settings=get_settings(),
     )
 
     voiced = (
         None
         if outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(outcome.speech))[0]
+        else (await room.synthesize_facilitator_speech(outcome.speech, language=session.language))[
+            0
+        ]
     )
     session = await room.append_exchange(
         db, session, team_utterance="", guide_response=outcome.speech

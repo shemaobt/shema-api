@@ -22,24 +22,25 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceResult,
 )
 from app.services.internalization_room.comprehension.practice import (
-    MOTHER_TONGUE_PRACTICE_PROMPT,
+    mother_tongue_practice_prompt,
 )
 from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.comprehension.stt_recovery import (
-    STT_RECOVERY_REDUCE_BURDEN_LINE,
+    stt_recovery_reduce_burden_line,
 )
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.rehearsal_readiness import (
     RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-    REHEARSAL_CONSENT_DECLINED_LINE,
-    REHEARSAL_CONSENT_QUESTION,
-    REHEARSAL_READINESS_CUE,
+    rehearsal_consent_declined_line,
+    rehearsal_consent_question,
+    rehearsal_readiness_cue,
 )
-from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
+from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK, detects_peer_cue
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
@@ -109,7 +110,7 @@ async def test_the_opening_is_cut_where_the_guide_marked_it(
     one long breath."""
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
-    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
 
     turn = await run_comprehension_turn(
         db_session,
@@ -139,7 +140,7 @@ async def test_a_session_that_already_spoke_is_not_opened_twice(
     """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
-    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -173,7 +174,7 @@ async def test_even_the_panorama_has_a_ceiling(
 ) -> None:
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongPanoramaAgent())
-    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
 
     turn = await run_comprehension_turn(
         db_session,
@@ -203,7 +204,7 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
     """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongWindedAgent())
-    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
 
     turn = await run_comprehension_turn(
         db_session,
@@ -226,7 +227,7 @@ async def test_a_turn_after_the_opening_still_answers_to_the_budget(
 ) -> None:
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongWindedAgent())
-    session = await create_session(db_session, pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -255,7 +256,9 @@ async def test_the_opening_turn_belongs_to_the_guide(
     a passage nobody had opened yet — instant, unframed, and with no thinking. Frame
     first, elicit second: the opening always goes through the Guide.
     """
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
 
     turn = await run_comprehension_turn(
         db_session,
@@ -269,16 +272,33 @@ async def test_the_opening_turn_belongs_to_the_guide(
 
     assert turn.bridge_mode == "guided_microchecks"
     assert turn.outcome.speech == "Vamos começar pela primeira cena. O que vocês acham?"
-    assert turn.outcome.speech != MOTHER_TONGUE_PRACTICE_PROMPT
+    assert turn.outcome.speech != mother_tongue_practice_prompt("pt")
     assert not turn.outcome.used_fail_safe
     assert turn.state.active_probe is None
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
+def test_the_room_hands_the_talking_over_in_every_language_it_claims(spoken: str) -> None:
+    """A linha cujo propósito inteiro é passar a palavra para a equipe.
+
+    `peer_cue` é detectado relendo a frase que o próprio app escreveu, então cada idioma
+    precisa das suas expressões. Faltando as do espanhol, `peer_cue` voltava falso em todo
+    turno de uma sessão em espanhol — e o teste ao lado abre com `language="pt"`, então a
+    suíte seguia verde por cima disso.
+    """
+    assert detects_peer_cue(mother_tongue_practice_prompt(spoken)), (
+        f"a sala convida a equipe a ensaiar entre si em {spoken!r} e não marca o convite, "
+        "então a tela não entra em modo de conversa e a equipe fica olhando o círculo"
+    )
+
+
 async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -299,7 +319,7 @@ async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
         settings=_settings(),
     )
 
-    assert turn.outcome.speech == MOTHER_TONGUE_PRACTICE_PROMPT
+    assert turn.outcome.speech == mother_tongue_practice_prompt("pt")
     assert turn.outcome.peer_cue
     assert not turn.outcome.used_fail_safe
 
@@ -308,7 +328,9 @@ async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
 async def test_practice_is_not_invited_before_the_voice_opens_the_scene(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -323,7 +345,7 @@ async def test_practice_is_not_invited_before_the_voice_opens_the_scene(
         settings=_settings(),
     )
 
-    assert turn.outcome.speech != MOTHER_TONGUE_PRACTICE_PROMPT
+    assert turn.outcome.speech != mother_tongue_practice_prompt("pt")
     assert turn.state.active_probe is not None
     assert turn.state.active_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
 
@@ -332,9 +354,11 @@ async def test_practice_is_not_invited_before_the_voice_opens_the_scene(
 async def test_pronto_after_the_practice_prompt_marks_the_scene(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
     session = await append_exchange(
-        db_session, session, team_utterance="", guide_response=MOTHER_TONGUE_PRACTICE_PROMPT
+        db_session, session, team_utterance="", guide_response=mother_tongue_practice_prompt("pt")
     )
     seeded = ComprehensionState.model_validate(
         {
@@ -368,7 +392,9 @@ async def test_pronto_after_the_practice_prompt_marks_the_scene(
 async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="quem aparece nesta parte?"
     )
@@ -419,7 +445,9 @@ async def test_speech_the_room_could_not_hear_degrades_on_both_rungs_of_the_reco
     The recovery alternates — the first uncertainty asks them to repeat, the second offers a
     smaller question — so counting only the first would leave a team whose microphone is not
     reaching them answered by the same two lines forever, with nothing adding up."""
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="quem aparece nesta parte?"
     )
@@ -455,7 +483,7 @@ async def test_speech_the_room_could_not_hear_degrades_on_both_rungs_of_the_reco
         spoken.append(turn.outcome)
 
     assert spoken[0].speech in utterances(FailSafe.INAUDIBLE, "pt")
-    assert spoken[1].speech == STT_RECOVERY_REDUCE_BURDEN_LINE
+    assert spoken[1].speech == stt_recovery_reduce_burden_line("pt")
     assert all(outcome.used_fail_safe and outcome.degraded for outcome in spoken)
 
 
@@ -463,7 +491,7 @@ async def test_speech_the_room_could_not_hear_degrades_on_both_rungs_of_the_reco
 async def test_a_turn_without_a_prior_probe_mints_no_evidence(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    session = await create_session(db_session, pericope=P, bridge_mode="full_retell")
+    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="full_retell")
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -486,7 +514,9 @@ async def _session_at_the_recording_handoff(db_session: AsyncSession) -> IRSessi
     """Everything the passage asks for is done except the recording: the coverage floor is
     met and every checkpoint is demonstrated, so the app is about to offer its own
     question."""
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
     session = await save_comprehension(
         db_session,
         session,
@@ -541,20 +571,20 @@ async def test_a_declined_recording_handoff_is_offered_again(
     session = await _session_at_the_recording_handoff(db_session)
 
     assert await _say(db_session, session, "acho que já falamos de tudo") == (
-        REHEARSAL_CONSENT_QUESTION
+        rehearsal_consent_question("pt")
     )
-    assert await _say(db_session, session, "não") == REHEARSAL_CONSENT_DECLINED_LINE
+    assert await _say(db_session, session, "não") == rehearsal_consent_declined_line("pt")
     assert comprehension_of(session).recording_handoff_paused
 
     for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
         assert await _say(db_session, session, "estamos conversando sobre a última cena") != (
-            REHEARSAL_CONSENT_QUESTION
+            rehearsal_consent_question("pt")
         )
 
     assert await _say(db_session, session, "essa parte ficou boa do jeito que contamos") == (
-        REHEARSAL_CONSENT_QUESTION
+        rehearsal_consent_question("pt")
     )
-    assert await _say(db_session, session, "sim") == REHEARSAL_READINESS_CUE
+    assert await _say(db_session, session, "sim") == rehearsal_readiness_cue("pt")
     assert comprehension_of(session).recording_consent_given
     assert not comprehension_of(session).recording_handoff_paused
 
@@ -571,18 +601,18 @@ async def test_declining_twice_defers_twice_instead_of_latching(
         await _say(db_session, session, "estamos conversando sobre a última cena")
 
     assert await _say(db_session, session, "ainda estamos comentando entre nós") == (
-        REHEARSAL_CONSENT_QUESTION
+        rehearsal_consent_question("pt")
     )
-    assert await _say(db_session, session, "não") == REHEARSAL_CONSENT_DECLINED_LINE
+    assert await _say(db_session, session, "não") == rehearsal_consent_declined_line("pt")
     assert comprehension_of(session).recording_handoff_paused_turns == 0
 
     for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
         assert await _say(db_session, session, "estamos conversando sobre a última cena") != (
-            REHEARSAL_CONSENT_QUESTION
+            rehearsal_consent_question("pt")
         )
 
     assert await _say(db_session, session, "essa parte ficou boa do jeito que contamos") == (
-        REHEARSAL_CONSENT_QUESTION
+        rehearsal_consent_question("pt")
     )
 
 
@@ -622,6 +652,6 @@ async def test_a_paused_handoff_does_not_count_speech_the_room_could_not_use(
             settings=_settings(),
         )
         await save_comprehension(db_session, session, turn.state)
-        assert turn.outcome.speech != REHEARSAL_CONSENT_QUESTION
+        assert turn.outcome.speech != rehearsal_consent_question("pt")
 
     assert comprehension_of(session).recording_handoff_paused_turns == 0
