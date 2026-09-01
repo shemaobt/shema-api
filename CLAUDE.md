@@ -173,6 +173,12 @@ Moving it after the confirmation would break exactly that property, and is not a
 refactor to make casually. Adding a fourth step on this path means adding it here with
 the same argument: what a human sees, and when they see it.
 
+Since the 2026-09-01 scope cut (ENG-690) this path has **no caller**: the Colar's SPA now
+ends at the scene and phrase segmentation. The code is dormant, not gone — the rules above
+still govern it, and they govern whoever picks it up. What the package is, and what it
+takes to use it elsewhere, is
+[`docs/sound_necklace_interview_package.md`](docs/sound_necklace_interview_package.md).
+
 ---
 
 ## 10. Summary Checklist

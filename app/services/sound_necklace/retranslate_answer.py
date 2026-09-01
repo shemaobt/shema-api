@@ -1,5 +1,13 @@
 """Confirming a corrected transcript, and the English that has to follow it (ENG-394).
 
+DORMANT since the 2026-09-01 scope cut — kept deliberately, not by neglect.
+
+The Colar's SPA now ends at the scene and phrase segmentation: no interview, no report, no
+artifact. Nothing has called this module since. This is not dead code and not an oversight — it
+still runs end to end when called, and the module belongs to the interview package the system that
+hosts the interview next will pick up whole. Read ``docs/sound_necklace_interview_package.md``
+before changing or removing anything here.
+
 The draft pass writes both fields once and never looks at them again. A facilitator then
 edits the spoken-language text on screen and confirms it — and the report artifact reads
 the English field, so a correction that does not reach `translation_en` never reaches the

@@ -1,6 +1,14 @@
 """Transcription drafts for the recorded answers (ENG-325), and their confirmation
 (ENG-394).
 
+DORMANT since the 2026-09-01 scope cut — kept deliberately, not by neglect.
+
+The Colar's SPA now ends at the scene and phrase segmentation: no interview, no report, no
+artifact. Nothing has called these routes since. This is not dead code and not an oversight — all
+three routes stay mounted and answer as they always did, and the module belongs to the interview
+package the system that hosts the interview next will pick up whole. Read
+``docs/sound_necklace_interview_package.md`` before changing or removing anything here.
+
 One route starts the job and one the SPA polls; both answer the same body, so the
 trigger's reply is already the first frame of progress. The third takes the draft back
 once a human has corrected it.
