@@ -58,6 +58,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 session_language=LANGUAGE_NAMES[spoken],
                 language_code=spoken,
                 settings=get_settings(),
+                session_id=panorama_session_id,
                 budget=OPENING_BUDGET,
             )
             if outcome.used_fail_safe:

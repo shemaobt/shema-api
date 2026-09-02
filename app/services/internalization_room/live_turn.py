@@ -619,6 +619,7 @@ async def run_comprehension_turn(
             opening=opening,
             already_met=session.after_panorama,
             settings=settings,
+            session_id=session.id,
             app_context=app_context,
             validator_context=validator_context,
             budget=OPENING_BUDGET if opening else TURN_BUDGET,
