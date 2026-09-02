@@ -333,6 +333,12 @@ async def take_turn(
     ledger holding evidence for an exchange that was never recorded. Speaking first costs
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
+
+    A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
+    said nothing — so the coverage settle asks whether there is anything to classify rather
+    than whether the room's own turn went well. The opening is the one turn that has beads to
+    name with no utterance behind it: it can only reach `surfaced`, which stays below
+    `floor_met`, so settling it neither closes a passage nor spares the team the retelling.
     """
     session = await room.get_session(db, session_id)
 
@@ -430,7 +436,7 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session)
 
-    if not outcome.used_fail_safe:
+    if outcome.transcript.strip() or opening:
         _settle_later(
             background,
             session,
