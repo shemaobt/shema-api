@@ -33,6 +33,7 @@ from app.services.internalization_room.coverage import (
 )
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.languages import floor, normalize
+from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
@@ -99,6 +100,14 @@ async def create_session(
     and refusing a session without one would take every room in the field offline to gain a
     column value. Work with no project has no history to read, so it starts at the beginning.
 
+    A request for the panorama is a request and not an instruction. The app asks for it at
+    every launch, and a team that already heard it for the passage they stand on is answered
+    with that passage instead, opened as any other session and not as one that follows a
+    panorama — no panorama played, so the greeting must not say one did. Whether they heard
+    it is `heard_panorama`'s to say and is derived, never stored. A team standing on no
+    passage — the walkable book closed — is given the panorama as before: the decision puts
+    the team's passage in its place, and there is none to put there.
+
     Raises ``ConflictError`` when the team has closed every passage that opens and none was
     named. That is the end of the book, and it is a defined state rather than a wrap-around:
     the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
@@ -112,6 +121,12 @@ async def create_session(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
+    if is_panorama(pericope):
+        standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
+        if standing is not None and await heard_panorama(
+            db, project_id=project_id, pericope=standing
+        ):
+            pericope, after_panorama = standing, False
     panorama = is_panorama(pericope)
     if not panorama:
         require_walkable(load_map(pericope))
@@ -348,6 +363,39 @@ async def save_back_translation(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def report_playback(
+    db: AsyncSession,
+    session: IRSession,
+    state: BackTranslationState,
+    *,
+    played_ranges: list[list[int]],
+    clip_duration_ms: int | None,
+) -> BackTranslationState:
+    """Store what the tablet played, stamped with the rehearsal audio it was played from.
+
+    The subject is the recordings the stretches standing right now are slices of — a stretch
+    names its recording, and that was checked when the stretch was captured. Taken here and
+    not read back at release time, because by then the team may have started the telling-back
+    over on a clip they recorded again, and the answer would be about audio this report was
+    never about.
+
+    Deliberately not "the newest rehearsal take". `created_at` is stamped when the upload
+    lands rather than when the passage was recorded, and the tablet's outbox drains whenever
+    the link comes back — so an abandoned rehearsal can be written down after the one that
+    replaced it, and newest-by-arrival would name the wrong file. The stretches carry the
+    answer already and carry it in order-independent form.
+
+    With nothing told back yet there is nothing to bind to and the stamp stays empty. That
+    report can never confirm anything, which is the honest reading of it.
+    """
+    told = await final_segments(db, session.id)
+    state.played_ranges = played_ranges
+    state.clip_duration_ms = clip_duration_ms
+    state.played_take_ids = sorted({segment.take_id for segment in told})
+    await save_back_translation(db, session, state)
+    return state
 
 
 async def begin_back_translation_again(

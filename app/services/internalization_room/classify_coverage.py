@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import merge, remaining
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
@@ -13,6 +14,45 @@ from app.services.internalization_room.llm import call_agent
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
+
+_BRACKETED_KEY = re.compile(r"^-?\s*\[([^\]]+)\]")
+
+
+def _element_id(named: str) -> str:
+    """The element's key, whether the model sent it bare or as the list prints it.
+
+    The unresolved set reaches the model as `- [being:B3] נָעֳמִי / Naomi`, and the output
+    contract asks for "the id from the provided list". Read against that list, the id is the
+    whole line, and that is what comes back. The key is its bracketed head; `merge` drops
+    every other spelling as an element the passage does not hold.
+
+    The list marker is admitted with it. Production echoes the line without the dash, so
+    nothing today turns on this — but what is being fixed here is a spelling nobody thought
+    to accept, and the dash is how the line is printed.
+    """
+    bracketed = _BRACKETED_KEY.match(named.strip())
+    return bracketed.group(1).strip() if bracketed else named.strip()
+
+
+def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -> None:
+    """Say when a decision names an element this passage does not hold.
+
+    `merge` drops an unplaceable id on purpose — a key nobody can resolve is not evidence of
+    anything — but it dropped it in silence, and a classifier answering entirely in ids the
+    spine has never heard of is indistinguishable from one that found nothing to move. That
+    is the gap this failure class keeps coming back through, three times now, and the log
+    line is what makes the next one visible on the first turn rather than after two releases.
+    """
+    named = {key for bucket in verdict.values() for key in bucket}
+    unknown = sorted(named - set(element_keys(pericope_num)))
+    if unknown:
+        logger.warning(
+            "Coverage classifier named %d of %d elements %s does not hold: %s",
+            len(unknown),
+            len(named),
+            pericope_num,
+            unknown[:5],
+        )
 
 
 def _unresolved_block(coverage_state: dict[str, str], pericope_num: str) -> str:
@@ -68,7 +108,7 @@ def _parse(raw: str) -> dict[str, list[str]]:
         element_id = entry.get("element_id") if isinstance(entry, dict) else None
         new_status = entry.get("new_status") if isinstance(entry, dict) else None
         if isinstance(element_id, str) and isinstance(new_status, str) and new_status in verdict:
-            verdict[new_status].append(element_id)
+            verdict[new_status].append(_element_id(element_id))
         else:
             logger.warning("Coverage classifier returned an unusable decision: %s", entry)
     return verdict
@@ -113,6 +153,7 @@ async def classify_coverage(
         return coverage_state
 
     verdict = _parse(raw)
+    _report_unknown_elements(verdict, pericope_num)
     return merge(
         coverage_state,
         pericope_num=pericope_num,

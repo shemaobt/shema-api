@@ -112,6 +112,33 @@ def _coverage_view(session: IRSession) -> CoverageView:
     )
 
 
+def _settle_later(
+    background: BackgroundTasks,
+    session: IRSession,
+    *,
+    team_utterance: str,
+    guide_response: str,
+) -> None:
+    """Hand the exchange to the off-path classifier, from whichever exit voiced it.
+
+    A turn leaves this router by two doors — the opening the panorama wrote ahead, and the
+    line the room writes on demand — and only the second one ever asked. A prepared opening
+    names around ten map elements (ENG-684), so a team whose opening had been pre-warmed lost
+    all of them before saying a word, and nothing said so.
+
+    A panorama is still handed nothing: it has no coverage spine to settle against.
+    """
+    if is_panorama(session.pericope):
+        return
+    background.add_task(
+        settle_coverage,
+        session_id=session.id,
+        team_utterance=team_utterance,
+        guide_response=guide_response,
+        pericope_num=session.pericope,
+    )
+
+
 async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
     return SessionStateResponse(
         session_id=session.id,
@@ -331,6 +358,7 @@ async def take_turn(
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
         session = await room.append_exchange(db, session, team_utterance="", guide_response=speech)
+        _settle_later(background, session, team_utterance="", guide_response=speech)
         return TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
@@ -402,13 +430,12 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session)
 
-    if not outcome.used_fail_safe and not is_panorama(session.pericope):
-        background.add_task(
-            settle_coverage,
-            session_id=session.id,
+    if not outcome.used_fail_safe:
+        _settle_later(
+            background,
+            session,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
-            pericope_num=session.pericope,
         )
 
     return TurnResponse(

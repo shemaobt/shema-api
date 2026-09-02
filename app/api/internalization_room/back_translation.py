@@ -13,6 +13,7 @@ from app.models.internalization_room import (
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.back_translation import VoicedVerdict
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -213,15 +214,32 @@ async def finish(
     the team for the whole stretch; `verify_correction` a few lines above is what reads what
     they told, against the finding that sent them back. A team that re-recorded only the
     amendment would hand that verification a fragment to judge the finding by.
+
+    Pressed again over the same stretches, the room serves the verdict it already reached and
+    consults nothing. The press is the same question, and answering it afresh cost a validator
+    and a spoken synthesis every time and wrote the room into the conversation as having spoken
+    twice — a false record of the room in front of the team, which outlives the bill. The reply
+    is byte-for-byte the first one: the app is not told which press it made, because a second
+    shape would be a contract change to say something no caller asked about.
+
+    What counts as the same question is `already_analysed`, the record the analyst was already
+    guarded by — one signal, so the four steps of a press can never disagree about whether the
+    team told back anything new. A press that reached the analyst and then failed saves nothing
+    at all, so the press after it does the whole turn rather than serving a verdict the team
+    never heard.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
     if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
-        state.played_ranges = payload.played_ranges
-        state.clip_duration_ms = payload.clip_duration_ms
-        await room.save_back_translation(db, session, state)
+        state = await room.report_playback(
+            db,
+            session,
+            state,
+            played_ranges=payload.played_ranges,
+            clip_duration_ms=payload.clip_duration_ms,
+        )
 
     untold = room.first_untold(final)
     if untold is not None:
@@ -259,6 +277,19 @@ async def finish(
             fixed_line=line,
             checked=False,
             findings_remaining=0,
+        )
+
+    if state.already_analysed(told) and state.verdict is not None:
+        finding = state.current_finding
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
+            fixed_line=state.verdict.fixed_line,
+            checked=state.checked,
+            finding_kind=finding.kind if finding else None,
+            finding_segment_id=finding.segment_id if finding else None,
+            findings_remaining=len(state.findings),
+            used_fail_safe=state.verdict.used_fail_safe,
         )
 
     correction = room.correction_to_verify(state, told, await room.retired_segments(db, session.id))
@@ -348,6 +379,11 @@ async def finish(
         else (await room.synthesize_facilitator_speech(said, language=session.language))[0]
     )
     session = await room.append_exchange(db, session, team_utterance="", guide_response=said)
+    state.verdict = VoicedVerdict(
+        clip_key=voiced.key if voiced else "",
+        fixed_line=outcome.fixed_line,
+        used_fail_safe=outcome.used_fail_safe,
+    )
     await room.save_back_translation(db, session, state)
 
     return BackTranslationVerdictResponse(

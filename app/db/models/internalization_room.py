@@ -51,6 +51,10 @@ class IRSession(Base):
         _SESSION_STATUS_TYPE, default=IRSessionStatus.IN_PROGRESS
     )
     messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    #: Whether this session was opened straight after the book's panorama, which is how the
+    #: guide knows not to introduce itself twice. It is also the only record that a team
+    #: heard the panorama and went on into this passage — the panorama's own row names the
+    #: book and no passage — so ``panorama_once`` reads it to decide whether to play it again.
     after_panorama: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     prepared_speech: Mapped[str | None] = mapped_column(Text, nullable=True)
     prepared_audio_key: Mapped[str | None] = mapped_column(String(512), nullable=True)

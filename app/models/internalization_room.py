@@ -254,6 +254,11 @@ class CreateSessionRequest(BaseModel):
     pericope: str | None = Field(default=None, max_length=120)
     after_panorama: bool = False
     #: Which panorama session preceded this one, so its prepared opening can be handed over.
+    #: Named by the app only for the session the wooden bead opens once the panorama has been
+    #: spoken. That is what lets the room read the resulting ``after_panorama`` as "this team
+    #: heard the panorama and went on into this passage" — ``panorama_once`` decides from it
+    #: whether to play the panorama again — so naming it for any other session would mark that
+    #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
     bridge_mode: str | None = Field(default=None, max_length=24)
     #: Which language the room should speak to this team, read by the app off the tablet.
@@ -404,9 +409,15 @@ class BackTranslationChunkResponse(BaseModel):
 class FinishBackTranslationRequest(BaseModel):
     """What the tablet actually played of the team's own recording, in milliseconds.
 
-    Optional end to end: an older app sends no body and everything behaves as before.
-    The report is evidence for the Refine artifact — the analysis itself already happens
-    only after the client let the clip run to its end.
+    Optional end to end, and the room still answers `terminei` without it: the analysis
+    already happens only after the client let the clip run to its end, so an app that sends
+    nothing here loses nothing in the conversation.
+
+    What it loses is the release. The report is the only evidence the room has that the team
+    heard their own recording before the telling-back was blessed, so a session that never
+    sends one is refused at the handoff rather than travelling on silence. Which rehearsal the
+    report is about is not asked of the tablet — the server stamps it, so no app in the field
+    has to be updated to release.
     """
 
     played_ranges: list[list[int]] = Field(default_factory=list)

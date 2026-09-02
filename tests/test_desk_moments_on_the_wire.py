@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.auth import Role
-from app.db.models.internalization_room import IRSession, IRTakeKind
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRSession, IRTakeKind
 from app.services.internalization_room import questions as question_service
 from app.services.internalization_room import takes as take_service
 from tests.baker import (
@@ -234,6 +234,47 @@ async def test_a_device_row_says_when_it_was_linked_and_last_seen(desk_client, d
     [row] = answer.json()
     for field in ("linked_at", "last_seen_at"):
         served = row[field]
+        assert says_which_clock(served), f"{field} went out as {served!r}, which names no clock"
+        assert day_in_sao_paulo(served) == THE_DAY_IT_HAPPENED
+
+
+async def test_both_moments_on_one_card_say_which_clock_they_are_on(
+    room_client, db_session, room_app
+):
+    """ENG-559 — `heard_at` sits eleven lines from `asked_at` and was serialised differently.
+
+    The card the facilitator reads carries both, and a reader converts both to this product's
+    own timezone. One moment that names its clock beside one that does not is worse than
+    neither doing so: the two are drawn on **different days** from the same instant, and the
+    reader has nothing on the card telling them which to believe.
+
+    Asserted on the offset *and* on the calendar day, because a naive string and a zoned one
+    both parse — presence alone passes over the defect.
+
+    Only the moment that exists is asserted here. Absence is held by
+    `test_an_open_hand_has_no_moment_to_report` in `test_facilitator_questions_inbox.py`, and
+    a `null` has nothing for a clock to be named on — repeating it here would be a fifth
+    assertion of the same fact and no control over anything this file guards.
+    """
+    headers, team = await a_room_facilitator(db_session, room_app)
+    question = IRQuestion(
+        device_id="tablet-1",
+        session_id="sessao-da-meia-noite",
+        pericope="P03",
+        audio_key="pergunta.m4a",
+        status=IRQuestionStatus.ANSWERED,
+        project_id=team,
+        heard_at=NEAR_MIDNIGHT,
+    )
+    db_session.add(question)
+    await _stored_at(db_session, question, NEAR_MIDNIGHT)
+
+    answer = await room_client.get(f"{IR}/facilitator/questions", headers=headers)
+
+    assert answer.status_code == 200, answer.text
+    [card] = answer.json()["questions"]
+    for field in ("asked_at", "heard_at"):
+        served = card[field]
         assert says_which_clock(served), f"{field} went out as {served!r}, which names no clock"
         assert day_in_sao_paulo(served) == THE_DAY_IT_HAPPENED
 

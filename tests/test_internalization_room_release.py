@@ -36,6 +36,7 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     create_session,
+    report_playback,
     save_back_translation,
     save_comprehension,
 )
@@ -88,8 +89,6 @@ async def _checked_telling_back(db: AsyncSession, session: IRSession) -> BackTra
         evidence_sufficient=True,
         checked=True,
         analysed_segment_ids=[told.id],
-        played_ranges=[[0, 61000]],
-        clip_duration_ms=61000,
     )
 
 
@@ -121,13 +120,39 @@ def _ensaio_take(
     return take
 
 
+async def _reported_playback(
+    db: AsyncSession,
+    session: IRSession,
+    state: BackTranslationState,
+    *,
+    played_ranges: list[list[int]] | None = None,
+    clip_duration_ms: int | None = 61000,
+) -> None:
+    """Store the telling-back together with the team's report of what the tablet played.
+
+    Through the room's own write path rather than by filling the fields, because the room
+    binds a report to the rehearsal it is about at the moment it arrives. A report assembled
+    here would name no recording, which is a state the release is entitled to refuse.
+
+    The defaults describe a clip played through; a case about a report that falls short says
+    so by naming the numbers it means.
+    """
+    await report_playback(
+        db,
+        session,
+        state,
+        played_ranges=[[0, 61000]] if played_ranges is None else played_ranges,
+        clip_duration_ms=clip_duration_ms,
+    )
+
+
 async def _ready_session(db: AsyncSession, **comprehension_kwargs):
     session = await create_session(db, pericope=P, bridge_mode="guided_microchecks")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
-    await save_back_translation(db, session, await _checked_telling_back(db, session))
     db.add(_ensaio_take(session.id))
     await db.commit()
+    await _reported_playback(db, session, await _checked_telling_back(db, session))
     return session
 
 
@@ -202,8 +227,7 @@ async def test_a_carried_point_travels_with_its_canonical_material(
 async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession) -> None:
     session = await _ready_session(db_session)
     state = await _checked_telling_back(db_session, session)
-    state.played_ranges = [[0, 20000]]
-    await save_back_translation(db_session, session, state)
+    await _reported_playback(db_session, session, state, played_ranges=[[0, 20000]])
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -223,8 +247,7 @@ async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_rele
     """
     session = await _ready_session(db_session)
     state = await _checked_telling_back(db_session, session)
-    state.clip_duration_ms = 37000
-    await save_back_translation(db_session, session, state)
+    await _reported_playback(db_session, session, state, clip_duration_ms=37000)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -242,7 +265,7 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
             evidence_sufficient=False,
         )
     ]
-    await save_back_translation(db_session, session, state)
+    await _reported_playback(db_session, session, state)
     await retire_every_segment(db_session, session.id)
     abandoned = await _one_stretch(db_session, session, "tentativa antiga")
     await retire_every_segment(db_session, session.id)
@@ -338,8 +361,6 @@ async def _told_back_with_an_open_finding(
         evidence_sufficient=True,
         checked=False,
         analysed_segment_ids=[told.id],
-        played_ranges=[[0, 61000]],
-        clip_duration_ms=61000,
     )
 
 
@@ -353,7 +374,7 @@ async def test_a_session_carrying_an_open_finding_still_releases(
     tablet with no way out, for a team that had done every piece of the work.
     """
     session = await _ready_session(db_session)
-    await save_back_translation(
+    await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
 
@@ -399,7 +420,7 @@ async def test_the_finding_travels_in_the_package_it_unblocked(
     see it — and unlike a blocked release, that looks resolved.
     """
     session = await _ready_session(db_session)
-    await save_back_translation(
+    await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
 
@@ -415,7 +436,7 @@ async def test_the_finding_travels_in_the_package_it_unblocked(
 async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     """One item leaves the list; its neighbours are not loosened with it."""
     session = await _ready_session(db_session)
-    await save_back_translation(
+    await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
     session.bridge_mode = "calibration_pending"
@@ -472,7 +493,17 @@ async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     """
     session = await _ready_session(db_session)
     whole = (await final_segments(db_session, session.id))[0]
-    await divide_segment(db_session, session, whole, at_ms=30000)
+    for half in await divide_segment(db_session, session, whole, at_ms=30000):
+        await capture_segment(
+            db_session,
+            session,
+            take_id=half.take_id,
+            starts_ms=half.starts_ms,
+            ends_ms=half.ends_ms,
+            bridge_take_id="retro-dividido",
+            transcript="o que a equipe contou sobre esta metade",
+            replaces=half,
+        )
 
     artifact = await build_internalization_release(db_session, session)
 
