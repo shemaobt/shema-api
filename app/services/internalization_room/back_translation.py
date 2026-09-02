@@ -314,6 +314,35 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     return BtAnalysis(evidence_sufficient=sufficient_raw, findings=findings)
 
 
+def _log_accepted_reading(
+    *,
+    session_id: str,
+    reading: str,
+    raw: str,
+    findings: list[Finding],
+    segment_id: str | None = None,
+    resolved: bool | None = None,
+) -> None:
+    """An accepted reading leaves a trace — what the model said, never what the team said.
+
+    ``raw`` is the model's own reply, kept whole in the message; nothing from the team's
+    transcript is read into `extra` or the message here, only what the model answered and
+    the addresses that answer lands on. The counterpart to the refusal warnings already in
+    this file (unparseable JSON, an unknown kind): those fire when a reply cannot be
+    trusted at all, this fires once it has been trusted and parsed.
+    """
+    extra: dict[str, Any] = {
+        "session_id": session_id,
+        "reading": reading,
+        "findings": len(findings),
+    }
+    if segment_id is not None:
+        extra["segment_id"] = segment_id
+    if resolved is not None:
+        extra["resolved"] = resolved
+    logger.info("BT %s reading accepted: %s", reading, raw, extra=extra)
+
+
 def _segment_pointed_at(raw: Any, segments: list[IRSegment]) -> str | None:
     """Which stretch the finding lands on, by address, or None when it names none.
 
@@ -342,6 +371,7 @@ async def analyse_telling_back(
     analyst_prompt: str,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
+    session_id: str = "",
 ) -> BtAnalysis | None:
     """Compare the bridge-language telling-back against the map. Never voiced.
 
@@ -373,7 +403,12 @@ async def analyse_telling_back(
     except Exception:
         logger.exception("BT analysis failed for %s", pericope_num)
         return None
-    return _parse_analysis(raw, segments)
+    analysis = _parse_analysis(raw, segments)
+    if analysis is not None:
+        _log_accepted_reading(
+            session_id=session_id, reading="analysis", raw=raw, findings=analysis.findings
+        )
+    return analysis
 
 
 class CorrectionCheck(BaseModel):
@@ -616,6 +651,7 @@ async def verify_correction(
     correction_prompt: str,
     session_language: str = "Portuguese",
     settings: Settings | None = None,
+    session_id: str = "",
 ) -> CorrectionCheck | None:
     """Ask whether one retold stretch answers the finding raised on it. Never voiced.
 
@@ -648,7 +684,17 @@ async def verify_correction(
     except Exception:
         logger.exception("BT correction check failed for %s", pericope_num)
         return None
-    return _parse_correction(raw, corrected.id)
+    check = _parse_correction(raw, corrected.id)
+    if check is not None:
+        _log_accepted_reading(
+            session_id=session_id,
+            reading="correction",
+            raw=raw,
+            findings=check.findings,
+            segment_id=corrected.id,
+            resolved=check.resolved,
+        )
+    return check
 
 
 def findings_block(finding: Finding | None) -> str:
