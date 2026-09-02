@@ -6,6 +6,10 @@ from app.services.resource_request.allocation_of_fund import (
 )
 from app.services.resource_request.append_movement import append_movement
 from app.services.resource_request.assign_fund import FundAssignment, FundMoved, assign_fund
+from app.services.resource_request.attachment_download_url import (
+    AttachmentLink,
+    attachment_download_url,
+)
 from app.services.resource_request.capabilities import (
     CAPABILITIES,
     CAPABILITY_ROLES,
@@ -35,6 +39,7 @@ from app.services.resource_request.retire_fund import retire_fund
 from app.services.resource_request.reverse_movement import reverse_movement
 from app.services.resource_request.save_evaluation import save_evaluation
 from app.services.resource_request.set_allocation import set_allocation
+from app.services.resource_request.store_attachment import store_attachment
 from app.services.resource_request.submit_request import Submitted, submit_request
 from app.services.resource_request.update_draft import Discarded, Saved, update_draft
 
@@ -45,6 +50,7 @@ __all__ = [
     "ROLES",
     "ROLE_CAPABILITIES",
     "BoardMoved",
+    "AttachmentLink",
     "Discarded",
     "FundAssignment",
     "FundAllocation",
@@ -57,6 +63,7 @@ __all__ = [
     "allocation_of_fund",
     "append_movement",
     "assign_fund",
+    "attachment_download_url",
     "create_draft",
     "fund_balances",
     "fund_options",
@@ -79,6 +86,7 @@ __all__ = [
     "reverse_movement",
     "save_evaluation",
     "set_allocation",
+    "store_attachment",
     "submit_request",
     "transitions_of_request",
     "update_draft",

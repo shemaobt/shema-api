@@ -809,6 +809,55 @@ the gate's own closing comment said: *"nenhum muda a forma do agregado"*.
   account that submits may not be the Ponto focal. The prediction above held: the answer
   changed what the columns *mean*, and none of their shape.
 
+### 6.3 The attachment as a file — **BE-14 (OBT-474), built**
+
+D3's answer landed as two routes beside the lifecycle, under the same `edit_requests`
+guard and the same `_scope.py` row scope the request itself wears — out of scope answers
+404 on both, a submitted request answers 409 to a new file:
+
+- `PUT /requests/{id}/attachment` — the file as the **raw body**, not multipart. Chosen
+  because FastAPI parses a multipart body before any handler code runs, so an
+  `UploadFile` route can only measure what it has already read — the exact mistake
+  `POST /api/uploads/image` makes and the issue forbids repeating. With the file as the
+  body, `Content-Length` *is* the file's size: over 10 MB answers **413 before a byte of
+  body is read**, and a capped counted read catches the liar and the chunked sender.
+- `GET /requests/{id}/attachment` — metadata plus a **signed URL that expires in
+  minutes**. No public URL exists on any path; rows store keys into a dedicated private
+  bucket (`resource-requests-private`, provisioned like `sound-necklace-private`), and
+  the key is content-addressed the way the Sound Necklace artifacts are.
+
+The formats came back from the client on 28/aug/2026 — *"PDF, planilha e documento de
+texto (limite de mb tem que ser algo razoável)"* — and the ceiling the client delegated
+is recorded in the issue as **10 MB**. The ten content types are validated by declared
+type **and** signature, never by extension; the four ZIP containers are told apart from
+the inside (`mimetype` for ODF, `[Content_Types].xml` for OOXML), .xls/.doc by the OLE2
+stream marker, and .csv/.txt — which have no signature — by a text proof: no C0 control
+bytes outside tab, CR and LF, and a decode as **UTF-8 or cp1252**, because Excel on a
+pt-BR Windows exports .csv in the code page and a header cell reading `orçamento` would
+otherwise be a 400 on one of the formats the client named as *planilha*. The proof is a
+byte-level scan and not a loop over a decoded string: at the 10 MB ceiling that is 102 ms
+of blocked event loop instead of 5.8 s.
+
+**The 10 MB ceiling bounds the compressed bytes only**, so the one member the module
+decompresses is read under its own 1 MB bound — the declared `file_size` first, because
+it costs no decompression, and a bounded `read()` behind it, because that declaration is
+uploader-typed like every other byte in the archive. Measured on a crafted 32 KB archive
+whose member declares 100 bytes and expands to 32 MB: 77 MB of peak allocation becomes
+2 MB. There is deliberately no ceiling on the archive's *total* declared size — nothing
+here opens a second member, and a real .xlsx compresses an order of magnitude.
+`app/services/resource_request/_attachment_rules.py` carries all of it, including why
+the sniffing library is `filetype` (pure Python; `python-magic` would put `libmagic`
+into the Docker image).
+
+**One file per request, replaceable, with the history kept**: a replacement supersedes
+the current `rr_attachments` row and deletes nothing — neither the row (the mesa may
+have read that file) nor the object (keys are content-addressed, so a superseded row can
+share its key with the current one). And the call §6.1 left to this issue is made:
+**`attachment_note` survives beside the file** as the free note — it stays one of the
+45, the 45 do not move, and a team that cannot upload still says what it sent. The
+contract-side counterpart (§1.1's three typed keys becoming four) lives in
+`resource-request-form` and is deliberately not this repository's PR.
+
 ---
 
 ## 7. The fund ledger, and the financial tables that do not exist

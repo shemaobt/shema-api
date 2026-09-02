@@ -850,3 +850,50 @@ class RequestSubmissionIn(RequestDraftIn):
         ):
             raise ValueError("section A5 needs a trained team and a format")
         return value
+
+
+class AttachmentOut(BaseModel):
+    """The budget file as metadata — deliberately without a URL.
+
+    The row stores a key into a private bucket, and a link to the bytes exists only as
+    the short-lived signed GET the download route mints per call. A URL field here would
+    either be that signed link stored past its own expiry, or the public kind BE-14
+    exists to refuse — so the upload's answer is the receipt (checksum included, which is
+    how a client can verify what landed is what it sent), and the download route is where
+    a link is asked for.
+    """
+
+    id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    uploaded_by: str
+    created_at: datetime
+
+    @classmethod
+    def of(cls, attachment: RRAttachment, **extra: Any) -> Self:
+        """Typed like ``RequestOut.of`` and for the same reason: attribute reads off a
+        named model are where a renamed column is caught, and ``Self`` keeps the download
+        subclass answering its own type."""
+        return cls(
+            id=attachment.id,
+            filename=attachment.filename,
+            content_type=attachment.content_type,
+            size_bytes=attachment.size_bytes,
+            sha256=attachment.sha256,
+            uploaded_by=attachment.uploaded_by,
+            created_at=attachment.created_at,
+            **extra,
+        )
+
+
+class AttachmentDownloadOut(AttachmentOut):
+    """The metadata plus the one legitimate way at the bytes: a signed URL that expires.
+
+    ``expires_in_minutes`` is stated so a client shows a link it knows is perishable
+    rather than caching one that will 403 later.
+    """
+
+    download_url: str
+    expires_in_minutes: int
