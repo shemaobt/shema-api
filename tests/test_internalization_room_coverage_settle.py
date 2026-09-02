@@ -341,12 +341,20 @@ def _as_the_list_prints_it(pericope: str, key: str) -> str:
     raise AssertionError(f"{key} is not in the unresolved block for {pericope}")
 
 
-def test_the_key_is_read_out_of_the_line_the_model_echoes_back() -> None:
+@pytest.mark.parametrize(
+    "named",
+    [
+        "object:O1",
+        "[object:O1] רָעָב / famine",
+        "- [object:O1] רָעָב / famine",
+    ],
+)
+def test_the_key_is_read_out_of_the_line_the_model_echoes_back(named: str) -> None:
     reply = json.dumps(
         {
             "decisions": [
                 {
-                    "element_id": "[object:O1] רָעָב / famine",
+                    "element_id": named,
                     "new_status": "engaged",
                     "evidence": "nomearam a fome com as próprias palavras",
                 }
@@ -355,7 +363,7 @@ def test_the_key_is_read_out_of_the_line_the_model_echoes_back() -> None:
     )
 
     assert _parse(reply)["engaged"] == ["object:O1"], (
-        "o prompt pede o id da lista fornecida e a lista imprime `[chave] rótulo`, "
+        "o prompt pede o id da lista fornecida e a lista imprime `- [chave] rótulo`, "
         "então era a linha inteira que voltava"
     )
 

@@ -15,7 +15,7 @@ from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
 
-_BRACKETED_KEY = re.compile(r"^\[([^\]]+)\]")
+_BRACKETED_KEY = re.compile(r"^-?\s*\[([^\]]+)\]")
 
 
 def _element_id(named: str) -> str:
@@ -25,6 +25,10 @@ def _element_id(named: str) -> str:
     contract asks for "the id from the provided list". Read against that list, the id is the
     whole line, and that is what comes back. The key is its bracketed head; `merge` drops
     every other spelling as an element the passage does not hold.
+
+    The list marker is admitted with it. Production echoes the line without the dash, so
+    nothing today turns on this — but what is being fixed here is a spelling nobody thought
+    to accept, and the dash is how the line is printed.
     """
     bracketed = _BRACKETED_KEY.match(named.strip())
     return bracketed.group(1).strip() if bracketed else named.strip()
