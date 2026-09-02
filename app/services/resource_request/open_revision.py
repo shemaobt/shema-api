@@ -51,6 +51,12 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
 
     The new draft copies the content rather than pointing at it, because from here it is the
     team's to change and the old one must not move.
+
+    **The Líder's line does not carry over** — neither the act (``endorsed_by``/
+    ``endorsed_at`` stay at their defaults on the new row) nor the display pair born from
+    it (BE-16): a signature given to a frozen version does not follow a text that is about
+    to change, and a revision goes back to its base's leader like any other new document.
+    ``tpp_name``/``tpp_date`` do carry — typed content of the team's, not a server act.
     """
     loaded = await get_request(db, request_id, user, app_key)
 
@@ -85,8 +91,6 @@ async def open_revision(db: AsyncSession, request_id: str, user: User, app_key: 
         declaration=original.declaration,
         tpp_name=original.tpp_name,
         tpp_date=original.tpp_date,
-        leader_name=original.leader_name,
-        leader_date=original.leader_date,
         created_by=original.created_by,
         revision_of_id=snapshot.id,
     )

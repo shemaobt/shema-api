@@ -205,9 +205,10 @@ async def test_a_mesa_member_who_is_also_equipe_still_reaches_every_request(
 
     Since ``20260828_rr02`` whoever registers is ``equipe``, so a mesa member holds ``equipe``
     **plus** ``mesa`` — two rows, with no constraint on ``(user_id, app_id)`` to prevent it.
-    ``as_mesa`` above grants one role and cannot see this: ``reaches_every_request`` asks
-    ``granted - {TEAM_ROLE}``, and asked the other way round — ``TEAM_ROLE in granted`` — it
-    would answer *team* for exactly this account and hide the board from the mesa.
+    ``as_mesa`` above grants one role and cannot see this: ``Reach.every`` asks
+    ``granted - {TEAM_ROLE, LEADER_ROLE}``, and asked the other way round — ``TEAM_ROLE in
+    granted`` — it would answer *team* for exactly this account and hide the board from the
+    mesa. The Líder's own middle reach is ``test_endorsement.py``'s subject.
     """
     team = await as_team(db_session, rrf_app)
     created = await create(client, team)
@@ -388,6 +389,98 @@ async def test_submitting_twice_is_refused(db_session, client, rrf_app) -> None:
     assert again.status_code == 409
 
 
+@pytest.mark.parametrize("other_role", ["mesa", "gestor"])
+async def test_the_mesa_and_the_gestor_read_and_edit_but_do_not_sign(
+    db_session, client, rrf_app, other_role: str
+) -> None:
+    """Submitting is the electronic acceptance (OBT-483), so only the author submits.
+
+    Both roles hold ``edit_requests`` and reach every draft, and both of those stay true —
+    the read and the edit below still answer 200. What must not happen is the third thing:
+    a button either can reach signing in ``created_by``'s name. The refusal has to say that
+    reason, not *no permission* — the guard's own message would be the capability one, and
+    the caller holds the capability.
+
+    Neither account is a platform admin, deliberately: ``require_capability`` waves admins
+    through by the installation's standing rule (``_deps.py``), so an admin here would get
+    past the guard for a reason that proves nothing about the author rule.
+    """
+    team = await as_team(db_session, rrf_app)
+    created = await create(client, team)
+
+    user = await make_user(db_session, email=f"{other_role}@nao-autor.test")
+    await grant(db_session, user, rrf_app, other_role)
+    headers = await auth_header(db_session, user)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 403, res.text
+    assert "electronic acceptance" in res.json()["detail"]
+    assert "Capability" not in res.json()["detail"]
+
+    read = await client.get(f"{REQUESTS}/{created['id']}", headers=headers)
+    assert read.status_code == 200
+    assert read.json()["submitted_at"] is None
+    assert (
+        await client.patch(f"{REQUESTS}/{created['id']}", json=draft(), headers=headers)
+    ).status_code == 200
+
+
+async def test_another_team_cannot_submit_what_it_cannot_reach(db_session, client, rrf_app) -> None:
+    """The third role's negative: for another ``equipe`` the scope answers first, as 404."""
+    mine = await as_team(db_session, rrf_app, "one@rr.test")
+    theirs = await as_team(db_session, rrf_app, "two@rr.test")
+    created = await create(client, mine)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=theirs)
+
+    assert res.status_code == 404
+
+
+async def test_the_acceptance_is_served_as_author_plus_instant(db_session, client, rrf_app) -> None:
+    """No new column and no captured scribble: who and when are already on the envelope.
+
+    ``created_by`` and ``submitted_at`` are the *aceite eletrônico* the client asked for
+    (28/aug/2026), both stamped by the server and neither typable through a payload.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+
+    submitted = (await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)).json()
+
+    assert submitted["created_by"] == created["created_by"]
+    assert submitted["submitted_at"] is not None
+
+
+async def test_a_submission_blank_on_the_signature_lines_goes_through(
+    db_session, client, rrf_app
+) -> None:
+    """End to end for OBT-483's other half: nothing typed stands in for the acceptance.
+
+    ``tpp_date``, ``leader_name`` and ``leader_date`` are submitted empty and the
+    submission is accepted; ``tpp_name`` stays demanded because it is the requester the
+    mesa reads on the card, and the account submitting may not be the Ponto focal.
+    """
+    headers = await as_team(db_session, rrf_app)
+    unsigned = answers()
+    for key in ("tpp_date", "leader_name", "leader_date"):
+        unsigned[key] = ""
+    created = await create(client, headers, fields=unsigned)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 200, res.text
+
+    unnamed = answers()
+    unnamed["tpp_name"] = ""
+    nameless = await create(client, headers, fields=unnamed)
+
+    refused = await client.post(f"{REQUESTS}/{nameless['id']}/submit", headers=headers)
+
+    assert refused.status_code == 400, refused.text
+    assert "tpp_name" in refused.json()["detail"]
+
+
 async def test_submitting_does_not_move_the_card(db_session, client, rrf_app) -> None:
     """Every stage change is BE-08's, with its ledger movement attached to it."""
     headers = await as_team(db_session, rrf_app)
@@ -475,7 +568,13 @@ async def test_a_revision_is_a_new_row_linked_to_what_was_evaluated(
 
 
 async def test_a_revision_carries_the_content_forward(db_session, client, rrf_app) -> None:
-    """It copies rather than points, because from here it is the team's to change."""
+    """It copies rather than points, because from here it is the team's to change.
+
+    All of it but one line: the Líder's display pair goes back **blank**, even where a
+    draft had typed it — since BE-16 the endorsement is what writes ``leader_name``/
+    ``leader_date``, so a revision starts with the line its own endorsement will fill,
+    and ``test_endorsement.py`` owns that half of the story.
+    """
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers)
     before = (await client.get(f"{REQUESTS}/{created['id']}", headers=headers)).json()
@@ -484,7 +583,11 @@ async def test_a_revision_carries_the_content_forward(db_session, client, rrf_ap
 
     revision = (await client.post(f"{REQUESTS}/{created['id']}/revise", headers=headers)).json()
 
-    assert revision["document"] == before["document"]
+    unendorsed = dict(
+        before["document"],
+        fields={**before["document"]["fields"], "leader_name": "", "leader_date": ""},
+    )
+    assert revision["document"] == unendorsed
 
 
 async def test_editing_a_revision_leaves_the_evaluated_snapshot_alone(

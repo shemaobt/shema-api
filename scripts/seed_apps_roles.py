@@ -10,7 +10,7 @@ breaks password recovery and nothing else, silently. The loop below only fills a
 row rather than a re-run of this script.
 
 ``APP_ROLES_OVERRIDE`` carries the apps whose roles are not ``DEFAULT_ROLES``. For
-``resource-request-form`` the three keys are the role ids of the frontend's
+``resource-request-form`` the four keys are the role ids of the frontend's
 ``capabilities.ts`` verbatim, not a translation of them.
 """
 
@@ -47,7 +47,7 @@ APP_ROLES_OVERRIDE: dict[str, list[str]] = {
     "oral-collector": ["member", "manager"],
     "annotation-studio": ["admin", "facilitator"],
     "sound-necklace": ["facilitator", "project_admin"],
-    "resource-request-form": ["equipe", "mesa", "gestor"],
+    "resource-request-form": ["equipe", "mesa", "gestor", "lider"],
 }
 
 

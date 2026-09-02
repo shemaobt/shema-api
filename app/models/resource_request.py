@@ -436,6 +436,12 @@ class RequestOut(BaseModel):
     and not the client's sentence.** The four ``RRDecision`` values are mutually exclusive,
     so four boxes of which exactly one ever lights is not progress; it is a status wearing a
     bar's clothes. It gets shown to the client with the screen in hand (FE-28).
+
+    ``endorsed_by``/``endorsed_at`` ride in the envelope, not the document (BE-16): the
+    act is state that moves around the frozen thing, exactly like ``submitted_at`` — and
+    the team seeing *endorsed on this date* is status, which GATE-03 D4 allows, not the
+    evaluation, which §5.3 closes. The display pair the paper form had (``leader_name``,
+    ``leader_date``) stays inside the document, where the contract's 45 keys put it.
     """
 
     id: str
@@ -443,6 +449,8 @@ class RequestOut(BaseModel):
     created_by: str | None
     revision_of_id: str | None
     submitted_at: datetime | None
+    endorsed_by: str | None
+    endorsed_at: datetime | None
     created_at: datetime
     updated_at: datetime
     document: dict[str, Any]
@@ -470,6 +478,8 @@ class RequestOut(BaseModel):
             created_by=request.created_by,
             revision_of_id=request.revision_of_id,
             submitted_at=request.submitted_at,
+            endorsed_by=request.endorsed_by,
+            endorsed_at=request.endorsed_at,
             created_at=request.created_at,
             updated_at=request.updated_at,
             document=document,
@@ -734,9 +744,11 @@ class RequestSubmissionIn(RequestDraftIn):
     the norm for the profile — A1, A2 and A3 may all be submitted blank, and the mesa
     reads the blanks — so what is demanded here is the request itself: its project name,
     what it is for, the three essays the Parte C criteria score, the amount asked, the
-    declaration, and the two signatures with their dates. The list lives in
-    ``vocabularies.py`` so it can move in one place; it is BE-05's reading of the form
-    and not a requirement the PRD enumerates field by field.
+    declaration, and the requester's name. The paper form's signature dates and the
+    Líder's line are not demanded any more — submitting is the electronic acceptance
+    (OBT-483), and ``vocabularies.py`` says why where the list lives. The list lives
+    there so it can move in one place; it is BE-05's reading of the form and not a
+    requirement the PRD enumerates field by field.
     """
 
     @field_validator("fields")

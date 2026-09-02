@@ -232,6 +232,31 @@ class RRRequest(Base):
     fails as a foreign-key violation naming the row that holds on; what to do with that
     person — anonymise, deactivate, keep — is BE-15's (OBT-475) and is not a default to
     pick in a column definition.
+
+    ``endorsed_by`` and ``endorsed_at`` are the Líder de Base's endorsement — the act
+    itself, GATE-02/GATE-03 D2 entering the system (BE-16, OBT-476). Both are stamped by
+    the server in ``endorse_request.py`` and neither is typable through a payload, the
+    exact shape ``created_by``/``submitted_at`` already give the team's acceptance.
+    ``leader_name`` and ``leader_date`` stay the contract's display pair and since BE-16
+    are **born from the same act** — the endorser's account and day — rather than demanded
+    of the client's typing (OBT-483 took them out of the required set; this issue gives
+    them their writer). The keys stay askable in a draft, but nothing reads a typed leader
+    line as an endorsement: the rule below reads ``endorsed_at``, which only the act
+    writes. ``endorsed_by`` restricts on delete like every authorship column here — a
+    record of who vouched is worth nothing if the who can be forgotten (D7).
+
+    **Where an unendorsed request stops — written here for BE-08, which enforces it.** A
+    request without an endorsement leaves ``triagem`` only for ``recusado``: declining
+    stays possible, because a base that does not recognise a project is itself a reason to
+    decline, while ``analise`` and every column past it wait for the base's signature.
+    Stated over destinations and not as *may not enter analise*, because the board's
+    transition graph is total (FE-15 kept it so) and blocking one edge would leave
+    ``triagem → aprovado`` open. It is a service rule for BE-08's transition service,
+    beside its ledger movement — deliberately not DDL, like the ``fund_id`` invariant
+    above, and deliberately not a helper here: this module has no transition service yet,
+    and a helper nobody calls is a promise the code is not keeping. A revision needs a
+    fresh endorsement: ``open_revision`` copies neither the act nor the leader line,
+    because a signature given to a frozen version does not follow a text about to change.
     """
 
     __tablename__ = "rr_requests"
@@ -251,6 +276,10 @@ class RRRequest(Base):
     tpp_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     leader_name: Mapped[str] = mapped_column(String(160), default="", server_default="")
     leader_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    endorsed_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    endorsed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False, index=True
     )

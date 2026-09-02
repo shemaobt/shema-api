@@ -15,6 +15,7 @@ from app.services.resource_request.capabilities import (
 from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_evaluation import get_evaluation
+from app.services.resource_request.endorse_request import endorse_request
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_fund_options import fund_options
@@ -53,6 +54,7 @@ __all__ = [
     "fund_balances",
     "fund_options",
     "get_evaluation",
+    "endorse_request",
     "get_request",
     "holds_capability",
     "list_requests",

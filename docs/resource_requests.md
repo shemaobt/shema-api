@@ -305,6 +305,23 @@ Two things are decided and two are BE-02's:
   It is its own table rather than a column on `rr_requests` so the board and the lists never
   drag the document they do not read.
 
+**A copy is taken at an instant, and BE-16 is what made that worth writing down.** *Copy and
+not projection* is a statement about serializers — there is one builder, so the freeze cannot
+drift from the read path by being written twice. It was never a promise that a later read of
+a submitted request returns the snapshot's bytes, and since the endorsement exists it is not
+one: `endorse_request` writes `leader_name` and `leader_date` on the spine **after** the
+freeze. **The snapshot carries the document as submitted; the live request carries the
+endorsed line** (BE-16, OBT-476, 30/aug/2026 — PR #281, review). Three things agree on it:
+`rr_snapshots` is append-only in the database, so re-stamping is not an available shape; a
+second snapshot would break `open_revision`, which reads the latest one and would look for an
+evaluation on a document nobody evaluated; and only a submitted request is endorsable, so the
+endorsement is a fact that can only exist after the freeze. What answers *has this been
+endorsed* is the envelope — `endorsed_by`/`endorsed_at`, which BE-06 and BE-07 read beside
+whichever document they serve — and the display pair is that same fact rendered into the
+contract's 45 keys. It is the only value in the document that moves after submission;
+`update_draft` refuses every other edit, so a comparison of the two documents finds that one
+difference and no other.
+
 Three things are **not** free-form and stay relational:
 
 - **Budget lines are rows**, 26 of them, `(request_id, category_key, description, quantity,
@@ -533,18 +550,25 @@ that one too, in the direction that removes the nullability rather than keeping 
 
 `require_app_access(app_key)` and `require_role(app_key, role_key)` answer exactly one
 question each: *does this user hold any role in this app*, and *does this user hold this
-one role*. The frontend's model is **seven** capabilities across three roles — five when this
-section was written, and GATE-01 and GATE-02 moved it to seven:
+one role*. The frontend's model is **eight** capabilities across four roles — five when this
+section was written, GATE-01 and GATE-02 moved it to seven, and BE-16 added the one the
+fourth role exists for:
 
-| Capability | `equipe` | `mesa` | `gestor` | Settled by |
-|---|---|---|---|---|
-| `edit_requests` | ✅ | ✅ | ✅ | **GATE-02 D4** — *"a mesa pode alterar também"* |
-| `view_evaluation` | — | ✅ | ✅ | already decided |
-| `edit_evaluation` | — | ✅ | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
-| `manage_funds` | — | ✅ | ✅ | already decided |
-| `move_board` | — | ✅ | **✅** | **GATE-02 D3** — the cell that moved |
-| `assign_fund` | — | ✅ | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
-| `allocate_funds` | — | — | ✅ | **GATE-01 D6** — the first capability the mesa does not hold |
+| Capability | `equipe` | `mesa` | `gestor` | `lider` | Settled by |
+|---|---|---|---|---|---|
+| `edit_requests` | ✅ | ✅ | ✅ | — | **GATE-02 D4** — *"a mesa pode alterar também"* |
+| `view_evaluation` | — | ✅ | ✅ | — | already decided |
+| `edit_evaluation` | — | ✅ | — | — | **GATE-02 D3**, confirmed 28/aug — *"nem pontua nem decide"* |
+| `manage_funds` | — | ✅ | ✅ | — | already decided |
+| `move_board` | — | ✅ | **✅** | — | **GATE-02 D3** — the cell that moved |
+| `assign_fund` | — | ✅ | — | — | **GATE-01 D4**, re-ask closed 28/aug — *"somente a mesa"* |
+| `allocate_funds` | — | — | ✅ | — | **GATE-01 D6** — the first capability the mesa does not hold |
+| `endorse_request` | — | — | — | **✅** | **GATE-02 D2** — the Líder's only verb (BE-16) |
+
+**Reading is not a row of this table and must not become one.** The Líder holds no
+`edit_requests` and still has to read what he signs, so `CanReadRequests` is an **OR** over
+`edit_requests` and `endorse_request` — the one alias in `_deps.py` built on two capabilities.
+Which rows that reading reaches is `_scope.py`'s and not a capability at all (§6.2).
 
 Mirror it from `src/auth/capabilities.ts` field for field; that file is the owner and this is
 the copy. Two things about it are easy to get wrong from the table alone. **`manage_funds` is
@@ -552,6 +576,9 @@ the Painel's entry gate**, not a money permission — narrowing it to make room 
 `allocate_funds` would take the whole panel away from the mesa. And **`assign_fund` and
 `allocate_funds` are control capabilities, not screen ones**: they live inside a surface some
 other capability already opened, which is why neither adds a route of its own.
+`endorse_request` is the third control capability and the exception to that second half — it
+sits on a screen the Líder reaches through `CanReadRequests`, and the act itself needs a
+route (`POST /requests/{id}/endorse`).
 
 **Two of those cells were re-asked on 28/aug/2026, and both came back where they were.**
 `edit_evaluation` had been recorded as *confirmed rather than merely left standing* while the
@@ -562,23 +589,27 @@ And `assign_fund` was carrying GATE-01 D1's aside — that the Gestor would defi
 project draws from — as a live re-ask; asked again, the answer was *"somente a mesa"*. Neither
 cell moves, `move_board` least of all: moving a card is still not deciding (D6).
 
-**An eighth cell is decided and arrives with BE-10** (OBT-471). The fund area does *"os 3"* —
-create, rename, retire — *"o Gestor"* creates, and renaming and retiring *"seguem a de criar"*:
-**one** capability over three verbs, the Gestor's alone. That it is a **control** capability and
+**The `administer_funds` cell landed with FE-29 (OBT-481, 30/aug/2026), ahead of BE-10's
+endpoints** (OBT-471). The fund area does *"os 3"* — create, rename, retire — *"o Gestor"*
+creates, and renaming and retiring *"seguem a de criar"*: **one** capability over three verbs,
+the Gestor's alone, in the map, the emission and the vendored copy since that issue, so BE-10's
+guard has a table to stand on before any route exists. That it is a **control** capability and
 not a screen one is ours to decide (Daniel, 28/aug/2026) and not the client's sentence, and the
 consequence is mechanical: as a screen capability it would match no role in the frontend's
 `SCREEN_CAPABILITIES.every(holds)` and the mesa's fixture account would vanish — the trap the
-`?` cell of D3 sprang once already.
+`?` cell of D3 sprang once already, and which the frontend now pins by test.
 
-**A fourth role is coming and is not here yet.** GATE-02 D2 answered that the **Líder de
-Base** enters the system — the narrowest of the four, holding one endorsement capability and
-the reading it needs, with neither `edit_requests` nor `view_evaluation`. It is a new
-`role_key` in this repository (BE-00 seeded three), a fourth column in `capabilities.ts`, the
-screen where the endorsement happens, and the rule that an unendorsed request does not
-proceed. **BE-16** (OBT-476) owns all of it, and it is the only issue that touches both
-repositories.
+**The fourth role is built** (BE-16, OBT-476, 30/aug/2026). GATE-02 D2 answered that the
+**Líder de Base** enters the system — the narrowest of the four, holding one endorsement
+capability and the reading it needs, with neither `edit_requests` nor `view_evaluation`. The
+`lider` `role_key` is seeded beside the three BE-00 wrote, `endorse_request` is the eighth
+capability and the mesa does not hold it, `POST /requests/{id}/endorse` is the act, and which
+rows he reads is `_scope.py`'s — every submitted request and no draft of another team. The
+rule that an unendorsed request does not proceed is written on `RRRequest` and enforced by
+BE-08's transition service, which is the one half that does not land here. It is the only
+issue that touches both repositories.
 
-Four of the seven are held by **more than one role**, and `require_role` cannot express an
+Four of the eight are held by **more than one role**, and `require_role` cannot express an
 OR. Guarding `view_evaluation` as `MesaUser` would refuse the Gestor, whose whole point is
 that asymmetry — it sees the evaluation and the money and changes neither the evaluation nor
 the board.
@@ -768,10 +799,15 @@ the gate's own closing comment said: *"nenhum muda a forma do agregado"*.
   request, the server's `submitted_at` and the snapshot id, and **invents no number**.
   Adding one later is additive; removing one after teams have seen it, after BE-13 has
   quoted it in an e-mail and after it has become how people refer to a request, is not.
-- **Whether the Ponto focal's signature becomes an electronic acceptance.** The Líder's half
-  is answered (BE-16); this one is not. `tpp_name` and `tpp_date` are a typed name and a
-  typed date today, which is what `RequestSubmissionIn` already demands. An answer changes
-  what those two columns *mean*, not their shape.
+- **Whether the Ponto focal's signature becomes an electronic acceptance — answered *sim*,
+  28/aug/2026 (OBT-483).** Submitting **is** signing: `created_by` says who and
+  `submitted_at` says when, both stamped by the server, and `submit_request` now refuses any
+  caller who is not the author — the mesa and the Gestor keep reading and editing under
+  GATE-02 D4 and do not sign in the team's name. `tpp_date`, `leader_name` and `leader_date`
+  left the required-at-submission set (`_ALWAYS_REQUIRED`); their columns stay, and
+  `tpp_name` stays demanded because it is the requester the mesa reads on the card — the
+  account that submits may not be the Ponto focal. The prediction above held: the answer
+  changed what the columns *mean*, and none of their shape.
 
 ---
 

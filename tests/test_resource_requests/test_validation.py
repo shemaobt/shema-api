@@ -43,11 +43,13 @@ def budget(amounts: dict[str, Decimal] | None = None) -> list[dict[str, object]]
 def answers(request_type: str) -> dict[str, str]:
     """Every required field answered, and nothing that the type does not ask.
 
-    Three of the required keys are not free text, because three of them are columns rather
-    than answers: the two signature dates are ``Date`` and ``amount_requested`` is
-    ``Numeric(14, 2)``. The dates were already spelled out here; the amount joined them when
-    BE-04 (OBT-453) gave the promoted keys a parser, so that ``"mil e duzentos"`` is a
-    located 422 rather than a cast blowing up in the service layer.
+    Two of the answers are not free text, because they are columns rather than answers:
+    ``amount_requested`` is ``Numeric(14, 2)`` — required, and given a parser by BE-04
+    (OBT-453) so that ``"mil e duzentos"`` is a located 422 rather than a cast blowing up
+    in the service layer — and the two signature dates are ``Date``. The dates stopped
+    being required when OBT-483 made submitting the signature, but they stay spelled out
+    here so the whole-form payload keeps exercising their parser: askable is not gone,
+    only demanded is.
     """
     filled = dict.fromkeys(v.REQUIRED_TEXT_FIELDS[request_type], "preenchido")
     filled["tpp_date"] = "2026-08-25"
@@ -176,19 +178,53 @@ def test_the_same_key_is_accepted_for_the_type_that_does_render_it():
 
 
 @pytest.mark.parametrize("request_type", TYPES)
-def test_the_signatures_and_the_declaration_are_submission_time_only(request_type):
-    unsigned = dict(answers(request_type))
-    for key in ("tpp_name", "tpp_date", "leader_name", "leader_date"):
-        unsigned[key] = ""
+def test_the_requesters_name_and_the_declaration_are_submission_time_only(request_type):
+    """The half of the signature block the client still types.
 
-    RequestDraftIn(**payload(request_type, fields=unsigned, declaration=False))
+    ``tpp_name`` is the requester the mesa reads on the card, and the account that
+    submits may not be the Ponto focal — so it stays demanded, of the client, at
+    submission and never of a draft. Asserted on its own rather than alongside the
+    other three signature keys: blanked together with them, this test stayed red for
+    ``tpp_name``'s reason alone and said nothing about the three (OBT-483).
+    """
+    unnamed = dict(answers(request_type))
+    unnamed["tpp_name"] = ""
 
-    assert "unanswered at submission" in refusal(
-        RequestSubmissionIn, payload(request_type, fields=unsigned)
-    )
+    RequestDraftIn(**payload(request_type, fields=unnamed, declaration=False))
+
+    refused = refusal(RequestSubmissionIn, payload(request_type, fields=unnamed))
+    assert "unanswered at submission" in refused
+    assert "tpp_name" in refused
     assert "declaration must be accepted" in refusal(
         RequestSubmissionIn, payload(request_type, declaration=False)
     )
+
+
+@pytest.mark.parametrize("request_type", TYPES)
+def test_the_signature_lines_are_no_longer_demanded_of_the_client(request_type):
+    """The other half: submitting is signing, so nothing here is typed (OBT-483).
+
+    The client's answer of 28/aug/2026 — *aceite eletrônico* — made ``created_by`` and
+    ``submitted_at`` the signature, so ``tpp_date`` would ask the client to type what
+    the server stamps, and the Líder's line is written by the server at the
+    endorsement — ``endorse_request.py`` stamps ``leader_name``/``leader_date`` from the
+    endorser's account and day (BE-16). A submission blank on all three must validate;
+    the keys stay askable, so a draft that carries them is not refused either, and
+    nothing reads a typed leader line as an endorsement.
+    """
+    lines = ("tpp_date", "leader_name", "leader_date")
+    unsigned = dict(answers(request_type)) | dict.fromkeys(lines, "")
+    signed = dict(answers(request_type)) | {
+        "tpp_date": "2026-08-25",
+        "leader_name": "Marta",
+        "leader_date": "2026-08-26",
+    }
+
+    submitted = RequestSubmissionIn(**payload(request_type, fields=unsigned))
+    assert [submitted.fields[key] for key in lines] == ["", "", ""]
+
+    draft = RequestDraftIn(**payload(request_type, fields=signed))
+    assert [draft.fields[key] for key in lines] == ["2026-08-25", "Marta", "2026-08-26"]
 
 
 # ── Vocabularies ─────────────────────────────────────────────────────────────

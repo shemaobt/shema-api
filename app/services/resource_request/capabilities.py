@@ -3,7 +3,7 @@
 **Why the module carries a map at all.** ``require_app_access(app_key)`` and
 ``require_role(app_key, role_key)`` answer exactly one question each — *does this user
 hold any role in this app*, and *does this user hold this one role*. The product's model
-is neither: four of the seven capabilities belong to **more than one role** —
+is neither: four of the nine capabilities belong to **more than one role** —
 ``edit_requests``, ``view_evaluation``, ``manage_funds``, and ``move_board`` since GATE-02
 moved it — and ``require_role`` cannot express an OR. Guarding ``view_evaluation`` as
 ``MesaUser`` would refuse the Gestor, which is the very asymmetry that gives that role its
@@ -63,31 +63,52 @@ compares the two instead, so a drift is a red test rather than a quiet grant.
   qualquer membro da mesa"*. It is the first capability the mesa does not hold, and that
   asymmetry is what the answer says.
 
-**The eighth cell is decided and arrives with BE-10** (OBT-471). Asked what the fund area
-does the client answered *"os 3"* — create, rename, retire — that the one who creates is
-*"o Gestor"*, and that renaming and retiring have no permission of their own (*"seguem a de
-criar"*). That is **one** capability over three verbs, held by the Gestor alone. That it is
-a **control** capability and not a screen one is ours to decide — Daniel, 28/aug/2026 — and
-not a sentence of the client's: the answer says who may, not how this table is assembled. The
+**``administer_funds`` is in the table since FE-29** (OBT-481, 30/aug/2026), ahead of the
+endpoints BE-10 (OBT-471) will guard with it. Asked what the fund area does the client
+answered *"os 3"* — create, rename, retire — that the one who creates is *"o Gestor"*, and
+that renaming and retiring have no permission of their own (*"seguem a de criar"*). That is
+**one** capability over three verbs, held by the Gestor alone. That it is a **control**
+capability and not a screen one is ours to decide — Daniel, 28/aug/2026 — and not a
+sentence of the client's: the answer says who may, not how this table is assembled. The
 choice has a mechanical consequence rather than an aesthetic one. Classified as a screen
 capability it would be held by no role that also holds every other screen capability, so
 ``SCREEN_CAPABILITIES.every(holds)`` in the frontend's ``src/services/fixtures/accounts.ts``
 would match nobody and the mesa's fixture account would disappear — the same trap the ``?``
-cell of GATE-02 D3 sprang once already.
+cell of GATE-02 D3 sprang once already. The frontend now pins both halves by test: the
+classification (the mesa's fixture account still resolves) and the reach (whoever
+administers funds also opens the Painel, because the fund area lives inside it, FE-26).
 
 ⚠️ **The catastrophic misreading available here is narrowing ``manage_funds`` to the
 Gestor**, on the theory that it is the money capability. It is the Painel's entry gate,
 which mesa and Gestor hold alike; taking it from the mesa would remove the Painel from the
 mesa entirely.
 
-**The fourth role is not here on purpose.** FE-22's contract §5.3 carries a ``líder``
-column and an ``endorse_request`` row, and neither exists in ``capabilities.ts`` — the
-contract is ahead of its own cited source. The Líder de Base, his capability, his screen
-and the undecided ``?`` cell of the mesa all belong to **BE-16** (OBT-476). The mirror
-follows the source, not the prose about it.
+**The fourth role arrived with BE-16** (OBT-476, 30/aug/2026): the **Líder de Base** of
+GATE-02 D2 — *"só assina/verifica o projeto — tipo uma caixinha pra ele assinalar e
+confirmar que o projeto realmente pertence à base dele"* — the narrowest of the four,
+``endorse_request`` and nothing else. Two cells were decided here rather than read off a
+client answer, and both are recorded in contract §5.3:
+
+* ``endorse_request`` is **lider-only** — the mesa's ``?`` cell closes as denied. The
+  endorsement attests that the project belongs to the Líder's base, a fact the mesa is in
+  no position to attest, and its value to the mesa is precisely that someone outside it
+  signs before analysis begins: the mesa endorsing to itself would empty the act it
+  reads. Same principle that makes ``submit_request`` refuse everyone but the author
+  (OBT-483) — a signature is not a permission, and no grant transfers it.
+* On the frontend's two lists it is a **control** capability, not a screen one: the
+  caixinha lives in Part B's section 11, a screen the session opens for every role, so it
+  opens no screen of its own — and ``SCREEN_CAPABILITIES`` not moving is what keeps the
+  mesa's fixture account matching, the very trap the ``administer_funds`` paragraph above
+  already names.
+
+Reading is not a row of this table and must not become one (``_scope.py`` §5.3 reasoning):
+it rides on ``edit_requests`` for the three roles that write, and on ``endorse_request``
+for the Líder, who reads what he signs — ``require_any_capability`` in ``_deps.py`` is
+that OR, and the Líder's reach itself (submitted requests, no drafts) is decided in
+``_scope.py``, in writing.
 """
 
-#: The seven ids of the frontend's ``CAPABILITIES``, in its order.
+#: The nine ids of the frontend's ``CAPABILITIES``, in its order.
 CAPABILITIES: tuple[str, ...] = (
     "edit_requests",
     "view_evaluation",
@@ -96,10 +117,12 @@ CAPABILITIES: tuple[str, ...] = (
     "move_board",
     "assign_fund",
     "allocate_funds",
+    "endorse_request",
+    "administer_funds",
 )
 
-#: The three ``role_key`` values ``scripts/seed_apps_roles.py`` writes for this app.
-ROLES: tuple[str, ...] = ("equipe", "mesa", "gestor")
+#: The four ``role_key`` values ``scripts/seed_apps_roles.py`` writes for this app.
+ROLES: tuple[str, ...] = ("equipe", "mesa", "gestor", "lider")
 
 #: The hand-written half. Field for field, the frontend's ``ROLES[].can``.
 ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -121,8 +144,10 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "manage_funds",
             "move_board",
             "allocate_funds",
+            "administer_funds",
         }
     ),
+    "lider": frozenset({"endorse_request"}),
 }
 
 #: The inversion, derived: the roles that hold each capability. Every capability appears,
