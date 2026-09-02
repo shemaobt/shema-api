@@ -591,6 +591,30 @@ _OVER_BUDGET_NOTE: dict[str, str] = {
 }
 
 
+_OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior saiu do idioma da sessão e por isso não pôde ser falada. "
+        "Refaça o turno inteiro em {language}, sem nenhuma frase em outro idioma. O "
+        "mapa está em inglês: carregue o sentido dele para o idioma da sessão em vez de "
+        "citá-lo."
+    ),
+    "en": (
+        "The previous response left the session's language and could not be spoken. "
+        "Redo the whole turn in {language}, with no sentence in another language. The "
+        "map is in English: carry its meaning into the session's language instead of "
+        "quoting it."
+    ),
+    "es": (
+        "La respuesta anterior salió del idioma de la sesión y por eso no pudo hablarse. "
+        "Rehaz el turno completo en {language}, sin ninguna frase en otro idioma. El "
+        "mapa está en inglés: lleva su sentido al idioma de la sesión en lugar de "
+        "citarlo."
+    ),
+}
+
+_LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "es": "español", "pt": "português"}
+
+
 def _redraft_note(
     issues: list[dict[str, Any]],
     language_code: str = FLOOR,
@@ -606,14 +630,10 @@ def _redraft_note(
         held = ceiling or TURN_BUDGET
         template = _OVER_BUDGET_NOTE.get(language_code, _OVER_BUDGET_NOTE[FLOOR])
         return template.format(sentences=held.sentences, words=held.words)
-    session_language = LANGUAGE_NAMES.get(language_code, LANGUAGE_NAMES[FLOOR])
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
-        return (
-            "A resposta anterior saiu do idioma da sessão e por isso não pôde ser "
-            f"falada. Refaça o turno inteiro em {session_language}, sem nenhuma frase "
-            "em outro idioma. O mapa está em inglês: carregue o sentido dele para o "
-            "idioma da sessão em vez de citá-lo."
-        )
+        template = _OFF_BRIDGE_LANGUAGE_NOTE.get(language_code, _OFF_BRIDGE_LANGUAGE_NOTE[FLOOR])
+        autonym = _LANGUAGE_AUTONYMS.get(language_code, _LANGUAGE_AUTONYMS[FLOOR])
+        return template.format(language=autonym)
     if not issues:
         return "A resposta anterior não passou na conferência. Refaça, dizendo menos."
     described = "; ".join(

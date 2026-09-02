@@ -37,3 +37,37 @@ def test_the_over_budget_note_is_written_in_the_sessions_language(language_code:
         sentences=TURN_BUDGET.sentences, words=TURN_BUDGET.words
     )
     assert note == expected
+
+
+_OFF_BRIDGE_ISSUES = [{"problem": "off_bridge_language"}]
+
+_EXPECTED_OFF_BRIDGE = {
+    "pt": (
+        "A resposta anterior saiu do idioma da sessão e por isso não pôde ser falada. "
+        "Refaça o turno inteiro em {language}, sem nenhuma frase em outro idioma. O "
+        "mapa está em inglês: carregue o sentido dele para o idioma da sessão em vez de "
+        "citá-lo."
+    ),
+    "en": (
+        "The previous response left the session's language and could not be spoken. "
+        "Redo the whole turn in {language}, with no sentence in another language. The "
+        "map is in English: carry its meaning into the session's language instead of "
+        "quoting it."
+    ),
+    "es": (
+        "La respuesta anterior salió del idioma de la sesión y por eso no pudo hablarse. "
+        "Rehaz el turno completo en {language}, sin ninguna frase en otro idioma. El "
+        "mapa está en inglés: lleva su sentido al idioma de la sesión en lugar de "
+        "citarlo."
+    ),
+}
+
+_AUTONYM = {"pt": "português", "en": "English", "es": "español"}
+
+
+@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
+def test_the_off_bridge_note_names_the_session_language_in_itself(language_code: str) -> None:
+    note = _redraft_note(_OFF_BRIDGE_ISSUES, language_code)
+
+    expected = _EXPECTED_OFF_BRIDGE[language_code].format(language=_AUTONYM[language_code])
+    assert note == expected
