@@ -4,6 +4,7 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     closing_block,
     findings_block,
+    segments_block,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.live_turn import (
@@ -85,6 +86,7 @@ __all__ = [
     "save_comprehension",
     "segment_by_id",
     "segment_for_session",
+    "segments_block",
     "session_is_done",
     "sessions_waiting_on_a_person",
     "set_bridge_mode",
