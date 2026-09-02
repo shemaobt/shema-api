@@ -29,7 +29,7 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.session_end import SessionState, end_of
 from app.services.internalization_room.sessions import (
-    MAX_RETELLS,
+    RETELLS_BEFORE_A_WARNING,
     append_exchange,
     apply_coverage,
     back_translation_of,
@@ -236,29 +236,29 @@ async def test_a_fresh_recording_throws_the_whole_telling_back_away(
 
     assert await final_segments(db_session, session.id) == []
     assert state.retells == 2, (
-        "o contado de volta é jogado fora; o orçamento de recontagens não é parte dele. "
-        "Zerá-lo punha nas mãos da equipe — por um toque em 'gravar de novo' — o contador "
-        "que existe para um laço não virar laço"
+        "o contado de volta é jogado fora; a contagem de recontos não é parte dele. "
+        "Zerá-la punha nas mãos da equipe — por um toque em 'gravar de novo' — o contador "
+        "que decide quando a sala pede uma pessoa"
     )
     assert session.status is IRSessionStatus.IN_PROGRESS
 
 
 @pytest.mark.asyncio
-async def test_the_retells_are_counted_and_run_out(db_session: AsyncSession) -> None:
+async def test_the_retells_are_counted_and_reach_the_warning(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
     await save_back_translation(
-        db_session, session, BackTranslationState(scope=P, retells=MAX_RETELLS - 1)
+        db_session, session, BackTranslationState(scope=P, retells=RETELLS_BEFORE_A_WARNING - 1)
     )
 
     state = back_translation_of(session)
     state.retells += 1
     await save_back_translation(db_session, session, state)
-    if state.retells >= MAX_RETELLS:
+    if state.retells >= RETELLS_BEFORE_A_WARNING:
         await mark_needs_person(db_session, session)
 
     assert session.status is IRSessionStatus.NEEDS_PERSON, (
-        "contar o mesmo trecho de novo era um ciclo que ninguém limitava, e o "
-        "orçamento que existia estava numa rota que o app nunca chamava"
+        "contar o mesmo trecho de novo era um ciclo que ninguém contava, e o "
+        "aviso que existia estava numa rota que o app nunca chamava"
     )
 
 

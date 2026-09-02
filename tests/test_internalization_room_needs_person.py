@@ -43,10 +43,10 @@ async def test_a_finished_passage_does_not_reopen_itself(db_session: AsyncSessio
     )
 
 
-async def test_re_recording_does_not_hand_the_team_a_fresh_retell_budget(
+async def test_re_recording_does_not_hand_the_team_a_fresh_retell_count(
     db_session: AsyncSession,
 ) -> None:
-    """The counter exists so a loop cannot be a loop, and the team could reset it.
+    """The counter decides when the room asks for a person, and the team could reset it.
 
     Re-recording is a room-key route the team drives by voice — the very tap a stuck team
     makes when the finding will not go away.
@@ -59,7 +59,7 @@ async def test_re_recording_does_not_hand_the_team_a_fresh_retell_budget(
 
     fresh = await service.begin_back_translation_again(db_session, session)
 
-    assert fresh.retells == 2, "toda outra propriedade voltava ao padrão, e o orçamento junto"
+    assert fresh.retells == 2, "toda outra propriedade voltava ao padrão, e a contagem junto"
 
 
 async def test_the_session_says_where_the_telling_back_stopped(
