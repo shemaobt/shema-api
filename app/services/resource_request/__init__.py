@@ -1,5 +1,9 @@
 from app.services.resource_request._fund_assignment import require_assigned_fund
 from app.services.resource_request._fund_choices import FundOption
+from app.services.resource_request.allocation_of_fund import (
+    FundAllocation,
+    allocation_of_fund,
+)
 from app.services.resource_request.append_movement import append_movement
 from app.services.resource_request.assign_fund import FundAssignment, FundMoved, assign_fund
 from app.services.resource_request.capabilities import (
@@ -23,6 +27,7 @@ from app.services.resource_request.open_revision import open_revision
 from app.services.resource_request.request_status import RequestStatus, request_status
 from app.services.resource_request.reverse_movement import reverse_movement
 from app.services.resource_request.save_evaluation import save_evaluation
+from app.services.resource_request.set_allocation import set_allocation
 from app.services.resource_request.submit_request import Submitted, submit_request
 from app.services.resource_request.update_draft import Discarded, Saved, update_draft
 
@@ -34,12 +39,14 @@ __all__ = [
     "BoardMoved",
     "Discarded",
     "FundAssignment",
+    "FundAllocation",
     "FundBalance",
     "FundMoved",
     "FundOption",
     "RequestStatus",
     "Saved",
     "Submitted",
+    "allocation_of_fund",
     "append_movement",
     "assign_fund",
     "create_draft",
@@ -57,6 +64,7 @@ __all__ = [
     "require_assigned_fund",
     "reverse_movement",
     "save_evaluation",
+    "set_allocation",
     "submit_request",
     "transitions_of_request",
     "update_draft",
