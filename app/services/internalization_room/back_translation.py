@@ -76,6 +76,20 @@ class SupersededAttempt(BaseModel):
     clip_duration_ms: int | None = None
 
 
+class VoicedVerdict(BaseModel):
+    """The verdict as the team actually received it, kept so a repeat press can serve it.
+
+    The findings beside it are what the room decided; this is what it said, which does not
+    follow from them — the wording came from the Speaker and the address from the synthesiser.
+    Without it a second press has to voice the verdict again in order to answer at all, which
+    is the cost the guard above exists to avoid.
+    """
+
+    clip_key: str = ""
+    fixed_line: str = ""
+    used_fail_safe: bool = False
+
+
 class BackTranslationState(BaseModel):
     """What a telling-back knows that is about the session rather than about one stretch.
 
@@ -119,11 +133,22 @@ class BackTranslationState(BaseModel):
     #: on its own — every press re-ran the analyst over a growing transcript — so a second
     #: press with nothing new told back reuses the verdict instead of paying for it again.
     #:
+    #: This list alone answered that only for the analyst, while the validator, the spoken
+    #: synthesis and the transcript write went on running every press: two model calls nobody
+    #: asked for, and a conversation that recorded the room as having spoken twice. It is the
+    #: signal for all four now, and `verdict` below is what a guarded press serves.
+    #:
     #: The addresses and not a count. A count answered "how many stretches" and a replaced
     #: stretch leaves that number exactly where it was, so a re-recorded telling-back would
     #: have been served the verdict of the one it replaced. `None` is never read at all, which
     #: an empty list is not.
     analysed_segment_ids: list[str] | None = None
+    #: What the room said when it last reached a verdict, so a press that decides nothing new
+    #: can hand back the same answer without voicing it again. `None` until a verdict has been
+    #: spoken *and* stored, which is what separates "already judged" from a press that reached
+    #: the analyst and then failed before the team heard anything — that one saves nothing at
+    #: all, and the press after it does the whole turn.
+    verdict: VoicedVerdict | None = None
 
     @property
     def current_finding(self) -> Finding | None:
