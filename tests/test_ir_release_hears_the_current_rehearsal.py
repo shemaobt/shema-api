@@ -249,6 +249,10 @@ async def test_a_report_does_not_survive_the_audio_under_it_being_replaced(
     slice of a recording that did not exist when the team pressed play. What it says they
     heard and what the package carries have come apart, which is the comparison this gate
     exists to make; a case where the report is merely absent never reaches it.
+
+    The stretch is told again over the audio that replaced it, which is the second call the
+    room's own correction is made of. That leaves the session otherwise releasable, so the stale
+    report is the only thing standing in its way.
     """
     session = await _rehearsed_and_told_back(db_session)
     await _finish(
@@ -265,8 +269,6 @@ async def test_a_report_does_not_survive_the_audio_under_it_being_replaced(
         ends_ms=CLIP_MS,
         replaces=standing,
     )
-    # Told again over the audio that replaced it, which is the second call the room's own
-    # correction is made of — so the only thing missing is that nobody played the new clip.
     await capture_segment(
         db_session,
         session,

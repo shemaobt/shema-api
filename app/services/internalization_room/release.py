@@ -155,14 +155,14 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     A session with nothing told back is not asked. ``no_telling_back`` already says what is
     wrong there, and a second blocker about playback would only repeat it in other words.
 
-    ``untold_stretch`` is the same argument about words instead of audio, and unlike the line
-    above it does not silence anything: a re-record that was never told back and never played
-    leaves the team two errands, and naming one of them would send them back a second time. A
-    stretch whose
-    mother tongue was just re-recorded, and each half of one the team divided, is a current unit
-    carrying nothing they said — legitimate inside the room, where the tablet shows it and asks
-    for it, and unreadable outside: null text does not arrive downstream as unfinished, it
-    arrives as a team who stood in front of that passage and said nothing.
+    ``untold_stretch`` is the same argument about words instead of audio. A stretch whose mother
+    tongue was just re-recorded, and each half of one the team divided, is a current unit carrying
+    nothing they said — legitimate inside the room, where the tablet shows it and asks for it, and
+    unreadable outside: null text does not arrive downstream as unfinished, it arrives as a team
+    who stood in front of that passage and said nothing.
+
+    Unlike the line above, it silences nothing. A re-record that was never told back and never
+    played leaves the team two errands, and naming one of them would send them back a second time.
 
     It is its own blocker rather than a widening of the two beside it, and neither could have
     been widened honestly. ``no_telling_back`` asks whether the list is empty, and a list with a
