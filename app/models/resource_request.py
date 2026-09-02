@@ -36,6 +36,7 @@ from typing import Any, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from app.db.models.resource_request import (
+    RRAttachment,
     RRCurrency,
     RRDecision,
     RREvaluation,

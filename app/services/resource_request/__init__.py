@@ -22,7 +22,6 @@ from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_fund_options import fund_options
-from app.services.resource_request.list_movements import movements_of_fund, movements_of_request
 from app.services.resource_request.list_request_history import list_request_history
 from app.services.resource_request.list_requests import list_requests
 from app.services.resource_request.list_transitions import transitions_of_request
