@@ -182,6 +182,15 @@ async def finish(
     model — and this is not that: the gate fires with the server answering normally, before
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
+
+    A verdict that lands on one stretch carries the I family after it, on the same clip: the
+    screen is about to offer the two microphones of that stretch, and tapping one replaces
+    everything the team had told there. `with_the_whole_stretch_asked_for` is where that is
+    decided.
+
+    A verdict that degraded to a fail-safe carries nothing after it. Those are played from
+    inside the app by name, so nothing said here would be heard — a sentence appended to one
+    would reach the transcript and never the room.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
@@ -261,16 +270,18 @@ async def finish(
         settings=get_settings(),
     )
 
+    played_from_the_app = bool(outcome.fixed_line)
+    said = (
+        outcome.speech
+        if played_from_the_app
+        else room.with_the_whole_stretch_asked_for(outcome.speech, finding, session.language)
+    )
     voiced = (
         None
-        if outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(outcome.speech, language=session.language))[
-            0
-        ]
+        if played_from_the_app
+        else (await room.synthesize_facilitator_speech(said, language=session.language))[0]
     )
-    session = await room.append_exchange(
-        db, session, team_utterance="", guide_response=outcome.speech
-    )
+    session = await room.append_exchange(db, session, team_utterance="", guide_response=said)
     await room.save_back_translation(db, session, state)
 
     return BackTranslationVerdictResponse(
