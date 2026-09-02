@@ -620,6 +620,21 @@ _NO_ISSUES_NOTE: dict[str, str] = {
     "es": "La respuesta anterior no pasó la revisión. Rehazla, diciendo menos.",
 }
 
+_DESCRIBED_ISSUES_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior foi rejeitada na conferência contra o mapa. Problemas "
+        "apontados — {described}. Refaça o turno sem essas afirmações, dizendo menos."
+    ),
+    "en": (
+        "The previous response was rejected against the map. Issues raised — "
+        "{described}. Redo the turn without those claims, saying less."
+    ),
+    "es": (
+        "La respuesta anterior fue rechazada frente al mapa. Problemas señalados — "
+        "{described}. Rehaz el turno sin esas afirmaciones, diciendo menos."
+    ),
+}
+
 
 def _redraft_note(
     issues: list[dict[str, Any]],
@@ -646,8 +661,5 @@ def _redraft_note(
         f"{issue.get('problem', 'problema')}: {issue.get('claim', '')}".strip(": ")
         for issue in issues[:3]
     )
-    return (
-        "A resposta anterior foi rejeitada na conferência contra o mapa. "
-        f"Problemas apontados — {described}. "
-        "Refaça o turno sem essas afirmações, dizendo menos."
-    )
+    template = _DESCRIBED_ISSUES_NOTE.get(language_code, _DESCRIBED_ISSUES_NOTE[FLOOR])
+    return template.format(described=described)

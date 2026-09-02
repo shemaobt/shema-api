@@ -85,3 +85,31 @@ def test_the_no_issues_note_is_written_in_the_sessions_language(language_code: s
     note = _redraft_note([], language_code)
 
     assert note == _EXPECTED_NO_ISSUES[language_code]
+
+
+_DESCRIBED_ISSUES = [{"problem": "imported_knowledge", "claim": "Rute era moabita"}]
+
+_EXPECTED_DESCRIBED = {
+    "pt": (
+        "A resposta anterior foi rejeitada na conferência contra o mapa. Problemas "
+        "apontados — {described}. Refaça o turno sem essas afirmações, dizendo menos."
+    ),
+    "en": (
+        "The previous response was rejected against the map. Issues raised — "
+        "{described}. Redo the turn without those claims, saying less."
+    ),
+    "es": (
+        "La respuesta anterior fue rechazada frente al mapa. Problemas señalados — "
+        "{described}. Rehaz el turno sin esas afirmaciones, diciendo menos."
+    ),
+}
+
+
+@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
+def test_the_described_issues_note_is_written_in_the_sessions_language(language_code: str) -> None:
+    note = _redraft_note(_DESCRIBED_ISSUES, language_code)
+
+    expected = _EXPECTED_DESCRIBED[language_code].format(
+        described="imported_knowledge: Rute era moabita"
+    )
+    assert note == expected
