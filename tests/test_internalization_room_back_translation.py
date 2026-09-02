@@ -10,6 +10,8 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
+    CLOSING_MISSING_ON_SCREEN,
+    CLOSING_MISSING_TO_REHEARSAL,
     CLOSING_ON_SCREEN,
     CLOSING_PLAIN,
     CLOSING_SPOKEN,
@@ -675,6 +677,8 @@ async def test_a_turn_with_no_finding_is_not_told_about_one(patch_speaker) -> No
     assert CLOSING_PLAIN in spoken_to
     assert CLOSING_SPOKEN not in spoken_to
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
+    assert CLOSING_MISSING_ON_SCREEN not in spoken_to
+    assert CLOSING_MISSING_TO_REHEARSAL not in spoken_to
 
 
 @pytest.mark.asyncio
@@ -739,17 +743,19 @@ TEAM_UTTERANCE_HEADING = (
 DESTINATIONS = {
     "aqui na tela": "on screen",
     "no microfone daquela": "tap the microphone",
+    "gravar essa parte de novo": "record this part again",
+    "gravar o que ainda falta": "record what is still missing",
     "no WhatsApp": "on WhatsApp",
 }
 
-#: A draft that does exactly what `CLOSING_ON_SCREEN` orders: names the finding, asks the
-#: boundary question, and hands the choice to the screen. This is the draft the room fell
-#: into fail-safe over three times in a row.
+#: A draft that does exactly what `CLOSING_MISSING_ON_SCREEN` orders: names the finding and
+#: hands the one microphone to the screen. This is the draft the room fell into fail-safe over
+#: three times in a row — back then obeying the two-voice closing, which a missing element no
+#: longer receives. The boundary question stays because the double does not judge it.
 OBEDIENT_DRAFT = (
     "No que você me contou de volta, a morte de Elimeleque não apareceu. "
     "Isso está na sua gravação, ou entrou agora na explicação? "
-    "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que precisa "
-    "falar de novo."
+    "Você pode ouvir as duas vozes aqui na tela e gravar essa parte de novo, inteira."
 )
 
 #: The same draft, sending the team somewhere the app never named.
@@ -933,8 +939,10 @@ async def test_the_validator_is_shown_the_finding_and_the_closing_it_was_given(
     _, agent = await _straight_from_rehearsal(OBEDIENT_DRAFT, patch_loop)
 
     assert "A morte de Elimeleque não apareceu no contado de volta." in agent.briefs[0]
-    assert "tap the microphone" in agent.briefs[0]
+    assert "record this part again" in agent.briefs[0]
+    assert "exactly one microphone" in agent.briefs[0]
     assert "on screen" in agent.briefs[0]
+    assert "tap the microphone" not in agent.briefs[0]
 
 
 @pytest.mark.asyncio
@@ -1026,6 +1034,144 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
             validator_prompt=stored_before_these_slots_existed,
             settings=_settings(),
         )
+
+
+# ---------------------------------------------------------------------------
+# A missing element closes the way the screen now looks — ENG-710, ENG-720
+# ---------------------------------------------------------------------------
+
+#: The closing every other finding on a stretch still receives: two voices, a microphone on
+#: each. A missing element on a stretch gets one button to record the part again; a missing
+#: element off every stretch gets one button to go on recording.
+THE_TWO_VOICES_CLOSING = CLOSING_ON_SCREEN.format(session_language="Portuguese")
+
+
+def _missing(segment_id: str | None) -> Finding:
+    return Finding(kind=FindingKind.MISSING, note="Orfa não apareceu.", segment_id=segment_id)
+
+
+@pytest.mark.asyncio
+async def test_a_missing_element_on_a_stretch_is_offered_one_microphone(patch_speaker) -> None:
+    """ENG-710. The stretch is on screen, and the screen has one microphone for it.
+
+    The team hears both voices and records the part again — the whole part. A closing that
+    tells them to tap the microphone of the voice that has to speak again names a choice the
+    screen stopped offering, and the Speaker was promising it in a real session.
+    """
+    spoken_to = await _verdict_for(_missing("segmento-2"), patch_speaker)
+
+    assert CLOSING_MISSING_ON_SCREEN in spoken_to
+    assert "microphone of the voice" not in spoken_to
+    assert THE_TWO_VOICES_CLOSING not in spoken_to
+    assert CLOSING_SPOKEN not in spoken_to
+    assert CLOSING_MISSING_TO_REHEARSAL not in spoken_to
+
+
+@pytest.mark.asyncio
+async def test_a_missing_element_after_everything_told_sends_them_on_to_record(
+    patch_speaker,
+) -> None:
+    """ENG-720. Nothing on screen to choose between, and no next conversational turn either.
+
+    The closing that asks for a spoken answer promises that the next turn will respond — and
+    on this path there is no next turn: it is where *"quer deixar para alinharmos mais na
+    frente?"* came from. The screen takes them on to record what is still missing, keeping
+    everything they recorded, and the closing has to say exactly that and nothing past it.
+    """
+    spoken_to = await _verdict_for(_missing(None), patch_speaker)
+
+    assert CLOSING_MISSING_TO_REHEARSAL in spoken_to
+    assert "next conversational turn" not in spoken_to
+    assert CLOSING_SPOKEN not in spoken_to
+    assert THE_TWO_VOICES_CLOSING not in spoken_to
+    assert CLOSING_MISSING_ON_SCREEN not in spoken_to
+
+
+@pytest.mark.parametrize("segment_id", ["segmento-2", None], ids=["on a stretch", "homeless"])
+@pytest.mark.parametrize("kind", [kind for kind in FindingKind if kind is not FindingKind.MISSING])
+def test_every_other_kind_closes_exactly_as_before(
+    kind: FindingKind, segment_id: str | None
+) -> None:
+    """What the screen offers these without a stretch is a product decision still open.
+
+    Until it is taken, every kind but `missing` closes word for word as it did: the two voices
+    when a boundary question was asked on a stretch, the spoken answer otherwise — and an
+    evidence limit asks out loud even on a stretch, as before.
+    """
+    finding = Finding(kind=kind, note="Orfa", segment_id=segment_id)
+    evidence_limits = {FindingKind.INSUFFICIENT_EVIDENCE, FindingKind.UNCLEAR}
+    asked_on_a_stretch = segment_id is not None and kind not in evidence_limits
+
+    assert closing_block(finding) == (CLOSING_ON_SCREEN if asked_on_a_stretch else CLOSING_SPOKEN)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("finding", "obedient_draft", "ordered", "retired"),
+    [
+        (
+            _missing("segmento-2"),
+            "No que você me contou de volta, Orfa não apareceu. "
+            "Você pode ouvir as duas vozes aqui na tela e gravar essa parte de novo, inteira.",
+            CLOSING_MISSING_ON_SCREEN,
+            THE_TWO_VOICES_CLOSING,
+        ),
+        (
+            _missing(None),
+            "No que você me contou de volta, o fim da história ainda não apareceu. "
+            "Vocês podem seguir e gravar o que ainda falta; o que já gravaram fica.",
+            CLOSING_MISSING_TO_REHEARSAL,
+            CLOSING_SPOKEN,
+        ),
+        (
+            _on_a_stretch(FindingKind.ADDITION),
+            "No que você me contou de volta, Orfa apareceu. "
+            "Isso está na sua gravação, ou entrou agora na explicação? "
+            "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que "
+            "precisa falar de novo.",
+            THE_TWO_VOICES_CLOSING,
+            CLOSING_MISSING_ON_SCREEN,
+        ),
+    ],
+    ids=["missing on a stretch", "missing homeless", "addition on a stretch"],
+)
+async def test_the_validator_is_handed_the_closing_that_was_ordered(
+    finding: Finding,
+    obedient_draft: str,
+    ordered: str,
+    retired: str,
+    patch_loop,
+) -> None:
+    """The closing the Validator reads is the closing the Speaker obeyed — ENG-676's path.
+
+    A Speaker pointing at the one microphone is obeying an order, and the Validator can only
+    tell obedience from improvised navigation by reading the order. Each draft here names the
+    destination its closing orders and nothing else, so a closing that reached the Speaker and
+    not the judge is refused three times over and the team hears a fail-safe line — which is
+    what the assertion on the outcome would catch. The addition keeps the two voices, and is
+    here so that the closing every other kind still receives goes on being seen to arrive.
+    """
+    told = _told()
+    agent = patch_loop(obedient_draft, told)
+
+    outcome = await run_verdict_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        telling_back=segments_block(told),
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert outcome.used_fail_safe is False
+    assert outcome.speech == obedient_draft
+    assert ordered in agent.briefs[0]
+    assert retired not in agent.briefs[0]
 
 
 def test_the_analyst_is_told_which_missing_element_has_no_chunk() -> None:
