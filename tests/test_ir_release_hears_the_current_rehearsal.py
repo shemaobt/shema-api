@@ -257,13 +257,25 @@ async def test_a_report_does_not_survive_the_audio_under_it_being_replaced(
 
     again = await _re_record_the_rehearsal(db_session, session)
     standing = (await final_segments(db_session, session.id))[0]
-    await capture_segment(
+    waiting = await capture_segment(
         db_session,
         session,
         take_id=again.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
         replaces=standing,
+    )
+    # Told again over the audio that replaced it, which is the second call the room's own
+    # correction is made of — so the only thing missing is that nobody played the new clip.
+    await capture_segment(
+        db_session,
+        session,
+        take_id=again.id,
+        starts_ms=0,
+        ends_ms=CLIP_MS,
+        bridge_take_id="retro-novo",
+        transcript="Rute disse que ia junto",
+        replaces=waiting,
     )
 
     assert await _blockers(db_session, session) == [PLAYBACK_BLOCKER]
