@@ -1026,3 +1026,23 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
             validator_prompt=stored_before_these_slots_existed,
             settings=_settings(),
         )
+
+
+def test_the_analyst_is_told_which_missing_element_has_no_chunk() -> None:
+    """A `null` chunk now sends the team on to record what is still missing, keeping all they
+    recorded — right only for a hole after everything they told. A hole between two things
+    they did tell belongs in the chunk where it should have been said, even when that chunk is
+    otherwise fine, so that the screen offers to record that part again instead of the ending.
+
+    The analyst learns the difference from its prompt and nowhere else, so the paragraph that
+    binds `"chunk"` to `null` has to draw both borders: the one case that is `null`, after
+    everything told, and the case between two things told that is not.
+    """
+    binding_null = [
+        block for block in ANALYST.split("\n\n") if '`"chunk"`' in block and "`null`" in block
+    ]
+
+    assert binding_null, "nenhum parágrafo liga o campo chunk a null"
+    assert any("after everything" in block and "between" in block for block in binding_null), (
+        "o parágrafo do null não separa a falta depois de tudo da falta entre dois trechos"
+    )
