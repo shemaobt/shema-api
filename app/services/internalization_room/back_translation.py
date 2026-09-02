@@ -487,6 +487,46 @@ def _elements_the_count_lost(raw: Any) -> list[str] | None:
     return lost
 
 
+def _elements_brought_back(raw: Any) -> list[str]:
+    """Elements the map gives that the new telling states and the earlier one did not.
+
+    Lenient, unlike `_elements_the_count_lost`: this list is the mechanical backstop over the
+    prompt's own `Added` rule, not the count the room depends on, so a reply that omits it or
+    gets its shape wrong just goes without the backstop rather than losing the whole
+    verification over a field nothing here requires.
+    """
+    if not isinstance(raw, list):
+        return []
+    elements: list[str] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            element = entry.strip()
+        elif isinstance(entry, dict):
+            element = str(entry.get("element", "")).strip()
+        else:
+            continue
+        if element:
+            elements.append(element)
+    return elements
+
+
+def _is_the_correction_arriving(finding: Finding, brought_back: list[str]) -> bool:
+    """Whether a reported addition is actually one of the elements the correction brought back.
+
+    The same subset-of-content-words test `_already_reported` uses for a derived loss, mirrored
+    for the opposite mistake: the prompt's `Added` rule already tells the reader an element the
+    map gives is never an addition, and this is the backstop for when it reports one anyway.
+    """
+    if finding.kind is not FindingKind.ADDITION:
+        return False
+    note_words = _content_words(finding.note)
+    for element in brought_back:
+        words = _content_words(element)
+        if words and words <= note_words:
+            return True
+    return False
+
+
 def _already_reported(element: str, reported: list[Finding]) -> bool:
     """Whether a loss the reader wrote out already names the element the count marked lost.
 
@@ -531,6 +571,12 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
     A reply with no `carried` at all is a stored prompt that predates the count, and is read
     exactly as it always was: the room upgrades its prompts by editing a row, so the two shapes
     are in the air at the same time and the older one must not start reading as a clean stretch.
+
+    `brought_back` is the mirror of `carried`, and lenient where `carried` is strict: an element
+    the map gives that only the new telling states is the correction arriving, never an
+    addition, and this is the backstop for a reader that reports one as `"addition"` anyway
+    despite what the prompt's own `Added` rule already tells it. Absent or malformed, it is
+    simply not applied — it stands over an existing rule rather than replacing it.
     """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
@@ -563,6 +609,10 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
             logger.warning("BT correction returned a kind it cannot judge: %s", entry)
             return None
         findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id))
+
+    brought_back = _elements_brought_back(parsed.get("brought_back"))
+    if brought_back:
+        findings = [f for f in findings if not _is_the_correction_arriving(f, brought_back)]
 
     if "carried" in parsed:
         lost = _elements_the_count_lost(parsed["carried"])

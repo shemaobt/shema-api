@@ -64,6 +64,12 @@ and you will confirm every one of those and read straight past the one clause th
 went — an absence leaves nothing on the page to notice. Going element by element is what turns
 "is anything missing?" into a question that has an answer.
 
+Now list the other direction (`brought_back`): elements the Map gives for {{SCOPE}} that the
+**new** telling states and the **earlier** one did not — one short phrase each, in
+{{SESSION_LANGUAGE}}, the same way you named `carried` entries. These are the correction
+arriving, never an addition: an element listed here must never also appear in `findings` as
+`"addition"`.
+
 **2. Was the finding answered?** (`resolved`)
 
 Read the finding, and ask only whether the new telling now carries what it asked for, measured
@@ -85,7 +91,11 @@ Compare the new telling against the earlier one and against the map, and report 
   need to write it again here. If you do, name the element in the note in the same words you
   gave it in `carried`, so the room can see that the two are one loss and not two.
 - **Added** (`"addition"`): something the new telling states that the map does not tell — a name,
-  a cause, a pairing, an outside detail. Quote it briefly in the note.
+  a cause, a pairing, an outside detail. Quote it briefly in the note. An element the map does
+  give for {{SCOPE}} is never an addition, even when the earlier telling did not carry it and
+  `still_told` above is your own report of that: a correction that brings back what the earlier
+  telling was missing is exactly what answering a finding looks like. `carried` exists to find
+  what this stretch **lost**, never to make what it never had into something new.
 - **Meaning changed** (`"meaning_change"`): the new telling states something the map tells
   differently — altered in what it means, not merely absent or extra.
 - **Preservation violated** (`"preservation_violation"`): the new telling makes explicit
@@ -109,6 +119,9 @@ Return **only** this JSON (no prose, no fences):
 {
   "carried": [
     { "element": "one short phrase, in {{SESSION_LANGUAGE}}, naming an element the earlier telling stated", "still_told": true }
+  ],
+  "brought_back": [
+    "one short phrase, in {{SESSION_LANGUAGE}}, naming an element the new telling states that the earlier one did not"
   ],
   "resolved": true,
   "findings": [

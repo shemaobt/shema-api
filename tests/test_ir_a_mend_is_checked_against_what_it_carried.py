@@ -64,6 +64,9 @@ ANSWERED_AND_LOST = "Noemi e Orfa voltaram de Moabe para Belém."
 
 STILL_TOLD = "Noemi voltou de Moabe"
 NO_LONGER_TOLD = "havia pão em Belém"
+#: The element the finding on the first stretch names as missing — "Orfa não apareceu neste
+#: trecho." A correction that brings it back is the answer arriving, never an addition.
+BROUGHT_BACK = "Orfa é citada pelo nome"
 
 
 class MemoryStore:
@@ -111,10 +114,17 @@ class ReaderOfTellings:
 
 
 def _a_reply_enumerating(
-    carried: Any, *, resolved: bool = True, findings: list[dict[str, str]] | None = None
+    carried: Any,
+    *,
+    resolved: bool = True,
+    findings: list[dict[str, str]] | None = None,
+    brought_back: Any = None,
 ) -> str:
     """A verification reply that counts what the earlier telling carried before judging."""
-    return json.dumps({"carried": carried, "resolved": resolved, "findings": findings or []})
+    body: dict[str, Any] = {"carried": carried, "resolved": resolved, "findings": findings or []}
+    if brought_back is not None:
+        body["brought_back"] = brought_back
+    return json.dumps(body)
 
 
 def _element(text: str, *, still_told: bool) -> dict[str, Any]:
@@ -457,6 +467,64 @@ async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
 
     assert body["findings_remaining"] == 1
     assert body["finding_kind"] == "meaning_change"
+
+
+@pytest.mark.asyncio
+async def test_an_element_the_map_gives_that_only_the_new_telling_states_is_a_clean_mend(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
+) -> None:
+    """The mirror of a loss: an element arriving is the correction, not a fresh finding.
+
+    Nothing the earlier telling carried is lost, and the new telling also states an element the
+    map gives that the earlier telling never had — exactly what answering a finding that named a
+    missing element looks like. Enumerated under `brought_back`, with `findings` left empty, this
+    has to read as a clean mend, not a loss to chase or an addition to refuse.
+    """
+    body, _ = await _a_correction_verified_as(
+        client,
+        db_session,
+        analyst,
+        _a_reply_enumerating(
+            [
+                _element(STILL_TOLD, still_told=True),
+                _element(NO_LONGER_TOLD, still_told=True),
+            ],
+            findings=[],
+            brought_back=[BROUGHT_BACK],
+        ),
+        saying="Noemi e Orfa voltaram de Moabe para Belém, onde havia pão.",
+    )
+
+    assert body["findings_remaining"] == 0
+    assert body["finding_kind"] is None
+
+
+@pytest.mark.asyncio
+async def test_an_addition_matching_what_was_brought_back_is_suppressed(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
+) -> None:
+    """The mechanical belt: a reader that slips and reports the correction as an addition anyway.
+
+    The prompt's own `Added` rule already says an element the map gives is never an addition, but
+    a model can still get there — this is the backstop for that slip, mirroring the dedupe
+    `_already_reported` already does for a loss the reader both counted and wrote out.
+    """
+    body, _ = await _a_correction_verified_as(
+        client,
+        db_session,
+        analyst,
+        _a_reply_enumerating(
+            [_element(STILL_TOLD, still_told=True), _element(NO_LONGER_TOLD, still_told=True)],
+            findings=[{"kind": "addition", "note": f"A nova contagem inclui {BROUGHT_BACK}."}],
+            brought_back=[BROUGHT_BACK],
+        ),
+        saying="Noemi e Orfa voltaram de Moabe para Belém, onde havia pão.",
+    )
+
+    assert body["findings_remaining"] == 0, (
+        "um achado de addition que bate com o que foi trazido de volta tem de ser suprimido"
+    )
+    assert body["finding_kind"] is None
 
 
 @pytest.mark.parametrize(
