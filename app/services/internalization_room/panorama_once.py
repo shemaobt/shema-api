@@ -27,7 +27,8 @@ replaying to a team that heard it beats skipping it for a team that did not.
 **Once per pericope, as specified, and the objection is not settled here.** The issue
 records that the panorama is the book's, so once per passage plays the same thing fourteen
 times through Ruth. That is the product owner's call. The rule is `_heard_key` below and
-nothing else keys on the passage: once per book is deleting its last clause.
+nothing else keys on the passage: once per book is replacing its last clause, and the
+docstring there says with what.
 
 **Two tablets of one team** asking in the same moment both find nothing and both play it.
 There is no lock, and the second hearing is the outcome a lock would only make rarer.
@@ -39,27 +40,28 @@ from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.parse_map import load_book
 
 
-def _heard_key(project_id: str, book: str, pericope: str) -> tuple[ColumnElement[bool], ...]:
-    """What "once" is scoped to: the team, the book, and — today — the passage.
+def _heard_key(project_id: str, pericope: str) -> tuple[ColumnElement[bool], ...]:
+    """What "once" is scoped to: the team and — today — the passage, which names its book.
 
-    Once per book is this tuple without its last clause. The book clause is then the one that
-    filters, and `pericope` goes unused here — drop it from the signature and from the call,
-    where `create_session` will no longer need to resolve where the team stands to ask.
+    Once per book is the last clause replaced by an ``in_`` over the passages of the
+    pericope's book — `load_book` in `canon.parse_map` lists them; `book_of` lives in
+    `sessions`, which imports this module, so take the book from the caller rather than
+    importing it here. Nothing else moves: `create_session` still resolves where the team
+    stands, because a team standing on no passage is still given the panorama. The clause
+    is not carried today as a dead predicate beside the exact match — the exact match
+    subsumes it, and a ``WHERE`` that lists fourteen passages on every launch to filter
+    nothing is a cost paid for a change nobody has asked for yet.
     """
     return (
         IRSession.project_id == project_id,
         IRSession.after_panorama.is_(True),
-        IRSession.pericope.in_([meaning_map.pericope_num for meaning_map in load_book(book)]),
         IRSession.pericope == pericope,
     )
 
 
-async def heard_panorama(
-    db: AsyncSession, *, project_id: str | None, book: str, pericope: str
-) -> bool:
+async def heard_panorama(db: AsyncSession, *, project_id: str | None, pericope: str) -> bool:
     """Whether this team went on from the book's panorama into this passage before.
 
     A tablet that never said whose it is has no history to read, so nothing was heard.
@@ -67,6 +69,6 @@ async def heard_panorama(
     if project_id is None:
         return False
     result = await db.execute(
-        select(IRSession.id).where(*_heard_key(project_id, book, pericope)).limit(1)
+        select(IRSession.id).where(*_heard_key(project_id, pericope)).limit(1)
     )
     return result.scalar_one_or_none() is not None

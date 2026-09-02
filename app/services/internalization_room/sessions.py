@@ -122,10 +122,9 @@ async def create_session(
             )
     pericope = resolve_pericope(pericope)
     if is_panorama(pericope):
-        book = book_of(pericope)
-        standing = await active_passage(db, project_id=project_id, book=book)
+        standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
         if standing is not None and await heard_panorama(
-            db, project_id=project_id, book=book, pericope=standing
+            db, project_id=project_id, pericope=standing
         ):
             pericope, after_panorama = standing, False
     panorama = is_panorama(pericope)
