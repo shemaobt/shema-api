@@ -306,6 +306,11 @@ class SegmentsResponse(BaseModel):
     #: exactly as it was — replacing a good explanation with an empty one over a transcriber
     #: outage would lose the team's work to somebody else's failure.
     captured: bool = True
+    #: True when the retells ran out on this correction. The room stops instead of buying
+    #: another round, and it is said here as well as on the telling-back route: a team that
+    #: spends the last of the budget still gets the stretches back, and would otherwise have no
+    #: sign that the room had stopped.
+    needs_person: bool = False
 
 
 class BackTranslationProgress(BaseModel):
