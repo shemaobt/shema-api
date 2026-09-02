@@ -91,6 +91,21 @@ class BackTranslationState(BaseModel):
     superseded: list[SupersededAttempt] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
+    #: Which rehearsal recordings the report above is about: the ones the telling-back stood
+    #: on when the report was stored, stamped by the server. The two fields beside it are
+    #: numbers with no subject — they say a clip was played through without saying which clip,
+    #: so they went on reading as proof after the team threw that recording away and started
+    #: the telling-back over on a new one.
+    #:
+    #: The subject is taken from the stretches rather than from the takes table because a
+    #: stretch names the recording it is a slice of, checked when it was captured, and that
+    #: answer does not move. Which take is "the newest" does: `created_at` is stamped when the
+    #: upload lands, and the tablet's outbox drains whenever the link comes back, so a rehearsal
+    #: the team abandoned can be written down after the one that replaced it.
+    #:
+    #: The server stamps it because the tablet cannot be asked to. Naming the recording in the
+    #: `finish` payload would mean every app already in the field stops being able to release.
+    played_take_ids: list[str] = Field(default_factory=list)
     #: How many stretches the team has told back a second time. The retell is the one cycle
     #: the team can repeat at will, so the budget lives here — a counter the app cannot
     #: reach, which is what keeps a loop from being a loop.
@@ -140,8 +155,10 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     A telling-back is a check of what was actually heard, not of what the team remembers,
     so "checked" over a half-listened clip would be a claim about audio nobody played.
     Reported ranges are merged and must cover [0, duration] with at most 750 ms of slack
-    at either edge or between stretches. No report at all is a legacy client and passes —
-    honesty about what we know, not a new wall for old tablets.
+    at either edge or between stretches. This is the arithmetic only: an absent report is
+    not a short one, so it is not this function's to judge and comes back True. Whether a
+    report exists at all, and whether it is about the recording still in play, is
+    `playback_confirms_rehearsal`, which is what the release gate asks.
 
     The merged reach has to *land on* the clip's end, not merely reach it: a report that
     runs past the end by more than the same slack cannot be a report about this clip at
@@ -161,6 +178,29 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
             return False
         cursor = max(cursor, end)
     return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
+
+
+def playback_confirms_rehearsal(state: BackTranslationState, rehearsal_take_ids: list[str]) -> bool:
+    """Whether the team has evidence of hearing the rehearsal they told back about, whole.
+
+    Three things have to hold together, and each one alone was a way through. The report has
+    to exist: no report is silence, and silence used to read as consent because empty ranges
+    over an empty duration satisfied the coverage arithmetic — which is what a `finish` with
+    no body produces, and what the shipped app sends whenever the clip did not run to its end.
+    It has to be about the recordings the telling-back is still standing on: once the team
+    starts over on a clip they recorded again, a report made against the old one describes
+    audio nobody will hear. And it has to reach the end of that clip, which is the check that
+    was already here.
+
+    Both numbers are required rather than either. A duration with no ranges is a report that
+    nothing was played, and ranges with no duration cannot be checked against anything —
+    taking either as proof reopens the same hole through a smaller door.
+    """
+    if not state.played_take_ids or sorted(state.played_take_ids) != sorted(rehearsal_take_ids):
+        return False
+    if not state.played_ranges or not state.clip_duration_ms:
+        return False
+    return played_ranges_cover_clip(state.played_ranges, state.clip_duration_ms)
 
 
 def segments_block(segments: list[IRSegment]) -> str:
