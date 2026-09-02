@@ -39,6 +39,7 @@ tripod-backend/
 │   ├── services/
 │   └── utils/
 ├── alembic/
+├── docs/
 ├── scripts/
 ├── tests/
 ├── pyproject.toml
