@@ -183,6 +183,23 @@ async def finish(
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
 
+    **No passage is checked on stretch-by-stretch verifications alone.** A verification answers
+    the finding it was shown and nothing else, so a list it emptied has never been measured
+    against the set — and two things live only in the set: a correction can answer, by
+    accident, a finding raised on another stretch, and whether the telling-back is too thin to
+    judge at all. So when nothing is outstanding and only verifications have looked since the
+    last whole reading, one whole reading runs, and it is the one that decides. The fast test
+    while working; the whole suite before closing.
+
+    It is not paid for twice. The reading turns the flag off and takes the signature with it,
+    so pressing `terminei` again with nothing changed reaches neither branch — and a team that
+    got it right the first time never turns the flag on at all, so it is checked on one reading
+    and not two.
+
+    A closing reading that could not be made saves nothing, exactly as the reading above it
+    does: a passage checked because the analyst was unreachable would be struck off the wheel
+    on an outage, and a finished passage never comes back.
+
     A verdict that lands on one stretch carries the I family after it, on the same clip: the
     screen is about to offer the two microphones of that stretch, and tapping one replaces
     everything the team had told there. `with_the_whole_stretch_asked_for` is where that is
@@ -191,6 +208,11 @@ async def finish(
     A verdict that degraded to a fail-safe carries nothing after it, which the same function
     decides: those are played from inside the app by name, so a sentence appended to one would
     reach the transcript and never the room.
+
+    The request and the verification are two halves of the same correction. This is what asks
+    the team for the whole stretch; `verify_correction` a few lines above is what reads what
+    they told, against the finding that sent them back. A team that re-recorded only the
+    amendment would hand that verification a fragment to judge the finding by.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
@@ -237,7 +259,28 @@ async def finish(
             findings_remaining=0,
         )
 
-    if not state.already_analysed(told):
+    correction = room.correction_to_verify(state, told, await room.retired_segments(db, session.id))
+    if correction is not None:
+        answered, earlier, corrected = correction
+        verified = await room.verify_correction(
+            finding=answered,
+            earlier=earlier,
+            corrected=corrected,
+            scope=state.scope or session.pericope,
+            pericope_num=session.pericope,
+            correction_prompt=await get_prompt_text(db, IRPromptKey.BT_CORRECTION),
+            session_language=LANGUAGE_NAMES[session.language],
+            settings=get_settings(),
+        )
+        if verified is None:
+            # Nothing is saved, exactly as on the reading below: a verification that never
+            # happened must not read as one that passed. Dropping the finding here would take
+            # it off the list for good, and the team would never be asked about it again.
+            raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
+        state.findings = room.findings_after_correction(state.findings, verified, corrected)
+        state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = True
+    elif not state.already_analysed(told):
         read = await room.analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
@@ -254,6 +297,26 @@ async def finish(
         state.findings = read.findings
         state.evidence_sufficient = read.evidence_sufficient
         state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = False
+
+    if state.current_finding is None and state.verified_since_whole_reading:
+        closing = await room.analyse_telling_back(
+            segments=told,
+            scope=state.scope or session.pericope,
+            pericope_num=session.pericope,
+            analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
+            session_language=LANGUAGE_NAMES[session.language],
+            settings=get_settings(),
+        )
+        if closing is None:
+            raise UpstreamServiceError(
+                "a leitura final do contado de volta não pôde ser feita agora"
+            )
+        state.findings = closing.findings
+        state.evidence_sufficient = closing.evidence_sufficient
+        state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = False
+
     finding = state.current_finding
     state.checked = finding is None and state.evidence_sufficient
 
@@ -263,6 +326,7 @@ async def finish(
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],
+        telling_back=room.segments_block(told),
         speaker_prompt=await get_prompt_text(db, IRPromptKey.BT_VERDICT_SPEAKER),
         validator_prompt=await get_prompt_text(db, IRPromptKey.VALIDATOR),
         session_language=LANGUAGE_NAMES[session.language],
