@@ -7,8 +7,8 @@ that stretch, and nothing anywhere says so. Measured in a real session: the same
 corrected three times, and each round took the round before it out of circulation.
 
 The room is almost wordless; what it has to say, it says out loud. So the fix is a sentence,
-said in the same breath as the finding, and it fires exactly where the screen puts the two
-microphones in front of the team — because that is the gesture that replaces.
+said in the same breath as the finding, and it fires exactly where the screen puts a
+microphone on one stretch in front of the team — because that is the gesture that replaces.
 
 These cases describe what the team hears, never how it is stored: none of them names a table
 or a column, and none of them copies the sentence into a literal.
@@ -479,8 +479,9 @@ async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
 ) -> None:
     """No address, so no stretch on screen, so no microphone that replaces anything.
 
-    The turn asks for a spoken answer instead, and a team told to tell a stretch over would
-    be looking for a stretch the screen never offered them.
+    A missing element off every stretch is sent on to record what is still missing, keeping
+    what was recorded; a team told to tell a stretch over would be looking for a stretch the
+    screen never offered them.
     """
     analyst.found("missing", chunk=None)
     session_id, _ = await _two_stretches_told(client)
@@ -497,9 +498,9 @@ async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
 ) -> None:
     """`unclear` names a stretch and still hands nothing to the screen.
 
-    It asks for that piece again in words, with no boundary question — and the two
-    microphones exist to answer a boundary question. Where none was asked there is no
-    replacing to warn about.
+    It asks for that piece again in words, with no boundary question — and the microphone
+    on a stretch exists to answer one. Where none was asked there is no replacing to warn
+    about.
     """
     analyst.found("unclear", chunk=1)
     session_id, _ = await _two_stretches_told(client)
