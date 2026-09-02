@@ -252,6 +252,21 @@ def test_nothing_confirms_a_practice_the_room_never_invited() -> None:
     assert not confirms_completed_mother_tongue_practice("O que aconteceu depois?", "já ensaiamos")
 
 
+def test_a_spanish_room_confirms_a_finished_practice_but_never_a_denied_one() -> None:
+    """A Spanish room could not answer its practice probe at all: no matcher carried a
+    Spanish word, so the room's own prompt was never read as an invitation."""
+    assert confirms_completed_mother_tongue_practice(mother_tongue_practice_prompt("es"), "listo")
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "no, todavía no ensayamos"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya no ensayamos"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya vamos a ensayar esta escena"
+    )
+
+
 def test_confident_foreign_audio_completes_only_the_practice_probe() -> None:
     practice = ActiveProbe(
         id="x",

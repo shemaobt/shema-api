@@ -32,10 +32,10 @@ _AFFIRMATIVE = re.compile(
     r"^(sim|claro|isso|isso mesmo|ja|ja fizemos|fizemos|pronto|terminamos|acabamos"
     r"|yes|yeah|we did|already did|done|finished|ready|sure)$"
 )
-_PRACTICE = re.compile(r"\b(ensai|pratic|recont|tent\w*\s+cont|rehears|practic|retell)\w*")
+_PRACTICE = re.compile(r"\b(ensai|ensay|pratic|recont|tent\w*\s+cont|rehears|practic|retell)\w*")
 _MOTHER_TONGUE = re.compile(
-    r"\b(lingua de voces|lingua materna|lingua da equipe|terena|own language|mother tongue"
-    r"|team language)\b"
+    r"\b(lingua de voces|lingua materna|lingua da equipe|su lengua|terena|own language"
+    r"|mother tongue|team language)\b"
 )
 _CONFIRMATION = re.compile(
     r"\b(ja|conseguiram|termin\w*|acabar\w*|fizeram|tentaram|did you|have you"
@@ -43,11 +43,11 @@ _CONFIRMATION = re.compile(
 )
 _COMPLETION_TOKEN_INVITATION = re.compile(
     r"\b(?:pronto|pronta|prontos|prontas|digam\s+pronto|avisem|quando\s+conclu\w*"
-    r"|quando\s+estiver\w*\s+pront\w*|ready|say\s+ready|done|when\s+you\s+are\s+done"
+    r"|quando\s+estiver\w*\s+pront\w*|listo|ready|say\s+ready|done|when\s+you\s+are\s+done"
     r"|let\s+me\s+know)\b"
 )
 _COMPLETION_TOKEN = re.compile(
-    r"^(?:pronto|pronta|prontos|prontas|terminamos|acabamos|concluimos|ready|done"
+    r"^(?:pronto|pronta|prontos|prontas|listo|listos|terminamos|acabamos|concluimos|ready|done"
     r"|finished|we\s+are\s+done|we\s+finished)$"
 )
 _SEGMENT_BOUNDARY = re.compile(r"[,;.!?\n]+")
