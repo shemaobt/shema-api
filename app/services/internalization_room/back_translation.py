@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.core.config import Settings, get_settings
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
 from app.services.internalization_room.render import render
@@ -348,7 +349,50 @@ def closing_block(finding: Finding | None) -> str:
     """
     if finding is None:
         return CLOSING_PLAIN
-    asks_where_the_error_lives = (
-        finding.segment_id is not None and finding.kind not in EVIDENCE_LIMIT_KINDS
+    return CLOSING_ON_SCREEN if points_at_a_stretch(finding) else CLOSING_SPOKEN
+
+
+def points_at_a_stretch(finding: Finding | None) -> bool:
+    """Whether this finding puts one stretch on screen with a microphone on each voice.
+
+    The deciding fact is not whether the finding has an address — it is whether a boundary
+    question was asked. `unclear` names a stretch and still asks only for that piece again,
+    and the screen exists to answer *"is it in your recording, or did it come in with the
+    telling?"*. Where that question is not put, there is no choice to hand over.
+
+    One expression, because two things now turn on it: which closing the Speaker is given,
+    and whether the room asks for the whole stretch. They have to agree — the request is
+    about the gesture the screen is offering, so a room that warned about a replacement the
+    screen never offers would be describing work the team cannot do.
+    """
+    return (
+        finding is not None
+        and finding.segment_id is not None
+        and finding.kind not in EVIDENCE_LIMIT_KINDS
     )
-    return CLOSING_ON_SCREEN if asks_where_the_error_lives else CLOSING_SPOKEN
+
+
+def with_the_whole_stretch_asked_for(
+    speech: str, finding: Finding | None, language_code: str = FLOOR
+) -> str:
+    """The verdict, and after it the request to tell that whole stretch again.
+
+    The correction the screen offers **replaces** one stretch: the new telling-back takes its
+    position and the old one stops counting. A team that records only the amendment — which is
+    what anybody would do — loses everything they had already told there. In a real session the
+    same stretch was corrected three times and each round took the round before it out of
+    circulation, with nothing saying so.
+
+    So the room says it. Appended to the verdict rather than answered as a second clip: the
+    response carries exactly one address for audio, and a sentence needing a slot of its own
+    would need a new app release before a team could hear it at all. The team hears one turn,
+    which is also what it is.
+
+    Said only where the screen actually offers the two microphones, which is what
+    `points_at_a_stretch` decides — nothing is replaced anywhere else, and a correction
+    instruction out of turn confuses more than it helps.
+    """
+    if not points_at_a_stretch(finding):
+        return speech
+    asked = first(FailSafe.STRETCH_TO_CORRECT, language_code)
+    return f"{speech} {asked}".strip() if asked else speech
