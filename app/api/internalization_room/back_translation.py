@@ -188,9 +188,13 @@ async def finish(
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
     if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
-        state.played_ranges = payload.played_ranges
-        state.clip_duration_ms = payload.clip_duration_ms
-        await room.save_back_translation(db, session, state)
+        state = await room.report_playback(
+            db,
+            session,
+            state,
+            played_ranges=payload.played_ranges,
+            clip_duration_ms=payload.clip_duration_ms,
+        )
 
     if len(told) < len(final):
         waiting, _ = choose(

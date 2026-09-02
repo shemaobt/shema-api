@@ -350,6 +350,39 @@ async def save_back_translation(
     return session
 
 
+async def report_playback(
+    db: AsyncSession,
+    session: IRSession,
+    state: BackTranslationState,
+    *,
+    played_ranges: list[list[int]],
+    clip_duration_ms: int | None,
+) -> BackTranslationState:
+    """Store what the tablet played, stamped with the rehearsal audio it was played from.
+
+    The subject is the recordings the stretches standing right now are slices of — a stretch
+    names its recording, and that was checked when the stretch was captured. Taken here and
+    not read back at release time, because by then the team may have started the telling-back
+    over on a clip they recorded again, and the answer would be about audio this report was
+    never about.
+
+    Deliberately not "the newest rehearsal take". `created_at` is stamped when the upload
+    lands rather than when the passage was recorded, and the tablet's outbox drains whenever
+    the link comes back — so an abandoned rehearsal can be written down after the one that
+    replaced it, and newest-by-arrival would name the wrong file. The stretches carry the
+    answer already and carry it in order-independent form.
+
+    With nothing told back yet there is nothing to bind to and the stamp stays empty. That
+    report can never confirm anything, which is the honest reading of it.
+    """
+    told = await final_segments(db, session.id)
+    state.played_ranges = played_ranges
+    state.clip_duration_ms = clip_duration_ms
+    state.played_take_ids = sorted({segment.take_id for segment in told})
+    await save_back_translation(db, session, state)
+    return state
+
+
 async def begin_back_translation_again(
     db: AsyncSession, session: IRSession
 ) -> BackTranslationState:

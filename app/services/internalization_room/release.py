@@ -30,7 +30,7 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
-from app.services.internalization_room.back_translation import played_ranges_cover_clip
+from app.services.internalization_room.back_translation import playback_confirms_rehearsal
 from app.services.internalization_room.calibration import BridgeMode
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
@@ -132,9 +132,27 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
 
     That honesty is why an unread telling-back is still refused. A team that captured the
     stretches and never asked for the verdict leaves no findings and ``evidence_sufficient``
-    at its default, which is the same package a clean check produces — and no report of
-    playback either, since none is read as a legacy client and passes. Carrying the
+    at its default, which is the same package a clean check produces. Carrying the
     questions is the point; carrying silence as if it were clean is not.
+
+    The report of playback is held to the same line, and it is why the gate names a rehearsal
+    rather than only measuring one. Silence used to pass it — an absent report satisfied the
+    coverage arithmetic the way an unread telling-back satisfied ``checked`` — and so did a
+    report the team had since made untrue by recording the passage again. Both said the team
+    heard themselves when nobody knows whether they did. The package is refused unless the
+    report names the recording this package ships and reaches the end of it.
+
+    What the report has to name is asked of the stretches, which say which recording each is a
+    slice of and were checked on the way in. Not of the takes table: ``created_at`` there is
+    when the upload landed, the tablet's outbox drains whenever the link comes back, and the
+    newest-arriving rehearsal is sometimes the one the team abandoned.
+
+    Sessions already in flight when this shipped carry a report with no such name, and are
+    refused until the team plays their rehearsal through again. That is the correct reading of
+    them: a report we cannot tie to a recording is not evidence about any recording.
+
+    A session with nothing told back is not asked. ``no_telling_back`` already says what is
+    wrong there, and a second blocker about playback would only repeat it in other words.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -171,7 +189,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         blockers.append("no_telling_back")
     elif telling_back.never_analysed:
         blockers.append("telling_back_never_analysed")
-    if not played_ranges_cover_clip(telling_back.played_ranges, telling_back.clip_duration_ms):
+    rehearsed = sorted({segment.take_id for segment in told_back})
+    if rehearsed and not playback_confirms_rehearsal(telling_back, rehearsed):
         blockers.append("playback_did_not_cover_the_clip")
     if blockers:
         raise InternalizationReleaseBlocked(blockers)

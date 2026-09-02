@@ -399,9 +399,15 @@ class BackTranslationChunkResponse(BaseModel):
 class FinishBackTranslationRequest(BaseModel):
     """What the tablet actually played of the team's own recording, in milliseconds.
 
-    Optional end to end: an older app sends no body and everything behaves as before.
-    The report is evidence for the Refine artifact — the analysis itself already happens
-    only after the client let the clip run to its end.
+    Optional end to end, and the room still answers `terminei` without it: the analysis
+    already happens only after the client let the clip run to its end, so an app that sends
+    nothing here loses nothing in the conversation.
+
+    What it loses is the release. The report is the only evidence the room has that the team
+    heard their own recording before the telling-back was blessed, so a session that never
+    sends one is refused at the handoff rather than travelling on silence. Which rehearsal the
+    report is about is not asked of the tablet — the server stamps it, so no app in the field
+    has to be updated to release.
     """
 
     played_ranges: list[list[int]] = Field(default_factory=list)
