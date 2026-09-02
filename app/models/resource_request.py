@@ -42,6 +42,7 @@ from app.db.models.resource_request import (
     RREvaluationScore,
     RRMovementKind,
     RRRequest,
+    RRRequestFieldHistory,
     RRRequestType,
     RRStage,
 )
@@ -412,6 +413,34 @@ class DiscardedOut(BaseModel):
     winner: str
     client_saved_at: datetime | None
     server_saved_at: datetime
+
+
+class FieldChangeOut(BaseModel):
+    """One row of the field-by-field trail: who changed which field, from what, to what.
+
+    The values are the wire's own strings — what the flattened document showed before and
+    after — so a client renders them as it renders the document, with no type map on the
+    side. ``None`` against ``""`` keeps the contract's distinction: a field that had no
+    value at all against one that was asked and left blank. ``changed_by`` is a user id
+    and deliberately not a resolved name: the trail is append-only and a name is not — it
+    is resolved at display time, so a rename does not contradict the record.
+    """
+
+    field_key: str
+    old_value: str | None
+    new_value: str | None
+    changed_by: str
+    changed_at: datetime
+
+    @classmethod
+    def of(cls, row: RRRequestFieldHistory) -> Self:
+        return cls(
+            field_key=row.field_key,
+            old_value=row.old_value,
+            new_value=row.new_value,
+            changed_by=row.changed_by,
+            changed_at=row.changed_at,
+        )
 
 
 class RequestOut(BaseModel):

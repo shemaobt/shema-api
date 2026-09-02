@@ -9,6 +9,9 @@ from app.services.resource_request.assign_fund import FundAssignment, FundMoved,
 from app.services.resource_request.attachment_download_url import (
     AttachmentLink,
     attachment_download_url,
+from app.services.resource_request._trail import (
+    evaluation_fields,
+    record_evaluation_trail,
 )
 from app.services.resource_request.capabilities import (
     CAPABILITIES,
@@ -26,6 +29,7 @@ from app.services.resource_request.fund_balances import FundBalance, fund_balanc
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_fund_options import fund_options
+from app.services.resource_request.list_request_history import list_request_history
 from app.services.resource_request.list_requests import list_requests
 from app.services.resource_request.list_transitions import transitions_of_request
 from app.services.resource_request.move_request import BoardMoved, move_request
@@ -72,8 +76,10 @@ __all__ = [
     "create_fund",
     "endorse_request",
     "fund_balances",
+    "evaluation_fields",
     "get_request",
     "holds_capability",
+    "list_request_history",
     "list_requests",
     "move_request",
     "movements_of_fund",
@@ -87,6 +93,7 @@ __all__ = [
     "save_evaluation",
     "set_allocation",
     "store_attachment",
+    "record_evaluation_trail",
     "submit_request",
     "transitions_of_request",
     "update_draft",
