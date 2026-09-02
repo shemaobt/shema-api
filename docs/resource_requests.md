@@ -922,6 +922,57 @@ now writes the fund **empty**: GATE-01 D6 has funds born at zero with the Gestor
 allocating, so the prototype's 480.000 stayed a frontend dev fixture and the seeded panel
 opens at −159.000 — D5's warning state, telling the truth about money nobody put in.
 
+### 7.4 The fund's life cycle — **Built** (BE-10, OBT-471)
+
+GATE-01 D1 left four of PRD v1.1 §3's names undecided and the client asked for *"talvez uma
+área que pudesse ser editável dos fundos"*. **That area is the real answer to "decide
+later"** — the client types instead of us guessing — and until it existed each new fund was
+a deploy. So a fund line stopped being seed data and became a row somebody creates.
+
+- **The id is opaque and the server mints it** — `uuid4().hex`, 32 characters, exactly the
+  width `rr_funds.id` has always had. Not a slug of the name: renaming may not touch the
+  id, and a slug would keep the old name legible inside every ledger entry citing the fund
+  forever. Not the client's either — `FundNameIn` forbids extras, so an `id` on the wire
+  answers 422 instead of being ignored. **`linguas` is the one inherited exception**,
+  because the vendored emission carries that id, the seed's ten cards write it, and minting
+  a uuid would make three places disagree.
+- **The name is one unique column, not a `TextPair`.** With the id invisible, the name is
+  the fund's only human identity on the screen that assigns money. The client confirmed the
+  names do not change in English *"por enquanto"*, and the wrong pair today is a null half
+  on every row. `uq_rr_funds_name` spans retired rows too: a name in the ledger's history
+  still names that money.
+- **`provisional` is gone rather than given a reader.** It said *the gate has not confirmed
+  this name*; the choice it held open stopped existing when the client answered that the
+  Gestor names the funds himself. Nothing ever read it. §10's item 7 asked for a flag *with*
+  its reader, and this is the other half of the same sentence.
+- **`retired_at` is that flag.** A fund the ledger cites can never be deleted, so ending one
+  is hiding it from the list of choice, not removing it from the past. A timestamp and not a
+  boolean, because *when it stopped* is what a movement dated last year raises. Who retired
+  it is **not** here — that is an edit like any other and belongs to BE-15's trail; a second
+  authorship design in this table is what §7.2's balance-column paragraph already refuses.
+- **Retiring refuses with 409 while a request on that fund is still undecided**, with the
+  count in the message. `triagem` and `analise` are the two columns that precede a decision;
+  a card in the other four has been answered, and its money is either committed in the
+  ledger — which retirement does not touch — or never coming. Retiring twice changes nothing
+  and does not re-stamp the date.
+- **Retired funds stay in `GET /funds`, flagged.** Dropping them from the read would take
+  their *comprometido* off the Painel while the ledger still holds it, so `FundOut` carries
+  `retired` and the list of choice is that list filtered — never that list shortened.
+- **One capability, `administer_funds`, the Gestor's, of control** — beside `assign_fund`
+  and `allocate_funds`, and deliberately not `manage_funds`, which is the Painel's door the
+  whole mesa holds. Retirement is `POST /funds/{id}/retirement` and not `DELETE`: a `DELETE`
+  that does not delete promises the caller something the server will not do.
+- **`FUND_IDS` left `app/utils/resource_request_vocabularies.py`.** With a fund becoming a
+  row the Gestor creates, the emitted list can never be the set of valid ids, and a constant
+  with that name is a validation list waiting to be used as one — using it would refuse
+  every fund the client typed. **The checksum stays**, read straight off `EMISSION["funds"]`
+  the way `projectCategory` and `decisionStates` already are: a count is what makes a stale
+  vendored copy visible.
+- **The four undecided names are a register, never a seed** — `RESERVED_FUND_NAMES`, served
+  at `GET /funds/reserved-names` so the Gestor sees the names the project already spoke of
+  instead of recalling them. Nothing there is a row and nothing there is reserved in the
+  database: choosing one is an ordinary creation that an already-taken name refuses.
+
 ---
 
 ## 8. Traps in this repository, each with its reason
@@ -1313,10 +1364,12 @@ each one landed somewhere in this module:
 - **What each fund covers, and the old↔new mapping** — only *Shema Línguas* remains a fund
   (D1), and the other four names are **undecided rather than retired**: not approved either.
   The mapping closed by elimination instead of by mapping — *"leave it as it is"* (D2) — so no
-  old category was paired with a new name. The seed writes the one row with
-  `provisional = false`. What the answer opened — an editable area for funds, and the
-  retired-fund flag item 7 below describes — is **BE-10** (OBT-471), which is also why §8.2
-  keeps the fund list a **table and never an enum**.
+  old category was paired with a new name. What the answer opened — an editable area for
+  funds, and the retired-fund flag item 7 below describes — is **BE-10** (OBT-471), **built**
+  (§7.4): the Gestor creates, renames and retires funds, `provisional` is gone and
+  `retired_at` replaces it, and the row the client confirmed is written by the fund-administration
+  migration rather than by the seed. It is also why §8.2 keeps the fund list a **table and
+  never an enum**.
 - **Insufficient funds on a concurrent approve** — allowed with a warning, never refused
   (D5, §7.3). The lock stays; only the refusal is gone, and it is one branch: the warning one.
 - **The Gestores enter the allocated value** (D6) — and `rr_funds` is where that answer could
@@ -1355,7 +1408,11 @@ And seven items with **no gate**, which need issues rather than answers:
    section was asked when it never was. It belongs with the contract's §6.1 question about
    whether that chip survives beside the *solicitante*, and it needs the same owner:
    **before INT-04**, which builds the card against a real endpoint.
-7. **`rr_funds` carries no active/retired flag, and a fund can never be deleted** (BE-02,
+7. ~~**`rr_funds` carries no active/retired flag, and a fund can never be deleted**~~
+   **Closed by BE-10** (OBT-471, 30/aug/2026): `retired_at` is the flag and it landed with
+   its reader — `FundOut.retired`, `fund_balances`, and the 409 that refuses to retire a
+   fund with undecided requests on it — while `provisional` was dropped rather than given
+   one. §7.4 carries the whole decision. The finding, for the record: (BE-02,
    26/aug/2026, from GATE-01's answer). `rr_fund_movements` references it and the ledger is
    append-only, so a fund that stops being one has to stay readable for the movements that
    already name it — a DELETE is not available and never will be. Ready Vessels is the proof

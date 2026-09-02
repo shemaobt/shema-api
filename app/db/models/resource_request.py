@@ -154,24 +154,32 @@ class RRFund(Base):
     the client also floated an editable area for funds, which is BE-10 (OBT-471). So the
     list is expected to grow, and a table is what lets it grow without a migration.
 
-    ``provisional`` said *the gate has not confirmed this name*, and **the gate has since
-    closed** — so the sentence no longer has a subject. What the flag can still mean is
-    *nobody has confirmed this name yet*, which is why the default stays ``True``: the
-    four names GATE-01 left undecided would be born marked, and a fund whose name nobody
-    approved is not the same object as *Shema Línguas*. The one row the seed writes is
-    confirmed and is written ``False``.
-
-    **Nothing reads the flag**, and that is the part not to leave implicit: a column no
-    query honours is a promise the database is not keeping. Giving it a reader or dropping
-    it is BE-10's (OBT-471), which is also where the editable fund area lands — the two
-    decisions are the same decision.
+    ``provisional`` said *the gate has not confirmed this name*, and BE-10 (OBT-471)
+    **dropped it** rather than giving it a reader. The choice the column was holding open
+    stopped existing when the client answered that the Gestor types the names: a name
+    nobody confirmed cannot be born here any more, because the person who confirms it is
+    the person who creates it. A column no query honours is a promise the database is not
+    keeping, and the honest way to stop making it was to remove it.
 
     **A fund is never deleted.** ``rr_fund_movements`` references it and the ledger is
     append-only, so a fund that stopped being one has to stay readable for the movements
     that already name it. Ready Vessels is the proof that this happens: GATE-01 ended it
     as a fund and no row survives here, but the day one ends *after* it has taken money,
-    the answer is a flag and not a DELETE — also BE-10's, which is where the column and
-    its reader belong together.
+    the answer is a flag and not a DELETE. ``retired_at`` is that flag — null while the
+    fund is one, stamped by ``retire_fund`` when it stops being one — and it is a
+    timestamp rather than a boolean because *when it stopped* is the question a ledger
+    line from last year raises and a boolean cannot answer. **Who retired it is not
+    here**: that is an edit like any other and belongs to BE-15's (OBT-475) trail, and a
+    second authorship design standing up in this table is exactly what the balance-column
+    paragraph below refuses for the same reason.
+
+    ``name`` is ``UNIQUE`` and there is no ``TextPair``. With the id opaque and never
+    shown, the name is the fund's only human identity on the screen that assigns money,
+    and two funds wearing one name there is a wrong transfer waiting to happen; the
+    constraint spans retired rows too, because a name that appears in the ledger's history
+    still names that money. One column and not a pair because GATE-01 confirmed the names
+    do not change in English *"por enquanto"* — the day one does, the pair is a migration
+    away and the wrong `TextPair` today is a null half on every row.
 
     No balance columns. *Alocado* and *comprometido* are sums over ``rr_fund_movements``
     and *disponível* is their difference — store two, derive the third (BE-07).
@@ -184,10 +192,11 @@ class RRFund(Base):
     """
 
     __tablename__ = "rr_funds"
+    __table_args__ = (UniqueConstraint("name", name="uq_rr_funds_name"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str] = mapped_column(String(120))
-    provisional: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

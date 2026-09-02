@@ -16,6 +16,9 @@ from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_evaluation import get_evaluation
 from app.services.resource_request.endorse_request import endorse_request
+from app.services.resource_request.create_fund import create_fund
+from app.services.resource_request.endorse_request import endorse_request
+from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
 from app.services.resource_request.list_fund_options import fund_options
@@ -26,6 +29,9 @@ from app.services.resource_request.movements_of_fund import movements_of_fund
 from app.services.resource_request.movements_of_request import movements_of_request
 from app.services.resource_request.open_revision import open_revision
 from app.services.resource_request.request_status import RequestStatus, request_status
+from app.services.resource_request.rename_fund import rename_fund
+from app.services.resource_request.reserved_fund_names import RESERVED_FUND_NAMES
+from app.services.resource_request.retire_fund import retire_fund
 from app.services.resource_request.reverse_movement import reverse_movement
 from app.services.resource_request.save_evaluation import save_evaluation
 from app.services.resource_request.set_allocation import set_allocation
@@ -35,6 +41,7 @@ from app.services.resource_request.update_draft import Discarded, Saved, update_
 __all__ = [
     "CAPABILITIES",
     "CAPABILITY_ROLES",
+    "RESERVED_FUND_NAMES",
     "ROLES",
     "ROLE_CAPABILITIES",
     "BoardMoved",
@@ -55,6 +62,9 @@ __all__ = [
     "fund_options",
     "get_evaluation",
     "endorse_request",
+    "create_fund",
+    "endorse_request",
+    "fund_balances",
     "get_request",
     "holds_capability",
     "list_requests",
@@ -64,6 +74,8 @@ __all__ = [
     "open_revision",
     "request_status",
     "require_assigned_fund",
+    "rename_fund",
+    "retire_fund",
     "reverse_movement",
     "save_evaluation",
     "set_allocation",
