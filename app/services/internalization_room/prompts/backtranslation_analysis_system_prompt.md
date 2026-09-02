@@ -77,7 +77,8 @@ differences across this scope. When you set it to `false`, include at least one
 should have been told. Use `null` when it cannot be placed in one. A missing element that belongs
 **after everything the team told** cannot be placed in a chunk — that is the one case for `null`.
 A missing element that belongs between two things they did tell goes in the chunk where it should
-have been said, even when that chunk is otherwise fine.
+have been said, even when that chunk is otherwise fine — and one that belongs before the first
+thing they told goes in the first chunk.
 
 A complete, faithful telling-back returns `{ "evidence_sufficient": true, "findings": [] }`.
 

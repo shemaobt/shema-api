@@ -1181,8 +1181,10 @@ def test_the_analyst_is_told_which_missing_element_has_no_chunk() -> None:
     otherwise fine, so that the screen offers to record that part again instead of the ending.
 
     The analyst learns the difference from its prompt and nowhere else, so the paragraph that
-    binds `"chunk"` to `null` has to draw both borders: the one case that is `null`, after
-    everything told, and the case between two things told that is not.
+    binds `"chunk"` to `null` has to draw every border: the one case that is `null`, after
+    everything told; the case between two things told, which is not; and the case before the
+    first thing told, which goes in the first chunk rather than falling to `null` for want of
+    a chunk in front of it.
     """
     binding_null = [
         block for block in ANALYST.split("\n\n") if '`"chunk"`' in block and "`null`" in block
@@ -1192,3 +1194,30 @@ def test_the_analyst_is_told_which_missing_element_has_no_chunk() -> None:
     assert any("after everything" in block and "between" in block for block in binding_null), (
         "o parágrafo do null não separa a falta depois de tudo da falta entre dois trechos"
     )
+    assert any("before the first" in block and "first chunk" in block for block in binding_null), (
+        "o parágrafo do null não manda a falta antes da primeira coisa contada para o chunk 1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehearsed(
+    patch_analyst,
+) -> None:
+    """The rehearsal is only for a hole after the last stretch told.
+
+    A team that skipped the opening did tell everything after it, so the analyst puts the hole
+    in the first chunk, and the room offers to record that stretch again — not to go on
+    recording as if the end of the story were what was missing.
+    """
+    patch_analyst('{"findings":[{"kind":"missing","chunk":1,"note":"a fome não apareceu"}]}')
+
+    analysis = await analyse_telling_back(
+        segments=_told(),
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is not None
+    assert closing_block(analysis.findings[0]) == CLOSING_MISSING_ON_SCREEN
