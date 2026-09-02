@@ -470,9 +470,10 @@ async def test_a_team_that_has_never_met_answers_with_an_empty_history(client, d
     assert await read_history(client, project.id, headers) == []
 
 
-async def test_the_history_says_the_room_is_waiting_without_naming_its_own_status(
-    client, db_session
-):
+# Behaviour 7 — a halt travels beside the state, not inside it (ENG-605).
+
+
+async def test_a_halted_session_says_it_is_waiting_for_a_person(client, db_session):
     """`needs_person` travels beside `state`, never inside it, and `status` never leaks.
 
     ENG-605 reverses the decision this test used to record. Before it, a halted room read
@@ -488,23 +489,9 @@ async def test_the_history_says_the_room_is_waiting_without_naming_its_own_statu
 
     [card] = await read_history(client, project.id, headers)
 
-    assert card["state"] == "in_progress"
     assert card["needs_person"] is True
+    assert card["state"] == "in_progress"
     assert "status" not in card
-
-
-# Behaviour 7 — a halt travels beside the state, not inside it (ENG-605).
-
-
-async def test_a_halted_session_says_it_is_waiting_for_a_person(client, db_session):
-    _user, project, headers = await a_facilitator(db_session)
-    session = await a_session(db_session, project_id=project.id)
-    await room.mark_needs_person(db_session, session)
-
-    [card] = await read_history(client, project.id, headers)
-
-    assert card["needs_person"] is True
-    assert card["state"] == "in_progress"
 
 
 async def test_an_ordinary_open_session_says_it_does_not_need_a_person(client, db_session):
