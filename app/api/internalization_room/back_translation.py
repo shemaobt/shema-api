@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import UnreadableReply, ValidationError
+from app.core.exceptions import UnreadableReply, UpstreamServiceError, ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
