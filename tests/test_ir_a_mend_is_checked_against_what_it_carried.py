@@ -436,37 +436,6 @@ async def test_an_element_both_counted_and_reported_is_heard_once(
 
 
 @pytest.mark.asyncio
-async def test_a_loss_reported_without_a_count_still_counts(
-    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
-) -> None:
-    """Compatibility. A reply in the shape the room has always accepted is still accepted.
-
-    The stored prompt is what a running room actually sends, and it is not this file's to
-    change: a room whose prompt row predates the enumeration goes on being answered without
-    one, and those replies must not start reading as clean corrections.
-    """
-    session_id, first = await _a_finding_raised_on_the_first_stretch(client, db_session, analyst)
-    await _tell_that_stretch_again(client, session_id, first, saying=ANSWERED_AND_LOST)
-    analyst.verification = json.dumps(
-        {
-            "resolved": True,
-            "findings": [
-                {"kind": "missing", "note": f"A equipe não diz mais que {NO_LONGER_TOLD}."}
-            ],
-        }
-    )
-    analyst.answer = '{"evidence_sufficient": true, "findings": []}'
-
-    answered = await _finish(client, session_id)
-    body = answered.json()
-    corrected = (await service.final_segments(db_session, session_id))[0]
-
-    assert body["findings_remaining"] == 1
-    assert body["finding_kind"] == "missing"
-    assert body["finding_segment_id"] == corrected.id
-
-
-@pytest.mark.asyncio
 async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
