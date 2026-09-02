@@ -254,6 +254,11 @@ class CreateSessionRequest(BaseModel):
     pericope: str | None = Field(default=None, max_length=120)
     after_panorama: bool = False
     #: Which panorama session preceded this one, so its prepared opening can be handed over.
+    #: Named by the app only for the session the wooden bead opens once the panorama has been
+    #: spoken. That is what lets the room read the resulting ``after_panorama`` as "this team
+    #: heard the panorama and went on into this passage" — ``panorama_once`` decides from it
+    #: whether to play the panorama again — so naming it for any other session would mark that
+    #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
     bridge_mode: str | None = Field(default=None, max_length=24)
     #: Which language the room should speak to this team, read by the app off the tablet.
