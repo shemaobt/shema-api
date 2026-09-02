@@ -530,7 +530,12 @@ def test_stretches_with_a_tolerable_gap_still_cover_the_clip() -> None:
     assert played_ranges_cover_clip([[0, 30000], [30500, 61000]], 61000)
 
 
-def test_a_legacy_client_without_a_report_passes() -> None:
+def test_an_absent_report_is_not_a_short_one() -> None:
+    """The arithmetic has nothing to measure and says so by not objecting.
+
+    Whether an absent report counts as having listened is not decided here — the release gate
+    asks `playback_confirms_rehearsal`, and there it does not.
+    """
     assert played_ranges_cover_clip([], None)
     assert played_ranges_cover_clip([], 61000)
     assert played_ranges_cover_clip([[0, 61000]], None)
