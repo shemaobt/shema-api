@@ -70,8 +70,11 @@ services:
         GOOGLE_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         GOOGLE_MAPS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_google_maps_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         ELEVENLABS_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_elevenlabs_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
+        EMAIL_PROVIDER=$$(gcloud secrets versions access latest --secret=tripod_backend_email_provider --project=$$SECRETS_PROJECT_ID | tr -d '\n')
+        EMAIL_PROVIDER=$${EMAIL_PROVIDER:-log}
+        RESEND_API_KEY=$$(gcloud secrets versions access latest --secret=tripod_backend_resend_api_key --project=$$SECRETS_PROJECT_ID | tr -d '\n')
         [ -n "$$JWT" ] || { echo "gcp-secrets: failed to read secrets, run 'gcloud auth login' on the host"; exit 1; }
-        printf "JWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nGOOGLE_MAPS_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\n" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$GOOGLE_MAPS_API_KEY" "$$ELEVENLABS_API_KEY" > /secrets/.env
+        printf "JWT_SECRET_KEY='%s'\nQDRANT_URL='%s'\nQDRANT_API_KEY='%s'\nGOOGLE_API_KEY='%s'\nGOOGLE_MAPS_API_KEY='%s'\nELEVENLABS_API_KEY='%s'\nEMAIL_PROVIDER='%s'\nRESEND_API_KEY='%s'\n" "$$JWT" "$$QDRANT_URL" "$$QDRANT_API_KEY" "$$GOOGLE_API_KEY" "$$GOOGLE_MAPS_API_KEY" "$$ELEVENLABS_API_KEY" "$$EMAIL_PROVIDER" "$$RESEND_API_KEY" > /secrets/.env
     restart: "no"
 
   backend:
