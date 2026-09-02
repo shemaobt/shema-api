@@ -753,28 +753,25 @@ DESTINATIONS = {
     "no WhatsApp": "on WhatsApp",
 }
 
-#: A draft that does exactly what `CLOSING_MISSING_ON_SCREEN` orders: names the finding and
-#: hands the one microphone to the screen. This is the draft the room fell into fail-safe over
-#: three times in a row — back then obeying the two-voice closing, which a missing element no
-#: longer receives. The boundary question stays because the double does not judge it.
+#: A draft that does exactly what `CLOSING_MISSING_ON_SCREEN` orders: names what did not
+#: appear, asks nothing, and hands the one microphone to the screen. This is the draft the
+#: room fell into fail-safe over three times in a row — back then obeying the two-voice
+#: closing and its boundary question, neither of which a missing element receives any more.
 OBEDIENT_DRAFT = (
     "No que você me contou de volta, a morte de Elimeleque não apareceu. "
-    "Isso está na sua gravação, ou entrou agora na explicação? "
     "Você pode ouvir as duas vozes aqui na tela e gravar essa parte de novo, inteira."
 )
 
 #: The same draft, sending the team somewhere the app never named.
 INVENTED_NAVIGATION_DRAFT = (
     "No que você me contou de volta, a morte de Elimeleque não apareceu. "
-    "Isso está na sua gravação, ou entrou agora na explicação? "
     "Gravem essa parte de novo no WhatsApp e me mandem depois."
 )
 
 #: The same draft, telling the team it said something it never said.
 UNSUPPORTED_CLAIM_DRAFT = (
     "No que você me contou de volta, a morte de Elimeleque não apareceu. "
-    "Você contou que Noemi ficou em Moabe. "
-    "Isso está na sua gravação, ou entrou agora na explicação?"
+    "Você contou que Noemi ficou em Moabe."
 )
 
 _ATTRIBUTION = re.compile(r"[Vv]ocê contou que ([^.?!]+)")
