@@ -15,6 +15,17 @@ Each already leads a composite (`(stage, created_at)`, `(fund_id, created_at)`,
 `(request_id, created_at)`), and a B-tree serves its leading column on its own, so a second
 index would cost every write and buy no read.
 
+The two trails that are read *in the order they happened* — ``rr_fund_movements`` and
+``rr_board_transitions`` — stamp ``created_at`` from Python as well as from the server, and
+that second default is not redundancy. ``func.now()`` is the transaction's clock: Postgres
+hands the same microsecond to every row written under one commit, and SQLite's
+``CURRENT_TIMESTAMP`` has one-second granularity, so two rows written a moment apart tie.
+Both readers break a tie on ``id``, which is a ``uuid4`` — random — so a tied pair comes back
+in an order nobody chose, and ``_transition.py`` picks *the latest* movement to compensate by
+exactly that ordering. A per-row ``datetime.now(UTC)`` gives each write its own microsecond
+under both engines, which is what makes the trail's order the order of the writes. A monotonic
+sequence column would say it in the schema instead; that is a migration, and this is not.
+
 Two tables are append-only and say so in the database rather than only in a service:
 ``rr_fund_movements`` and ``rr_snapshots``. ``append_only_ddl`` builds the guard for the
 dialect in hand and is hung on ``after_create`` so ``Base.metadata.create_all`` — which
@@ -23,7 +34,7 @@ is how the test suite builds its schema — gets the same protection the migrati
 
 import enum
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -615,7 +626,9 @@ class RRFundMovement(Base):
     )
     reason: Mapped[str] = mapped_column(Text, default="", server_default="")
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now()
+    )
 
 
 class _RRFieldHistory:
@@ -732,7 +745,9 @@ class RRBoardTransition(Base):
     evaluation_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("rr_evaluations.id"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now()
+    )
 
 
 event.listen(RRFundMovement.__table__, "after_create", _guard_append_only)

@@ -9,7 +9,9 @@ from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest, RRSnapshot
 from app.models.resource_request import RequestSubmissionIn
 from app.services.resource_request._document import document
+from app.services.resource_request._notices import post
 from app.services.resource_request.get_request import get_request
+from app.services.resource_request.notify_arrival import notify_arrival
 
 
 class Submitted(NamedTuple):
@@ -70,6 +72,12 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     Nothing here moves the card. A submitted request is in ``triagem`` because that is where
     it was created, and every stage change afterwards is BE-08's with its ledger movement
     attached.
+
+    **This is also where the mesa and the Gestores are told** (GATE-03 D6, BE-13): the
+    in-app notices are staged inside this function's transaction and the letters leave
+    after its commit, so a submission that failed announces nothing and a provider outage
+    cannot un-submit anything. Arrival is announced once, here — a draft still being typed
+    announces nothing, and a card dragged later announces nothing either.
     """
     loaded = await get_request(db, request_id, user, app_key)
 
@@ -93,7 +101,11 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     db.add(snapshot)
     loaded.request.submitted_at = datetime.now(UTC)
 
+    letters = await notify_arrival(db, request=loaded.request, actor_id=user.id, app_key=app_key)
+
     await db.commit()
     await db.refresh(loaded.request)
     await db.refresh(snapshot)
+
+    await post(letters)
     return Submitted(request=loaded.request, snapshot=snapshot)
