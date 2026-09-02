@@ -112,6 +112,27 @@ def _coverage_view(session: IRSession) -> CoverageView:
     )
 
 
+def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening: bool) -> bool:
+    """Whether the turn carries anything the coverage classifier should be reading.
+
+    A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
+    said nothing, so what the team said decides rather than the state the room's own turn
+    ended in. What the team said has to be trusted, though: `uncertain` exists to under-count
+    and nothing else, and such a transcript travels forward inside the very fail-safe asking
+    the team to repeat it. Coverage only moves forward and feeds the Guide's next prompt, so
+    a bead settled on a word the hearing distrusts cannot be taken back.
+
+    The opening is the one turn with beads to name and no utterance behind it, and it earns
+    that exception by being an opening the Guide actually wrote. It reaches `surfaced`, which
+    stays below `floor_met`, so settling it neither closes a passage nor stands in for the
+    team retelling it — while a fail-safe opening is the same contentless fixed line as any
+    other, the one `prepare_opening` throws away rather than keep.
+    """
+    if outcome.transcript.strip():
+        return not speech_heard.uncertain
+    return opening and not outcome.used_fail_safe
+
+
 def _settle_later(
     background: BackgroundTasks,
     session: IRSession,
@@ -333,12 +354,6 @@ async def take_turn(
     ledger holding evidence for an exchange that was never recorded. Speaking first costs
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
-
-    A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
-    said nothing — so the coverage settle asks whether there is anything to classify rather
-    than whether the room's own turn went well. The opening is the one turn that has beads to
-    name with no utterance behind it: it can only reach `surfaced`, which stays below
-    `floor_met`, so settling it neither closes a passage nor spares the team the retelling.
     """
     session = await room.get_session(db, session_id)
 
@@ -436,7 +451,7 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session)
 
-    if outcome.transcript.strip() or opening:
+    if _worth_settling(outcome, speech_heard, opening=opening):
         _settle_later(
             background,
             session,

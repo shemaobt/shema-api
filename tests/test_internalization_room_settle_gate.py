@@ -14,6 +14,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 
@@ -31,6 +32,7 @@ class _Room:
 
     client: httpx.AsyncClient
     outcome: TurnOutcome
+    heard: HeardSpeech | None = None
     settled: list[dict[str, str]] = field(default_factory=list)
 
 
@@ -50,7 +52,6 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
     from app.services.internalization_room.comprehension.state import ComprehensionState
-    from app.services.internalization_room.hearing import HeardSpeech
     from app.services.internalization_room.live_turn import ComprehensionTurn
     from app.services.platform.tts import SynthesizedSpeech
 
@@ -74,7 +75,7 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             )
 
         async def _heard(*_: Any, **__: Any) -> HeardSpeech:
-            return HeardSpeech(text=staged.outcome.transcript)
+            return staged.heard or HeardSpeech(text=staged.outcome.transcript)
 
         async def _speech(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
             return SynthesizedSpeech(
@@ -182,4 +183,51 @@ async def test_a_turn_nobody_could_be_heard_in_is_not_settled(room: _Room, passa
     assert [handed["guide_response"] for handed in room.settled] == [OPENING], (
         "só a abertura fala sem a equipe; um turno inaudível creditaria contas a uma "
         "linha fixa que só pede para repetir"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_opening_the_room_could_not_phrase_hands_over_nothing(
+    room: _Room, passage: str
+) -> None:
+    """An opening earns its exception by being an opening the Guide actually wrote.
+
+    Redrafting runs out on the first turn like any other, so a fail-safe opening is a line
+    the room reaches for when it has nothing to say — `prepare_opening` throws exactly this
+    away rather than keep it. Excusing the opening from the utterance rule while excusing it
+    from this one too would hand the classifier the same contentless fixed line the
+    inaudible turn is kept away from.
+    """
+    room.outcome = TurnOutcome(speech=FAIL_SAFE, transcript="", used_fail_safe=True, degraded=True)
+
+    await _the_room_opens(room, passage)
+
+    assert room.settled == [], (
+        "a abertura em fail-safe entregava ao classificador a mesma linha fixa que o "
+        "turno inaudível tem de manter longe dele"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_transcript_the_hearing_does_not_trust_hands_over_nothing(
+    room: _Room, passage: str
+) -> None:
+    """Words the room is about to ask the team to repeat are not words to credit beads to.
+
+    `uncertain` exists to under-count and nothing else — an uncertain transcript is repeated,
+    never judged as misunderstanding (`HeardSpeech`). It reaches the gate looking like an
+    answer, because the inaudible outcome carries the transcript forward while the team hears
+    a request to say it again. Coverage only moves forward and feeds the Guide's next prompt,
+    so a bead settled on a word the hearing distrusts cannot be taken back.
+    """
+    room.outcome = TurnOutcome(
+        speech=INAUDIBLE, transcript=TEAM, used_fail_safe=True, degraded=True
+    )
+    room.heard = HeardSpeech(text=TEAM, transcript_confidence=0.2)
+
+    await _the_team_answers(room, passage)
+
+    assert room.settled == [], (
+        "a cobertura era creditada em cima de palavras que o próprio STT marcou como "
+        "não confiáveis, enquanto a equipe ouvia um pedido para repetir"
     )
