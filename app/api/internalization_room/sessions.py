@@ -117,10 +117,11 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening:
 
     A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
     said nothing, so what the team said decides rather than the state the room's own turn
-    ended in. What the team said has to be trusted, though: `uncertain` exists to under-count
-    and nothing else, and such a transcript travels forward inside the very fail-safe asking
-    the team to repeat it. Coverage only moves forward and feeds the Guide's next prompt, so
-    a bead settled on a word the hearing distrusts cannot be taken back.
+    ended in. What the team said still has to be speech the room took up, which is what
+    `reliable_bridge_speech` means: an uncertain transcript travels forward inside the very
+    fail-safe asking the team to repeat it, and mother-tongue speech inside the one asking
+    for the session's language back. Neither is an answer the room engaged with, and coverage
+    only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
 
     The opening is the one turn with beads to name and no utterance behind it, and it earns
     that exception by being an opening the Guide actually wrote. It reaches `surfaced`, which
@@ -129,7 +130,7 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening:
     other, the one `prepare_opening` throws away rather than keep.
     """
     if outcome.transcript.strip():
-        return not speech_heard.uncertain
+        return speech_heard.reliable_bridge_speech
     return opening and not outcome.used_fail_safe
 
 

@@ -24,6 +24,7 @@ TEAM = "A fome grande fez a família se mudar."
 FAIL_SAFE = "Tem bastante coisa aqui. Vamos com calma e ficar nesta cena."
 OPENING = "Vamos ficar no começo: uma família sai de Belém por falta de comida."
 INAUDIBLE = "Não consegui ouvir. Podem repetir mais perto do microfone?"
+OFF_BRIDGE = "Podemos continuar na língua da sessão?"
 
 
 @dataclass
@@ -230,4 +231,31 @@ async def test_a_transcript_the_hearing_does_not_trust_hands_over_nothing(
     assert room.settled == [], (
         "a cobertura era creditada em cima de palavras que o próprio STT marcou como "
         "não confiáveis, enquanto a equipe ouvia um pedido para repetir"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_answer_left_in_another_language_hands_over_nothing(
+    room: _Room, passage: str
+) -> None:
+    """The room asked for the session's language back; it did not take the answer up.
+
+    Mother-tongue speech is not distrusted the way an uncertain transcript is — it is heard
+    perfectly well and left unengaged, and the team hears the off-bridge fixed line rather
+    than a reply. Settling it would credit beads read against a meaning map in one language
+    from an utterance in another, on a turn the room declined, and coverage does not come
+    back down.
+    """
+    room.outcome = TurnOutcome(
+        speech=OFF_BRIDGE, transcript=TEAM, used_fail_safe=True, fixed_line="off_bridge"
+    )
+    room.heard = HeardSpeech(
+        text=TEAM, language_code="ter", language_probability=0.99, transcript_confidence=0.9
+    )
+
+    await _the_team_answers(room, passage)
+
+    assert room.settled == [], (
+        "a fala que ficou em outra língua era creditada sem tradução, num turno em que "
+        "a sala pediu para repetir na língua da sessão"
     )
