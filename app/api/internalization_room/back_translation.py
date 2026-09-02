@@ -19,7 +19,7 @@ from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
-from app.services.internalization_room.sessions import MAX_RETELLS
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 from app.services.internalization_room.voice_handles import clip_url
 
@@ -54,9 +54,10 @@ async def add_chunk(
     chunk nobody could make out returns before it.
 
     `retelling` says the team is telling one stretch back a second time after a finding.
-    That is the one cycle they can repeat at will, so it is counted and capped here: past
-    the budget the room asks for a person instead of buying another analyst round. The
-    chunk is kept either way — their work is never the thing thrown away.
+    That is the one cycle they can repeat at will, so it is counted here: at
+    `RETELLS_BEFORE_A_WARNING` the room asks for a person to come and watch. A warning,
+    not a cap — nothing is refused past it, and the chunk is kept either way. Their work
+    is never the thing thrown away.
 
     `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
     slice inside **that file** — where the team let it play and where they stopped it. All
@@ -97,21 +98,21 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
-        # The budget is spent on the attempt, not on the transcript. Returning above this
-        # meant that during a transcriber outage — when every attempt comes back empty —
-        # the team could retell forever, `MAX_RETELLS` was never reached, and the room's
-        # only route to a person was unreachable exactly when the room was broken.
+        # The attempt is counted, not the transcript. Returning above this meant that
+        # during a transcriber outage — when every attempt comes back empty — the team
+        # could retell forever, `RETELLS_BEFORE_A_WARNING` was never reached, and the
+        # room's only route to a person was unreachable exactly when the room was broken.
         state.retells = told_again
         await room.save_back_translation(db, session, state)
-        spent = retelling and told_again >= MAX_RETELLS
-        if spent:
+        warned = retelling and told_again >= RETELLS_BEFORE_A_WARNING
+        if warned:
             await room.mark_needs_person(db, session)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(told),
             captured=False,
             pass_number=pass_number,
-            needs_person=spent,
+            needs_person=warned,
         )
     await room.capture_segment(
         db,
@@ -127,15 +128,15 @@ async def add_chunk(
     state.retells = told_again
     await room.save_back_translation(db, session, state)
 
-    spent = retelling and told_again >= MAX_RETELLS
-    if spent:
+    warned = retelling and told_again >= RETELLS_BEFORE_A_WARNING
+    if warned:
         await room.mark_needs_person(db, session)
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) + 1,
         captured=True,
         pass_number=pass_number,
-        needs_person=spent,
+        needs_person=warned,
     )
 
 

@@ -397,7 +397,9 @@ class BackTranslationChunkResponse(BaseModel):
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
     #: no business deciding which one a chunk is.
     pass_number: int = 1
-    #: True when the retells ran out. The room stops instead of buying another round.
+    #: True when the retells reached `RETELLS_BEFORE_A_WARNING`: the room asks for a person
+    #: to come and watch. A warning the app voices, not a stop — this chunk was taken, the
+    #: next one will be too, and the next turn that lands clears the mark.
     needs_person: bool = False
 
 

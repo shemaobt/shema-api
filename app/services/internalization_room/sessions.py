@@ -40,7 +40,12 @@ from app.services.project.facilitated_scope import confined_to, facilitated_proj
 from app.services.project.facilitates_project import facilitates_project
 
 PANORAMA_ALIAS = "OV"
-MAX_RETELLS = 3
+#: How many second tellings of a stretch before the room asks for a person to come and
+#: watch. A warning, not a cap: nothing is refused at or past this number, the next stretch
+#: is taken like any other, and the next turn that lands clears the mark. Measured in the
+#: field at six against three with the passage checked, and kept that way by decision of
+#: the product owner (ENG-706): a team that keeps missing gets company, not a closed door.
+RETELLS_BEFORE_A_WARNING = 3
 
 #: Re-exported so the room's callers go on asking the session service what a panorama is.
 #: The answer moved next to the coverage spine it is really about — see `coverage`.
@@ -404,13 +409,18 @@ async def begin_back_translation_again(
     """Start the telling-back over on a freshly recorded clip, archiving the old attempt.
 
     Only the re-record reaches here. Telling one stretch again does not pass through: it
-    adds a stretch beside the others, and its budget is counted where that happens.
+    adds a stretch beside the others, and it is counted where that happens.
 
     The replaced attempt is kept, clearly marked as superseded, rather than erased: its
     stretches and findings are the history the Refine artifact carries, and the team's open
     questions must survive their own retake. The stretches stay where they are and stop
     counting — nothing takes their place, because the clip they explained was thrown away —
     and only what was never theirs is copied in here.
+
+    The retell count carries across. `BackTranslationState(scope=...)` takes every other
+    default, so it went back to zero — and re-recording is a room-key route the team drives
+    by voice. The count that decides when the room asks for a person was reset by tapping
+    "record again", which is exactly the tap a stuck team makes.
     """
     state = back_translation_of(session)
     told = await final_segments(db, session.id)
@@ -425,10 +435,6 @@ async def begin_back_translation_again(
             )
         )
     await retire_every_segment(db, session.id)
-    # The retell count carries across. `BackTranslationState(scope=...)` takes every other
-    # default, so it went back to zero — and re-recording is a room-key route the team
-    # drives by voice. The budget that exists so a loop cannot be a loop was reachable by
-    # tapping "record again", which is exactly the tap a stuck team makes.
     await save_back_translation(
         db,
         session,
