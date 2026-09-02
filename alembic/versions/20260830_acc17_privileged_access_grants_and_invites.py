@@ -18,7 +18,7 @@ This database is shared with every Tripod app: nothing here alters what it did
 not create, beyond the one nullable column on ``user_app_roles``.
 
 Revision ID: 20260830_acc17
-Revises: 20260828_seg01
+Revises: 20260830_rr07
 Create Date: 2026-08-30 00:00:00.000000
 """
 
@@ -29,7 +29,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260830_acc17"
-down_revision: str | None = "20260828_seg01"
+down_revision: str | None = "20260830_rr07"
 branch_labels: str | None = None
 depends_on: str | None = None
 

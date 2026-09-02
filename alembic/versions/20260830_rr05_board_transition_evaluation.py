@@ -1,7 +1,7 @@
 """a decision's move names its evaluation: evaluation_id on rr_board_transitions
 
-Revision ID: 20260830_rr04
-Revises: 20260830_rr03
+Revision ID: 20260830_rr05
+Revises: 20260830_rr04
 Create Date: 2026-08-30
 
 The design's §4.4 named this column and handed BE-08 (OBT-457) the decision to add or to
@@ -22,8 +22,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260830_rr04"
-down_revision: str | None = "20260830_rr03"
+revision: str = "20260830_rr05"
+down_revision: str | None = "20260830_rr04"
 branch_labels = None
 depends_on = None
 

@@ -499,7 +499,7 @@ class RREvaluation(Base):
     a team is allowed to read, served through the status projection and never through the
     evaluation itself. It lives here and not on the request because the mesa writes it in
     Parte C, under ``edit_evaluation``; nullable because *no note* and *an empty note* are
-    different facts, the same reason a score is nullable. Added by ``20260830_rr03``
+    different facts, the same reason a score is nullable. Added by ``20260830_rr04``
     (BE-06, OBT-455).
     """
 

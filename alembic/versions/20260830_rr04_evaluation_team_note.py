@@ -1,7 +1,7 @@
 """the mesa's message to the team: team_note on rr_evaluations
 
-Revision ID: 20260830_rr03
-Revises: 20260828_rr02
+Revision ID: 20260830_rr04
+Revises: 20260829_rr03
 Create Date: 2026-08-30
 
 The client's answer of 28/aug/2026 — *"caso tenha a necessidade de revisão a equipe recebe
@@ -22,8 +22,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "20260830_rr03"
-down_revision: str | None = "20260828_rr02"
+revision: str = "20260830_rr04"
+down_revision: str | None = "20260829_rr03"
 branch_labels = None
 depends_on = None
 

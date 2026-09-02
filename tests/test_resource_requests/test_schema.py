@@ -259,7 +259,7 @@ async def seeded(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, auth
     """Run the seed against the test session instead of the application's own.
 
     The fund row is written here rather than by the seed, because since BE-10 (OBT-471)
-    ``20260830_rr04`` owns it and the suite builds its schema with ``create_all``, which
+    ``20260830_rr07`` owns it and the suite builds its schema with ``create_all``, which
     runs no migration. Arranging it is the honest translation of *the migration ran*, and
     the state the seed is entitled to expect; the refusal test below covers the other
     side.

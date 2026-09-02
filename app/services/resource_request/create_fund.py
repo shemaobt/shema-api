@@ -19,7 +19,7 @@ async def create_fund(db: AsyncSession, *, name: str) -> RRFund:
     owns, and the only thing a caller may say about a fund is what it is called.
 
     **``linguas`` is the one exception, and it is inherited rather than granted here.**
-    That row is written by ``20260830_rr04`` with the id it already had, because the
+    That row is written by ``20260830_rr07`` with the id it already had, because the
     vendored emission carries it, the seed's ten cards write ``fund_id = "linguas"``, and
     minting a uuid for it would make three places disagree. No route can produce a second
     readable id.

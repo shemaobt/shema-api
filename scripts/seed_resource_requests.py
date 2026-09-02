@@ -93,7 +93,7 @@ from app.services.resource_request._document import document
 from app.utils.resource_request_vocabularies import CRITERION_KEYS
 
 #: The fund the ten cards hang from. **This script no longer writes it** — BE-10
-#: (OBT-471) moved the row to ``20260830_rr04``, because a fund line stopped being seed
+#: (OBT-471) moved the row to ``20260830_rr07``, because a fund line stopped being seed
 #: data the day the Gestor started typing them: what the migration writes is the one name
 #: GATE-01 confirmed, and everything after it is created through the API.
 #:
@@ -304,7 +304,7 @@ async def _require_confirmed_fund(db: AsyncSession) -> None:
     """Check that the migration's fund row is there — and never write it (BE-10, OBT-471).
 
     Seven of the ten cards name this fund, so the script cannot run without it; but it is
-    no longer this script's row to create. ``20260830_rr04`` writes it, every fund after it
+    no longer this script's row to create. ``20260830_rr07`` writes it, every fund after it
     is created by the Gestor through the API, and a seed that wrote one anyway would be
     the fixture inventing a fund — the same claim about someone's money the four undecided
     names are careful not to make.
@@ -319,7 +319,7 @@ async def _require_confirmed_fund(db: AsyncSession) -> None:
     if fund is None:
         raise SystemExit(
             f"O fundo {CONFIRMED_FUND_ID!r} não existe. Ele é escrito pela migration "
-            "20260830_rr04, não por este seed: rode `uv run alembic upgrade head` antes."
+            "20260830_rr07, não por este seed: rode `uv run alembic upgrade head` antes."
         )
 
 

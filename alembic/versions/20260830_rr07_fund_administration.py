@@ -1,7 +1,7 @@
 """funds stop being seeded and start being created: retirement, unique names, one real row
 
-Revision ID: 20260830_rr04
-Revises: 20260830_rr03
+Revision ID: 20260830_rr07
+Revises: 20260830_rr06
 Create Date: 2026-08-30
 
 GATE-01 D1 left four of PRD v1.1 §3's names undecided and the client asked for *"talvez
@@ -50,8 +50,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "20260830_rr04"
-down_revision = "20260830_rr03"
+revision = "20260830_rr07"
+down_revision = "20260830_rr06"
 branch_labels = None
 depends_on = None
 

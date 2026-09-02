@@ -1,7 +1,7 @@
 """the endorsement enters the system: who vouched for a request, and when
 
-Revision ID: 20260830_rr03
-Revises: 20260828_rr02
+Revision ID: 20260830_rr06
+Revises: 20260830_rr05
 Create Date: 2026-08-30
 
 GATE-02 D2 named the fourth role — the Líder de Base, who *"só assina/verifica o
@@ -33,8 +33,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "20260830_rr03"
-down_revision = "20260828_rr02"
+revision = "20260830_rr06"
+down_revision = "20260830_rr05"
 branch_labels = None
 depends_on = None
 
