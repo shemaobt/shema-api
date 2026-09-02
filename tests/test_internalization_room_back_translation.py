@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from app.core.config import Settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
@@ -295,30 +295,33 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
 
 @pytest.mark.asyncio
 async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) -> None:
-    """The one that matters: a failed call must not read as "checked"."""
+    """The one that matters: a failed call must not read as "checked".
+
+    It used to assert None. Swallowing the exception and returning [] made `finish` mark
+    checked=True: the room said the telling-back was checked, closed the necklace, and the
+    passage left the wheel for good. None fixed that — and then None also meant "answered,
+    but unreadable", and the route called both an outage (ENG-719). An outage is now the
+    exception it is, raised here at the boundary with the provider, so the route can tell it
+    from a reply it could not read.
+    """
 
     def _explode(**_kwargs):
-        raise RuntimeError("elevenlabs fora do ar")
+        raise RuntimeError("gemini fora do ar")
 
     module = sys.modules["app.services.internalization_room.back_translation"]
     monkey = pytest.MonkeyPatch()
     monkey.setattr(module, "call_agent", _explode)
     try:
-        analysis = await analyse_telling_back(
-            segments=_told(),
-            scope=P,
-            pericope_num=P,
-            analyst_prompt=ANALYST,
-            settings=_settings(),
-        )
+        with pytest.raises(UpstreamServiceError):
+            await analyse_telling_back(
+                segments=_told(),
+                scope=P,
+                pericope_num=P,
+                analyst_prompt=ANALYST,
+                settings=_settings(),
+            )
     finally:
         monkey.undo()
-
-    assert analysis is None, (
-        "engolir a exceção e devolver [] fazia o finish marcar checked=True: a sala "
-        "dizia que a retrotradução foi conferida, fechava o colar, e a perícope saía "
-        "da roda para sempre"
-    )
 
 
 def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
@@ -422,14 +425,26 @@ async def test_insufficiency_must_name_its_limit(patch_analyst) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_sufficient_reading_cannot_carry_an_insufficiency_finding(
+async def test_a_sufficient_flag_yields_to_an_insufficiency_finding(
     patch_analyst,
 ) -> None:
+    """This case used to assert the opposite: that the reading came back None.
+
+    It changed because the old rule discarded a valid finding together with the
+    contradiction — in the session that became ENG-719, a good `meaning_change` went out
+    with the reply, and the room told the team the service was down. The finding is the
+    statement of insufficiency, with content; the flag is its summary with no information
+    of its own. So the finding wins, and the invariant `BtAnalysis` promises — when the
+    flag is False, a finding names the limit — holds by way of that finding.
+    """
     patch_analyst(
         json.dumps(
             {
                 "evidence_sufficient": True,
-                "findings": [{"kind": "insufficient_evidence", "note": "pouco"}],
+                "findings": [
+                    {"kind": "missing", "note": "Orfa"},
+                    {"kind": "insufficient_evidence", "note": "pouco"},
+                ],
             }
         )
     )
@@ -442,7 +457,12 @@ async def test_a_sufficient_reading_cannot_carry_an_insufficiency_finding(
         settings=_settings(),
     )
 
-    assert analysis is None
+    assert analysis is not None
+    assert not analysis.evidence_sufficient
+    assert [f.kind for f in analysis.findings] == [
+        FindingKind.MISSING,
+        FindingKind.INSUFFICIENT_EVIDENCE,
+    ]
 
 
 @pytest.mark.asyncio
