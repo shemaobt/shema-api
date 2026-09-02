@@ -370,25 +370,6 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
 _VALID_WHERE = frozenset({"before", "inside", "after"})
 
 
-def _session_of(segments: list[IRSegment]) -> str:
-    return segments[0].session_id if segments else "?"
-
-
-def _refused_where(where: Any, raw_reply: str, session: str) -> None:
-    """One `where` the analyst got wrong, logged with the reply that carried it.
-
-    Same shape as `_refused` on the sibling ENG-719 fix (not yet on this branch): the value
-    that failed travels with the whole reply, because a truncated one is exactly what could
-    not be diagnosed, and the session ties the line to the request that produced it.
-    """
-    logger.warning(
-        "BT analyst returned an unrecognised 'where' (%r) for session %s: %s",
-        where,
-        session,
-        raw_reply,
-    )
-
-
 def _segment_pointed_at(
     raw: Any,
     segments: list[IRSegment],
@@ -430,7 +411,7 @@ def _segment_pointed_at(
 
     if kind is FindingKind.MISSING and where is not None:
         if not isinstance(where, str) or where not in _VALID_WHERE:
-            _refused_where(where, raw_reply, session)
+            _refused(f"unrecognised where {where!r}", raw_reply, session)
         elif where == "after":
             return None if position == len(segments) else segments[position].id
 
