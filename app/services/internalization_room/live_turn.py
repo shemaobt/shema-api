@@ -53,6 +53,7 @@ from app.services.internalization_room.comprehension.no_report import resolve_no
 from app.services.internalization_room.comprehension.practice import (
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
+    mother_tongue_practice_invitation_is_new,
     mother_tongue_practice_prompt,
     practiced_scenes_authorized_by_probe,
 )
@@ -538,7 +539,7 @@ async def run_comprehension_turn(
         app_owned_line = rehearsal_consent_declined_line(session.language)
     elif next_probe is not None and next_probe.purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT:
         app_owned_line = rehearsal_consent_question(session.language)
-    elif next_probe is not None and next_probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE:
+    elif mother_tongue_practice_invitation_is_new(prior_probe, next_probe):
         app_owned_line = mother_tongue_practice_prompt(session.language)
 
     contract = render_active_probe_contract(

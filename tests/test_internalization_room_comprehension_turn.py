@@ -389,6 +389,70 @@ async def test_pronto_after_the_practice_prompt_marks_the_scene(
 
 
 @pytest.mark.asyncio
+async def test_a_retelling_during_the_practice_reaches_the_guide_not_the_invitation_again(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A team that answered the invitation by telling the scene back heard it again.
+
+    The room voiced the identical fixed sentence on the next turn, so the Guide never saw
+    the retelling and the team was told to rehearse a scene it had just rehearsed.
+    """
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    assert await _say(db_session, session, "podemos começar") == (
+        mother_tongue_practice_prompt("pt")
+    )
+
+    assert (
+        await _say(db_session, session, "uma família saiu de Belém e foi morar em Moabe")
+        == "Vamos começar pela primeira cena. O que vocês acham?"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_question_during_the_practice_is_answered_not_met_with_the_instruction_again(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A team that asked something while rehearsing got the rehearsal order back.
+
+    The question went nowhere: the app owned the turn, so nobody answered it and the room
+    kept saying the one sentence the team had already followed.
+    """
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    assert await _say(db_session, session, "podemos começar") == (
+        mother_tongue_practice_prompt("pt")
+    )
+
+    assert (
+        await _say(db_session, session, "podemos contar essa parte com as nossas palavras?")
+        == "Vamos começar pela primeira cena. O que vocês acham?"
+    )
+
+
+@pytest.mark.asyncio
 async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe(
     db_session: AsyncSession, approve_all: None
 ) -> None:

@@ -170,6 +170,24 @@ def is_exact_mother_tongue_practice_prompt(text: str) -> bool:
     return _normalize(text) in {_normalize(said) for said in _PRACTICE_PROMPT.values()}
 
 
+def mother_tongue_practice_invitation_is_new(
+    prior_probe: ActiveProbe | None, planned_probe: ActiveProbe | None
+) -> bool:
+    """Whether the fixed invitation would be the first the team hears for this scene.
+
+    The line is app-owned speech, so a scene whose practice probe is still standing would
+    hear it again word for word on every turn until the practice is reported, and the
+    Guide would never see the answer. A standing probe for the same scene means the
+    invitation was already voiced; only a new scene, or a turn arriving from anywhere but
+    a practice probe, is worth the fixed sentence.
+    """
+    if planned_probe is None or planned_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE:
+        return False
+    if prior_probe is None or prior_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE:
+        return True
+    return prior_probe.practice_scene_ids != planned_probe.practice_scene_ids
+
+
 def confident_non_bridge_audio_completes_scoped_practice(
     probe: ActiveProbe | None, confidently_non_bridge: bool
 ) -> bool:
