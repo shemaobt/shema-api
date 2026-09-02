@@ -376,7 +376,7 @@ async def _voiced_after_validation(
                 movements=movements,
             )
 
-        redraft_note = _redraft_note(issues, session_language, ceiling=broken)
+        redraft_note = _redraft_note(issues, language_code, ceiling=broken)
     else:
         logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
 
@@ -575,9 +575,25 @@ async def run_verdict_turn(
     )
 
 
+_OVER_BUDGET_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior era longa demais para uma sala oral. Refaça com no máximo "
+        "{sentences} frases curtas e {words} palavras."
+    ),
+    "en": (
+        "The previous response was too long for an oral room. Redo it with at most "
+        "{sentences} short sentences and {words} words."
+    ),
+    "es": (
+        "La respuesta anterior era demasiado larga para una sala oral. Rehazla con un "
+        "máximo de {sentences} frases cortas y {words} palabras."
+    ),
+}
+
+
 def _redraft_note(
     issues: list[dict[str, Any]],
-    session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     ceiling: SpeechBudget | None = None,
 ) -> str:
     """What to tell a Guide whose draft did not pass, written in the session's own language.
@@ -588,10 +604,9 @@ def _redraft_note(
     """
     if any(issue.get("problem") == "over_speech_budget" for issue in issues):
         held = ceiling or TURN_BUDGET
-        return (
-            "A resposta anterior era longa demais para uma sala oral. Refaça com no "
-            f"máximo {held.sentences} frases curtas e {held.words} palavras."
-        )
+        template = _OVER_BUDGET_NOTE.get(language_code, _OVER_BUDGET_NOTE[FLOOR])
+        return template.format(sentences=held.sentences, words=held.words)
+    session_language = LANGUAGE_NAMES.get(language_code, LANGUAGE_NAMES[FLOOR])
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
         return (
             "A resposta anterior saiu do idioma da sessão e por isso não pôde ser "
