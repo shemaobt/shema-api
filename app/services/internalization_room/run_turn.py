@@ -376,7 +376,7 @@ async def _voiced_after_validation(
                 movements=movements,
             )
 
-        redraft_note = _redraft_note(issues, session_language, ceiling=broken)
+        redraft_note = _redraft_note(issues, language_code, ceiling=broken)
     else:
         logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
 
@@ -575,9 +575,70 @@ async def run_verdict_turn(
     )
 
 
+_OVER_BUDGET_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior era longa demais para uma sala oral. Refaça com no máximo "
+        "{sentences} frases curtas e {words} palavras."
+    ),
+    "en": (
+        "The previous response was too long for an oral room. Redo it with at most "
+        "{sentences} short sentences and {words} words."
+    ),
+    "es": (
+        "La respuesta anterior era demasiado larga para una sala oral. Rehazla con un "
+        "máximo de {sentences} frases cortas y {words} palabras."
+    ),
+}
+
+
+_OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior saiu do idioma da sessão e por isso não pôde ser falada. "
+        "Refaça o turno inteiro em {language}, sem nenhuma frase em outro idioma. O "
+        "mapa está em inglês: carregue o sentido dele para o idioma da sessão em vez de "
+        "citá-lo."
+    ),
+    "en": (
+        "The previous response left the session's language and could not be spoken. "
+        "Redo the whole turn in {language}, with no sentence in another language. The "
+        "map is in English: carry its meaning into the session's language instead of "
+        "quoting it."
+    ),
+    "es": (
+        "La respuesta anterior salió del idioma de la sesión y por eso no pudo hablarse. "
+        "Rehaz el turno completo en {language}, sin ninguna frase en otro idioma. El "
+        "mapa está en inglés: lleva su sentido al idioma de la sesión en lugar de "
+        "citarlo."
+    ),
+}
+
+_LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "es": "español", "pt": "português"}
+
+_NO_ISSUES_NOTE: dict[str, str] = {
+    "pt": "A resposta anterior não passou na conferência. Refaça, dizendo menos.",
+    "en": "The previous response did not pass review. Redo it, saying less.",
+    "es": "La respuesta anterior no pasó la revisión. Rehazla, diciendo menos.",
+}
+
+_DESCRIBED_ISSUES_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior foi rejeitada na conferência contra o mapa. Problemas "
+        "apontados — {described}. Refaça o turno sem essas afirmações, dizendo menos."
+    ),
+    "en": (
+        "The previous response was rejected against the map. Issues raised — "
+        "{described}. Redo the turn without those claims, saying less."
+    ),
+    "es": (
+        "La respuesta anterior fue rechazada frente al mapa. Problemas señalados — "
+        "{described}. Rehaz el turno sin esas afirmaciones, diciendo menos."
+    ),
+}
+
+
 def _redraft_note(
     issues: list[dict[str, Any]],
-    session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     ceiling: SpeechBudget | None = None,
 ) -> str:
     """What to tell a Guide whose draft did not pass, written in the session's own language.
@@ -588,25 +649,17 @@ def _redraft_note(
     """
     if any(issue.get("problem") == "over_speech_budget" for issue in issues):
         held = ceiling or TURN_BUDGET
-        return (
-            "A resposta anterior era longa demais para uma sala oral. Refaça com no "
-            f"máximo {held.sentences} frases curtas e {held.words} palavras."
-        )
+        template = _OVER_BUDGET_NOTE.get(language_code, _OVER_BUDGET_NOTE[FLOOR])
+        return template.format(sentences=held.sentences, words=held.words)
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
-        return (
-            "A resposta anterior saiu do idioma da sessão e por isso não pôde ser "
-            f"falada. Refaça o turno inteiro em {session_language}, sem nenhuma frase "
-            "em outro idioma. O mapa está em inglês: carregue o sentido dele para o "
-            "idioma da sessão em vez de citá-lo."
-        )
+        template = _OFF_BRIDGE_LANGUAGE_NOTE.get(language_code, _OFF_BRIDGE_LANGUAGE_NOTE[FLOOR])
+        autonym = _LANGUAGE_AUTONYMS.get(language_code, _LANGUAGE_AUTONYMS[FLOOR])
+        return template.format(language=autonym)
     if not issues:
-        return "A resposta anterior não passou na conferência. Refaça, dizendo menos."
+        return _NO_ISSUES_NOTE.get(language_code, _NO_ISSUES_NOTE[FLOOR])
     described = "; ".join(
         f"{issue.get('problem', 'problema')}: {issue.get('claim', '')}".strip(": ")
         for issue in issues[:3]
     )
-    return (
-        "A resposta anterior foi rejeitada na conferência contra o mapa. "
-        f"Problemas apontados — {described}. "
-        "Refaça o turno sem essas afirmações, dizendo menos."
-    )
+    template = _DESCRIBED_ISSUES_NOTE.get(language_code, _DESCRIBED_ISSUES_NOTE[FLOOR])
+    return template.format(described=described)
