@@ -1,0 +1,12 @@
+{% extends "_base.html.jinja" %}
+{% block content %}
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">Hi{% if greeting %} {{ greeting }}{% endif %},</p>
+  <p style="color: #333; font-size: 16px; line-height: 1.5;">{% if inviter_name %}{{ inviter_name }} has invited you{% else %}You have been invited{% endif %} to join {{ app_name }}. Click the button below to accept the invitation and set up your access:</p>
+  <div style="text-align: center; margin: 32px 0;">
+    <a href="{{ invite_url }}" style="background-color: #c2410c; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: 600; display: inline-block;">Accept Invitation</a>
+  </div>
+  <p style="color: #666; font-size: 14px; line-height: 1.5;">Or copy and paste this link into your browser:<br/>
+    <a href="{{ invite_url }}" style="color: #c2410c; word-break: break-all;">{{ invite_url }}</a>
+  </p>
+  <p style="color: #666; font-size: 14px; line-height: 1.5;">If you were not expecting this invitation, you can safely ignore this email.</p>
+{% endblock %}

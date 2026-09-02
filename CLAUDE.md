@@ -110,6 +110,14 @@ tripod-backend/
   - **Local (docker-compose):** `tripod_backend_jwt_secret`. The database is the local `db`
     container, not a secret — Compose never points at Neon.
   - **Production (Cloud Run):** `tripod_backend_neon_database_url`, `tripod_backend_jwt_secret`
+  - **E-mail (Cloud Run):** `tripod_backend_email_provider` (`log`, `resend` or
+    `microsoft_graph`) and `tripod_backend_resend_api_key`. Compose reads both too, but
+    treats them as optional: when unreadable, the provider falls back to `log` and no
+    e-mail leaves a local machine. The sender is **not** a secret: `EMAIL_FROM_ADDRESS`
+    is unset everywhere and defaults to `noreply@shemaywam.com`, the address the code has
+    always sent from. It must stay a verified sender on the Resend domain — pointing it
+    at another address is an administrative change on the provider first, and a rejected
+    sender surfaces only as a log line, never as an error to the caller.
 - Production dumps live in `gs://tripod-db-dumps`, readable only by explicitly named
   accounts. The `db-seed` container downloads one to `.local-dump/` before `db` starts, and
   a from-scratch database seeds itself from it — no manual step. `restore_local_db.sh`
