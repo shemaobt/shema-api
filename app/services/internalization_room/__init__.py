@@ -4,7 +4,6 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     closing_block,
     findings_block,
-    points_at_a_stretch,
     with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
@@ -76,7 +75,6 @@ __all__ = [
     "get_session_for_facilitator",
     "mark_needs_person",
     "parent_of",
-    "points_at_a_stretch",
     "retired_segments",
     "run_comprehension_turn",
     "run_panorama_turn",

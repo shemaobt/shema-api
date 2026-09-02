@@ -335,10 +335,9 @@ def closing_block(finding: Finding | None) -> str:
     address. A prompt that branched would be asking a model not to promise a choice the screen
     will not offer; injecting one closing means the wrong instruction is never in front of it.
 
-    The deciding fact is not whether the finding has an address — it is whether a boundary
-    question was asked. `unclear` names a stretch and still asks only for that piece again, and
-    the screen exists to answer *"is it in your recording, or did it come in with the telling?"*.
-    Where that question is not put, there is no choice to hand over.
+    What counts as a stretch to hand over is `points_at_a_stretch`, and it is not written out
+    a second time here: the room's request for the whole stretch turns on the same answer, and
+    two copies of it would be two things free to disagree about the same screen.
 
     Returned with `{session_language}` still in it, for whoever fills the template to
     substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here
@@ -373,7 +372,11 @@ def points_at_a_stretch(finding: Finding | None) -> bool:
 
 
 def with_the_whole_stretch_asked_for(
-    speech: str, finding: Finding | None, language_code: str = FLOOR
+    speech: str,
+    finding: Finding | None,
+    language_code: str = FLOOR,
+    *,
+    used_fail_safe: bool = False,
 ) -> str:
     """The verdict, and after it the request to tell that whole stretch again.
 
@@ -391,8 +394,13 @@ def with_the_whole_stretch_asked_for(
     Said only where the screen actually offers the two microphones, which is what
     `points_at_a_stretch` decides — nothing is replaced anywhere else, and a correction
     instruction out of turn confuses more than it helps.
+
+    A turn that fell back to a fail-safe carries nothing after it, and neither does one with
+    nothing to carry. A fail-safe is played from inside the app by the name it is known by, so
+    a sentence appended to one would reach the transcript and never the room; and a request
+    with no verdict in front of it is an instruction the team was given no reason for.
     """
-    if not points_at_a_stretch(finding):
+    if used_fail_safe or not speech or not points_at_a_stretch(finding):
         return speech
     asked = first(FailSafe.STRETCH_TO_CORRECT, language_code)
-    return f"{speech} {asked}".strip() if asked else speech
+    return f"{speech} {asked}" if asked else speech

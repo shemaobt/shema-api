@@ -28,7 +28,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import scripts.render_fixed_voice_lines as render
-from app.db.models.internalization_room import IRSegment, IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRSession, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, first, localized
 from app.services.internalization_room.languages import ROOM_LANGUAGES
@@ -299,6 +299,13 @@ async def _re_record_the_native(db: AsyncSession, session_id: str, *, take_id: s
     )
 
 
+def _last_guide_turn(session: IRSession) -> str:
+    """The last thing the record says the room said, which is what "say it again" replays."""
+    said = [turn["text"] for turn in (session.messages or []) if turn["role"] == "guide"]
+    assert said, "a sessão não guardou nenhum turno do Facilitador"
+    return str(said[-1])
+
+
 def _asked_for_the_whole_stretch(said: str, language: str = LANGUAGE) -> bool:
     """Whether the room asked, in that language, for the whole stretch to be told again.
 
@@ -354,6 +361,11 @@ def test_no_other_family_changed(language: str) -> None:
 
     The table is written out rather than derived. Derived from the same files it is checking,
     it would move with them and never go red — which is the whole of what it is for.
+
+    It also guards something the supplements make easy to get wrong. Only `###` starts a
+    block, so the prose introducing a family is parsed as the body of the block *above* it,
+    and one paragraph written as `- "…"` would become a line the room can speak, in whichever
+    family happens to sit before it. That shows up here as a count that moved.
     """
     written = FAMILIES.get(language)
     assert written is not None, (
@@ -496,3 +508,58 @@ async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
 
     assert answered.json()["finding_segment_id"], "o achado aponta um trecho"
     assert not _asked_for_the_whole_stretch(room.said[-1])
+
+
+@pytest.mark.asyncio
+async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fail-safe is played from inside the app, by the name it is known by.
+
+    Nothing is synthesized on that path, so a sentence appended to one would never be heard —
+    and would still land in the record, which is where "say it again" reads from. The team
+    would hear the canned line alone while the session remembers being asked for the whole
+    stretch. The finding still names its stretch here, which is what makes the case worth
+    having: every other reason to withhold the request is absent.
+    """
+    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
+
+    async def refuses_to_draft(**_: Any) -> str:
+        raise RuntimeError("o modelo caiu no meio do veredito")
+
+    monkeypatch.setattr(turn_module, "call_agent", refuses_to_draft)
+    analyst.found("missing", chunk=1)
+    session_id, _ = await _two_stretches_told(client)
+
+    body = (await _finish(client, session_id)).json()
+
+    assert body["used_fail_safe"], "este caso só vale se o turno tiver mesmo degradado"
+    assert body["finding_segment_id"], "e o achado continua apontando um trecho"
+    assert room.said == [], "nada foi sintetizado: a fala vem do pacote do app"
+    assert not _asked_for_the_whole_stretch(
+        _last_guide_turn(await get_session(db_session, session_id))
+    )
+
+
+@pytest.mark.asyncio
+async def test_what_the_room_said_is_what_the_session_remembers(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, room: Room
+) -> None:
+    """The team can ask to hear the last thing the room said, and it is read from the record.
+
+    A record holding the verdict without the request would replay a shorter clip than the one
+    the team was played, and the sentence this exists to add is exactly the part that would
+    go missing.
+    """
+    analyst.found("missing", chunk=1)
+    session_id, _ = await _two_stretches_told(client)
+
+    await _finish(client, session_id)
+
+    session = await get_session(db_session, session_id)
+
+    assert _last_guide_turn(session) == room.said[-1]

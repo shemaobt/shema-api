@@ -188,9 +188,9 @@ async def finish(
     everything the team had told there. `with_the_whole_stretch_asked_for` is where that is
     decided.
 
-    A verdict that degraded to a fail-safe carries nothing after it. Those are played from
-    inside the app by name, so nothing said here would be heard — a sentence appended to one
-    would reach the transcript and never the room.
+    A verdict that degraded to a fail-safe carries nothing after it, which the same function
+    decides: those are played from inside the app by name, so a sentence appended to one would
+    reach the transcript and never the room.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
@@ -270,15 +270,15 @@ async def finish(
         settings=get_settings(),
     )
 
-    played_from_the_app = bool(outcome.fixed_line)
-    said = (
-        outcome.speech
-        if played_from_the_app
-        else room.with_the_whole_stretch_asked_for(outcome.speech, finding, session.language)
+    said = room.with_the_whole_stretch_asked_for(
+        outcome.speech,
+        finding,
+        session.language,
+        used_fail_safe=outcome.used_fail_safe,
     )
     voiced = (
         None
-        if played_from_the_app
+        if outcome.fixed_line
         else (await room.synthesize_facilitator_speech(said, language=session.language))[0]
     )
     session = await room.append_exchange(db, session, team_utterance="", guide_response=said)
