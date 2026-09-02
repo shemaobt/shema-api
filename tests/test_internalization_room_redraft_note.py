@@ -9,7 +9,14 @@ Guide never opted into.
 import pytest
 
 from app.services.internalization_room.languages import ROOM_LANGUAGES
-from app.services.internalization_room.run_turn import TURN_BUDGET, _redraft_note
+from app.services.internalization_room.run_turn import (
+    _DESCRIBED_ISSUES_NOTE,
+    _NO_ISSUES_NOTE,
+    _OFF_BRIDGE_LANGUAGE_NOTE,
+    _OVER_BUDGET_NOTE,
+    TURN_BUDGET,
+    _redraft_note,
+)
 
 _OVER_BUDGET_ISSUES = [{"problem": "over_speech_budget"}]
 
@@ -113,3 +120,25 @@ def test_the_described_issues_note_is_written_in_the_sessions_language(language_
         described="imported_knowledge: Rute era moabita"
     )
     assert note == expected
+
+
+_REDRAFT_NOTE_DICTS = {
+    "over_speech_budget": _OVER_BUDGET_NOTE,
+    "off_bridge_language": _OFF_BRIDGE_LANGUAGE_NOTE,
+    "no_issues": _NO_ISSUES_NOTE,
+    "described_issues": _DESCRIBED_ISSUES_NOTE,
+}
+
+
+@pytest.mark.parametrize("kind", _REDRAFT_NOTE_DICTS)
+@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
+def test_every_redraft_note_covers_every_language_the_room_claims_to_speak(
+    language_code: str, kind: str
+) -> None:
+    """Um idioma reivindicado e não escrito faria a sala cair pro floor sem avisar ninguém."""
+    written = _REDRAFT_NOTE_DICTS[kind].get(language_code)
+
+    assert written, (
+        f"a sala diz que fala {language_code!r} e a nota de redraft {kind!r} não tem "
+        "texto escrito nesse idioma"
+    )
