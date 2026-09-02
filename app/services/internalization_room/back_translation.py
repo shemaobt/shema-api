@@ -40,7 +40,9 @@ class Finding(BaseModel):
     #: Which stretch the finding lands on, by the segment's own address. The team fixes one
     #: stretch of the recording, not the whole passage, so a finding that cannot name its
     #: stretch cannot be acted on. `None` when the analyst could not attribute it — the room
-    #: then falls back to the whole clip, which is what it always did.
+    #: then falls back to the whole clip, which is what it always did. Also `None` for a
+    #: missing element the analyst places after everything the team told: there is no
+    #: stretch to point at, so the room sends the team on to keep recording instead.
     #:
     #: It was the stretch's position in a list, which named nothing the moment the list
     #: changed. The analyst still answers with a number, because asking a model to echo an
@@ -303,7 +305,14 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             Finding(
                 kind=kind,
                 note=note[:1000],
-                segment_id=_segment_pointed_at(entry.get("chunk"), segments),
+                segment_id=_segment_pointed_at(
+                    entry.get("chunk"),
+                    segments,
+                    kind=kind,
+                    where=entry.get("where"),
+                    raw_reply=raw,
+                    session=_session_of(segments),
+                ),
             )
         )
 
@@ -343,7 +352,37 @@ def _log_accepted_reading(
     logger.info("BT %s reading accepted: %s", reading, raw, extra=extra)
 
 
-def _segment_pointed_at(raw: Any, segments: list[IRSegment]) -> str | None:
+_VALID_WHERE = frozenset({"before", "inside", "after"})
+
+
+def _session_of(segments: list[IRSegment]) -> str:
+    return segments[0].session_id if segments else "?"
+
+
+def _refused_where(where: Any, raw_reply: str, session: str) -> None:
+    """One `where` the analyst got wrong, logged with the reply that carried it.
+
+    Same shape as `_refused` on the sibling ENG-719 fix (not yet on this branch): the value
+    that failed travels with the whole reply, because a truncated one is exactly what could
+    not be diagnosed, and the session ties the line to the request that produced it.
+    """
+    logger.warning(
+        "BT analyst returned an unrecognised 'where' (%r) for session %s: %s",
+        where,
+        session,
+        raw_reply,
+    )
+
+
+def _segment_pointed_at(
+    raw: Any,
+    segments: list[IRSegment],
+    *,
+    kind: FindingKind,
+    where: Any = None,
+    raw_reply: str = "",
+    session: str = "?",
+) -> str | None:
     """Which stretch the finding lands on, by address, or None when it names none.
 
     The analyst answers with the position it was given, and the position is turned into an
@@ -351,6 +390,19 @@ def _segment_pointed_at(raw: Any, segments: list[IRSegment]) -> str | None:
     finding the team cannot locate sends them back to the whole recording, so a pointer that
     is not a number, or names a stretch that is not in this reading, degrades to that rather
     than to a stretch that does not exist.
+
+    For a `missing` finding the analyst also names `where` the missing content sits relative
+    to the chunk it gave: `"after"` on the *last* chunk means nothing is missing inside any
+    chunk — it is missing past all of them, with no chunk to point at — so this returns
+    `None`, exactly as a `null` chunk always has. `"after"` short of the last chunk moves the
+    pointer forward one, because a thing missing after chunk k is missing at the start of
+    chunk k+1. `"before"` and `"inside"` both land on the named chunk itself, which is also
+    where an absent or unrecognised `where` falls back to — the table this resolves is the
+    product owner's, not a guess the parser is free to make on an unfamiliar value; an
+    unrecognised one is logged with what it was rather than silently swallowed.
+
+    `where` is read only when `kind` is `missing`: every other kind is a statement about the
+    chunk itself, so a `where` alongside one is ignored without comment.
     """
     if isinstance(raw, bool) or not isinstance(raw, int | str):
         return None
@@ -360,6 +412,13 @@ def _segment_pointed_at(raw: Any, segments: list[IRSegment]) -> str | None:
         return None
     if position < 1 or position > len(segments):
         return None
+
+    if kind is FindingKind.MISSING and where is not None:
+        if not isinstance(where, str) or where not in _VALID_WHERE:
+            _refused_where(where, raw_reply, session)
+        elif where == "after":
+            return None if position == len(segments) else segments[position].id
+
     return segments[position - 1].id
 
 

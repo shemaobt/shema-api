@@ -63,7 +63,7 @@ Return **only** this JSON (no prose, no fences):
 {
   "evidence_sufficient": true,
   "findings": [
-    { "kind": "missing" | "addition" | "meaning_change" | "wrong_relation" | "reordered_event" | "preservation_violation" | "insufficient_evidence" | "unclear", "chunk": 3, "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
+    { "kind": "missing" | "addition" | "meaning_change" | "wrong_relation" | "reordered_event" | "preservation_violation" | "insufficient_evidence" | "unclear", "chunk": 3, "where": "before" | "inside" | "after", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
   ]
 }
 ```
@@ -73,12 +73,17 @@ differences across this scope. When you set it to `false`, include at least one
 `"insufficient_evidence"` or `"unclear"` finding naming the limit; when `true`, never include
 `"insufficient_evidence"`.
 
-`"chunk"` is the chunk number the finding lands on — for a missing element, the chunk where it
-should have been told. Use `null` when it cannot be placed in one. A missing element that belongs
-**after everything the team told** cannot be placed in a chunk — that is the one case for `null`.
-A missing element that belongs between two things they did tell goes in the chunk where it should
-have been said, even when that chunk is otherwise fine — and one that belongs before the first
-thing they told goes in the first chunk.
+`"chunk"` is the chunk number the finding lands on. For every kind but `missing`, that is all —
+omit `"where"`.
+
+For a **missing** element, also give `"where"` to say where the missing content sits *relative
+to* the chunk you name in `"chunk"`:
+- `"inside"`: it belongs inside that chunk itself, which is otherwise fine.
+- `"before"`: it belongs right before that chunk. A missing element that belongs before the
+  first thing the team told is `"before"` on chunk 1.
+- `"after"`: it belongs right after that chunk. A missing element that belongs **after
+  everything the team told** is `"after"` on the *last* chunk — never `null`, and never a
+  chunk number past the last one.
 
 A complete, faithful telling-back returns `{ "evidence_sufficient": true, "findings": [] }`.
 

@@ -1176,28 +1176,28 @@ async def test_the_validator_is_handed_the_closing_that_was_ordered(
     assert retired not in agent.briefs[0]
 
 
-def test_the_analyst_is_told_which_missing_element_has_no_chunk() -> None:
-    """A `null` chunk now sends the team on to record what is still missing, keeping all they
-    recorded — right only for a hole after everything they told. A hole between two things
-    they did tell belongs in the chunk where it should have been said, even when that chunk is
-    otherwise fine, so that the screen offers to record that part again instead of the ending.
+def test_the_analyst_is_told_where_a_missing_element_sits() -> None:
+    """`where` is what tells the analyst never to fall back to `null` for a missing element.
 
     The analyst learns the difference from its prompt and nowhere else, so the paragraph that
-    binds `"chunk"` to `null` has to draw every border: the one case that is `null`, after
-    everything told; the case between two things told, which is not; and the case before the
-    first thing told, which goes in the first chunk rather than falling to `null` for want of
-    a chunk in front of it.
+    introduces `"where"` has to draw every border: after everything told is `"after"` on the
+    *last* chunk, never `null`; before the first thing told is `"before"` on chunk 1, not a
+    chunk in front of the first one; and both are named beside the instruction never to answer
+    `null` at all — the case ENG-720's own `null` paragraph used to carry.
     """
-    binding_null = [
-        block for block in ANALYST.split("\n\n") if '`"chunk"`' in block and "`null`" in block
+    where_block = [
+        block for block in ANALYST.split("\n\n") if '`"where"`' in block and "missing" in block
     ]
 
-    assert binding_null, "nenhum parágrafo liga o campo chunk a null"
-    assert any("after everything" in block and "between" in block for block in binding_null), (
-        "o parágrafo do null não separa a falta depois de tudo da falta entre dois trechos"
+    assert where_block, "nenhum parágrafo liga o campo where ao elemento ausente"
+    assert any("never" in block and "`null`" in block for block in where_block), (
+        "o parágrafo do where não proíbe null para um elemento ausente"
     )
-    assert any("before the first" in block and "first chunk" in block for block in binding_null), (
-        "o parágrafo do null não manda a falta antes da primeira coisa contada para o chunk 1"
+    assert any("last" in block and "everything" in block for block in where_block), (
+        "o parágrafo do where não liga o último chunk à falta depois de tudo"
+    )
+    assert any("first thing" in block and "chunk 1" in block for block in where_block), (
+        "o parágrafo do where não liga o chunk 1 à falta antes de tudo"
     )
 
 
