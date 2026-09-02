@@ -15,16 +15,15 @@ The layout those routes land in, and which issue owns each of them, is
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-
+from app.api.resource_requests.allocations import router as allocations_router
+from app.api.resource_requests.attachments import router as attachments_router
 from app.api.resource_requests.board import router as board_router
 from app.api.resource_requests.evaluations import router as evaluations_router
 from app.api.resource_requests.fund_assignment import router as fund_assignment_router
-from app.api.resource_requests.allocations import router as allocations_router
 from app.api.resource_requests.funds import router as funds_router
-from app.api.resource_requests.attachments import router as attachments_router
 from app.api.resource_requests.history import router as history_router
 from app.api.resource_requests.requests import router as requests_router
+from fastapi import APIRouter
 
 router = APIRouter()
 router.include_router(requests_router)
