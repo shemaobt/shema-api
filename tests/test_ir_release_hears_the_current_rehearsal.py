@@ -37,7 +37,7 @@ from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     build_internalization_release,
 )
-from app.services.internalization_room.segments import capture_segment
+from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
     begin_back_translation_again,
     create_session,
@@ -234,6 +234,37 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     await begin_back_translation_again(db_session, session)
     await _tell_back_about(db_session, session, again)
     await _finish(client, session.id)
+
+    assert await _blockers(db_session, session) == [PLAYBACK_BLOCKER]
+
+
+@pytest.mark.asyncio
+async def test_a_report_does_not_survive_the_audio_under_it_being_replaced(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Case 2, reaching it by the other road, and the one the fix is named after.
+
+    The team keeps the telling-back and re-records the mother-tongue audio under one stretch.
+    Nothing clears the report — it is still there, still complete — but the stretch is now a
+    slice of a recording that did not exist when the team pressed play. What it says they
+    heard and what the package carries have come apart, which is the comparison this gate
+    exists to make; a case where the report is merely absent never reaches it.
+    """
+    session = await _rehearsed_and_told_back(db_session)
+    await _finish(
+        client, session.id, report={"played_ranges": [[0, CLIP_MS]], "clip_duration_ms": CLIP_MS}
+    )
+
+    again = await _re_record_the_rehearsal(db_session, session)
+    standing = (await final_segments(db_session, session.id))[0]
+    await capture_segment(
+        db_session,
+        session,
+        take_id=again.id,
+        starts_ms=0,
+        ends_ms=CLIP_MS,
+        replaces=standing,
+    )
 
     assert await _blockers(db_session, session) == [PLAYBACK_BLOCKER]
 
