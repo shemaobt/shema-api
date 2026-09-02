@@ -71,3 +71,17 @@ def test_the_off_bridge_note_names_the_session_language_in_itself(language_code:
 
     expected = _EXPECTED_OFF_BRIDGE[language_code].format(language=_AUTONYM[language_code])
     assert note == expected
+
+
+_EXPECTED_NO_ISSUES = {
+    "pt": "A resposta anterior não passou na conferência. Refaça, dizendo menos.",
+    "en": "The previous response did not pass review. Redo it, saying less.",
+    "es": "La respuesta anterior no pasó la revisión. Rehazla, diciendo menos.",
+}
+
+
+@pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
+def test_the_no_issues_note_is_written_in_the_sessions_language(language_code: str) -> None:
+    note = _redraft_note([], language_code)
+
+    assert note == _EXPECTED_NO_ISSUES[language_code]

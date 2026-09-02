@@ -614,6 +614,12 @@ _OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
 
 _LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "es": "español", "pt": "português"}
 
+_NO_ISSUES_NOTE: dict[str, str] = {
+    "pt": "A resposta anterior não passou na conferência. Refaça, dizendo menos.",
+    "en": "The previous response did not pass review. Redo it, saying less.",
+    "es": "La respuesta anterior no pasó la revisión. Rehazla, diciendo menos.",
+}
+
 
 def _redraft_note(
     issues: list[dict[str, Any]],
@@ -635,7 +641,7 @@ def _redraft_note(
         autonym = _LANGUAGE_AUTONYMS.get(language_code, _LANGUAGE_AUTONYMS[FLOOR])
         return template.format(language=autonym)
     if not issues:
-        return "A resposta anterior não passou na conferência. Refaça, dizendo menos."
+        return _NO_ISSUES_NOTE.get(language_code, _NO_ISSUES_NOTE[FLOOR])
     described = "; ".join(
         f"{issue.get('problem', 'problema')}: {issue.get('claim', '')}".strip(": ")
         for issue in issues[:3]
