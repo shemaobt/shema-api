@@ -13,6 +13,7 @@ from app.models.internalization_room import (
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.back_translation import VoicedVerdict
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -182,6 +183,19 @@ async def finish(
     model — and this is not that: the gate fires with the server answering normally, before
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
+
+    Pressed again over the same stretches, the room serves the verdict it already reached and
+    consults nothing. The press is the same question, and answering it afresh cost a validator
+    and a spoken synthesis every time and wrote the room into the conversation as having spoken
+    twice — a false record of the room in front of the team, which outlives the bill. The reply
+    is byte-for-byte the first one: the app is not told which press it made, because a second
+    shape would be a contract change to say something no caller asked about.
+
+    What counts as the same question is `already_analysed`, the record the analyst was already
+    guarded by — one signal, so the four steps of a press can never disagree about whether the
+    team told back anything new. A press that reached the analyst and then failed saves nothing
+    at all, so the press after it does the whole turn rather than serving a verdict the team
+    never heard.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
@@ -232,6 +246,19 @@ async def finish(
             findings_remaining=0,
         )
 
+    if state.already_analysed(told) and state.verdict is not None:
+        finding = state.current_finding
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
+            fixed_line=state.verdict.fixed_line,
+            checked=state.checked,
+            finding_kind=finding.kind if finding else None,
+            finding_segment_id=finding.segment_id if finding else None,
+            findings_remaining=len(state.findings),
+            used_fail_safe=state.verdict.used_fail_safe,
+        )
+
     if not state.already_analysed(told):
         read = await room.analyse_telling_back(
             segments=told,
@@ -275,6 +302,11 @@ async def finish(
     )
     session = await room.append_exchange(
         db, session, team_utterance="", guide_response=outcome.speech
+    )
+    state.verdict = VoicedVerdict(
+        clip_key=voiced.key if voiced else "",
+        fixed_line=outcome.fixed_line,
+        used_fail_safe=outcome.used_fail_safe,
     )
     await room.save_back_translation(db, session, state)
 

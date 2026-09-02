@@ -493,7 +493,17 @@ async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     """
     session = await _ready_session(db_session)
     whole = (await final_segments(db_session, session.id))[0]
-    await divide_segment(db_session, session, whole, at_ms=30000)
+    for half in await divide_segment(db_session, session, whole, at_ms=30000):
+        await capture_segment(
+            db_session,
+            session,
+            take_id=half.take_id,
+            starts_ms=half.starts_ms,
+            ends_ms=half.ends_ms,
+            bridge_take_id="retro-dividido",
+            transcript="o que a equipe contou sobre esta metade",
+            replaces=half,
+        )
 
     artifact = await build_internalization_release(db_session, session)
 

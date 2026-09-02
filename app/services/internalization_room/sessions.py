@@ -33,6 +33,7 @@ from app.services.internalization_room.coverage import (
 )
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.languages import floor, normalize
+from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
@@ -99,6 +100,14 @@ async def create_session(
     and refusing a session without one would take every room in the field offline to gain a
     column value. Work with no project has no history to read, so it starts at the beginning.
 
+    A request for the panorama is a request and not an instruction. The app asks for it at
+    every launch, and a team that already heard it for the passage they stand on is answered
+    with that passage instead, opened as any other session and not as one that follows a
+    panorama — no panorama played, so the greeting must not say one did. Whether they heard
+    it is `heard_panorama`'s to say and is derived, never stored. A team standing on no
+    passage — the walkable book closed — is given the panorama as before: the decision puts
+    the team's passage in its place, and there is none to put there.
+
     Raises ``ConflictError`` when the team has closed every passage that opens and none was
     named. That is the end of the book, and it is a defined state rather than a wrap-around:
     the request is well formed and the team exists, so 409 rather than 400 or 404, and naming
@@ -112,6 +121,12 @@ async def create_session(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
+    if is_panorama(pericope):
+        standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
+        if standing is not None and await heard_panorama(
+            db, project_id=project_id, pericope=standing
+        ):
+            pericope, after_panorama = standing, False
     panorama = is_panorama(pericope)
     if not panorama:
         require_walkable(load_map(pericope))
