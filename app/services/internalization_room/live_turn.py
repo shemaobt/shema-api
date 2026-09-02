@@ -82,7 +82,11 @@ from app.services.internalization_room.comprehension.stt_recovery import (
     resolve_stt_recovery_choice,
     stt_recovery_reduce_burden_line,
 )
-from app.services.internalization_room.coverage import CoverageStatus, floor_met
+from app.services.internalization_room.coverage import (
+    CoverageStatus,
+    engaged_scene_ids,
+    floor_met,
+)
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -403,12 +407,14 @@ async def run_comprehension_turn(
     projected_ledger = [*state.ledger, *events]
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
     scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
+    engaged_scenes = engaged_scene_ids(session.coverage_state or {}, pericope)
 
     comprehension_status = render_comprehension_status(
         checkpoints=checkpoints,
         scene_ids=scene_ids,
         ledger=projected_ledger,
         practiced_scene_ids=projected_practice,
+        engaged_scene_ids=engaged_scenes,
         current_scene=scene_pointer,
     )
 
@@ -438,6 +444,7 @@ async def run_comprehension_turn(
             scene_ids=scene_ids,
             ledger=projected_ledger,
             practiced_scene_ids=projected_practice,
+            engaged_scene_ids=engaged_scenes,
         ).evaluation.outcome.value
         != "needs_more_work"
     )

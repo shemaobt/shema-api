@@ -574,10 +574,15 @@ async def test_a_turn_without_a_prior_probe_mints_no_evidence(
     assert comprehension_of(session).ledger == []
 
 
-async def _session_at_the_recording_handoff(db_session: AsyncSession) -> IRSession:
+async def _session_at_the_recording_handoff(
+    db_session: AsyncSession, *, practice_reported: bool = True
+) -> IRSession:
     """Everything the passage asks for is done except the recording: the coverage floor is
     met and every checkpoint is demonstrated, so the app is about to offer its own
-    question."""
+    question.
+
+    `practice_reported=False` is the same room with nobody having said the closing word:
+    every bead is engaged while the practice record stays empty."""
     session = await create_session(
         db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
     )
@@ -595,7 +600,7 @@ async def _session_at_the_recording_handoff(db_session: AsyncSession) -> IRSessi
                 )
                 for index, checkpoint in enumerate(checkpoints_for(P))
             ],
-            practiced_scene_ids=scene_ids_for(P),
+            practiced_scene_ids=scene_ids_for(P) if practice_reported else [],
         ),
     )
     session = await apply_coverage(
@@ -719,3 +724,20 @@ async def test_a_paused_handoff_does_not_count_speech_the_room_could_not_use(
         assert turn.outcome.speech != rehearsal_consent_question("pt")
 
     assert comprehension_of(session).recording_handoff_paused_turns == 0
+
+
+@pytest.mark.asyncio
+async def test_a_scene_the_team_worked_to_the_last_bead_needs_no_closing_word(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A necklace fully engaged is the practice, whether or not anyone announced it.
+
+    The report was only ever recorded when the team said the closing word out loud, so a
+    room that told every scene in its own language and simply moved on stayed one scene
+    short forever: the readiness gate kept the passage in rehearsal and the room answered
+    the team's own "we are finished" with yet another invitation to retell."""
+    session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
+
+    assert await _say(db_session, session, "acho que já falamos de tudo") == (
+        rehearsal_consent_question("pt")
+    )

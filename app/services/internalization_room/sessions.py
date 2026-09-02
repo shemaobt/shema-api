@@ -26,6 +26,7 @@ from app.services.internalization_room.comprehension.session_readiness import (
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import (
     PANORAMA_PREFIX,
+    engaged_scene_ids,
     floor_met,
     furthest,
     initial_state,
@@ -286,6 +287,7 @@ def semantics_ready(session: IRSession) -> bool:
         scene_ids=scene_ids_for(session.pericope),
         ledger=state.ledger,
         practiced_scene_ids=state.practiced_scene_ids,
+        engaged_scene_ids=engaged_scene_ids(session.coverage_state or {}, session.pericope),
     )
     return readiness.evaluation.outcome.value != "needs_more_work"
 
