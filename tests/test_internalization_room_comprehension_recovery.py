@@ -631,6 +631,17 @@ def test_a_told_scene_may_open_a_clause_on_the_clitic() -> None:
         assert bridge_language_retelling_completes_practice(invitation, telling, True), telling
 
 
+def test_a_hedge_over_one_long_breath_still_holds_the_telling_back() -> None:
+    """Counting a long single clause as a scene relieves the clitic, not the hedge.
+
+    "Acho que a família se mudou pra Moabe por causa da fome e ficou lá" is one breath of
+    doubt, however many words it takes; the hedge keeps refusing it, while the clitic in
+    the same clause no longer does.
+    """
+    hedged = "Acho que a família se mudou pra Moabe por causa da fome e ficou lá um tempo"
+    assert not bridge_language_retelling_completes_practice(_INVITATION_PT, hedged, True)
+
+
 def test_a_told_reply_in_the_voices_own_words_is_not_a_telling() -> None:
     """Relaxing the hedge for a told reply must not relax the room hearing its words back.
 

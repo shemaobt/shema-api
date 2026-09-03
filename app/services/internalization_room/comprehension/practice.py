@@ -303,30 +303,28 @@ def _the_telling_holds_back(team_utterance: str) -> bool:
     for. A hedge dropped into the middle of a told scene is a person telling a story they
     half remember, which is the ordinary way a scene comes back — so it only refuses a
     reply that has no telling around it. Two clauses of three words or more count as
-    telling, and so does one clause of eight or more: a clause that short is a word of
-    acknowledgement and not a scene, and a Spanish telling that drops its subjects can be
-    one long clause from end to end.
+    telling for the hedge. The clitic is relieved one step earlier: a single clause of
+    eight words or more is a scene too — a Spanish telling that drops its subjects can be
+    one long clause from end to end — but a hedge in a single clause, however long, still
+    refuses, because "acho que…" over one breath is a person unsure, not one telling.
 
     A reply that is a single clause keeps the older, flatter reading: the hedge refuses,
     and so does a condition anywhere in it, not only one that opens it.
     """
     clauses = oral_decision_clause_details(team_utterance)
-    told = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2 or any(
-        len(clause.text.split()) >= 8 for clause in clauses
-    )
+    told_in_clauses = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
+    told_at_length = any(len(clause.text.split()) >= 8 for clause in clauses)
     for clause in clauses:
         spoken = normalize_oral_decision(_SPANISH_YES.sub(" ", clause.raw))
         if _CONDITION_ON_A_SUBJECT.match(spoken) or _CONDITION_HEADS.match(spoken):
             return True
         if oral_clause_reports_the_voice(clause.raw):
             return True
-        if told:
+        if not (told_in_clauses or told_at_length) and _CONDITION_OPENS_THE_CLAUSE.match(spoken):
+            return True
+        if told_in_clauses:
             continue
-        if (
-            _CONDITION_OPENS_THE_CLAUSE.match(spoken)
-            or _CONDITION_ON_A_SUBJECT.search(spoken)
-            or oral_clause_is_hedged(clause.raw)
-        ):
+        if _CONDITION_ON_A_SUBJECT.search(spoken) or oral_clause_is_hedged(clause.raw):
             return True
     return False
 
