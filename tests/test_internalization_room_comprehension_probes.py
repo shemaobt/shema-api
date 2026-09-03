@@ -184,6 +184,16 @@ def test_an_open_bridge_limit_gets_the_carry_offer() -> None:
     assert probe.checkpoint_ids == [first_critical.id]
 
 
+def test_a_disputed_transcript_gets_the_carry_offer_too() -> None:
+    checkpoints = list(checkpoints_for(P))
+    first_critical = next(c for c in checkpoints if c.critical)
+    ledger = [_obs("a", first_critical.id, EvidenceResult.UNCLEAR_DUE_TRANSCRIPT)]
+    probe = plan_next_probe(_plan_input(ledger=ledger, practiced_scene_ids=scene_ids_for(P)))
+    assert probe is not None
+    assert probe.purpose is ProbePurpose.CARRY_TO_REFINE_CHOICE
+    assert probe.checkpoint_ids == [first_critical.id]
+
+
 def test_a_conflict_is_clarified_before_anything_else() -> None:
     checkpoints = list(checkpoints_for(P))
     first_critical = next(c for c in checkpoints if c.critical)
