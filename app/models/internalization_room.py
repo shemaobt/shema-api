@@ -240,6 +240,8 @@ class TeamSessionResponse(BaseModel):
     ended_at: datetime | None
     duration_minutes: int | None
     state: SessionState
+    #: A halt is not an end: it travels beside `state`, never inside it (ENG-605).
+    needs_person: bool
     coverage: list[SessionBead]
 
 
