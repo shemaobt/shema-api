@@ -301,7 +301,7 @@ async def finish(
             corrected=corrected,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
-            correction_prompt=await get_prompt_text(db, IRPromptKey.BT_CORRECTION),
+            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
             session_language=LANGUAGE_NAMES[session.language],
             settings=get_settings(),
         )
@@ -318,7 +318,7 @@ async def finish(
             segments=told,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
-            analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
+            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
             session_language=LANGUAGE_NAMES[session.language],
             settings=get_settings(),
         )
@@ -338,7 +338,7 @@ async def finish(
             segments=told,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
-            analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
+            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
             session_language=LANGUAGE_NAMES[session.language],
             settings=get_settings(),
         )
@@ -361,8 +361,8 @@ async def finish(
         pericope_num=session.pericope,
         messages=session.messages or [],
         telling_back=room.segments_block(told),
-        speaker_prompt=await get_prompt_text(db, IRPromptKey.BT_VERDICT_SPEAKER),
-        validator_prompt=await get_prompt_text(db, IRPromptKey.VALIDATOR),
+        speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
+        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
         session_language=LANGUAGE_NAMES[session.language],
         language_code=session.language,
         settings=get_settings(),

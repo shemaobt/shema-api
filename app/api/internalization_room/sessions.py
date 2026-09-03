@@ -112,6 +112,28 @@ def _coverage_view(session: IRSession) -> CoverageView:
     )
 
 
+def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening: bool) -> bool:
+    """Whether the turn carries anything the coverage classifier should be reading.
+
+    A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
+    said nothing, so what the team said decides rather than the state the room's own turn
+    ended in. What the team said still has to be speech the room took up, which is what
+    `reliable_bridge_speech` means: an uncertain transcript travels forward inside the very
+    fail-safe asking the team to repeat it, and mother-tongue speech inside the one asking
+    for the session's language back. Neither is an answer the room engaged with, and coverage
+    only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
+
+    The opening is the one turn with beads to name and no utterance behind it, and it earns
+    that exception by being an opening the Guide actually wrote. It reaches `surfaced`, which
+    stays below `floor_met`, so settling it neither closes a passage nor stands in for the
+    team retelling it — while a fail-safe opening is the same contentless fixed line as any
+    other, the one `prepare_opening` throws away rather than keep.
+    """
+    if outcome.transcript.strip():
+        return speech_heard.reliable_bridge_speech
+    return opening and not outcome.used_fail_safe
+
+
 def _settle_later(
     background: BackgroundTasks,
     session: IRSession,
@@ -369,7 +391,7 @@ async def take_turn(
             bridge_mode=session.bridge_mode,
         )
 
-    validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
+    validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
         if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
@@ -391,7 +413,7 @@ async def take_turn(
                 messages=session.messages or [],
                 session_language=LANGUAGE_NAMES[session.language],
                 language_code=session.language,
-                panorama_prompt=await get_prompt_text(db, IRPromptKey.BOOK_PANORAMA),
+                panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
                 validator_prompt=validator_prompt,
                 book=book,
                 book_material=build_book_material(book),
@@ -411,7 +433,7 @@ async def take_turn(
             session,
             speech=speech_heard,
             opening=opening,
-            guide_prompt=await get_prompt_text(db, IRPromptKey.GUIDE),
+            guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
             validator_prompt=validator_prompt,
             settings=get_settings(),
         )
@@ -430,7 +452,7 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session)
 
-    if not outcome.used_fail_safe:
+    if _worth_settling(outcome, speech_heard, opening=opening):
         _settle_later(
             background,
             session,
