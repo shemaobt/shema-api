@@ -16,6 +16,7 @@ from app.services.internalization_room.comprehension.assessor import (
     is_semantically_empty_answer,
 )
 from app.services.internalization_room.comprehension.probe import (
+    PROBES_THAT_INVITE_A_REHEARSAL,
     ActiveProbe,
     ProbePurpose,
     is_process_only,
@@ -26,6 +27,7 @@ from app.services.internalization_room.oral_decision import (
     oral_clause_has_negation,
     oral_clause_is_hedged,
     oral_clause_is_non_committal,
+    oral_clause_reports_the_voice,
     oral_decision_clause_details,
     oral_decision_clauses,
     oral_utterance_is_interrogative,
@@ -273,6 +275,11 @@ _CONDITION_ON_A_SUBJECT = re.compile(
     r"|the|this|that|there|an)\b"
 )
 _SPANISH_YES = re.compile(r"\bsí\b", re.IGNORECASE)
+#: A condition that opens the clause is one whether or not it names who it is about:
+#: "se quiserem a gente ensaia", "se der tempo", "if possible we rehearse". The subject list
+#: above is for the same word found later in a short reply; at the head of a clause the
+#: position alone says what it is, because no clitic opens a clause.
+_CONDITION_OPENS_THE_CLAUSE = re.compile(r"^(?:se|si|if)\b")
 
 
 def _the_telling_holds_back(team_utterance: str) -> bool:
@@ -294,7 +301,9 @@ def _the_telling_holds_back(team_utterance: str) -> bool:
     told = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
     for clause in clauses:
         spoken = normalize_oral_decision(_SPANISH_YES.sub(" ", clause.raw))
-        if _CONDITION_ON_A_SUBJECT.match(spoken):
+        if _CONDITION_OPENS_THE_CLAUSE.match(spoken):
+            return True
+        if oral_clause_reports_the_voice(clause.raw):
             return True
         if told:
             continue
@@ -370,15 +379,6 @@ def bridge_language_retelling_completes_practice(
     if any(pattern.search(clause) for clause in clauses for pattern in _FUTURE_REPORT):
         return False
     return not is_semantically_empty_answer(team_utterance)
-
-
-#: The two app-owned purposes whose turn ends on the rehearsal invitation. A scene the
-#: Guide opens is rehearsed on the same contract as one the room returns to, so the same
-#: answers close it: the telling brought back, the closing word, or confident
-#: mother-tongue audio.
-PROBES_THAT_INVITE_A_REHEARSAL = frozenset(
-    {ProbePurpose.MOTHER_TONGUE_PRACTICE, ProbePurpose.SCENE_OPENING}
-)
 
 
 def confident_non_bridge_audio_completes_scoped_practice(

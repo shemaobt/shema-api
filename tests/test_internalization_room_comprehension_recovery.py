@@ -589,6 +589,37 @@ def test_a_reflexive_se_in_the_telling_is_not_a_condition() -> None:
     ) == ["S1"]
 
 
+def test_a_condition_that_opens_the_clause_holds_the_telling_back_without_a_subject() -> None:
+    """ "Se quiserem a gente ensaia" names nobody and is still a condition.
+
+    The subject list catches the same word inside a short reply; at the head of a clause
+    the position alone says what the word is, because no clitic opens a clause. The reply
+    the room must not be wrong about is the one that closes a practice that has not begun,
+    and this is that reply one word away from the ones already refused.
+    """
+    for reply in (
+        "Se quiserem a gente ensaia essa cena agora e depois conta pra você",
+        "Se der tempo a gente ensaia essa cena e volta contando",
+        "If possible we rehearse this scene together and then tell you",
+        "Si es posible ensayamos esta escena juntos y luego les contamos",
+    ):
+        assert not bridge_language_retelling_completes_practice(_INVITATION_PT, reply, True), reply
+    assert bridge_language_retelling_completes_practice(_INVITATION_PT, _TELLING_PT, True)
+
+
+def test_a_told_reply_in_the_voices_own_words_is_not_a_telling() -> None:
+    """Relaxing the hedge for a told reply must not relax the room hearing its words back.
+
+    A team that says "você disse que a família se mudou e que Elimeleque morreu lá" is
+    reporting the Voice, not the scene, however many clauses it takes to do it.
+    """
+    reported = (
+        "Você disse que a família se mudou pra Moabe por causa da fome, "
+        "e você disse que Elimeleque morreu lá"
+    )
+    assert not bridge_language_retelling_completes_practice(_INVITATION_PT, reported, True)
+
+
 def test_a_told_scene_closes_the_practice_where_a_real_condition_still_refuses() -> None:
     """The clitic and the condition are the same two letters, and only one of them is a
     reason to refuse.
