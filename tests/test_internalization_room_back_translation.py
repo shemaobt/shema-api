@@ -96,7 +96,7 @@ def test_the_chunks_go_to_the_analyst_in_listening_order() -> None:
 
 
 def test_an_empty_telling_back_says_so_rather_than_looking_complete() -> None:
-    assert "ainda não contou" in segments_block([])
+    assert "ainda não contou" in segments_block([], language_code="pt")
 
 
 @pytest.mark.asyncio

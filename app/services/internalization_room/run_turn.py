@@ -231,6 +231,16 @@ OPENING_MOVEMENT_INSTRUCTION = (
     "Não escreva a marca em nenhum outro lugar e não a comente."
 )
 
+#: What the Validator's TEAM_UTTERANCE slot carries on the opening turn, when nobody has
+#: spoken yet, in the session's own language. Keyed by the language code, in the shape
+#: `calibration.py` already uses — an unclaimed language falls back to the authored English
+#: line.
+_NO_TEAM_UTTERANCE_YET: dict[str, str] = {
+    "pt": "(a equipe ainda não falou — abertura da sessão)",
+    "en": "(the team has not spoken yet — session opening)",
+    "es": "(el equipo aún no ha hablado — apertura de la sesión)",
+}
+
 
 async def _draft(
     *,
@@ -340,7 +350,8 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,
-                TEAM_UTTERANCE=transcript or "(a equipe ainda não falou — abertura da sessão)",
+                TEAM_UTTERANCE=transcript
+                or _NO_TEAM_UTTERANCE_YET.get(language_code, _NO_TEAM_UTTERANCE_YET[FLOOR]),
                 DRAFTED_RESPONSE=draft,
             )
             if validator_context:

@@ -228,15 +228,28 @@ def playback_confirms_rehearsal(state: BackTranslationState, rehearsal_take_ids:
     return played_ranges_cover_clip(state.played_ranges, state.clip_duration_ms)
 
 
-def segments_block(segments: list[IRSegment]) -> str:
+#: What `segments_block` carries when nothing has been told back yet, in the session's own
+#: language. Keyed by the language code, in the shape `calibration.py` already uses — an
+#: unclaimed language falls back to the authored English line.
+_NOTHING_TOLD_BACK_YET: dict[str, str] = {
+    "pt": "(a equipe ainda não contou nada de volta)",
+    "en": "(the team has not told anything back yet)",
+    "es": "(el equipo aún no ha contado nada de vuelta)",
+}
+
+
+def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str:
     """The stretches as the analyst reads them: numbered, in the order the team told them.
 
     Numbered from one over the list it is given, so the number is a position in *this* call
     and never an identifier the analyst has to keep. `_segment_pointed_at` reads it back the
     same way.
+
+    `language_code` only governs the empty-telling-back placeholder: the segments themselves
+    are the team's own words, verbatim, in whatever language they spoke.
     """
     if not segments:
-        return "(a equipe ainda não contou nada de volta)"
+        return _NOTHING_TOLD_BACK_YET.get(language_code, _NOTHING_TOLD_BACK_YET[FLOOR])
     return "\n".join(
         f"{position}. {segment.transcript}" for position, segment in enumerate(segments, start=1)
     )
@@ -329,6 +342,7 @@ async def analyse_telling_back(
     pericope_num: str,
     analyst_prompt: str,
     session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     settings: Settings | None = None,
 ) -> BtAnalysis | None:
     """Compare the bridge-language telling-back against the map. Never voiced.
@@ -348,7 +362,7 @@ async def analyse_telling_back(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=load_map(pericope_num).body,
-        SEGMENTS=segments_block(segments),
+        SEGMENTS=segments_block(segments, language_code),
     )
     try:
         raw = await call_agent(
