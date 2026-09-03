@@ -14,6 +14,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import element_keys, elements_for
 from app.services.internalization_room.comprehension.checkpoints import (
+    Checkpoint,
     checkpoints_for,
     scene_ids_for,
 )
@@ -25,7 +26,10 @@ from app.services.internalization_room.comprehension.evidence import (
 from app.services.internalization_room.comprehension.practice import (
     mother_tongue_practice_prompt,
 )
-from app.services.internalization_room.comprehension.probe import ProbePurpose
+from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.comprehension.probe_plan import (
+    render_active_probe_contract,
+)
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.comprehension.stt_recovery import (
     stt_recovery_reduce_burden_line,
@@ -778,13 +782,72 @@ async def test_a_declined_handoff_leaves_no_practice_probe_the_room_never_voiced
     assert turn.state.practiced_scene_ids == []
 
 
-_GUIDE_SENDS_THEM_TO_REHEARSE = re.compile(
-    r"(?<!not )(?<!never )\b(send|invite|ask)\s+(?:them|the team)\b[^.!?;]{0,70}\brehears",
-    re.IGNORECASE,
+_INVITES_A_REHEARSAL = re.compile(
+    r"\b(send|invite|ask|let|elicit)\w*\b.{0,70}?\brehears", re.IGNORECASE | re.DOTALL
 )
 
 
-def test_the_guide_is_never_told_to_ask_for_the_rehearsal_itself() -> None:
+def _instructions_to_invite_a_rehearsal(text: str) -> list[str]:
+    """Every clause of app-authored text that tells the Guide to set a rehearsal going.
+
+    A clause, not a sentence: the prohibitions and the boundary questions live beside the
+    imperatives and must survive. So a clause is skipped when it is negated before the
+    verb, when the app is the one doing the inviting, and when the verb opens a boundary
+    question — `ask whether`, `ask only whether` — which asks *about* a rehearsal instead
+    of calling for one.
+    """
+    found = []
+    for clause in re.split(r"[.!?;\n]", text):
+        match = _INVITES_A_REHEARSAL.search(clause)
+        if match is None:
+            continue
+        if re.search(r"\b(not|never)\b", clause[: match.start()], re.IGNORECASE):
+            continue
+        if re.search(r"\bapp\b", clause, re.IGNORECASE):
+            continue
+        if re.match(r"ask\w*(?:\s+\w+)?\s+whether\b", match.group(), re.IGNORECASE):
+            continue
+        found.append(match.group().strip())
+    return found
+
+
+def _probe_for(purpose: ProbePurpose, checkpoints: list[Checkpoint]) -> ActiveProbe:
+    """One valid probe of each purpose, scoped the way its own invariants demand."""
+    critical = [c.id for c in checkpoints if c.critical]
+    if purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE:
+        scope, scenes = [], [scene_ids_for(P)[0]]
+    elif purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT:
+        scope, scenes = [], []
+    elif purpose is ProbePurpose.FREE_RETELL:
+        scope, scenes = critical[:2], []
+    else:
+        scope, scenes = critical[:1], []
+    method = (
+        EvidenceMethod.FREE_BRIDGE_RETELL
+        if purpose is ProbePurpose.FREE_RETELL
+        else EvidenceMethod.MICRO_TELLBACK
+    )
+    return ActiveProbe(
+        id="x", checkpoint_ids=scope, method=method, purpose=purpose, practice_scene_ids=scenes
+    )
+
+
+def _every_contract_the_guide_can_receive() -> list[str]:
+    checkpoints = list(checkpoints_for(P))
+    contracts = [
+        render_active_probe_contract(None, [], handoff_paused=True),
+        render_active_probe_contract(None, [], semantic_ready=False),
+        render_active_probe_contract(None, [], semantic_ready=True, coverage_complete=False),
+        render_active_probe_contract(None, []),
+    ]
+    contracts += [
+        render_active_probe_contract(_probe_for(purpose, checkpoints), checkpoints)
+        for purpose in ProbePurpose
+    ]
+    return contracts
+
+
+def test_nothing_the_guide_is_given_tells_it_to_set_a_rehearsal_going() -> None:
     """The invitation belongs to the app, and to nothing else.
 
     A session opened with the Guide framing the scene and, in the same breath, sending the
@@ -792,10 +855,11 @@ def test_the_guide_is_never_told_to_ask_for_the_rehearsal_itself() -> None:
     for that same rehearsal two turns later and named a different closing contract. Two
     voices asked for one piece of work and disagreed about how it ends.
 
-    Only the imperative is forbidden, and only within its own clause. Telling the Guide
-    *not* to ask, asking whether something was in a rehearsal the team mentions, describing
-    what a rehearsal is, and saying in a following clause whose job the rehearsing is all
-    stay — none of them is a second invitation."""
-    told_to_invite = [match.group() for match in _GUIDE_SENDS_THEM_TO_REHEARSE.finditer(GUIDE)]
-    assert told_to_invite == []
+    Both halves of what the Guide is handed are read here, because the rule is only as
+    good as its weakest copy: the system prompt it opens with, and every probe contract
+    the room can put in front of it — including the ones that authorize a coverage move
+    with no probe standing."""
+    assert _instructions_to_invite_a_rehearsal(GUIDE) == []
+    for contract in _every_contract_the_guide_can_receive():
+        assert _instructions_to_invite_a_rehearsal(contract) == [], contract
     assert "the app invites the rehearsal" in GUIDE.lower()
