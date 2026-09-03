@@ -2,6 +2,7 @@
 spoken as fixed process speech, and mother-tongue speech meets the fixed boundary."""
 
 import json
+import re
 import sys
 from typing import Any
 
@@ -775,3 +776,26 @@ async def test_a_declined_handoff_leaves_no_practice_probe_the_room_never_voiced
         settings=_settings(),
     )
     assert turn.state.practiced_scene_ids == []
+
+
+_GUIDE_SENDS_THEM_TO_REHEARSE = re.compile(
+    r"(?<!not )(?<!never )\b(send|invite|ask)\s+(?:them|the team)\b[^.!?;]{0,70}\brehears",
+    re.IGNORECASE,
+)
+
+
+def test_the_guide_is_never_told_to_ask_for_the_rehearsal_itself() -> None:
+    """The invitation belongs to the app, and to nothing else.
+
+    A session opened with the Guide framing the scene and, in the same breath, sending the
+    team to rehearse it and report back in the session language; the fixed line then asked
+    for that same rehearsal two turns later and named a different closing contract. Two
+    voices asked for one piece of work and disagreed about how it ends.
+
+    Only the imperative is forbidden, and only within its own clause. Telling the Guide
+    *not* to ask, asking whether something was in a rehearsal the team mentions, describing
+    what a rehearsal is, and saying in a following clause whose job the rehearsing is all
+    stay — none of them is a second invitation."""
+    told_to_invite = [match.group() for match in _GUIDE_SENDS_THEM_TO_REHEARSE.finditer(GUIDE)]
+    assert told_to_invite == []
+    assert "the app invites the rehearsal" in GUIDE.lower()
