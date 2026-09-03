@@ -41,7 +41,7 @@ from app.services.internalization_room.comprehension.checkpoints import (
 from app.services.internalization_room.comprehension.session_readiness import (
     evaluate_session_comprehension,
 )
-from app.services.internalization_room.coverage import floor_met
+from app.services.internalization_room.coverage import engaged_scene_ids, floor_met
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
@@ -200,6 +200,7 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         scene_ids=scene_ids,
         ledger=comprehension.ledger,
         practiced_scene_ids=comprehension.practiced_scene_ids,
+        engaged_scene_ids=engaged_scene_ids(session.coverage_state or {}, session.pericope),
     )
     stretches = await final_segments(db, session.id)
     told = told_back(stretches)
