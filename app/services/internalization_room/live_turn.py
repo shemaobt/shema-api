@@ -498,6 +498,7 @@ async def run_comprehension_turn(
                 scene_ids=scene_ids,
                 current_scene=scene_pointer,
                 practiced_scene_ids=projected_practice,
+                engaged_scene_ids=engaged_scenes,
                 opened_scene_ids=opened_scene_ids(session.coverage_state or {}, pericope),
                 returning_to_full_retell=(
                     bridge_mode is BridgeMode.FULL_RETELL

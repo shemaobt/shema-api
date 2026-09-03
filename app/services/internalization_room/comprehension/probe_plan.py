@@ -43,6 +43,7 @@ class ProbePlanInput(BaseModel):
     scene_ids: list[str]
     current_scene: str | None = None
     practiced_scene_ids: list[str] = Field(default_factory=list)
+    engaged_scene_ids: list[str] = Field(default_factory=list)
     opened_scene_ids: list[str] = Field(default_factory=list)
     returning_to_full_retell: bool = False
     skip_carry_offer_for_checkpoint_ids: list[str] = Field(default_factory=list)
@@ -111,8 +112,14 @@ def _next_practice_scene(input_: ProbePlanInput, blocking: list[Checkpoint]) -> 
     Practice is a process-only turn — the fixed invitation may not carry passage content —
     so inviting it for a scene the team has never heard opened would ask them to rehearse
     something nobody framed. A scene qualifies only after coverage shows it was opened.
+
+    A fully engaged scene counts as practiced here for the same reason it does in the
+    readiness gate, and reading it in only one of the two was its own defect: the gate
+    stopped waiting for the closing word while this planner kept naming the scene, so the
+    room invited a rehearsal already finished and the Guide read the invitation beside a
+    status block saying none was needed.
     """
-    practiced = set(input_.practiced_scene_ids)
+    practiced = set(input_.practiced_scene_ids) | set(input_.engaged_scene_ids)
     opened = set(input_.opened_scene_ids)
     if input_.current_scene:
         if input_.current_scene not in practiced and input_.current_scene in opened:

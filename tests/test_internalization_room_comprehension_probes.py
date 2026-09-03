@@ -357,3 +357,28 @@ def test_the_contract_carries_purpose_method_and_material() -> None:
 def test_no_probe_still_forbids_invented_tests() -> None:
     contract = render_active_probe_contract(None, [])
     assert "Do not invent another semantic test" in contract
+
+
+def test_a_scene_worked_to_its_last_bead_is_not_invited_to_rehearse_again() -> None:
+    """The readiness gate and the planner read the same scene the same way.
+
+    A scene whose every element is engaged counts as practiced for the gate, so a planner
+    still reading the reported list alone invites the rehearsal the gate has already
+    stopped waiting for — and with a critical checkpoint open the practice branch runs
+    before the semantic ones, so that invitation is what the room says."""
+    checkpoints = list(checkpoints_for(P))
+    open_critical = next(c for c in checkpoints if c.critical)
+    ledger = [
+        _obs(f"a{i}", c.id, EvidenceResult.DEMONSTRATED)
+        for i, c in enumerate(checkpoints)
+        if c.id != open_critical.id
+    ]
+    probe = plan_next_probe(
+        _plan_input(
+            ledger=ledger,
+            practiced_scene_ids=[],
+            engaged_scene_ids=scene_ids_for(P),
+        )
+    )
+    assert probe is not None
+    assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE

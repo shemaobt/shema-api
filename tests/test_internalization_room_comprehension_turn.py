@@ -741,3 +741,37 @@ async def test_a_scene_the_team_worked_to_the_last_bead_needs_no_closing_word(
     assert await _say(db_session, session, "acho que já falamos de tudo") == (
         rehearsal_consent_question("pt")
     )
+
+
+@pytest.mark.asyncio
+async def test_a_declined_handoff_leaves_no_practice_probe_the_room_never_voiced(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A probe binds evidence only to a prompt the room actually said.
+
+    Turning the recording down is answered with the declined line, so the invitation is
+    not spoken on that turn — and from the next turn on the standing probe makes it look
+    already said, so it is never spoken at all. Left standing, it takes a confident
+    recording in the team's own language as the practice nobody was ever invited to."""
+    session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
+    await _say(db_session, session, "acho que já falamos de tudo")
+
+    assert await _say(db_session, session, "não") == rehearsal_consent_declined_line("pt")
+
+    standing = comprehension_of(session).active_probe
+    assert standing is None or standing.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(
+            text="koeti yoko vitukeovo enepone itukovo",
+            language_code="und",
+            language_probability=0.99,
+        ),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    assert turn.state.practiced_scene_ids == []
