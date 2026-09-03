@@ -561,6 +561,7 @@ async def run_comprehension_turn(
         coverage_complete=coverage_complete,
         semantic_ready=semantic_ready,
         handoff_paused=state.recording_handoff_paused and not resume_requested,
+        practiced_scene_ids=projected_practice,
     )
     app_context = "\n\n".join(
         [bridge_mode_status_line(bridge_mode), comprehension_status, contract]

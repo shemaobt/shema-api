@@ -394,6 +394,37 @@ def test_a_scene_worked_to_its_last_bead_is_not_invited_to_rehearse_again() -> N
     assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
 
 
+def test_a_finished_practice_never_speaks_over_the_scene_being_invited_now() -> None:
+    """Raised in review (little-henok, PR #322), against the fix one commit earlier.
+
+    The note that says a practice is behind the room outlived the turn it was written for.
+    `projected_practice` accumulates across the session and `_pick_practice_scene` skips the
+    scenes already in it, so the turn that opens scene 2 plans a practice probe for scene 2
+    and, with scene 1 finished, rendered both halves of a contradiction in one block: this
+    turn ENDS with the invitation, and, a line below, do not invite it again. Both the Guide
+    and the Validator read that block, so the invitation at risk was the new scene's — the
+    exact failure this branch exists to remove, arriving one scene later.
+
+    A probe that is inviting a rehearsal already names the scene it is inviting. Nothing has
+    to be said about the finished ones on that turn.
+    """
+    probe = ActiveProbe(
+        id="x",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.MOTHER_TONGUE_PRACTICE,
+        practice_scene_ids=[scene_ids_for(P)[1]],
+    )
+
+    contract = render_active_probe_contract(
+        probe, list(checkpoints_for(P)), practiced_scene_ids=[scene_ids_for(P)[0]]
+    )
+
+    assert "ENDS with the invitation" in contract
+    assert "do not invite" not in contract
+    assert "ask only about the report" not in contract
+
+
 def test_the_practice_contract_carries_both_halves_of_the_invitation() -> None:
     """One rehearsal, one voice, one contract — and the contract is the Guide's.
 
