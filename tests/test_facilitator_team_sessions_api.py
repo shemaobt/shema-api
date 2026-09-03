@@ -36,7 +36,6 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.db.models.internalization_room import IRSessionStatus
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import CoverageStatus
@@ -471,11 +470,18 @@ async def test_a_team_that_has_never_met_answers_with_an_empty_history(client, d
     assert await read_history(client, project.id, headers) == []
 
 
-async def test_the_history_says_nothing_about_the_rooms_own_session_status(client, db_session):
-    """`needs_person` is the room's business and is not a state a facilitator reads here.
+# Behaviour 7 — a halt travels beside the state, not inside it (ENG-605).
 
-    Serving it would put a fourth value into a field RF-06 gives three, and a halted
-    conversation is still one in progress from the Desk's side.
+
+async def test_a_halted_session_says_it_is_waiting_for_a_person(client, db_session):
+    """`needs_person` travels beside `state`, never inside it, and `status` never leaks.
+
+    ENG-605 reverses the decision this test used to record. Before it, a halted room read
+    exactly like one running normally — the Desk's only real surface had no way to say a
+    conversation was stuck waiting for a person. What still holds: `state` keeps the three
+    values RF-06's rule already settled (`session_end.py`), and `status` — the room's own
+    machine, `IRSessionStatus` — still never reaches the wire. What no longer holds: the
+    halt is not silent any more. It has its own field.
     """
     _user, project, headers = await a_facilitator(db_session)
     session = await a_session(db_session, project_id=project.id)
@@ -483,6 +489,88 @@ async def test_the_history_says_nothing_about_the_rooms_own_session_status(clien
 
     [card] = await read_history(client, project.id, headers)
 
+    assert card["needs_person"] is True
     assert card["state"] == "in_progress"
     assert "status" not in card
-    assert IRSessionStatus.NEEDS_PERSON.value not in str(card)
+
+
+async def test_an_ordinary_open_session_says_it_does_not_need_a_person(client, db_session):
+    _user, project, headers = await a_facilitator(db_session)
+    await a_session(db_session, project_id=project.id)
+
+    [card] = await read_history(client, project.id, headers)
+
+    assert card["needs_person"] is False
+    assert card["state"] == "in_progress"
+
+
+async def test_a_turn_that_lands_lifts_the_halt(client, db_session):
+    """`needs_person` reads live off the session's status, not a value stamped once.
+
+    `append_exchange` is what actually clears `NEEDS_PERSON` (`sessions.py`); reaching it
+    here through the real service is what proves the card is derived, not cached.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    session = await a_session(db_session, project_id=project.id)
+    await room.mark_needs_person(db_session, session)
+
+    await room.append_exchange(db_session, session, team_utterance="oi", guide_response="ok")
+
+    [card] = await read_history(client, project.id, headers)
+
+    assert card["needs_person"] is False
+
+
+async def test_a_session_that_ended_is_never_reported_as_still_halted(client, db_session):
+    """A halt cannot survive past an end, whichever way the session got there.
+
+    A completed session cannot arrive here carrying `NEEDS_PERSON`: `apply_coverage` only
+    closes a session whose status is already `IN_PROGRESS` (`sessions.py`), so today's state
+    machine has no path from a halt straight to `DONE`. The assertion is kept regardless —
+    it is the contract this field promises, not an artifact of which paths exist today.
+
+    An abandoned session is the reachable half of this case. Nothing but a landed turn ever
+    writes `NEEDS_PERSON` back to `IN_PROGRESS` (`append_exchange`), so a team that is marked
+    as needing a person and never returns keeps that status in the row forever. The idle rule
+    still declares the conversation over, and the Desk must not call an abandoned
+    conversation one that is "waiting for a person" — nothing is waiting on it any more.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+
+    completed = await a_session(db_session, project_id=project.id, ready_to_close=True)
+    await room.apply_coverage(db_session, completed.id, dict.fromkeys(element_keys(P), ENGAGED))
+
+    abandoned = await a_session(db_session, project_id=project.id)
+    await room.mark_needs_person(db_session, abandoned)
+    abandoned.updated_at = datetime.now(UTC) - SESSION_IDLE_LIMIT - timedelta(minutes=1)
+    await db_session.commit()
+
+    history = await read_history(client, project.id, headers)
+    by_id = {card["session_id"]: card for card in history}
+
+    assert by_id[completed.id]["state"] == "complete"
+    assert by_id[completed.id]["needs_person"] is False
+    assert by_id[abandoned.id]["state"] == "abandoned"
+    assert by_id[abandoned.id]["needs_person"] is False
+
+
+async def test_the_cards_shape_names_every_field_the_desk_reads(client, db_session):
+    """`needs_person` cannot silently disappear: `TeamSessionResponse` requires it under
+    `extra="forbid"`, so a `_card` that forgot to fill it would fail to build rather than
+    serve a card silently missing the field.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    await a_session(db_session, project_id=project.id)
+
+    [card] = await read_history(client, project.id, headers)
+
+    assert set(card) == {
+        "session_id",
+        "pericope",
+        "started_at",
+        "ended_at",
+        "duration_minutes",
+        "state",
+        "needs_person",
+        "coverage",
+    }
