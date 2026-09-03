@@ -221,6 +221,7 @@ def plan_next_probe(input_: ProbePlanInput) -> ActiveProbe | None:
             and not assessment.has_conflict
             and (
                 EvidenceResult.UNCLEAR_DUE_BRIDGE in assessment.open_results
+                or EvidenceResult.UNCLEAR_DUE_TRANSCRIPT in assessment.open_results
                 or EvidenceResult.STT_UNCERTAIN in assessment.open_results
             )
             and EvidenceResult.CARRY_TO_REFINE not in assessment.open_results
