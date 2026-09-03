@@ -269,7 +269,7 @@ async def run_comprehension_turn(
     ):
         allowed = [c for c in checkpoints if c.id in set(prior_probe.checkpoint_ids)]
         assessment = await assess_turn(
-            assessor_prompt=await get_prompt_text(db, IRPromptKey.COMPREHENSION_ASSESSOR),
+            assessor_prompt=get_prompt_text(IRPromptKey.COMPREHENSION_ASSESSOR),
             session_language=LANGUAGE_NAMES[session.language],
             observation_id_prefix=_observation_id("assess"),
             probe_id=prior_probe.id,
