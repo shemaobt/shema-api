@@ -29,11 +29,6 @@ class IRSessionStatus(enum.StrEnum):
     NEEDS_PERSON = "needs_person"
 
 
-_PROMPT_KEY_TYPE = Enum(
-    IRPromptKey,
-    name="ir_prompt_key_enum",
-    values_callable=lambda enum_cls: [m.value for m in enum_cls],
-)
 _SESSION_STATUS_TYPE = Enum(
     IRSessionStatus,
     name="ir_session_status_enum",
@@ -167,23 +162,6 @@ class IRCoverageEvent(Base):
         UtcDateTime(timezone=True),
         default=lambda: datetime.now(UTC),
         server_default=func.now(),
-    )
-
-
-class IRPrompt(Base):
-    __tablename__ = "ir_prompts"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    key: Mapped[IRPromptKey] = mapped_column(_PROMPT_KEY_TYPE, unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(120))
-    description: Mapped[str] = mapped_column(Text)
-    prompt: Mapped[str] = mapped_column(Text)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(
-        UtcDateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
 

@@ -22,6 +22,7 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceResult,
 )
 from app.services.internalization_room.comprehension.practice import (
+    guide_invited_mother_tongue_practice,
     mother_tongue_practice_prompt,
 )
 from app.services.internalization_room.comprehension.probe import ProbePurpose
@@ -71,6 +72,44 @@ class ApprovingAgent:
 def approve_all(monkeypatch: pytest.MonkeyPatch) -> None:
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", ApprovingAgent())
+
+
+class InvitingAgent:
+    """A Guide that opens the scene and closes with the invitation its contract asks for."""
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return (
+            "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
+            "Rehearse this scene together in your own language; when you have finished, "
+            "come back and tell me in English what you understood."
+        )
+
+
+@pytest.fixture
+def guide_invites(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", InvitingAgent())
+
+
+class InvitingAgentPT:
+    """The same Guide, in the language the room is actually speaking."""
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return (
+            "Uma fome chega, e uma família sai de Belém para os campos de Moabe. "
+            "Agora ensaiem esta cena juntos na língua de vocês; quando terminarem, "
+            "venham me contar em português o que vocês entenderam."
+        )
+
+
+@pytest.fixture
+def guide_invites_pt(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", InvitingAgentPT())
 
 
 class LongWindedAgent:
@@ -319,9 +358,25 @@ async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
         settings=_settings(),
     )
 
-    assert turn.outcome.speech == mother_tongue_practice_prompt("pt")
-    assert turn.outcome.peer_cue
-    assert not turn.outcome.used_fail_safe
+    assert turn.outcome.speech != mother_tongue_practice_prompt("pt")
+    await save_comprehension(db_session, session, turn.state)
+    await append_exchange(
+        db_session, session, team_utterance="podemos começar", guide_response=turn.outcome.speech
+    )
+
+    recovery = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="tudo bem"),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert recovery.outcome.speech == mother_tongue_practice_prompt("pt")
+    assert recovery.outcome.peer_cue
+    assert not recovery.outcome.used_fail_safe
 
 
 @pytest.mark.asyncio
@@ -386,6 +441,68 @@ async def test_pronto_after_the_practice_prompt_marks_the_scene(
     assert "S1" in turn.state.practiced_scene_ids
     assert turn.state.active_probe is not None
     assert turn.state.active_probe.purpose is ProbePurpose.INITIAL_CHECK
+
+
+@pytest.mark.asyncio
+async def test_a_retelling_during_the_practice_reaches_the_guide_not_the_invitation_again(
+    db_session: AsyncSession, guide_invites_pt: None
+) -> None:
+    """A team that answered the invitation by telling the scene back heard it again.
+
+    The room voiced the identical fixed sentence on the next turn, so the Guide never saw
+    the retelling and the team was told to rehearse a scene it had just rehearsed. The
+    invitation is the Guide's own now, and the turn after it belongs to the Guide too.
+    """
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    invitation = await _say(db_session, session, "podemos começar")
+    assert invitation != mother_tongue_practice_prompt("pt")
+    assert guide_invited_mother_tongue_practice(invitation)
+
+    answer = await _say(db_session, session, "uma família saiu de Belém e foi morar em Moabe")
+    assert answer != mother_tongue_practice_prompt("pt")
+
+
+@pytest.mark.asyncio
+async def test_a_question_during_the_practice_is_answered_not_met_with_the_instruction_again(
+    db_session: AsyncSession, guide_invites_pt: None
+) -> None:
+    """A team that asked something while rehearsing got the rehearsal order back.
+
+    The question went nowhere: the app owned the turn, so nobody answered it and the room
+    kept saying the one sentence the team had already followed. Both turns are the
+    Guide's now — the one that invites, and the one that answers what came back.
+    """
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    invitation = await _say(db_session, session, "podemos começar")
+    assert invitation != mother_tongue_practice_prompt("pt")
+    assert guide_invited_mother_tongue_practice(invitation)
+
+    answer = await _say(db_session, session, "podemos contar essa parte com as nossas palavras?")
+    assert answer != mother_tongue_practice_prompt("pt")
 
 
 @pytest.mark.asyncio
@@ -510,10 +627,15 @@ async def test_a_turn_without_a_prior_probe_mints_no_evidence(
     assert comprehension_of(session).ledger == []
 
 
-async def _session_at_the_recording_handoff(db_session: AsyncSession) -> IRSession:
+async def _session_at_the_recording_handoff(
+    db_session: AsyncSession, *, practice_reported: bool = True
+) -> IRSession:
     """Everything the passage asks for is done except the recording: the coverage floor is
     met and every checkpoint is demonstrated, so the app is about to offer its own
-    question."""
+    question.
+
+    `practice_reported=False` is the same room with nobody having said the closing word:
+    every bead is engaged while the practice record stays empty."""
     session = await create_session(
         db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
     )
@@ -531,7 +653,7 @@ async def _session_at_the_recording_handoff(db_session: AsyncSession) -> IRSessi
                 )
                 for index, checkpoint in enumerate(checkpoints_for(P))
             ],
-            practiced_scene_ids=scene_ids_for(P),
+            practiced_scene_ids=scene_ids_for(P) if practice_reported else [],
         ),
     )
     session = await apply_coverage(
@@ -655,3 +777,242 @@ async def test_a_paused_handoff_does_not_count_speech_the_room_could_not_use(
         assert turn.outcome.speech != rehearsal_consent_question("pt")
 
     assert comprehension_of(session).recording_handoff_paused_turns == 0
+
+
+@pytest.mark.asyncio
+async def test_a_scene_the_team_worked_to_the_last_bead_needs_no_closing_word(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A necklace fully engaged is the practice, whether or not anyone announced it.
+
+    The report was only ever recorded when the team said the closing word out loud, so a
+    room that told every scene in its own language and simply moved on stayed one scene
+    short forever: the readiness gate kept the passage in rehearsal and the room answered
+    the team's own "we are finished" with yet another invitation to retell."""
+    session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
+
+    assert await _say(db_session, session, "acho que já falamos de tudo") == (
+        rehearsal_consent_question("pt")
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_declined_handoff_leaves_no_practice_probe_the_room_never_voiced(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """A probe binds evidence only to a prompt the room actually said.
+
+    Turning the recording down is answered with the declined line, so the invitation is
+    not spoken on that turn — and from the next turn on the standing probe makes it look
+    already said, so it is never spoken at all. Left standing, it takes a confident
+    recording in the team's own language as the practice nobody was ever invited to."""
+    session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
+    await _say(db_session, session, "acho que já falamos de tudo")
+
+    assert await _say(db_session, session, "não") == rehearsal_consent_declined_line("pt")
+
+    standing = comprehension_of(session).active_probe
+    assert standing is None or standing.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(
+            text="koeti yoko vitukeovo enepone itukovo",
+            language_code="und",
+            language_probability=0.99,
+        ),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+    assert turn.state.practiced_scene_ids == []
+
+
+@pytest.mark.asyncio
+async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
+    db_session: AsyncSession, guide_invites: None
+) -> None:
+    """Session 735b5eda: the opening carried no invitation, so the fixed line arrived after.
+
+    The Guide closed the scene with a passage question and the app said its own sentence a
+    turn later, asking for the same rehearsal under a different contract. The invitation
+    belongs at the end of the opening, in the Guide's voice, and it asks the team to come
+    back telling in the bridge language what it understood — so that telling is what
+    finishes the practice, and the fixed line has nothing left to add."""
+    session = await create_session(
+        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    opening = await _say(db_session, session, "we can start")
+    assert opening != mother_tongue_practice_prompt("en")
+    assert guide_invited_mother_tongue_practice(opening)
+
+    answer = await _say(
+        db_session, session, "A famine came and a family left Bethlehem to live in Moab"
+    )
+    assert answer != mother_tongue_practice_prompt("en")
+    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+
+
+class RecordingInvitingAgent:
+    """The inviting Guide, keeping every system prompt it was handed to draft from."""
+
+    def __init__(self) -> None:
+        self.systems: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        self.systems.append(system_prompt)
+        return (
+            "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
+            "Rehearse this scene together in your own language; when you have finished, "
+            "come back and tell me in English what you understood."
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_turn_after_the_telling_is_told_the_practice_is_already_done(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sessions dceeccde, 1829e6f6 and 3d896817: three openings, three dead third turns.
+
+    The opening invited and the telling closed the practice — both of those held in all
+    three. Then every third turn fell to a fail-safe, and the drafts say why: one sent the
+    team to rehearse the same scene again with a checklist of what to add, one simply
+    repeated the invitation, and one asked whether a name had been in the mother-tongue
+    rehearsal. The Validator refuses all three, and it is right to.
+
+    Nothing told the Guide the practice was over. The probe block it reads is app-owned and
+    it named no such thing, so a Guide holding a finished report and an unfinished-looking
+    contract went back to the only instruction it had. The block names the scenes whose
+    practice is done now, so the turn has a subject that is not the rehearsal again.
+    """
+    agent = RecordingInvitingAgent()
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", agent)
+    session = await create_session(
+        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+
+    await _say(db_session, session, "we can start")
+    await _say(db_session, session, "A famine came and a family left Bethlehem to live in Moab")
+    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+    await _say(db_session, session, "that is all we remember")
+
+    handed = agent.systems[-1]
+
+    assert f"PRACTICE DONE: {scene_ids_for(P)[0]}" in handed, handed[-600:]
+    assert "Do not invite these scenes to rehearse again" in handed
+    assert "ask only about the report already given for them" in handed
+
+
+@pytest.mark.asyncio
+async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_exists(
+    db_session: AsyncSession, guide_invites: None
+) -> None:
+    """Session 23520187: the team did exactly what it was asked and it counted for nothing.
+
+    The invitation is said at the end of the opening, a turn before the planner has any
+    reason to raise a practice probe for that scene. A team that obeys answers on the very
+    next turn — so requiring a standing probe threw away the one reply the invitation had
+    asked for. The scene stayed unpractised, the probe was raised afterwards, and the room
+    went back to asking for the rehearsal the team had already told, until the validator
+    started refusing the Guide's drafts for not honouring a contract nobody could satisfy.
+    """
+    session = await create_session(
+        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+
+    invitation = await _say(db_session, session, "we can start")
+    assert guide_invited_mother_tongue_practice(invitation)
+    assert comprehension_of(session).active_probe is None or (
+        comprehension_of(session).active_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+    )
+
+    await _say(
+        db_session,
+        session,
+        "A famine came, and Elimelech took Naomi and their two sons from Bethlehem to Moab",
+    )
+
+    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+    standing = comprehension_of(session).active_probe
+    assert standing is None or standing.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+
+@pytest.mark.asyncio
+async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
+    db_session: AsyncSession, guide_invites_pt: None
+) -> None:
+    """The first scene is opened by the passage opening; nothing opened the second.
+
+    With the first scene worked through, the planner walked straight into a checkpoint
+    question about a scene the room had never told, and the app's fixed line — which may
+    carry no passage content — could not have opened it either. The Guide opens it and
+    invites the rehearsal in the same turn, and the telling that comes back closes it.
+    """
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        **{e.key: "engaged" for e in elements_for(P) if e.scene == 1},
+    }
+    await db_session.commit()
+
+    opening = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="entendemos a primeira cena"),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert opening.state.active_probe is not None
+    assert opening.state.active_probe.purpose is ProbePurpose.SCENE_OPENING
+    assert opening.state.active_probe.practice_scene_ids == ["S2"]
+    assert opening.outcome.speech != mother_tongue_practice_prompt("pt")
+    assert guide_invited_mother_tongue_practice(opening.outcome.speech)
+
+    await save_comprehension(db_session, session, opening.state)
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="entendemos a primeira cena",
+        guide_response=opening.outcome.speech,
+    )
+
+    told_back = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="ensaiamos e entendemos que a família volta para Belém"),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert "S2" in told_back.state.practiced_scene_ids
