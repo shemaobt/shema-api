@@ -22,8 +22,11 @@ from app.services.internalization_room.comprehension.probe import (
 )
 from app.services.internalization_room.languages import FLOOR
 from app.services.internalization_room.oral_decision import (
+    normalize_oral_decision,
     oral_clause_has_negation,
+    oral_clause_is_hedged,
     oral_clause_is_non_committal,
+    oral_decision_clause_details,
     oral_decision_clauses,
     oral_utterance_is_interrogative,
 )
@@ -255,6 +258,51 @@ def the_practice_invitation_is_owed_by_the_app(
     return not guide_invited_mother_tongue_practice(previous_guide_utterance)
 
 
+#: The subject a spoken condition opens on. A condition names who it is about — "se vocês
+#: quiserem", "se a família ficasse", "if you want" — while the same letters against a verb
+#: are the clitic that verb carries: "teve que se mudar", "eles se casaram", "la familia se
+#: mudó". The subjects are listed rather than the verbs because a pronoun or a determiner is
+#: a closed set and the verbs that can carry a clitic are not. Spanish `si` is read here and
+#: `sí` never is, which is why the accent is taken off the text after that word is gone
+#: rather than before.
+_CONDITION_ON_A_SUBJECT = re.compile(
+    r"\b(?:se|si|if)\s+(?:eu|tu|voce|voces|nos|a\s+gente|ele|eles|ela|elas"
+    r"|yo|usted|ustedes|nosotros|vosotros|el|ella|ellos|ellas"
+    r"|i|we|you|they|he|she|it"
+    r"|o|a|os|as|um|uma|un|una|los|las|este|esta|esse|essa|isso|isto|aquele|aquela"
+    r"|the|this|that|there|an)\b"
+)
+_SPANISH_YES = re.compile(r"\bsí\b", re.IGNORECASE)
+
+
+def _the_telling_holds_back(team_utterance: str) -> bool:
+    """Whether a team that came back telling the scene held back from telling it.
+
+    The condition and the hedge both mean something else inside a telling than they mean
+    inside a decision. A condition that is really one opens its clause and names who it is
+    about; the "se" a whole session of Portuguese or Spanish is made of rides the verb that
+    follows it, and refusing on that refused nearly every telling the invitation ever asked
+    for. A hedge dropped into the middle of a told scene is a person telling a story they
+    half remember, which is the ordinary way a scene comes back — so it only refuses a
+    reply that has no telling around it. Two clauses of three words or more are what counts
+    as telling, because a clause that short is a word of acknowledgement and not a scene.
+
+    A reply that is a single clause keeps the older, flatter reading: the hedge refuses,
+    and so does a condition anywhere in it, not only one that opens it.
+    """
+    clauses = oral_decision_clause_details(team_utterance)
+    told = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
+    for clause in clauses:
+        spoken = normalize_oral_decision(_SPANISH_YES.sub(" ", clause.raw))
+        if _CONDITION_ON_A_SUBJECT.match(spoken):
+            return True
+        if told:
+            continue
+        if _CONDITION_ON_A_SUBJECT.search(spoken) or oral_clause_is_hedged(clause.raw):
+            return True
+    return False
+
+
 def _echoes_the_line_the_room_just_said(previous_guide_utterance: str, team_utterance: str) -> bool:
     """Whether what was heard is the room's own voice coming back through the microphone.
 
@@ -314,9 +362,7 @@ def bridge_language_retelling_completes_practice(
         return False
     if _echoes_the_line_the_room_just_said(previous_guide_utterance, team_utterance):
         return False
-    if oral_utterance_is_interrogative(team_utterance) or oral_clause_is_non_committal(
-        team_utterance
-    ):
+    if oral_utterance_is_interrogative(team_utterance) or _the_telling_holds_back(team_utterance):
         return False
     clauses = oral_decision_clauses(team_utterance)
     if any(oral_clause_has_negation(clause) for clause in clauses):
