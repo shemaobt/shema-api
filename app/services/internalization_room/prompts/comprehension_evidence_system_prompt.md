@@ -42,8 +42,8 @@ For each allowed checkpoint that the current utterance actually evidences, choos
   `conflict` whenever the contradiction rests on such a word. Do not infer it from short or broken
   speech, from unfamiliar vocabulary, or from imperfect grammar.
 
-Omit any checkpoint the answer does not establish, contradict, or explicitly report
-bridge-language difficulty for.
+Omit any checkpoint the answer does not establish, contradict, explicitly report
+bridge-language difficulty for, or turn on a word you cannot read as the team's own.
 
 You must never return `carry_to_refine` or authorize deferral. Carrying an open point to Refine is
 an explicit process choice handled deterministically by the application after it asks the team.
