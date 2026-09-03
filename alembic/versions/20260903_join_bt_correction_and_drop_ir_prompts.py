@@ -6,6 +6,12 @@ went the other way, to `20260902_room09`, which drops the `ir_prompts` table and
 path outright. Neither line knows the other exists, so bringing `main` in puts both at the
 end of the graph with nothing after them.
 
+This is the first branch, walking the reconciliation bottom-up, where both lines are
+present — every branch above it inherits this join through the merge, rather than growing
+a second copy of its own. A second copy in a branch further up would still leave Alembic
+content (same revision id, same parents, so a clean merge either way), but it would mean
+the join no longer *originates* at the one place both lines first met.
+
 This adds no schema — a join and nothing else — so there is no `downgrade` body: undoing it
 means going back to two heads, which is the state it exists to end.
 
