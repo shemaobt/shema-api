@@ -51,6 +51,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
+    PROBES_THAT_INVITE_A_REHEARSAL,
     bridge_language_retelling_completes_practice,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
@@ -305,7 +306,7 @@ async def run_comprehension_turn(
     )
     practice_confirmed = (
         prior_probe is not None
-        and prior_probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE
+        and prior_probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL
         and (
             practice_by_audio
             or (reliable and confirms_completed_mother_tongue_practice(last_guide, transcript))

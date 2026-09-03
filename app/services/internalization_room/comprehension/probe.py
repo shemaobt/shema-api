@@ -28,6 +28,7 @@ from app.services.internalization_room.oral_decision import (
 
 class ProbePurpose(enum.StrEnum):
     MOTHER_TONGUE_PRACTICE = "mother_tongue_practice"
+    SCENE_OPENING = "scene_opening"
     CARRY_TO_REFINE_CHOICE = "carry_to_refine_choice"
     RECORDING_HANDOFF_CONSENT = "recording_handoff_consent"
     FREE_RETELL = "free_retell"
@@ -39,6 +40,7 @@ class ProbePurpose(enum.StrEnum):
 PROCESS_ONLY_PURPOSES = frozenset(
     {
         ProbePurpose.MOTHER_TONGUE_PRACTICE,
+        ProbePurpose.SCENE_OPENING,
         ProbePurpose.CARRY_TO_REFINE_CHOICE,
         ProbePurpose.RECORDING_HANDOFF_CONSENT,
     }
@@ -65,15 +67,11 @@ class ActiveProbe(BaseModel):
             if len(set(values)) != len(values):
                 raise ValidationError(f"Duplicate probe {label} id")
         purpose = self.purpose
-        if purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE:
+        if purpose in (ProbePurpose.MOTHER_TONGUE_PRACTICE, ProbePurpose.SCENE_OPENING):
             if self.checkpoint_ids:
-                raise ValidationError(
-                    "A mother-tongue practice probe cannot authorize semantic evidence"
-                )
+                raise ValidationError(f"A {purpose.value} probe cannot authorize semantic evidence")
             if not self.practice_scene_ids:
-                raise ValidationError(
-                    "A mother-tongue practice probe needs an explicit scene scope"
-                )
+                raise ValidationError(f"A {purpose.value} probe needs an explicit scene scope")
         elif purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT:
             if self.checkpoint_ids or self.practice_scene_ids:
                 raise ValidationError(
@@ -93,6 +91,7 @@ class ActiveProbe(BaseModel):
             purpose
             not in (
                 ProbePurpose.MOTHER_TONGUE_PRACTICE,
+                ProbePurpose.SCENE_OPENING,
                 ProbePurpose.RECORDING_HANDOFF_CONSENT,
                 ProbePurpose.FREE_RETELL,
             )
