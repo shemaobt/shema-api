@@ -171,6 +171,28 @@ def test_the_invitation_the_guide_is_shown_is_one_the_room_can_recognise() -> No
     assert guide_invited_mother_tongue_practice(example), example
 
 
+def test_the_turn_after_a_finished_practice_asks_about_the_report_not_the_rehearsal() -> None:
+    """Sessions dceeccde, 1829e6f6, 3d896817: three third turns, three fail-safes.
+
+    The drafts were "rehearse this scene again in your own language to include those names",
+    the invitation said over again, and "did their names enter the rehearsal in your own
+    language?". The Validator refuses a second invitation to a rehearsal just finished, and
+    it refuses the Guide answering for a rehearsal it never heard.
+
+    All three are what rule 4 asked for. It closed on inviting the rehearsal again when
+    needed and on asking whether the missing thing was in the mother-tongue rehearsal, and
+    those were written for a room where the telling had not yet closed anything. Once the
+    telling finishes the practice, that turn belongs to the report: affirm it, then ask one
+    thing it left out, in the session language, about what the team actually said.
+    """
+    rule = GUIDE[GUIDE.index("Take the bridge-language telling-back the invitation asked for") :]
+    rule = rule[: rule.index("\n")]
+
+    assert "PRACTICE DONE" in rule
+    assert "never invite the same scene to be rehearsed again" in rule
+    assert "one question" in rule
+
+
 def test_render_refuses_a_prompt_with_an_unfilled_placeholder() -> None:
     with pytest.raises(ValidationError) as excinfo:
         render("mapa: {{MEANING_MAP}} lingua: {{SESSION_LANGUAGE}}", SESSION_LANGUAGE="pt")

@@ -865,6 +865,62 @@ async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
     assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
 
 
+class RecordingInvitingAgent:
+    """The inviting Guide, keeping every system prompt it was handed to draft from."""
+
+    def __init__(self) -> None:
+        self.systems: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        self.systems.append(system_prompt)
+        return (
+            "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
+            "Rehearse this scene together in your own language; when you have finished, "
+            "come back and tell me in English what you understood."
+        )
+
+
+@pytest.mark.asyncio
+async def test_the_turn_after_the_telling_is_told_the_practice_is_already_done(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sessions dceeccde, 1829e6f6 and 3d896817: three openings, three dead third turns.
+
+    The opening invited and the telling closed the practice — both of those held in all
+    three. Then every third turn fell to a fail-safe, and the drafts say why: one sent the
+    team to rehearse the same scene again with a checklist of what to add, one simply
+    repeated the invitation, and one asked whether a name had been in the mother-tongue
+    rehearsal. The Validator refuses all three, and it is right to.
+
+    Nothing told the Guide the practice was over. The probe block it reads is app-owned and
+    it named no such thing, so a Guide holding a finished report and an unfinished-looking
+    contract went back to the only instruction it had. The block names the scenes whose
+    practice is done now, so the turn has a subject that is not the rehearsal again.
+    """
+    agent = RecordingInvitingAgent()
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", agent)
+    session = await create_session(
+        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+
+    await _say(db_session, session, "we can start")
+    await _say(db_session, session, "A famine came and a family left Bethlehem to live in Moab")
+    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+    await _say(db_session, session, "that is all we remember")
+
+    handed = agent.systems[-1]
+
+    assert f"PRACTICE DONE: {scene_ids_for(P)[0]}" in handed, handed[-600:]
+    assert "do not invite it again" in handed
+    assert "ask only about the report" in handed
+
+
 @pytest.mark.asyncio
 async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_exists(
     db_session: AsyncSession, guide_invites: None

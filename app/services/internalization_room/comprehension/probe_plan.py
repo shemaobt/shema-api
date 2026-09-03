@@ -326,9 +326,40 @@ def render_active_probe_contract(
     coverage_complete: bool | None = None,
     semantic_ready: bool | None = None,
     handoff_paused: bool = False,
+    practiced_scene_ids: list[str] | None = None,
 ) -> str:
     """The block injected into BOTH the Guide and the Validator, so a question that
-    silently switches points, over-asks, or invents a new semantic test is rejected."""
+    silently switches points, over-asks, or invents a new semantic test is rejected.
+
+    A scene closes its practice on the telling the team brings back, and until this block
+    said so nothing told the Guide where it could read it. Holding a finished report against
+    a contract that named no finished practice, it went back to the only instruction it had
+    and sent the team to rehearse the same scene again — which the Validator refuses, so the
+    turn died as a fail-safe with the team having done everything it was asked.
+    """
+    contract = _probe_contract(
+        probe,
+        checkpoints,
+        coverage_complete=coverage_complete,
+        semantic_ready=semantic_ready,
+        handoff_paused=handoff_paused,
+    )
+    if not practiced_scene_ids:
+        return contract
+    return contract + (
+        f"\nPRACTICE DONE: {', '.join(practiced_scene_ids)} — "
+        "do not invite it again; ask only about the report the team already gave."
+    )
+
+
+def _probe_contract(
+    probe: ActiveProbe | None,
+    checkpoints: list[Checkpoint],
+    *,
+    coverage_complete: bool | None,
+    semantic_ready: bool | None,
+    handoff_paused: bool,
+) -> str:
     if probe is None:
         if handoff_paused:
             return (
