@@ -267,6 +267,44 @@ def test_a_spanish_room_confirms_a_finished_practice_but_never_a_denied_one() ->
     )
 
 
+def test_the_closing_word_is_heard_at_the_end_of_a_clause_too() -> None:
+    """The room heard its own word only when it stood alone.
+
+    Session b553b480, in English: the team answered the fixed invitation with "I already
+    said, it's done." and the room said the same invitation again, word for word. The
+    token matcher was anchored to a whole segment, so the word arriving where people
+    ordinarily put it — at the end of a short clause, after a copula — was not the word at
+    all. What refuses stays refusing: the negation, the plan, and the question are each
+    turned away by a different guard, and none of them depends on this anchoring.
+
+    The denials are asked in all three languages because the opening is one shared regex
+    with a branch per language: an edit to the pt/es branch alone would reopen this in
+    pt/es while every English case stayed green. `ya no está listo` is refused here by the
+    opening having to touch the word, not by the negation list — no Spanish `no` reaches
+    it (ENG-731) — so it is exactly the case a widened opening would lose."""
+    english = mother_tongue_practice_prompt("en")
+
+    assert confirms_completed_mother_tongue_practice(english, "I already said, it's done.")
+    assert confirms_completed_mother_tongue_practice(english, "it's done")
+    assert confirms_completed_mother_tongue_practice(english, "it is done")
+    assert confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("pt"), "já está pronto"
+    )
+    assert confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya está listo"
+    )
+
+    assert not confirms_completed_mother_tongue_practice(english, "it's not done")
+    assert not confirms_completed_mother_tongue_practice(english, "it will be done")
+    assert not confirms_completed_mother_tongue_practice(english, "is it done?")
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("pt"), "já não está pronto"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya no está listo"
+    )
+
+
 def test_confident_foreign_audio_completes_only_the_practice_probe() -> None:
     practice = ActiveProbe(
         id="x",

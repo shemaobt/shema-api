@@ -46,8 +46,15 @@ _COMPLETION_TOKEN_INVITATION = re.compile(
     r"|quando\s+estiver\w*\s+pront\w*|listo|ready|say\s+ready|done|when\s+you\s+are\s+done"
     r"|let\s+me\s+know)\b"
 )
+#: The closing word the app asked for, alone in its clause or carried by a copula. A
+#: subject and a verb of being are all that may precede it — "it is done", "já está
+#: pronto", "ya está listo" — because that is how the word is ordinarily said and the
+#: anchored form heard none of it. The prefix has to sit against the word: "ya no está
+#: listo" and "it will be done" put something between them and are not this.
 _COMPLETION_TOKEN = re.compile(
-    r"^(?:pronto|pronta|prontos|prontas|listo|listos|terminamos|acabamos|concluimos|ready|done"
+    r"^(?:(?:it\s+s|it\s+is|that\s+s|that\s+is|this\s+is|we\s+re"
+    r"|(?:ja\s+|ya\s+)?(?:esta|estamos))\s+)?"
+    r"(?:pronto|pronta|prontos|prontas|listo|listos|terminamos|acabamos|concluimos|ready|done"
     r"|finished|we\s+are\s+done|we\s+finished)$"
 )
 _SEGMENT_BOUNDARY = re.compile(r"[,;.!?\n]+")
