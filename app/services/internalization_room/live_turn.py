@@ -51,11 +51,12 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
+    bridge_language_retelling_completes_practice,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
-    mother_tongue_practice_invitation_is_new,
     mother_tongue_practice_prompt,
     practiced_scenes_authorized_by_probe,
+    the_practice_invitation_is_owed_by_the_app,
 )
 from app.services.internalization_room.comprehension.probe import (
     ActiveProbe,
@@ -306,6 +307,7 @@ async def run_comprehension_turn(
         and (
             practice_by_audio
             or (reliable and confirms_completed_mother_tongue_practice(last_guide, transcript))
+            or bridge_language_retelling_completes_practice(last_guide, transcript, reliable)
         )
     )
     practiced_now = (
@@ -547,7 +549,7 @@ async def run_comprehension_turn(
         app_owned_line = rehearsal_consent_declined_line(session.language)
     elif next_probe is not None and next_probe.purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT:
         app_owned_line = rehearsal_consent_question(session.language)
-    elif mother_tongue_practice_invitation_is_new(prior_probe, next_probe):
+    elif the_practice_invitation_is_owed_by_the_app(prior_probe, next_probe, last_guide):
         app_owned_line = mother_tongue_practice_prompt(session.language)
 
     contract = render_active_probe_contract(

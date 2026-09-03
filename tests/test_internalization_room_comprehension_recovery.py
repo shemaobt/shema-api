@@ -6,6 +6,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
+    bridge_language_retelling_completes_practice,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
     mother_tongue_practice_prompt,
@@ -446,4 +447,37 @@ def test_an_elapsed_cooldown_never_outranks_the_other_gates() -> None:
         explicit_resume_requested=False,
         prior_decision="declined",
         reliable_bridge_speech=True,
+    )
+
+
+_INVITATION = (
+    "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
+    "Rehearse this scene together in your own language; when you have finished, "
+    "come back and tell me in English what you understood."
+)
+
+
+def test_the_room_hearing_itself_never_finishes_the_practice() -> None:
+    """A microphone that picks up the app's own voice must not close the rehearsal.
+
+    The telling the invitation asks for is the team's. The invitation itself, and the head
+    or tail of it that a speaker can feed back into the microphone, are the room hearing
+    itself — the one thing that is certainly not a rehearsal that happened.
+
+    The head and the tail, and not the middle: a team whose telling repeats a phrase the
+    Guide just used is telling, and refusing it would be the refusal this ticket exists to
+    remove. The last case fixes that choice, so a widening to plain containment fails
+    here instead of quietly costing real retellings."""
+    assert not bridge_language_retelling_completes_practice(_INVITATION, _INVITATION, True)
+    assert not bridge_language_retelling_completes_practice(
+        _INVITATION, "come back and tell me in English what you understood", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        _INVITATION, "A famine comes, and a family leaves Bethlehem for the fields of Moab.", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION, "a family leaves Bethlehem for the fields of Moab", True
     )

@@ -12,6 +12,9 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from app.services.internalization_room.comprehension.assessor import (
+    is_semantically_empty_answer,
+)
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.languages import FLOOR
 from app.services.internalization_room.oral_decision import (
@@ -177,29 +180,80 @@ def is_exact_mother_tongue_practice_prompt(text: str) -> bool:
     return _normalize(text) in {_normalize(said) for said in _PRACTICE_PROMPT.values()}
 
 
-def mother_tongue_practice_invitation_is_new(
-    prior_probe: ActiveProbe | None, planned_probe: ActiveProbe | None
+def the_practice_invitation_is_owed_by_the_app(
+    prior_probe: ActiveProbe | None,
+    planned_probe: ActiveProbe | None,
+    previous_guide_utterance: str,
 ) -> bool:
-    """Whether the fixed invitation would be the first the team hears for this scene.
+    """Whether the app still has to say the fixed line because the Guide never invited.
 
-    The line is app-owned speech, so a scene whose practice probe is still standing would
-    hear it again word for word on every turn until the practice is reported, and the
-    Guide would never see the answer. Only a new scene, or a turn arriving from anywhere
-    but a practice probe, is worth the fixed sentence.
+    The invitation belongs to the Guide, at the end of the opening, in its own words and
+    carrying the contract the team answers: rehearse, then come back and tell in the
+    bridge language what you understood. Speaking the fixed sentence in that place took
+    the turn away from the Guide, so the opening closed on a passage question and the app
+    asked for the same rehearsal a turn later under a different contract.
 
-    Reading a standing probe as an invitation already voiced is sound only while nothing
-    else can plan a practice probe on a turn the app spends on another fixed line. What
-    holds that is the planner: the recording consent — and so its declined line — is
-    offered only once every scene is practiced, and a planner that reads engaged scenes
-    the way the readiness gate reads them plans no practice there at all. A caller that
-    lets those two drift apart leaves this probe standing on a prompt nobody said, and
-    binds the next confident recording to it.
+    What is left for the fixed line is the turn after a probe stood through a whole turn
+    with no invitation said. Reading the last line rather than the probe is what keeps it
+    from arriving twice: the Guide's invitation and the app's own both read as
+    invitations, so neither is followed by the other.
     """
     if planned_probe is None or planned_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE:
         return False
     if prior_probe is None or prior_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE:
-        return True
-    return prior_probe.practice_scene_ids != planned_probe.practice_scene_ids
+        return False
+    if prior_probe.practice_scene_ids != planned_probe.practice_scene_ids:
+        return False
+    return not guide_invited_mother_tongue_practice(previous_guide_utterance)
+
+
+def _echoes_the_line_the_room_just_said(previous_guide_utterance: str, team_utterance: str) -> bool:
+    """Whether what was heard is the room's own voice coming back through the microphone.
+
+    A speaker feeding the invitation back gives a transcript that is the line itself, or
+    the head or tail of it that the microphone caught. None of it is a team telling
+    anything, and all of it would otherwise read as one — the invitation is fluent bridge
+    language, it is long, and it holds no negation, hedge or question.
+    """
+    said = _normalize(previous_guide_utterance)
+    heard = _normalize(team_utterance)
+    if not heard or not said:
+        return False
+    return heard == said or said.startswith(heard) or said.endswith(heard)
+
+
+def bridge_language_retelling_completes_practice(
+    previous_guide_utterance: str, team_utterance: str, reliable_bridge_speech: bool
+) -> bool:
+    """The team came back telling the scene, which is what the invitation asked it to do.
+
+    The invitation names its own contract — rehearse, then tell me in the bridge language
+    what you understood — so the telling is the completion report. The closing word still
+    counts; it is simply no longer the only thing that does, and a team that did the
+    larger thing is no longer refused for skipping the smaller one.
+
+    It stays a process fact. This says the practice happened and nothing at all about what
+    the telling is worth against the map: the probe authorizes no semantic evidence, and
+    reading a retelling here does not change that.
+
+    What is refused, besides the question, the hedge and the denial, is the room hearing
+    its own voice: the invitation echoed whole, or the head or tail of it a speaker can
+    feed back. A fragment from the middle of the line is not caught here — it would cost
+    the ordinary retelling that reuses the words the Guide just used.
+    """
+    if not reliable_bridge_speech:
+        return False
+    if not guide_invited_mother_tongue_practice(previous_guide_utterance):
+        return False
+    if _echoes_the_line_the_room_just_said(previous_guide_utterance, team_utterance):
+        return False
+    if oral_utterance_is_interrogative(team_utterance) or oral_clause_is_non_committal(
+        team_utterance
+    ):
+        return False
+    if any(oral_clause_has_negation(clause) for clause in oral_decision_clauses(team_utterance)):
+        return False
+    return not is_semantically_empty_answer(team_utterance)
 
 
 def confident_non_bridge_audio_completes_scoped_practice(

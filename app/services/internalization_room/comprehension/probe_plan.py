@@ -284,13 +284,15 @@ def plan_next_probe(input_: ProbePlanInput) -> ActiveProbe | None:
 
 _PURPOSE_INSTRUCTION: dict[ProbePurpose, tuple[str, str]] = {
     ProbePurpose.MOTHER_TONGUE_PRACTICE: (
-        "This is a PROCESS-ONLY scene-practice turn. The app voices its exact fixed line "
-        "asking the team to rehearse this one scene in its mother tongue, and that line "
-        "names the single closing word it wants back. Do not add, paraphrase, answer, or "
-        "replace it; do not ask the team to rehearse anything yourself, do not ask it to "
-        "report what it said, and do not ask passage content.",
-        "The next bare confirmation may record only that this app-owned scene practice "
-        "finished; it can never be semantic evidence.",
+        "This is a PROCESS-ONLY turn and it ENDS with the invitation, in your own words. "
+        "Open only this one scene from the map in a sentence or two, then close by asking "
+        "the team to rehearse this scene together in its own language and, when it has "
+        "finished, to come back and tell you in the session language what it understood. "
+        "Both halves, every time. Do not end on a passage question instead, and do not ask "
+        "a passage-content question in the same turn.",
+        "The next turn may record only that this scene practice finished — the telling the "
+        "team brings back closes it, and so does the closing word; neither can ever become "
+        "semantic evidence.",
     ),
     ProbePurpose.CARRY_TO_REFINE_CHOICE: (
         "This is a PROCESS-ONLY turn about the one authorized open point. Say that "
@@ -349,9 +351,8 @@ def render_active_probe_contract(
                 "The critical semantic spine is ready, but passage COVERAGE still has "
                 "unfinished material.\n"
                 "Authorize exactly one INTERNALIZATION-ONLY move about one remaining "
-                "coverage item: open it from the Meaning Map and stop there. The app is "
-                "what sends the team to its own language; take the short bridge-language "
-                "report if one comes back.\n"
+                "coverage item: open it from the Meaning Map, invite brief mother-tongue "
+                "discussion or rehearsal, then accept a short bridge-language report.\n"
                 "This move may advance engagement coverage only. It creates NO semantic "
                 "comprehension evidence, must not re-test an already resolved checkpoint, "
                 "and must not trigger recording readiness yet."

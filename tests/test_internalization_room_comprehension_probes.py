@@ -384,13 +384,14 @@ def test_a_scene_worked_to_its_last_bead_is_not_invited_to_rehearse_again() -> N
     assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
 
 
-def test_the_practice_contract_leaves_the_invitation_to_the_app() -> None:
-    """One rehearsal, one voice, one contract.
+def test_the_practice_contract_carries_both_halves_of_the_invitation() -> None:
+    """One rehearsal, one voice, one contract — and the contract is the Guide's.
 
-    The app speaks the fixed invitation and names the single closing word. A contract that
-    also tells the Guide to invite the rehearsal has the room ask twice for the same work,
-    and the Guide's own wording arrives carrying a different contract — a bridge-language
-    telling-back — for the piece the app already asked to be closed with one word."""
+    The fixed line asked for a rehearsal closed by a single word; the Guide, invited to
+    say the same thing in its own words, asked for a telling-back. Two contracts for one
+    piece of work. The invitation is the Guide's now, and the contract it is handed names
+    both halves: rehearse in the team's own language, then come back and tell what was
+    understood. The closing word is no longer what it asks for."""
     probe = ActiveProbe(
         id="x",
         checkpoint_ids=[],
@@ -398,8 +399,8 @@ def test_the_practice_contract_leaves_the_invitation_to_the_app() -> None:
         purpose=ProbePurpose.MOTHER_TONGUE_PRACTICE,
         practice_scene_ids=[scene_ids_for(P)[0]],
     )
-    contract = render_active_probe_contract(probe, list(checkpoints_for(P)))
+    contract = render_active_probe_contract(probe, list(checkpoints_for(P))).lower()
 
-    assert "invite" not in contract.lower()
-    assert "telling-back" not in contract.lower()
-    assert "Do not add, paraphrase, answer, or replace it" in contract
+    assert "rehearse this scene together in its own language" in contract
+    assert "tell you in the session language what it understood" in contract
+    assert "pronto" not in contract
