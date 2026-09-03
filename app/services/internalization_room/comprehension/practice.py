@@ -372,6 +372,15 @@ def bridge_language_retelling_completes_practice(
     return not is_semantically_empty_answer(team_utterance)
 
 
+#: The two app-owned purposes whose turn ends on the rehearsal invitation. A scene the
+#: Guide opens is rehearsed on the same contract as one the room returns to, so the same
+#: answers close it: the telling brought back, the closing word, or confident
+#: mother-tongue audio.
+PROBES_THAT_INVITE_A_REHEARSAL = frozenset(
+    {ProbePurpose.MOTHER_TONGUE_PRACTICE, ProbePurpose.SCENE_OPENING}
+)
+
+
 def confident_non_bridge_audio_completes_scoped_practice(
     probe: ActiveProbe | None, confidently_non_bridge: bool
 ) -> bool:
@@ -379,7 +388,7 @@ def confident_non_bridge_audio_completes_scoped_practice(
     the exact app-authored practice probe. It can mark that scoped practice happened, but
     can never become semantic evidence or mark an unknown/all-scenes scope."""
     return confidently_non_bridge and (
-        probe is not None and probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE
+        probe is not None and probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL
     )
 
 
@@ -406,13 +415,14 @@ def scenes_practiced_by_the_telling_the_guide_invited(
     ordinary question from counting as a rehearsal.
 
     A process-only probe of another purpose standing is the room saying what the turn is
-    about, and it is not this. A semantic probe is no such claim — the Guide asks its
-    question and invites the rehearsal in the same breath, which is the turn this exists
-    for. That matters most for the recording-handoff consent, whose fixed question
-    — record the first rehearsal in your own language? — carries the practice stem and the
-    mother-tongue phrase in every language the room speaks, so a team agreeing to record
-    would otherwise be read as a team reporting a rehearsal of whatever scene the pointer
-    was on.
+    about, and it is not this — a scene opening included: it names the scene it is inviting
+    for, and that scope is the probe's to give, not the pointer's. A semantic probe is no
+    such claim — the Guide asks its question and invites the rehearsal in the same breath,
+    which is the turn this exists for. That matters most for the recording-handoff consent,
+    whose fixed question — record the first rehearsal in your own language? — carries the
+    practice stem and the mother-tongue phrase in every language the room speaks, so a team
+    agreeing to record would otherwise be read as a team reporting a rehearsal of whatever
+    scene the pointer was on.
     """
     if (
         prior_probe is not None

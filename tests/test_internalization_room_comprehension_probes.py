@@ -445,3 +445,58 @@ def test_the_practice_contract_carries_both_halves_of_the_invitation() -> None:
     assert "rehearse this scene together in its own language" in contract
     assert "tell you in the session language what it understood" in contract
     assert "pronto" not in contract
+
+
+def test_a_scene_the_voice_never_opened_is_opened_before_it_is_probed() -> None:
+    """The planner reaches an unopened scene and asks about it as if it had been framed.
+
+    Practice waits for the scene to be opened, and nothing else ever opened it: the first
+    scene is opened by the passage opening, so the second one arrived with the semantic
+    probe as its introduction. The team heard a checkpoint question about material nobody
+    had told it.
+    """
+    first, second = scene_ids_for(P)[0], scene_ids_for(P)[1]
+    probe = plan_next_probe(
+        _plan_input(
+            current_scene=second,
+            opened_scene_ids=[first],
+            practiced_scene_ids=[first],
+        )
+    )
+    assert probe is not None
+    assert probe.purpose is ProbePurpose.SCENE_OPENING
+    assert probe.practice_scene_ids == [second]
+    assert probe.checkpoint_ids == []
+
+
+def test_a_scene_already_opened_is_probed_not_opened_again() -> None:
+    probe = plan_next_probe(
+        _plan_input(current_scene=scene_ids_for(P)[0], practiced_scene_ids=scene_ids_for(P))
+    )
+    assert probe is not None
+    assert probe.purpose is ProbePurpose.INITIAL_CHECK
+
+
+def test_the_opening_contract_authorizes_the_canonical_content_it_needs() -> None:
+    """The Guide is told to say what happens in the scene, which every other turn forbids.
+
+    An opening that may not state the map is not an opening, and the Validator holds the
+    same block: without the permission written into it, the one draft the contract asks
+    for is the one the Validator rejects for revealing the answer.
+    """
+    second = scene_ids_for(P)[1]
+    probe = ActiveProbe(
+        id="open-1",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.SCENE_OPENING,
+        practice_scene_ids=[second],
+    )
+    contract = render_active_probe_contract(
+        probe, list(checkpoints_for(P)), practiced_scene_ids=[scene_ids_for(P)[0]]
+    )
+    assert "scene_opening" in contract
+    assert second in contract
+    assert "canonical content is allowed" in contract
+    assert "rehearse" in contract
+    assert "PRACTICE DONE" not in contract

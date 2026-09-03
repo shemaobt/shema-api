@@ -20,7 +20,11 @@ from app.services.internalization_room.comprehension.evidence import (
     SupportLevel,
     assess_unit,
 )
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.comprehension.probe import (
+    PROCESS_ONLY_PURPOSES,
+    ActiveProbe,
+    ProbePurpose,
+)
 from app.services.internalization_room.comprehension.question_contract import question_contract
 
 
@@ -136,6 +140,43 @@ def _next_practice_scene(input_: ProbePlanInput, blocking: list[Checkpoint]) -> 
     return None
 
 
+def _scene_the_next_semantic_probe_would_ask_about(
+    input_: ProbePlanInput, blocking: list[Checkpoint]
+) -> str | None:
+    scoped = _choose_scope(input_, blocking)
+    target = scoped[0] if scoped else (blocking[0] if blocking else None)
+    return target.scene_id if target else None
+
+
+def _next_scene_to_open(input_: ProbePlanInput, blocking: list[Checkpoint]) -> str | None:
+    """The scene the room is about to ask about and has never told the team.
+
+    The passage opening opens the first scene, and practice is only ever invited for a
+    scene coverage says was opened — so nothing at all opened the second one. The planner
+    walked past the practice branch, which refuses an unopened scene, straight into a
+    checkpoint question, and the team met the scene as the question about it. The app's
+    fixed invitation could not have opened it either: it is process-only speech and may
+    carry no passage content.
+
+    A scene already opened is not opened again, and neither is one already rehearsed —
+    a scene can be practised without coverage having caught up.
+
+    Nothing at all is opened here while coverage has yet to see a single scene opened.
+    That is the passage opening's own turn, which the room owns from its first line and
+    which this planner does not reach; reading an empty tracker as "no scene has been
+    told" would take that turn away from it.
+    """
+    if not input_.opened_scene_ids:
+        return None
+    scene_id = _scene_the_next_semantic_probe_would_ask_about(input_, blocking)
+    if scene_id is None:
+        return None
+    practiced = set(input_.practiced_scene_ids) | set(input_.engaged_scene_ids)
+    if scene_id in input_.opened_scene_ids or scene_id in practiced:
+        return None
+    return scene_id
+
+
 def _probe(
     input_: ProbePlanInput,
     checkpoints: list[Checkpoint],
@@ -209,6 +250,16 @@ def plan_next_probe(input_: ProbePlanInput) -> ActiveProbe | None:
         )
     if not blocking:
         return None
+
+    scene_to_open = _next_scene_to_open(input_, blocking)
+    if scene_to_open:
+        return ActiveProbe(
+            id=input_.id,
+            checkpoint_ids=[],
+            method=EvidenceMethod.MICRO_TELLBACK,
+            purpose=ProbePurpose.SCENE_OPENING,
+            practice_scene_ids=[scene_to_open],
+        )
 
     scoped = _choose_scope(input_, blocking)
     conflict = next(
@@ -295,6 +346,19 @@ _PURPOSE_INSTRUCTION: dict[ProbePurpose, tuple[str, str]] = {
         "team brings back closes it, and so does the closing word; neither can ever become "
         "semantic evidence.",
     ),
+    ProbePurpose.SCENE_OPENING: (
+        "This is a PROCESS-ONLY turn that OPENS the one scene named above and ENDS with "
+        "the invitation, in your own words. In one or two sentences, from the map, say "
+        "plainly what happens in that scene — this is an opening, canonical content is "
+        "allowed here, and stating it reveals no answer because nothing has been asked "
+        "yet. Then close by asking the team to rehearse this scene together in its own "
+        "language and, when it has finished, to come back and tell you in the session "
+        "language what it understood. Ask nothing else: no passage question, no "
+        "comprehension check.",
+        "The next turn may record only that this scene practice finished — the telling "
+        "the team brings back closes it; nothing said here or brought back can ever "
+        "become semantic evidence.",
+    ),
     ProbePurpose.CARRY_TO_REFINE_CHOICE: (
         "This is a PROCESS-ONLY turn about the one authorized open point. Say that "
         "difficulty reporting it does not prove misunderstanding. Ask whether the team "
@@ -349,8 +413,9 @@ def render_active_probe_contract(
         semantic_ready=semantic_ready,
         handoff_paused=handoff_paused,
     )
-    inviting_a_rehearsal = probe is not None and probe.purpose is (
-        ProbePurpose.MOTHER_TONGUE_PRACTICE
+    inviting_a_rehearsal = probe is not None and probe.purpose in (
+        ProbePurpose.MOTHER_TONGUE_PRACTICE,
+        ProbePurpose.SCENE_OPENING,
     )
     if not practiced_scene_ids or inviting_a_rehearsal:
         return contract
@@ -421,11 +486,7 @@ def _probe_contract(
             "Ask for the bridge-language telling-back without claiming to understand the "
             "mother-tongue words."
         )
-    process_only = probe.purpose in (
-        ProbePurpose.MOTHER_TONGUE_PRACTICE,
-        ProbePurpose.CARRY_TO_REFINE_CHOICE,
-        ProbePurpose.RECORDING_HANDOFF_CONSENT,
-    )
+    process_only = probe.purpose in PROCESS_ONLY_PURPOSES
     method_line = (
         "PROCESS DECISION: authorize no semantic evidence."
         if process_only

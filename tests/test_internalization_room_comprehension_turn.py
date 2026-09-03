@@ -956,3 +956,63 @@ async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_ex
     assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
     standing = comprehension_of(session).active_probe
     assert standing is None or standing.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+
+@pytest.mark.asyncio
+async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
+    db_session: AsyncSession, guide_invites_pt: None
+) -> None:
+    """The first scene is opened by the passage opening; nothing opened the second.
+
+    With the first scene worked through, the planner walked straight into a checkpoint
+    question about a scene the room had never told, and the app's fixed line — which may
+    carry no passage content — could not have opened it either. The Guide opens it and
+    invites the rehearsal in the same turn, and the telling that comes back closes it.
+    """
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="abertura"
+    )
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        **{e.key: "engaged" for e in elements_for(P) if e.scene == 1},
+    }
+    await db_session.commit()
+
+    opening = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="entendemos a primeira cena"),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert opening.state.active_probe is not None
+    assert opening.state.active_probe.purpose is ProbePurpose.SCENE_OPENING
+    assert opening.state.active_probe.practice_scene_ids == ["S2"]
+    assert opening.outcome.speech != mother_tongue_practice_prompt("pt")
+    assert guide_invited_mother_tongue_practice(opening.outcome.speech)
+
+    await save_comprehension(db_session, session, opening.state)
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="entendemos a primeira cena",
+        guide_response=opening.outcome.speech,
+    )
+
+    told_back = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="ensaiamos e entendemos que a família volta para Belém"),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert "S2" in told_back.state.practiced_scene_ids
