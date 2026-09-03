@@ -177,9 +177,16 @@ def mother_tongue_practice_invitation_is_new(
 
     The line is app-owned speech, so a scene whose practice probe is still standing would
     hear it again word for word on every turn until the practice is reported, and the
-    Guide would never see the answer. A standing probe for the same scene means the
-    invitation was already voiced; only a new scene, or a turn arriving from anywhere but
-    a practice probe, is worth the fixed sentence.
+    Guide would never see the answer. Only a new scene, or a turn arriving from anywhere
+    but a practice probe, is worth the fixed sentence.
+
+    Reading a standing probe as an invitation already voiced is sound only while nothing
+    else can plan a practice probe on a turn the app spends on another fixed line. What
+    holds that is the planner: the recording consent — and so its declined line — is
+    offered only once every scene is practiced, and a planner that reads engaged scenes
+    the way the readiness gate reads them plans no practice there at all. A caller that
+    lets those two drift apart leaves this probe standing on a prompt nobody said, and
+    binds the next confident recording to it.
     """
     if planned_probe is None or planned_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE:
         return False
