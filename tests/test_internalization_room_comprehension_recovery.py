@@ -558,6 +558,96 @@ def test_an_announced_plan_is_not_the_telling_the_invitation_asked_for() -> None
     )
 
 
+_INVITATION_PT = (
+    "Olá, eu sou o Facilitador Digital. Esta história começa num tempo de muita desordem em "
+    "Israel, quando não havia um líder fixo. Uma família de Belém precisa fugir da fome e buscar "
+    "abrigo nas terras estrangeiras de Moabe. O tom é pesado e triste, pois a família vai "
+    "perdendo tudo aos poucos. No fim, sobra apenas uma mulher sozinha e longe de casa.\n\n"
+    "No começo, a fome aperta a terra e um homem chamado Elimeleque leva sua esposa, Noemi, e "
+    "seus dois filhos para morar em Moabe como estrangeiros. Agora, ensaiem essa primeira parte "
+    "na língua de vocês; quando terminarem, me contem em português o que entenderam."
+)
+_TELLING_PT = (
+    "Tava tendo uma fome muito grande na terra de Belém e aí uma família teve que se mudar pra "
+    "os campos de Moabe. E essa era a família do Elimeleque, da Naomi e dos seus dois filhos"
+)
+
+
+def test_a_reflexive_se_in_the_telling_is_not_a_condition() -> None:
+    """Session 1d142af3, in Portuguese, on the phone: the scene came back told and stayed
+    unpractised.
+
+    "teve que se mudar" is a verb carrying its clitic, and the guard read those two letters
+    as the opening of a condition — so the one reply the invitation had asked for was filed
+    as a team that had committed to nothing, and the next turn asked for the rehearsal
+    again. Nearly every telling in Portuguese or Spanish carries a "se" like this one, and
+    English carries none, which is why the same turn closed the practice three times over
+    in English on the same day."""
+    assert bridge_language_retelling_completes_practice(_INVITATION_PT, _TELLING_PT, True)
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None, _INVITATION_PT, _TELLING_PT, True, "S1"
+    ) == ["S1"]
+
+
+def test_a_told_scene_closes_the_practice_where_a_real_condition_still_refuses() -> None:
+    """The clitic and the condition are the same two letters, and only one of them is a
+    reason to refuse.
+
+    A family that moved, a couple that married — the tellings this room exists to receive
+    are full of them, in Portuguese and in Spanish alike, and each one was being read as a
+    team that had not committed to anything. What a condition actually looks like is
+    unchanged: it opens its clause and names who it is about, and a reply that is one short
+    clause is still refused for a condition anywhere in it, so "a gente ensaia se vocês
+    quiserem" does not become a rehearsal either."""
+    invitation_pt = mother_tongue_practice_prompt("pt")
+    invitation_es = mother_tongue_practice_prompt("es")
+
+    assert bridge_language_retelling_completes_practice(
+        invitation_es, "La familia se mudó a Moab por el hambre", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        invitation_pt, "A família se mudou pra Moabe", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        invitation_pt, "Eles se casaram e ficaram lá dez anos", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        invitation_pt, "Se vocês quiserem a gente ensaia", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        _INVITATION, "If you want we can rehearse", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        invitation_pt, "Acho que não ensaiamos ainda", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        invitation_pt, "A gente ensaia se vocês quiserem", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        invitation_pt, "Se vocês quiserem a gente ensaia. Depois a gente conta tudo pra você", True
+    )
+
+
+def test_a_hedge_inside_a_told_scene_is_a_person_remembering_not_a_refusal() -> None:
+    """Half remembering a scene out loud is how a scene comes back, not a team holding out.
+
+    "acho que" between two told clauses is the sound of someone reaching for a name, and
+    the gate read it the same way it reads "acho que a gente ensaiou" — a reply with no
+    telling around it at all, where the hedge really is the whole answer. Two clauses of
+    three words or more are what separates them."""
+    invitation_pt = mother_tongue_practice_prompt("pt")
+
+    assert bridge_language_retelling_completes_practice(
+        invitation_pt,
+        "Tava tendo uma fome muito grande em Belém. Acho que a família do Elimeleque foi pra "
+        "Moabe com a Noemi e os dois filhos",
+        True,
+    )
+    assert not bridge_language_retelling_completes_practice(
+        invitation_pt, "Acho que a gente ensaiou", True
+    )
+
+
 _BOUNDARY_QUESTIONS = (
     (
         "pt",
