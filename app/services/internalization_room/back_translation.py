@@ -867,9 +867,9 @@ say. Remaining findings wait for the next round. Never a checklist, never a spee
 
 CLOSING_MISSING_TO_REHEARSAL = """- End by handing the choice to the screen, not by asking for \
 a spoken answer. The end of the story has not been told yet — nothing they recorded is wrong, \
-and nothing they recorded will be lost. In one short sentence, tell them they can go on and \
-record what is still missing, and that what they already recorded stays. The screen offers \
-exactly one microphone for that. Do not offer to settle it later, do not ask them to choose \
+and nothing they recorded will be lost. In one or two short sentences, tell them to record \
+what is still missing with the big microphone, and that when they finish they tap the green \
+button to come back and check it. Do not offer to settle it later, do not ask them to choose \
 between voices, and do not ask them to say anything out loud. Never a checklist, never a \
 speech."""
 
