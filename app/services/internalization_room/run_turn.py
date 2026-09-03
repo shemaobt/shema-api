@@ -541,11 +541,11 @@ async def run_verdict_turn(
     The Speaker never sees the recording, only what the team told back, so its judgment is
     always about the telling-back. Runs through the Validator like every other voiced turn.
 
-    The missing slot is refused rather than rendered around. `get_prompt_text` prefers the
-    stored row, a row written before the slot existed does not have it, and `render` drops a
-    value whose placeholder is absent without a word — so the closing would simply never reach
-    the Speaker, and the turn would go on asking for a spoken answer while the screen waits for
-    a tap. Nothing anywhere would say so.
+    The missing slot is refused rather than rendered around. A speaker prompt file saved
+    before the slot existed would not carry it, and `render` drops a value whose placeholder
+    is absent without a word — so the closing would simply never reach the Speaker, and the
+    turn would go on asking for a spoken answer while the screen waits for a tap. Nothing
+    anywhere would say so.
     """
     cfg = settings or get_settings()
     map_block = meaning_map_block(pericope_num, book)
