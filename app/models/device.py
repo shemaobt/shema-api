@@ -151,10 +151,12 @@ class DeviceLabelUpdateRequest(BaseModel):
 
 
 class DeviceCredentialResponse(BaseModel):
-    """A freshly rotated credential, returned once and never stored in the clear.
+    """A credential a device just received, returned once and never stored in the clear.
 
-    Same discipline as ``DeviceClaimResponse``: this object and the device's own memory are
-    the only places the string exists.
+    Two routes answer with this and both mint the string they carry: the tablet collecting
+    its first credential (ENG-622) and a device trading the one it holds for a fresh one.
+    Same discipline as ``DeviceClaimResponse`` either way — this object and the device's own
+    memory are the only places the string exists.
     """
 
     device_id: str
