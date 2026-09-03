@@ -190,6 +190,28 @@ def floor_met(state: dict[str, str], pericope_num: str) -> bool:
     return True
 
 
+def engaged_scene_ids(state: dict[str, str], pericope_num: str) -> list[str]:
+    """The scenes whose every element is `engaged`, in scene order.
+
+    A scene only reaches the strong reading of all its beads by the team telling it in their
+    own words, so the readiness gate accepts this in place of the spoken practice report — a
+    team that worked a scene through and simply moved on without saying "pronto" was being
+    sent back to rehearse it again. The substitution is a reading, never a record:
+    `practiced_scene_ids` keeps meaning what the team actually reported, and nothing here is
+    written back into it.
+
+    Elements the map leaves unplaced carry no scene and are ignored, exactly as the scene
+    pointer ignores them.
+    """
+    by_scene: dict[int, bool] = {}
+    for element in elements_for(pericope_num):
+        if element.scene is None:
+            continue
+        engaged = state.get(element.key) == CoverageStatus.ENGAGED.value
+        by_scene[element.scene] = by_scene.get(element.scene, True) and engaged
+    return [f"S{scene}" for scene in sorted(by_scene) if by_scene[scene]]
+
+
 def absence_positions(pericope_num: str) -> list[int]:
     return [
         index
