@@ -6,9 +6,12 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
+    bridge_language_retelling_completes_practice,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
+    guide_invited_mother_tongue_practice,
     mother_tongue_practice_prompt,
+    scenes_practiced_by_the_telling_the_guide_invited,
 )
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.comprehension.probe_plan import NoUsableReportAttempt
@@ -20,6 +23,7 @@ from app.services.internalization_room.comprehension.stt_recovery import (
 from app.services.internalization_room.rehearsal_readiness import (
     RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
     rehearsal_consent_question,
+    rehearsal_readiness_cue,
     resolve_rehearsal_consent,
     should_offer_recording_consent,
 )
@@ -252,6 +256,59 @@ def test_nothing_confirms_a_practice_the_room_never_invited() -> None:
     assert not confirms_completed_mother_tongue_practice("O que aconteceu depois?", "já ensaiamos")
 
 
+def test_a_spanish_room_confirms_a_finished_practice_but_never_a_denied_one() -> None:
+    """A Spanish room could not answer its practice probe at all: no matcher carried a
+    Spanish word, so the room's own prompt was never read as an invitation."""
+    assert confirms_completed_mother_tongue_practice(mother_tongue_practice_prompt("es"), "listo")
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "no, todavía no ensayamos"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya no ensayamos"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya vamos a ensayar esta escena"
+    )
+
+
+def test_the_closing_word_is_heard_at_the_end_of_a_clause_too() -> None:
+    """The room heard its own word only when it stood alone.
+
+    Session b553b480, in English: the team answered the fixed invitation with "I already
+    said, it's done." and the room said the same invitation again, word for word. The
+    token matcher was anchored to a whole segment, so the word arriving where people
+    ordinarily put it — at the end of a short clause, after a copula — was not the word at
+    all. What refuses stays refusing: the negation, the plan, and the question are each
+    turned away by a different guard, and none of them depends on this anchoring.
+
+    The denials are asked in all three languages because the opening is one shared regex
+    with a branch per language: an edit to the pt/es branch alone would reopen this in
+    pt/es while every English case stayed green. `ya no está listo` is refused here by the
+    opening having to touch the word, not by the negation list — no Spanish `no` reaches
+    it (ENG-731) — so it is exactly the case a widened opening would lose."""
+    english = mother_tongue_practice_prompt("en")
+
+    assert confirms_completed_mother_tongue_practice(english, "I already said, it's done.")
+    assert confirms_completed_mother_tongue_practice(english, "it's done")
+    assert confirms_completed_mother_tongue_practice(english, "it is done")
+    assert confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("pt"), "já está pronto"
+    )
+    assert confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya está listo"
+    )
+
+    assert not confirms_completed_mother_tongue_practice(english, "it's not done")
+    assert not confirms_completed_mother_tongue_practice(english, "it will be done")
+    assert not confirms_completed_mother_tongue_practice(english, "is it done?")
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("pt"), "já não está pronto"
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        mother_tongue_practice_prompt("es"), "ya no está listo"
+    )
+
+
 def test_confident_foreign_audio_completes_only_the_practice_probe() -> None:
     practice = ActiveProbe(
         id="x",
@@ -394,3 +451,198 @@ def test_an_elapsed_cooldown_never_outranks_the_other_gates() -> None:
         prior_decision="declined",
         reliable_bridge_speech=True,
     )
+
+
+_INVITATION = (
+    "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
+    "Rehearse this scene together in your own language; when you have finished, "
+    "come back and tell me in English what you understood."
+)
+
+
+def test_the_room_hearing_itself_never_finishes_the_practice() -> None:
+    """A microphone that picks up the app's own voice must not close the rehearsal.
+
+    The telling the invitation asks for is the team's. The invitation itself, and the head
+    or tail of it that a speaker can feed back into the microphone, are the room hearing
+    itself — the one thing that is certainly not a rehearsal that happened.
+
+    The head and the tail, and not the middle: a team whose telling repeats a phrase the
+    Guide just used is telling, and refusing it would be the refusal this ticket exists to
+    remove. The last case fixes that choice, so a widening to plain containment fails
+    here instead of quietly costing real retellings."""
+    assert not bridge_language_retelling_completes_practice(_INVITATION, _INVITATION, True)
+    assert not bridge_language_retelling_completes_practice(
+        _INVITATION, "come back and tell me in English what you understood", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        _INVITATION, "A famine comes, and a family leaves Bethlehem for the fields of Moab.", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION, "a family leaves Bethlehem for the fields of Moab", True
+    )
+
+
+def test_the_rooms_own_consent_question_never_marks_a_scene_practiced() -> None:
+    """The recording-consent question reads exactly like an invitation to rehearse.
+
+    "…record the first rehearsal in your own language?" carries the practice stem and the
+    mother-tongue phrase in all three languages, so a team answering it with a whole
+    sentence looked like a team reporting a rehearsal — of whatever scene the pointer
+    happened to be on, which nobody had invited in that exchange.
+
+    Reading the probe is not enough: accepting the recording clears the planned probe, so
+    the readiness cue that follows is an app-owned invitation with no probe behind it at
+    all. What settles it is the line — the room's own recording speech never counts, while
+    the fixed practice prompt, which is a real invitation, still does."""
+    consent = ActiveProbe(
+        id="c",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT,
+    )
+    assert (
+        scenes_practiced_by_the_telling_the_guide_invited(
+            consent,
+            rehearsal_consent_question("en"),
+            "Yes, let us go ahead and record it now",
+            True,
+            "S3",
+        )
+        == []
+    )
+    for language in ("en", "pt", "es"):
+        for line in (rehearsal_consent_question(language), rehearsal_readiness_cue(language)):
+            assert (
+                scenes_practiced_by_the_telling_the_guide_invited(
+                    None, line, "Yes, let us go ahead and record it now", True, "S3"
+                )
+                == []
+            )
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None, _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True, "S1"
+    ) == ["S1"]
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None,
+        mother_tongue_practice_prompt("en"),
+        "A famine came and a family left Bethlehem to live in Moab",
+        True,
+        "S1",
+    ) == ["S1"]
+
+
+def test_an_announced_plan_is_not_the_telling_the_invitation_asked_for() -> None:
+    """The likeliest reply to an invitation is the team saying it is about to obey.
+
+    A plan is the one thing the other completion path had always refused, and the telling
+    path was written without it: fluent, substantial, no question, no hedge, no denial, no
+    echo — and no rehearsal yet. The scene would enter the practised list on a rehearsal
+    that had not started."""
+    invitation_pt = mother_tongue_practice_prompt("pt")
+    invitation_es = mother_tongue_practice_prompt("es")
+
+    assert not bridge_language_retelling_completes_practice(
+        invitation_pt, "vamos ensaiar essa cena agora", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        _INVITATION, "we are going to rehearse it now", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        invitation_es, "ya vamos a ensayar esta escena", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True
+    )
+
+
+_BOUNDARY_QUESTIONS = (
+    (
+        "pt",
+        "No que vocês me contaram de volta, não ouvi a fome. "
+        "A fome entrou no ensaio na língua de vocês?",
+    ),
+    (
+        "en",
+        "In what you told me back, I did not hear the famine. "
+        "Did the famine enter the rehearsal in your own language?",
+    ),
+    (
+        "es",
+        "En lo que me contaron, no escuché el hambre. ¿El hambre entró en el ensayo en su lengua?",
+    ),
+    ("pt", "Isso estava no ensaio na língua de vocês, ou entrou agora na explicação?"),
+)
+
+
+def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
+    """The Guide's own boundary question names the rehearsal and the language, like the
+    invitation does.
+
+    The prompt tells it to ask exactly that when something is missing from a report, so it
+    is not a rare line — and answering it is the ordinary next turn. Read as an invitation,
+    a plain answer marked the scene rehearsed for a rehearsal nobody had asked for, against
+    this module's first rule: a scene is practised only after an invitation bound to it.
+    An invitation tells the team to go and do something; a question asks about something
+    already done or not. The question mark does not separate them — the Guide phrases
+    invitations politely, as questions, all the time — and neither does the vocabulary,
+    which is identical. What differs is the rehearsal's part in the sentence: the
+    invitation has the team rehearsing, so the rehearsal is a verb; the boundary question
+    has a detail sitting inside a rehearsal already over, so it is a noun — under an
+    article, a possessive, or none at all. So the polite invitations here must all count,
+    and the boundary questions must all not, whichever way each is worded."""
+    for language, question in _BOUNDARY_QUESTIONS:
+        assert not guide_invited_mother_tongue_practice(question), question
+        assert (
+            scenes_practiced_by_the_telling_the_guide_invited(
+                None, question, "estava sim, nós dissemos que ela voltou com Rute", True, "S1"
+            )
+            == []
+        ), language
+
+    assert guide_invited_mother_tongue_practice(_INVITATION)
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None, _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True, "S1"
+    ) == ["S1"]
+    for language in ("pt", "en", "es"):
+        assert guide_invited_mother_tongue_practice(mother_tongue_practice_prompt(language))
+
+    assert guide_invited_mother_tongue_practice(
+        "Does any of that sound familiar? Now rehearse this scene together in your own "
+        "language, and come back and tell me in English what you understood."
+    )
+    for polite in (
+        "Would you rehearse this scene together in your own language and then tell me?",
+        "Could you all rehearse this together in your own language and tell me what you got?",
+        "Podem ensaiar esta cena na língua de vocês? "
+        "Quando terminarem, me contem o que entenderam.",
+        "Vocês conseguem ensaiar essa cena na língua de vocês e depois me contar o que entenderam?",
+    ):
+        assert guide_invited_mother_tongue_practice(polite), polite
+    assert guide_invited_mother_tongue_practice("Rehearse this scene... in your own language.")
+    assert guide_invited_mother_tongue_practice("Ensaiem esta cena... na língua de vocês.")
+    assert guide_invited_mother_tongue_practice(
+        "Now, in this scene, rehearse it together in your own language."
+    )
+    for spoken in (
+        "Vocês praticam essa cena juntos na língua de vocês.",
+        "Vocês ensaiam essa cena juntos na língua de vocês.",
+        "Ustedes ensayan juntos esta escena en su lengua.",
+        "Tu ensaias essa cena na língua de vocês.",
+    ):
+        assert guide_invited_mother_tongue_practice(spoken), spoken
+    for about_a_rehearsal in (
+        "Did you mention that during your rehearsal in your own language?",
+        "Did that come up while rehearsing in your own language?",
+        "Isso apareceu durante o ensaio na língua de vocês?",
+        "Did that come up in the practice in your own language?",
+        "Was that in your practice in your own language?",
+        "Did that happen in that practice in your own language?",
+        "Was that in this practice in your own language?",
+        "Did I mention that in my practice in your own language?",
+        "Did that come up during practice in your own language?",
+        "Isso apareceu na prática na língua de vocês?",
+    ):
+        assert not guide_invited_mother_tongue_practice(about_a_rehearsal), about_a_rehearsal

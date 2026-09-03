@@ -367,3 +367,50 @@ def test_the_contract_carries_purpose_method_and_material() -> None:
 def test_no_probe_still_forbids_invented_tests() -> None:
     contract = render_active_probe_contract(None, [])
     assert "Do not invent another semantic test" in contract
+
+
+def test_a_scene_worked_to_its_last_bead_is_not_invited_to_rehearse_again() -> None:
+    """The readiness gate and the planner read the same scene the same way.
+
+    A scene whose every element is engaged counts as practiced for the gate, so a planner
+    still reading the reported list alone invites the rehearsal the gate has already
+    stopped waiting for — and with a critical checkpoint open the practice branch runs
+    before the semantic ones, so that invitation is what the room says."""
+    checkpoints = list(checkpoints_for(P))
+    open_critical = next(c for c in checkpoints if c.critical)
+    ledger = [
+        _obs(f"a{i}", c.id, EvidenceResult.DEMONSTRATED)
+        for i, c in enumerate(checkpoints)
+        if c.id != open_critical.id
+    ]
+    probe = plan_next_probe(
+        _plan_input(
+            ledger=ledger,
+            practiced_scene_ids=[],
+            engaged_scene_ids=scene_ids_for(P),
+        )
+    )
+    assert probe is not None
+    assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+
+def test_the_practice_contract_carries_both_halves_of_the_invitation() -> None:
+    """One rehearsal, one voice, one contract — and the contract is the Guide's.
+
+    The fixed line asked for a rehearsal closed by a single word; the Guide, invited to
+    say the same thing in its own words, asked for a telling-back. Two contracts for one
+    piece of work. The invitation is the Guide's now, and the contract it is handed names
+    both halves: rehearse in the team's own language, then come back and tell what was
+    understood. The closing word is no longer what it asks for."""
+    probe = ActiveProbe(
+        id="x",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.MOTHER_TONGUE_PRACTICE,
+        practice_scene_ids=[scene_ids_for(P)[0]],
+    )
+    contract = render_active_probe_contract(probe, list(checkpoints_for(P))).lower()
+
+    assert "rehearse this scene together in its own language" in contract
+    assert "tell you in the session language what it understood" in contract
+    assert "pronto" not in contract

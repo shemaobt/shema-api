@@ -43,6 +43,7 @@ class ProbePlanInput(BaseModel):
     scene_ids: list[str]
     current_scene: str | None = None
     practiced_scene_ids: list[str] = Field(default_factory=list)
+    engaged_scene_ids: list[str] = Field(default_factory=list)
     opened_scene_ids: list[str] = Field(default_factory=list)
     returning_to_full_retell: bool = False
     skip_carry_offer_for_checkpoint_ids: list[str] = Field(default_factory=list)
@@ -111,8 +112,14 @@ def _next_practice_scene(input_: ProbePlanInput, blocking: list[Checkpoint]) -> 
     Practice is a process-only turn — the fixed invitation may not carry passage content —
     so inviting it for a scene the team has never heard opened would ask them to rehearse
     something nobody framed. A scene qualifies only after coverage shows it was opened.
+
+    A fully engaged scene counts as practiced here for the same reason it does in the
+    readiness gate, and reading it in only one of the two was its own defect: the gate
+    stopped waiting for the closing word while this planner kept naming the scene, so the
+    room invited a rehearsal already finished and the Guide read the invitation beside a
+    status block saying none was needed.
     """
-    practiced = set(input_.practiced_scene_ids)
+    practiced = set(input_.practiced_scene_ids) | set(input_.engaged_scene_ids)
     opened = set(input_.opened_scene_ids)
     if input_.current_scene:
         if input_.current_scene not in practiced and input_.current_scene in opened:
@@ -278,12 +285,15 @@ def plan_next_probe(input_: ProbePlanInput) -> ActiveProbe | None:
 
 _PURPOSE_INSTRUCTION: dict[ProbePurpose, tuple[str, str]] = {
     ProbePurpose.MOTHER_TONGUE_PRACTICE: (
-        "This is a PROCESS-ONLY turn. Invite the team to rehearse only this scene together "
-        "in its mother tongue. Ask it to say one short completion word in the session "
-        "language ('pronto') when it has finished, then STOP. Do not ask a passage-content "
-        "question in the same turn.",
-        "The next bare confirmation may record only that this app-owned scene practice "
-        "finished; it can never be semantic evidence.",
+        "This is a PROCESS-ONLY turn and it ENDS with the invitation, in your own words. "
+        "Open only this one scene from the map in a sentence or two, then close by asking "
+        "the team to rehearse this scene together in its own language and, when it has "
+        "finished, to come back and tell you in the session language what it understood. "
+        "Both halves, every time. Do not end on a passage question instead, and do not ask "
+        "a passage-content question in the same turn.",
+        "The next turn may record only that this scene practice finished — the telling the "
+        "team brings back closes it, and so does the closing word; neither can ever become "
+        "semantic evidence.",
     ),
     ProbePurpose.CARRY_TO_REFINE_CHOICE: (
         "This is a PROCESS-ONLY turn about the one authorized open point. Say that "
