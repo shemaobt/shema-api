@@ -10,6 +10,7 @@ from app.services.internalization_room.comprehension.practice import (
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
     mother_tongue_practice_prompt,
+    scenes_practiced_by_the_telling_the_guide_invited,
 )
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.comprehension.probe_plan import NoUsableReportAttempt
@@ -21,6 +22,7 @@ from app.services.internalization_room.comprehension.stt_recovery import (
 from app.services.internalization_room.rehearsal_readiness import (
     RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
     rehearsal_consent_question,
+    rehearsal_readiness_cue,
     resolve_rehearsal_consent,
     should_offer_recording_consent,
 )
@@ -480,4 +482,76 @@ def test_the_room_hearing_itself_never_finishes_the_practice() -> None:
     )
     assert bridge_language_retelling_completes_practice(
         _INVITATION, "a family leaves Bethlehem for the fields of Moab", True
+    )
+
+
+def test_the_rooms_own_consent_question_never_marks_a_scene_practiced() -> None:
+    """The recording-consent question reads exactly like an invitation to rehearse.
+
+    "…record the first rehearsal in your own language?" carries the practice stem and the
+    mother-tongue phrase in all three languages, so a team answering it with a whole
+    sentence looked like a team reporting a rehearsal — of whatever scene the pointer
+    happened to be on, which nobody had invited in that exchange.
+
+    Reading the probe is not enough: accepting the recording clears the planned probe, so
+    the readiness cue that follows is an app-owned invitation with no probe behind it at
+    all. What settles it is the line — the room's own recording speech never counts, while
+    the fixed practice prompt, which is a real invitation, still does."""
+    consent = ActiveProbe(
+        id="c",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT,
+    )
+    assert (
+        scenes_practiced_by_the_telling_the_guide_invited(
+            consent,
+            rehearsal_consent_question("en"),
+            "Yes, let us go ahead and record it now",
+            True,
+            "S3",
+        )
+        == []
+    )
+    for language in ("en", "pt", "es"):
+        for line in (rehearsal_consent_question(language), rehearsal_readiness_cue(language)):
+            assert (
+                scenes_practiced_by_the_telling_the_guide_invited(
+                    None, line, "Yes, let us go ahead and record it now", True, "S3"
+                )
+                == []
+            )
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None, _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True, "S1"
+    ) == ["S1"]
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None,
+        mother_tongue_practice_prompt("en"),
+        "A famine came and a family left Bethlehem to live in Moab",
+        True,
+        "S1",
+    ) == ["S1"]
+
+
+def test_an_announced_plan_is_not_the_telling_the_invitation_asked_for() -> None:
+    """The likeliest reply to an invitation is the team saying it is about to obey.
+
+    A plan is the one thing the other completion path had always refused, and the telling
+    path was written without it: fluent, substantial, no question, no hedge, no denial, no
+    echo — and no rehearsal yet. The scene would enter the practised list on a rehearsal
+    that had not started."""
+    invitation_pt = mother_tongue_practice_prompt("pt")
+    invitation_es = mother_tongue_practice_prompt("es")
+
+    assert not bridge_language_retelling_completes_practice(
+        invitation_pt, "vamos ensaiar essa cena agora", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        _INVITATION, "we are going to rehearse it now", True
+    )
+    assert not bridge_language_retelling_completes_practice(
+        invitation_es, "ya vamos a ensayar esta escena", True
+    )
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True
     )

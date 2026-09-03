@@ -56,6 +56,7 @@ from app.services.internalization_room.comprehension.practice import (
     confirms_completed_mother_tongue_practice,
     mother_tongue_practice_prompt,
     practiced_scenes_authorized_by_probe,
+    scenes_practiced_by_the_telling_the_guide_invited,
     the_practice_invitation_is_owed_by_the_app,
 )
 from app.services.internalization_room.comprehension.probe import (
@@ -298,6 +299,7 @@ async def run_comprehension_turn(
         observation_id=_observation_id("no-report"),
     )
 
+    scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
     practice_by_audio = confident_non_bridge_audio_completes_scoped_practice(
         prior_probe, mother_tongue
     )
@@ -316,6 +318,8 @@ async def run_comprehension_turn(
         )
         if prior_probe is not None
         else []
+    ) or scenes_practiced_by_the_telling_the_guide_invited(
+        prior_probe, last_guide, transcript, reliable, scene_pointer
     )
 
     process_observations: list[EvidenceObservation] = []
@@ -408,7 +412,6 @@ async def run_comprehension_turn(
     )
     projected_ledger = [*state.ledger, *events]
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
-    scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
     engaged_scenes = engaged_scene_ids(session.coverage_state or {}, pericope)
 
     comprehension_status = render_comprehension_status(

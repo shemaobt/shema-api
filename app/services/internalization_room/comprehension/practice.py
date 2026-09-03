@@ -15,13 +15,21 @@ import unicodedata
 from app.services.internalization_room.comprehension.assessor import (
     is_semantically_empty_answer,
 )
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.comprehension.probe import (
+    ActiveProbe,
+    ProbePurpose,
+    is_process_only,
+)
 from app.services.internalization_room.languages import FLOOR
 from app.services.internalization_room.oral_decision import (
     oral_clause_has_negation,
     oral_clause_is_non_committal,
     oral_decision_clauses,
     oral_utterance_is_interrogative,
+)
+from app.services.internalization_room.rehearsal_readiness import (
+    is_exact_rehearsal_consent_question,
+    is_exact_rehearsal_readiness_cue,
 )
 
 
@@ -72,7 +80,8 @@ _COMPLETED_REPORT = (
 )
 _FUTURE_REPORT = (
     re.compile(
-        r"\b(vamos|iremos|queremos|pretendemos|podemos)\b.{0,32}\b(ensai|pratic|recont|tent\w*\s+cont)\w*"
+        r"\b(vamos|iremos|queremos|pretendemos|podemos)\b.{0,32}"
+        r"\b(ensai|ensay|pratic|recont|tent\w*\s+cont)\w*"
     ),
     re.compile(
         r"\b(we\s+will|we'll|we\s+are\s+going\s+to|we\s+want\s+to|we\s+plan\s+to|we\s+can)\b"
@@ -236,6 +245,21 @@ def bridge_language_retelling_completes_practice(
     the telling is worth against the map: the probe authorizes no semantic evidence, and
     reading a retelling here does not change that.
 
+    The room's own recording speech is refused before any of that. Both the consent
+    question and the readiness cue speak of the first rehearsal in the team's own
+    language, so both read as invitations, and neither is one: agreeing to record is not a
+    rehearsal of the scene the pointer happens to be on. Reading the standing probe does
+    not catch it — accepting the recording clears the planned probe, so the cue arrives
+    with nothing behind it — which is why the line itself is what is checked. The fixed
+    practice prompt is left alone: it is a real invitation, and the telling that answers it
+    is a real telling.
+
+    An announced plan is refused with them. It is the likeliest reply of all to an
+    invitation the Guide has just given — the team saying it is about to obey — and it is
+    fluent, substantial and holds no question, hedge or denial, so it would otherwise read
+    as the telling itself and mark a rehearsal that had not started. The same patterns
+    that refuse it on the reported-rehearsal path refuse it here.
+
     What is refused, besides the question, the hedge and the denial, is the room hearing
     its own voice: the invitation echoed whole, or the head or tail of it a speaker can
     feed back. A fragment from the middle of the line is not caught here — it would cost
@@ -245,13 +269,20 @@ def bridge_language_retelling_completes_practice(
         return False
     if not guide_invited_mother_tongue_practice(previous_guide_utterance):
         return False
+    if is_exact_rehearsal_consent_question(previous_guide_utterance) or (
+        is_exact_rehearsal_readiness_cue(previous_guide_utterance)
+    ):
+        return False
     if _echoes_the_line_the_room_just_said(previous_guide_utterance, team_utterance):
         return False
     if oral_utterance_is_interrogative(team_utterance) or oral_clause_is_non_committal(
         team_utterance
     ):
         return False
-    if any(oral_clause_has_negation(clause) for clause in oral_decision_clauses(team_utterance)):
+    clauses = oral_decision_clauses(team_utterance)
+    if any(oral_clause_has_negation(clause) for clause in clauses):
+        return False
+    if any(pattern.search(clause) for clause in clauses for pattern in _FUTURE_REPORT):
         return False
     return not is_semantically_empty_answer(team_utterance)
 
@@ -265,6 +296,52 @@ def confident_non_bridge_audio_completes_scoped_practice(
     return confidently_non_bridge and (
         probe is not None and probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE
     )
+
+
+def scenes_practiced_by_the_telling_the_guide_invited(
+    prior_probe: ActiveProbe | None,
+    previous_guide_utterance: str,
+    team_utterance: str,
+    reliable_bridge_speech: bool,
+    current_scene: str | None,
+) -> list[str]:
+    """The scene just opened, when the telling its invitation asked for comes straight back.
+
+    The invitation ends the opening of a scene, which is a turn before the planner has any
+    reason to raise a practice probe for it — the scene is only opened by that very turn. A
+    team that does what it was asked answers next, so reading the practice only through a
+    standing probe threw away the one reply the invitation had asked for: the scene stayed
+    unpractised, the probe arrived afterwards, and the room asked again for a rehearsal
+    already told.
+
+    The scope is the scene pointer, because that is what the invitation was about — the
+    Guide opens the scene the pointer names and invites for that one; it never chooses a
+    scene itself. Nothing is marked when there is no pointer, and nothing is marked when
+    the last line was not an invitation, which is what keeps an ordinary answer to an
+    ordinary question from counting as a rehearsal.
+
+    A process-only probe of another purpose standing is the room saying what the turn is
+    about, and it is not this. A semantic probe is no such claim — the Guide asks its
+    question and invites the rehearsal in the same breath, which is the turn this exists
+    for. That matters most for the recording-handoff consent, whose fixed question
+    — record the first rehearsal in your own language? — carries the practice stem and the
+    mother-tongue phrase in every language the room speaks, so a team agreeing to record
+    would otherwise be read as a team reporting a rehearsal of whatever scene the pointer
+    was on.
+    """
+    if (
+        prior_probe is not None
+        and is_process_only(prior_probe)
+        and prior_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+    ):
+        return []
+    if current_scene is None:
+        return []
+    if not bridge_language_retelling_completes_practice(
+        previous_guide_utterance, team_utterance, reliable_bridge_speech
+    ):
+        return []
+    return [current_scene]
 
 
 def practiced_scenes_authorized_by_probe(probe: ActiveProbe, practice_reported: bool) -> list[str]:

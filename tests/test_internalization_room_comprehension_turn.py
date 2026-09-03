@@ -863,3 +863,40 @@ async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
     )
     assert answer != mother_tongue_practice_prompt("en")
     assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+
+
+@pytest.mark.asyncio
+async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_exists(
+    db_session: AsyncSession, guide_invites: None
+) -> None:
+    """Session 23520187: the team did exactly what it was asked and it counted for nothing.
+
+    The invitation is said at the end of the opening, a turn before the planner has any
+    reason to raise a practice probe for that scene. A team that obeys answers on the very
+    next turn — so requiring a standing probe threw away the one reply the invitation had
+    asked for. The scene stayed unpractised, the probe was raised afterwards, and the room
+    went back to asking for the rehearsal the team had already told, until the validator
+    started refusing the Guide's drafts for not honouring a contract nobody could satisfy.
+    """
+    session = await create_session(
+        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+
+    invitation = await _say(db_session, session, "we can start")
+    assert guide_invited_mother_tongue_practice(invitation)
+    assert comprehension_of(session).active_probe is None or (
+        comprehension_of(session).active_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+    )
+
+    await _say(
+        db_session,
+        session,
+        "A famine came, and Elimelech took Naomi and their two sons from Bethlehem to Moab",
+    )
+
+    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+    standing = comprehension_of(session).active_probe
+    assert standing is None or standing.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
