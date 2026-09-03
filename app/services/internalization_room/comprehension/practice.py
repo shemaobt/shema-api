@@ -90,9 +90,48 @@ _FUTURE_REPORT = (
 )
 
 
+#: The rehearsal as something the team is being told to do. Verb forms only, listed
+#: rather than stemmed, because the one thing this must not admit is the rehearsal named
+#: as a thing — `ensaio`, `rehearsal`, `rehearsing`, `ensayo`, `prática` — which is how
+#: the Guide's boundary question speaks of a rehearsal already over. English `practice` is
+#: both verb and noun, so it is left out on the noun's account: which one it is can only
+#: be told from the determiner in front, and that list has no end ("in that practice", "in
+#: my practice", "during practice"). `rehearse` says the same thing and says it once.
+_PRACTICE_AS_A_VERB = re.compile(
+    r"\b(?:ensai(?:e|em|es|ar|am|amos|as|a)|ensay(?:e|en|es|ar|an|amos|as|a)"
+    r"|pratiqu(?:e|em|emos)|pratic(?:ar|am|amos)"
+    r"|practiqu(?:e|en|emos)|practic(?:ar|an|amos)"
+    r"|recont(?:e|em|es|ar|am|amos|as|a)|rehearse|rehearses|practise|practises"
+    r"|retell|retells)\b"
+)
+
+
 def guide_invited_mother_tongue_practice(guide_utterance: str) -> bool:
+    """Whether a line the room said sent the team to rehearse in its own language.
+
+    An invitation tells the team to go and do something. A question asks *about* a
+    rehearsal — whether it happened, whether some detail was in it — and the Guide is told
+    to ask exactly that whenever a report leaves something out, in the very same words:
+    the practice stem and the mother-tongue phrase.
+
+    The question mark does not separate them. The Guide writes in its own words and asks
+    politely all the time — "podem ensaiar esta cena na língua de vocês?" is an invitation
+    and ends in one. What separates them is what the rehearsal is doing in the sentence:
+    the invitation has the team rehearsing, so the rehearsal is a verb, while the boundary
+    question has a detail sitting inside a rehearsal already over, so it is a noun. So the
+    verb forms are what is looked for, and they are listed rather than stemmed: a stem
+    that reaches `ensaiar` reaches `ensaio` too, and that noun is the whole difficulty.
+    English `practice` is left out for the same reason from the other side — it is verb and
+    noun at once, and only the determiner in front tells which, a list with no end.
+
+    An invitation that names the rehearsal instead of asking for it — "comecem o ensaio na
+    língua de vocês" — is not read as one. That is the direction to be wrong in: a missed
+    invitation costs a fixed line the room says anyway and a telling that goes uncredited,
+    while a false one marks a scene practised that nobody rehearsed, against the rule this
+    module opens with.
+    """
     text = _normalize(guide_utterance)
-    return bool(_PRACTICE.search(text) and _MOTHER_TONGUE.search(text))
+    return bool(_PRACTICE_AS_A_VERB.search(text) and _MOTHER_TONGUE.search(text))
 
 
 def _oral_segments(utterance: str) -> list[str]:

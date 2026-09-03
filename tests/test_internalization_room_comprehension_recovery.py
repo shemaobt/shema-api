@@ -9,6 +9,7 @@ from app.services.internalization_room.comprehension.practice import (
     bridge_language_retelling_completes_practice,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
+    guide_invited_mother_tongue_practice,
     mother_tongue_practice_prompt,
     scenes_practiced_by_the_telling_the_guide_invited,
 )
@@ -555,3 +556,93 @@ def test_an_announced_plan_is_not_the_telling_the_invitation_asked_for() -> None
     assert bridge_language_retelling_completes_practice(
         _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True
     )
+
+
+_BOUNDARY_QUESTIONS = (
+    (
+        "pt",
+        "No que vocês me contaram de volta, não ouvi a fome. "
+        "A fome entrou no ensaio na língua de vocês?",
+    ),
+    (
+        "en",
+        "In what you told me back, I did not hear the famine. "
+        "Did the famine enter the rehearsal in your own language?",
+    ),
+    (
+        "es",
+        "En lo que me contaron, no escuché el hambre. ¿El hambre entró en el ensayo en su lengua?",
+    ),
+    ("pt", "Isso estava no ensaio na língua de vocês, ou entrou agora na explicação?"),
+)
+
+
+def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
+    """The Guide's own boundary question names the rehearsal and the language, like the
+    invitation does.
+
+    The prompt tells it to ask exactly that when something is missing from a report, so it
+    is not a rare line — and answering it is the ordinary next turn. Read as an invitation,
+    a plain answer marked the scene rehearsed for a rehearsal nobody had asked for, against
+    this module's first rule: a scene is practised only after an invitation bound to it.
+    An invitation tells the team to go and do something; a question asks about something
+    already done or not. The question mark does not separate them — the Guide phrases
+    invitations politely, as questions, all the time — and neither does the vocabulary,
+    which is identical. What differs is the rehearsal's part in the sentence: the
+    invitation has the team rehearsing, so the rehearsal is a verb; the boundary question
+    has a detail sitting inside a rehearsal already over, so it is a noun — under an
+    article, a possessive, or none at all. So the polite invitations here must all count,
+    and the boundary questions must all not, whichever way each is worded."""
+    for language, question in _BOUNDARY_QUESTIONS:
+        assert not guide_invited_mother_tongue_practice(question), question
+        assert (
+            scenes_practiced_by_the_telling_the_guide_invited(
+                None, question, "estava sim, nós dissemos que ela voltou com Rute", True, "S1"
+            )
+            == []
+        ), language
+
+    assert guide_invited_mother_tongue_practice(_INVITATION)
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None, _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True, "S1"
+    ) == ["S1"]
+    for language in ("pt", "en", "es"):
+        assert guide_invited_mother_tongue_practice(mother_tongue_practice_prompt(language))
+
+    assert guide_invited_mother_tongue_practice(
+        "Does any of that sound familiar? Now rehearse this scene together in your own "
+        "language, and come back and tell me in English what you understood."
+    )
+    for polite in (
+        "Would you rehearse this scene together in your own language and then tell me?",
+        "Could you all rehearse this together in your own language and tell me what you got?",
+        "Podem ensaiar esta cena na língua de vocês? "
+        "Quando terminarem, me contem o que entenderam.",
+        "Vocês conseguem ensaiar essa cena na língua de vocês e depois me contar o que entenderam?",
+    ):
+        assert guide_invited_mother_tongue_practice(polite), polite
+    assert guide_invited_mother_tongue_practice("Rehearse this scene... in your own language.")
+    assert guide_invited_mother_tongue_practice("Ensaiem esta cena... na língua de vocês.")
+    assert guide_invited_mother_tongue_practice(
+        "Now, in this scene, rehearse it together in your own language."
+    )
+    for spoken in (
+        "Vocês praticam essa cena juntos na língua de vocês.",
+        "Vocês ensaiam essa cena juntos na língua de vocês.",
+        "Ustedes ensayan juntos esta escena en su lengua.",
+        "Tu ensaias essa cena na língua de vocês.",
+    ):
+        assert guide_invited_mother_tongue_practice(spoken), spoken
+    for about_a_rehearsal in (
+        "Did you mention that during your rehearsal in your own language?",
+        "Did that come up while rehearsing in your own language?",
+        "Isso apareceu durante o ensaio na língua de vocês?",
+        "Did that come up in the practice in your own language?",
+        "Was that in your practice in your own language?",
+        "Did that happen in that practice in your own language?",
+        "Was that in this practice in your own language?",
+        "Did I mention that in my practice in your own language?",
+        "Did that come up during practice in your own language?",
+        "Isso apareceu na prática na língua de vocês?",
+    ):
+        assert not guide_invited_mother_tongue_practice(about_a_rehearsal), about_a_rehearsal
