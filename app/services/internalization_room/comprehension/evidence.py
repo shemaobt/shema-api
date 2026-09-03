@@ -43,6 +43,7 @@ class EvidenceResult(enum.StrEnum):
 OPEN_RESULTS = frozenset(
     {
         EvidenceResult.UNCLEAR_DUE_BRIDGE,
+        EvidenceResult.UNCLEAR_DUE_TRANSCRIPT,
         EvidenceResult.STT_UNCERTAIN,
         EvidenceResult.CARRY_TO_REFINE,
     }
