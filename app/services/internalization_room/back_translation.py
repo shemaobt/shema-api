@@ -865,13 +865,6 @@ answer in words. This finding does not land on one stretch, so there is no stret
 and no two voices to choose between — the next conversational turn will respond to what they \
 say. Remaining findings wait for the next round. Never a checklist, never a speech."""
 
-CLOSING_MISSING_ON_SCREEN = """- End by handing the choice to the screen, not by asking for a \
-spoken answer. This stretch is on screen, and something the passage has is not in it. In one \
-short sentence, tell them they can listen to both voices and then record this part again — \
-the whole part, what they already told and what was missing. The screen offers exactly one \
-microphone for that; do not name a second one, and do not ask them to say the answer out \
-loud. Remaining findings wait for the next round. Never a checklist, never a speech."""
-
 CLOSING_MISSING_TO_REHEARSAL = """- End by handing the choice to the screen, not by asking for \
 a spoken answer. The end of the story has not been told yet — nothing they recorded is wrong, \
 and nothing they recorded will be lost. In one short sentence, tell them they can go on and \
@@ -893,15 +886,15 @@ def closing_block(finding: Finding | None) -> str:
     a second time here: the room's request for the whole stretch turns on the same answer, and
     two copies of it would be two things free to disagree about the same screen.
 
-    A missing element is the one kind whose screen no longer matches the other two closings.
-    On a stretch, the screen keeps both "listen" buttons but offers one microphone — record
-    the part again, the whole part — so the closing that names a microphone per voice
-    promises a choice that is not there. Off every stretch, the end of the story has simply
-    not been told yet: the screen takes them on to record what is missing, keeping everything
-    they recorded, and the closing that asks for a spoken answer promises a next
-    conversational turn this path never has — it is where *"quer deixar para alinharmos mais
-    na frente?"* came from. What the screen offers the other kinds without a stretch is a
-    product decision still open, so they keep `CLOSING_SPOKEN` untouched.
+    A missing element off every stretch is the one kind whose screen still differs from the
+    rest: the end of the story has simply not been told yet, so the screen takes them on to
+    record what is missing, keeping everything they recorded, and the closing that asks for a
+    spoken answer promises a next conversational turn this path never has — it is where
+    *"quer deixar para alinharmos mais na frente?"* came from. On a stretch, a missing element
+    gets the same two microphones as every other finding there (decision of 2026-09-03,
+    reversing ENG-710): the sibling closing that once named one microphone for it is gone.
+    What the screen offers the other kinds without a stretch is a product decision still open,
+    so they keep `CLOSING_SPOKEN` untouched.
 
     Returned with `{session_language}` still in it, for whoever fills the template to
     substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here
@@ -912,12 +905,8 @@ def closing_block(finding: Finding | None) -> str:
     """
     if finding is None:
         return CLOSING_PLAIN
-    if finding.kind is FindingKind.MISSING:
-        return (
-            CLOSING_MISSING_ON_SCREEN
-            if points_at_a_stretch(finding)
-            else CLOSING_MISSING_TO_REHEARSAL
-        )
+    if finding.kind is FindingKind.MISSING and not points_at_a_stretch(finding):
+        return CLOSING_MISSING_TO_REHEARSAL
     return CLOSING_ON_SCREEN if points_at_a_stretch(finding) else CLOSING_SPOKEN
 
 
@@ -961,10 +950,10 @@ def with_the_whole_stretch_asked_for(
     would need a new app release before a team could hear it at all. The team hears one turn,
     which is also what it is.
 
-    Said only where the screen actually offers a microphone on that stretch — two for most
-    findings, one for a missing element — which is what `points_at_a_stretch` decides:
-    nothing is replaced anywhere else, and a correction instruction out of turn confuses more
-    than it helps.
+    Said only where the screen actually offers a microphone on that stretch — two, for every
+    finding that lands on one — which is what `points_at_a_stretch` decides: nothing is
+    replaced anywhere else, and a correction instruction out of turn confuses more than it
+    helps.
 
     A turn that fell back to a fail-safe carries nothing after it, and neither does one with
     nothing to carry. A fail-safe is played from inside the app by the name it is known by, so
