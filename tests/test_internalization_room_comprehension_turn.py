@@ -917,8 +917,8 @@ async def test_the_turn_after_the_telling_is_told_the_practice_is_already_done(
     handed = agent.systems[-1]
 
     assert f"PRACTICE DONE: {scene_ids_for(P)[0]}" in handed, handed[-600:]
-    assert "do not invite it again" in handed
-    assert "ask only about the report" in handed
+    assert "Do not invite these scenes to rehearse again" in handed
+    assert "ask only about the report already given for them" in handed
 
 
 @pytest.mark.asyncio
