@@ -17,6 +17,15 @@ logger = logging.getLogger(__name__)
 
 _BRACKETED_KEY = re.compile(r"^-?\s*\[([^\]]+)\]")
 
+#: What the classifier's TEAM_UTTERANCE slot carries when nobody has spoken this turn, in
+#: the session's own language. Keyed by the language code, in the shape `calibration.py`
+#: already uses — an unclaimed language falls back to the authored English line.
+_NO_TEAM_UTTERANCE_YET: dict[str, str] = {
+    "pt": "(a equipe ainda não falou)",
+    "en": "(the team has not spoken yet)",
+    "es": "(el equipo aún no ha hablado)",
+}
+
 
 def _element_id(named: str) -> str:
     """The element's key, whether the model sent it bare or as the list prints it.
@@ -122,6 +131,7 @@ async def classify_coverage(
     classifier_prompt: str,
     pericope_num: str,
     session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     settings: Settings | None = None,
 ) -> dict[str, str]:
     """Advance the tracker from one exchange. Never runs on the voice path.
@@ -136,7 +146,8 @@ async def classify_coverage(
         SESSION_LANGUAGE=session_language,
         SCENES=_scenes_block(pericope_num),
         COVERAGE_ELEMENTS=_unresolved_block(coverage_state, pericope_num),
-        TEAM_UTTERANCE=team_utterance or "(a equipe ainda não falou)",
+        TEAM_UTTERANCE=team_utterance
+        or _NO_TEAM_UTTERANCE_YET.get(language_code, _NO_TEAM_UTTERANCE_YET[FLOOR]),
         GUIDE_RESPONSE=guide_response,
     )
 
