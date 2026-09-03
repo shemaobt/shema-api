@@ -40,7 +40,6 @@ recording is their work in their language; your ears only reach the telling.
     found: too little to check is not a clean check.
   - **Unclear:** just ask them to tell that piece again — no fuss.
 {{CLOSING}}
-- After the team acts on this one, they will finish the telling-back again.
 - Never mention the map, findings, analysis, or any inner working. Ground everything in
   *"a história conta / não conta"* and *"o que você me contou"*.
 
