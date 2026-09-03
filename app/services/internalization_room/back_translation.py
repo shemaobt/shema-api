@@ -270,10 +270,10 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     telling-back and blessed the passage. A "silence" kind is folded into addition: a
     filled silence is something told that the passage does not tell.
 
-    A reply without ``evidence_sufficient`` is a legacy prompt still stored in
-    ``ir_prompts``; it is read as sufficient, exactly what that prompt's replies always
-    meant. When the field is present it must agree with the findings one way: insufficient
-    needs a finding that names the limit, or nothing concrete reaches the Voice.
+    A reply without ``evidence_sufficient`` is from a prompt version that predates the
+    field; it is read as sufficient, exactly what that prompt's replies always meant. When
+    the field is present it must agree with the findings one way: insufficient needs a
+    finding that names the limit, or nothing concrete reaches the Voice.
 
     The other way it is allowed to disagree, and the disagreement is resolved rather than
     refused. **A sufficient flag beside an ``insufficient_evidence`` finding is read as
