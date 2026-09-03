@@ -28,6 +28,11 @@ MAX_SPOKEN_TURN_SENTENCES = 3
 MAX_SPOKEN_PANORAMA_WORDS = 90
 MAX_SPOKEN_PANORAMA_SENTENCES = 6
 
+#: What the invitation costs the movement that has to end on it. The contract runs to
+#: twenty-two words in English and twenty in Portuguese, said as one sentence or as two.
+MAX_SPOKEN_INVITATION_WORDS = 25
+MAX_SPOKEN_INVITATION_SENTENCES = 2
+
 
 @dataclass(frozen=True)
 class SpeechBudget:
@@ -51,9 +56,13 @@ class SpeechBudget:
 
 TURN_BUDGET = SpeechBudget(MAX_SPOKEN_TURN_WORDS, MAX_SPOKEN_TURN_SENTENCES)
 PANORAMA_BUDGET = SpeechBudget(MAX_SPOKEN_PANORAMA_WORDS, MAX_SPOKEN_PANORAMA_SENTENCES)
+SCENE_MOVEMENT_BUDGET = SpeechBudget(
+    MAX_SPOKEN_TURN_WORDS + MAX_SPOKEN_INVITATION_WORDS,
+    MAX_SPOKEN_TURN_SENTENCES + MAX_SPOKEN_INVITATION_SENTENCES,
+)
 OPENING_BUDGET = SpeechBudget(
-    MAX_SPOKEN_PANORAMA_WORDS + MAX_SPOKEN_TURN_WORDS,
-    MAX_SPOKEN_PANORAMA_SENTENCES + MAX_SPOKEN_TURN_SENTENCES,
+    MAX_SPOKEN_PANORAMA_WORDS + SCENE_MOVEMENT_BUDGET.words,
+    MAX_SPOKEN_PANORAMA_SENTENCES + SCENE_MOVEMENT_BUDGET.sentences,
 )
 
 OPENING_MOVEMENT_MARK = "[[CENA]]"
@@ -88,7 +97,7 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
 def _broken_ceiling(speech: str, movements: list[str], budget: SpeechBudget) -> SpeechBudget | None:
     """The ceiling the speech went over, or None when it fits."""
     if movements:
-        for text, ceiling in zip(movements, (PANORAMA_BUDGET, TURN_BUDGET), strict=True):
+        for text, ceiling in zip(movements, (PANORAMA_BUDGET, SCENE_MOVEMENT_BUDGET), strict=True):
             if not ceiling.fits(text):
                 return ceiling
         return None
