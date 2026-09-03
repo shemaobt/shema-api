@@ -41,8 +41,7 @@ _PROMPT_KEY_ENUM = sa.Enum(
 
 
 def upgrade() -> None:
-    op.drop_index("ix_ir_prompts_key", table_name="ir_prompts")
-    op.drop_table("ir_prompts")
+    op.execute("DROP TABLE IF EXISTS ir_prompts")
     _PROMPT_KEY_ENUM.drop(op.get_bind(), checkfirst=True)
 
 
