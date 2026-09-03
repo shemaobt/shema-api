@@ -34,6 +34,7 @@ class EvidenceResult(enum.StrEnum):
     DEMONSTRATED = "demonstrated"
     SUPPORTED_PROMPTED = "supported_prompted"
     UNCLEAR_DUE_BRIDGE = "unclear_due_bridge"
+    UNCLEAR_DUE_TRANSCRIPT = "unclear_due_transcript"
     STT_UNCERTAIN = "stt_uncertain"
     CONFLICT = "conflict"
     CARRY_TO_REFINE = "carry_to_refine"
@@ -42,6 +43,7 @@ class EvidenceResult(enum.StrEnum):
 OPEN_RESULTS = frozenset(
     {
         EvidenceResult.UNCLEAR_DUE_BRIDGE,
+        EvidenceResult.UNCLEAR_DUE_TRANSCRIPT,
         EvidenceResult.STT_UNCERTAIN,
         EvidenceResult.CARRY_TO_REFINE,
     }

@@ -6,7 +6,9 @@ voiced last turn, the exact previous question, the team's current utterance, and
 STT metadata. Every semantic row it returns must quote the team exactly and survive
 negation, polarity, and duplicate guards — a bad model row is ignored while a separately
 grounded row remains usable. The model may never return ``carry_to_refine`` (a team
-choice) or ``stt_uncertain`` (transport metadata); code writes those.
+choice) or ``stt_uncertain`` (transport metadata); code writes those. It may return
+``unclear_due_transcript``: a reading it cannot trust is an open question about the
+transcript, never evidence that the team contradicted the passage.
 
 Ported from the reference prototype's ``src/comprehension/assessor.ts``.
 """
@@ -44,7 +46,15 @@ from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
 
-_TURN_RESULTS = frozenset({"demonstrated", "supported_prompted", "unclear_due_bridge", "conflict"})
+_TURN_RESULTS = frozenset(
+    {
+        "demonstrated",
+        "supported_prompted",
+        "unclear_due_bridge",
+        "unclear_due_transcript",
+        "conflict",
+    }
+)
 
 _ANSWER_BEARING_METHODS = frozenset(
     {EvidenceMethod.ROLE_OR_PLACE_CHOICE, EvidenceMethod.TRUE_EVENT_SEQUENCE}
@@ -419,7 +429,7 @@ _TURN_OUTPUT_CONTRACT = """{
   "observations": [
     {
       "checkpoint_id": "exact id from the allowed checkpoint list",
-      "result": "demonstrated | supported_prompted | unclear_due_bridge | conflict",
+      "result": "demonstrated | supported_prompted | unclear_due_bridge | unclear_due_transcript | conflict",
       "evidence_excerpt": "exact short contiguous quote from the current team utterance",
       "rationale": "brief internal reason for this checkpoint only"
     }

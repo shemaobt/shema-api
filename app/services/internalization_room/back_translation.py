@@ -264,10 +264,10 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     telling-back and blessed the passage. A "silence" kind is folded into addition: a
     filled silence is something told that the passage does not tell.
 
-    A reply without ``evidence_sufficient`` is a legacy prompt still stored in
-    ``ir_prompts``; it is read as sufficient, exactly what that prompt's replies always
-    meant. When the field is present, it must agree with the findings: insufficient needs
-    a finding that names the limit, and sufficient may not carry insufficient_evidence.
+    A reply without ``evidence_sufficient`` is from a prompt version that predates the
+    field; it is read as sufficient, exactly what that prompt's replies always meant. When
+    the field is present, it must agree with the findings: insufficient needs a finding
+    that names the limit, and sufficient may not carry insufficient_evidence.
     """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)

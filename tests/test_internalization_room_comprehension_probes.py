@@ -184,6 +184,16 @@ def test_an_open_bridge_limit_gets_the_carry_offer() -> None:
     assert probe.checkpoint_ids == [first_critical.id]
 
 
+def test_a_disputed_transcript_gets_the_carry_offer_too() -> None:
+    checkpoints = list(checkpoints_for(P))
+    first_critical = next(c for c in checkpoints if c.critical)
+    ledger = [_obs("a", first_critical.id, EvidenceResult.UNCLEAR_DUE_TRANSCRIPT)]
+    probe = plan_next_probe(_plan_input(ledger=ledger, practiced_scene_ids=scene_ids_for(P)))
+    assert probe is not None
+    assert probe.purpose is ProbePurpose.CARRY_TO_REFINE_CHOICE
+    assert probe.checkpoint_ids == [first_critical.id]
+
+
 def test_a_conflict_is_clarified_before_anything_else() -> None:
     checkpoints = list(checkpoints_for(P))
     first_critical = next(c for c in checkpoints if c.critical)
@@ -357,3 +367,136 @@ def test_the_contract_carries_purpose_method_and_material() -> None:
 def test_no_probe_still_forbids_invented_tests() -> None:
     contract = render_active_probe_contract(None, [])
     assert "Do not invent another semantic test" in contract
+
+
+def test_a_scene_worked_to_its_last_bead_is_not_invited_to_rehearse_again() -> None:
+    """The readiness gate and the planner read the same scene the same way.
+
+    A scene whose every element is engaged counts as practiced for the gate, so a planner
+    still reading the reported list alone invites the rehearsal the gate has already
+    stopped waiting for — and with a critical checkpoint open the practice branch runs
+    before the semantic ones, so that invitation is what the room says."""
+    checkpoints = list(checkpoints_for(P))
+    open_critical = next(c for c in checkpoints if c.critical)
+    ledger = [
+        _obs(f"a{i}", c.id, EvidenceResult.DEMONSTRATED)
+        for i, c in enumerate(checkpoints)
+        if c.id != open_critical.id
+    ]
+    probe = plan_next_probe(
+        _plan_input(
+            ledger=ledger,
+            practiced_scene_ids=[],
+            engaged_scene_ids=scene_ids_for(P),
+        )
+    )
+    assert probe is not None
+    assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+
+def test_a_finished_practice_never_speaks_over_the_scene_being_invited_now() -> None:
+    """Raised in review (little-henok, PR #322), against the fix one commit earlier.
+
+    The note that says a practice is behind the room outlived the turn it was written for.
+    `projected_practice` accumulates across the session and `_pick_practice_scene` skips the
+    scenes already in it, so the turn that opens scene 2 plans a practice probe for scene 2
+    and, with scene 1 finished, rendered both halves of a contradiction in one block: this
+    turn ENDS with the invitation, and, a line below, do not invite it again. Both the Guide
+    and the Validator read that block, so the invitation at risk was the new scene's — the
+    exact failure this branch exists to remove, arriving one scene later.
+
+    A probe that is inviting a rehearsal already names the scene it is inviting. Nothing has
+    to be said about the finished ones on that turn.
+    """
+    probe = ActiveProbe(
+        id="x",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.MOTHER_TONGUE_PRACTICE,
+        practice_scene_ids=[scene_ids_for(P)[1]],
+    )
+
+    contract = render_active_probe_contract(
+        probe, list(checkpoints_for(P)), practiced_scene_ids=[scene_ids_for(P)[0]]
+    )
+
+    assert "ENDS with the invitation" in contract
+    assert "do not invite" not in contract
+    assert "ask only about the report" not in contract
+
+
+def test_the_practice_contract_carries_both_halves_of_the_invitation() -> None:
+    """One rehearsal, one voice, one contract — and the contract is the Guide's.
+
+    The fixed line asked for a rehearsal closed by a single word; the Guide, invited to
+    say the same thing in its own words, asked for a telling-back. Two contracts for one
+    piece of work. The invitation is the Guide's now, and the contract it is handed names
+    both halves: rehearse in the team's own language, then come back and tell what was
+    understood. The closing word is no longer what it asks for."""
+    probe = ActiveProbe(
+        id="x",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.MOTHER_TONGUE_PRACTICE,
+        practice_scene_ids=[scene_ids_for(P)[0]],
+    )
+    contract = render_active_probe_contract(probe, list(checkpoints_for(P))).lower()
+
+    assert "rehearse this scene together in its own language" in contract
+    assert "tell you in the session language what it understood" in contract
+    assert "pronto" not in contract
+
+
+def test_a_scene_the_voice_never_opened_is_opened_before_it_is_probed() -> None:
+    """The planner reaches an unopened scene and asks about it as if it had been framed.
+
+    Practice waits for the scene to be opened, and nothing else ever opened it: the first
+    scene is opened by the passage opening, so the second one arrived with the semantic
+    probe as its introduction. The team heard a checkpoint question about material nobody
+    had told it.
+    """
+    first, second = scene_ids_for(P)[0], scene_ids_for(P)[1]
+    probe = plan_next_probe(
+        _plan_input(
+            current_scene=second,
+            opened_scene_ids=[first],
+            practiced_scene_ids=[first],
+        )
+    )
+    assert probe is not None
+    assert probe.purpose is ProbePurpose.SCENE_OPENING
+    assert probe.practice_scene_ids == [second]
+    assert probe.checkpoint_ids == []
+
+
+def test_a_scene_already_opened_is_probed_not_opened_again() -> None:
+    probe = plan_next_probe(
+        _plan_input(current_scene=scene_ids_for(P)[0], practiced_scene_ids=scene_ids_for(P))
+    )
+    assert probe is not None
+    assert probe.purpose is ProbePurpose.INITIAL_CHECK
+
+
+def test_the_opening_contract_authorizes_the_canonical_content_it_needs() -> None:
+    """The Guide is told to say what happens in the scene, which every other turn forbids.
+
+    An opening that may not state the map is not an opening, and the Validator holds the
+    same block: without the permission written into it, the one draft the contract asks
+    for is the one the Validator rejects for revealing the answer.
+    """
+    second = scene_ids_for(P)[1]
+    probe = ActiveProbe(
+        id="open-1",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.SCENE_OPENING,
+        practice_scene_ids=[second],
+    )
+    contract = render_active_probe_contract(
+        probe, list(checkpoints_for(P)), practiced_scene_ids=[scene_ids_for(P)[0]]
+    )
+    assert "scene_opening" in contract
+    assert second in contract
+    assert "canonical content is allowed" in contract
+    assert "rehearse" in contract
+    assert "PRACTICE DONE" not in contract
