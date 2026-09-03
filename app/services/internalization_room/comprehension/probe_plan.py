@@ -21,6 +21,7 @@ from app.services.internalization_room.comprehension.evidence import (
     assess_unit,
 )
 from app.services.internalization_room.comprehension.probe import (
+    PROBES_THAT_INVITE_A_REHEARSAL,
     PROCESS_ONLY_PURPOSES,
     ActiveProbe,
     ProbePurpose,
@@ -49,6 +50,9 @@ class ProbePlanInput(BaseModel):
     practiced_scene_ids: list[str] = Field(default_factory=list)
     engaged_scene_ids: list[str] = Field(default_factory=list)
     opened_scene_ids: list[str] = Field(default_factory=list)
+    #: Scenes the team has taken up — at least one element engaged or partially engaged.
+    #: `opened_scene_ids` is satisfied by a mention the Guide made in passing; this is not.
+    told_scene_ids: list[str] = Field(default_factory=list)
     returning_to_full_retell: bool = False
     skip_carry_offer_for_checkpoint_ids: list[str] = Field(default_factory=list)
     focused_recovery: FocusedRecovery | None = None
@@ -111,11 +115,13 @@ def _next_independent_method(
 
 
 def _next_practice_scene(input_: ProbePlanInput, blocking: list[Checkpoint]) -> str | None:
-    """The next scene to rehearse in the mother tongue, among scenes the Voice has opened.
+    """The next scene to rehearse in the mother tongue, among scenes the team was told.
 
     Practice is a process-only turn — the fixed invitation may not carry passage content —
     so inviting it for a scene the team has never heard opened would ask them to rehearse
-    something nobody framed. A scene qualifies only after coverage shows it was opened.
+    something nobody framed. A scene qualifies only after the team took it up
+    (`told_scene_ids`); a bead the Guide mentioned in passing is `surfaced`, and reading
+    `opened_scene_ids` here invited the rehearsal of a scene that had only been named.
 
     A fully engaged scene counts as practiced here for the same reason it does in the
     readiness gate, and reading it in only one of the two was its own defect: the gate
@@ -124,7 +130,7 @@ def _next_practice_scene(input_: ProbePlanInput, blocking: list[Checkpoint]) -> 
     status block saying none was needed.
     """
     practiced = set(input_.practiced_scene_ids) | set(input_.engaged_scene_ids)
-    opened = set(input_.opened_scene_ids)
+    opened = set(input_.told_scene_ids)
     if input_.current_scene:
         if input_.current_scene not in practiced and input_.current_scene in opened:
             return input_.current_scene
@@ -161,18 +167,23 @@ def _next_scene_to_open(input_: ProbePlanInput, blocking: list[Checkpoint]) -> s
     A scene already opened is not opened again, and neither is one already rehearsed —
     a scene can be practised without coverage having caught up.
 
-    Nothing at all is opened here while coverage has yet to see a single scene opened.
+    A scene the Guide merely mentioned is not a scene the team was told: `surfaced` is the
+    Guide raising it, and the question here is whether the team took it up, so the reading
+    is `told_scene_ids` — at least one element engaged or partially engaged — not
+    `opened_scene_ids`.
+
+    Nothing at all is opened here while coverage has yet to see a single scene told.
     That is the passage opening's own turn, which the room owns from its first line and
     which this planner does not reach; reading an empty tracker as "no scene has been
     told" would take that turn away from it.
     """
-    if not input_.opened_scene_ids:
+    if not input_.told_scene_ids:
         return None
     scene_id = _scene_the_next_semantic_probe_would_ask_about(input_, blocking)
     if scene_id is None:
         return None
     practiced = set(input_.practiced_scene_ids) | set(input_.engaged_scene_ids)
-    if scene_id in input_.opened_scene_ids or scene_id in practiced:
+    if scene_id in input_.told_scene_ids or scene_id in practiced:
         return None
     return scene_id
 
@@ -413,10 +424,7 @@ def render_active_probe_contract(
         semantic_ready=semantic_ready,
         handoff_paused=handoff_paused,
     )
-    inviting_a_rehearsal = probe is not None and probe.purpose in (
-        ProbePurpose.MOTHER_TONGUE_PRACTICE,
-        ProbePurpose.SCENE_OPENING,
-    )
+    inviting_a_rehearsal = probe is not None and probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL
     if not practiced_scene_ids or inviting_a_rehearsal:
         return contract
     return contract + (

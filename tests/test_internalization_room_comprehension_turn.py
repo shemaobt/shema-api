@@ -342,9 +342,11 @@ async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
         db_session, session, team_utterance="", guide_response="abertura"
     )
     first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    # The team took the scene up ("partially_engaged"): practice is only invited for a
+    # scene the team was told, and a bead the Guide merely mentioned ("surfaced") is not.
     session.coverage_state = {
         **(session.coverage_state or {}),
-        first_scene_element.key: "surfaced",
+        first_scene_element.key: "partially_engaged",
     }
     await db_session.commit()
 

@@ -161,6 +161,23 @@ def opened_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]
     return [f"S{scene}" for scene in sorted(opened) if opened[scene]]
 
 
+def told_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
+    """Scenes the team has taken up — at least one element engaged or partially engaged.
+
+    `opened_scene_ids` answers a looser question: a bead the Guide only mentioned is
+    `surfaced`, and that counts there. The scene-opening planner asks whether the team was
+    told the scene, and a mention in passing is not that.
+    """
+    taken_up = {CoverageStatus.ENGAGED.value, CoverageStatus.PARTIALLY_ENGAGED.value}
+    told: dict[int, bool] = {}
+    for element in elements_for(pericope):
+        if element.scene is None:
+            continue
+        standing = coverage_state.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value)
+        told[element.scene] = told.get(element.scene, False) or standing in taken_up
+    return [f"S{scene}" for scene in sorted(told) if told[scene]]
+
+
 _ASSESSOR_FAILURES_BEFORE_HARD_STOP = 3
 
 
@@ -506,6 +523,7 @@ async def run_comprehension_turn(
                 practiced_scene_ids=projected_practice,
                 engaged_scene_ids=engaged_scenes,
                 opened_scene_ids=opened_scene_ids(session.coverage_state or {}, pericope),
+                told_scene_ids=told_scene_ids(session.coverage_state or {}, pericope),
                 returning_to_full_retell=(
                     bridge_mode is BridgeMode.FULL_RETELL
                     and current_mode is not BridgeMode.FULL_RETELL
