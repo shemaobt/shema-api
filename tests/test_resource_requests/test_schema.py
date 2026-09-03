@@ -622,12 +622,19 @@ def test_rr_funds_never_grew_a_balance_or_an_editor() -> None:
     ALLOCATION names its author and its instant. A wrong allocation is corrected by a
     compensating movement, never by an UPDATE (contract §3.3) — so an ``allocated``
     column would store a derived number, and ``updated_by``/``updated_at`` would audit
-    edits the design forbids from existing. The day this test goes red, the ledger is
-    being bypassed, not extended.
+    edits the design forbids from existing. The day the *second* assertion goes red,
+    the ledger is being bypassed, not extended.
+
+    The exact set is ``{id, name, created_at, retired_at}``. ``provisional`` left in
+    BE-10 (OBT-471) — the model's own docstring records the drop — and ``retired_at``
+    arrived with it as the fund's life-cycle flag (a timestamp, never a balance nor an
+    editor). This test tracked the removal a beat late: it still named ``provisional``
+    and forbade ``retired_at``, which is why the junction of BE-10 and BE-15 turned it
+    red while each side was individually fine. Found by the bench.
     """
     columns = set(RRFund.__table__.columns.keys())
 
-    assert columns == {"id", "name", "provisional", "created_at"}
+    assert columns == {"id", "name", "created_at", "retired_at"}
     assert not columns & {"allocated", "updated_by", "updated_at"}
 
 

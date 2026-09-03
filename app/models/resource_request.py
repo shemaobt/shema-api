@@ -631,6 +631,7 @@ class FundOut(BaseModel):
     allocated: Decimal
     committed: Decimal
     available: Decimal
+    retired: bool
 
 
 class FundAssignmentIn(BaseModel):
