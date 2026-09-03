@@ -26,7 +26,7 @@ async def settle_coverage(
     try:
         async with AsyncSessionLocal() as db:
             session = await get_session(db, session_id)
-            classifier_prompt = await get_prompt_text(db, IRPromptKey.COVERAGE_CLASSIFIER)
+            classifier_prompt = await get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
             updated = await classify_coverage(
                 coverage_state=session.coverage_state or {},
                 team_utterance=team_utterance,

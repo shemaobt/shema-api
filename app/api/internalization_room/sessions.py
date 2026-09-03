@@ -391,7 +391,7 @@ async def take_turn(
             bridge_mode=session.bridge_mode,
         )
 
-    validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
+    validator_prompt = await get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
         if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
@@ -413,7 +413,7 @@ async def take_turn(
                 messages=session.messages or [],
                 session_language=LANGUAGE_NAMES[session.language],
                 language_code=session.language,
-                panorama_prompt=await get_prompt_text(db, IRPromptKey.BOOK_PANORAMA),
+                panorama_prompt=await get_prompt_text(IRPromptKey.BOOK_PANORAMA),
                 validator_prompt=validator_prompt,
                 book=book,
                 book_material=build_book_material(book),
@@ -433,7 +433,7 @@ async def take_turn(
             session,
             speech=speech_heard,
             opening=opening,
-            guide_prompt=await get_prompt_text(db, IRPromptKey.GUIDE),
+            guide_prompt=await get_prompt_text(IRPromptKey.GUIDE),
             validator_prompt=validator_prompt,
             settings=get_settings(),
         )
