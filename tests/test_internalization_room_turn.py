@@ -9,6 +9,9 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.comprehension.practice import (
+    guide_invited_mother_tongue_practice,
+)
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.render import render
@@ -139,6 +142,33 @@ def test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it() -> None:
     assert "An invitation is not a claim" in access
     assert "neither has happened yet" in access
     assert "An invitation makes no judgment" in judgment
+
+
+def test_the_invitation_the_guide_is_shown_is_one_the_room_can_recognise() -> None:
+    """Sessions bc9c71c2 and fbc77ff8: the two ways rule 3 sent the Guide somewhere useless.
+
+    One opening ended "Try rehearsing it together, and then tell me what you said." — the
+    gerund, which `guide_invited_mother_tongue_practice` refuses on purpose, and no phrase
+    naming the language at all. So the telling that came back was never credited and the
+    fixed line asked for the same rehearsal again. The other lifted the rule's worked example
+    whole, in Portuguese, into an English session, and the Validator killed the opening for it.
+
+    Both come from the same line. Its only example was a bare Portuguese sentence with "em
+    português" inside it and no marker saying it was Portuguese, sitting next to a
+    {{SESSION_LANGUAGE}} slot; and the sentence after it told the Guide to call the practice
+    "rehearsing", which is the one English form the matcher was taught to turn away.
+
+    The example is the session's language now, and the rule names the two things the room
+    actually reads: the verb, and the phrase for the language the rehearsal is in.
+    """
+    guide = render(GUIDE, SESSION_LANGUAGE="English", MEANING_MAP="", COVERAGE_STATUS="")
+    rule = guide[guide.index("Open the part, then send them to REHEARSE it") :]
+    rule = rule[: rule.index("\n")]
+    example = rule[rule.index('*"') + 2 :]
+    example = example[: example.index('"*')]
+
+    assert "venham me contar" not in rule
+    assert guide_invited_mother_tongue_practice(example), example
 
 
 def test_render_refuses_a_prompt_with_an_unfilled_placeholder() -> None:
