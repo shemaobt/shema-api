@@ -117,6 +117,30 @@ def test_the_channel_policy_is_about_conflation_not_order() -> None:
     assert "still governs" in policy
 
 
+def test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it() -> None:
+    """Session 956987cb: the opening itself fell to a fail-safe, on the sentence that ends it.
+
+    The Validator read "When you finish, tell me in English what you said." as an epistemic
+    violation and quoted both policies at once — the Guide "must not imply it will understand
+    or check the mother-tongue rehearsal itself; it must limit its judgment to the
+    bridge-language telling-back". Neither policy carved anything out for a rehearsal in the
+    future, and on an opening turn nothing else speaks for the invitation either: the probe is
+    None there, so the practice contract that authorises it is never appended. So the one
+    sentence the opening is required to end on had no defender in the room that judges it.
+
+    A promise to hear a telling-back is not a claim about a rehearsal, and it cannot be one:
+    neither has happened when the sentence is spoken.
+    """
+    access = VALIDATOR[VALIDATOR.index("Never claim access to mother-tongue meaning") :]
+    access = access[: access.index("\n-")]
+    judgment = VALIDATOR[VALIDATOR.index("Limit every judgment to the bridge-language") :]
+    judgment = judgment[: judgment.index("\n-")]
+
+    assert "An invitation is not a claim" in access
+    assert "neither has happened yet" in access
+    assert "An invitation makes no judgment" in judgment
+
+
 def test_render_refuses_a_prompt_with_an_unfilled_placeholder() -> None:
     with pytest.raises(ValidationError) as excinfo:
         render("mapa: {{MEANING_MAP}} lingua: {{SESSION_LANGUAGE}}", SESSION_LANGUAGE="pt")
