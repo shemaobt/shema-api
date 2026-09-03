@@ -37,6 +37,10 @@ For each allowed checkpoint that the current utterance actually evidences, choos
   information, uncertain wording, different vocabulary, or imperfect grammar is not conflict.
 - `unclear_due_bridge`: the team explicitly says it understands or discussed the passage but
   cannot express this point in the bridge language. Do not infer this from short or broken speech.
+- `unclear_due_transcript`: the wording you received is one you cannot read as the team's own —
+  a name or word that only makes sense as a mishearing of a similar-sounding one. Prefer this to
+  `conflict` whenever the contradiction rests on such a word. Do not infer it from short or broken
+  speech, from unfamiliar vocabulary, or from imperfect grammar.
 
 Omit any checkpoint the answer does not establish, contradict, or explicitly report
 bridge-language difficulty for.
@@ -46,7 +50,8 @@ an explicit process choice handled deterministically by the application after it
 Even when the utterance mentions Refine, classify only semantic evidence here.
 
 Speech-recognition uncertainty is decided by trusted application metadata before this call. Never
-return `stt_uncertain` and never diagnose transcription quality from writing style.
+return `stt_uncertain`, and never diagnose transcription quality from writing style: only a
+specific word you can name as a probable mishearing justifies `unclear_due_transcript`.
 
 ## Evidence rules
 

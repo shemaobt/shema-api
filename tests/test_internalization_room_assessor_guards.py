@@ -111,6 +111,17 @@ def test_an_unknown_checkpoint_id_is_dropped() -> None:
     assert parsed is not None and parsed[0] == []
 
 
+def test_a_transcript_the_assessor_cannot_read_is_reported_as_its_own_result() -> None:
+    parsed = parse_turn_assessor_decision(
+        _raw([_row(result="unclear_due_transcript", evidence_excerpt="Only a roof stayed there")]),
+        "Only a roof stayed there",
+        ALLOWED,
+    )
+    assert parsed is not None
+    observations, _ = parsed
+    assert [item.result for item in observations] == ["unclear_due_transcript"]
+
+
 def test_the_model_cannot_return_carry_or_stt_results() -> None:
     for result in ("carry_to_refine", "stt_uncertain", "no_evidence"):
         parsed = parse_turn_assessor_decision(_raw([_row(result=result)]), "Noemi voltou", ALLOWED)
