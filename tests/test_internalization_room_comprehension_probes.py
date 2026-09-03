@@ -38,7 +38,6 @@ def _plan_input(**overrides):
         "scene_ids": scene_ids_for(P),
         "current_scene": None,
         "practiced_scene_ids": [],
-        "opened_scene_ids": scene_ids_for(P),
         "told_scene_ids": scene_ids_for(P),
     }
     base.update(overrides)
@@ -154,16 +153,14 @@ def test_guided_mode_asks_for_scene_practice_before_any_semantic_question() -> N
 
 
 def test_practice_is_never_invited_for_a_scene_the_voice_has_not_opened() -> None:
-    probe = plan_next_probe(_plan_input(opened_scene_ids=[], told_scene_ids=[]))
+    probe = plan_next_probe(_plan_input(told_scene_ids=[]))
     assert probe is not None
     assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
 
 
 def test_practice_waits_for_its_own_scene_to_open() -> None:
     later = scene_ids_for(P)[1:]
-    probe = plan_next_probe(
-        _plan_input(opened_scene_ids=later, told_scene_ids=later, current_scene=scene_ids_for(P)[0])
-    )
+    probe = plan_next_probe(_plan_input(told_scene_ids=later, current_scene=scene_ids_for(P)[0]))
     assert probe is not None
     assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE or (
         probe.practice_scene_ids and probe.practice_scene_ids[0] in later
@@ -462,7 +459,6 @@ def test_a_scene_the_voice_never_opened_is_opened_before_it_is_probed() -> None:
     probe = plan_next_probe(
         _plan_input(
             current_scene=second,
-            opened_scene_ids=[first],
             told_scene_ids=[first],
             practiced_scene_ids=[first],
         )
@@ -474,18 +470,18 @@ def test_a_scene_the_voice_never_opened_is_opened_before_it_is_probed() -> None:
 
 
 def test_a_scene_the_guide_only_mentioned_is_still_opened_first() -> None:
-    """A bead the Guide raised in passing is `surfaced`, and `opened_scene_ids` counts it.
+    """A bead the Guide raised in passing is `surfaced`, and that used to count as opened.
 
-    Read there, the scene the Guide name-dropped while asking about the previous one kept
+    Read that way, the scene the Guide name-dropped while asking about the previous one kept
     the ENG-740 behaviour exactly: opened on paper, never told, and met by the team as the
     question about it. What the planner has to ask is whether the team took the scene up,
-    and that is a bead engaged or partially engaged, not one mentioned.
+    and that is a bead engaged or partially engaged, not one mentioned — so a scene absent
+    from `told_scene_ids` is opened first however many of its beads were named.
     """
     first, second = scene_ids_for(P)[0], scene_ids_for(P)[1]
     probe = plan_next_probe(
         _plan_input(
             current_scene=second,
-            opened_scene_ids=[first, second],
             told_scene_ids=[first],
             practiced_scene_ids=[first],
         )

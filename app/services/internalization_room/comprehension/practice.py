@@ -275,11 +275,22 @@ _CONDITION_ON_A_SUBJECT = re.compile(
     r"|the|this|that|there|an)\b"
 )
 _SPANISH_YES = re.compile(r"\bsí\b", re.IGNORECASE)
-#: A condition that opens the clause is one whether or not it names who it is about:
-#: "se quiserem a gente ensaia", "se der tempo", "if possible we rehearse". The subject list
-#: above is for the same word found later in a short reply; at the head of a clause the
-#: position alone says what it is, because no clitic opens a clause.
+#: A condition that opens a short reply is one whether or not it names who it is about:
+#: "se quiserem a gente ensaia", "se der tempo", "if possible we rehearse". It is read only
+#: on a reply that is not a telling, because a told scene opens clauses on the clitic all the
+#: time — "…, mas se mudaram pra Moabe" arrives here as the clause "se mudaram pra Moabe",
+#: and Spanish drops the subject and opens on it outright, "Se mudaron a los campos de Moab".
 _CONDITION_OPENS_THE_CLAUSE = re.compile(r"^(?:se|si|if)\b")
+#: The heads a subjectless condition opens on inside a telling: the verb forms that only a
+#: condition takes ("se quiserem", "se der tempo", "se for possível", "si es posible",
+#: "if possible"). A told clause that opens on "se" followed by a past-tense verb is the
+#: clitic riding it — "se mudaram", "se mudaron" — and is left alone.
+_CONDITION_HEADS = re.compile(
+    r"^(?:se|si|if)\s+(?:quiser|quiserem|quisermos|der|derem|for|forem|puder|puderem"
+    r"|tiver|tiverem|houver|conseguir|conseguirem|precisar|precisarem"
+    r"|quiere|quieren|quisiera|quisieran|puede|pueden|hay|es\s+posible|posible|fuera"
+    r"|possible|needed|necessary|wanted)\b"
+)
 
 
 def _the_telling_holds_back(team_utterance: str) -> bool:
@@ -291,23 +302,31 @@ def _the_telling_holds_back(team_utterance: str) -> bool:
     follows it, and refusing on that refused nearly every telling the invitation ever asked
     for. A hedge dropped into the middle of a told scene is a person telling a story they
     half remember, which is the ordinary way a scene comes back — so it only refuses a
-    reply that has no telling around it. Two clauses of three words or more are what counts
-    as telling, because a clause that short is a word of acknowledgement and not a scene.
+    reply that has no telling around it. Two clauses of three words or more count as
+    telling, and so does one clause of eight or more: a clause that short is a word of
+    acknowledgement and not a scene, and a Spanish telling that drops its subjects can be
+    one long clause from end to end.
 
     A reply that is a single clause keeps the older, flatter reading: the hedge refuses,
     and so does a condition anywhere in it, not only one that opens it.
     """
     clauses = oral_decision_clause_details(team_utterance)
-    told = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
+    told = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2 or any(
+        len(clause.text.split()) >= 8 for clause in clauses
+    )
     for clause in clauses:
         spoken = normalize_oral_decision(_SPANISH_YES.sub(" ", clause.raw))
-        if _CONDITION_OPENS_THE_CLAUSE.match(spoken):
+        if _CONDITION_ON_A_SUBJECT.match(spoken) or _CONDITION_HEADS.match(spoken):
             return True
         if oral_clause_reports_the_voice(clause.raw):
             return True
         if told:
             continue
-        if _CONDITION_ON_A_SUBJECT.search(spoken) or oral_clause_is_hedged(clause.raw):
+        if (
+            _CONDITION_OPENS_THE_CLAUSE.match(spoken)
+            or _CONDITION_ON_A_SUBJECT.search(spoken)
+            or oral_clause_is_hedged(clause.raw)
+        ):
             return True
     return False
 

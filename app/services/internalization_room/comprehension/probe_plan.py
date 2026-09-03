@@ -49,9 +49,9 @@ class ProbePlanInput(BaseModel):
     current_scene: str | None = None
     practiced_scene_ids: list[str] = Field(default_factory=list)
     engaged_scene_ids: list[str] = Field(default_factory=list)
-    opened_scene_ids: list[str] = Field(default_factory=list)
     #: Scenes the team has taken up — at least one element engaged or partially engaged.
-    #: `opened_scene_ids` is satisfied by a mention the Guide made in passing; this is not.
+    #: A bead the Guide only mentioned in passing is `surfaced`, and does not put its scene
+    #: here: practice and the scene opening both ask whether the team was told the scene.
     told_scene_ids: list[str] = Field(default_factory=list)
     returning_to_full_retell: bool = False
     skip_carry_offer_for_checkpoint_ids: list[str] = Field(default_factory=list)
@@ -120,8 +120,8 @@ def _next_practice_scene(input_: ProbePlanInput, blocking: list[Checkpoint]) -> 
     Practice is a process-only turn — the fixed invitation may not carry passage content —
     so inviting it for a scene the team has never heard opened would ask them to rehearse
     something nobody framed. A scene qualifies only after the team took it up
-    (`told_scene_ids`); a bead the Guide mentioned in passing is `surfaced`, and reading
-    `opened_scene_ids` here invited the rehearsal of a scene that had only been named.
+    (`told_scene_ids`); a bead the Guide mentioned in passing is `surfaced`, and reading a
+    mention as an opening here invited the rehearsal of a scene that had only been named.
 
     A fully engaged scene counts as practiced here for the same reason it does in the
     readiness gate, and reading it in only one of the two was its own defect: the gate
@@ -169,8 +169,7 @@ def _next_scene_to_open(input_: ProbePlanInput, blocking: list[Checkpoint]) -> s
 
     A scene the Guide merely mentioned is not a scene the team was told: `surfaced` is the
     Guide raising it, and the question here is whether the team took it up, so the reading
-    is `told_scene_ids` — at least one element engaged or partially engaged — not
-    `opened_scene_ids`.
+    is `told_scene_ids` — at least one element engaged or partially engaged.
 
     Nothing at all is opened here while coverage has yet to see a single scene told.
     That is the passage opening's own turn, which the room owns from its first line and

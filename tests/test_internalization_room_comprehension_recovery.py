@@ -607,6 +607,30 @@ def test_a_condition_that_opens_the_clause_holds_the_telling_back_without_a_subj
     assert bridge_language_retelling_completes_practice(_INVITATION_PT, _TELLING_PT, True)
 
 
+def test_a_told_scene_may_open_a_clause_on_the_clitic() -> None:
+    """ "…, mas se mudaram pra Moabe" reaches the reader as the clause "se mudaram pra Moabe".
+
+    A contrast marker splits the telling, and the second half opens on the clitic; Spanish
+    drops the subject and opens on it outright. Both are session 1d142af3 one clause over,
+    and refusing them would ask for the rehearsal again after the team had told it.
+    """
+    invitation_es = (
+        "Ahora ensayen esta escena juntos en su lengua; cuando terminen, vuelvan y "
+        "cuéntenme en español lo que entendieron."
+    )
+    for invitation, telling in (
+        (
+            _INVITATION_PT,
+            "Eles ficaram em Belém por um tempo, mas se mudaram pra Moabe por causa da fome",
+        ),
+        (
+            invitation_es,
+            "Se mudaron a los campos de Moab, y allí murió Elimelec el marido de Noemí",
+        ),
+    ):
+        assert bridge_language_retelling_completes_practice(invitation, telling, True), telling
+
+
 def test_a_told_reply_in_the_voices_own_words_is_not_a_telling() -> None:
     """Relaxing the hedge for a told reply must not relax the room hearing its words back.
 
