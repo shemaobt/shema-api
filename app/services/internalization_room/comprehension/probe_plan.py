@@ -284,10 +284,11 @@ def plan_next_probe(input_: ProbePlanInput) -> ActiveProbe | None:
 
 _PURPOSE_INSTRUCTION: dict[ProbePurpose, tuple[str, str]] = {
     ProbePurpose.MOTHER_TONGUE_PRACTICE: (
-        "This is a PROCESS-ONLY turn. Invite the team to rehearse only this scene together "
-        "in its mother tongue. Ask it to say one short completion word in the session "
-        "language ('pronto') when it has finished, then STOP. Do not ask a passage-content "
-        "question in the same turn.",
+        "This is a PROCESS-ONLY scene-practice turn. The app voices its exact fixed line "
+        "asking the team to rehearse this one scene in its mother tongue, and that line "
+        "names the single closing word it wants back. Do not add, paraphrase, answer, or "
+        "replace it; do not ask the team to rehearse anything yourself, do not ask it to "
+        "report what it said, and do not ask passage content.",
         "The next bare confirmation may record only that this app-owned scene practice "
         "finished; it can never be semantic evidence.",
     ),

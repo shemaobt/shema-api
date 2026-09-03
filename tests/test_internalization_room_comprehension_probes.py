@@ -382,3 +382,24 @@ def test_a_scene_worked_to_its_last_bead_is_not_invited_to_rehearse_again() -> N
     )
     assert probe is not None
     assert probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
+
+
+def test_the_practice_contract_leaves_the_invitation_to_the_app() -> None:
+    """One rehearsal, one voice, one contract.
+
+    The app speaks the fixed invitation and names the single closing word. A contract that
+    also tells the Guide to invite the rehearsal has the room ask twice for the same work,
+    and the Guide's own wording arrives carrying a different contract — a bridge-language
+    telling-back — for the piece the app already asked to be closed with one word."""
+    probe = ActiveProbe(
+        id="x",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.MOTHER_TONGUE_PRACTICE,
+        practice_scene_ids=[scene_ids_for(P)[0]],
+    )
+    contract = render_active_probe_contract(probe, list(checkpoints_for(P)))
+
+    assert "invite" not in contract.lower()
+    assert "telling-back" not in contract.lower()
+    assert "Do not add, paraphrase, answer, or replace it" in contract
