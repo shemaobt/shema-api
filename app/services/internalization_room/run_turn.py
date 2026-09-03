@@ -235,7 +235,7 @@ OPENING_MOVEMENT_INSTRUCTION = (
 #: spoken yet, in the session's own language. Keyed by the language code, in the shape
 #: `calibration.py` already uses — an unclaimed language falls back to the authored English
 #: line.
-_NO_TEAM_UTTERANCE_YET: dict[str, str] = {
+_NO_TEAM_UTTERANCE_AT_OPENING: dict[str, str] = {
     "pt": "(a equipe ainda não falou — abertura da sessão)",
     "en": "(the team has not spoken yet — session opening)",
     "es": "(el equipo aún no ha hablado — apertura de la sesión)",
@@ -351,7 +351,9 @@ async def _voiced_after_validation(
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,
                 TEAM_UTTERANCE=transcript
-                or _NO_TEAM_UTTERANCE_YET.get(language_code, _NO_TEAM_UTTERANCE_YET[FLOOR]),
+                or _NO_TEAM_UTTERANCE_AT_OPENING.get(
+                    language_code, _NO_TEAM_UTTERANCE_AT_OPENING[FLOOR]
+                ),
                 DRAFTED_RESPONSE=draft,
             )
             if validator_context:
