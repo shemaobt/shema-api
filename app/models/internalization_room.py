@@ -316,6 +316,14 @@ class SegmentsResponse(BaseModel):
     #: spends the last of the budget still gets the stretches back, and would otherwise have no
     #: sign that the room had stopped.
     needs_person: bool = False
+    #: The recording of the passage that was rebuilt around a stretch re-recorded in the mother
+    #: tongue. Every stretch above that was a slice of the recording it replaced is now a slice
+    #: of this one; a stretch of some other recording is untouched. Absent when nothing was
+    #: rebuilt:
+    #: the correction touched no mother-tongue audio, or the rebuilding could not be done and
+    #: the correction stands on its own recording. Either way absence is the app's cue to go on
+    #: playing the passage stretch by stretch.
+    composed_take_id: str | None = None
 
 
 class BackTranslationProgress(BaseModel):

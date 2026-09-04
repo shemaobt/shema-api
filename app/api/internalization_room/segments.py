@@ -105,6 +105,13 @@ async def replace(
     own slice and the new audio. That is the same correction as the first case, which is why
     there is no third verb.
 
+    A re-recorded mother tongue also rebuilds the recording of the passage around it, and the
+    answer names what it rebuilt. Without that the correction was real and unhearable: the
+    corrected minute lived in a file of its own and the rest of the passage in another, so
+    playing the passage back meant stitching, and the product asked three times for the other
+    thing — one recording, updated. `recompose_passage` is where it happens and why a failure
+    there answers 200 with nothing named rather than losing the team their correction.
+
     The bytes are stored before anything is asked of them, as on the telling-back route: a
     transcriber that times out must not take the recording with it. And when nothing could be
     made out, **the stretch is not replaced at all** — swapping a good explanation for an empty
@@ -122,7 +129,7 @@ async def replace(
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
     if file is None:
-        await room.capture_segment(
+        version = await room.capture_segment(
             db,
             session,
             take_id=rehearsal.id,
@@ -131,7 +138,19 @@ async def replace(
             pass_number=segment.pass_number,
             replaces=segment,
         )
-        return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+        rebuilt = await room.recompose_passage(
+            db,
+            session,
+            device_id=device_id,
+            replaced=segment,
+            corrected=rehearsal,
+            version=version,
+        )
+        return SegmentsResponse(
+            session_id=session.id,
+            segments=await _units(db, session.id),
+            composed_take_id=rebuilt.id if rebuilt is not None else None,
+        )
 
     if slice_moved(segment, rehearsal.id, starts_ms, ends_ms):
         raise ValidationError(
