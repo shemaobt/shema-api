@@ -2,6 +2,7 @@ from app.services.device import claim_code, credential
 from app.services.device.claim_device import InvalidClaimCodeError, claim_device
 from app.services.device.claim_device_as_facilitator import claim_device_as_facilitator
 from app.services.device.code_for_room_device import code_for_room_device
+from app.services.device.collect_device_credential import collect_device_credential
 from app.services.device.create_device import create_device
 from app.services.device.get_device import get_device
 from app.services.device.get_device_by_credential import get_device_by_credential
@@ -20,6 +21,7 @@ __all__ = [
     "claim_device",
     "claim_device_as_facilitator",
     "code_for_room_device",
+    "collect_device_credential",
     "create_device",
     "credential",
     "get_device",
