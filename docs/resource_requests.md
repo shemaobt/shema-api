@@ -1125,6 +1125,19 @@ moving for as long as a stacked PR waits, so the parent is re-read at **every** 
 BE-02 and BE-05 were all green, `migrations.yml` included, because each ran against its own
 base. The guard only speaks when `main` arrives, which is the moment to listen to it.
 
+**It moved a third time, and the third time is the one the rule was written for**
+(04/sep/2026). The junction that carries the whole module to `main` — BE-01…BE-18 plus the
+vendored mirror — met a `main` that had meanwhile added five revisions of its own
+(`20260831_lang01`, `20260902_room09`, `20260903_devcoll`, `20260904_devnp`,
+`20260904_att01`), all hanging off `seg01`. The merge is clean in the text: not one file
+conflicts, and nothing on this side goes red. The graph is where it shows — two heads,
+`20260830_acc17` and `20260904_att01` — which is exactly the failure this section says is
+invisible where it is written. `20260825_rr01` was re-pointed at `att01`, putting the eight
+revisions of this module in single file behind `main`'s, and the head is `acc17` again.
+Re-pointing costs nothing because none of the eight has run against a shared database: the
+module is not on `main` and the API is not deployed. The day either is true, this stops
+being a re-point and becomes a merge revision.
+
 ### 8.4 A request and its snapshot reference each other, so a flush needs telling
 
 `rr_snapshots.request_id` points at the request and `rr_requests.revision_of_id` points

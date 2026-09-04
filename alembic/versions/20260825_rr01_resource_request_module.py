@@ -1,20 +1,23 @@
 """the resource-request module's tables: requests, evaluations, funds, ledger, board
 
 Revision ID: 20260825_rr01
-Revises: 20260828_seg01
+Revises: 20260904_att01
 Create Date: 2026-08-25
 
-The parent is `20260828_seg01`, the head `main` carries today — and the **second** parent
-this revision has had. It was written against `20260823_join4` on 25/aug, and re-pointed on
-29/aug, when `main` grew `20260828_seg01` off that same `join4` while this branch waited in
-review: both were then heads. The failure is invisible where it is written, which is why it
-survived three green pull requests — a stacked PR's CI walks its own base, so
-`tests/test_migration_graph.py` is content there, and the graph forks only when `main` comes
-down the stack. So the parent is **re-read at every merge of `main`, not once when the file
-is created**; this file has now paid that twice. `20260819_room08`, which the branch was cut
+The parent is `20260904_att01`, the head `main` carries today — and the **third** parent this
+revision has had. It was written against `20260823_join4` on 25/aug; re-pointed on 29/aug,
+when `main` grew `20260828_seg01` off that same `join4` while this branch waited in review;
+and re-pointed again on 04/sep, when the junction of the whole module met a `main` that had
+meanwhile added five revisions of its own (`lang01`, `room09`, `devcoll`, `devnp`, `att01`),
+forking the graph at `seg01` the same way `seg01` had forked it at `join4`. Each time both
+were then heads. The failure is invisible where it is written, which is why it survived three
+green pull requests — a stacked PR's CI walks its own base, so `tests/test_migration_graph.py`
+is content there, and the graph forks only when `main` comes down the stack. So the parent is
+**re-read at every merge of `main`, not once when the file is created**; this file has now
+paid that three times. `20260819_room08`, which the branch was cut
 above, was never eligible either: `join4` already names it as one of its two parents.
 
-Written by hand, like the other 81 revisions here. `alembic/env.py` imports only
+Written by hand, like the other 86 revisions here. `alembic/env.py` imports only
 `app.core.database`, so its metadata is empty and `--autogenerate` would emit a
 migration dropping all 64 existing tables (docs/resource_requests.md §8.1).
 
@@ -51,7 +54,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260825_rr01"
-down_revision = "20260828_seg01"
+down_revision = "20260904_att01"
 branch_labels = None
 depends_on = None
 
