@@ -292,8 +292,17 @@ async def facilitator_sessions(
     the server has forgotten, or whose build broke before one was opened, halts on itself
     rather than on a session, and that halt would otherwise be readable only from the team's
     devices panel — a screen a facilitator opens about one team they already suspect. This
-    is the list they read to find out which team to go to. Scoped through the same ids as
-    the sessions half, resolved once for both.
+    is the list they read to find out which team to go to. Scoped by the same rule as the
+    sessions half — `facilitated_project_ids`, the ids in hand rather than `IN (SELECT …)`
+    the planner cannot use.
+
+    **Resolved twice, once per half, and that is the shape rather than an oversight.**
+    `sessions_waiting_on_a_person` resolves its own scope inside its query and nothing
+    memoises the answer, so this route makes the lookup a second time. Threading one answer
+    through would mean widening that service's signature, which this slice does not touch;
+    what it would save is one index lookup on `project_user_access`, a table with one row
+    per team a person facilitates. Worth stating so the next reader does not take the two
+    calls for a duplicate somebody missed.
 
     The moment is bound before it is read because the column is nullable and this list is
     the rows where it is not: the binding is the type system reading what the query already
