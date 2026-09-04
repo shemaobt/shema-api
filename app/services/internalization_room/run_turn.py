@@ -167,9 +167,9 @@ def meaning_map_block(pericope_num: str, book: str) -> str:
     """The passage's map verbatim, plus the digests of strictly earlier passages.
 
     *Tripod Internalization · Interaction Flows*
-    (`internalization-room/docs/spec/interaction-flows.md`, §1) calls the Guide's standard of
-    truth "MEANING MAP + story-so-far", and the earlier-only scoping is what keeps a later
-    disclosure from reaching this session.
+    (`internalization-room/docs/spec/interaction-flows.md`, §1, legenda do diagrama) calls the
+    Guide's standard of truth "MEANING MAP + story-so-far", and the earlier-only scoping is
+    what keeps a later disclosure from reaching this session.
     """
     passage = load_map(pericope_num).body
     earlier = story_so_far(book, pericope_num)
