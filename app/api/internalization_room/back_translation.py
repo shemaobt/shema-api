@@ -59,6 +59,10 @@ async def add_chunk(
     the budget the room asks for a person instead of buying another analyst round. The
     chunk is kept either way — their work is never the thing thrown away.
 
+    That ask is a `WARNING` and not a hard stop (ENG-706): the room wants somebody to come and
+    watch, and refuses nothing — the team may go on telling. Naming the kind is what lets the
+    Desk tell this walk from the one where the room has actually stopped.
+
     `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
     slice inside **that file** — where the team let it play and where they stopped it. All
     three are required. The times used to be optional and counted over the whole passage as if
@@ -130,8 +134,6 @@ async def add_chunk(
 
     spent = retelling and told_again >= MAX_RETELLS
     if spent:
-        # ENG-706 — the room asks for somebody to come and watch, and refuses nothing. The
-        # team may go on telling, which is what separates this from the hard stop.
         await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
     return BackTranslationChunkResponse(
         session_id=session.id,

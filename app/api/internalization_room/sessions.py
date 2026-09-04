@@ -438,6 +438,11 @@ async def take_turn(
     ledger holding evidence for an exchange that was never recorded. Speaking first costs
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
+
+    A turn can also end in the hard stop — the assessor failed three times running and the
+    room said so out loud — and that halt is `BLOCKING`: the room is telling the team it
+    cannot go on, which is a different walk for the facilitator than the retell budget's
+    request for a witness.
     """
     session = await room.get_session(db, session_id)
 
@@ -533,8 +538,6 @@ async def take_turn(
         guide_response=outcome.speech,
     )
     if outcome.needs_person:
-        # The hard stop: the assessor failed three turns running and the room said so out
-        # loud. Nothing further lands until a person comes, which is what `BLOCKING` names.
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
     if _worth_settling(outcome, speech_heard, opening=opening):
