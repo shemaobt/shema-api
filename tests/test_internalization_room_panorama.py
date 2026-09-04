@@ -89,6 +89,8 @@ async def test_the_panorama_is_grounded_on_the_book_material(patch_agent) -> Non
     material = build_book_material("Ruth")
 
     outcome = await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="",
         messages=[],
         panorama_prompt=PANORAMA,
@@ -111,6 +113,8 @@ async def test_the_validator_judges_against_the_same_material(patch_agent) -> No
     agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
 
     await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="o que é esse livro?",
         messages=[],
         panorama_prompt=PANORAMA,
@@ -134,6 +138,8 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
 
     outcome = await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="   ",
         messages=[{"role": "guide", "text": "vamos conhecer o livro"}],
         panorama_prompt=PANORAMA,
@@ -159,6 +165,8 @@ async def test_a_rejected_panorama_turn_is_never_voiced(patch_agent) -> None:
     )
 
     outcome = await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
         transcript="como termina?",
         messages=[],
         panorama_prompt=PANORAMA,

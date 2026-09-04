@@ -4,9 +4,21 @@ from types import SimpleNamespace
 import pytest
 
 from app.api.internalization_room import passages as route
-from app.core.config import get_settings
-from app.services.internalization_room.canon.parse_map import load_book
+from app.core.exceptions import ValidationError
+from app.core.room_enums import ElementKind
+from app.services.internalization_room.canon.book_material import require_walkable
+from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.parse_map import (
+    SURVEYED_STATUS,
+    load_book,
+    load_map,
+)
+from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
 from app.services.internalization_room.passage_lines import line_for
+
+
+async def _instantly_voiced(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
+    return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
 
 
 def test_every_ruth_passage_has_a_line_to_be_named_by() -> None:
@@ -18,9 +30,10 @@ def test_every_ruth_passage_has_a_line_to_be_named_by() -> None:
     )
 
 
-def test_a_book_nobody_has_written_lines_for_stays_silent() -> None:
-    assert line_for("P01", "xx") == ""
+def test_a_passage_nobody_has_written_a_line_for_stays_silent() -> None:
+    """Uma passagem sem fala é retirada da roda; um idioma sem falas não retira o livro."""
     assert line_for("Z99", "pt") == ""
+    assert line_for("Z99", "xx") == ""
 
 
 def test_the_lines_are_one_breath_each() -> None:
@@ -45,20 +58,83 @@ def test_the_line_names_the_passage_without_a_number(pericope: str) -> None:
     assert not any(ch.isdigit() for ch in said)
 
 
-def test_the_room_finds_its_lines_with_the_tag_it_is_actually_configured_with() -> None:
-    spoken = get_settings().internalization_room_language_code
+@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
+def test_every_language_the_room_claims_can_name_every_passage(spoken: str) -> None:
     silent = [m.pericope_num for m in load_book("Ruth") if not line_for(m.pericope_num, spoken)]
 
     assert silent == [], (
-        f"a sala fala {spoken!r} e as falas são escritas por idioma; procurar a tag "
-        "inteira esvaziava o livro em silêncio, e uma roda vazia diz à equipe que "
-        f"tudo já foi feito: {silent}"
+        f"a sala diz que fala {spoken!r} e as falas são escritas por idioma; um idioma "
+        "reivindicado e não escrito esvazia o livro em silêncio, e uma roda vazia diz à "
+        f"equipe que tudo já foi feito: {silent}"
     )
+
+
+def test_a_language_nobody_has_written_is_named_in_the_floors_words_not_in_silence() -> None:
+    """Uma roda vazia não é um idioma faltando — é um livro que acabou."""
+    spoken = [line_for(m.pericope_num, "xx") for m in load_book("Ruth")]
+
+    assert all(spoken)
+    assert spoken == [line_for(m.pericope_num, FLOOR) for m in load_book("Ruth")]
 
 
 @pytest.mark.parametrize("tag", ["pt", "pt-BR", "PT-br"])
 def test_the_region_never_decides_whether_a_passage_can_be_named(tag: str) -> None:
     assert line_for("P01", tag)
+
+
+async def test_the_wheel_offers_no_passage_the_session_would_refuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A team choosing by ear must be able to enter every spoke it hears.
+
+    The only filter was a spoken line existing, so the wheel advertised all fourteen while
+    `require_walkable` refused eight of them the moment a finger landed. The refusal reached
+    the team as a broken room, and a spoke that cannot be entered is worse than one that was
+    never offered.
+    """
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+
+    answer = await route.passages("Ruth", language="pt")
+
+    refused = []
+    for view in answer.passages:
+        try:
+            require_walkable(load_map(view.pericope))
+        except ValidationError as error:
+            refused.append(str(error))
+    assert refused == [], (
+        "a roda oferecia passagens que a própria sessão recusa, e tocar numa delas dizia "
+        f"à equipe que a sala tinha quebrado: {refused}"
+    )
+
+
+async def test_the_wheel_still_offers_every_passage_that_does_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The counterweight, and the more expensive of the two failures.
+
+    A filter that overshoots empties the wheel, and the app does not read an empty wheel as a
+    canon that is not ready — it reads it as a book with nothing left in it, halts, and tells
+    the team to fetch a person. Six passages walk today and all six have to survive.
+    """
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+
+    answer = await route.passages("Ruth", language="pt")
+
+    offered = [view.pericope for view in answer.passages]
+    opens = [
+        meaning_map.pericope_num
+        for meaning_map in load_book("Ruth")
+        if any(
+            element.kind is ElementKind.PRESERVED
+            for element in elements_for(meaning_map.pericope_num)
+        )
+        and meaning_map.sta_status == SURVEYED_STATUS
+    ]
+    assert offered == opens, (
+        "a roda tem que trazer exatamente as passagens que abrem: de menos e a equipe "
+        f"ouve que o livro acabou, de mais e ela toca numa que recusa — veio {offered}"
+    )
 
 
 async def test_every_passage_arrives_with_its_necklace_already_counted(
@@ -77,7 +153,7 @@ async def test_every_passage_arrives_with_its_necklace_already_counted(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instant)
 
-    answer = await route.passages("Ruth")
+    answer = await route.passages("Ruth", language="pt")
 
     for view in answer.passages:
         assert view.beads == len(element_keys(view.pericope, book="Ruth"))
@@ -109,8 +185,47 @@ async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _slow)
 
-    answer = await route.passages("Ruth")
+    answer = await route.passages("Ruth", language="pt")
 
     assert len(answer.passages) > 1
     assert peak > 1, "uma linha por vez é o que estourava o orçamento do cliente"
     assert peak <= route.MAX_LINES_IN_FLIGHT, "e sem limite a cota do sintetizador é o próximo muro"
+
+
+async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A roda vem antes de qualquer sessão, então é o único lugar da sala que negocia
+    idioma por pedido — sem isso, uma equipe em inglês gira uma roda em português."""
+    said: dict[str, list[str]] = {}
+
+    async def _remembering(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
+        said.setdefault("spoken", []).append(text)
+        return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
+
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
+
+    await route.passages("Ruth", language="pt")
+    in_portuguese = said.pop("spoken")
+    await route.passages("Ruth", language="en")
+    in_english = said.pop("spoken")
+
+    assert len(in_portuguese) == len(in_english)
+    assert set(in_portuguese).isdisjoint(in_english)
+
+
+async def test_the_wheel_asked_for_nothing_speaks_the_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    said: list[str] = []
+
+    async def _remembering(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
+        said.append(text)
+        return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
+
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
+
+    await route.passages("Ruth")
+
+    assert line_for("P01", FLOOR) in said
+    assert line_for("P01", "pt") not in said

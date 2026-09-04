@@ -1,5 +1,13 @@
 """Artifact custody.
 
+DORMANT since the 2026-09-01 scope cut — kept deliberately, not by neglect.
+
+The Colar's SPA now ends at the scene and phrase segmentation: no interview, no report, no
+artifact. Nothing has called either route since. This is not dead code and not an oversight — both
+routes stay mounted and answer as they always did, and the module belongs to the interview package
+the system that hosts the interview next will pick up whole. Read
+``docs/sound_necklace_interview_package.md`` before changing or removing anything here.
+
 The three artifacts are produced client-side and must survive byte-identical, so
 they travel as raw multipart bytes on upload and are served straight from storage
 on download — no Pydantic model ever parses a payload.

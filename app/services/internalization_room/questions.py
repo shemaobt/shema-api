@@ -21,6 +21,8 @@ from app.core.exceptions import (
 )
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
+from app.services.internalization_room.coverage_events import last_bead_moved_in_session
+from app.services.internalization_room.languages import FLOOR
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms
 from app.services.platform.storage import GcsPlatformStore
@@ -36,11 +38,6 @@ from app.services.project.facilitates_project import facilitates_project
 logger = logging.getLogger(__name__)
 
 AUDIO_MIME = "audio/mp4"
-
-#: The room is run in Portuguese, the same default the rest of `services/internalization_room`
-#: carries. A hint and not a detection request: letting the provider guess is how a
-#: Portuguese question comes back as phonetic Spanish.
-ROOM_LANGUAGE = "pt"
 
 
 def _store(settings: Settings | None = None) -> SpeechStore:
@@ -74,14 +71,21 @@ async def raise_question(
     the task that calls it. What waits on a transcription is a team standing in a room, and
     the transcript is not for them.
 
-    ``element_key`` is whichever bead the app says the hand went up on, and ``None`` is a
-    normal answer: no row written before ENG-447 has one and no app sends one until ENG-456.
+    ``element_key`` is whichever bead the app says the hand went up on. No tablet in the
+    field carries an element identity to send, so ``None`` is the normal case and is
+    anchored here to whichever bead *this session's* own coverage history moved most
+    recently (`coverage_events.last_bead_moved_in_session`) — a session that moved no bead
+    yet anchors to nothing, exactly as before ENG-456. A key the client does send is kept
+    as sent, since it says more than the server can infer.
+
     ``duration_ms`` is measured here, from the bytes, and there is deliberately no parameter
     to hand it in with. The measurement stays on the request because it is local, takes
     milliseconds, and the card is sorted by it.
     """
     if not audio:
         raise ValidationError("A question with no audio is not a question")
+    if element_key is None:
+        element_key = await last_bead_moved_in_session(db, session_id=session_id)
     question_id = str(uuid.uuid4())
     key = _key("pergunta", question_id, audio)
     await (store or _store()).put(key, audio, AUDIO_MIME)
@@ -103,7 +107,11 @@ async def raise_question(
 
 
 async def transcribe_for_the_desk(
-    db: AsyncSession, question: IRQuestion, audio: bytes, stt: SpeechToText | None = None
+    db: AsyncSession,
+    question: IRQuestion,
+    audio: bytes,
+    stt: SpeechToText | None = None,
+    language: str = FLOOR,
 ) -> None:
     """Read the question back in text, for the facilitator's eyes only.
 
@@ -116,11 +124,15 @@ async def transcribe_for_the_desk(
     the same thing to a raised hand. The card appears with audio and no transcript, and the
     facilitator answers it by listening, which is what they did before this column existed.
 
+    The language is the session's rather than the room's, and it is a hint and not a
+    detection request: letting the provider guess is how a question comes back transcribed
+    phonetically into a neighbouring language, and the facilitator reads that.
+
     **``ValidationError`` is in that tuple deliberately, and it is not hiding a defect of
     ours behind "the audio was bad".** Four places can raise it on this path, and none of
     them is a mistake in this repository: an empty payload, which `raise_question` refuses
-    several lines above and a test holds; an empty language, which cannot happen because
-    `ROOM_LANGUAGE` is a constant; a missing provider key, which is a machine without the
+    several lines above and a test holds; an empty language, which cannot happen because the
+    caller resolves one or takes the floor; a missing provider key, which is a machine without the
     tool, the same situation as a missing ffprobe and answered the same way; and a 4xx from
     the provider, which is the provider refusing this clip. A bug of ours reaches the
     `except` below instead.
@@ -129,7 +141,7 @@ async def transcribe_for_the_desk(
     which is the same string today for every question (ENG-526).
     """
     try:
-        said = await (stt or transcribe_speech)(audio, language=ROOM_LANGUAGE, mime_type=AUDIO_MIME)
+        said = await (stt or transcribe_speech)(audio, language=language, mime_type=AUDIO_MIME)
     except (UpstreamServiceError, ValidationError, httpx.HTTPError):
         logger.warning("question %s could not be transcribed", question.id, exc_info=True)
         return

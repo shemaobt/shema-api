@@ -310,3 +310,33 @@ async def test_a_panorama_opened_before_the_preparation_lands_still_opens(
 
     assert PANORAMA in said
     assert PREPARED not in said
+
+
+@pytest.mark.asyncio
+async def test_the_ready_line_is_still_handed_to_the_coverage_classifier(
+    client, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The opening is a turn like any other, and it is the one that names the most beads.
+
+    The prepared path left the router at its own return, before the settle was scheduled, so
+    an opening written ahead was never classified: around ten map elements went unrecorded
+    before the team had said a word, and nothing anywhere said so.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    settled: list[dict[str, str]] = []
+
+    async def _record(**handed: str) -> None:
+        settled.append(handed)
+
+    monkeypatch.setattr(sessions_api, "settle_coverage", _record)
+
+    panorama = await _create_panorama(client)
+    await _park_the_prepared_line(db_session, panorama)
+    passage = await _passage_after(client, panorama)
+    await _open_it(client, passage)
+
+    assert [handed["guide_response"] for handed in settled] == [PREPARED], (
+        "a abertura preparada não chegava ao classificador, então as contas que ela "
+        "nomeia nasciam apagadas e ficavam assim"
+    )

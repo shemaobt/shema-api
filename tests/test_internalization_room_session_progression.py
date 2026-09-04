@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room import sessions as room
+from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
@@ -45,6 +46,12 @@ PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND = CANON[0], CANON[1]
+
+#: The passages a team can actually finish. Closing all of `CANON` is a state no team can
+#: reach, because eight of Ruth's maps refuse to open a session at all.
+WALKABLE = [
+    meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
+]
 
 
 async def a_team(db: AsyncSession, *, name: str):
@@ -153,6 +160,24 @@ async def test_a_team_that_closed_the_last_passage_is_refused_rather_than_sent_r
     await having_closed(db_session, team, *CANON)
 
     with pytest.raises(ConflictError):
+        await room.create_session(db_session, project_id=team.id)
+
+
+@pytest.mark.asyncio
+async def test_a_team_that_closed_every_passage_it_could_walk_is_refused_the_same_way(
+    db_session: AsyncSession,
+) -> None:
+    """The end of the book as a team actually meets it, which is where this broke.
+
+    Closing all fourteen is a state nobody can reach — eight of them refuse to open a session
+    at all — so the conflict above was only ever asserted against a fixture. What a real team
+    reaches is the sixth passage closed, and that resolved to the seventh: a passage whose own
+    refusal came back as a broken room, on that touch and on every touch after it.
+    """
+    team = await a_team(db_session, name="Andou tudo que dava")
+    await having_closed(db_session, team, *WALKABLE)
+
+    with pytest.raises(ConflictError, match="can walk"):
         await room.create_session(db_session, project_id=team.id)
 
 

@@ -1,5 +1,13 @@
 """Voice-answer resources (the canonical respostas/… paths).
 
+DORMANT since the 2026-09-01 scope cut — kept deliberately, not by neglect.
+
+The Colar's SPA now ends at the scene and phrase segmentation: no interview, no report, no
+artifact. Nothing has called these routes since. This is not dead code and not an oversight — all
+four routes stay mounted and answer as they always did, and the module belongs to the interview
+package the system that hosts the interview next will pick up whole. Read
+``docs/sound_necklace_interview_package.md`` before changing or removing anything here.
+
 Each answer is one WebM/Opus recording, uploaded straight to the API and served back
 through a short-TTL signed URL. The bytes are opaque audio: the API only ever moves
 them, never parses them. The path is validated against a fixed allowlist so it can be

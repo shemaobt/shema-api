@@ -9,10 +9,12 @@ never anything a person was meant to see.
 rendered straight onto the card. Serving both would put a field on every response that its
 only consumer never reads.
 
-**Three languages and not one**, because nothing in this API negotiates one: no
-`Accept-Language`, no `?lang=`, in any room or facilitator route. `LabelledElement` and the
-coverage legend both serve `pt`/`en`/`es` as named fields and let the client choose, and
-serving a single label here would mean inventing language negotiation inside this slice.
+**Three languages and not one.** The room negotiates the language it *speaks* — on the
+session, and on the wheel that precedes any session — but never the language it *labels* in:
+a bead's name is read by a facilitator at the Desk, and the Desk is not the tablet whose
+locale the room obeys. `LabelledElement` and the coverage legend both serve `pt`/`en`/`es` as
+named fields and let the client choose, and serving a single label here would tie a
+facilitator's reading to a team's listening.
 
 The catalogue now holds all fourteen passages, and only four of them — P01, P02, P05, P14 —
 are translated. The other ten carry English and two nulls, so **that is the shape most teams

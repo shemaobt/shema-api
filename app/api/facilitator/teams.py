@@ -142,7 +142,7 @@ async def read_team_coverage_route(
         pericope = await active_passage(db, project_id=team_id)
         if pericope is None:
             raise ConflictError(
-                "This team has closed every passage of the book; name the one to read"
+                "This team has closed every passage the book can walk; name the one to read"
             )
 
     return await team_necklace(db, team_id=team_id, pericope=pericope)

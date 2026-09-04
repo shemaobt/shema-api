@@ -2,6 +2,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     analyse_telling_back,
+    closing_block,
     findings_block,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
@@ -31,6 +32,7 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
+    attend,
     back_translation_of,
     begin_back_translation_again,
     comprehension_of,
@@ -38,11 +40,13 @@ from app.services.internalization_room.sessions import (
     get_session,
     get_session_for_facilitator,
     mark_needs_person,
+    report_playback,
     save_back_translation,
     save_comprehension,
     session_is_done,
     sessions_waiting_on_a_person,
     set_bridge_mode,
+    unattend,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
@@ -58,10 +62,12 @@ __all__ = [
     "analyse_telling_back",
     "append_exchange",
     "apply_coverage",
+    "attend",
     "back_translation_of",
     "begin_back_translation_again",
     "capture_segment",
     "classify_coverage",
+    "closing_block",
     "comprehension_of",
     "create_session",
     "divide_segment",
@@ -72,6 +78,7 @@ __all__ = [
     "get_session_for_facilitator",
     "mark_needs_person",
     "parent_of",
+    "report_playback",
     "retired_segments",
     "run_comprehension_turn",
     "run_panorama_turn",
@@ -86,4 +93,5 @@ __all__ = [
     "set_bridge_mode",
     "synthesize_facilitator_speech",
     "told_back",
+    "unattend",
 ]

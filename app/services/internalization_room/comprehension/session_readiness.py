@@ -34,8 +34,18 @@ def evaluate_session_comprehension(
     scene_ids: list[str],
     ledger: list[EvidenceEvent],
     practiced_scene_ids: list[str],
+    engaged_scene_ids: list[str],
 ) -> SessionComprehension:
-    practiced = set(practiced_scene_ids)
+    """Readiness over the ledger, with a fully engaged scene standing in for the report.
+
+    Bead coverage substitutes for the spoken practice report here and nowhere else: a scene
+    whose every element is engaged was told in the team's own words to get there, so also
+    waiting for someone to say the closing word held a passage in a rehearsal it had already
+    finished. The substitution is a reading, not a record — `practiced_scene_ids` keeps
+    meaning what the team reported, and both lists arrive as parameters so this module stays
+    free of coverage and canon.
+    """
+    practiced = set(practiced_scene_ids) | set(engaged_scene_ids)
     missing = [scene_id for scene_id in scene_ids if scene_id not in practiced]
     all_practiced = bool(scene_ids) and not missing
     return SessionComprehension(
@@ -56,13 +66,22 @@ def render_comprehension_status(
     scene_ids: list[str],
     ledger: list[EvidenceEvent],
     practiced_scene_ids: list[str],
+    engaged_scene_ids: list[str],
     current_scene: str | None = None,
 ) -> str:
+    """The Guide's status block, read off the same evaluation the system gates on.
+
+    `READINESS:` comes from this evaluation, so the engaged-scene reading has to reach here
+    too or the line would contradict the gate beside it. `MOTHER-TONGUE PRACTICE REPORTED:`
+    stays on `practiced_scene_ids` alone: the Guide has to keep seeing what the team actually
+    said.
+    """
     readiness = evaluate_session_comprehension(
         checkpoints=checkpoints,
         scene_ids=scene_ids,
         ledger=ledger,
         practiced_scene_ids=practiced_scene_ids,
+        engaged_scene_ids=engaged_scene_ids,
     )
     supported = set(readiness.evaluation.supported_unit_ids)
     scope = [c for c in checkpoints if (c.scene_id == current_scene if current_scene else True)]

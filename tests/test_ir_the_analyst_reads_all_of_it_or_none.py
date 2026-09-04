@@ -159,7 +159,9 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
 
 async def _open_session(client: httpx.AsyncClient) -> str:
     created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": PASSAGE}
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": PASSAGE, "language": "pt"},
     )
     assert created.status_code == 200, created.text
     return str(created.json()["session_id"])

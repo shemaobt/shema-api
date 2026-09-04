@@ -24,7 +24,6 @@ from app.db.models.book_context import (
 from app.db.models.device import Device
 from app.db.models.internalization_room import (
     IRCoverageEvent,
-    IRPrompt,
     IRQuestion,
     IRSession,
     IRTake,
@@ -113,7 +112,6 @@ __all__ = [
     "Device",
     "GranularityLevel",
     "IRCoverageEvent",
-    "IRPrompt",
     "IRQuestion",
     "IRSession",
     "IRTake",

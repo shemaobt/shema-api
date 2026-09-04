@@ -9,7 +9,7 @@ __pycache__/
 .coverage
 htmlcov/
 alembic/__pycache__/
-test.db
+*.db
 scripts/seed_initial_users.py
 scripts/grant-secret-access.sh
 gcs-signing-key.json
@@ -19,4 +19,4 @@ gcs-signing-key.json
 # mounts this directory, so it never belongs in the repository.
 .local-dump/*
 !.local-dump/.gitkeep
-test.db-journal
+*.db-journal

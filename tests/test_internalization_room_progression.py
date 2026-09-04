@@ -34,6 +34,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import sessions as room
+from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
@@ -57,7 +58,14 @@ ENGAGED = CoverageStatus.ENGAGED.value
 #: naming fourteen would keep passing on the day a fifteenth is vendored.
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
-LAST = CANON[-1]
+
+#: The passages a team can actually be standing on. The rest are vendored but unwalkable, and
+#: the resolution steps over them — so the boundary cases below are about the last passage
+#: that opens rather than the last one in the folder.
+WALKABLE = [
+    meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK) if not unwalkable(meaning_map)
+]
+LAST = WALKABLE[-1]
 
 
 def closed(pericope: str) -> dict[str, str]:
@@ -142,6 +150,18 @@ def test_a_bead_the_canon_does_not_serve_cannot_close_a_passage() -> None:
 def test_a_team_that_closed_every_passage_stands_on_none() -> None:
     """The end of the book is a defined state and not a wrap-around."""
     assert resolve(the_whole_book()) is None
+
+
+def test_a_team_that_closed_everything_it_can_walk_is_at_the_end_of_the_book() -> None:
+    """The end a team can actually reach, which is earlier than the last vendored passage.
+
+    Ruth's last eight carry no preservation layer, so no session can open on them and their
+    floor can never be met. The resolution walked them anyway and answered the first of them
+    forever: the team closed the sixth passage and was sent, on every touch after that, to a
+    seventh that refuses to open. `None` here is what makes the end-of-book branch reachable
+    at all.
+    """
+    assert resolve({pericope: closed(pericope) for pericope in WALKABLE}) is None
 
 
 def test_the_last_passage_still_being_worked_is_where_the_team_is() -> None:

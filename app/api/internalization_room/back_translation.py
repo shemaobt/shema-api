@@ -5,6 +5,7 @@ from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
@@ -13,8 +14,10 @@ from app.models.internalization_room import (
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.back_translation import VoicedVerdict
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
+from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.sessions import MAX_RETELLS
@@ -55,6 +58,10 @@ async def add_chunk(
     That is the one cycle they can repeat at will, so it is counted and capped here: past
     the budget the room asks for a person instead of buying another analyst round. The
     chunk is kept either way — their work is never the thing thrown away.
+
+    That ask is a `WARNING` and not a hard stop (ENG-706): the room wants somebody to come and
+    watch, and refuses nothing — the team may go on telling. Naming the kind is what lets the
+    Desk tell this walk from the one where the room has actually stopped.
 
     `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
     slice inside **that file** — where the team let it play and where they stopped it. All
@@ -103,7 +110,7 @@ async def add_chunk(
         await room.save_back_translation(db, session, state)
         spent = retelling and told_again >= MAX_RETELLS
         if spent:
-            await room.mark_needs_person(db, session)
+            await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(told),
@@ -127,7 +134,7 @@ async def add_chunk(
 
     spent = retelling and told_again >= MAX_RETELLS
     if spent:
-        await room.mark_needs_person(db, session)
+        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) + 1,
@@ -181,23 +188,40 @@ async def finish(
     model — and this is not that: the gate fires with the server answering normally, before
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
+
+    Pressed again over the same stretches, the room serves the verdict it already reached and
+    consults nothing. The press is the same question, and answering it afresh cost a validator
+    and a spoken synthesis every time and wrote the room into the conversation as having spoken
+    twice — a false record of the room in front of the team, which outlives the bill. The reply
+    is byte-for-byte the first one: the app is not told which press it made, because a second
+    shape would be a contract change to say something no caller asked about.
+
+    What counts as the same question is `already_analysed`, the record the analyst was already
+    guarded by — one signal, so the four steps of a press can never disagree about whether the
+    team told back anything new. A press that reached the analyst and then failed saves nothing
+    at all, so the press after it does the whole turn rather than serving a verdict the team
+    never heard.
     """
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
     if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
-        state.played_ranges = payload.played_ranges
-        state.clip_duration_ms = payload.clip_duration_ms
-        await room.save_back_translation(db, session, state)
+        state = await room.report_playback(
+            db,
+            session,
+            state,
+            played_ranges=payload.played_ranges,
+            clip_duration_ms=payload.clip_duration_ms,
+        )
 
     if len(told) < len(final):
         waiting, _ = choose(
             FailSafe.UNTOLD_STRETCH,
-            get_settings().internalization_room_language_code,
+            session.language,
             turn=state.waited,
         )
-        spoken = (await room.synthesize_facilitator_speech(waiting))[0]
+        spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
         state.waited += 1
         await room.save_back_translation(db, session, state)
         return BackTranslationVerdictResponse(
@@ -216,7 +240,7 @@ async def finish(
         # anything, which is the line family written for exactly this.
         _, line = choose(
             FailSafe.INAUDIBLE,
-            get_settings().internalization_room_language_code,
+            session.language,
             turn=len(session.messages or []),
         )
         return BackTranslationVerdictResponse(
@@ -227,12 +251,27 @@ async def finish(
             findings_remaining=0,
         )
 
+    if state.already_analysed(told) and state.verdict is not None:
+        finding = state.current_finding
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
+            fixed_line=state.verdict.fixed_line,
+            checked=state.checked,
+            finding_kind=finding.kind if finding else None,
+            finding_segment_id=finding.segment_id if finding else None,
+            findings_remaining=len(state.findings),
+            used_fail_safe=state.verdict.used_fail_safe,
+        )
+
     if not state.already_analysed(told):
         read = await room.analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
-            analyst_prompt=await get_prompt_text(db, IRPromptKey.BT_ANALYST),
+            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+            session_language=LANGUAGE_NAMES[session.language],
+            language_code=session.language,
             settings=get_settings(),
         )
         if read is None:
@@ -248,21 +287,31 @@ async def finish(
 
     outcome = await room.run_verdict_turn(
         findings_text=room.findings_block(finding),
+        closing=room.closing_block(finding),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],
-        speaker_prompt=await get_prompt_text(db, IRPromptKey.BT_VERDICT_SPEAKER),
-        validator_prompt=await get_prompt_text(db, IRPromptKey.VALIDATOR),
+        speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
+        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+        session_language=LANGUAGE_NAMES[session.language],
+        language_code=session.language,
         settings=get_settings(),
     )
 
     voiced = (
         None
         if outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(outcome.speech))[0]
+        else (await room.synthesize_facilitator_speech(outcome.speech, language=session.language))[
+            0
+        ]
     )
     session = await room.append_exchange(
         db, session, team_utterance="", guide_response=outcome.speech
+    )
+    state.verdict = VoicedVerdict(
+        clip_key=voiced.key if voiced else "",
+        fixed_line=outcome.fixed_line,
+        used_fail_safe=outcome.used_fail_safe,
     )
     await room.save_back_translation(db, session, state)
 

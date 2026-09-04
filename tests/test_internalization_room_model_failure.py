@@ -88,7 +88,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
 
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
 
-    async def _speech(text: str) -> tuple[SynthesizedSpeech, bool]:
+    async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         spoken.append(text)
         entry = SynthesizedSpeech(
             audio=b"audio",
@@ -141,7 +141,9 @@ def _the_assessor_finds_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
     created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": P}
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": P, "language": "pt"},
     )
     assert created.status_code == 200
     return created.json()["session_id"]

@@ -11,6 +11,8 @@ MAX_TTS_CHARS = 3000
 
 class FacilitatorSpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_TTS_CHARS)
+    #: Which language to speak it in. Absent takes the floor, English.
+    language: str | None = Field(default=None, max_length=8)
 
 
 class FacilitatorSpeakResponse(BaseModel):
@@ -238,6 +240,17 @@ class TeamSessionResponse(BaseModel):
     ended_at: datetime | None
     duration_minutes: int | None
     state: SessionState
+    #: A halt is not an end: it travels beside `state`, never inside it (ENG-605).
+    needs_person: bool
+    #: What kind the last halt on this conversation was, **whether or not it still stands**
+    #: (ENG-609). That is the difference from the tablet's `halt`: a warning lifted by a
+    #: landing turn before any facilitator saw it is gone from the queue as it always was,
+    #: and this is where it is not lost. Null means no halt was ever raised.
+    last_halt: str | None
+    #: When a facilitator said they went, and who. Null on every conversation nobody marked,
+    #: which is most of them.
+    attended_at: datetime | None
+    attended_by: str | None
     coverage: list[SessionBead]
 
 
@@ -252,8 +265,17 @@ class CreateSessionRequest(BaseModel):
     pericope: str | None = Field(default=None, max_length=120)
     after_panorama: bool = False
     #: Which panorama session preceded this one, so its prepared opening can be handed over.
+    #: Named by the app only for the session the wooden bead opens once the panorama has been
+    #: spoken. That is what lets the room read the resulting ``after_panorama`` as "this team
+    #: heard the panorama and went on into this passage" — ``panorama_once`` decides from it
+    #: whether to play the panorama again — so naming it for any other session would mark that
+    #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
     bridge_mode: str | None = Field(default=None, max_length=24)
+    #: Which language the room should speak to this team, read by the app off the tablet.
+    #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
+    #: a language the room does not speak is refused rather than quietly answered in another.
+    language: str | None = Field(default=None, max_length=8)
 
 
 class SegmentView(BaseModel):
@@ -331,6 +353,18 @@ class SessionStateResponse(BaseModel):
     done: bool
     back_translation: BackTranslationProgress = Field(default_factory=BackTranslationProgress)
     bridge_mode: str = "calibration_pending"
+    #: Said back so the app can see which language it actually got, the way `bridge_mode` is.
+    language: str = "en"
+    #: Which kind of halt is standing: `"blocking"`, `"warning"`, or null when none is
+    #: (ENG-609). **Null whenever `status` is not `needs_person`** — the tablet halts on one
+    #: signal and two would be a pair it has to keep in agreement. What kind the *last* halt
+    #: was outlives the halt, and is served to facilitators, who are the ones who read
+    #: backwards; see `TeamSessionResponse.last_halt`.
+    #:
+    #: A halt raised before ENG-609 carries no recorded kind and reads as `"blocking"`, which
+    #: is the conservative answer: it sends somebody to a room that may not have needed one,
+    #: where the other reading leaves a stopped room waiting.
+    halt: str | None = None
 
 
 class SpokenSegment(BaseModel):
@@ -391,9 +425,15 @@ class BackTranslationChunkResponse(BaseModel):
 class FinishBackTranslationRequest(BaseModel):
     """What the tablet actually played of the team's own recording, in milliseconds.
 
-    Optional end to end: an older app sends no body and everything behaves as before.
-    The report is evidence for the Refine artifact — the analysis itself already happens
-    only after the client let the clip run to its end.
+    Optional end to end, and the room still answers `terminei` without it: the analysis
+    already happens only after the client let the clip run to its end, so an app that sends
+    nothing here loses nothing in the conversation.
+
+    What it loses is the release. The report is the only evidence the room has that the team
+    heard their own recording before the telling-back was blessed, so a session that never
+    sends one is refused at the handoff rather than travelling on silence. Which rehearsal the
+    report is about is not asked of the tablet — the server stamps it, so no app in the field
+    has to be updated to release.
     """
 
     played_ranges: list[list[int]] = Field(default_factory=list)
@@ -456,9 +496,11 @@ class InboxQuestionView(BaseModel):
     to draw a case this route cannot produce.
 
     ``element_label_*``, ``duration_ms`` and ``transcript`` are all nullable, and the Desk has
-    to draw a card without each of them. An element is missing on every question raised before
-    ENG-456 ships the app's half; a duration or a transcript is missing when the machine that
-    produces it failed, and the card still carries audio a facilitator can answer by playing.
+    to draw a card without each of them. An element is missing on every row written before
+    ENG-447, and on a question raised in a session whose coverage never moved a bead — the
+    server (ENG-456) has nothing of the session's own to anchor it to; a duration or a
+    transcript is missing when the machine that produces it failed, and the card still
+    carries audio a facilitator can answer by playing.
 
     **The bead is named and its key is not served** (ENG-543). ``element_key`` is the room's
     identity for a bead — coverage is persisted under it and it is unique only inside its
@@ -468,9 +510,10 @@ class InboxQuestionView(BaseModel):
     every card that its only consumer never reads.
 
     **Three languages rather than one**, which is the same shape ``LabelledElement`` and the
-    coverage legend take. Nothing in this API negotiates a language — no ``Accept-Language``,
-    no ``?lang=`` on any room or facilitator route — so serving a single label would mean
-    inventing negotiation here. The client picks, as it already does everywhere else.
+    coverage legend take. The room negotiates a language for what it *says* — named on the
+    session, and on the wheel that precedes any session — but not for what it *labels*: a
+    bead's name is read by a facilitator at the Desk, whose language is not the tablet's. So
+    all three are served and the client picks, as it already does everywhere else.
 
     **``label_en`` is the one that is usually there.** The catalogue holds all fourteen
     passages and four of them are translated, so on the other ten every bead carries English
@@ -552,14 +595,76 @@ class QuestionInboxResponse(BaseModel):
 
 
 class FacilitatorSessionView(BaseModel):
+    """One room on the queue a facilitator drains.
+
+    **`team_name` travels because this listing is the one that crosses teams** (ENG-609).
+    Everywhere else a facilitator asks about a team they named; here they are asking which
+    team to walk to, and a row carrying only a `project_id` cannot answer that. The id
+    travels beside it so the Desk can link the row to that team's screens.
+
+    `halt` says whether the room is stopped or is asking for a witness — different walks,
+    written as one word until ENG-609. It is null for the `DONE` half of this queue, which
+    waits on a person for a different reason: a finished passage waiting to be carried into
+    Refine is not a halt.
+
+    The stamps are here so a facilitator can see a room somebody has already been to. They
+    stay null for almost every row, which is the ordinary case.
+    """
+
     session_id: str
     pericope: str
     status: str
     updated_at: str
+    project_id: str
+    team_name: str
+    halt: str | None = None
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    attended_at: str | None = None
+    #: A user id. The Desk resolves names itself, as the questions inbox does with
+    #: `answered_by` — a name copied here would be the name that person had that day.
+    attended_by: str | None = None
+
+
+class AttendedResponse(BaseModel):
+    """What a facilitator gets back after saying they went to a room, or that they did not.
+
+    The status and the halt travel together because the mark's whole point is to move them:
+    an answer carrying only the stamps would leave the Desk to guess whether the room is
+    still asking, and guessing wrong is a facilitator who walks away from a stopped room.
+    """
+
+    session_id: str
+    status: str
+    halt: str | None = None
+    #: ISO-8601 with an offset. A bare local time here is read as the reader's own clock.
+    attended_at: str | None = None
+    attended_by: str | None = None
+
+
+class FacilitatorHaltedDeviceView(BaseModel):
+    """A tablet that asked for a person without having a session to ask through.
+
+    ``label`` is the note a facilitator wrote on the Desk to tell two tablets apart on a
+    shelf, and it is what makes the row actionable: the id names a row in a table, the label
+    names the thing on the table in front of them.
+    """
+
+    device_id: str
+    label: str | None
+    since: datetime
 
 
 class FacilitatorSessionsResponse(BaseModel):
+    """Everything in the caller's teams that is waiting on a person, in two lists.
+
+    ``devices`` is additive (ENG-624) and carries the half no session id can reach: a tablet
+    whose session the server forgot, or that broke before opening one. Same queue, same
+    scope — the caller's own teams — split only because a halt with no session has no
+    session id to be listed under.
+    """
+
     sessions: list[FacilitatorSessionView]
+    devices: list[FacilitatorHaltedDeviceView] = []
 
 
 class TakeResponse(BaseModel):

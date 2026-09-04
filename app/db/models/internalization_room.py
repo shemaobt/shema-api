@@ -28,11 +28,6 @@ class IRSessionStatus(enum.StrEnum):
     NEEDS_PERSON = "needs_person"
 
 
-_PROMPT_KEY_TYPE = Enum(
-    IRPromptKey,
-    name="ir_prompt_key_enum",
-    values_callable=lambda enum_cls: [m.value for m in enum_cls],
-)
 _SESSION_STATUS_TYPE = Enum(
     IRSessionStatus,
     name="ir_session_status_enum",
@@ -50,6 +45,10 @@ class IRSession(Base):
         _SESSION_STATUS_TYPE, default=IRSessionStatus.IN_PROGRESS
     )
     messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    #: Whether this session was opened straight after the book's panorama, which is how the
+    #: guide knows not to introduce itself twice. It is also the only record that a team
+    #: heard the panorama and went on into this passage — the panorama's own row names the
+    #: book and no passage — so ``panorama_once`` reads it to decide whether to play it again.
     after_panorama: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     prepared_speech: Mapped[str | None] = mapped_column(Text, nullable=True)
     prepared_audio_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -87,12 +86,48 @@ class IRSession(Base):
     bridge_mode: Mapped[str] = mapped_column(
         String(24), default="calibration_pending", server_default="calibration_pending"
     )
+    #: Which language the room speaks to this team, chosen by the tablet when the session
+    #: opened and never afterwards. A per-request choice would let the room change language
+    #: underneath a team because somebody changed a phone setting mid-passage, and half a
+    #: passage in each language is worse than the whole of it in either.
+    #:
+    #: Not ``Project.language_id``. That column records the team's own language for the rest
+    #: of the platform and the room does not read it: the device decides, because the device
+    #: is what the facilitator set up in front of them.
+    language: Mapped[str] = mapped_column(String(8), default="en", server_default="en")
     #: Declared with the ``server_default`` its own migration already writes. The model said
     #: only ``default=dict``, which is Python-side and never reaches the DDL, so a table built
     #: from the metadata got a NOT NULL column with no default and any insert that did not
     #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
     comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
+    #: every halt and cleared by none: it outlives the halt on purpose, so that a warning
+    #: lifted by a landing turn before any facilitator saw it is still readable on the team's
+    #: history afterwards. Whether a halt is *standing* is ``status``; this says what kind it
+    #: was. Null on every row halted before ENG-609, which the read side answers as
+    #: ``blocking`` while the halt stands — the conservative reading, and deliberately not a
+    #: backfill, which would be indistinguishable from a kind somebody actually recorded.
+    halt_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: When a facilitator said they went to this room, and who said it. Null is the ordinary
+    #: answer: most conversations are never marked. The pair moves together — the undo clears
+    #: both — because half of it records nothing anybody can act on.
+    #:
+    #: ``attended_by`` is a user id and not a name, the way ``IRQuestion.answered_by`` is: the
+    #: Desk resolves names itself, and a name copied here would be the name that person had
+    #: on the day of the visit.
+    attended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    attended_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: Which halt the visit above lifted, null when it lifted none — a facilitator may mark a
+    #: room that is running perfectly well, and most marks lift nothing.
+    #:
+    #: **Not derivable from ``halt_kind``, which is why it is a column.** That one is never
+    #: cleared, so it says "this session was halted at some point, ever"; undoing a visit has
+    #: to know whether *this* visit was the thing that lifted a halt. Without the distinction
+    #: an undo re-halts a conversation that the team had already restarted themselves — the
+    #: room stops, the queue reopens, and the kind it announces belongs to a halt somebody
+    #: cleared an hour earlier.
+    lifted_halt: Mapped[str | None] = mapped_column(String(16), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -156,23 +191,6 @@ class IRCoverageEvent(Base):
     )
 
 
-class IRPrompt(Base):
-    __tablename__ = "ir_prompts"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    key: Mapped[IRPromptKey] = mapped_column(_PROMPT_KEY_TYPE, unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(120))
-    description: Mapped[str] = mapped_column(Text)
-    prompt: Mapped[str] = mapped_column(Text)
-    version: Mapped[int] = mapped_column(Integer, default=1)
-    created_at: Mapped[datetime] = mapped_column(
-        UtcDateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-
 class IRQuestionStatus(enum.StrEnum):
     OPEN = "open"
     ANSWERED = "answered"
@@ -202,10 +220,11 @@ class IRQuestion(Base):
     session_id: Mapped[str] = mapped_column(String(36))
     pericope: Mapped[str] = mapped_column(String(120))
     audio_key: Mapped[str] = mapped_column(String(512))
-    #: Which bead of the Meaning Map the hand went up on, as the app names it. Nullable
-    #: because every row written before ENG-447 has none, and because the app only starts
-    #: sending it with ENG-456 — a card that names no element is the common case today,
-    #: not a broken one.
+    #: Which bead of the Meaning Map the hand went up on, as the app names it or, since
+    #: ENG-456, as the server anchors it from this session's own coverage history. Nullable
+    #: because every row written before ENG-447 has none, and because a session whose
+    #: coverage never moved a bead has nothing to anchor to — a card that names no element
+    #: is the common case today, not a broken one.
     element_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     #: How long the recording runs, measured from the audio at ingest and never taken from
     #: the client. Nullable because the measurement is a call to a tool outside this

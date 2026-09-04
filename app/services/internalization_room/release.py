@@ -30,7 +30,7 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
-from app.services.internalization_room.back_translation import played_ranges_cover_clip
+from app.services.internalization_room.back_translation import playback_confirms_rehearsal
 from app.services.internalization_room.calibration import BridgeMode
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
@@ -41,11 +41,12 @@ from app.services.internalization_room.comprehension.checkpoints import (
 from app.services.internalization_room.comprehension.session_readiness import (
     evaluate_session_comprehension,
 )
-from app.services.internalization_room.coverage import floor_met
+from app.services.internalization_room.coverage import engaged_scene_ids, floor_met
 from app.services.internalization_room.segments import (
     divided_segments,
     final_segments,
     retired_segments,
+    told_back,
 )
 from app.services.internalization_room.sessions import (
     back_translation_of,
@@ -132,9 +133,59 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
 
     That honesty is why an unread telling-back is still refused. A team that captured the
     stretches and never asked for the verdict leaves no findings and ``evidence_sufficient``
-    at its default, which is the same package a clean check produces — and no report of
-    playback either, since none is read as a legacy client and passes. Carrying the
+    at its default, which is the same package a clean check produces. Carrying the
     questions is the point; carrying silence as if it were clean is not.
+
+    The report of playback is held to the same line, and it is why the gate names a rehearsal
+    rather than only measuring one. Silence used to pass it — an absent report satisfied the
+    coverage arithmetic the way an unread telling-back satisfied ``checked`` — and so did a
+    report the team had since made untrue by recording the passage again. Both said the team
+    heard themselves when nobody knows whether they did. The package is refused unless the
+    report names the recording this package ships and reaches the end of it.
+
+    What the report has to name is asked of the stretches, which say which recording each is a
+    slice of and were checked on the way in. Not of the takes table: ``created_at`` there is
+    when the upload landed, the tablet's outbox drains whenever the link comes back, and the
+    newest-arriving rehearsal is sometimes the one the team abandoned.
+
+    Sessions already in flight when this shipped carry a report with no such name, and are
+    refused until the team plays their rehearsal through again. That is the correct reading of
+    them: a report we cannot tie to a recording is not evidence about any recording.
+
+    A session with nothing told back is not asked. ``no_telling_back`` already says what is
+    wrong there, and a second blocker about playback would only repeat it in other words.
+
+    ``untold_stretch`` is the same argument about words instead of audio. A stretch whose mother
+    tongue was just re-recorded, and each half of one the team divided, is a current unit carrying
+    nothing they said — legitimate inside the room, where the tablet shows it and asks for it, and
+    unreadable outside: null text does not arrive downstream as unfinished, it arrives as a team
+    who stood in front of that passage and said nothing.
+
+    Unlike the line above, it silences nothing. A re-record that was never told back and never
+    played leaves the team two errands, and naming one of them would send them back a second time.
+
+    It is its own blocker rather than a widening of the two beside it, and neither could have
+    been widened honestly. ``no_telling_back`` asks whether the list is empty, and a list with a
+    wordless stretch in it is not empty; ``telling_back_never_analysed`` asks whether the analyst
+    ever ran, which stays true from the first verdict onwards — including after the team divides
+    a stretch the analyst blessed. Both are green in exactly the state this refuses. Overloading
+    either would also send the facilitator the wrong errand: told that nothing was told back
+    when plainly something was, they go looking for the wrong thing. The name is the room's own
+    word for the state, the one ``FailSafe.UNTOLD_STRETCH`` already speaks aloud on the tablet.
+
+    Once rather than once per stretch: a blocker is an errand, and the errand is the same one.
+
+    The guarantee is about ``segments`` and stops there. ``superseded_segments`` and
+    ``divided_segments`` are history and carry null text on purpose — a stretch the team replaced
+    before telling it back is exactly a stretch they replaced before telling it back, and refusing
+    a release over what a session used to look like would hold the team to a state they already
+    left. A reader of those two lists is reading a record, not a claim about the passage.
+
+    Wordless is ``transcript is None`` and nothing subtler, because that is the only shape the
+    room can write — both routes that store a stretch's words refuse a transcription that is
+    blank or whitespace before they get here. The rule is read off ``told_back`` rather than
+    restated, so what counts as words stays one sentence in one place: the analyst is numbered
+    off that same list, and the two must not drift.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -149,8 +200,10 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         scene_ids=scene_ids,
         ledger=comprehension.ledger,
         practiced_scene_ids=comprehension.practiced_scene_ids,
+        engaged_scene_ids=engaged_scene_ids(session.coverage_state or {}, session.pericope),
     )
-    told_back = await final_segments(db, session.id)
+    stretches = await final_segments(db, session.id)
+    told = told_back(stretches)
     replaced = await retired_segments(db, session.id)
     divided = await divided_segments(db, session.id)
     takes = await takes_of(db, session.id)
@@ -167,11 +220,14 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         blockers.append("coverage_floor_not_met")
     if not ensaio_takes:
         blockers.append("no_rehearsal_audio")
-    if not told_back:
+    if not stretches:
         blockers.append("no_telling_back")
     elif telling_back.never_analysed:
         blockers.append("telling_back_never_analysed")
-    if not played_ranges_cover_clip(telling_back.played_ranges, telling_back.clip_duration_ms):
+    if told != stretches:
+        blockers.append("untold_stretch")
+    rehearsed = sorted({segment.take_id for segment in stretches})
+    if rehearsed and not playback_confirms_rehearsal(telling_back, rehearsed):
         blockers.append("playback_did_not_cover_the_clip")
     if blockers:
         raise InternalizationReleaseBlocked(blockers)
@@ -231,7 +287,7 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
             "checked": telling_back.checked,
             "evidence_sufficient": telling_back.evidence_sufficient,
             "retells": telling_back.retells,
-            "segments": [_segment_view(segment) for segment in told_back],
+            "segments": [_segment_view(segment) for segment in told],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
             "played_ranges": telling_back.played_ranges,
             "clip_duration_ms": telling_back.clip_duration_ms,

@@ -48,7 +48,7 @@ class _SynthesisThatCanBreak:
         self.working = True
         self.spoken: list[str] = []
 
-    async def __call__(self, text: str) -> tuple[SynthesizedSpeech, bool]:
+    async def __call__(self, text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
         if not self.working:
             raise RuntimeError("the voice service is down")
         self.spoken.append(text)
@@ -167,7 +167,9 @@ def target_checkpoint() -> str:
 @pytest.fixture()
 async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSession:
     """A room that has asked its question and is waiting on the answer."""
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(
+        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
+    )
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
