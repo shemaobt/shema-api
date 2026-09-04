@@ -5,6 +5,7 @@ from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
@@ -105,7 +106,7 @@ async def add_chunk(
         await room.save_back_translation(db, session, state)
         spent = retelling and told_again >= MAX_RETELLS
         if spent:
-            await room.mark_needs_person(db, session)
+            await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(told),
@@ -129,7 +130,9 @@ async def add_chunk(
 
     spent = retelling and told_again >= MAX_RETELLS
     if spent:
-        await room.mark_needs_person(db, session)
+        # ENG-706 — the room asks for somebody to come and watch, and refuses nothing. The
+        # team may go on telling, which is what separates this from the hard stop.
+        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) + 1,

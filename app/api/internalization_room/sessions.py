@@ -13,6 +13,7 @@ from app.api.internalization_room._deps import (
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
+from app.core.room_enums import HaltKind
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
@@ -30,6 +31,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
+from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.calibration import (
     BridgeMode,
@@ -54,6 +56,7 @@ from app.services.internalization_room.sessions import book_of, is_panorama
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from app.services.project.facilitated_scope import facilitated_project_ids
+from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
 
 logger = logging.getLogger(__name__)
@@ -180,6 +183,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         back_translation=await _progress(db, session),
         bridge_mode=session.bridge_mode,
         language=session.language,
+        halt=halt.standing(session),
     )
 
 
@@ -306,9 +310,24 @@ async def facilitator_sessions(
 
     The moment is bound before it is read because the column is nullable and this list is
     the rows where it is not: the binding is the type system reading what the query already
-    guarantees, not a filter with anything to drop.
+    guarantees, not a filter with anything to drop. The team id on the sessions half is bound
+    the same way and for the same reason — `confined_to` excludes a null project under either
+    of its two shapes, so the `if` there drops nothing either.
+
+    **`team_name` costs one more statement, and it is the field that makes the queue
+    usable** (ENG-609). This is the one facilitator listing that crosses teams: every other
+    one is about a team the caller named and can name back. A row carrying only an id does
+    not answer the question this screen is opened to ask, which is which team to walk to.
+    One statement for the page rather than a lookup per row.
+
+    **`halt` and the stamps are additive** (ENG-609): which kind of halt is standing, and
+    whether somebody has already been. A facilitator reading a queue with neither cannot tell
+    a stopped room from one asking for a witness, nor one nobody has reached from one a
+    colleague walked to five minutes ago.
     """
     scope = await facilitated_project_ids(db, user)
+    waiting = await room.sessions_waiting_on_a_person(db, user)
+    named = await team_names(db, (s.project_id for s in waiting if s.project_id is not None))
     return FacilitatorSessionsResponse(
         sessions=[
             FacilitatorSessionView(
@@ -316,8 +335,18 @@ async def facilitator_sessions(
                 pericope=session.pericope,
                 status=session.status.value,
                 updated_at=session.updated_at.isoformat() if session.updated_at else "",
+                project_id=team,
+                team_name=named.get(team, ""),
+                halt=halt.standing(session),
+                attended_at=(
+                    as_utc(session.attended_at).isoformat()
+                    if session.attended_at is not None
+                    else None
+                ),
+                attended_by=session.attended_by,
             )
-            for session in await room.sessions_waiting_on_a_person(db, user)
+            for session in waiting
+            if (team := session.project_id) is not None
         ],
         devices=[
             FacilitatorHaltedDeviceView(
@@ -345,7 +374,7 @@ async def ask_for_a_person(
     already halted still reported `in_progress` and no facilitator could be told.
     """
     session = await room.get_session(db, session_id)
-    await room.mark_needs_person(db, session)
+    await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
     return NeedsPersonResponse(
         session_id=session.id,
         needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
@@ -504,7 +533,9 @@ async def take_turn(
         guide_response=outcome.speech,
     )
     if outcome.needs_person:
-        session = await room.mark_needs_person(db, session)
+        # The hard stop: the assessor failed three turns running and the room said so out
+        # loud. Nothing further lands until a person comes, which is what `BLOCKING` names.
+        session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
     if _worth_settling(outcome, speech_heard, opening=opening):
         _settle_later(

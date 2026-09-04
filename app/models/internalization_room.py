@@ -242,6 +242,15 @@ class TeamSessionResponse(BaseModel):
     state: SessionState
     #: A halt is not an end: it travels beside `state`, never inside it (ENG-605).
     needs_person: bool
+    #: What kind the last halt on this conversation was, **whether or not it still stands**
+    #: (ENG-609). That is the difference from the tablet's `halt`: a warning lifted by a
+    #: landing turn before any facilitator saw it is gone from the queue as it always was,
+    #: and this is where it is not lost. Null means no halt was ever raised.
+    last_halt: str | None
+    #: When a facilitator said they went, and who. Null on every conversation nobody marked,
+    #: which is most of them.
+    attended_at: datetime | None
+    attended_by: str | None
     coverage: list[SessionBead]
 
 
@@ -346,6 +355,16 @@ class SessionStateResponse(BaseModel):
     bridge_mode: str = "calibration_pending"
     #: Said back so the app can see which language it actually got, the way `bridge_mode` is.
     language: str = "en"
+    #: Which kind of halt is standing: `"blocking"`, `"warning"`, or null when none is
+    #: (ENG-609). **Null whenever `status` is not `needs_person`** — the tablet halts on one
+    #: signal and two would be a pair it has to keep in agreement. What kind the *last* halt
+    #: was outlives the halt, and is served to facilitators, who are the ones who read
+    #: backwards; see `TeamSessionResponse.last_halt`.
+    #:
+    #: A halt raised before ENG-609 carries no recorded kind and reads as `"blocking"`, which
+    #: is the conservative answer: it sends somebody to a room that may not have needed one,
+    #: where the other reading leaves a stopped room waiting.
+    halt: str | None = None
 
 
 class SpokenSegment(BaseModel):
@@ -574,10 +593,50 @@ class QuestionInboxResponse(BaseModel):
 
 
 class FacilitatorSessionView(BaseModel):
+    """One room on the queue a facilitator drains.
+
+    **`team_name` travels because this listing is the one that crosses teams** (ENG-609).
+    Everywhere else a facilitator asks about a team they named; here they are asking which
+    team to walk to, and a row carrying only a `project_id` cannot answer that. The id
+    travels beside it so the Desk can link the row to that team's screens.
+
+    `halt` says whether the room is stopped or is asking for a witness — different walks,
+    written as one word until ENG-609. It is null for the `DONE` half of this queue, which
+    waits on a person for a different reason: a finished passage waiting to be carried into
+    Refine is not a halt.
+
+    The stamps are here so a facilitator can see a room somebody has already been to. They
+    stay null for almost every row, which is the ordinary case.
+    """
+
     session_id: str
     pericope: str
     status: str
     updated_at: str
+    project_id: str
+    team_name: str
+    halt: str | None = None
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    attended_at: str | None = None
+    #: A user id. The Desk resolves names itself, as the questions inbox does with
+    #: `answered_by` — a name copied here would be the name that person had that day.
+    attended_by: str | None = None
+
+
+class AttendedResponse(BaseModel):
+    """What a facilitator gets back after saying they went to a room, or that they did not.
+
+    The status and the halt travel together because the mark's whole point is to move them:
+    an answer carrying only the stamps would leave the Desk to guess whether the room is
+    still asking, and guessing wrong is a facilitator who walks away from a stopped room.
+    """
+
+    session_id: str
+    status: str
+    halt: str | None = None
+    #: ISO-8601 with an offset. A bare local time here is read as the reader's own clock.
+    attended_at: str | None = None
+    attended_by: str | None = None
 
 
 class FacilitatorHaltedDeviceView(BaseModel):
