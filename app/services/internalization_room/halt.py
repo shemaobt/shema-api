@@ -22,7 +22,9 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus
 def last(session: IRSession) -> str | None:
     """The kind of the most recent halt, whether or not it is still standing.
 
-    Null means no halt was ever raised on this session. A halt with no kind on the row is
+    Null means no halt this session can still name — which is no halt at all on any row
+    written since ENG-609, and also a pre-ENG-609 halt that was already lifted. A halt with
+    no kind on the row is
     only knowable as one while it stands, so a lifted halt from before ENG-609 reads as no
     halt at all — there is nothing on the row to say otherwise, and guessing here would put
     a blocking halt in the history of a conversation that may never have had one.
