@@ -40,17 +40,24 @@ PREVIOUS_REVISION = "20260812_0001"
 #: rebases onto the room chain's tip — the second head goes away with the rebase.
 DEVICE_CHAIN_HEAD = "20260819_0001"
 
-#: Where the rest of the `devices` columns arrive (ENG-448), and what stands between here
-#: and there.
+#: Where the rest of the `devices` columns arrive, and what stands between here and each
+#: of them: the room chain's tip on the day it was written.
 #:
-#: The rotation and revocation columns were written after ``20260820_merge`` joined the two
-#: lines, so their revision descends from the room chain's tip rather than from
-#: DEVICE_CHAIN_HEAD. Upgrading straight through would run the room migrations, and one of
-#: them inserts a row into `apps` — a table this file never builds, because it stamps the
-#: past instead of migrating it. Stamping the room tip is the same move applied to the same
-#: kind of thing: migrations that are somebody else's subject.
-ROOM_CHAIN_TIP = "20260820_qcomp"
-DEVICE_COLUMNS_HEAD = "20260820_devcred"
+#: Every one of these was written after ``20260820_merge`` joined the two lines, so each
+#: descends from wherever the room chain had got to rather than from the device migration
+#: before it. Upgrading straight through would run the room migrations, and one of them
+#: inserts a row into `apps` — a table this file never builds, because it stamps the past
+#: instead of migrating it. Stamping the room tip is the same move applied to the same kind
+#: of thing: migrations that are somebody else's subject.
+#:
+#: A pair per device migration rather than one named tip, because a single one only ever
+#: described the newest, and the older migration then never ran: the columns it adds went
+#: missing from the migrated shape while still standing in the model, which reads exactly
+#: like the omission this file exists to catch.
+DEVICE_COLUMN_MIGRATIONS = (
+    ("20260820_qcomp", "20260820_devcred"),  # ENG-448 — rotation and revocation
+    ("20260902_room09", "20260903_devcoll"),  # ENG-622 — the collection moment
+)
 
 #: The migration these tests are actually about: the one that creates the table.
 DEVICE_TABLE_REVISION = "20260817_0001"
@@ -217,9 +224,10 @@ async def test_migration_builds_the_table_the_model_declares(stamped_database):
     if the migration and the model agree. A model the migration does not build is a
     schema change that happened outside Alembic by omission."""
     assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
-    assert _run_alembic(stamped_database, "stamp", ROOM_CHAIN_TIP).returncode == 0
-    columns_added = _run_alembic(stamped_database, "upgrade", DEVICE_COLUMNS_HEAD)
-    assert columns_added.returncode == 0, columns_added.stderr
+    for room_tip, device_revision in DEVICE_COLUMN_MIGRATIONS:
+        assert _run_alembic(stamped_database, "stamp", room_tip).returncode == 0
+        columns_added = _run_alembic(stamped_database, "upgrade", device_revision)
+        assert columns_added.returncode == 0, columns_added.stderr
 
     migrated_columns, migrated_indexes = await _migrated_shape(stamped_database)
     model = Base.metadata.tables[NEW_TABLE]
