@@ -53,6 +53,15 @@ class Device(Base):
         UtcDateTime(timezone=True), nullable=True
     )
 
+    #: When the tablet itself came and took a credential (ENG-622). Distinct from
+    #: ``credential_issued_at`` above: issuing is something the server did, collecting is
+    #: something the device did, and only the second may happen once. This is the column
+    #: the collection route's guarded write tests for NULL, which is what makes it
+    #: exactly-once rather than a check a second caller can race past.
+    credential_collected_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+
     #: The credential this device held before its last rotation, still good until the new
     #: one is used once. Cleared by that first use. Null the rest of the time — see
     #: ``rotate_device_credential`` for why the window closes on evidence and not a clock.
@@ -75,6 +84,22 @@ class Device(Base):
     #: which is what actually stops it authenticating; this column is the record, not the
     #: revocation.
     unlinked_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+
+    #: When this tablet said it cannot go on without a person, and the room has not started
+    #: again since (ENG-624). Null the rest of the time.
+    #:
+    #: The halt lives on the device rather than on a session because the case it exists for
+    #: is a tablet that has no session — the server forgot it, or the build broke before one
+    #: was opened. ``ir_sessions`` has no device column, so a placeholder session would be a
+    #: row every consumer of that table would then have to learn to ignore.
+    #:
+    #: Set once and left standing while it stands, which is what makes a retrying tablet
+    #: report one halt rather than a fresh one per attempt: the write that records it tests
+    #: this column for NULL. It clears itself when that device opens a session, the way a
+    #: session's ``NEEDS_PERSON`` clears when a turn lands.
+    needs_person_since: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
 
     #: The last time this device asked the API anything. Null until it does. Nothing but
     #: ``GET /api/devices/me`` moves it, because that is the only request a device makes.

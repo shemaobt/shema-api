@@ -46,6 +46,14 @@ PROCESS_ONLY_PURPOSES = frozenset(
     }
 )
 
+#: The two app-owned purposes whose turn ends on the rehearsal invitation. A scene the
+#: Guide opens is rehearsed on the same contract as one the room returns to, so the same
+#: answers close it: the telling brought back, the closing word, or confident
+#: mother-tongue audio. One set, read by the turn, the practice reader and the contract.
+PROBES_THAT_INVITE_A_REHEARSAL = frozenset(
+    {ProbePurpose.MOTHER_TONGUE_PRACTICE, ProbePurpose.SCENE_OPENING}
+)
+
 
 class ActiveProbe(BaseModel):
     id: str

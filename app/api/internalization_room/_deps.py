@@ -36,10 +36,11 @@ async def require_room_caller(
     installation. It identifies nobody, and there is nothing to revoke because there is
     nothing that tells two tablets apart.
 
-    **Both are accepted, and that is a dated compromise, not a design.** The room app does
-    not hold a credential until ENG-455; refusing the shared key before then would open
-    the door for nobody. Retiring it is the other half of ENG-448 and deliberately not in
-    this slice — see the pull request for what the date has to wait on.
+    **Both are accepted, and that is a dated compromise, not a design.** A tablet can now
+    collect a credential of its own — that is the third route in ``devices.py``, added by
+    ENG-622 — but it holds nothing until it has, and refusing the shared key before every
+    installation in the field has collected would open the door for nobody. The app starts
+    presenting what it collected in ENG-623; retiring the key after that is ENG-455.
 
     A device that presents a credential is judged on it alone. Falling back to the shared
     key after a credential was refused would hand a revoked tablet the same way in that

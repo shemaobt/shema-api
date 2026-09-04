@@ -342,9 +342,11 @@ async def test_the_practice_invitation_is_fixed_speech_with_a_peer_cue(
         db_session, session, team_utterance="", guide_response="abertura"
     )
     first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    # The team took the scene up ("partially_engaged"): practice is only invited for a
+    # scene the team was told, and a bead the Guide merely mentioned ("surfaced") is not.
     session.coverage_state = {
         **(session.coverage_state or {}),
-        first_scene_element.key: "surfaced",
+        first_scene_element.key: "partially_engaged",
     }
     await db_session.commit()
 
@@ -1016,3 +1018,38 @@ async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
     )
 
     assert "S2" in told_back.state.practiced_scene_ids
+
+
+def test_a_scene_opening_turn_is_measured_as_the_scene_movement_it_is() -> None:
+    """The turn that opens a scene carries the map's sentence or two plus the invitation.
+
+    Measured as an ordinary 45-word turn it overran the ceiling on the first real Portuguese
+    run and fell to the fail-safe before the second attempt fit; the passage opening had the
+    same defect and #322 gave its scene movement the room it needs. This turn is that
+    movement on its own.
+    """
+    from app.services.internalization_room.comprehension.probe import ActiveProbe
+    from app.services.internalization_room.live_turn import speech_budget_for
+    from app.services.internalization_room.run_turn import (
+        OPENING_BUDGET,
+        SCENE_MOVEMENT_BUDGET,
+        TURN_BUDGET,
+    )
+
+    opening = ActiveProbe(
+        id="o",
+        checkpoint_ids=[],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.SCENE_OPENING,
+        practice_scene_ids=["S2"],
+    )
+    semantic = ActiveProbe(
+        id="s",
+        checkpoint_ids=["proposition:P01:P5"],
+        method=EvidenceMethod.MICRO_TELLBACK,
+        purpose=ProbePurpose.INITIAL_CHECK,
+    )
+    assert speech_budget_for(True, None) is OPENING_BUDGET
+    assert speech_budget_for(False, opening) is SCENE_MOVEMENT_BUDGET
+    assert speech_budget_for(False, semantic) is TURN_BUDGET
+    assert speech_budget_for(False, None) is TURN_BUDGET
