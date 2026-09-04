@@ -486,6 +486,76 @@ async def test_undoing_a_mark_nobody_made_does_not_re_halt_a_room_that_healed_it
     assert state["halt"] is None
 
 
+async def test_undoing_a_visit_to_a_room_the_team_restarted_itself_does_not_halt_it_again(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_assessor_agrees: None,
+) -> None:
+    """The intersection the two cases above each cover only half of.
+
+    A room halts, the team comes back on its own, and a facilitator marks the row anyway —
+    the queue they were reading was a minute stale, and they did go. Then they undo.
+
+    Nothing about that undo may halt the room: the visit lifted no halt, so there is none to
+    put back. `halt_kind` cannot answer this, because it is never cleared — it says "this
+    session was halted at some point, ever", not "this visit lifted a halt". Whether the mark
+    lifted anything is a different fact and has to be recorded as one.
+    """
+    await the_tablet_halts(client, waiting_room.id)
+    answered = await the_team_answers(client, waiting_room.id)
+    assert answered.status_code == 200, answered.text[:300]
+    assert (await tablet_state(client, waiting_room.id))["status"] == "in_progress"
+
+    marked = await attend(client, waiting_room.id, facilitator_a)
+    assert marked.status_code == 200, marked.text[:300]
+    assert marked.json()["attended_at"], "sem carimbo não há retirada a testar"
+
+    undone = await unattend(client, waiting_room.id, facilitator_a)
+
+    assert undone.status_code == 200, undone.text[:300]
+    assert undone.json()["status"] == "in_progress"
+    assert undone.json()["halt"] is None
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "in_progress", (
+        "desfazer uma visita que não levantou parada nenhuma parou a equipe de novo"
+    )
+    assert state["halt"] is None
+
+
+async def test_a_second_halt_is_not_reported_as_a_room_somebody_already_went_to(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_assessor_agrees: None,
+) -> None:
+    """A new ask is an unattended ask, whoever answered the last one.
+
+    The stamps are what a facilitator reads to skip a row somebody else already walked to. A
+    room that halts again after a visit is a room nobody has been to *for this halt*, and
+    carrying the old visit forward makes the queue tell them to skip it.
+
+    Sharper than it looks: a successful mark takes the row off the queue, so a halted row can
+    only ever carry stamps by carrying stale ones. The field the queue documents as "somebody
+    has been here" would be delivered exclusively by that mistake.
+    """
+    await the_tablet_halts(client, waiting_room.id)
+    marked = await attend(client, waiting_room.id, facilitator_a)
+    assert marked.status_code == 200, marked.text[:300]
+    assert marked.json()["attended_at"]
+    assert await queued(client, facilitator_a, waiting_room.id) is None
+
+    await the_tablet_halts(client, waiting_room.id)
+
+    asking_again = await queued(client, facilitator_a, waiting_room.id)
+    assert asking_again is not None, "a sala parou outra vez e não voltou para a fila"
+    assert asking_again["halt"] == BLOCKING
+    assert asking_again["attended_at"] is None, (
+        "a parada nova chegou à fila marcada como já atendida, e quem lê a fila a pula"
+    )
+    assert asking_again["attended_by"] is None
+
+
 # --- Case 4 — the halt says its kind, from each writer ------------------------------------
 
 

@@ -2,7 +2,10 @@
 
 ``NEEDS_PERSON`` had one way out and it was the team's — a turn that lands. The halt a
 facilitator actually resolves, by walking over, stayed standing until the team spoke.
-``attended_at``/``attended_by`` are that visit; ``halt_kind`` is what it answered.
+``attended_at``/``attended_by`` are that visit; ``halt_kind`` is what it answered; and
+``lifted_halt`` is which halt the visit actually lifted, which is a different fact from
+either. ``halt_kind`` is never cleared, so it cannot say whether *this* visit lifted
+anything, and an undo that guesses from it re-halts rooms the team had already restarted.
 
 All three are nullable and none is backfilled. A visit nobody made must not be invented, and
 a halt raised before this migration has no recorded kind — the read side answers ``blocking``
@@ -33,9 +36,11 @@ def upgrade() -> None:
         "ir_sessions", sa.Column("attended_at", sa.DateTime(timezone=True), nullable=True)
     )
     op.add_column("ir_sessions", sa.Column("attended_by", sa.String(length=36), nullable=True))
+    op.add_column("ir_sessions", sa.Column("lifted_halt", sa.String(length=16), nullable=True))
 
 
 def downgrade() -> None:
+    op.drop_column("ir_sessions", "lifted_halt")
     op.drop_column("ir_sessions", "attended_by")
     op.drop_column("ir_sessions", "attended_at")
     op.drop_column("ir_sessions", "halt_kind")

@@ -359,9 +359,19 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
     budget refuses nothing.
 
     The kind is written on every halt and cleared by none — see ``halt.last``.
+
+    **A new ask is an unattended ask**, so the visit that answered the *previous* halt is
+    cleared here. The stamps are what a facilitator reads to skip a row a colleague already
+    walked to; carried forward, they tell them to skip a room nobody has been to for this
+    halt. Sharper than it looks: a successful ``attend`` takes the row off the queue, so a
+    halted row could only ever carry stamps by carrying stale ones — the field would have been
+    delivered exclusively by that mistake.
     """
     session.status = IRSessionStatus.NEEDS_PERSON
     session.halt_kind = kind.value
+    session.attended_at = None
+    session.attended_by = None
+    session.lifted_halt = None
     await db.commit()
     await db.refresh(session)
     return session
@@ -380,18 +390,21 @@ async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
     adds is an exit the *facilitator* controls: the team's turn drains the queue on the team's
     schedule, and the person who went may well leave before the team speaks again.
 
-    **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved
-    on every tap would record when somebody last touched the Desk rather than when they went
-    to the room — which is the number the queue's own age is read from.
+    **Idempotent, keeping the first stamp.** Two taps are one visit, and a stamp that moved on
+    every tap would record when somebody last touched the Desk rather than when they went to
+    the room — and the moment of the visit is the whole of what this field is for.
 
     A session that is not halted is marked all the same and moves nowhere. They went anyway,
     and that is worth recording; pushing an untroubled conversation through the state machine
-    because somebody noted a visit is not.
+    because somebody noted a visit is not. ``lifted_halt`` is what separates the two cases,
+    and it is written here rather than worked out later because afterwards there is nothing
+    left to work it out from.
     """
     if session.attended_at is None:
         session.attended_at = datetime.now(UTC)
         session.attended_by = by
     if session.status is IRSessionStatus.NEEDS_PERSON:
+        session.lifted_halt = session.halt_kind
         session.status = IRSessionStatus.IN_PROGRESS
     await db.commit()
     await db.refresh(session)
@@ -402,20 +415,25 @@ async def unattend(db: AsyncSession, session: IRSession) -> IRSession:
     """Withdraw the mark: nobody went, so the room asks again.
 
     The halt comes back with the kind it had, because a halt restored as a generic one is a
-    facilitator sent on the wrong walk. Only a session that carries a mark can lose one, and
-    that guard is the whole safety of this route: without it, a stray tap on the Desk would
-    halt a conversation in full flow that nobody had ever helped.
+    facilitator sent on the wrong walk. Only a session that carries a mark can lose one.
 
-    Restored only where the mark could have lifted something — a session with no recorded
-    kind was never halted, so there is nothing to put back. ``DONE`` is terminal and this is
-    not a way back into a passage the floor closed; the stamps still clear, because the claim
-    being withdrawn is about the visit and not about the passage.
+    **What comes back is what this visit lifted, and nothing else.** ``halt_kind`` cannot
+    answer that: it is never cleared, so it means "halted at some point, ever". Restoring from
+    it re-halted a room the team had already restarted themselves — the facilitator marks a
+    row their queue showed a minute stale, changes their mind, and a conversation in full flow
+    stops with a kind belonging to a halt somebody cleared an hour earlier. ``lifted_halt`` is
+    the fact that was missing, and a visit that lifted nothing undoes to nothing.
+
+    ``DONE`` is terminal and this is not a way back into a passage the floor closed; the
+    stamps still clear, because the claim being withdrawn is about the visit, not the passage.
     """
     if session.attended_at is None:
         return session
+    lifted = session.lifted_halt
     session.attended_at = None
     session.attended_by = None
-    if session.status is IRSessionStatus.IN_PROGRESS and session.halt_kind is not None:
+    session.lifted_halt = None
+    if lifted is not None and session.status is IRSessionStatus.IN_PROGRESS:
         session.status = IRSessionStatus.NEEDS_PERSON
     await db.commit()
     await db.refresh(session)

@@ -1,4 +1,4 @@
-"""ENG-609 — the three columns a facilitator's visit is recorded in travel both ways.
+"""ENG-609 — the columns a facilitator's visit is recorded in travel both ways.
 
 Same constraint as the sibling migration tests: Alembic's full chain does not run on SQLite —
 the first migration in the tree writes a ``DEFAULT now()`` SQLite rejects — so this exercises
@@ -32,7 +32,7 @@ REVISION = "20260904_att01"
 PREVIOUS_REVISION = "20260904_devnp"
 
 TABLE = "ir_sessions"
-NEW_COLUMNS = {"attended_at", "attended_by", "halt_kind"}
+NEW_COLUMNS = {"attended_at", "attended_by", "halt_kind", "lifted_halt"}
 OPENED = "2026-09-04 09:00:00"
 
 
@@ -126,7 +126,7 @@ async def test_a_room_halted_before_the_migration_keeps_its_halt_and_gains_no_vi
     assert await _scalar(url, "SELECT status FROM ir_sessions WHERE id = :id", where) == (
         "needs_person"
     )
-    for column in ("attended_at", "attended_by", "halt_kind"):
+    for column in sorted(NEW_COLUMNS):
         assert await _scalar(url, f"SELECT {column} FROM ir_sessions WHERE id = :id", where) is None
 
 
