@@ -21,6 +21,7 @@ from app.core.exceptions import (
 )
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
+from app.services.internalization_room.coverage_events import last_bead_moved_in_session
 from app.services.internalization_room.languages import FLOOR
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.audio_duration import measure_ms
@@ -70,14 +71,21 @@ async def raise_question(
     the task that calls it. What waits on a transcription is a team standing in a room, and
     the transcript is not for them.
 
-    ``element_key`` is whichever bead the app says the hand went up on, and ``None`` is a
-    normal answer: no row written before ENG-447 has one and no app sends one until ENG-456.
+    ``element_key`` is whichever bead the app says the hand went up on. No tablet in the
+    field carries an element identity to send, so ``None`` is the normal case and is
+    anchored here to whichever bead *this session's* own coverage history moved most
+    recently (`coverage_events.last_bead_moved_in_session`) — a session that moved no bead
+    yet anchors to nothing, exactly as before ENG-456. A key the client does send is kept
+    as sent, since it says more than the server can infer.
+
     ``duration_ms`` is measured here, from the bytes, and there is deliberately no parameter
     to hand it in with. The measurement stays on the request because it is local, takes
     milliseconds, and the card is sorted by it.
     """
     if not audio:
         raise ValidationError("A question with no audio is not a question")
+    if element_key is None:
+        element_key = await last_bead_moved_in_session(db, session_id=session_id)
     question_id = str(uuid.uuid4())
     key = _key("pergunta", question_id, audio)
     await (store or _store()).put(key, audio, AUDIO_MIME)

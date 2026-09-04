@@ -240,6 +240,8 @@ class TeamSessionResponse(BaseModel):
     ended_at: datetime | None
     duration_minutes: int | None
     state: SessionState
+    #: A halt is not an end: it travels beside `state`, never inside it (ENG-605).
+    needs_person: bool
     coverage: list[SessionBead]
 
 
@@ -496,9 +498,11 @@ class InboxQuestionView(BaseModel):
     to draw a case this route cannot produce.
 
     ``element_label_*``, ``duration_ms`` and ``transcript`` are all nullable, and the Desk has
-    to draw a card without each of them. An element is missing on every question raised before
-    ENG-456 ships the app's half; a duration or a transcript is missing when the machine that
-    produces it failed, and the card still carries audio a facilitator can answer by playing.
+    to draw a card without each of them. An element is missing on every row written before
+    ENG-447, and on a question raised in a session whose coverage never moved a bead — the
+    server (ENG-456) has nothing of the session's own to anchor it to; a duration or a
+    transcript is missing when the machine that produces it failed, and the card still
+    carries audio a facilitator can answer by playing.
 
     **The bead is named and its key is not served** (ENG-543). ``element_key`` is the room's
     identity for a bead — coverage is persisted under it and it is unique only inside its
@@ -599,8 +603,30 @@ class FacilitatorSessionView(BaseModel):
     updated_at: str
 
 
+class FacilitatorHaltedDeviceView(BaseModel):
+    """A tablet that asked for a person without having a session to ask through.
+
+    ``label`` is the note a facilitator wrote on the Desk to tell two tablets apart on a
+    shelf, and it is what makes the row actionable: the id names a row in a table, the label
+    names the thing on the table in front of them.
+    """
+
+    device_id: str
+    label: str | None
+    since: datetime
+
+
 class FacilitatorSessionsResponse(BaseModel):
+    """Everything in the caller's teams that is waiting on a person, in two lists.
+
+    ``devices`` is additive (ENG-624) and carries the half no session id can reach: a tablet
+    whose session the server forgot, or that broke before opening one. Same queue, same
+    scope — the caller's own teams — split only because a halt with no session has no
+    session id to be listed under.
+    """
+
     sessions: list[FacilitatorSessionView]
+    devices: list[FacilitatorHaltedDeviceView] = []
 
 
 class TakeResponse(BaseModel):
