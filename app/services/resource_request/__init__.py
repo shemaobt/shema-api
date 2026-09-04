@@ -11,8 +11,8 @@ from app.services.resource_request.attachment_download_url import (
 from app.services.resource_request.capabilities import (
     CAPABILITIES,
     CAPABILITY_ROLES,
-    ROLES,
     ROLE_CAPABILITIES,
+    ROLES,
 )
 from app.services.resource_request.create_draft import create_draft
 from app.services.resource_request.create_fund import create_fund
@@ -43,19 +43,19 @@ from app.services.resource_request.submit_request import Submitted, submit_reque
 from app.services.resource_request.update_draft import Discarded, Saved, update_draft
 
 __all__ = [
-    "AttachmentLink",
-    "BoardMoved",
     "CAPABILITIES",
     "CAPABILITY_ROLES",
+    "RESERVED_FUND_NAMES",
+    "ROLES",
+    "ROLE_CAPABILITIES",
+    "AttachmentLink",
+    "BoardMoved",
     "Discarded",
     "FundAllocation",
     "FundAssignment",
     "FundBalance",
     "FundMoved",
     "FundOption",
-    "RESERVED_FUND_NAMES",
-    "ROLES",
-    "ROLE_CAPABILITIES",
     "RequestStatus",
     "Saved",
     "Submitted",
