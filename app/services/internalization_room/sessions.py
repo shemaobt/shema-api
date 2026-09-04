@@ -38,6 +38,7 @@ from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
+from app.services.internalization_room.session_end import SessionState, end_of
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
@@ -335,10 +336,13 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     same rule questions follow — unowned is nobody's, not everybody's.
 
     The two halves drain differently, and only one of them drains at all. `NEEDS_PERSON`
-    leaves by two doors: a turn that lands is the team resuming, and a facilitator marking
-    the room attended (`attend`) is the person saying they went. The second door is why the
-    first is no longer the whole sentence — a room helped by somebody who then left drained
-    only when the team next spoke, which may be never. `DONE` is
+    leaves by three doors: a turn that lands is the team resuming, a facilitator marking the
+    room attended (`attend`) is the person saying they went, and the idle limit already
+    applied to the session card (`session_end.end_of`) is nobody having done either. The
+    third door is applied here in Python and not in the statement, the same reasoning
+    `_still_going_first` gives for the same limit: the state is derived from `updated_at` and
+    an idle limit nobody has agreed to, so writing that predicate into SQL would be a second
+    place deciding when a conversation is over. `DONE` is
     terminal — nothing in this service writes a status back out of it, and reading the
     release does not mark a session as carried — so that half grows once per finished
     passage and never shrinks. At pilot volume that is a short list; it is not a shape
@@ -355,7 +359,15 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
         )
         .order_by(IRSession.updated_at.desc())
     )
-    return list(result.scalars())
+    now = datetime.now(UTC)
+    return [
+        session
+        for session in result.scalars()
+        if not (
+            session.status is IRSessionStatus.NEEDS_PERSON
+            and end_of(session, at=now).state is SessionState.ABANDONED
+        )
+    ]
 
 
 async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltKind) -> IRSession:
