@@ -5,15 +5,21 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadF
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import (
+    device_project_dep,
+    require_room_caller,
+    room_caller_dep,
+)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
+from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
     BackTranslationProgress,
     CoverageView,
     CreateSessionRequest,
+    FacilitatorHaltedDeviceView,
     FacilitatorSessionsResponse,
     FacilitatorSessionView,
     NeedsPersonResponse,
@@ -23,6 +29,7 @@ from app.models.internalization_room import (
     TurnResponse,
 )
 from app.services import internalization_room as room
+from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.calibration import (
     BridgeMode,
@@ -46,6 +53,8 @@ from app.services.internalization_room.run_turn import TurnOutcome, detects_peer
 from app.services.internalization_room.sessions import book_of, is_panorama
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
+from app.services.project.facilitated_scope import facilitated_project_ids
+from app.utils.stored_time import as_utc
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +222,20 @@ async def create_session(
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     project_id: str | None = device_project_dep,
+    caller: Device | None = Depends(require_room_caller),
 ) -> SessionStateResponse:
+    """Open a session, and end this tablet's halt if it was standing in one.
+
+    The lift is here rather than in `create_session` because it is about the *caller* and
+    not about the session: a room going again is evidence only for the tablet that went,
+    and a lift keyed on the team would clear a halt because somebody else in the room
+    started something. `caller` is the gate's own result — the credential is resolved once
+    per request and FastAPI's dependency cache is what makes this and `device_project_dep`
+    one query — so a caller on the shared room key names no device and lifts nothing.
+
+    After the session exists, so a `create_session` that refuses leaves the halt standing:
+    a room that could not open a session is still stopped.
+    """
     session = await room.create_session(
         db,
         pericope=payload.pericope,
@@ -222,6 +244,8 @@ async def create_session(
         bridge_mode=payload.bridge_mode,
         language=payload.language,
     )
+    if caller is not None:
+        await clear_needs_person(db, caller.id)
     if payload.after_session:
         previous = await room.get_session(db, payload.after_session)
         if hand_over(previous, session):
@@ -263,7 +287,19 @@ async def facilitator_sessions(
 
     Gated on `FacilitatorUser` for the same reason every other route under `/facilitator`
     is: the app-wide gate it was written against no longer exists.
+
+    **`devices` is the half a session id cannot reach** (ENG-624). A tablet whose session
+    the server has forgotten, or whose build broke before one was opened, halts on itself
+    rather than on a session, and that halt would otherwise be readable only from the team's
+    devices panel — a screen a facilitator opens about one team they already suspect. This
+    is the list they read to find out which team to go to. Scoped through the same ids as
+    the sessions half, resolved once for both.
+
+    The moment is bound before it is read because the column is nullable and this list is
+    the rows where it is not: the binding is the type system reading what the query already
+    guarantees, not a filter with anything to drop.
     """
+    scope = await facilitated_project_ids(db, user)
     return FacilitatorSessionsResponse(
         sessions=[
             FacilitatorSessionView(
@@ -273,7 +309,16 @@ async def facilitator_sessions(
                 updated_at=session.updated_at.isoformat() if session.updated_at else "",
             )
             for session in await room.sessions_waiting_on_a_person(db, user)
-        ]
+        ],
+        devices=[
+            FacilitatorHaltedDeviceView(
+                device_id=device.id,
+                label=device.label,
+                since=as_utc(halted),
+            )
+            for device in await devices_waiting_on_a_person(db, scope)
+            if (halted := device.needs_person_since) is not None
+        ],
     )
 
 
