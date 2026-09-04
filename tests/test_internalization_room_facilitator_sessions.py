@@ -241,7 +241,7 @@ async def test_the_most_recent_session_is_at_the_front(
     newer = await _a_session(db_session)
     await _halt(client, older.id)
     await _halt(client, newer.id)
-    moment = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+    moment = datetime.now(UTC)
     older.updated_at = moment - timedelta(hours=1)
     newer.updated_at = moment
     await db_session.commit()
