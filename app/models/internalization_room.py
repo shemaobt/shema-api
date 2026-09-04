@@ -582,8 +582,30 @@ class FacilitatorSessionView(BaseModel):
     updated_at: str
 
 
+class FacilitatorHaltedDeviceView(BaseModel):
+    """A tablet that asked for a person without having a session to ask through.
+
+    ``label`` is the note a facilitator wrote on the Desk to tell two tablets apart on a
+    shelf, and it is what makes the row actionable: the id names a row in a table, the label
+    names the thing on the table in front of them.
+    """
+
+    device_id: str
+    label: str | None
+    since: datetime
+
+
 class FacilitatorSessionsResponse(BaseModel):
+    """Everything in the caller's teams that is waiting on a person, in two lists.
+
+    ``devices`` is additive (ENG-624) and carries the half no session id can reach: a tablet
+    whose session the server forgot, or that broke before opening one. Same queue, same
+    scope — the caller's own teams — split only because a halt with no session has no
+    session id to be listed under.
+    """
+
     sessions: list[FacilitatorSessionView]
+    devices: list[FacilitatorHaltedDeviceView] = []
 
 
 class TakeResponse(BaseModel):

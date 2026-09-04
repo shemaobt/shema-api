@@ -82,12 +82,16 @@ class TeamDeviceResponse(BaseModel):
     label: str | None
     linked_at: datetime | None
     last_seen_at: datetime | None
+    #: When this tablet said it needs a person and the room has not started again since
+    #: (ENG-624), or null. Additive: the Desk's reader takes the fields it knows off the row
+    #: and ignores the rest, so this is served before anything draws it.
+    needs_person_since: datetime | None = None
 
     @classmethod
     def of(cls, device: Device) -> "TeamDeviceResponse":
         """One row, built the same way wherever it is answered from.
 
-        Both moments go through `as_utc` because `DateTime(timezone=True)` reads back naive on
+        Every moment goes through `as_utc` because `DateTime(timezone=True)` reads back naive on
         SQLite, and a naive value serialises with no offset. Bare, the digits are read as local
         by whoever receives them — near midnight that moves the **day**, so the panel would
         date a tablet's last activity to a day it was not used.
@@ -97,6 +101,9 @@ class TeamDeviceResponse(BaseModel):
             label=device.label,
             linked_at=as_utc(device.claimed_at) if device.claimed_at else None,
             last_seen_at=as_utc(device.last_seen_at) if device.last_seen_at else None,
+            needs_person_since=(
+                as_utc(device.needs_person_since) if device.needs_person_since else None
+            ),
         )
 
 
@@ -161,3 +168,15 @@ class DeviceCredentialResponse(BaseModel):
 
     device_id: str
     credential: str
+
+
+class DeviceNeedsPersonResponse(BaseModel):
+    """What a tablet gets back when it says it needs a person.
+
+    The moment is the one the halt was *first* recorded at, not the moment of this call. A
+    tablet retrying over a room's network gets the same answer every time, which is what
+    makes the retry free and what keeps the facilitator's queue aging honestly.
+    """
+
+    device_id: str
+    needs_person_since: datetime

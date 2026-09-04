@@ -85,6 +85,22 @@ class Device(Base):
     #: revocation.
     unlinked_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
 
+    #: When this tablet said it cannot go on without a person, and the room has not started
+    #: again since (ENG-624). Null the rest of the time.
+    #:
+    #: The halt lives on the device rather than on a session because the case it exists for
+    #: is a tablet that has no session — the server forgot it, or the build broke before one
+    #: was opened. ``ir_sessions`` has no device column, so a placeholder session would be a
+    #: row every consumer of that table would then have to learn to ignore.
+    #:
+    #: Set once and left standing while it stands, which is what makes a retrying tablet
+    #: report one halt rather than a fresh one per attempt: the write that records it tests
+    #: this column for NULL. It clears itself when that device opens a session, the way a
+    #: session's ``NEEDS_PERSON`` clears when a turn lands.
+    needs_person_since: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+
     #: The last time this device asked the API anything. Null until it does. Nothing but
     #: ``GET /api/devices/me`` moves it, because that is the only request a device makes.
     last_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
