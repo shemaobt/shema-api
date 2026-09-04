@@ -16,6 +16,7 @@ from app.services.internalization_room.comprehension.assessor import (
     is_semantically_empty_answer,
 )
 from app.services.internalization_room.comprehension.probe import (
+    PROBES_THAT_INVITE_A_REHEARSAL,
     ActiveProbe,
     ProbePurpose,
     is_process_only,
@@ -26,6 +27,7 @@ from app.services.internalization_room.oral_decision import (
     oral_clause_has_negation,
     oral_clause_is_hedged,
     oral_clause_is_non_committal,
+    oral_clause_reports_the_voice,
     oral_decision_clause_details,
     oral_decision_clauses,
     oral_utterance_is_interrogative,
@@ -273,6 +275,22 @@ _CONDITION_ON_A_SUBJECT = re.compile(
     r"|the|this|that|there|an)\b"
 )
 _SPANISH_YES = re.compile(r"\bsí\b", re.IGNORECASE)
+#: A condition that opens a short reply is one whether or not it names who it is about:
+#: "se quiserem a gente ensaia", "se der tempo", "if possible we rehearse". It is read only
+#: on a reply that is not a telling, because a told scene opens clauses on the clitic all the
+#: time — "…, mas se mudaram pra Moabe" arrives here as the clause "se mudaram pra Moabe",
+#: and Spanish drops the subject and opens on it outright, "Se mudaron a los campos de Moab".
+_CONDITION_OPENS_THE_CLAUSE = re.compile(r"^(?:se|si|if)\b")
+#: The heads a subjectless condition opens on inside a telling: the verb forms that only a
+#: condition takes ("se quiserem", "se der tempo", "se for possível", "si es posible",
+#: "if possible"). A told clause that opens on "se" followed by a past-tense verb is the
+#: clitic riding it — "se mudaram", "se mudaron" — and is left alone.
+_CONDITION_HEADS = re.compile(
+    r"^(?:se|si|if)\s+(?:quiser|quiserem|quisermos|der|derem|for|forem|puder|puderem"
+    r"|tiver|tiverem|houver|conseguir|conseguirem|precisar|precisarem"
+    r"|quiere|quieren|quisiera|quisieran|puede|pueden|hay|es\s+posible|posible|fuera"
+    r"|possible|needed|necessary|wanted)\b"
+)
 
 
 def _the_telling_holds_back(team_utterance: str) -> bool:
@@ -284,19 +302,27 @@ def _the_telling_holds_back(team_utterance: str) -> bool:
     follows it, and refusing on that refused nearly every telling the invitation ever asked
     for. A hedge dropped into the middle of a told scene is a person telling a story they
     half remember, which is the ordinary way a scene comes back — so it only refuses a
-    reply that has no telling around it. Two clauses of three words or more are what counts
-    as telling, because a clause that short is a word of acknowledgement and not a scene.
+    reply that has no telling around it. Two clauses of three words or more count as
+    telling for the hedge. The clitic is relieved one step earlier: a single clause of
+    eight words or more is a scene too — a Spanish telling that drops its subjects can be
+    one long clause from end to end — but a hedge in a single clause, however long, still
+    refuses, because "acho que…" over one breath is a person unsure, not one telling.
 
     A reply that is a single clause keeps the older, flatter reading: the hedge refuses,
     and so does a condition anywhere in it, not only one that opens it.
     """
     clauses = oral_decision_clause_details(team_utterance)
-    told = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
+    told_in_clauses = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
+    told_at_length = any(len(clause.text.split()) >= 8 for clause in clauses)
     for clause in clauses:
         spoken = normalize_oral_decision(_SPANISH_YES.sub(" ", clause.raw))
-        if _CONDITION_ON_A_SUBJECT.match(spoken):
+        if _CONDITION_ON_A_SUBJECT.match(spoken) or _CONDITION_HEADS.match(spoken):
             return True
-        if told:
+        if oral_clause_reports_the_voice(clause.raw):
+            return True
+        if not (told_in_clauses or told_at_length) and _CONDITION_OPENS_THE_CLAUSE.match(spoken):
+            return True
+        if told_in_clauses:
             continue
         if _CONDITION_ON_A_SUBJECT.search(spoken) or oral_clause_is_hedged(clause.raw):
             return True
@@ -370,15 +396,6 @@ def bridge_language_retelling_completes_practice(
     if any(pattern.search(clause) for clause in clauses for pattern in _FUTURE_REPORT):
         return False
     return not is_semantically_empty_answer(team_utterance)
-
-
-#: The two app-owned purposes whose turn ends on the rehearsal invitation. A scene the
-#: Guide opens is rehearsed on the same contract as one the room returns to, so the same
-#: answers close it: the telling brought back, the closing word, or confident
-#: mother-tongue audio.
-PROBES_THAT_INVITE_A_REHEARSAL = frozenset(
-    {ProbePurpose.MOTHER_TONGUE_PRACTICE, ProbePurpose.SCENE_OPENING}
-)
 
 
 def confident_non_bridge_audio_completes_scoped_practice(

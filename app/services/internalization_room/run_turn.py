@@ -166,8 +166,10 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
 def meaning_map_block(pericope_num: str, book: str) -> str:
     """The passage's map verbatim, plus the digests of strictly earlier passages.
 
-    The design document calls the Guide's standard of truth "MEANING MAP + story-so-far", and
-    the earlier-only scoping is what keeps a later disclosure from reaching this session.
+    *Tripod Internalization · Interaction Flows*
+    (`internalization-room/docs/spec/interaction-flows.md`, §1, diagram caption) calls the
+    Guide's standard of truth "MEANING MAP + story-so-far", and the earlier-only scoping is
+    what keeps a later disclosure from reaching this session.
     """
     passage = load_map(pericope_num).body
     earlier = story_so_far(book, pericope_num)
@@ -230,6 +232,16 @@ OPENING_MOVEMENT_INSTRUCTION = (
     "passagem, o arco e o tom. Depois da linha: abra a primeira cena e convide. "
     "Não escreva a marca em nenhum outro lugar e não a comente."
 )
+
+#: What the Validator's TEAM_UTTERANCE slot carries on the opening turn, when nobody has
+#: spoken yet, in the session's own language. Keyed by the language code, in the shape
+#: `calibration.py` already uses — an unclaimed language falls back to the authored English
+#: line.
+_NO_TEAM_UTTERANCE_AT_OPENING: dict[str, str] = {
+    "pt": "(a equipe ainda não falou — abertura da sessão)",
+    "en": "(the team has not spoken yet — session opening)",
+    "es": "(el equipo aún no ha hablado — apertura de la sesión)",
+}
 
 
 async def _draft(
@@ -340,7 +352,10 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,
-                TEAM_UTTERANCE=transcript or "(a equipe ainda não falou — abertura da sessão)",
+                TEAM_UTTERANCE=transcript
+                or _NO_TEAM_UTTERANCE_AT_OPENING.get(
+                    language_code, _NO_TEAM_UTTERANCE_AT_OPENING[FLOOR]
+                ),
                 DRAFTED_RESPONSE=draft,
             )
             if validator_context:
