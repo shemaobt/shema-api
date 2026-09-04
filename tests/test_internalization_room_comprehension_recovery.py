@@ -589,6 +589,72 @@ def test_a_reflexive_se_in_the_telling_is_not_a_condition() -> None:
     ) == ["S1"]
 
 
+def test_a_condition_that_opens_the_clause_holds_the_telling_back_without_a_subject() -> None:
+    """ "Se quiserem a gente ensaia" names nobody and is still a condition.
+
+    The subject list catches the same word inside a short reply; at the head of a clause
+    the position alone says what the word is, because no clitic opens a clause. The reply
+    the room must not be wrong about is the one that closes a practice that has not begun,
+    and this is that reply one word away from the ones already refused.
+    """
+    for reply in (
+        "Se quiserem a gente ensaia essa cena agora e depois conta pra você",
+        "Se der tempo a gente ensaia essa cena e volta contando",
+        "If possible we rehearse this scene together and then tell you",
+        "Si es posible ensayamos esta escena juntos y luego les contamos",
+    ):
+        assert not bridge_language_retelling_completes_practice(_INVITATION_PT, reply, True), reply
+    assert bridge_language_retelling_completes_practice(_INVITATION_PT, _TELLING_PT, True)
+
+
+def test_a_told_scene_may_open_a_clause_on_the_clitic() -> None:
+    """ "…, mas se mudaram pra Moabe" reaches the reader as the clause "se mudaram pra Moabe".
+
+    A contrast marker splits the telling, and the second half opens on the clitic; Spanish
+    drops the subject and opens on it outright. Both are session 1d142af3 one clause over,
+    and refusing them would ask for the rehearsal again after the team had told it.
+    """
+    invitation_es = (
+        "Ahora ensayen esta escena juntos en su lengua; cuando terminen, vuelvan y "
+        "cuéntenme en español lo que entendieron."
+    )
+    for invitation, telling in (
+        (
+            _INVITATION_PT,
+            "Eles ficaram em Belém por um tempo, mas se mudaram pra Moabe por causa da fome",
+        ),
+        (
+            invitation_es,
+            "Se mudaron a los campos de Moab, y allí murió Elimelec el marido de Noemí",
+        ),
+    ):
+        assert bridge_language_retelling_completes_practice(invitation, telling, True), telling
+
+
+def test_a_hedge_over_one_long_breath_still_holds_the_telling_back() -> None:
+    """Counting a long single clause as a scene relieves the clitic, not the hedge.
+
+    "Acho que a família se mudou pra Moabe por causa da fome e ficou lá" is one breath of
+    doubt, however many words it takes; the hedge keeps refusing it, while the clitic in
+    the same clause no longer does.
+    """
+    hedged = "Acho que a família se mudou pra Moabe por causa da fome e ficou lá um tempo"
+    assert not bridge_language_retelling_completes_practice(_INVITATION_PT, hedged, True)
+
+
+def test_a_told_reply_in_the_voices_own_words_is_not_a_telling() -> None:
+    """Relaxing the hedge for a told reply must not relax the room hearing its words back.
+
+    A team that says "você disse que a família se mudou e que Elimeleque morreu lá" is
+    reporting the Voice, not the scene, however many clauses it takes to do it.
+    """
+    reported = (
+        "Você disse que a família se mudou pra Moabe por causa da fome, "
+        "e você disse que Elimeleque morreu lá"
+    )
+    assert not bridge_language_retelling_completes_practice(_INVITATION_PT, reported, True)
+
+
 def test_a_told_scene_closes_the_practice_where_a_real_condition_still_refuses() -> None:
     """The clitic and the condition are the same two letters, and only one of them is a
     reason to refuse.

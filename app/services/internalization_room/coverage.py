@@ -170,14 +170,16 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
 def floor_met(state: dict[str, str], pericope_num: str) -> bool:
     """Every element worked with, at least in part.
 
-    The design document lets only the four abstract Level-1 axes exit at `surfaced`; the maps
-    expose no such elements, so every bead here is concrete and none is exempt. What the floor
-    does not demand is the strong reading of every one of them. A passage's preservation rules
-    are engaged by noticing a silence, which mostly reaches the room as the team taking up the
-    Guide's noticing rather than arriving at it themselves; requiring the unprompted version
-    from all five of Ruth 1's is how a passage becomes one that never closes. Since `done` is
-    what moves a team on to the next passage, a floor that cannot be reached does not hold a
-    team to a higher standard — it holds them still.
+    *Tripod Internalization · Interaction Flows*
+    (`internalization-room/docs/spec/interaction-flows.md`, §3) lets only the four abstract
+    Level-1 axes exit at `surfaced`; the maps expose no such elements, so every bead here is
+    concrete and none is exempt. What the floor does not demand is the strong reading of every
+    one of them. A passage's preservation rules are engaged by noticing a silence, which mostly
+    reaches the room as the team taking up the Guide's noticing rather than arriving at it
+    themselves; requiring the unprompted version from all five of Ruth 1's is how a passage
+    becomes one that never closes. Since `done` is what moves a team on to the next passage, a
+    floor that cannot be reached does not hold a team to a higher standard — it holds them
+    still.
 
     `surfaced` remains below the floor, so a session where the Guide did the talking still
     cannot complete. Biased against completing hollow: anything unknown counts as not met.
