@@ -114,7 +114,7 @@ async def capture_segment(
                 "This stretch no longer counts: it was already replaced, or the telling-back "
                 "it belonged to was started over"
             )
-        if any(row.parent_id == replaces.id for row in await _current(db, session.id)):
+        if any(row.parent_id == replaces.id for row in await current_segments(db, session.id)):
             raise ValidationError(
                 "A stretch that was divided is no longer a unit: replace one of the stretches "
                 "it was divided into, not the stretch itself"
@@ -189,7 +189,7 @@ async def divide_segment(
     """
     if segment.superseded_at is not None:
         raise ValidationError("A stretch that no longer counts cannot be divided")
-    if any(row.parent_id == segment.id for row in await _current(db, session.id)):
+    if any(row.parent_id == segment.id for row in await current_segments(db, session.id)):
         raise ValidationError(
             "This stretch was already divided: divide one of the stretches it was divided into"
         )
@@ -251,7 +251,7 @@ async def divided_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     The same class of loss as a replaced stretch, which the handoff carries on purpose. The
     verb that creates the state is what has to carry it.
     """
-    rows = await _current(db, session_id)
+    rows = await current_segments(db, session_id)
     divided = {row.parent_id for row in rows if row.parent_id is not None}
     return [row for row in rows if row.id in divided]
 
@@ -268,7 +268,7 @@ async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     same on both databases. `takes_of` is the reminder: an ordering left to the engine read one
     way on SQLite and upside down on the one that serves a real team.
     """
-    rows = await _current(db, session_id)
+    rows = await current_segments(db, session_id)
     children: dict[str | None, list[IRSegment]] = {}
     for row in rows:
         children.setdefault(row.parent_id, []).append(row)
@@ -359,12 +359,19 @@ async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
     two separate facts.
     """
     at = datetime.now(UTC)
-    for segment in await _current(db, session_id):
+    for segment in await current_segments(db, session_id):
         segment.superseded_at = at
     await db.commit()
 
 
-async def _current(db: AsyncSession, session_id: str) -> list[IRSegment]:
+async def current_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
+    """Every stretch of a session that still counts, divided ones included.
+
+    One step short of `final_segments`, which keeps only the leaves. What wants this rather
+    than that is what is about the rows and not about the reading: the ordinal a new stretch
+    takes, and the re-addressing of a passage that was rebuilt, where a stretch the team
+    divided has to move with its own children or stop describing them.
+    """
     result = await db.execute(
         select(IRSegment)
         .where(IRSegment.session_id == session_id, IRSegment.superseded_at.is_(None))
@@ -380,5 +387,5 @@ async def _next_ordinal(db: AsyncSession, session_id: str, parent_id: str | None
     numbers the new stretches from the beginning again. Ordinals order; they do not need to
     be dense.
     """
-    siblings = [row for row in await _current(db, session_id) if row.parent_id == parent_id]
+    siblings = [row for row in await current_segments(db, session_id) if row.parent_id == parent_id]
     return max((row.ordinal for row in siblings), default=0) + 1
