@@ -496,9 +496,11 @@ class InboxQuestionView(BaseModel):
     to draw a case this route cannot produce.
 
     ``element_label_*``, ``duration_ms`` and ``transcript`` are all nullable, and the Desk has
-    to draw a card without each of them. An element is missing on every question raised before
-    ENG-456 ships the app's half; a duration or a transcript is missing when the machine that
-    produces it failed, and the card still carries audio a facilitator can answer by playing.
+    to draw a card without each of them. An element is missing on every row written before
+    ENG-447, and on a question raised in a session whose coverage never moved a bead — the
+    server (ENG-456) has nothing of the session's own to anchor it to; a duration or a
+    transcript is missing when the machine that produces it failed, and the card still
+    carries audio a facilitator can answer by playing.
 
     **The bead is named and its key is not served** (ENG-543). ``element_key`` is the room's
     identity for a bead — coverage is persisted under it and it is unique only inside its

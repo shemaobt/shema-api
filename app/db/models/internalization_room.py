@@ -220,10 +220,11 @@ class IRQuestion(Base):
     session_id: Mapped[str] = mapped_column(String(36))
     pericope: Mapped[str] = mapped_column(String(120))
     audio_key: Mapped[str] = mapped_column(String(512))
-    #: Which bead of the Meaning Map the hand went up on, as the app names it. Nullable
-    #: because every row written before ENG-447 has none, and because the app only starts
-    #: sending it with ENG-456 — a card that names no element is the common case today,
-    #: not a broken one.
+    #: Which bead of the Meaning Map the hand went up on, as the app names it or, since
+    #: ENG-456, as the server anchors it from this session's own coverage history. Nullable
+    #: because every row written before ENG-447 has none, and because a session whose
+    #: coverage never moved a bead has nothing to anchor to — a card that names no element
+    #: is the common case today, not a broken one.
     element_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     #: How long the recording runs, measured from the audio at ingest and never taken from
     #: the client. Nullable because the measurement is a call to a tool outside this
