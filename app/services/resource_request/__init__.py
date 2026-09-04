@@ -1,3 +1,7 @@
+from app.services.resource_request._trail import (
+    evaluation_fields,
+    record_evaluation_trail,
+)
 from app.services.resource_request.allocation_of_fund import (
     FundAllocation,
     allocation_of_fund,
@@ -15,6 +19,7 @@ from app.services.resource_request.endorse_request import endorse_request
 from app.services.resource_request.fund_balances import FundBalance, fund_balances
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.holds_capability import holds_capability
+from app.services.resource_request.list_request_history import list_request_history
 from app.services.resource_request.list_requests import list_requests
 from app.services.resource_request.movements_of_fund import movements_of_fund
 from app.services.resource_request.movements_of_request import movements_of_request
@@ -43,13 +48,16 @@ __all__ = [
     "create_draft",
     "create_fund",
     "endorse_request",
+    "evaluation_fields",
     "fund_balances",
     "get_request",
     "holds_capability",
+    "list_request_history",
     "list_requests",
     "movements_of_fund",
     "movements_of_request",
     "open_revision",
+    "record_evaluation_trail",
     "rename_fund",
     "retire_fund",
     "reverse_movement",

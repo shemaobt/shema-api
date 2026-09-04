@@ -8,8 +8,9 @@ from app.core.exceptions import ConflictError, ValidationError
 from app.db.models.auth import User
 from app.db.models.resource_request import RRBudgetLine, RRRequestSections
 from app.models.resource_request import RequestDraftIn
-from app.services.resource_request._document import split
+from app.services.resource_request._document import document, split
 from app.services.resource_request._loading import Loaded, load
+from app.services.resource_request._trail import document_fields, record_request_trail
 from app.services.resource_request.get_request import get_request
 from app.utils.stored_time import as_utc
 
@@ -73,6 +74,14 @@ async def update_draft(
 
     **A submitted request is not a draft.** Editing after submission would move the ground
     under an evaluation that points at a frozen snapshot; the way back in is a revision.
+
+    **Every save that stands leaves its field-by-field trail** (BE-15, GATE-02 D7): the
+    document is flattened before and after the write, and one ``rr_request_field_history``
+    row per field that moved rides the same commit — a trail written outside the write's
+    own transaction could miss it, and a discarded copy leaves none because nothing
+    changed. The *after* side is re-read from what actually landed rather than taken from
+    the payload, so the trail records what every later read will show — the money render's
+    ``1200.50``, not the wire's ``1200.5``.
     """
     loaded = await get_request(db, request_id, user, app_key)
 
@@ -99,6 +108,8 @@ async def update_draft(
             ),
         )
 
+    before = document_fields(document(*loaded))
+
     parts = split(draft)
     for column, value in parts.spine.items():
         setattr(loaded.request, column, value)
@@ -114,8 +125,16 @@ async def update_draft(
 
     loaded.request.updated_at = datetime.now(UTC)
 
-    await db.commit()
-
+    await db.flush()
     written = await load(db, request_id)
     assert written is not None
+    record_request_trail(
+        db,
+        request_id,
+        changed_by=user.id,
+        before=before,
+        after=document_fields(document(*written)),
+    )
+
+    await db.commit()
     return Saved(loaded=written, discarded=None)
