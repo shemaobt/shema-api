@@ -34,6 +34,7 @@ async def settle_coverage(
                 classifier_prompt=classifier_prompt,
                 pericope_num=pericope_num,
                 session_language=LANGUAGE_NAMES[session.language],
+                language_code=session.language,
             )
             await apply_coverage(db, session_id, updated)
     except Exception:

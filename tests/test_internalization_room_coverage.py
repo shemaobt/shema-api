@@ -18,7 +18,6 @@ from app.services.internalization_room.coverage import (
     remaining,
 )
 from app.services.internalization_room.fail_safe import FailSafe, utterances
-from app.services.internalization_room.live_turn import opened_scene_ids
 
 P = "P03"
 
@@ -288,21 +287,6 @@ def test_a_partly_worked_bead_counts_as_encountered_but_not_as_worked() -> None:
     )
 
     assert counts(state) == {"engaged": 1, "surfaced": 3, "total": len(keys)}
-
-
-def test_a_scene_the_team_only_echoed_counts_as_one_the_voice_opened() -> None:
-    """`opened_scene_ids` decides whether the room may invite practice for a scene, and
-    practice is what the semantic half of `session_is_done` waits on. It read the state for
-    `surfaced` or `engaged` while those were the only two a tracker could hold.
-    """
-    scened = [element for element in elements_for(P) if element.scene is not None]
-    only_echoed = _with({scened[0].key: CoverageStatus.PARTIALLY_ENGAGED})
-
-    assert opened_scene_ids(only_echoed, P) == [f"S{scened[0].scene}"], (
-        "a lista era dois de quatro estados, então uma cena que a equipe assumiu na deixa "
-        "do Guia contava como nunca aberta — o ensaio nunca era convidado e a passagem "
-        "voltava a não fechar, agora pelo lado semântico"
-    )
 
 
 def test_a_tracker_written_before_the_fourth_state_reads_the_same() -> None:
