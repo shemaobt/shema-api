@@ -199,9 +199,16 @@ async def append_exchange(
 
     A turn that lands is the proof a person came back, so it also releases
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
-    `attend` is the other, and is the one a facilitator controls (ENG-609). This behaviour
-    is untouched by that slice: the team resuming still ends the halt, and both kinds of
-    halt end this way.
+    `attend` is the other, and is the one a facilitator controls (ENG-609). The lift itself
+    is untouched by that slice: the team resuming still ends the halt, and both kinds of halt
+    end this way.
+
+    It does clear `lifted_halt`, which is the record of a halt an outstanding visit lifted and
+    which undoing that visit would put back. Once a turn lands there is nothing left to put
+    back — the turn is the team's own exit and would have lifted the halt with or without the
+    visit — so leaving it set lets a facilitator correcting a ten-minute-old tap stop a
+    conversation in full flow. The stamps are deliberately **not** cleared: who went and when
+    is what the history is for, and a landing turn is no evidence they did not go.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
@@ -210,6 +217,7 @@ async def append_exchange(
     session.messages = messages
     if session.status is IRSessionStatus.NEEDS_PERSON:
         session.status = IRSessionStatus.IN_PROGRESS
+    session.lifted_halt = None
     await db.commit()
     await db.refresh(session)
     return session

@@ -556,6 +556,44 @@ async def test_a_second_halt_is_not_reported_as_a_room_somebody_already_went_to(
     assert asking_again["attended_by"] is None
 
 
+async def test_undoing_a_visit_after_the_team_came_back_does_not_stop_them_again(
+    client: httpx.AsyncClient,
+    facilitator_a: Facilitator,
+    waiting_room,
+    the_assessor_agrees: None,
+) -> None:
+    """The same staleness as `halt_kind`, one step further along, and it bites the same way.
+
+    Here the visit really did lift a halt, so `lifted_halt` is set and an undo would put it
+    back. Then the team comes back and a turn lands. That turn would have lifted the halt on
+    its own — it is the team's own exit and always was — so by the time the facilitator
+    notices they tapped the wrong row there is nothing left for the undo to restore.
+
+    Without this, the fourth column only moves the defect: a conversation in full flow stops
+    and returns to the queue because somebody corrected a tap made ten minutes earlier.
+    """
+    await the_tablet_halts(client, waiting_room.id)
+    marked = await attend(client, waiting_room.id, facilitator_a)
+    assert marked.status_code == 200, marked.text[:300]
+    assert marked.json()["attended_at"]
+
+    answered = await the_team_answers(client, waiting_room.id)
+    assert answered.status_code == 200, answered.text[:300]
+    assert (await tablet_state(client, waiting_room.id))["status"] == "in_progress"
+
+    undone = await unattend(client, waiting_room.id, facilitator_a)
+
+    assert undone.status_code == 200, undone.text[:300]
+    assert undone.json()["status"] == "in_progress"
+    assert undone.json()["halt"] is None
+    state = await tablet_state(client, waiting_room.id)
+    assert state["status"] == "in_progress", (
+        "a equipe já tinha voltado e desfazer a marca parou a conversa outra vez"
+    )
+    assert state["halt"] is None
+    assert await queued(client, facilitator_a, waiting_room.id) is None
+
+
 # --- Case 4 — the halt says its kind, from each writer ------------------------------------
 
 

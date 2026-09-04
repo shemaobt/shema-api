@@ -7,7 +7,7 @@ facilitator actually resolves, by walking over, stayed standing until the team s
 either. ``halt_kind`` is never cleared, so it cannot say whether *this* visit lifted
 anything, and an undo that guesses from it re-halts rooms the team had already restarted.
 
-All three are nullable and none is backfilled. A visit nobody made must not be invented, and
+All four are nullable and none is backfilled. A visit nobody made must not be invented, and
 a halt raised before this migration has no recorded kind — the read side answers ``blocking``
 for a still-halted row with no kind, which is the conservative reading and belongs there
 rather than in a write nobody could afterwards tell from a kind somebody recorded.
