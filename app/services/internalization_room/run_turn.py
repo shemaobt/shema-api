@@ -275,6 +275,7 @@ OPENING_MOVEMENT_INSTRUCTION = (
     "Não escreva a marca em nenhum outro lugar e não a comente."
 )
 
+
 async def _draft(
     *,
     guide_prompt: str,
@@ -392,8 +393,7 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,
-                TEAM_UTTERANCE=transcript
-                or _nobody_spoke_this_turn(telling_back, language_code),
+                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
                 FINDING=finding or NOT_THIS_TURN,
