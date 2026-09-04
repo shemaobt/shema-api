@@ -128,6 +128,11 @@ _REPORTED_SPEECH = re.compile(
 )
 
 
+def oral_clause_reports_the_voice(clause: str) -> bool:
+    """A clause that gives the Voice's words back as the team's own report."""
+    return bool(_REPORTED_SPEECH.search(normalize_oral_decision(clause)))
+
+
 def oral_clause_is_hedged(clause: str) -> bool:
     """A clause that holds back from what it says, or gives it back as the Voice's words.
 

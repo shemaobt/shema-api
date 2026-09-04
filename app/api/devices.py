@@ -1,8 +1,10 @@
 """What a device may ask about itself, authenticated by the credential it was issued.
 
 This is the device's half of "the link reaches the tablet without anyone typing into it":
-the app already holds the credential it got at claim time, and this is where it reads which
-project that credential belongs to. The app-side polling and display is ENG-454.
+the app holds a credential and reads here which project it belongs to. Which credential took
+until ENG-622 to settle — the one minted at claim went to the Desk, which never read it, and
+the tablet collects its own from the room's third device route. The app-side polling and
+display is ENG-454.
 
 Nothing here touches ``X-Room-Key`` or ``X-Room-Device``. The room's own routes accept
 this credential as of ENG-448; retiring the shared key beside it is the half of that issue
