@@ -97,7 +97,8 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
     """The passage's coverage spine, derived from its map.
 
     One bead per scene, per distinct entity, per significant absence, and per preserved
-    element — which is the completion floor the design document names. Entities are deduped
+    element — which is the completion floor named in *Tripod Internalization · Interaction
+    Flows* (`internalization-room/docs/spec/interaction-flows.md`, §3). Entities are deduped
     across the passage on purpose: Naomi appearing in three scenes is one thing for the team
     to work with, not three.
 

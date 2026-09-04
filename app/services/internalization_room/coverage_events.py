@@ -333,6 +333,26 @@ def _by_passage(sessions: Sequence[IRSession]) -> dict[str, list[IRSession]]:
     return passages
 
 
+async def last_bead_moved_in_session(db: AsyncSession, *, session_id: str) -> str | None:
+    """Which bead this session's own history moved most recently, or nothing if it moved none.
+
+    Scoped to one session rather than to the team's whole passage: a bead the same
+    passage's canon carries that another session moved — another team's, or an earlier
+    session of this same team — was not what *this* room was on, and lending it would
+    name a bead nobody in this conversation ever raised a hand about.
+
+    Reads the same table `record_transitions` writes, and nothing else, so a raised
+    question can never anchor to a bead the tracker did not actually record moving.
+    """
+    result = await db.execute(
+        select(IRCoverageEvent.element_key)
+        .where(IRCoverageEvent.session_id == session_id)
+        .order_by(IRCoverageEvent.at.desc(), IRCoverageEvent.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def last_session_to_touch(
     db: AsyncSession,
     *,
