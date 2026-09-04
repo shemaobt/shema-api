@@ -56,11 +56,12 @@ async def raise_question(
 ) -> QuestionRaisedResponse:
     """Take the hand down and keep what was asked.
 
-    ``element_key`` says which bead the question is about and is optional, because an app
-    that has not shipped ENG-456 sends none and its team's questions still have to arrive.
-    How long the recording runs is measured here from the audio and is not a parameter: a
-    length the client reports is a length the client gets wrong, and nothing downstream
-    could tell.
+    ``element_key`` says which bead the question is about and is optional: no tablet in the
+    field has an element identity to send, and the row is anchored server-side instead, to
+    whichever bead this session's own coverage history moved last (ENG-456). A key an app
+    does send one day is kept as sent. How long the recording runs is measured here from
+    the audio and is not a parameter: a length the client reports is a length the client
+    gets wrong, and nothing downstream could tell.
 
     **The hand comes down before anything is transcribed.** Reading the question back is
     the Desk's business and is scheduled rather than awaited: the transcriber is another

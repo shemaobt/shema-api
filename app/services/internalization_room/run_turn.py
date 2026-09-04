@@ -28,18 +28,40 @@ _RECENT_TURNS = 6
 #: apply. The prompt says so in words; this is the same sentence in the slot itself.
 NOT_THIS_TURN = "(não se aplica a este turno)"
 
-#: What the Validator is told when nobody spoke this turn. On the verdict path the team has
-#: spoken — outside the conversation, into the telling-back — and the opening line said the
+#: What the Validator is told when nobody spoke this turn, in the session's own language.
+#: Keyed by language code, in the shape `calibration.py` already uses — an unclaimed
+#: language falls back to the authored English line. Two cases per language: the opening
+#: turn, where nobody has spoken yet, and the verdict path, where the team has spoken —
+#: outside the conversation, into the telling-back — and the opening line would say the
 #: opposite, which is the sentence the Validator quoted back when it refused the verdict.
-_NO_UTTERANCE_YET = "(a equipe ainda não falou — abertura da sessão)"
-_TOLD_BACK_INSTEAD = (
-    "(a equipe não falou nesta conversa; o que ela contou de volta está no bloco abaixo)"
-)
+_NO_TEAM_UTTERANCE: dict[str, dict[str, str]] = {
+    "pt": {
+        "opening": "(a equipe ainda não falou — abertura da sessão)",
+        "told_back": (
+            "(a equipe não falou nesta conversa; o que ela contou de volta está no bloco abaixo)"
+        ),
+    },
+    "en": {
+        "opening": "(the team has not spoken yet — session opening)",
+        "told_back": (
+            "(the team has not spoken in this conversation; what they told back is in the "
+            "block below)"
+        ),
+    },
+    "es": {
+        "opening": "(el equipo aún no ha hablado — apertura de la sesión)",
+        "told_back": (
+            "(el equipo no ha hablado en esta conversación; lo que contaron de vuelta está "
+            "en el bloque de abajo)"
+        ),
+    },
+}
 
 
-def _nobody_spoke_this_turn(telling_back: str) -> str:
+def _nobody_spoke_this_turn(telling_back: str, language_code: str) -> str:
     """What stands where the team's utterance would, on a turn that had none."""
-    return _TOLD_BACK_INSTEAD if telling_back else _NO_UTTERANCE_YET
+    messages = _NO_TEAM_UTTERANCE.get(language_code, _NO_TEAM_UTTERANCE[FLOOR])
+    return messages["told_back"] if telling_back else messages["opening"]
 
 
 MAX_SPOKEN_TURN_WORDS = 45
@@ -186,8 +208,10 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
 def meaning_map_block(pericope_num: str, book: str) -> str:
     """The passage's map verbatim, plus the digests of strictly earlier passages.
 
-    The design document calls the Guide's standard of truth "MEANING MAP + story-so-far", and
-    the earlier-only scoping is what keeps a later disclosure from reaching this session.
+    *Tripod Internalization · Interaction Flows*
+    (`internalization-room/docs/spec/interaction-flows.md`, §1, diagram caption) calls the
+    Guide's standard of truth "MEANING MAP + story-so-far", and the earlier-only scoping is
+    what keeps a later disclosure from reaching this session.
     """
     passage = load_map(pericope_num).body
     earlier = story_so_far(book, pericope_num)
@@ -250,7 +274,6 @@ OPENING_MOVEMENT_INSTRUCTION = (
     "passagem, o arco e o tom. Depois da linha: abra a primeira cena e convide. "
     "Não escreva a marca em nenhum outro lugar e não a comente."
 )
-
 
 async def _draft(
     *,
@@ -369,7 +392,8 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,
-                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back),
+                TEAM_UTTERANCE=transcript
+                or _nobody_spoke_this_turn(telling_back, language_code),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
                 FINDING=finding or NOT_THIS_TURN,
