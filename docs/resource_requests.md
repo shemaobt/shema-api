@@ -132,7 +132,7 @@ a migration, not a refactor."*
 | `languages` | **Not shared. No FK.** | The form's A1 stores language name, ISO code, family, dialects, speaker count and literacy rate as **free text typed by the team**, next to vocabulary answers for vitality and writing system (contract §1.2). `languages` is `name` plus a unique three-character `code`. A FK would reject exactly the population this product serves — the contract's own vocabulary has *língua ágrafa* as a first-class answer. Text fields. |
 | `organizations`, `organization_members` | **Not applicable.** | Nothing in the PRD or the contract scopes a request by organization. This row carried a condition — *if GATE-02 answers team access with an org* — and **the gate answered with individual accounts** (D1), so the condition never fires. The one shape that could still reach for it is BE-16's Líder de Base, who endorses *"que o projeto pertence à base dele"*: a base is not an `organizations` row today, and whoever builds it decides whether it becomes one. |
 | `phases`, `project_phases` | **Not applicable.** | The board's six columns are this product's own key space (contract §4.1) and are not workflow phases of a translation project. |
-| `notifications` | **Not applicable in wave 2 as scoped.** | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, which **no issue owns** — see §10. If it gets an owner, this table is the first thing to read, not a new one to build. |
+| `notifications` | **BE-13's first read.** | Telling a team its decision is PRD §10's *notificações à equipe após a decisão*, which **BE-13** (OBT-480) owns since GATE-03 D5/D6 — see §10. It got its owner, and this table is the first thing that owner reads, not a new one to build. |
 | `permissions`, `role_permissions` | **Not usable.** | They exist as tables and are **not wired into `access_control.py`** — the guards check roles only. See §5.4. |
 
 ### 2.4 There is no Shemá module to coexist with — **finding**
@@ -761,9 +761,11 @@ the second recomputes the sum *after* the first is visible and gets a decidable 
 
 **GATE-01 answered it — allow, with a warning, never refuse** (OBT-447 D5, 26/aug/2026).
 Both approvals succeed, the fund goes negative and the screen says so; the control is human.
-Wave 1 already did that by inheritance, and it is now a decision instead of an accident. **No
-`insufficient_funds` response shape is frozen anywhere in this module, and none is to be
-invented here.**
+Wave 1 already rendered a negative *disponível* by inheritance, and the gate made that the
+behaviour rather than a bug to fix — a decision instead of an accident. **No
+`insufficient_funds` response shape is frozen anywhere in this module, none exists anywhere
+in the product, and none is to be invented here.** It is still one branch, and BE-07 writes
+the warning one.
 
 **What the answer does not relax is the paragraph above it.** The two approvals still have to
 serialize on the fund row, or one deduction is lost and the sum lies about money. The answer
@@ -925,8 +927,8 @@ watch the database refuse `'rejected'`.
 
 The four decision strings are frozen by the contract and will not grow, which is what makes
 a native enum the right call for them. The six board columns are frozen too. Anything the
-client might extend — the fund list, while GATE-01 is open — should be a **table**, not an
-enum.
+client might extend — the fund list, frozen at **one** by GATE-01 with four names pending
+and BE-10's editable area coming — should be a **table**, not an enum.
 
 ### 8.3 Migrations: naming, one head, and a clean downgrade
 
@@ -1151,7 +1153,7 @@ that owns it and what it blocks.
 
 | Question | Gate | Blocks |
 |---|---|---|
-| **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
+| **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund (D3) — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
 
 **Answered by GATE-02 and GATE-03 on 27/aug/2026** (OBT-448, OBT-449), and no longer open.
 Recorded rather than deleted, because each one landed somewhere in this module — and because
@@ -1225,8 +1227,9 @@ table above; each landed somewhere:
   `rr_funds`: there is no `allocated` column there and there must not be, or the *store two,
   derive the third* of contract §3.2 breaks and two audit designs stand over the same money.
 
-**Answered by GATE-01 on 26/aug/2026** (OBT-447), and no longer open. Recorded rather than
-deleted, because each one landed somewhere in this module:
+**Answered by GATE-01 on 26/aug/2026** (OBT-447), and no longer open — it closed the money
+half of the table above and left the vocabulary half. Recorded rather than deleted, because
+each one landed somewhere in this module:
 
 - **Which fund a request asks from** — **the mesa assigns it at triage**, of the three shapes
   the gate offered. No field enters the form; `rr_requests.fund_id` stays nullable and null is
@@ -1241,8 +1244,32 @@ deleted, because each one landed somewhere in this module:
   item 7 below describes — is **BE-10** (OBT-471), **built** (§7.4): the Gestor creates,
   renames and retires funds, `provisional` is gone and `retired_at` replaces it, and the row
   the client confirmed is written by `20260830_rr04` rather than by the seed.
+- **Which fund a request asks from** — **the mesa assigns it at triage** (D4), of the three
+  shapes the gate offered. No field enters the form and none joins the request document — the
+  45 keys stay 45 — so `rr_requests.fund_id` stays nullable by design, and null is the
+  legitimate state of a request still in `triagem`, which is what the seed's three fundless
+  cards exercise: two states not to conflate. The invariant that arrived with the answer —
+  **a request does not enter `aprovado` with `fund_id IS NULL`** — is a service rule and
+  deliberately not a CHECK, since the same null is correct one column earlier. **BE-11**
+  (OBT-470) owns the write, and carries in its DoD the re-ask of the client's aside that the
+  *Gestor* would define which fund goes to which project.
+- **What each fund covers, and the old↔new mapping** — only *Shema Línguas* remains a fund
+  (D1), and the other four names are **undecided rather than retired**: not approved either.
+  The mapping closed by elimination instead of by mapping — *"leave it as it is"* (D2) — so no
+  old category was paired with a new name. The seed writes the one row with
+  `provisional = false`. What the answer opened — an editable area for funds, and the
+  retired-fund flag item 7 below describes — is **BE-10** (OBT-471), which is also why §8.2
+  keeps the fund list a **table and never an enum**.
 - **Insufficient funds on a concurrent approve** — allowed with a warning, never refused
-  (§7.3). The lock stays; only the refusal is gone.
+  (D5, §7.3). The lock stays; only the refusal is gone, and it is one branch: the warning one.
+- **The Gestores enter the allocated value** (D6) — and `rr_funds` is where that answer could
+  have been lost. **Funds are born at zero**: the table gains no `allocated`, no `updated_by`
+  and no `updated_at`, because the literal reading of *an editable alocado carrying who and
+  when* is three columns, and three columns would break *store two, derive the third* and
+  stand a second audit design against GATE-02's. It is already built instead as an
+  `ALLOCATION` movement in the append-only ledger, whose `created_by`/`created_at`/`reason`
+  **are** the authorship, and a wrong one is corrected by a compensating movement. The
+  allocation write path is **BE-09** (OBT-469).
 
 And seven items with **no gate**, which need issues rather than answers:
 
