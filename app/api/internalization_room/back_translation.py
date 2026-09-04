@@ -321,6 +321,7 @@ async def finish(
             pericope_num=session.pericope,
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
             session_language=LANGUAGE_NAMES[session.language],
+            language_code=session.language,
             settings=get_settings(),
             session_id=session.id,
         )

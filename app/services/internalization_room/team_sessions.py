@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.models.internalization_room import SessionBead, TeamSessionResponse
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
@@ -93,8 +93,20 @@ def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> Team
         ended_at=end.ended_at,
         duration_minutes=end.duration_minutes,
         state=end.state,
+        needs_person=_needs_person(session, state=end.state),
         coverage=_portrait(session.pericope, portrait),
     )
+
+
+def _needs_person(session: IRSession, *, state: SessionState) -> bool:
+    """Halted and still open — a halt that outlived the conversation is not "waiting".
+
+    `session.status` alone is not enough: nothing but a landed turn ever writes
+    `NEEDS_PERSON` back to `IN_PROGRESS` (`sessions.append_exchange`), so a team that never
+    returns keeps that status in the row long after the idle rule has declared the
+    conversation over. The Desk's own `state` is what says whether the room is still open.
+    """
+    return session.status is IRSessionStatus.NEEDS_PERSON and state is SessionState.IN_PROGRESS
 
 
 def _portrait(pericope: str, standing: dict[str, str]) -> list[SessionBead]:
