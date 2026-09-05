@@ -254,6 +254,10 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     await question_service._store().put(owned_key, b"a equipe perguntou", "audio/mp4")
     absent_key = "internalization-room/questions/nao-existe-em-lugar-nenhum.m4a"
     session_id, take_id = await _a_recorded_session_of(db, owner, f"t{tag}")
+    # One session per route: the mark and its undo are the same claim written and
+    # withdrawn, so sharing a session would make each case depend on the other's order.
+    attend_id, _ = await _a_recorded_session_of(db, owner, f"a{tag}")
+    unattend_id, _ = await _a_recorded_session_of(db, owner, f"u{tag}")
     patch_device = await _a_device_of(db, owner, f"p{tag}")
     delete_device = await _a_device_of(db, owner, f"d{tag}")
     claim = await _claim_of(db, owner, f"c{tag}")
@@ -354,6 +358,18 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "ids": (take_id, absent),
         },
         {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/sessions/{attend_id}/attended", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "ids": (attend_id, absent),
+        },
+        {
+            "method": "DELETE",
+            "owned": (f"{IR}/facilitator/sessions/{unattend_id}/attended", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/attended", {}),
+            "ids": (unattend_id, absent),
+        },
+        {
             "method": "GET",
             "owned": (f"{IR}/facilitator/sessions/{session_id}/release", {}),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", {}),
@@ -404,6 +420,8 @@ REFUSING_TEMPLATES = {
     ("POST", f"{IR}/facilitator/questions/{{question_id}}/resolve"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/takes"),
     ("GET", f"{IR}/facilitator/takes/{{take_id}}/audio"),
+    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
+    ("DELETE", f"{IR}/facilitator/sessions/{{session_id}}/attended"),
 }
 
 #: Routes that name no resource and cannot refuse: they answer with a list, and the scoping

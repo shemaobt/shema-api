@@ -143,8 +143,10 @@ async def ask_for_a_person_without_a_session(
     same window the three routes above stand in and closes with them in ENG-455.
 
     Nothing lifts this from here. The halt ends when that device opens a session, the way a
-    session's ``NEEDS_PERSON`` ends when a turn lands; a facilitator saying they attended
-    to it is a different event and is ENG-609's.
+    session's ``NEEDS_PERSON`` ends when a turn lands; a facilitator saying they attended to
+    it is a different event. **ENG-609's API slice did not bring it**: that one gave the
+    session halts a facilitator lift and left this half exactly as it is, so the device
+    queue still drains only by the tablet coming back.
 
     **The two halves are not symmetric, and the asymmetry has a floor under it.** Halting is
     open to the shared key; lifting is not, and cannot be — a caller presenting the key names
@@ -152,9 +154,9 @@ async def ask_for_a_person_without_a_session(
     has nothing in this slice that clears it. What keeps that off the field is the order the
     work was authorised in: the app collects its credential in ENG-622 and starts presenting
     it in ENG-623, both before ENG-625 makes it call this route at all, so every call that
-    happens in a room names its device. A tablet that halted on the key anyway would wait for
-    ENG-609's facilitator lift — and that is the sentence to re-read before calling this route
-    from anywhere else.
+    happens in a room names its device. A tablet that halted on the key anyway waits for a
+    facilitator lift that does not exist yet on this half — and that is the sentence to
+    re-read before calling this route from anywhere else.
     """
     if caller is not None and caller.id != device_id:
         raise AuthorizationError("A device may only ask for a person for itself.")
