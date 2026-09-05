@@ -1105,6 +1105,61 @@ async def test_a_missing_element_after_everything_told_sends_them_on_to_record(
     assert THE_TWO_VOICES_CLOSING not in spoken_to
 
 
+# ---------------------------------------------------------------------------
+# The closing back to rehearsal names the gesture, not just the what — R9 (2026-09-03)
+# ---------------------------------------------------------------------------
+
+
+def test_the_closing_to_rehearsal_names_the_microphone_and_the_green_button() -> None:
+    """R9 (teste de 03/09). A team that reached this screen did not know what to do with it.
+
+    The block used to say *what* was left — record what is still missing, keep what is
+    already recorded — without ever naming *how*: which microphone, and which button brings
+    them back. Two structural anchors stand in for the two gestures the screen actually
+    offers; the exact sentence around them is the product owner's to shape.
+    """
+    assert "big microphone" in CLOSING_MISSING_TO_REHEARSAL
+    assert "green button" in CLOSING_MISSING_TO_REHEARSAL
+
+
+@pytest.mark.asyncio
+async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_loop) -> None:
+    """The Validator judges the Speaker against the same order it was given.
+
+    `{{ORDERED_CLOSING}}` is filled from the same `closing_block` call as the Speaker's
+    `{{CLOSING}}` — a narrator naming the big microphone and the green button is obeying an
+    order the Validator can see, not inventing a gesture of its own.
+    """
+    told = _told()
+    finding = _missing(None)
+    obedient_draft = (
+        "No que você me contou de volta, o fim da história ainda não apareceu. "
+        "Vocês podem seguir e gravar o que ainda falta no microfone grande, e quando "
+        "terminarem, é só tocar no botão verde para voltar e conferir. Nada do que já "
+        "gravaram se perde."
+    )
+    agent = patch_loop(obedient_draft, told)
+
+    outcome = await run_verdict_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        findings_text=findings_block(finding),
+        closing=closing_block(finding),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        telling_back=segments_block(told),
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert outcome.used_fail_safe is False
+    assert outcome.speech == obedient_draft
+    assert "big microphone" in agent.briefs[0]
+    assert "green button" in agent.briefs[0]
+
+
 @pytest.mark.parametrize("segment_id", ["segmento-2", None], ids=["on a stretch", "homeless"])
 @pytest.mark.parametrize("kind", [kind for kind in FindingKind if kind is not FindingKind.MISSING])
 def test_every_other_kind_closes_exactly_as_before(
