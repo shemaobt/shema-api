@@ -1,0 +1,780 @@
+{
+  "emitted_from": "067458c5c3f327d612939b55eee161a6d6e2ec44",
+  "vocabularies": {
+    "etenListed": [
+      {
+        "value": "Sim",
+        "pt": "Sim",
+        "en": "Yes"
+      },
+      {
+        "value": "Não",
+        "pt": "Não",
+        "en": "No"
+      },
+      {
+        "value": "Não sei",
+        "pt": "Não sei",
+        "en": "Don't know"
+      }
+    ],
+    "writingSystem": [
+      {
+        "value": "Alfabeto consolidado",
+        "pt": "Alfabeto consolidado",
+        "en": "Established alphabet"
+      },
+      {
+        "value": "Alfabeto em desenvolvimento",
+        "pt": "Alfabeto em desenvolvimento",
+        "en": "Alphabet in development"
+      },
+      {
+        "value": "Língua ágrafa (sem escrita)",
+        "pt": "Língua ágrafa (sem escrita)",
+        "en": "Unwritten language"
+      }
+    ],
+    "allAccessGoal": [
+      {
+        "value": "Bíblia completa (+500 mil)",
+        "pt": "Bíblia completa (+500 mil)",
+        "en": "Full Bible (500k+)"
+      },
+      {
+        "value": "Novo Testamento ou 260 capítulos (5 mil–500 mil)",
+        "pt": "Novo Testamento ou 260 capítulos (5 mil–500 mil)",
+        "en": "New Testament or 260 chapters (5k–500k)"
+      },
+      {
+        "value": "Porção / ~25 capítulos (menos de 5 mil)",
+        "pt": "Porção / ~25 capítulos (menos de 5 mil)",
+        "en": "Portion / ~25 chapters (under 5k)"
+      },
+      {
+        "value": "A definir",
+        "pt": "A definir",
+        "en": "To be defined"
+      }
+    ],
+    "localChurch": [
+      {
+        "value": "Sim, estabelecida",
+        "pt": "Sim, estabelecida",
+        "en": "Yes, established"
+      },
+      {
+        "value": "Sim, incipiente",
+        "pt": "Sim, incipiente",
+        "en": "Yes, emerging"
+      },
+      {
+        "value": "Não",
+        "pt": "Não",
+        "en": "No"
+      }
+    ],
+    "requestedByPeople": [
+      {
+        "value": "Sim, formalmente",
+        "pt": "Sim, formalmente",
+        "en": "Yes, formally"
+      },
+      {
+        "value": "Sim, informalmente",
+        "pt": "Sim, informalmente",
+        "en": "Yes, informally"
+      },
+      {
+        "value": "Não, iniciativa externa",
+        "pt": "Não, iniciativa externa",
+        "en": "No, external initiative"
+      }
+    ],
+    "projectCategory": [
+      {
+        "value": "Novo Testamento",
+        "pt": "Novo Testamento",
+        "en": "New Testament"
+      },
+      {
+        "value": "Antigo Testamento",
+        "pt": "Antigo Testamento",
+        "en": "Old Testament"
+      },
+      {
+        "value": "Bíblia completa",
+        "pt": "Bíblia completa",
+        "en": "Full Bible"
+      },
+      {
+        "value": "Porções das Escrituras",
+        "pt": "Porções das Escrituras",
+        "en": "Scripture Portions"
+      },
+      {
+        "value": "Tradução oral / áudio",
+        "pt": "Tradução oral / áudio",
+        "en": "Oral / audio translation"
+      },
+      {
+        "value": "Audiovisual (ex: JESUS Film)",
+        "pt": "Audiovisual (ex: JESUS Film)",
+        "en": "Audiovisual (e.g. JESUS Film)"
+      },
+      {
+        "value": "Pesquisa sociolinguística",
+        "pt": "Pesquisa sociolinguística",
+        "en": "Sociolinguistic research"
+      },
+      {
+        "value": "Alfabetização",
+        "pt": "Alfabetização",
+        "en": "Literacy"
+      },
+      {
+        "value": "Outro",
+        "pt": "Outro",
+        "en": "Other"
+      }
+    ],
+    "supportedGoal": [
+      {
+        "value": "Novo Testamento",
+        "pt": "Novo Testamento",
+        "en": "New Testament"
+      },
+      {
+        "value": "260 capítulos",
+        "pt": "260 capítulos",
+        "en": "260 chapters"
+      },
+      {
+        "value": "Antigo Testamento",
+        "pt": "Antigo Testamento",
+        "en": "Old Testament"
+      },
+      {
+        "value": "Bíblia completa",
+        "pt": "Bíblia completa",
+        "en": "Full Bible"
+      },
+      {
+        "value": "Porções das Escrituras (~25 capítulos)",
+        "pt": "Porções das Escrituras (~25 capítulos)",
+        "en": "Scripture Portions (~25 chapters)"
+      },
+      {
+        "value": "Ready Vessels",
+        "pt": "Ready Vessels",
+        "en": "Ready Vessels"
+      },
+      {
+        "value": "Tradução oral / áudio",
+        "pt": "Tradução oral / áudio",
+        "en": "Oral / audio translation"
+      },
+      {
+        "value": "Audiovisual (ex: JESUS Film)",
+        "pt": "Audiovisual (ex: JESUS Film)",
+        "en": "Audiovisual (e.g. JESUS Film)"
+      },
+      {
+        "value": "Língua de sinais",
+        "pt": "Língua de sinais",
+        "en": "Sign language"
+      },
+      {
+        "value": "A definir",
+        "pt": "A definir",
+        "en": "To be defined"
+      }
+    ],
+    "trainedTeamTypes": [
+      {
+        "value": "facilitadores",
+        "pt": "Facilitadores",
+        "en": "Facilitators"
+      },
+      {
+        "value": "tradutores",
+        "pt": "Tradutores",
+        "en": "Translators"
+      },
+      {
+        "value": "mentores",
+        "pt": "Mentores",
+        "en": "Mentors"
+      },
+      {
+        "value": "outro",
+        "pt": "Outro",
+        "en": "Other"
+      }
+    ],
+    "trainingFormats": [
+      {
+        "value": "cursos",
+        "pt": "Cursos",
+        "en": "Courses"
+      },
+      {
+        "value": "estagio",
+        "pt": "Estágio de treinamento",
+        "en": "Training internship"
+      },
+      {
+        "value": "workshop",
+        "pt": "Workshop",
+        "en": "Workshop"
+      },
+      {
+        "value": "seminarios",
+        "pt": "Seminários",
+        "en": "Seminars"
+      },
+      {
+        "value": "aprendiz",
+        "pt": "Aprendizagem monitorada",
+        "en": "Monitored apprenticeship"
+      }
+    ],
+    "decisionStates": [
+      {
+        "value": "approved",
+        "pt": "Aprovado",
+        "en": "Approved"
+      },
+      {
+        "value": "conditional",
+        "pt": "Aprovado com condições",
+        "en": "Conditionally approved"
+      },
+      {
+        "value": "revise",
+        "pt": "Revisar e reenviar",
+        "en": "Revise and resubmit"
+      },
+      {
+        "value": "declined",
+        "pt": "Não aprovado",
+        "en": "Not approved"
+      }
+    ],
+    "currencies": [
+      {
+        "value": "R$",
+        "pt": "R$",
+        "en": "R$"
+      },
+      {
+        "value": "US$",
+        "pt": "US$",
+        "en": "US$"
+      },
+      {
+        "value": "€",
+        "pt": "€",
+        "en": "€"
+      }
+    ]
+  },
+  "budgetCategories": [
+    {
+      "key": "bolsas_de_estudo",
+      "pt": "Bolsas de estudo",
+      "en": "Scholarship Funds"
+    },
+    {
+      "key": "apoio_a_estagio",
+      "pt": "Apoio a estágio",
+      "en": "Internship Support"
+    },
+    {
+      "key": "materiais_didaticos",
+      "pt": "Materiais didáticos",
+      "en": "Teaching Materials"
+    },
+    {
+      "key": "dispositivos_para_recursos_de_traducao",
+      "pt": "Dispositivos para recursos de tradução",
+      "en": "Translation Resources Devices"
+    },
+    {
+      "key": "compra_de_recursos_de_traducao",
+      "pt": "Compra de recursos de tradução",
+      "en": "Purchase of Trans. Resources"
+    },
+    {
+      "key": "despesas_de_visita_de_campo",
+      "pt": "Despesas de visita de campo",
+      "en": "Field Visit Expenses"
+    },
+    {
+      "key": "programa_de_mentoria",
+      "pt": "Programa de mentoria",
+      "en": "Mentorship Program"
+    },
+    {
+      "key": "taxas_de_conferencia",
+      "pt": "Taxas de conferência",
+      "en": "Conference Fees"
+    },
+    {
+      "key": "logistica",
+      "pt": "Logística",
+      "en": "Logistics Handling"
+    },
+    {
+      "key": "servicos_de_assinatura",
+      "pt": "Serviços de assinatura",
+      "en": "Subscription Services"
+    },
+    {
+      "key": "licenciamento_de_software",
+      "pt": "Licenciamento de software",
+      "en": "Software Licensing"
+    },
+    {
+      "key": "aquisicao_de_laptop",
+      "pt": "Aquisição de laptop",
+      "en": "Laptop Acquisition"
+    },
+    {
+      "key": "aquisicao_de_desktop",
+      "pt": "Aquisição de desktop",
+      "en": "Desktop Acquisition"
+    },
+    {
+      "key": "desenvolvimento_de_recursos",
+      "pt": "Desenvolvimento de recursos",
+      "en": "Development of Resources"
+    },
+    {
+      "key": "telefones_celulares",
+      "pt": "Telefones celulares",
+      "en": "Mobile Phones"
+    },
+    {
+      "key": "compra_de_tocador_de_audio",
+      "pt": "Compra de tocador de áudio",
+      "en": "Audio Player Purchase"
+    },
+    {
+      "key": "chips_sim",
+      "pt": "Chips (SIM)",
+      "en": "Sim Cards"
+    },
+    {
+      "key": "baterias_reserva",
+      "pt": "Baterias reserva",
+      "en": "Battery Backups"
+    },
+    {
+      "key": "instalacao_de_painel_solar",
+      "pt": "Instalação de painel solar",
+      "en": "Solar Panel Installation"
+    },
+    {
+      "key": "equipamento_de_microfone",
+      "pt": "Equipamento de microfone",
+      "en": "Microphone Equipment"
+    },
+    {
+      "key": "compra_de_dispositivo_de_backup",
+      "pt": "Compra de dispositivo de backup",
+      "en": "Backup Device Purchase"
+    },
+    {
+      "key": "despesas_de_viagem",
+      "pt": "Despesas de viagem",
+      "en": "Travel Expenses"
+    },
+    {
+      "key": "hospedagem_e_alimentacao_eventos",
+      "pt": "Hospedagem e alimentação (eventos)",
+      "en": "Room and Board (Events)"
+    },
+    {
+      "key": "ofertas_e_contribuicoes",
+      "pt": "Ofertas e contribuições",
+      "en": "Offerings and Contributions"
+    },
+    {
+      "key": "pesquisa_sociolinguistica",
+      "pt": "Pesquisa sociolinguística",
+      "en": "Sociolinguistic Research"
+    },
+    {
+      "key": "outros",
+      "pt": "Outros",
+      "en": "Other"
+    }
+  ],
+  "criteriaByType": {
+    "traducao": [
+      {
+        "key": "traducao_necessidade_urgencia",
+        "pt": "Necessidade e urgência da tradução",
+        "en": "Need and urgency of the translation"
+      },
+      {
+        "key": "traducao_receptividade_demanda",
+        "pt": "Receptividade e demanda do povo",
+        "en": "Receptivity and demand of the people"
+      },
+      {
+        "key": "traducao_capacidade_equipe",
+        "pt": "Capacidade e qualificação da equipe",
+        "en": "Team capacity and qualification"
+      },
+      {
+        "key": "traducao_viabilidade_cronograma",
+        "pt": "Viabilidade do plano e cronograma",
+        "en": "Feasibility of plan and timeline"
+      },
+      {
+        "key": "traducao_orcamento",
+        "pt": "Adequação e clareza do orçamento",
+        "en": "Budget adequacy and clarity"
+      },
+      {
+        "key": "traducao_alinhamento_eten",
+        "pt": "Alinhamento com os princípios e metas (ETEN)",
+        "en": "Alignment with principles and goals (ETEN)"
+      }
+    ],
+    "treinamento": [
+      {
+        "key": "treinamento_lacuna_capacitacao",
+        "pt": "Clareza da lacuna de capacitação",
+        "en": "Clarity of the capability gap"
+      },
+      {
+        "key": "treinamento_vinculo_projeto",
+        "pt": "Vínculo com um projeto de tradução ativo",
+        "en": "Link to an active translation project"
+      },
+      {
+        "key": "treinamento_formato",
+        "pt": "Adequação do formato de treinamento",
+        "en": "Suitability of the training format"
+      },
+      {
+        "key": "treinamento_capacidade_equipe",
+        "pt": "Capacidade e prontidão da equipe",
+        "en": "Team capacity and readiness"
+      },
+      {
+        "key": "treinamento_impacto",
+        "pt": "Impacto esperado no avanço da tradução",
+        "en": "Expected impact on translation progress"
+      },
+      {
+        "key": "treinamento_custo_beneficio",
+        "pt": "Custo-benefício e sustentabilidade do aprendizado",
+        "en": "Cost-benefit and sustainability of learning"
+      }
+    ],
+    "equipamentos": [
+      {
+        "key": "equipamentos_necessidade",
+        "pt": "Necessidade real do equipamento/recurso",
+        "en": "Genuine need for the equipment/resource"
+      },
+      {
+        "key": "equipamentos_vinculo_projeto",
+        "pt": "Vínculo com um projeto de tradução ativo",
+        "en": "Link to an active translation project"
+      },
+      {
+        "key": "equipamentos_adequacao_tecnica",
+        "pt": "Adequação técnica à demanda",
+        "en": "Technical fit to the need"
+      },
+      {
+        "key": "equipamentos_custo_beneficio",
+        "pt": "Custo-benefício e alternativas consideradas",
+        "en": "Cost-benefit and alternatives considered"
+      },
+      {
+        "key": "equipamentos_manutencao",
+        "pt": "Manutenção, durabilidade e suporte",
+        "en": "Maintenance, durability and support"
+      },
+      {
+        "key": "equipamentos_orcamento",
+        "pt": "Clareza do orçamento e da justificativa",
+        "en": "Budget and justification clarity"
+      }
+    ]
+  },
+  "funds": [
+    {
+      "id": "linguas",
+      "name": {
+        "pt": "Shema Línguas",
+        "en": "Shema Línguas"
+      }
+    }
+  ],
+  "boardStatuses": [
+    {
+      "id": "triagem",
+      "label": {
+        "pt": "A analisar",
+        "en": "To review"
+      }
+    },
+    {
+      "id": "analise",
+      "label": {
+        "pt": "Em análise",
+        "en": "In review"
+      }
+    },
+    {
+      "id": "aprovado",
+      "label": {
+        "pt": "Aprovado",
+        "en": "Approved"
+      }
+    },
+    {
+      "id": "condicional",
+      "label": {
+        "pt": "Condicional",
+        "en": "Conditional"
+      }
+    },
+    {
+      "id": "revisar",
+      "label": {
+        "pt": "Revisar",
+        "en": "Revise"
+      }
+    },
+    {
+      "id": "recusado",
+      "label": {
+        "pt": "Não aprovado",
+        "en": "Declined"
+      }
+    }
+  ],
+  "requestTypes": [
+    "traducao",
+    "treinamento",
+    "equipamentos"
+  ],
+  "textFieldKeys": [
+    "reg_name",
+    "lang_name",
+    "lang_iso",
+    "lang_family",
+    "lang_dialects",
+    "lang_speakers",
+    "lang_vitality",
+    "lang_script",
+    "lang_literacy",
+    "lang_existing",
+    "eten_listed",
+    "eten_goal",
+    "eten_notes",
+    "tr_location",
+    "tr_eten_listed",
+    "tr_leader",
+    "tr_mentor",
+    "people_name",
+    "people_pop",
+    "people_location",
+    "people_religion",
+    "people_christians",
+    "people_church",
+    "people_context",
+    "contact_time",
+    "contact_who",
+    "contact_history",
+    "recv_requested",
+    "recv_who",
+    "recv_attitude",
+    "team_avg_participants",
+    "proj_category",
+    "training_goal",
+    "why_needed",
+    "proj_goals",
+    "funds_support",
+    "amount_requested",
+    "attachment_note",
+    "tpp_name",
+    "tpp_date",
+    "leader_name",
+    "leader_date",
+    "board_comments",
+    "board_evaluator",
+    "board_evaldate"
+  ],
+  "partASections": {
+    "traducao": [
+      {
+        "id": "A0"
+      },
+      {
+        "id": "A1",
+        "variant": "full"
+      },
+      {
+        "id": "A2"
+      },
+      {
+        "id": "A3"
+      },
+      {
+        "id": "A4"
+      }
+    ],
+    "treinamento": [
+      {
+        "id": "A0"
+      },
+      {
+        "id": "A1",
+        "variant": "slim"
+      },
+      {
+        "id": "A4",
+        "averageParticipants": true
+      },
+      {
+        "id": "A5"
+      }
+    ],
+    "equipamentos": [
+      {
+        "id": "A0"
+      },
+      {
+        "id": "A1",
+        "variant": "slim"
+      }
+    ]
+  },
+  "tableRowKeys": {
+    "langs": [
+      "name",
+      "code"
+    ],
+    "team": [
+      "name",
+      "role",
+      "qual",
+      "ded"
+    ],
+    "chrono": [
+      "act",
+      "start",
+      "end",
+      "notes"
+    ]
+  },
+  "partBComposition": {
+    "traducao": [
+      {
+        "id": "2",
+        "field": "proj_category",
+        "vocabulary": "projectCategory"
+      },
+      {
+        "id": "3",
+        "field": "why_needed"
+      },
+      {
+        "id": "4",
+        "field": "proj_goals"
+      },
+      {
+        "id": "5",
+        "field": "funds_support"
+      },
+      {
+        "id": "6"
+      },
+      {
+        "id": "7"
+      },
+      {
+        "id": "8·9"
+      },
+      {
+        "id": "11"
+      }
+    ],
+    "treinamento": [
+      {
+        "id": "2",
+        "field": "training_goal",
+        "vocabulary": "supportedGoal"
+      },
+      {
+        "id": "3",
+        "field": "why_needed"
+      },
+      {
+        "id": "4",
+        "field": "proj_goals"
+      },
+      {
+        "id": "5",
+        "field": "funds_support"
+      },
+      {
+        "id": "6"
+      },
+      {
+        "id": "7"
+      },
+      {
+        "id": "8·9"
+      },
+      {
+        "id": "11"
+      }
+    ],
+    "equipamentos": [
+      {
+        "id": "2",
+        "field": "training_goal",
+        "vocabulary": "supportedGoal"
+      },
+      {
+        "id": "3",
+        "field": "why_needed"
+      },
+      {
+        "id": "4",
+        "field": "proj_goals"
+      },
+      {
+        "id": "5",
+        "field": "funds_support"
+      },
+      {
+        "id": "6"
+      },
+      {
+        "id": "7"
+      },
+      {
+        "id": "8·9"
+      },
+      {
+        "id": "11"
+      }
+    ]
+  },
+  "limits": {
+    "criteriaPerType": 6,
+    "maxScorePerCriterion": 5,
+    "maxTotalScore": 30
+  }
+}

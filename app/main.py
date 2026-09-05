@@ -41,6 +41,8 @@ from app.api.platform import router as platform_router
 from app.api.project_health import router as project_health_router
 from app.api.projects import router as projects_router
 from app.api.rag import router as rag_router
+from app.api.resource_requests import router as resource_requests_router
+from app.api.resource_requests.access import router as resource_request_access_router
 from app.api.roles import router as roles_router
 from app.api.sound_necklace import router as sound_necklace_router
 from app.api.translation_helper import router as translation_helper_router
@@ -131,6 +133,11 @@ def create_app() -> FastAPI:
     app.include_router(apps_router, prefix="/api/apps", tags=["apps"])
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(roles_router, prefix="/api/roles", tags=["roles"])
+    app.include_router(
+        resource_request_access_router,
+        prefix="/api/resource-requests/access",
+        tags=["resource-request-access"],
+    )
     app.include_router(platform_router, prefix="/api/platform", tags=["platform"])
     app.include_router(uploads_router, prefix="/api/uploads", tags=["uploads"])
     app.include_router(users_router, prefix="/api/users", tags=["users"])
@@ -188,6 +195,11 @@ def create_app() -> FastAPI:
         book_context_router,
         prefix="/api/book-context",
         tags=["book-context"],
+    )
+    app.include_router(
+        resource_requests_router,
+        prefix="/api/resource-requests",
+        tags=["resource-requests"],
     )
 
     app.include_router(oc_genres_router, prefix="/api/oc/genres", tags=["oc-genres"])

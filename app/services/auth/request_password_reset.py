@@ -15,7 +15,9 @@ async def request_password_reset(db: AsyncSession, email: str, app_key: str) -> 
     """Create a password reset token and send the reset email.
 
     Always returns without error regardless of whether the email exists
-    (prevents email enumeration).
+    (prevents email enumeration). The token is committed before the e-mail
+    leaves, and sending is best-effort (``send_email`` never raises), so a
+    provider outage cannot roll back the domain write.
     """
     user = await get_user_by_email(db, email)
     if not user:
@@ -52,11 +54,11 @@ async def request_password_reset(db: AsyncSession, email: str, app_key: str) -> 
 
     reset_url = f"{base_url}/reset-password?token={raw_token}"
 
+    await db.commit()
+
     await send_password_reset_email(
         to_email=user.email,
         display_name=user.display_name,
         reset_url=reset_url,
         app_name=app_name,
     )
-
-    await db.commit()

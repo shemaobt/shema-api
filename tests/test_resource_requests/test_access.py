@@ -15,14 +15,18 @@ from sqlalchemy import select
 
 from app.api.resource_requests._deps import APP_KEY
 from app.db.models.auth import Role
+from app.services.access_request import create_access_request
 from app.services.access_request._default_roles import default_role_for
+from app.services.authorization import list_roles
 from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, SEED_APPS
 from tests.baker import grant_app_role, make_app, make_user
-from tests.test_resource_requests.conftest import MESA_PROBE, PROBE, auth_header, grant
-
-#: The ids in resource-request-form/src/constants/capabilities.ts, in its order.
-#: BE-03 replaces this literal with a CI check against FE-22's contract.
-FRONTEND_ROLE_IDS = ["equipe", "mesa", "gestor"]
+from tests.test_resource_requests.conftest import (
+    FRONTEND_ROLE_IDS,
+    MESA_PROBE,
+    PROBE,
+    auth_header,
+    grant,
+)
 
 
 def test_the_app_key_is_the_one_the_frontend_sends() -> None:
@@ -45,6 +49,10 @@ def test_the_seeded_app_carries_the_url_fe25_emails_are_built_from() -> None:
 
 
 def test_the_seeded_roles_are_the_frontends_role_ids() -> None:
+    """No longer a literal typed here: ``FRONTEND_ROLE_IDS`` is read from the emission the
+    frontend produces from ``src/auth/capabilities.ts``. A role renamed over there fails
+    this, which is the check BE-00 left this test waiting for.
+    """
     assert APP_ROLES_OVERRIDE[APP_KEY] == FRONTEND_ROLE_IDS
 
 
@@ -62,6 +70,23 @@ def test_an_approved_access_request_grants_a_role_this_app_has() -> None:
     assert default_role_for(APP_KEY) in APP_ROLES_OVERRIDE[APP_KEY]
 
 
+async def test_registering_gets_you_in_as_equipe_without_review(db_session, rrf_app) -> None:
+    """GATE-02 D1, end to end: *"quem tiver uma conta"*.
+
+    ``20260828_rr02`` sets ``apps.auto_approve`` and ``_default_roles`` names the role; this
+    asserts what the pair actually does, which is the guarantee the client bought. The
+    migration itself is not exercised — the suite runs on SQLite and builds its schema from
+    the models — so the fixture carries the row the migration writes.
+    """
+    user = await make_user(db_session, email="signup@rrf.test")
+
+    request = await create_access_request(db_session, user.id, APP_KEY)
+
+    assert request.status == "approved"
+    assert request.review_reason == "auto-approved"
+    assert await list_roles(db_session, user.id, APP_KEY) == [(APP_KEY, "equipe")]
+
+
 def test_the_app_key_is_named_once_in_the_module() -> None:
     """The DoD's own line, kept honest as the module grows past _deps.py."""
     module = Path(__file__).resolve().parents[2] / "app" / "api" / "resource_requests"
@@ -74,18 +99,18 @@ def test_the_app_key_is_named_once_in_the_module() -> None:
 
 
 async def test_the_guard_admits_a_granted_account(db_session, client, rrf_app) -> None:
-    user = await make_user(db_session, email="mesa@rrf.test")
+    user = await make_user(db_session, email="mesa@rrf.example")
     await grant(db_session, user, rrf_app, "mesa")
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
 
     assert res.status_code == 200
-    assert res.json() == {"email": "mesa@rrf.test"}
+    assert res.json() == {"email": "mesa@rrf.example"}
 
 
 async def test_the_guard_refuses_an_account_with_no_role(db_session, client, rrf_app) -> None:
     """The message matters as much as the status — it is what tells a person what to do."""
-    user = await make_user(db_session, email="norole@rrf.test")
+    user = await make_user(db_session, email="norole@rrf.example")
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
 
@@ -99,7 +124,7 @@ async def test_the_guard_does_not_carry_a_role_over_from_another_app(
 ) -> None:
     """Access is per application; holding `mesa` somewhere else is not holding it here."""
     other = await make_app(db_session, app_key="some-other-app", name="Other")
-    user = await make_user(db_session, email="elsewhere@rrf.test")
+    user = await make_user(db_session, email="elsewhere@rrf.example")
     await grant_app_role(db_session, user, other, role_key="mesa")
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
@@ -114,7 +139,7 @@ async def test_the_role_alias_refuses_the_wrong_role(db_session, client, rrf_app
     Passing the first is not passing the second — the distinction BE-03 builds its
     capability checks on.
     """
-    user = await make_user(db_session, email=f"{role_key}@rrf.test")
+    user = await make_user(db_session, email=f"{role_key}@rrf.example")
     await grant(db_session, user, rrf_app, role_key)
 
     headers = await auth_header(db_session, user)
@@ -128,7 +153,7 @@ async def test_the_role_alias_refuses_the_wrong_role(db_session, client, rrf_app
 async def test_the_guard_admits_a_platform_admin_without_a_grant(
     db_session, client, rrf_app
 ) -> None:
-    user = await make_user(db_session, email="admin@rrf.test", is_platform_admin=True)
+    user = await make_user(db_session, email="admin@rrf.example", is_platform_admin=True)
 
     res = await client.get(PROBE, headers=await auth_header(db_session, user))
 
@@ -141,7 +166,7 @@ async def test_the_guard_answers_401_not_403_when_anonymous(client, rrf_app) -> 
 
 async def test_my_roles_reports_the_granted_role_for_this_app(db_session, client, rrf_app) -> None:
     """The call FE-24 makes to hydrate a session."""
-    user = await make_user(db_session, email="hydrate@rrf.test")
+    user = await make_user(db_session, email="hydrate@rrf.example")
     await grant(db_session, user, rrf_app, "gestor")
 
     res = await client.get(
@@ -155,7 +180,7 @@ async def test_my_roles_reports_the_granted_role_for_this_app(db_session, client
 
 async def test_my_roles_is_empty_for_an_account_with_no_grant(db_session, client, rrf_app) -> None:
     """An empty array, not a 403: my-roles reports, it does not guard."""
-    user = await make_user(db_session, email="empty@rrf.test")
+    user = await make_user(db_session, email="empty@rrf.example")
 
     res = await client.get(
         f"/api/auth/my-roles?app_key={APP_KEY}",

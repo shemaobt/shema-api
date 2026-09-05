@@ -1,0 +1,79 @@
+{
+  "emitted_from": "065871a7092f54fec8040a1ad2c78e5d61f82bb6",
+  "capabilities": [
+    "edit_requests",
+    "view_evaluation",
+    "edit_evaluation",
+    "manage_funds",
+    "move_board",
+    "assign_fund",
+    "allocate_funds",
+    "endorse_request",
+    "administer_funds"
+  ],
+  "screenCapabilities": [
+    "edit_requests",
+    "view_evaluation",
+    "edit_evaluation",
+    "manage_funds",
+    "move_board"
+  ],
+  "controlCapabilities": [
+    "assign_fund",
+    "allocate_funds",
+    "endorse_request",
+    "administer_funds"
+  ],
+  "roles": [
+    {
+      "id": "equipe",
+      "name": {
+        "pt": "Equipe do projeto",
+        "en": "Project team"
+      },
+      "can": [
+        "edit_requests"
+      ]
+    },
+    {
+      "id": "mesa",
+      "name": {
+        "pt": "Mesa · Resource Circle",
+        "en": "Board · Resource Circle"
+      },
+      "can": [
+        "edit_requests",
+        "view_evaluation",
+        "edit_evaluation",
+        "manage_funds",
+        "move_board",
+        "assign_fund"
+      ]
+    },
+    {
+      "id": "gestor",
+      "name": {
+        "pt": "Gestor dos Projetos",
+        "en": "Projects Manager"
+      },
+      "can": [
+        "edit_requests",
+        "view_evaluation",
+        "manage_funds",
+        "move_board",
+        "allocate_funds",
+        "administer_funds"
+      ]
+    },
+    {
+      "id": "lider",
+      "name": {
+        "pt": "Líder de Base",
+        "en": "Base Leader"
+      },
+      "can": [
+        "endorse_request"
+      ]
+    }
+  ]
+}
