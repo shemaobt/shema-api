@@ -186,7 +186,20 @@ def recent_conversation_block(messages: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _parse_verdict(raw: str) -> dict[str, Any]:
+_UNPARSEABLE_VERDICT: dict[str, Any] = {
+    "verdict": "regenerate",
+    "issues": [{"problem": "unparseable_verdict"}],
+}
+
+
+def _parse_verdict(raw: str) -> tuple[dict[str, Any], str | None]:
+    """The Validator's reply as a verdict, and the condition that refused it when one did.
+
+    A parse failure still returns a usable ``regenerate`` verdict — the loop above asks for
+    another draft either way — but the second element names *why* this reply could not be
+    trusted, so the caller can leave the trace `_refused` exists for instead of the silence
+    that used to sit here for two of these three exits.
+    """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
@@ -194,11 +207,51 @@ def _parse_verdict(raw: str) -> dict[str, Any]:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        logger.warning("Validator returned unparseable JSON: %s", raw[:300])
-        return {"verdict": "regenerate", "issues": [{"problem": "unparseable_verdict"}]}
-    if not isinstance(parsed, dict) or "verdict" not in parsed:
-        return {"verdict": "regenerate", "issues": [{"problem": "unparseable_verdict"}]}
-    return parsed
+        return _UNPARSEABLE_VERDICT, "not JSON"
+    if not isinstance(parsed, dict):
+        return _UNPARSEABLE_VERDICT, "verdict reply is not a JSON object"
+    if "verdict" not in parsed:
+        return _UNPARSEABLE_VERDICT, "verdict reply has no 'verdict' key"
+    return parsed, None
+
+
+def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
+    """Every refused Validator reply leaves itself behind, whole, with what refused it.
+
+    Same idea as `back_translation._refused` on the Analyst side (ENG-719, a sibling change
+    not yet on `main` as of this writing): the night of 2026-09-01 the room fell to the
+    family-A fail-safe and nothing here said what the Validator had actually answered. The
+    reply is logged whole rather than cut short — a truncated reply is exactly what could
+    not be diagnosed — and it is the Validator's own output, not the team's speech, so the
+    policy that keeps the team's words off this logger does not apply to it.
+    """
+    logger.warning(
+        "Validator reply refused (%s) for session %s, attempt %s: %s",
+        condition,
+        session_id,
+        attempt,
+        raw,
+        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
+    )
+
+
+def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
+    """The room's own gate rejecting spoken text: the condition and a number, never the words.
+
+    The rejected text is the Guide's draft on a `pass` verdict, or the Validator's own
+    ``corrected_response`` on a `correct` one — either way ``detail`` may never be that text
+    itself, because both can echo the team's own turn back at them, which is exactly what
+    `test_a_failed_call_is_logged_without_repeating_what_the_team_said` forbids on this
+    logger.
+    """
+    logger.warning(
+        "Guide draft rejected (%s) for session %s, attempt %s: %s",
+        condition,
+        session_id,
+        attempt,
+        detail,
+        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
+    )
 
 
 def _issues_as_dicts(raw: Any) -> list[dict[str, Any]]:
@@ -295,6 +348,7 @@ async def _voiced_after_validation(
     language_code: str,
     opening: bool,
     settings: Settings,
+    session_id: str = "?",
     validator_context: str = "",
     budget: SpeechBudget | None = None,
     opening_instruction: str = "",
@@ -360,34 +414,49 @@ async def _voiced_after_validation(
             )
             if validator_context:
                 validator_system = f"{validator_system}\n\n{validator_context}"
-            verdict = _parse_verdict(
-                await call_agent(
-                    system_prompt=validator_system,
-                    user_content="Julgue a resposta rascunhada.",
-                    temperature=0.0,
-                    max_output_tokens=2000,
-                    settings=settings,
-                )
+            raw_verdict = await call_agent(
+                system_prompt=validator_system,
+                user_content="Julgue a resposta rascunhada.",
+                temperature=0.0,
+                max_output_tokens=2000,
+                settings=settings,
             )
+            verdict, refusal = _parse_verdict(raw_verdict)
             issues = _issues_as_dicts(verdict.get("issues"))
 
             speech = ""
-            if verdict.get("verdict") == "pass":
-                speech = draft
-            elif verdict.get("verdict") == "correct":
-                speech = (verdict.get("corrected_response") or "").strip()
-                movements = []
+            if refusal is None:
+                if verdict.get("verdict") == "pass":
+                    speech = draft
+                elif verdict.get("verdict") == "correct":
+                    speech = (verdict.get("corrected_response") or "").strip()
+                    movements = []
+                    if not speech:
+                        refusal = "correct verdict has an empty corrected_response"
+                else:
+                    refusal = f"verdict is {verdict.get('verdict')!r}"
+            if refusal is not None:
+                _refused(refusal, raw_verdict, session_id, attempt + 1)
         except Exception:
-            logger.exception("Guide or Validator call failed; the turn degrades to a fail-safe")
+            logger.exception(
+                "Guide or Validator call failed; the turn degrades to a fail-safe",
+                extra={"session_id": session_id, "attempt": attempt + 1},
+            )
             model_failed = True
             break
 
         broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
         if broken is not None:
             issues = [*issues, {"problem": "over_speech_budget"}]
+            _draft_rejected(
+                "over_speech_budget", session_id, attempt + 1, f"{len(speech)} characters"
+            )
             speech = ""
         elif speech and strays_from(speech, language_code):
             issues = [*issues, {"problem": "off_bridge_language"}]
+            _draft_rejected(
+                "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
+            )
             speech = ""
 
         if speech:
@@ -437,6 +506,7 @@ async def run_turn(
     opening: bool = False,
     already_met: bool = False,
     settings: Settings | None = None,
+    session_id: str = "?",
     app_context: str = "",
     validator_context: str = "",
     budget: SpeechBudget | None = None,
@@ -481,6 +551,7 @@ async def run_turn(
         opening=opening,
         opening_instruction=(ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION),
         settings=cfg,
+        session_id=session_id,
         validator_context=validator_context,
         budget=budget,
         ask_for_movements=ask_for_movements,
@@ -499,6 +570,7 @@ async def run_panorama_turn(
     language_code: str = FLOOR,
     opening: bool = False,
     settings: Settings | None = None,
+    session_id: str = "?",
     validator_context: str = "",
     budget: SpeechBudget | None = None,
     ask_for_movements: bool = False,
@@ -536,6 +608,7 @@ async def run_panorama_turn(
         opening=opening,
         opening_instruction=OPENING_INSTRUCTION,
         settings=cfg,
+        session_id=session_id,
         validator_context=validator_context,
         budget=budget,
         ask_for_movements=ask_for_movements,
@@ -559,6 +632,7 @@ async def run_verdict_turn(
     session_language: str = LANGUAGE_NAMES[FLOOR],
     language_code: str = FLOOR,
     settings: Settings | None = None,
+    session_id: str = "?",
 ) -> TurnOutcome:
     """Voice the back-translation verdict — one finding, then stop.
 
@@ -596,6 +670,7 @@ async def run_verdict_turn(
         language_code=language_code,
         opening=True,
         settings=cfg,
+        session_id=session_id,
     )
 
 

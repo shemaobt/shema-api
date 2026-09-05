@@ -296,6 +296,7 @@ async def finish(
         session_language=LANGUAGE_NAMES[session.language],
         language_code=session.language,
         settings=get_settings(),
+        session_id=session.id,
     )
 
     voiced = (
