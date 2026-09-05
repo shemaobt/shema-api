@@ -5,6 +5,7 @@ from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UnreadableReply, UpstreamServiceError, ValidationError
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
@@ -58,6 +59,10 @@ async def add_chunk(
     the budget the room asks for a person instead of buying another analyst round. The
     chunk is kept either way — their work is never the thing thrown away.
 
+    That ask is a `WARNING` and not a hard stop (ENG-706): the room wants somebody to come and
+    watch, and refuses nothing — the team may go on telling. Naming the kind is what lets the
+    Desk tell this walk from the one where the room has actually stopped.
+
     `take_id` names the rehearsal recording this piece explains, and `starts_ms`/`ends_ms` the
     slice inside **that file** — where the team let it play and where they stopped it. All
     three are required. The times used to be optional and counted over the whole passage as if
@@ -105,7 +110,7 @@ async def add_chunk(
         await room.save_back_translation(db, session, state)
         spent = retelling and told_again >= MAX_RETELLS
         if spent:
-            await room.mark_needs_person(db, session)
+            await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(told),
@@ -129,7 +134,7 @@ async def add_chunk(
 
     spent = retelling and told_again >= MAX_RETELLS
     if spent:
-        await room.mark_needs_person(db, session)
+        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) + 1,
