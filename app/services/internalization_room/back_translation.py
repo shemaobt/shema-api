@@ -581,43 +581,81 @@ def findings_block(finding: Finding | None) -> str:
     return f"- {finding.kind}: {finding.note}"
 
 
-CLOSING_ON_SCREEN = """- End by handing the choice to the screen, not by asking for a spoken \
+#: What every closing below promises except `CLOSING_CHECKED`: the process goes on. It used
+#: to be a static line in the prompt template itself, right under `{{CLOSING}}` and outside
+#: any branch — true of every verdict turn there was, until `CLOSING_CHECKED` gave the
+#: process an ending. Left there it would have sat right after "there is no next turn" and
+#: said the opposite in the same breath, so it now lives inside each closing that still has
+#: a next round instead, and not in the one that does not.
+_NEXT_ROUND = "After the team acts on this one, they will finish the telling-back again."
+
+CLOSING_ON_SCREEN = (
+    """- End by handing the choice to the screen, not by asking for a spoken \
 answer. This stretch is on screen with its two voices side by side: theirs, in their own \
 language, and the telling in {session_language}. Ask the boundary question above, then in one \
 short sentence tell them they can listen to both and tap the microphone of the voice that has \
 to speak again. Do not ask them to say the answer out loud, and do not offer any other next \
 step — the screen offers exactly those two, and naming a third promises something they cannot \
-do. Remaining findings wait for the next round. Never a checklist, never a speech."""
+do. Remaining findings wait for the next round. """
+    + _NEXT_ROUND
+    + " Never a checklist, never a speech."
+)
 
-CLOSING_PLAIN = """- End with exactly one answerable question or invitation. Remaining \
-findings wait for the next round. Never a checklist, never a speech."""
+CLOSING_PLAIN = (
+    "- End with exactly one answerable question or invitation. Remaining findings wait for "
+    "the next round. " + _NEXT_ROUND + " Never a checklist, never a speech."
+)
 #: Word for word what this prompt closed with before the screen existed. A turn with no finding
 #: at all affirms and names the badge; both other closings explain themselves in terms of *this
 #: finding*, and there is none — `findings_block` is saying so in the same prompt.
 
-CLOSING_SPOKEN = """- End with exactly one answerable question or invitation, and let them \
-answer in words. This finding does not land on one stretch, so there is no stretch on screen \
-and no two voices to choose between — the next conversational turn will respond to what they \
-say. Remaining findings wait for the next round. Never a checklist, never a speech."""
+CLOSING_CHECKED = """- Say plainly that the passage is told and checked, then stop there. Do \
+not ask a question, do not invite them to answer anything, do not ask how the team feels, and \
+do not say goodbye. There is no next turn on this passage — the screen takes the team on from \
+here. Never a checklist, never a speech."""
+#: The one turn with no finding that also has no next round: `state.checked` closes the
+#: passage for good, so a question here would ask for an answer nobody will ever read — and,
+#: unlike every other closing, this one may not carry `_NEXT_ROUND` either.
 
-CLOSING_MISSING_ON_SCREEN = """- End by handing the choice to the screen, not by asking for a \
-spoken answer. This stretch is on screen, and something the passage has is not in it. In one \
-short sentence, tell them they can listen to both voices and then record this part again — \
-the whole part, what they already told and what was missing. The screen offers exactly one \
-microphone for that; do not name a second one, and do not ask them to say the answer out \
-loud. Remaining findings wait for the next round. Never a checklist, never a speech."""
+CLOSING_SPOKEN = (
+    "- End with exactly one answerable question or invitation, and let them answer in words. "
+    "This finding does not land on one stretch, so there is no stretch on screen and no two "
+    "voices to choose between — the next conversational turn will respond to what they say. "
+    "Remaining findings wait for the next round. "
+    + _NEXT_ROUND
+    + " Never a checklist, never a speech."
+)
 
-CLOSING_MISSING_TO_REHEARSAL = """- End by handing the choice to the screen, not by asking for \
-a spoken answer. The end of the story has not been told yet — nothing they recorded is wrong, \
-and nothing they recorded will be lost. In one short sentence, tell them they can go on and \
-record what is still missing, and that what they already recorded stays. The screen offers \
-exactly one microphone for that. Do not offer to settle it later, do not ask them to choose \
-between voices, and do not ask them to say anything out loud. Never a checklist, never a \
-speech."""
+CLOSING_MISSING_ON_SCREEN = (
+    "- End by handing the choice to the screen, not by asking for a spoken answer. This "
+    "stretch is on screen, and something the passage has is not in it. In one short sentence, "
+    "tell them they can listen to both voices and then record this part again — the whole "
+    "part, what they already told and what was missing. The screen offers exactly one "
+    "microphone for that; do not name a second one, and do not ask them to say the answer out "
+    "loud. Remaining findings wait for the next round. "
+    + _NEXT_ROUND
+    + " Never a checklist, never a speech."
+)
+
+CLOSING_MISSING_TO_REHEARSAL = (
+    "- End by handing the choice to the screen, not by asking for a spoken answer. The end of "
+    "the story has not been told yet — nothing they recorded is wrong, and nothing they "
+    "recorded will be lost. In one short sentence, tell them they can go on and record what "
+    "is still missing, and that what they already recorded stays. The screen offers exactly "
+    "one microphone for that. Do not offer to settle it later, do not ask them to choose "
+    "between voices, and do not ask them to say anything out loud. "
+    + _NEXT_ROUND
+    + " Never a checklist, never a speech."
+)
 
 
-def closing_block(finding: Finding | None) -> str:
+def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
     """How the Speaker is told to end this turn: handing to the screen, or asking out loud.
+
+    `checked` is the caller's `state.checked` — whether this turn, with no finding, is also
+    the one that strikes the passage off the wheel for good. It only ever matters when
+    `finding` is `None`: a turn with a finding is not the checked turn, whatever `checked`
+    says, so the flag is read nowhere else in this function.
 
     Chosen here rather than by the Speaker reading a branch, because the finding carries the
     deciding fact and the prompt does not: `findings_block` sends kind and note, never the
@@ -646,7 +684,7 @@ def closing_block(finding: Finding | None) -> str:
     again and reaches the model as literal braces.
     """
     if finding is None:
-        return CLOSING_PLAIN
+        return CLOSING_CHECKED if checked else CLOSING_PLAIN
     if finding.kind is FindingKind.MISSING:
         return (
             CLOSING_MISSING_ON_SCREEN
