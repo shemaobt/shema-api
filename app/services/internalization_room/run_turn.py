@@ -28,6 +28,11 @@ MAX_SPOKEN_TURN_SENTENCES = 3
 MAX_SPOKEN_PANORAMA_WORDS = 90
 MAX_SPOKEN_PANORAMA_SENTENCES = 6
 
+#: What the invitation costs the movement that has to end on it. The contract runs to
+#: twenty-two words in English and twenty in Portuguese, said as one sentence or as two.
+MAX_SPOKEN_INVITATION_WORDS = 25
+MAX_SPOKEN_INVITATION_SENTENCES = 2
+
 
 @dataclass(frozen=True)
 class SpeechBudget:
@@ -51,9 +56,13 @@ class SpeechBudget:
 
 TURN_BUDGET = SpeechBudget(MAX_SPOKEN_TURN_WORDS, MAX_SPOKEN_TURN_SENTENCES)
 PANORAMA_BUDGET = SpeechBudget(MAX_SPOKEN_PANORAMA_WORDS, MAX_SPOKEN_PANORAMA_SENTENCES)
+SCENE_MOVEMENT_BUDGET = SpeechBudget(
+    MAX_SPOKEN_TURN_WORDS + MAX_SPOKEN_INVITATION_WORDS,
+    MAX_SPOKEN_TURN_SENTENCES + MAX_SPOKEN_INVITATION_SENTENCES,
+)
 OPENING_BUDGET = SpeechBudget(
-    MAX_SPOKEN_PANORAMA_WORDS + MAX_SPOKEN_TURN_WORDS,
-    MAX_SPOKEN_PANORAMA_SENTENCES + MAX_SPOKEN_TURN_SENTENCES,
+    MAX_SPOKEN_PANORAMA_WORDS + SCENE_MOVEMENT_BUDGET.words,
+    MAX_SPOKEN_PANORAMA_SENTENCES + SCENE_MOVEMENT_BUDGET.sentences,
 )
 
 OPENING_MOVEMENT_MARK = "[[CENA]]"
@@ -88,7 +97,7 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
 def _broken_ceiling(speech: str, movements: list[str], budget: SpeechBudget) -> SpeechBudget | None:
     """The ceiling the speech went over, or None when it fits."""
     if movements:
-        for text, ceiling in zip(movements, (PANORAMA_BUDGET, TURN_BUDGET), strict=True):
+        for text, ceiling in zip(movements, (PANORAMA_BUDGET, SCENE_MOVEMENT_BUDGET), strict=True):
             if not ceiling.fits(text):
                 return ceiling
         return None
@@ -157,8 +166,10 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
 def meaning_map_block(pericope_num: str, book: str) -> str:
     """The passage's map verbatim, plus the digests of strictly earlier passages.
 
-    The design document calls the Guide's standard of truth "MEANING MAP + story-so-far", and
-    the earlier-only scoping is what keeps a later disclosure from reaching this session.
+    *Tripod Internalization · Interaction Flows*
+    (`internalization-room/docs/spec/interaction-flows.md`, §1, diagram caption) calls the
+    Guide's standard of truth "MEANING MAP + story-so-far", and the earlier-only scoping is
+    what keeps a later disclosure from reaching this session.
     """
     passage = load_map(pericope_num).body
     earlier = story_so_far(book, pericope_num)
@@ -275,6 +286,16 @@ OPENING_MOVEMENT_INSTRUCTION = (
     "Não escreva a marca em nenhum outro lugar e não a comente."
 )
 
+#: What the Validator's TEAM_UTTERANCE slot carries on the opening turn, when nobody has
+#: spoken yet, in the session's own language. Keyed by the language code, in the shape
+#: `calibration.py` already uses — an unclaimed language falls back to the authored English
+#: line.
+_NO_TEAM_UTTERANCE_AT_OPENING: dict[str, str] = {
+    "pt": "(a equipe ainda não falou — abertura da sessão)",
+    "en": "(the team has not spoken yet — session opening)",
+    "es": "(el equipo aún no ha hablado — apertura de la sesión)",
+}
+
 
 async def _draft(
     *,
@@ -385,7 +406,10 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,
-                TEAM_UTTERANCE=transcript or "(a equipe ainda não falou — abertura da sessão)",
+                TEAM_UTTERANCE=transcript
+                or _NO_TEAM_UTTERANCE_AT_OPENING.get(
+                    language_code, _NO_TEAM_UTTERANCE_AT_OPENING[FLOOR]
+                ),
                 DRAFTED_RESPONSE=draft,
             )
             if validator_context:
@@ -445,7 +469,7 @@ async def _voiced_after_validation(
                 movements=movements,
             )
 
-        redraft_note = _redraft_note(issues, session_language, ceiling=broken)
+        redraft_note = _redraft_note(issues, language_code, ceiling=broken)
     else:
         logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
 
@@ -615,11 +639,11 @@ async def run_verdict_turn(
     The Speaker never sees the recording, only what the team told back, so its judgment is
     always about the telling-back. Runs through the Validator like every other voiced turn.
 
-    The missing slot is refused rather than rendered around. `get_prompt_text` prefers the
-    stored row, a row written before the slot existed does not have it, and `render` drops a
-    value whose placeholder is absent without a word — so the closing would simply never reach
-    the Speaker, and the turn would go on asking for a spoken answer while the screen waits for
-    a tap. Nothing anywhere would say so.
+    The missing slot is refused rather than rendered around. A speaker prompt file saved
+    before the slot existed would not carry it, and `render` drops a value whose placeholder
+    is absent without a word — so the closing would simply never reach the Speaker, and the
+    turn would go on asking for a spoken answer while the screen waits for a tap. Nothing
+    anywhere would say so.
     """
     cfg = settings or get_settings()
     map_block = meaning_map_block(pericope_num, book)
@@ -650,9 +674,70 @@ async def run_verdict_turn(
     )
 
 
+_OVER_BUDGET_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior era longa demais para uma sala oral. Refaça com no máximo "
+        "{sentences} frases curtas e {words} palavras."
+    ),
+    "en": (
+        "The previous response was too long for an oral room. Redo it with at most "
+        "{sentences} short sentences and {words} words."
+    ),
+    "es": (
+        "La respuesta anterior era demasiado larga para una sala oral. Rehazla con un "
+        "máximo de {sentences} frases cortas y {words} palabras."
+    ),
+}
+
+
+_OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior saiu do idioma da sessão e por isso não pôde ser falada. "
+        "Refaça o turno inteiro em {language}, sem nenhuma frase em outro idioma. O "
+        "mapa está em inglês: carregue o sentido dele para o idioma da sessão em vez de "
+        "citá-lo."
+    ),
+    "en": (
+        "The previous response left the session's language and could not be spoken. "
+        "Redo the whole turn in {language}, with no sentence in another language. The "
+        "map is in English: carry its meaning into the session's language instead of "
+        "quoting it."
+    ),
+    "es": (
+        "La respuesta anterior salió del idioma de la sesión y por eso no pudo hablarse. "
+        "Rehaz el turno completo en {language}, sin ninguna frase en otro idioma. El "
+        "mapa está en inglés: lleva su sentido al idioma de la sesión en lugar de "
+        "citarlo."
+    ),
+}
+
+_LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "es": "español", "pt": "português"}
+
+_NO_ISSUES_NOTE: dict[str, str] = {
+    "pt": "A resposta anterior não passou na conferência. Refaça, dizendo menos.",
+    "en": "The previous response did not pass review. Redo it, saying less.",
+    "es": "La respuesta anterior no pasó la revisión. Rehazla, diciendo menos.",
+}
+
+_DESCRIBED_ISSUES_NOTE: dict[str, str] = {
+    "pt": (
+        "A resposta anterior foi rejeitada na conferência contra o mapa. Problemas "
+        "apontados — {described}. Refaça o turno sem essas afirmações, dizendo menos."
+    ),
+    "en": (
+        "The previous response was rejected against the map. Issues raised — "
+        "{described}. Redo the turn without those claims, saying less."
+    ),
+    "es": (
+        "La respuesta anterior fue rechazada frente al mapa. Problemas señalados — "
+        "{described}. Rehaz el turno sin esas afirmaciones, diciendo menos."
+    ),
+}
+
+
 def _redraft_note(
     issues: list[dict[str, Any]],
-    session_language: str = LANGUAGE_NAMES[FLOOR],
+    language_code: str = FLOOR,
     ceiling: SpeechBudget | None = None,
 ) -> str:
     """What to tell a Guide whose draft did not pass, written in the session's own language.
@@ -663,25 +748,17 @@ def _redraft_note(
     """
     if any(issue.get("problem") == "over_speech_budget" for issue in issues):
         held = ceiling or TURN_BUDGET
-        return (
-            "A resposta anterior era longa demais para uma sala oral. Refaça com no "
-            f"máximo {held.sentences} frases curtas e {held.words} palavras."
-        )
+        template = _OVER_BUDGET_NOTE.get(language_code, _OVER_BUDGET_NOTE[FLOOR])
+        return template.format(sentences=held.sentences, words=held.words)
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
-        return (
-            "A resposta anterior saiu do idioma da sessão e por isso não pôde ser "
-            f"falada. Refaça o turno inteiro em {session_language}, sem nenhuma frase "
-            "em outro idioma. O mapa está em inglês: carregue o sentido dele para o "
-            "idioma da sessão em vez de citá-lo."
-        )
+        template = _OFF_BRIDGE_LANGUAGE_NOTE.get(language_code, _OFF_BRIDGE_LANGUAGE_NOTE[FLOOR])
+        autonym = _LANGUAGE_AUTONYMS.get(language_code, _LANGUAGE_AUTONYMS[FLOOR])
+        return template.format(language=autonym)
     if not issues:
-        return "A resposta anterior não passou na conferência. Refaça, dizendo menos."
+        return _NO_ISSUES_NOTE.get(language_code, _NO_ISSUES_NOTE[FLOOR])
     described = "; ".join(
         f"{issue.get('problem', 'problema')}: {issue.get('claim', '')}".strip(": ")
         for issue in issues[:3]
     )
-    return (
-        "A resposta anterior foi rejeitada na conferência contra o mapa. "
-        f"Problemas apontados — {described}. "
-        "Refaça o turno sem essas afirmações, dizendo menos."
-    )
+    template = _DESCRIBED_ISSUES_NOTE.get(language_code, _DESCRIBED_ISSUES_NOTE[FLOOR])
+    return template.format(described=described)

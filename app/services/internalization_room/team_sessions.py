@@ -22,8 +22,9 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.models.internalization_room import SessionBead, TeamSessionResponse
+from app.services.internalization_room import halt
 from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.coverage import CoverageStatus, is_panorama
 from app.services.internalization_room.coverage_events import necklaces_of
@@ -93,8 +94,27 @@ def _card(session: IRSession, portrait: dict[str, str], *, at: datetime) -> Team
         ended_at=end.ended_at,
         duration_minutes=end.duration_minutes,
         state=end.state,
+        needs_person=_needs_person(session, state=end.state),
+        last_halt=halt.last(session),
+        attended_at=as_utc(session.attended_at) if session.attended_at is not None else None,
+        attended_by=session.attended_by,
         coverage=_portrait(session.pericope, portrait),
     )
+
+
+def _needs_person(session: IRSession, *, state: SessionState) -> bool:
+    """Halted and still open — a halt that outlived the conversation is not "waiting".
+
+    `session.status` alone is not enough: a halt leaves the row only when a turn lands
+    (`sessions.append_exchange`) or a facilitator says they went (`sessions.attend`), and a
+    team that never returns and nobody visits keeps that status long after the idle rule has
+    declared the conversation over. The Desk's own `state` is what says whether the room is
+    still open.
+
+    `last_halt` beside it is the other half and is deliberately not gated on `state`: it is
+    the kind of the last halt there was, not a claim that anything is waiting.
+    """
+    return session.status is IRSessionStatus.NEEDS_PERSON and state is SessionState.IN_PROGRESS
 
 
 def _portrait(pericope: str, standing: dict[str, str]) -> list[SessionBead]:

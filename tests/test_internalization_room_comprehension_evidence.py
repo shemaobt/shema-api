@@ -142,6 +142,20 @@ def test_a_bridge_limit_without_an_explicit_carry_still_blocks() -> None:
     assert evaluation.blockers[0].code == "critical_open_point_not_carried_to_refine"
 
 
+def test_a_disputed_transcript_holds_the_unit_open_without_contradicting_the_team() -> None:
+    ledger = [_obs("a", result=EvidenceResult.UNCLEAR_DUE_TRANSCRIPT)]
+    evaluation = evaluate_readiness(
+        ledger,
+        units=[ComprehensionUnit(id="u1", critical=True)],
+        all_scenes_practiced_in_mother_tongue=True,
+        team_wants_to_proceed=True,
+    )
+    assert not assess_unit(ledger, "u1").has_conflict
+    assert evaluation.outcome is ReadinessOutcome.NEEDS_MORE_WORK
+    assert evaluation.blockers[0].code == "critical_open_point_not_carried_to_refine"
+    assert evaluation.blockers[0].reasons == ["unclear_due_transcript"]
+
+
 def test_missing_mother_tongue_practice_blocks_readiness() -> None:
     evaluation = evaluate_readiness(
         [_obs("a")],
