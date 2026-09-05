@@ -10,7 +10,6 @@ from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
-    CLOSING_MISSING_ON_SCREEN,
     CLOSING_MISSING_TO_REHEARSAL,
     CLOSING_ON_SCREEN,
     CLOSING_PLAIN,
@@ -702,7 +701,6 @@ async def test_a_turn_with_no_finding_is_not_told_about_one(patch_speaker) -> No
     assert CLOSING_PLAIN in spoken_to
     assert CLOSING_SPOKEN not in spoken_to
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
-    assert CLOSING_MISSING_ON_SCREEN not in spoken_to
     assert CLOSING_MISSING_TO_REHEARSAL not in spoken_to
 
 
@@ -768,18 +766,18 @@ TEAM_UTTERANCE_HEADING = (
 DESTINATIONS = {
     "aqui na tela": "on screen",
     "no microfone daquela": "tap the microphone",
-    "gravar essa parte de novo": "record this part again",
     "gravar o que ainda falta": "record what is still missing",
     "no WhatsApp": "on WhatsApp",
 }
 
-#: A draft that does exactly what `CLOSING_MISSING_ON_SCREEN` orders: names what did not
-#: appear, asks nothing, and hands the one microphone to the screen. This is the draft the
-#: room fell into fail-safe over three times in a row — back then obeying the two-voice
-#: closing and its boundary question, neither of which a missing element receives any more.
+#: A draft that does exactly what `CLOSING_ON_SCREEN` orders: names what did not appear, asks
+#: nothing, and hands the choice between the two microphones to the screen. This is the draft
+#: the room fell into fail-safe over three times in a row, back when the Validator judged it
+#: blind to the finding and the closing the Speaker had actually been given.
 OBEDIENT_DRAFT = (
     "No que você me contou de volta, a morte de Elimeleque não apareceu. "
-    "Você pode ouvir as duas vozes aqui na tela e gravar essa parte de novo, inteira."
+    "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que precisa "
+    "falar de novo."
 )
 
 #: The same draft, sending the team somewhere the app never named.
@@ -961,10 +959,10 @@ async def test_the_validator_is_shown_the_finding_and_the_closing_it_was_given(
     _, agent = await _straight_from_rehearsal(OBEDIENT_DRAFT, patch_loop)
 
     assert "A morte de Elimeleque não apareceu no contado de volta." in agent.briefs[0]
-    assert "record this part again" in agent.briefs[0]
-    assert "exactly one microphone" in agent.briefs[0]
+    assert "tap the microphone" in agent.briefs[0]
     assert "on screen" in agent.briefs[0]
-    assert "tap the microphone" not in agent.briefs[0]
+    assert "exactly one microphone" not in agent.briefs[0]
+    assert "record this part again" not in agent.briefs[0]
 
 
 @pytest.mark.asyncio
@@ -1059,12 +1057,12 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
 
 
 # ---------------------------------------------------------------------------
-# A missing element closes the way the screen now looks — ENG-710, ENG-720
+# A missing element closes the way the screen now looks — ENG-720, R10 (2026-09-03)
 # ---------------------------------------------------------------------------
 
-#: The closing every other finding on a stretch still receives: two voices, a microphone on
-#: each. A missing element on a stretch gets one button to record the part again; a missing
-#: element off every stretch gets one button to go on recording.
+#: The closing every finding on a stretch receives, missing included since R10: two voices,
+#: a microphone on each. A missing element off every stretch is still the one exception — it
+#: gets one button to go on recording.
 THE_TWO_VOICES_CLOSING = CLOSING_ON_SCREEN.format(session_language="Portuguese")
 
 
@@ -1073,18 +1071,17 @@ def _missing(segment_id: str | None) -> Finding:
 
 
 @pytest.mark.asyncio
-async def test_a_missing_element_on_a_stretch_is_offered_one_microphone(patch_speaker) -> None:
-    """ENG-710. The stretch is on screen, and the screen has one microphone for it.
+async def test_a_missing_element_on_a_stretch_closes_like_any_other_finding(patch_speaker) -> None:
+    """R10 (servidor, 2026-09-03), reversing ENG-710. The screen shows two microphones again.
 
-    The team hears both voices and records the part again — the whole part. A closing that
-    tells them to tap the microphone of the voice that has to speak again names a choice the
-    screen stopped offering, and the Speaker was promising it in a real session.
+    The team hears both voices and taps the microphone of the voice that has to speak again —
+    the same choice every other finding on a stretch hands to the screen. The one-microphone
+    closing this used to get promised a screen that no longer exists.
     """
     spoken_to = await _verdict_for(_missing("segmento-2"), patch_speaker)
 
-    assert CLOSING_MISSING_ON_SCREEN in spoken_to
-    assert "microphone of the voice" not in spoken_to
-    assert THE_TWO_VOICES_CLOSING not in spoken_to
+    assert THE_TWO_VOICES_CLOSING in spoken_to
+    assert "microphone of the voice" in spoken_to
     assert CLOSING_SPOKEN not in spoken_to
     assert CLOSING_MISSING_TO_REHEARSAL not in spoken_to
 
@@ -1106,7 +1103,6 @@ async def test_a_missing_element_after_everything_told_sends_them_on_to_record(
     assert "next conversational turn" not in spoken_to
     assert CLOSING_SPOKEN not in spoken_to
     assert THE_TWO_VOICES_CLOSING not in spoken_to
-    assert CLOSING_MISSING_ON_SCREEN not in spoken_to
 
 
 @pytest.mark.parametrize("segment_id", ["segmento-2", None], ids=["on a stretch", "homeless"])
@@ -1134,9 +1130,10 @@ def test_every_other_kind_closes_exactly_as_before(
         (
             _missing("segmento-2"),
             "No que você me contou de volta, Orfa não apareceu. "
-            "Você pode ouvir as duas vozes aqui na tela e gravar essa parte de novo, inteira.",
-            CLOSING_MISSING_ON_SCREEN,
+            "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que "
+            "precisa falar de novo.",
             THE_TWO_VOICES_CLOSING,
+            CLOSING_MISSING_TO_REHEARSAL,
         ),
         (
             _missing(None),
@@ -1152,7 +1149,7 @@ def test_every_other_kind_closes_exactly_as_before(
             "Você pode ouvir as duas vozes aqui na tela e tocar no microfone daquela que "
             "precisa falar de novo.",
             THE_TWO_VOICES_CLOSING,
-            CLOSING_MISSING_ON_SCREEN,
+            CLOSING_MISSING_TO_REHEARSAL,
         ),
     ],
     ids=["missing on a stretch", "missing homeless", "addition on a stretch"],
@@ -1166,12 +1163,12 @@ async def test_the_validator_is_handed_the_closing_that_was_ordered(
 ) -> None:
     """The closing the Validator reads is the closing the Speaker obeyed — ENG-676's path.
 
-    A Speaker pointing at the one microphone is obeying an order, and the Validator can only
-    tell obedience from improvised navigation by reading the order. Each draft here names the
-    destination its closing orders and nothing else, so a closing that reached the Speaker and
-    not the judge is refused three times over and the team hears a fail-safe line — which is
-    what the assertion on the outcome would catch. The addition keeps the two voices, and is
-    here so that the closing every other kind still receives goes on being seen to arrive.
+    A Speaker naming the destination in its draft is obeying an order, and the Validator can
+    only tell obedience from improvised navigation by reading the order. Each draft here names
+    the destination its closing orders and nothing else, so a closing that reached the Speaker
+    and not the judge is refused three times over and the team hears a fail-safe line — which
+    is what the assertion on the outcome would catch. Missing and addition now close the same
+    way on a stretch; homeless is the one still asked to close differently.
     """
     told = _told()
     agent = patch_loop(obedient_draft, told)
@@ -1228,8 +1225,8 @@ async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehear
     """The rehearsal is only for a hole after the last stretch told.
 
     A team that skipped the opening did tell everything after it, so the analyst puts the hole
-    in the first chunk, and the room offers to record that stretch again — not to go on
-    recording as if the end of the story were what was missing.
+    in the first chunk, and the room hands the choice to the screen for that stretch — not to
+    go on recording as if the end of the story were what was missing.
     """
     patch_analyst('{"findings":[{"kind":"missing","chunk":1,"note":"a fome não apareceu"}]}')
 
@@ -1242,4 +1239,4 @@ async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehear
     )
 
     assert analysis is not None
-    assert closing_block(analysis.findings[0]) == CLOSING_MISSING_ON_SCREEN
+    assert closing_block(analysis.findings[0]) == CLOSING_ON_SCREEN
