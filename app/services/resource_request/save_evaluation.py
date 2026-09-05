@@ -18,7 +18,11 @@ from app.services.resource_request._evaluation import (
     load_evaluation,
 )
 from app.services.resource_request._notices import Letter, post
-from app.services.resource_request._transition import guard_stage_entry, transition_stage
+from app.services.resource_request._transition import (
+    guard_endorsement,
+    guard_stage_entry,
+    transition_stage,
+)
 from app.services.resource_request.get_request import get_request
 from app.services.resource_request.notify_decision import notify_decision
 
@@ -127,6 +131,7 @@ async def save_evaluation(
     deciding = payload.decision if recorded is None else None
 
     if deciding is not None:
+        guard_endorsement(request, DECISION_STAGE[deciding])
         guard_stage_entry(request, DECISION_STAGE[deciding])
 
     if evaluation is None:
