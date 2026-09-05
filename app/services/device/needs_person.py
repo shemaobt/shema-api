@@ -24,7 +24,9 @@ service, is a call for help addressed to nobody. Refusing it is what keeps "reco
 called when that device opens a session, which is the shape a session's ``NEEDS_PERSON``
 already has: it ends when a turn lands, because the room moving is the evidence that the
 halt is over. A facilitator marking it attended from the Desk is a different event —
-somebody came — and is ENG-609's, which is why nothing here does it.
+somebody came — and is still nobody's, which is why nothing here does it. ENG-609's API
+slice gave that lift to the *session* halts and deliberately left this half alone, so the
+device queue still drains only by the tablet coming back.
 """
 
 from datetime import UTC, datetime
