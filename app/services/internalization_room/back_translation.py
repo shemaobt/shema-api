@@ -121,8 +121,10 @@ class BackTranslationState(BaseModel):
     #: `finish` payload would mean every app already in the field stops being able to release.
     played_take_ids: list[str] = Field(default_factory=list)
     #: How many stretches the team has told back a second time. The retell is the one cycle
-    #: the team can repeat at will, so the budget lives here — a counter the app cannot
-    #: reach, which is what keeps a loop from being a loop.
+    #: the team can repeat at will, so it is counted here — a counter the app cannot reach.
+    #: At `RETELLS_BEFORE_A_WARNING` the room asks for a person to come and watch, and that
+    #: is all it does: nothing is refused, the next stretch is taken like any other, and the
+    #: next turn that lands clears the mark. A warning, not a cap (ENG-706).
     retells: int = 0
     #: How many times the first-round gate has already turned the team back. It is what
     #: rotates the waiting line, and it cannot be read off the conversation: the gate answers
