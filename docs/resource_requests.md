@@ -440,7 +440,7 @@ swaps its last two steps because the schema decides it —
 movement and cannot be written before it. Same transaction either way, which is the half
 that was the requirement.
 
-Three rules that travel with the order:
+Four rules that travel with the order:
 
 - **The implication runs one way.** A decision implies a column; a column never implies a
   decision. `_decision_stage.py` is a map over `RRDecision`, total in the direction that
@@ -458,6 +458,18 @@ Three rules that travel with the order:
   The invariant is GATE-01 D4's and its owner is BE-11 (OBT-470); this path is where it
   bites first, so BE-06 enforces and tests it here, and BE-11 owns the rule wherever else
   a request can reach `aprovado`.
+- **A request nobody endorsed leaves `triagem` only for `recusado`** (409), and the
+  decision meets the rule at the same door the drag does. BE-16 (OBT-476) wrote it in
+  `rr_requests`'s own docstring and assigned the enforcement here; it landed with
+  `guard_endorsement` in `_transition.py` (4/set/2026, levig), pure and run in
+  `save_evaluation`'s pre-check beside `guard_stage_entry`, so a decision the endorsement
+  does not allow is refused before a scores row is flushed. It is stated over
+  **destinations** and never over one edge: refusing `triagem → analise` alone would leave
+  `triagem → aprovado` open, and the graph is total by decision. Declining stays possible,
+  because a base that does not recognise a project is itself a reason to decline. **The
+  rule was specified and unenforced between 30/aug and 4/set/2026** — the bench found it
+  (`notas-locais/o-que-testar-b1.md` block 2, item 5), and nothing in either repository
+  had ever executed it.
 
 **Criteria versioning is decided: the key is the identity, and the text is presentation.**
 The DoD asked for one of two shapes in writing — freeze the labels the mesa read, or
