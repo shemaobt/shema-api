@@ -128,6 +128,23 @@ _REPORTED_SPEECH = re.compile(
 )
 
 
+def oral_clause_reports_the_voice(clause: str) -> bool:
+    """A clause that gives the Voice's words back as the team's own report."""
+    return bool(_REPORTED_SPEECH.search(normalize_oral_decision(clause)))
+
+
+def oral_clause_is_hedged(clause: str) -> bool:
+    """A clause that holds back from what it says, or gives it back as the Voice's words.
+
+    The condition is deliberately not part of this. A caller that reads a telling rather
+    than a decision needs the hedge without it, because the same two letters open a
+    condition and ride a Portuguese or Spanish verb as its clitic, and only the second one
+    is a normal thing to say while telling a scene.
+    """
+    text = normalize_oral_decision(clause)
+    return bool(_HEDGE.search(text) or _REPORTED_SPEECH.search(text))
+
+
 def oral_clause_is_non_committal(clause: str) -> bool:
     """A mentioned action is not a committed choice when hedged, hypothetical, questioned,
     or merely repeating what the Voice said.
@@ -137,9 +154,8 @@ def oral_clause_is_non_committal(clause: str) -> bool:
     """
     if oral_clause_is_interrogative(clause):
         return True
-    text = normalize_oral_decision(clause)
-    conditional = bool(re.search(r"\b(?:se|if)\b", text))
-    return bool(_HEDGE.search(text) or conditional or _REPORTED_SPEECH.search(text))
+    conditional = bool(re.search(r"\b(?:se|if)\b", normalize_oral_decision(clause)))
+    return oral_clause_is_hedged(clause) or conditional
 
 
 def oral_utterance_is_non_committal(value: str) -> bool:

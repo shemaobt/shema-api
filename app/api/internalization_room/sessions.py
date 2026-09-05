@@ -5,15 +5,22 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadF
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_project_dep, room_caller_dep
+from app.api.internalization_room._deps import (
+    device_project_dep,
+    require_room_caller,
+    room_caller_dep,
+)
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
+from app.core.room_enums import HaltKind
+from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
     BackTranslationProgress,
     CoverageView,
     CreateSessionRequest,
+    FacilitatorHaltedDeviceView,
     FacilitatorSessionsResponse,
     FacilitatorSessionView,
     NeedsPersonResponse,
@@ -23,6 +30,8 @@ from app.models.internalization_room import (
     TurnResponse,
 )
 from app.services import internalization_room as room
+from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
+from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.calibration import (
     BridgeMode,
@@ -46,6 +55,9 @@ from app.services.internalization_room.run_turn import TurnOutcome, detects_peer
 from app.services.internalization_room.sessions import book_of, is_panorama
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
+from app.services.project.facilitated_scope import facilitated_project_ids
+from app.services.project.team_names import team_names
+from app.utils.stored_time import as_utc
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +124,28 @@ def _coverage_view(session: IRSession) -> CoverageView:
     )
 
 
+def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening: bool) -> bool:
+    """Whether the turn carries anything the coverage classifier should be reading.
+
+    A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
+    said nothing, so what the team said decides rather than the state the room's own turn
+    ended in. What the team said still has to be speech the room took up, which is what
+    `reliable_bridge_speech` means: an uncertain transcript travels forward inside the very
+    fail-safe asking the team to repeat it, and mother-tongue speech inside the one asking
+    for the session's language back. Neither is an answer the room engaged with, and coverage
+    only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
+
+    The opening is the one turn with beads to name and no utterance behind it, and it earns
+    that exception by being an opening the Guide actually wrote. It reaches `surfaced`, which
+    stays below `floor_met`, so settling it neither closes a passage nor stands in for the
+    team retelling it — while a fail-safe opening is the same contentless fixed line as any
+    other, the one `prepare_opening` throws away rather than keep.
+    """
+    if outcome.transcript.strip():
+        return speech_heard.reliable_bridge_speech
+    return opening and not outcome.used_fail_safe
+
+
 def _settle_later(
     background: BackgroundTasks,
     session: IRSession,
@@ -149,6 +183,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         back_translation=await _progress(db, session),
         bridge_mode=session.bridge_mode,
         language=session.language,
+        halt=halt.standing(session),
     )
 
 
@@ -191,7 +226,20 @@ async def create_session(
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     project_id: str | None = device_project_dep,
+    caller: Device | None = Depends(require_room_caller),
 ) -> SessionStateResponse:
+    """Open a session, and end this tablet's halt if it was standing in one.
+
+    The lift is here rather than in `create_session` because it is about the *caller* and
+    not about the session: a room going again is evidence only for the tablet that went,
+    and a lift keyed on the team would clear a halt because somebody else in the room
+    started something. `caller` is the gate's own result — the credential is resolved once
+    per request and FastAPI's dependency cache is what makes this and `device_project_dep`
+    one query — so a caller on the shared room key names no device and lifts nothing.
+
+    After the session exists, so a `create_session` that refuses leaves the halt standing:
+    a room that could not open a session is still stopped.
+    """
     session = await room.create_session(
         db,
         pericope=payload.pericope,
@@ -200,6 +248,8 @@ async def create_session(
         bridge_mode=payload.bridge_mode,
         language=payload.language,
     )
+    if caller is not None:
+        await clear_needs_person(db, caller.id)
     if payload.after_session:
         previous = await room.get_session(db, payload.after_session)
         if hand_over(previous, session):
@@ -241,7 +291,43 @@ async def facilitator_sessions(
 
     Gated on `FacilitatorUser` for the same reason every other route under `/facilitator`
     is: the app-wide gate it was written against no longer exists.
+
+    **`devices` is the half a session id cannot reach** (ENG-624). A tablet whose session
+    the server has forgotten, or whose build broke before one was opened, halts on itself
+    rather than on a session, and that halt would otherwise be readable only from the team's
+    devices panel — a screen a facilitator opens about one team they already suspect. This
+    is the list they read to find out which team to go to. Scoped by the same rule as the
+    sessions half — `facilitated_project_ids`, the ids in hand rather than `IN (SELECT …)`
+    the planner cannot use.
+
+    **Resolved twice, once per half, and that is the shape rather than an oversight.**
+    `sessions_waiting_on_a_person` resolves its own scope inside its query and nothing
+    memoises the answer, so this route makes the lookup a second time. Threading one answer
+    through would mean widening that service's signature, which this slice does not touch;
+    what it would save is one index lookup on `project_user_access`, a table with one row
+    per team a person facilitates. Worth stating so the next reader does not take the two
+    calls for a duplicate somebody missed.
+
+    The moment is bound before it is read because the column is nullable and this list is
+    the rows where it is not: the binding is the type system reading what the query already
+    guarantees, not a filter with anything to drop. The team id on the sessions half is bound
+    the same way and for the same reason — `confined_to` excludes a null project under either
+    of its two shapes, so the `if` there drops nothing either.
+
+    **`team_name` costs one more statement, and it is the field that makes the queue
+    usable** (ENG-609). This is the one facilitator listing that crosses teams: every other
+    one is about a team the caller named and can name back. A row carrying only an id does
+    not answer the question this screen is opened to ask, which is which team to walk to.
+    One statement for the page rather than a lookup per row.
+
+    **`halt` and the stamps are additive** (ENG-609): which kind of halt is standing, and
+    whether somebody has already been. A facilitator reading a queue with neither cannot tell
+    a stopped room from one asking for a witness, nor one nobody has reached from one a
+    colleague walked to five minutes ago.
     """
+    scope = await facilitated_project_ids(db, user)
+    waiting = await room.sessions_waiting_on_a_person(db, user)
+    named = await team_names(db, (s.project_id for s in waiting if s.project_id is not None))
     return FacilitatorSessionsResponse(
         sessions=[
             FacilitatorSessionView(
@@ -249,9 +335,28 @@ async def facilitator_sessions(
                 pericope=session.pericope,
                 status=session.status.value,
                 updated_at=session.updated_at.isoformat() if session.updated_at else "",
+                project_id=team,
+                team_name=named.get(team, ""),
+                halt=halt.standing(session),
+                attended_at=(
+                    as_utc(session.attended_at).isoformat()
+                    if session.attended_at is not None
+                    else None
+                ),
+                attended_by=session.attended_by,
             )
-            for session in await room.sessions_waiting_on_a_person(db, user)
-        ]
+            for session in waiting
+            if (team := session.project_id) is not None
+        ],
+        devices=[
+            FacilitatorHaltedDeviceView(
+                device_id=device.id,
+                label=device.label,
+                since=as_utc(halted),
+            )
+            for device in await devices_waiting_on_a_person(db, scope)
+            if (halted := device.needs_person_since) is not None
+        ],
     )
 
 
@@ -269,7 +374,7 @@ async def ask_for_a_person(
     already halted still reported `in_progress` and no facilitator could be told.
     """
     session = await room.get_session(db, session_id)
-    await room.mark_needs_person(db, session)
+    await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
     return NeedsPersonResponse(
         session_id=session.id,
         needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
@@ -333,6 +438,11 @@ async def take_turn(
     ledger holding evidence for an exchange that was never recorded. Speaking first costs
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
+
+    A turn can also end in the hard stop — the assessor failed three times running and the
+    room said so out loud — and that halt is `BLOCKING`: the room is telling the team it
+    cannot go on, which is a different walk for the facilitator than the retell budget's
+    request for a witness.
     """
     session = await room.get_session(db, session_id)
 
@@ -369,7 +479,7 @@ async def take_turn(
             bridge_mode=session.bridge_mode,
         )
 
-    validator_prompt = await get_prompt_text(db, IRPromptKey.VALIDATOR)
+    validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
         if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
@@ -391,7 +501,7 @@ async def take_turn(
                 messages=session.messages or [],
                 session_language=LANGUAGE_NAMES[session.language],
                 language_code=session.language,
-                panorama_prompt=await get_prompt_text(db, IRPromptKey.BOOK_PANORAMA),
+                panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
                 validator_prompt=validator_prompt,
                 book=book,
                 book_material=build_book_material(book),
@@ -411,7 +521,7 @@ async def take_turn(
             session,
             speech=speech_heard,
             opening=opening,
-            guide_prompt=await get_prompt_text(db, IRPromptKey.GUIDE),
+            guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
             validator_prompt=validator_prompt,
             settings=get_settings(),
         )
@@ -428,9 +538,9 @@ async def take_turn(
         guide_response=outcome.speech,
     )
     if outcome.needs_person:
-        session = await room.mark_needs_person(db, session)
+        session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
-    if not outcome.used_fail_safe:
+    if _worth_settling(outcome, speech_heard, opening=opening):
         _settle_later(
             background,
             session,

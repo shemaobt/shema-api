@@ -40,17 +40,37 @@ PREVIOUS_REVISION = "20260812_0001"
 #: rebases onto the room chain's tip — the second head goes away with the rebase.
 DEVICE_CHAIN_HEAD = "20260819_0001"
 
-#: Where the rest of the `devices` columns arrive (ENG-448), and what stands between here
-#: and there.
+#: Where the rest of the `devices` columns arrive, and what stands between here and each
+#: of them: the room chain's tip on the day it was written.
 #:
-#: The rotation and revocation columns were written after ``20260820_merge`` joined the two
-#: lines, so their revision descends from the room chain's tip rather than from
-#: DEVICE_CHAIN_HEAD. Upgrading straight through would run the room migrations, and one of
-#: them inserts a row into `apps` — a table this file never builds, because it stamps the
-#: past instead of migrating it. Stamping the room tip is the same move applied to the same
-#: kind of thing: migrations that are somebody else's subject.
-ROOM_CHAIN_TIP = "20260820_qcomp"
-DEVICE_COLUMNS_HEAD = "20260820_devcred"
+#: Every one of these was written after ``20260820_merge`` joined the two lines, so each
+#: descends from wherever the room chain had got to rather than from the device migration
+#: before it. Upgrading straight through would run the room migrations, and one of them
+#: inserts a row into `apps` — a table this file never builds, because it stamps the past
+#: instead of migrating it. Stamping the room tip is the same move applied to the same kind
+#: of thing: migrations that are somebody else's subject.
+#:
+#: A pair per device migration rather than one named tip, because a single one only ever
+#: described the newest, and the older migration then never ran: the columns it adds went
+#: missing from the migrated shape while still standing in the model, which reads exactly
+#: like the omission this file exists to catch.
+#:
+#: The last pair names a device migration as its predecessor rather than a room tip, which
+#: is what a chain with a single head looks like: ENG-624 was written after ENG-622 landed,
+#: so nothing of anybody else's stands between them and stamping is a no-op there. The pair
+#: is kept in the same shape so the walk reads the same for every migration in it.
+DEVICE_COLUMN_MIGRATIONS = (
+    ("20260820_qcomp", "20260820_devcred"),  # ENG-448 — rotation and revocation
+    ("20260902_room09", "20260903_devcoll"),  # ENG-622 — the collection moment
+    ("20260903_devcoll", "20260904_devnp"),  # ENG-624 — the halt with no session
+)
+
+#: The column ENG-624 adds, named here because one test below is about it leaving again.
+#:
+#: The round-trip tests cannot see it: they filter out every object whose name or SQL
+#: mentions `devices`, which is the whole of this migration. A downgrade that dropped
+#: nothing would pass all three of them.
+NEEDS_PERSON_COLUMN = "needs_person_since"
 
 #: The migration these tests are actually about: the one that creates the table.
 DEVICE_TABLE_REVISION = "20260817_0001"
@@ -154,6 +174,20 @@ async def _migrated_shape(database_url: str) -> tuple[set[tuple[str, bool]], set
     )
 
 
+def _walk_the_device_column_migrations(database_url: str) -> None:
+    """Run every migration that adds columns to `devices`, and none that does not.
+
+    Each pair stamps what stands before its migration and upgrades exactly one revision
+    further, so the room's own migrations are recorded as done without being run — they
+    write to tables this file never builds.
+    """
+    assert _run_alembic(database_url, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    for predecessor, device_revision in DEVICE_COLUMN_MIGRATIONS:
+        assert _run_alembic(database_url, "stamp", predecessor).returncode == 0
+        columns_added = _run_alembic(database_url, "upgrade", device_revision)
+        assert columns_added.returncode == 0, columns_added.stderr
+
+
 @pytest.fixture()
 async def stamped_database(tmp_path) -> str:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'migration.db'}"
@@ -216,10 +250,7 @@ async def test_migration_builds_the_table_the_model_declares(stamped_database):
     """CLAUDE.md §4 forbids schema changes outside Alembic, which only means anything
     if the migration and the model agree. A model the migration does not build is a
     schema change that happened outside Alembic by omission."""
-    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
-    assert _run_alembic(stamped_database, "stamp", ROOM_CHAIN_TIP).returncode == 0
-    columns_added = _run_alembic(stamped_database, "upgrade", DEVICE_COLUMNS_HEAD)
-    assert columns_added.returncode == 0, columns_added.stderr
+    _walk_the_device_column_migrations(stamped_database)
 
     migrated_columns, migrated_indexes = await _migrated_shape(stamped_database)
     model = Base.metadata.tables[NEW_TABLE]
@@ -254,3 +285,30 @@ async def test_migration_never_names_the_internalization_room_tables():
     operative = source.split('"""', 2)[-1]
     for absent in ("ir_questions", "ir_takes", "ir_sessions"):
         assert absent not in operative, f"the migration operates on {absent}"
+
+
+async def test_the_halt_column_arrives_with_its_migration_and_leaves_with_its_downgrade(
+    stamped_database,
+):
+    """ENG-624 — the column a halted tablet is recorded in travels in both directions.
+
+    The shape comparison above says the migrated table matches the model, which is the
+    upgrade half. The downgrade half has no test that can see it: everything the
+    round-trips compare is filtered on the table's own name, so a ``downgrade`` that
+    dropped nothing would be green everywhere else in this file.
+
+    What is lost by going back is a halt recorded before the downgrade, and that is
+    accepted rather than overlooked: a room that stopped for a person is a thing somebody
+    walks over to, and the tablet asks again on its next attempt.
+    """
+    _walk_the_device_column_migrations(stamped_database)
+
+    migrated_columns, _indexes = await _migrated_shape(stamped_database)
+    assert NEEDS_PERSON_COLUMN in {name for name, _nullable in migrated_columns}
+
+    _predecessor, newest = DEVICE_COLUMN_MIGRATIONS[-1]
+    down = _run_alembic(stamped_database, "downgrade", f"{newest}-1")
+    assert down.returncode == 0, down.stderr
+
+    after_downgrade, _again = await _migrated_shape(stamped_database)
+    assert NEEDS_PERSON_COLUMN not in {name for name, _nullable in after_downgrade}

@@ -51,10 +51,14 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
+    PROBES_THAT_INVITE_A_REHEARSAL,
+    bridge_language_retelling_completes_practice,
     confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
     mother_tongue_practice_prompt,
     practiced_scenes_authorized_by_probe,
+    scenes_practiced_by_the_telling_the_guide_invited,
+    the_practice_invitation_is_owed_by_the_app,
 )
 from app.services.internalization_room.comprehension.probe import (
     ActiveProbe,
@@ -81,7 +85,11 @@ from app.services.internalization_room.comprehension.stt_recovery import (
     resolve_stt_recovery_choice,
     stt_recovery_reduce_burden_line,
 )
-from app.services.internalization_room.coverage import CoverageStatus, floor_met
+from app.services.internalization_room.coverage import (
+    CoverageStatus,
+    engaged_scene_ids,
+    floor_met,
+)
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -96,7 +104,9 @@ from app.services.internalization_room.rehearsal_readiness import (
 )
 from app.services.internalization_room.run_turn import (
     OPENING_BUDGET,
+    SCENE_MOVEMENT_BUDGET,
     TURN_BUDGET,
+    SpeechBudget,
     TurnOutcome,
     detects_peer_cue,
     run_turn,
@@ -128,29 +138,37 @@ def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | Non
     return None
 
 
-def opened_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
-    """Scenes the Voice has already opened — at least one element off `not_encountered`.
+def speech_budget_for(opening: bool, next_probe: ActiveProbe | None) -> SpeechBudget:
+    """The ceiling a Guide turn is measured against.
 
-    The list was written as `surfaced` or `engaged` when those were the only two statuses
-    a tracker could hold. `partially_engaged` reaches one now, and it is the strongest
-    evidence of the three that a scene was opened: the Guide raised it and the team took it
-    up. Read as two of four, a scene the team echoed counted as never opened, practice was
-    never invited for it, and the semantic side of `session_is_done` could not be reached
-    by the teams the coverage floor had just been widened to admit.
-
-    So what is asked is the boundary rather than a list of states, and the next status to
-    arrive does not have to find this line by holding a team still. The default is
-    load-bearing: callers pass `session.coverage_state or {}`, so a bead the tracker has
-    never named has to read as unopened rather than as anything-but-`not_encountered`.
+    The passage opening gets the panorama and the scene movement together. A turn that opens
+    a scene and ends on the rehearsal invitation is the scene movement on its own — a
+    sentence or two from the map plus the 22-word invitation — and measured as an ordinary
+    turn it overran the ceiling every second time and fell to the fail-safe, which is exactly
+    what #322 had just fixed for the passage opening. Every other turn keeps the turn budget.
     """
-    opened: dict[int, bool] = {}
+    if opening:
+        return OPENING_BUDGET
+    if next_probe is not None and next_probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL:
+        return SCENE_MOVEMENT_BUDGET
+    return TURN_BUDGET
+
+
+def told_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
+    """Scenes the team has taken up — at least one element engaged or partially engaged.
+
+    A bead the Guide only mentioned is `surfaced`, and a scene with nothing more than that is
+    not one the team was told; the practice and scene-opening planners ask exactly that
+    question, and a mention in passing is not an answer to it.
+    """
+    taken_up = {CoverageStatus.ENGAGED.value, CoverageStatus.PARTIALLY_ENGAGED.value}
+    told: dict[int, bool] = {}
     for element in elements_for(pericope):
         if element.scene is None:
             continue
         standing = coverage_state.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value)
-        touched = standing != CoverageStatus.NOT_ENCOUNTERED.value
-        opened[element.scene] = opened.get(element.scene, False) or touched
-    return [f"S{scene}" for scene in sorted(opened) if opened[scene]]
+        told[element.scene] = told.get(element.scene, False) or standing in taken_up
+    return [f"S{scene}" for scene in sorted(told) if told[scene]]
 
 
 _ASSESSOR_FAILURES_BEFORE_HARD_STOP = 3
@@ -263,7 +281,7 @@ async def run_comprehension_turn(
     ):
         allowed = [c for c in checkpoints if c.id in set(prior_probe.checkpoint_ids)]
         assessment = await assess_turn(
-            assessor_prompt=await get_prompt_text(db, IRPromptKey.COMPREHENSION_ASSESSOR),
+            assessor_prompt=get_prompt_text(IRPromptKey.COMPREHENSION_ASSESSOR),
             session_language=LANGUAGE_NAMES[session.language],
             observation_id_prefix=_observation_id("assess"),
             probe_id=prior_probe.id,
@@ -292,15 +310,17 @@ async def run_comprehension_turn(
         observation_id=_observation_id("no-report"),
     )
 
+    scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
     practice_by_audio = confident_non_bridge_audio_completes_scoped_practice(
         prior_probe, mother_tongue
     )
     practice_confirmed = (
         prior_probe is not None
-        and prior_probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE
+        and prior_probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL
         and (
             practice_by_audio
             or (reliable and confirms_completed_mother_tongue_practice(last_guide, transcript))
+            or bridge_language_retelling_completes_practice(last_guide, transcript, reliable)
         )
     )
     practiced_now = (
@@ -309,6 +329,8 @@ async def run_comprehension_turn(
         )
         if prior_probe is not None
         else []
+    ) or scenes_practiced_by_the_telling_the_guide_invited(
+        prior_probe, last_guide, transcript, reliable, scene_pointer
     )
 
     process_observations: list[EvidenceObservation] = []
@@ -401,13 +423,14 @@ async def run_comprehension_turn(
     )
     projected_ledger = [*state.ledger, *events]
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
-    scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
+    engaged_scenes = engaged_scene_ids(session.coverage_state or {}, pericope)
 
     comprehension_status = render_comprehension_status(
         checkpoints=checkpoints,
         scene_ids=scene_ids,
         ledger=projected_ledger,
         practiced_scene_ids=projected_practice,
+        engaged_scene_ids=engaged_scenes,
         current_scene=scene_pointer,
     )
 
@@ -437,6 +460,7 @@ async def run_comprehension_turn(
             scene_ids=scene_ids,
             ledger=projected_ledger,
             practiced_scene_ids=projected_practice,
+            engaged_scene_ids=engaged_scenes,
         ).evaluation.outcome.value
         != "needs_more_work"
     )
@@ -490,7 +514,8 @@ async def run_comprehension_turn(
                 scene_ids=scene_ids,
                 current_scene=scene_pointer,
                 practiced_scene_ids=projected_practice,
-                opened_scene_ids=opened_scene_ids(session.coverage_state or {}, pericope),
+                engaged_scene_ids=engaged_scenes,
+                told_scene_ids=told_scene_ids(session.coverage_state or {}, pericope),
                 returning_to_full_retell=(
                     bridge_mode is BridgeMode.FULL_RETELL
                     and current_mode is not BridgeMode.FULL_RETELL
@@ -538,7 +563,7 @@ async def run_comprehension_turn(
         app_owned_line = rehearsal_consent_declined_line(session.language)
     elif next_probe is not None and next_probe.purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT:
         app_owned_line = rehearsal_consent_question(session.language)
-    elif next_probe is not None and next_probe.purpose is ProbePurpose.MOTHER_TONGUE_PRACTICE:
+    elif the_practice_invitation_is_owed_by_the_app(prior_probe, next_probe, last_guide):
         app_owned_line = mother_tongue_practice_prompt(session.language)
 
     contract = render_active_probe_contract(
@@ -547,6 +572,7 @@ async def run_comprehension_turn(
         coverage_complete=coverage_complete,
         semantic_ready=semantic_ready,
         handoff_paused=state.recording_handoff_paused and not resume_requested,
+        practiced_scene_ids=projected_practice,
     )
     app_context = "\n\n".join(
         [bridge_mode_status_line(bridge_mode), comprehension_status, contract]
@@ -621,7 +647,7 @@ async def run_comprehension_turn(
             settings=settings,
             app_context=app_context,
             validator_context=validator_context,
-            budget=OPENING_BUDGET if opening else TURN_BUDGET,
+            budget=speech_budget_for(opening, next_probe),
             ask_for_movements=opening and not messages,
         )
 

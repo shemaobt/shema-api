@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSessionStatus
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -205,7 +206,7 @@ async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
 async def test_a_session_needing_a_person_is_marked(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
 
-    session = await mark_needs_person(db_session, session)
+    session = await mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
 
     assert session.status is IRSessionStatus.NEEDS_PERSON
 
@@ -254,7 +255,7 @@ async def test_the_retells_are_counted_and_reach_the_warning(db_session: AsyncSe
     state.retells += 1
     await save_back_translation(db_session, session, state)
     if state.retells >= RETELLS_BEFORE_A_WARNING:
-        await mark_needs_person(db_session, session)
+        await mark_needs_person(db_session, session, kind=HaltKind.WARNING)
 
     assert session.status is IRSessionStatus.NEEDS_PERSON, (
         "contar o mesmo trecho de novo era um ciclo que ninguém contava, e o "

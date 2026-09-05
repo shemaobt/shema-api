@@ -9,6 +9,7 @@ session, every thirty seconds, while the person stood there.
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSessionStatus
 from app.services.internalization_room import sessions as service
 
@@ -16,7 +17,7 @@ from app.services.internalization_room import sessions as service
 @pytest.fixture()
 async def halted(db_session: AsyncSession):
     session = await service.create_session(db_session, pericope="P01")
-    await service.mark_needs_person(db_session, session)
+    await service.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
     assert session.status is IRSessionStatus.NEEDS_PERSON
     return session
 

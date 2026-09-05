@@ -170,14 +170,16 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
 def floor_met(state: dict[str, str], pericope_num: str) -> bool:
     """Every element worked with, at least in part.
 
-    The design document lets only the four abstract Level-1 axes exit at `surfaced`; the maps
-    expose no such elements, so every bead here is concrete and none is exempt. What the floor
-    does not demand is the strong reading of every one of them. A passage's preservation rules
-    are engaged by noticing a silence, which mostly reaches the room as the team taking up the
-    Guide's noticing rather than arriving at it themselves; requiring the unprompted version
-    from all five of Ruth 1's is how a passage becomes one that never closes. Since `done` is
-    what moves a team on to the next passage, a floor that cannot be reached does not hold a
-    team to a higher standard — it holds them still.
+    *Tripod Internalization · Interaction Flows*
+    (`internalization-room/docs/spec/interaction-flows.md`, §3) lets only the four abstract
+    Level-1 axes exit at `surfaced`; the maps expose no such elements, so every bead here is
+    concrete and none is exempt. What the floor does not demand is the strong reading of every
+    one of them. A passage's preservation rules are engaged by noticing a silence, which mostly
+    reaches the room as the team taking up the Guide's noticing rather than arriving at it
+    themselves; requiring the unprompted version from all five of Ruth 1's is how a passage
+    becomes one that never closes. Since `done` is what moves a team on to the next passage, a
+    floor that cannot be reached does not hold a team to a higher standard — it holds them
+    still.
 
     `surfaced` remains below the floor, so a session where the Guide did the talking still
     cannot complete. Biased against completing hollow: anything unknown counts as not met.
@@ -188,6 +190,28 @@ def floor_met(state: dict[str, str], pericope_num: str) -> bool:
         if _RANK[standing] < _RANK[CoverageStatus.PARTIALLY_ENGAGED]:
             return False
     return True
+
+
+def engaged_scene_ids(state: dict[str, str], pericope_num: str) -> list[str]:
+    """The scenes whose every element is `engaged`, in scene order.
+
+    A scene only reaches the strong reading of all its beads by the team telling it in their
+    own words, so the readiness gate accepts this in place of the spoken practice report — a
+    team that worked a scene through and simply moved on without saying "pronto" was being
+    sent back to rehearse it again. The substitution is a reading, never a record:
+    `practiced_scene_ids` keeps meaning what the team actually reported, and nothing here is
+    written back into it.
+
+    Elements the map leaves unplaced carry no scene and are ignored, exactly as the scene
+    pointer ignores them.
+    """
+    by_scene: dict[int, bool] = {}
+    for element in elements_for(pericope_num):
+        if element.scene is None:
+            continue
+        engaged = state.get(element.key) == CoverageStatus.ENGAGED.value
+        by_scene[element.scene] = by_scene.get(element.scene, True) and engaged
+    return [f"S{scene}" for scene in sorted(by_scene) if by_scene[scene]]
 
 
 def absence_positions(pericope_num: str) -> list[int]:
