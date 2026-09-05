@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from app.core.config import Settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import (
@@ -295,30 +295,33 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
 
 @pytest.mark.asyncio
 async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) -> None:
-    """The one that matters: a failed call must not read as "checked"."""
+    """The one that matters: a failed call must not read as "checked".
+
+    It used to assert None. Swallowing the exception and returning [] made `finish` mark
+    checked=True: the room said the telling-back was checked, closed the necklace, and the
+    passage left the wheel for good. None fixed that — and then None also meant "answered,
+    but unreadable", and the route called both an outage (ENG-719). An outage is now the
+    exception it is, raised here at the boundary with the provider, so the route can tell it
+    from a reply it could not read.
+    """
 
     def _explode(**_kwargs):
-        raise RuntimeError("elevenlabs fora do ar")
+        raise RuntimeError("gemini fora do ar")
 
     module = sys.modules["app.services.internalization_room.back_translation"]
     monkey = pytest.MonkeyPatch()
     monkey.setattr(module, "call_agent", _explode)
     try:
-        analysis = await analyse_telling_back(
-            segments=_told(),
-            scope=P,
-            pericope_num=P,
-            analyst_prompt=ANALYST,
-            settings=_settings(),
-        )
+        with pytest.raises(UpstreamServiceError):
+            await analyse_telling_back(
+                segments=_told(),
+                scope=P,
+                pericope_num=P,
+                analyst_prompt=ANALYST,
+                settings=_settings(),
+            )
     finally:
         monkey.undo()
-
-    assert analysis is None, (
-        "engolir a exceção e devolver [] fazia o finish marcar checked=True: a sala "
-        "dizia que a retrotradução foi conferida, fechava o colar, e a perícope saía "
-        "da roda para sempre"
-    )
 
 
 def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
@@ -422,14 +425,26 @@ async def test_insufficiency_must_name_its_limit(patch_analyst) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_sufficient_reading_cannot_carry_an_insufficiency_finding(
+async def test_a_sufficient_flag_yields_to_an_insufficiency_finding(
     patch_analyst,
 ) -> None:
+    """This case used to assert the opposite: that the reading came back None.
+
+    It changed because the old rule discarded a valid finding together with the
+    contradiction — in the session that became ENG-719, a good `meaning_change` went out
+    with the reply, and the room told the team the service was down. The finding is the
+    statement of insufficiency, with content; the flag is its summary with no information
+    of its own. So the finding wins, and the invariant `BtAnalysis` promises — when the
+    flag is False, a finding names the limit — holds by way of that finding.
+    """
     patch_analyst(
         json.dumps(
             {
                 "evidence_sufficient": True,
-                "findings": [{"kind": "insufficient_evidence", "note": "pouco"}],
+                "findings": [
+                    {"kind": "missing", "note": "Orfa"},
+                    {"kind": "insufficient_evidence", "note": "pouco"},
+                ],
             }
         )
     )
@@ -442,7 +457,12 @@ async def test_a_sufficient_reading_cannot_carry_an_insufficiency_finding(
         settings=_settings(),
     )
 
-    assert analysis is None
+    assert analysis is not None
+    assert not analysis.evidence_sufficient
+    assert [f.kind for f in analysis.findings] == [
+        FindingKind.MISSING,
+        FindingKind.INSUFFICIENT_EVIDENCE,
+    ]
 
 
 @pytest.mark.asyncio
@@ -1176,28 +1196,28 @@ async def test_the_validator_is_handed_the_closing_that_was_ordered(
     assert retired not in agent.briefs[0]
 
 
-def test_the_analyst_is_told_which_missing_element_has_no_chunk() -> None:
-    """A `null` chunk now sends the team on to record what is still missing, keeping all they
-    recorded — right only for a hole after everything they told. A hole between two things
-    they did tell belongs in the chunk where it should have been said, even when that chunk is
-    otherwise fine, so that the screen offers to record that part again instead of the ending.
+def test_the_analyst_is_told_where_a_missing_element_sits() -> None:
+    """`where` is what tells the analyst never to fall back to `null` for a missing element.
 
     The analyst learns the difference from its prompt and nowhere else, so the paragraph that
-    binds `"chunk"` to `null` has to draw every border: the one case that is `null`, after
-    everything told; the case between two things told, which is not; and the case before the
-    first thing told, which goes in the first chunk rather than falling to `null` for want of
-    a chunk in front of it.
+    introduces `"where"` has to draw every border: after everything told is `"after"` on the
+    *last* chunk, never `null`; before the first thing told is `"before"` on chunk 1, not a
+    chunk in front of the first one; and both are named beside the instruction never to answer
+    `null` at all — the case ENG-720's own `null` paragraph used to carry.
     """
-    binding_null = [
-        block for block in ANALYST.split("\n\n") if '`"chunk"`' in block and "`null`" in block
+    where_block = [
+        block for block in ANALYST.split("\n\n") if '`"where"`' in block and "missing" in block
     ]
 
-    assert binding_null, "nenhum parágrafo liga o campo chunk a null"
-    assert any("after everything" in block and "between" in block for block in binding_null), (
-        "o parágrafo do null não separa a falta depois de tudo da falta entre dois trechos"
+    assert where_block, "nenhum parágrafo liga o campo where ao elemento ausente"
+    assert any("never" in block and "`null`" in block for block in where_block), (
+        "o parágrafo do where não proíbe null para um elemento ausente"
     )
-    assert any("before the first" in block and "first chunk" in block for block in binding_null), (
-        "o parágrafo do null não manda a falta antes da primeira coisa contada para o chunk 1"
+    assert any("last" in block and "everything" in block for block in where_block), (
+        "o parágrafo do where não liga o último chunk à falta depois de tudo"
+    )
+    assert any("first thing" in block and "chunk 1" in block for block in where_block), (
+        "o parágrafo do where não liga o chunk 1 à falta antes de tudo"
     )
 
 
