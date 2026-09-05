@@ -34,6 +34,7 @@ from tests.test_resource_requests.conftest import auth_header, grant
 from tests.test_resource_requests.test_evaluations import (
     REQUESTS,
     as_gestor,
+    decidable,
     give_fund,
     put_evaluation,
     submitted_request,
@@ -88,7 +89,7 @@ async def test_as_quatro_decisoes_avisam_a_equipe_nos_dois_canais(
     exatamente quem não precisa fazer mais nada."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await give_fund(db_session, created["id"])
     posted.clear()
 
@@ -116,7 +117,7 @@ async def test_o_arrasto_manual_de_um_cartao_nao_avisa_ninguem(
     avaliou — e um cartão arrastado à mão não é uma decisão."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await give_fund(db_session, created["id"])
     author = await user_id_of(db_session, "equipe@rr.test")
     before = len(await notices(db_session, author))
@@ -163,7 +164,7 @@ async def test_revisar_e_condicional_carregam_a_team_note(
     não saem da mesa, e este teste é onde isso é afirmado nos dois canais."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     posted.clear()
 
     res = await put_evaluation(
@@ -192,7 +193,7 @@ async def test_uma_team_note_vazia_nao_vira_aviso_vazio(
     de escrever — pior do que um aviso que só diz a decisão."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     posted.clear()
 
     payload: dict[str, object] = {"decision": "revise"}
@@ -295,7 +296,7 @@ async def test_uma_falha_de_email_nao_reverte_a_decisao(
 
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await give_fund(db_session, created["id"])
 
     res = await put_evaluation(client, mesa, created["id"], decision="approved")
@@ -332,7 +333,7 @@ async def test_o_aviso_in_app_entra_na_transacao_da_decisao(
 
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
 
     assert (await put_evaluation(client, mesa, created["id"], decision="revise")).status_code == 200
     assert calls == [False]

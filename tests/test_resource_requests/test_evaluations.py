@@ -18,7 +18,7 @@ copy of the 26-row payload would drift exactly the way second serializers do.
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import event, select
 
@@ -78,6 +78,33 @@ async def give_fund(db_session, request_id: str, fund_id: str = "linguas") -> No
     ).scalar_one()
     request.fund_id = fund_id
     await db_session.commit()
+
+
+async def endorse(db_session, request_id: str) -> None:
+    """The Líder de Base's endorsement, as the precondition it is for anything past
+    ``triagem`` (BE-16, OBT-476). The route exists — ``POST /requests/{id}/endorse`` — and
+    this shortcut is ``give_fund``'s twin for the same reason: these tests are about what
+    happens *after* a card may be analysed, not about who signs it, and driving a second
+    endpoint with a fourth account would say nothing they assert. ``test_endorsement.py``
+    is what pins the real act, and ``endorsed_at`` is the column the rule reads."""
+    request = (
+        await db_session.execute(select(RRRequest).where(RRRequest.id == request_id))
+    ).scalar_one()
+    request.endorsed_by = request.created_by
+    request.endorsed_at = datetime.now(UTC)
+    await db_session.commit()
+
+
+async def decidable(db_session, client, headers) -> dict:
+    """A submitted request the mesa may actually decide. Since BE-16's rule is enforced,
+    all four decisions move the card past ``triagem`` and that exit waits for the base's
+    signature (``guard_endorsement``) — so the endorsement is a precondition of deciding,
+    exactly as it is of the board's ``board_card``. Tests that only score, and the ones
+    about who may touch the evaluation at all, keep ``submitted_request``: they never move
+    the card, so the rule never fires on them."""
+    request = await submitted_request(client, headers)
+    await endorse(db_session, request["id"])
+    return request
 
 
 async def put_evaluation(client, headers, request_id: str, **over: object):
@@ -287,7 +314,7 @@ async def test_recording_the_decision_moves_the_card(db_session, client, rrf_app
     """GATE-02 D6: the save is the move — with author and instant stamped by the server."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
 
     res = await put_evaluation(client, mesa, created["id"], decision="conditional")
 
@@ -314,7 +341,7 @@ async def test_approving_appends_to_the_ledger_in_the_same_write(
     """Decision → ledger → stage event, one transaction: the event names the movement."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await give_fund(db_session, created["id"])
 
     res = await put_evaluation(client, mesa, created["id"], decision="approved")
@@ -338,7 +365,7 @@ async def test_approving_with_no_fund_fails_and_writes_nothing(db_session, clien
     """GATE-01 D4's invariant, bitten on this write path: decidable, and nothing half-saved."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
 
     res = await put_evaluation(client, mesa, created["id"], decision="approved")
 
@@ -357,7 +384,7 @@ async def test_a_recorded_decision_is_not_rewritten(db_session, client, rrf_app)
     transaction, refused here rather than half-built."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await give_fund(db_session, created["id"])
     assert (
         await put_evaluation(client, mesa, created["id"], decision="approved")
@@ -375,7 +402,7 @@ async def test_the_same_decision_saved_again_re_fires_nothing(db_session, client
     but the card moved once and the ledger was written once."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await give_fund(db_session, created["id"])
     await put_evaluation(client, mesa, created["id"], decision="approved")
 
@@ -414,7 +441,7 @@ async def test_revise_end_to_end_opens_a_revision(db_session, client, rrf_app) -
     the card lands on *revisar*, and the team's next move is a new draft."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
 
     decided = await put_evaluation(
         client, mesa, created["id"], decision="revise", team_note="detalhe o orçamento"
@@ -439,7 +466,7 @@ async def test_the_team_reads_status_and_nothing_else(db_session, client, rrf_ap
     the team — and not one field more, which is the assertion that matters."""
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await put_evaluation(
         client, mesa, created["id"], decision="revise", team_note="detalhe o orçamento"
     )
@@ -498,7 +525,7 @@ async def test_the_status_read_does_not_load_the_evaluation_whole(
     """
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
-    created = await submitted_request(client, team)
+    created = await decidable(db_session, client, team)
     await put_evaluation(
         client, mesa, created["id"], decision="revise", team_note="detalhe o orçamento"
     )
