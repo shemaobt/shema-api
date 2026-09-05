@@ -4,6 +4,7 @@ import enum
 import json
 import logging
 import re
+import unicodedata
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -396,6 +397,11 @@ class CorrectionCheck(BaseModel):
     finding it was asked about and still drop an element only that stretch carried, and it can
     leave the finding standing while breaking nothing. Collapsing them into one verdict would
     make the room unable to tell the team which of the two happened.
+
+    ``findings`` is what the room decided, not a copy of what the reader wrote: the losses the
+    reader's own count implies are already in it, and the ones it said twice are in it once.
+    The count itself is not carried here — nothing downstream asks what was enumerated, only
+    what it means for this stretch, and a field nobody reads is one more thing to keep true.
     """
 
     resolved: bool
@@ -417,6 +423,109 @@ CORRECTION_KINDS = frozenset(
 )
 
 
+#: A word long enough to carry meaning rather than grammar. The dedupe below asks whether a
+#: reported note names the element the count marked lost, and a note that repeats the element's
+#: words will not reliably repeat its prepositions — requiring them would stop it ever firing.
+_CONTENT_WORD = re.compile(r"[^\W\d_]{4,}")
+
+
+def _content_words(text: str) -> set[str]:
+    """The words of a phrase that carry it, folded so two spellings of one word still match.
+
+    Accents are stripped rather than compared: the note and the count are both written by a
+    model, in a language it is retelling into, and one of the two spelling `sepultada` with a
+    stray accent must not make the room ask the team about the same loss twice.
+    """
+    folded = unicodedata.normalize("NFKD", text.casefold())
+    return set(_CONTENT_WORD.findall("".join(ch for ch in folded if not unicodedata.combining(ch))))
+
+
+def _elements_the_count_lost(raw: Any) -> list[str] | None:
+    """The elements the count marks as no longer told, or None when the count cannot be read.
+
+    None and an empty list must stay apart: empty is "counted, and nothing fell", which is a
+    clean stretch, and None is "there is no count here to read", which is not — it leaves
+    whatever the reader reported standing and says so in the log. Read atomically for the same
+    reason the two parsers around it are: half a count is a check the room believes it is
+    running and is not, and the element it skipped is the one nobody is ever asked about.
+    """
+    if not isinstance(raw, list):
+        logger.warning("BT correction returned an enumeration that is not a list: %.200r", raw)
+        return None
+    lost: list[str] = []
+    for entry in raw:
+        if not isinstance(entry, dict) or not isinstance(entry.get("still_told"), bool):
+            logger.warning("BT correction enumerated an element without a verdict: %.200r", entry)
+            return None
+        element = str(entry.get("element", "")).strip()
+        if not element:
+            logger.warning("BT correction enumerated an element with no name: %.200r", entry)
+            return None
+        if not entry["still_told"]:
+            lost.append(element)
+    return lost
+
+
+def _elements_brought_back(raw: Any) -> list[str]:
+    """Elements the map gives that the new telling states and the earlier one did not.
+
+    Lenient, unlike `_elements_the_count_lost`: this list is the mechanical backstop over the
+    prompt's own `Added` rule, not the count the room depends on, so a reply that omits it or
+    gets its shape wrong just goes without the backstop rather than losing the whole
+    verification over a field nothing here requires.
+    """
+    if not isinstance(raw, list):
+        return []
+    elements: list[str] = []
+    for entry in raw:
+        if isinstance(entry, str):
+            element = entry.strip()
+        elif isinstance(entry, dict):
+            element = str(entry.get("element", "")).strip()
+        else:
+            continue
+        if element:
+            elements.append(element)
+    return elements
+
+
+def _is_the_correction_arriving(finding: Finding, brought_back: list[str]) -> bool:
+    """Whether a reported addition is actually one of the elements the correction brought back.
+
+    The same subset-of-content-words test `_already_reported` uses for a derived loss, mirrored
+    for the opposite mistake: the prompt's `Added` rule already tells the reader an element the
+    map gives is never an addition, and this is the backstop for when it reports one anyway.
+    """
+    if finding.kind is not FindingKind.ADDITION:
+        return False
+    note_words = _content_words(finding.note)
+    for element in brought_back:
+        words = _content_words(element)
+        if words and words <= note_words:
+            return True
+    return False
+
+
+def _already_reported(element: str, reported: list[Finding]) -> bool:
+    """Whether a loss the reader wrote out already names the element the count marked lost.
+
+    One loss is one thing to mend, however many times the reader said it. Covered means the
+    note carries every word of the element that carries meaning — deliberately strict, because
+    the two mistakes are not equal: counting one loss twice asks the team about a clause they
+    already mended, and suppressing a real one means they are never asked at all.
+
+    An element with no such word covers nothing. Left alone it would be the empty set, which
+    every note contains, and the room would silently drop every loss it counted.
+    """
+    words = _content_words(element)
+    if not words:
+        return False
+    return any(
+        finding.kind is FindingKind.MISSING and words <= _content_words(finding.note)
+        for finding in reported
+    )
+
+
 def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
     """The verification's reply, or None when it cannot be trusted at all.
 
@@ -428,6 +537,25 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
     Every finding is stamped with the corrected stretch's own address: the verification looked
     at exactly one stretch, so there is nowhere else its findings could land, and a finding the
     team cannot locate sends them back to the whole recording for no reason.
+
+    A loss is derived from the count rather than waited for. `carried` is the reader's
+    enumeration of what the earlier telling of this stretch stated, entry by entry, and an
+    entry marked as no longer told **is** a loss here — whether or not the reader also wrote it
+    out under `findings`. Asked holistically, a reader confirms what is present far better than
+    it notices what is absent, which is how a stretch retold to answer one finding came back
+    without a clause and was reported as nothing at all; enumerating first is what the room
+    now depends on, and depending on the reader to volunteer the same loss twice would put the
+    old failure back. `_already_reported` is why saying it twice still costs the team one mend.
+
+    A reply with no `carried` at all is a stored prompt that predates the count, and is read
+    exactly as it always was: the room upgrades its prompts by editing a row, so the two shapes
+    are in the air at the same time and the older one must not start reading as a clean stretch.
+
+    `brought_back` is the mirror of `carried`, and lenient where `carried` is strict: an element
+    the map gives that only the new telling states is the correction arriving, never an
+    addition, and this is the backstop for a reader that reports one as `"addition"` anyway
+    despite what the prompt's own `Added` rule already tells it. Absent or malformed, it is
+    simply not applied — it stands over an existing rule rather than replacing it.
     """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
@@ -460,6 +588,19 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
             logger.warning("BT correction returned a kind it cannot judge: %s", entry)
             return None
         findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id))
+
+    brought_back = _elements_brought_back(parsed.get("brought_back"))
+    if brought_back:
+        findings = [f for f in findings if not _is_the_correction_arriving(f, brought_back)]
+
+    if "carried" in parsed:
+        lost = _elements_the_count_lost(parsed["carried"])
+        reported = list(findings)
+        findings.extend(
+            Finding(kind=FindingKind.MISSING, note=element[:1000], segment_id=segment_id)
+            for element in lost or []
+            if not _already_reported(element, reported)
+        )
     return CorrectionCheck(resolved=bool(parsed["resolved"]), findings=findings)
 
 
