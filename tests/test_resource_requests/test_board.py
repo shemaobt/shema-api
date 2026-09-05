@@ -42,6 +42,7 @@ from tests.baker import make_user
 from tests.test_resource_requests.conftest import grant
 from tests.test_resource_requests.test_evaluations import (
     as_gestor,
+    endorse,
     give_fund,
     put_evaluation,
 )
@@ -58,10 +59,15 @@ async def move(client, headers, request_id: str, to: str):
 
 
 async def board_card(db_session, client, team, valor: str, fund: str | None) -> str:
-    """One submitted card worth ``valor``, with its fund assigned the way the mesa will."""
+    """One submitted, endorsed card worth ``valor``, with its fund assigned the way the
+    mesa will. **The endorsement is a precondition of the board, not decoration**: since
+    BE-16's rule is enforced (``guard_endorsement``), a card nobody signed leaves
+    ``triagem`` only for ``recusado``, so an unendorsed card could not exercise a single
+    vector below. The two tests that are *about* the rule build their card without it."""
     created = await create(client, team, fields={**answers(), "amount_requested": valor})
     res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
     assert res.status_code == 200, res.text
+    await endorse(db_session, created["id"])
     if fund is not None:
         await give_fund(db_session, created["id"], fund)
     return created["id"]
@@ -187,6 +193,71 @@ async def test_a_draft_is_not_on_the_board(db_session, client, rrf_app) -> None:
     assert res.status_code == 409
     assert "submitted" in res.json()["detail"]
     assert (await db_session.execute(select(RRBoardTransition))).scalars().all() == []
+
+
+async def unendorsed_card(db_session, client, team, fund: str | None = "linguas") -> str:
+    """``board_card`` minus the one thing these two tests are about."""
+    created = await create(client, team, fields={**answers(), "amount_requested": "52000.00"})
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
+    assert res.status_code == 200, res.text
+    if fund is not None:
+        await give_fund(db_session, created["id"], fund)
+    return created["id"]
+
+
+async def test_um_pedido_sem_endosso_nao_sai_da_triagem(db_session, client, rrf_app) -> None:
+    """BE-16's rule, enforced where ``rr_requests``'s docstring assigned it: ``analise``
+    and every column past it wait for the base's signature. Stated over destinations, so
+    the direct ``triagem -> aprovado`` is refused by the same sentence and not left open —
+    which is the hole a per-edge rule would have."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    card = await unendorsed_card(db_session, client, team)
+
+    for destino in ("analise", "aprovado", "condicional", "revisar"):
+        res = await move(client, mesa, card, destino)
+
+        assert res.status_code == 409, f"{destino}: {res.text}"
+        assert "endorsement" in res.json()["detail"]
+
+    assert (await db_session.execute(select(RRBoardTransition))).scalars().all() == []
+    row = (await db_session.execute(select(RRRequest).where(RRRequest.id == card))).scalar_one()
+    assert row.stage is RRStage.TRIAGEM
+    assert (await db_session.execute(select(RRFundMovement))).scalars().all() == []
+
+
+async def test_sem_endosso_o_caminho_para_recusado_continua_aberto(
+    db_session, client, rrf_app
+) -> None:
+    """The other half of the same sentence, and the reason it is a destination rule:
+    declining stays possible, because a base that does not recognise a project is itself a
+    reason to decline. Refusing every exit would trap the card instead of gating it."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    card = await unendorsed_card(db_session, client, team)
+
+    res = await move(client, mesa, card, "recusado")
+
+    assert res.status_code == 200, res.text
+    assert res.json()["stage"] == "recusado"
+
+
+async def test_a_decisao_tambem_espera_o_endosso(db_session, client, rrf_app) -> None:
+    """The rule covers both doors GATE-02 D6 opened. A decision moves the card through the
+    same ``transition_stage``, so a mesa that cannot drag an unsigned card cannot decide it
+    into the same column either — and the pre-check refuses before a scores row is
+    written, which is why the guard is pure and runs beside ``guard_stage_entry``."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    card = await unendorsed_card(db_session, client, team)
+
+    res = await put_evaluation(client, mesa, card, decision="approved")
+
+    assert res.status_code == 409, res.text
+    assert "endorsement" in res.json()["detail"]
+    assert (await db_session.execute(select(RRFundMovement))).scalars().all() == []
+    row = (await db_session.execute(select(RRRequest).where(RRRequest.id == card))).scalar_one()
+    assert row.stage is RRStage.TRIAGEM
 
 
 async def test_the_payload_cannot_state_the_mover(db_session, client, rrf_app) -> None:

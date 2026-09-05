@@ -32,6 +32,7 @@ from app.services.resource_request import list_fund_options as options_service
 from app.services.resource_request._fund_choices import options_from
 from tests.test_resource_requests.test_evaluations import (
     as_gestor,
+    endorse,
     give_fund,
     put_evaluation,
 )
@@ -215,6 +216,7 @@ async def test_um_pedido_que_ja_apontava_para_o_fundo_aposentado_segue_valido(
     await make_fund(db_session, "linguas", "Shema Línguas")
     await make_fund(db_session, "ready", "Ready Vessels")
     card = await submitted(client, team)
+    await endorse(db_session, card)
     assert (await put_fund(client, mesa, card, "ready")).status_code == 200
 
     async def sem_o_ready(db):
@@ -249,6 +251,8 @@ async def test_aprovar_sem_fundo_falha_nas_duas_portas(db_session, client, rrf_a
     await make_fund(db_session, "linguas", "Shema Línguas")
     pelo_quadro = await submitted(client, team)
     pela_decisao = await submitted(client, team)
+    await endorse(db_session, pelo_quadro)
+    await endorse(db_session, pela_decisao)
 
     arrasto = await client.post(
         f"{REQUESTS}/{pelo_quadro}/move", json={"to": "aprovado"}, headers=mesa
@@ -270,6 +274,7 @@ async def test_com_o_fundo_atribuido_a_aprovacao_passa(db_session, client, rrf_a
     mesa = await as_mesa(db_session, rrf_app)
     await make_fund(db_session, "linguas", "Shema Línguas")
     card = await submitted(client, team)
+    await endorse(db_session, card)
 
     assert (await put_fund(client, mesa, card, "linguas")).status_code == 200
     decisao = await put_evaluation(client, mesa, card, decision="approved")
@@ -291,6 +296,7 @@ async def test_trocar_o_fundo_de_um_aprovado_move_os_dois_saldos(
     await make_fund(db_session, "linguas", "Shema Línguas")
     await make_fund(db_session, "btat", "Shema BTAT")
     card = await submitted(client, team, valor="5000.00")
+    await endorse(db_session, card)
     assert (await put_fund(client, mesa, card, "linguas")).status_code == 200
     assert (await put_evaluation(client, mesa, card, decision="approved")).status_code == 200
 

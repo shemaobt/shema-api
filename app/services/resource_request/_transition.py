@@ -16,8 +16,10 @@ reading is that the mesa may drag a card it never evaluated, a decided card incl
 decision implies a column, a column never implies a decision, and dragging out of
 ``aprovado`` is precisely how an approval is undone (its compensating movement rides the
 same transaction). What is refused is not an edge of the graph but a state of the
-request: a draft is not on the board (``move_request``), and nothing enters ``aprovado``
-without a fund and an amount to deduct. The fund half is **not stated here** — it is
+request, and there are three: a draft is not on the board (``move_request``), a request
+nobody endorsed leaves ``triagem`` only for ``recusado`` (``guard_endorsement``, BE-16's
+rule landing where ``rr_requests``'s docstring assigned it), and nothing enters
+``aprovado`` without a fund and an amount to deduct. The fund half is **not stated here** — it is
 GATE-01 D4's invariant and BE-11's rule, and it lives in ``_fund_assignment.py``, which
 is what makes it one rule over the two doors GATE-02 D6 opened rather than the same
 sentence written twice. It fires *through* this module because ``guard_stage_entry`` is
@@ -76,6 +78,32 @@ def guard_stage_entry(request: RRRequest, to_stage: RRStage) -> tuple[str, Decim
     return (fund_id, request.amount_requested)
 
 
+def guard_endorsement(request: RRRequest, to_stage: RRStage) -> None:
+    """The base's signature gates the analysis — BE-16's rule, enforced where it said.
+
+    A request nobody endorsed leaves ``triagem`` only for ``recusado``: declining stays
+    possible, because a base that does not recognise a project is itself a reason to
+    decline, while ``analise`` and every column past it wait for that signature. The rule
+    is stated in ``rr_requests``'s own docstring (BE-16, OBT-476) and assigned from there
+    to this service; ``endorsed_at`` is what it reads, because only the act writes it and
+    a typed ``leader_name`` is the team's line, not an endorsement.
+
+    **Over destinations, never over one edge.** Refusing ``triagem → analise`` alone would
+    leave ``triagem → aprovado`` open, and the graph is total by decision (FE-15's, kept
+    in this module's docstring) — so what is refused here is a state of the request, like
+    its two neighbours, and the graph keeps every edge it had.
+
+    Pure and callable with nothing written, the ``guard_stage_entry`` shape: it runs in
+    ``save_evaluation``'s pre-check phase too, so a decision the endorsement does not
+    allow is refused before a scores row is flushed.
+    """
+    if to_stage is request.stage or request.stage is not RRStage.TRIAGEM:
+        return
+    if to_stage is RRStage.RECUSADO or request.endorsed_at is not None:
+        return
+    raise ConflictError("This request has no endorsement, so it leaves triagem only for recusado.")
+
+
 async def unreversed_deduction(db: AsyncSession, request_id: str) -> RRFundMovement | None:
     """The deduction still standing for this request — at most one by construction.
 
@@ -122,6 +150,7 @@ async def transition_stage(
     if request.stage is to_stage:
         return None
 
+    guard_endorsement(request, to_stage)
     claim = guard_stage_entry(request, to_stage)
 
     movement: RRFundMovement | None = None
