@@ -32,6 +32,7 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
+    attend,
     back_translation_of,
     begin_back_translation_again,
     comprehension_of,
@@ -45,6 +46,7 @@ from app.services.internalization_room.sessions import (
     session_is_done,
     sessions_waiting_on_a_person,
     set_bridge_mode,
+    unattend,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
@@ -60,6 +62,7 @@ __all__ = [
     "analyse_telling_back",
     "append_exchange",
     "apply_coverage",
+    "attend",
     "back_translation_of",
     "begin_back_translation_again",
     "capture_segment",
@@ -90,4 +93,5 @@ __all__ = [
     "set_bridge_mode",
     "synthesize_facilitator_speech",
     "told_back",
+    "unattend",
 ]
