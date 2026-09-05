@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
@@ -185,7 +186,7 @@ async def replace(
     await room.save_back_translation(db, session, state)
     spent = told_again >= MAX_RETELLS
     if spent:
-        await room.mark_needs_person(db, session)
+        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
 
     if not text.strip():
         return SegmentsResponse(

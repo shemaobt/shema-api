@@ -102,6 +102,33 @@ class IRSession(Base):
     #: name it failed. On `main` nothing inserted into ``ir_sessions`` without the ORM, so the
     #: gap was invisible there; the migration round-trip cases on this branch do exactly that.
     comprehension: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+    #: Which kind the last halt was — ``HaltKind``, stored as its plain value. Written on
+    #: every halt and cleared by none: it outlives the halt on purpose, so that a warning
+    #: lifted by a landing turn before any facilitator saw it is still readable on the team's
+    #: history afterwards. Whether a halt is *standing* is ``status``; this says what kind it
+    #: was. Null on every row halted before ENG-609, which the read side answers as
+    #: ``blocking`` while the halt stands — the conservative reading, and deliberately not a
+    #: backfill, which would be indistinguishable from a kind somebody actually recorded.
+    halt_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: When a facilitator said they went to this room, and who said it. Null is the ordinary
+    #: answer: most conversations are never marked. The pair moves together — the undo clears
+    #: both — because half of it records nothing anybody can act on.
+    #:
+    #: ``attended_by`` is a user id and not a name, the way ``IRQuestion.answered_by`` is: the
+    #: Desk resolves names itself, and a name copied here would be the name that person had
+    #: on the day of the visit.
+    attended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    attended_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    #: Which halt the visit above lifted, null when it lifted none — a facilitator may mark a
+    #: room that is running perfectly well, and most marks lift nothing.
+    #:
+    #: **Not derivable from ``halt_kind``, which is why it is a column.** That one is never
+    #: cleared, so it says "this session was halted at some point, ever"; undoing a visit has
+    #: to know whether *this* visit was the thing that lifted a halt. Without the distinction
+    #: an undo re-halts a conversation that the team had already restarted themselves — the
+    #: room stops, the queue reopens, and the kind it announces belongs to a halt somebody
+    #: cleared an hour earlier.
+    lifted_halt: Mapped[str | None] = mapped_column(String(16), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
