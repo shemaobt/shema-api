@@ -11,6 +11,7 @@ from app.services.internalization_room.back_translation import (
     with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
+from app.services.internalization_room.compose import recompose_passage
 from app.services.internalization_room.live_turn import (
     ComprehensionTurn,
     run_comprehension_turn,
@@ -25,6 +26,7 @@ from app.services.internalization_room.run_turn import (
 )
 from app.services.internalization_room.segments import (
     capture_segment,
+    current_segments,
     divide_segment,
     divided_segments,
     final_segments,
@@ -77,6 +79,7 @@ __all__ = [
     "comprehension_of",
     "correction_to_verify",
     "create_session",
+    "current_segments",
     "divide_segment",
     "divided_segments",
     "final_segments",
@@ -87,6 +90,7 @@ __all__ = [
     "get_session_for_facilitator",
     "mark_needs_person",
     "parent_of",
+    "recompose_passage",
     "report_playback",
     "retired_segments",
     "run_comprehension_turn",

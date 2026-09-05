@@ -76,8 +76,13 @@ def _segment_view(segment: IRSegment) -> dict[str, Any]:
     """One stretch, with the address a reviewer needs to go and hear it.
 
     ``take_id`` with ``starts_ms``/``ends_ms`` is the slice **inside that file**, never a
-    position over the concatenated passage — which is the whole reason a stretch can be
-    corrected without moving the ones after it.
+    position over the concatenated passage — which is what lets a stretch be told back again
+    without touching the ones after it.
+
+    Re-recording the mother tongue is the one correction that does move them, because it
+    rebuilds the file they are all slices of: they are re-pointed at the rebuilt passage
+    together, in one place, and a reader of this packet resolves every stretch against the
+    recording named here and needs to do nothing else.
     """
     return {
         "segment_id": segment.id,
