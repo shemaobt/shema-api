@@ -322,6 +322,11 @@ class SegmentsResponse(BaseModel):
     #: exactly as it was — replacing a good explanation with an empty one over a transcriber
     #: outage would lose the team's work to somebody else's failure.
     captured: bool = True
+    #: True when the retells ran out on this correction. The room stops instead of buying
+    #: another round, and it is said here as well as on the telling-back route: a team that
+    #: spends the last of the budget still gets the stretches back, and would otherwise have no
+    #: sign that the room had stopped.
+    needs_person: bool = False
 
 
 class BackTranslationProgress(BaseModel):
@@ -450,6 +455,14 @@ class BackTranslationVerdictResponse(BaseModel):
     #: Which stretch the finding lands on, by its own address, so the room can take the team
     #: straight to that slice of their recording instead of starting the whole passage over.
     finding_segment_id: str | None = None
+    #: Which stretch was recorded in the mother tongue but never told back, by its own
+    #: address, when that is what stopped the reading. Its own field rather than
+    #: `finding_segment_id` because the two ask the room for different things: a finding is
+    #: a stretch the team told and the analyst has a correction about, and this is a stretch
+    #: with no telling-back at all. Reading one from the absence of the other is the
+    #: inference that cost a team their morning — the app had no address, inferred "start
+    #: over", and threw away every recording of the passage.
+    untold_segment_id: str | None = None
     findings_remaining: int = 0
     used_fail_safe: bool = False
 

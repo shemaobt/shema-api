@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.core.config import Settings, get_settings
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
 from app.services.internalization_room.render import render
@@ -143,6 +144,16 @@ class BackTranslationState(BaseModel):
     #: have been served the verdict of the one it replaced. `None` is never read at all, which
     #: an empty list is not.
     analysed_segment_ids: list[str] | None = None
+    #: Whether a stretch-by-stretch verification has run since the last whole reading. It is
+    #: what the closing gate turns on: a verification answers the finding it was shown and
+    #: nothing else, so a list emptied by verifications alone has never been measured against
+    #: the set. Two things live only in the set — a correction can answer, by accident, a
+    #: finding raised on another stretch, and whether the telling-back is too thin to judge at
+    #: all — and `checked` strikes the passage off the wheel for good, with no undo.
+    #:
+    #: A first reading never turns it on, which is what keeps a team that got it right the
+    #: first time paying for one reading and not two.
+    verified_since_whole_reading: bool = False
     #: What the room said when it last reached a verdict, so a press that decides nothing new
     #: can hand back the same answer without voicing it again. `None` until a verdict has been
     #: spoken *and* stored, which is what separates "already judged" from a press that reached
@@ -378,6 +389,191 @@ async def analyse_telling_back(
     return _parse_analysis(raw, segments)
 
 
+class CorrectionCheck(BaseModel):
+    """One verification of one corrected stretch.
+
+    ``resolved`` and ``findings`` are independent on purpose: a correction can answer the
+    finding it was asked about and still drop an element only that stretch carried, and it can
+    leave the finding standing while breaking nothing. Collapsing them into one verdict would
+    make the room unable to tell the team which of the two happened.
+    """
+
+    resolved: bool
+    findings: list[Finding] = Field(default_factory=list)
+
+
+#: What the verification may report. Deliberately short of the analyst's list: `missing` here
+#: means *this stretch said it before and does not now*, never the analyst's global sense, and
+#: the kinds defined over the whole telling-back — `insufficient_evidence`, `reordered_event`,
+#: `wrong_relation` — cannot be judged from one stretch at all.
+CORRECTION_KINDS = frozenset(
+    {
+        FindingKind.MISSING,
+        FindingKind.ADDITION,
+        FindingKind.MEANING_CHANGE,
+        FindingKind.PRESERVATION_VIOLATION,
+        FindingKind.UNCLEAR,
+    }
+)
+
+
+def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
+    """The verification's reply, or None when it cannot be trusted at all.
+
+    None is never "the correction was fine": a verification that did not happen must not be
+    readable as one that passed, because a finding dropped on an unparseable reply is a finding
+    the team is never asked about again. Read atomically for the same reason `_parse_analysis`
+    is — one malformed entry among good ones would otherwise silently shrink the report.
+
+    Every finding is stamped with the corrected stretch's own address: the verification looked
+    at exactly one stretch, so there is nowhere else its findings could land, and a finding the
+    team cannot locate sends them back to the whole recording for no reason.
+    """
+    text = raw.strip()
+    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
+    if fenced:
+        text = fenced.group(1).strip()
+    try:
+        parsed: Any = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning("BT correction returned unparseable JSON: %s", raw[:300])
+        return None
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("resolved"), bool):
+        return None
+    raw_findings = parsed.get("findings", [])
+    if not isinstance(raw_findings, list):
+        return None
+
+    findings: list[Finding] = []
+    for entry in raw_findings:
+        if not isinstance(entry, dict):
+            return None
+        note = str(entry.get("note", "")).strip()
+        if not note:
+            return None
+        try:
+            kind = FindingKind(str(entry.get("kind", "")))
+        except ValueError:
+            logger.warning("BT correction returned an unknown finding kind: %s", entry)
+            return None
+        if kind not in CORRECTION_KINDS:
+            logger.warning("BT correction returned a kind it cannot judge: %s", entry)
+            return None
+        findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id))
+    return CorrectionCheck(resolved=bool(parsed["resolved"]), findings=findings)
+
+
+def correction_to_verify(
+    state: BackTranslationState,
+    told: list[IRSegment],
+    retired: list[IRSegment],
+) -> tuple[Finding, IRSegment, IRSegment] | None:
+    """The finding, the stretch it was raised on, and the stretch that replaced it.
+
+    One shape counts as a correction: the reading's own list of stretches, with exactly one
+    position now held by a different row, and that position is the one the current finding
+    names, and the row that stood there was superseded by the row standing there now.
+
+    Everything else falls through to the full reading, which is the answer that is never wrong
+    — only more expensive. That is deliberate, and it is what makes every awkward case safe
+    without a rule of its own: a stretch divided changes the list's length; two corrections at
+    once move two positions; a stretch retold that no finding pointed at moves a position that
+    is not the finding's; a finding with no address names nothing to compare; a first reading
+    has no earlier list at all; and a mother-tongue re-recording leaves a stretch with nothing
+    told back, so the chain from the finding's stretch does not reach what stands there now.
+    """
+    finding = state.current_finding
+    before = state.analysed_segment_ids
+    if finding is None or finding.segment_id is None or before is None:
+        return None
+
+    now = [segment.id for segment in told]
+    if len(before) != len(now):
+        return None
+    moved = [at for at, (was, stands) in enumerate(zip(before, now, strict=True)) if was != stands]
+    if len(moved) != 1:
+        return None
+
+    position = moved[0]
+    if before[position] != finding.segment_id:
+        return None
+    earlier = next((row for row in retired if row.id == finding.segment_id), None)
+    if earlier is None or earlier.superseded_by_id != now[position]:
+        return None
+
+    corrected = told[position]
+    if not (earlier.transcript or "").strip() or not (corrected.transcript or "").strip():
+        return None
+    return finding, earlier, corrected
+
+
+def findings_after_correction(
+    findings: list[Finding], check: CorrectionCheck, corrected: IRSegment
+) -> list[Finding]:
+    """What the team hears about next, once one correction has been verified.
+
+    Answered, and the finding leaves; whatever the correction broke takes its place at the
+    front, so the team is answered about the stretch they just retold rather than being sent
+    somewhere else in the same breath.
+
+    Unanswered, and it stays — but re-addressed to the stretch that now counts. Left pointing
+    at the row it was raised on, it would send the team to a version that no longer exists, and
+    the screen that shows them where the error lives would have nothing to show.
+
+    What the correction broke is not added on top of a finding that still stands. Asking the
+    team for two things about one stretch in one turn is how a room stops being followable, and
+    the next round raises it again if it is still true.
+    """
+    if not check.resolved:
+        return [findings[0].model_copy(update={"segment_id": corrected.id}), *findings[1:]]
+    return [*check.findings, *findings[1:]]
+
+
+async def verify_correction(
+    *,
+    finding: Finding,
+    earlier: IRSegment,
+    corrected: IRSegment,
+    scope: str,
+    pericope_num: str,
+    correction_prompt: str,
+    session_language: str = "Portuguese",
+    settings: Settings | None = None,
+) -> CorrectionCheck | None:
+    """Ask whether one retold stretch answers the finding raised on it. Never voiced.
+
+    Only this stretch is shown. The analyst's reading stays whole because its own definition of
+    a missing element is *one that appears in no chunk* — a statement about the set, which a
+    single stretch cannot support. This asks a different question, about a finding that is
+    already known, and that question fits in one stretch.
+
+    Returns None when the call or its reply failed, which is not the same as a correction that
+    passed: the caller keeps the finding rather than dropping it on an outage.
+    """
+    cfg = settings or get_settings()
+    system = render(
+        correction_prompt,
+        SESSION_LANGUAGE=session_language,
+        SCOPE=scope,
+        MEANING_MAP=load_map(pericope_num).body,
+        FINDING=findings_block(finding),
+        EARLIER_TELLING=earlier.transcript or "",
+        NEW_TELLING=corrected.transcript or "",
+    )
+    try:
+        raw = await call_agent(
+            system_prompt=system,
+            user_content="Verifique a correção contra o achado.",
+            temperature=0.0,
+            max_output_tokens=1500,
+            settings=cfg,
+        )
+    except Exception:
+        logger.exception("BT correction check failed for %s", pericope_num)
+        return None
+    return _parse_correction(raw, corrected.id)
+
+
 def findings_block(finding: Finding | None) -> str:
     """Exactly one finding reaches the Speaker; the rest wait for the next round."""
     if finding is None:
@@ -413,10 +609,9 @@ def closing_block(finding: Finding | None) -> str:
     address. A prompt that branched would be asking a model not to promise a choice the screen
     will not offer; injecting one closing means the wrong instruction is never in front of it.
 
-    The deciding fact is not whether the finding has an address — it is whether a boundary
-    question was asked. `unclear` names a stretch and still asks only for that piece again, and
-    the screen exists to answer *"is it in your recording, or did it come in with the telling?"*.
-    Where that question is not put, there is no choice to hand over.
+    What counts as a stretch to hand over is `points_at_a_stretch`, and it is not written out
+    a second time here: the room's request for the whole stretch turns on the same answer, and
+    two copies of it would be two things free to disagree about the same screen.
 
     Returned with `{session_language}` still in it, for whoever fills the template to
     substitute from the same value it gives `{{SESSION_LANGUAGE}}`. Naming the language here
@@ -427,7 +622,59 @@ def closing_block(finding: Finding | None) -> str:
     """
     if finding is None:
         return CLOSING_PLAIN
-    asks_where_the_error_lives = (
-        finding.segment_id is not None and finding.kind not in EVIDENCE_LIMIT_KINDS
+    return CLOSING_ON_SCREEN if points_at_a_stretch(finding) else CLOSING_SPOKEN
+
+
+def points_at_a_stretch(finding: Finding | None) -> bool:
+    """Whether this finding puts one stretch on screen with a microphone on each voice.
+
+    The deciding fact is not whether the finding has an address — it is whether a boundary
+    question was asked. `unclear` names a stretch and still asks only for that piece again,
+    and the screen exists to answer *"is it in your recording, or did it come in with the
+    telling?"*. Where that question is not put, there is no choice to hand over.
+
+    One expression, because two things now turn on it: which closing the Speaker is given,
+    and whether the room asks for the whole stretch. They have to agree — the request is
+    about the gesture the screen is offering, so a room that warned about a replacement the
+    screen never offers would be describing work the team cannot do.
+    """
+    return (
+        finding is not None
+        and finding.segment_id is not None
+        and finding.kind not in EVIDENCE_LIMIT_KINDS
     )
-    return CLOSING_ON_SCREEN if asks_where_the_error_lives else CLOSING_SPOKEN
+
+
+def with_the_whole_stretch_asked_for(
+    speech: str,
+    finding: Finding | None,
+    language_code: str = FLOOR,
+    *,
+    used_fail_safe: bool = False,
+) -> str:
+    """The verdict, and after it the request to tell that whole stretch again.
+
+    The correction the screen offers **replaces** one stretch: the new telling-back takes its
+    position and the old one stops counting. A team that records only the amendment — which is
+    what anybody would do — loses everything they had already told there. In a real session the
+    same stretch was corrected three times and each round took the round before it out of
+    circulation, with nothing saying so.
+
+    So the room says it. Appended to the verdict rather than answered as a second clip: the
+    response carries exactly one address for audio, and a sentence needing a slot of its own
+    would need a new app release before a team could hear it at all. The team hears one turn,
+    which is also what it is.
+
+    Said only where the screen actually offers the two microphones, which is what
+    `points_at_a_stretch` decides — nothing is replaced anywhere else, and a correction
+    instruction out of turn confuses more than it helps.
+
+    A turn that fell back to a fail-safe carries nothing after it, and neither does one with
+    nothing to carry. A fail-safe is played from inside the app by the name it is known by, so
+    a sentence appended to one would reach the transcript and never the room; and a request
+    with no verdict in front of it is an instruction the team was given no reason for.
+    """
+    if used_fail_safe or not speech or not points_at_a_stretch(finding):
+        return speech
+    asked = first(FailSafe.STRETCH_TO_CORRECT, language_code)
+    return f"{speech} {asked}" if asked else speech

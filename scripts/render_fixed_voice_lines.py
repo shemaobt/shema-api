@@ -100,10 +100,14 @@ STANDALONE: dict[str, dict[str, str]] = {
     },
 }
 
-#: The one family that is spoken and never shipped. The supplement says so of it in bold —
-#: *"This one is spoken, not shipped."* — and the app names no H line, so rendering it would
-#: put a clip in the bundle that nothing plays and hold `--check` red forever.
-NEVER_SHIPPED = frozenset({FailSafe.UNTOLD_STRETCH})
+#: The families that are spoken and never shipped. The supplement says so of each in bold —
+#: *"This one is spoken, not shipped."* — and the app names no H or I line, so rendering one
+#: would put a clip in the bundle that nothing plays and hold `--check` red forever.
+#:
+#: Both are said with the server answering normally and something else already being
+#: synthesized in the same request, which is what separates them from a fail-safe: a
+#: fail-safe has to work when the network is the thing that failed.
+NEVER_SHIPPED = frozenset({FailSafe.UNTOLD_STRETCH, FailSafe.STRETCH_TO_CORRECT})
 
 
 def catalogue(language_code: str) -> dict[str, str]:
