@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
+from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
@@ -39,7 +40,9 @@ class Finding(BaseModel):
     #: Which stretch the finding lands on, by the segment's own address. The team fixes one
     #: stretch of the recording, not the whole passage, so a finding that cannot name its
     #: stretch cannot be acted on. `None` when the analyst could not attribute it — the room
-    #: then falls back to the whole clip, which is what it always did.
+    #: then falls back to the whole clip, which is what it always did. Also `None` for a
+    #: missing element the analyst places after everything the team told: there is no
+    #: stretch to point at, so the room sends the team on to keep recording instead.
     #:
     #: It was the stretch's position in a list, which named nothing the moment the list
     #: changed. The analyst still answers with a number, because asking a model to echo an
@@ -266,6 +269,23 @@ def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str
     )
 
 
+def _refused(condition: str, raw: str, session: str) -> None:
+    """Every refusal leaves the reply behind it, whole, with the condition that refused.
+
+    Five of the seven exits below used to return None in silence. A reply the model did
+    produce was then indistinguishable from one it never did, and the night of 2026-09-01
+    was spent unable to say what the analyst had answered. The reply is logged whole
+    rather than cut at a few hundred characters: it is bounded by the call's output cap,
+    and a truncated reply is exactly what could not be diagnosed. The session is named so
+    the line can be tied to the request that got the 502, across replicas and teams.
+    """
+    logger.warning("BT analyst reply refused (%s) for session %s: %s", condition, session, raw)
+
+
+def _session_of(segments: list[IRSegment]) -> str:
+    return segments[0].session_id if segments else "?"
+
+
 def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     """The analyst's reply read atomically, or None when it cannot be trusted at all.
 
@@ -278,9 +298,24 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
 
     A reply without ``evidence_sufficient`` is from a prompt version that predates the
     field; it is read as sufficient, exactly what that prompt's replies always meant. When
-    the field is present, it must agree with the findings: insufficient needs a finding
-    that names the limit, and sufficient may not carry insufficient_evidence.
+    the field is present it must agree with the findings one way: insufficient needs a
+    finding that names the limit, or nothing concrete reaches the Voice.
+
+    The other way it is allowed to disagree, and the disagreement is resolved rather than
+    refused. **A sufficient flag beside an ``insufficient_evidence`` finding is read as
+    insufficient, and every finding is kept.** The prompt defines that finding as the
+    statement that a real part of the scope could not be compared, naming the stretch;
+    the flag is that same statement summarised over the scope, with no information of its
+    own. When they disagree the flag is the side without evidence. The alternatives are
+    both worse: refusing the reply threw away a good ``meaning_change`` together with the
+    contradiction (ENG-719, the session that stopped a team three times), and letting the
+    flag win would have marked as checked a passage the analyst itself said stops at
+    verse 8. Whoever reads this as a contradiction to be refused: it was, and that is
+    what it cost. The analyst did break the contract its prompt writes, so the case is
+    logged with the reply — silence about a model's drift is how the next one goes
+    unnoticed too.
     """
+    session = _session_of(segments)
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
@@ -288,45 +323,75 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     try:
         parsed: Any = json.loads(text)
     except json.JSONDecodeError:
-        logger.warning("BT analyst returned unparseable JSON: %s", raw[:300])
+        _refused("not JSON", raw, session)
         return None
     if not isinstance(parsed, dict) or not isinstance(parsed.get("findings"), list):
+        _refused("findings is not a list", raw, session)
         return None
     sufficient_raw = parsed.get("evidence_sufficient", True)
     if not isinstance(sufficient_raw, bool):
+        _refused("evidence_sufficient is not a boolean", raw, session)
         return None
 
     findings: list[Finding] = []
     for entry in parsed["findings"]:
         if not isinstance(entry, dict):
+            _refused("an entry in findings is not an object", raw, session)
             return None
         kind_raw = str(entry.get("kind", ""))
         if kind_raw == "silence":
             kind_raw = FindingKind.ADDITION.value
         note = str(entry.get("note", "")).strip()
         if not note:
+            _refused("a finding has an empty note", raw, session)
             return None
         try:
             kind = FindingKind(kind_raw)
         except ValueError:
-            logger.warning("BT analyst returned an unknown finding kind: %s", entry)
+            _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
         findings.append(
             Finding(
                 kind=kind,
                 note=note[:1000],
-                segment_id=_segment_pointed_at(entry.get("chunk"), segments),
+                segment_id=_segment_pointed_at(
+                    entry.get("chunk"),
+                    segments,
+                    kind=kind,
+                    where=entry.get("where"),
+                    raw_reply=raw,
+                    session=_session_of(segments),
+                ),
             )
         )
 
     if not sufficient_raw and not any(f.kind in EVIDENCE_LIMIT_KINDS for f in findings):
+        _refused("evidence_sufficient is false and no finding names the limit", raw, session)
         return None
     if sufficient_raw and any(f.kind is FindingKind.INSUFFICIENT_EVIDENCE for f in findings):
-        return None
+        logger.warning(
+            "BT analyst said evidence_sufficient is true beside an insufficient_evidence "
+            "finding for session %s; the finding wins and the reply is read as "
+            "insufficient: %s",
+            session,
+            raw,
+        )
+        sufficient_raw = False
     return BtAnalysis(evidence_sufficient=sufficient_raw, findings=findings)
 
 
-def _segment_pointed_at(raw: Any, segments: list[IRSegment]) -> str | None:
+_VALID_WHERE = frozenset({"before", "inside", "after"})
+
+
+def _segment_pointed_at(
+    raw: Any,
+    segments: list[IRSegment],
+    *,
+    kind: FindingKind,
+    where: Any = None,
+    raw_reply: str = "",
+    session: str = "?",
+) -> str | None:
     """Which stretch the finding lands on, by address, or None when it names none.
 
     The analyst answers with the position it was given, and the position is turned into an
@@ -334,6 +399,19 @@ def _segment_pointed_at(raw: Any, segments: list[IRSegment]) -> str | None:
     finding the team cannot locate sends them back to the whole recording, so a pointer that
     is not a number, or names a stretch that is not in this reading, degrades to that rather
     than to a stretch that does not exist.
+
+    For a `missing` finding the analyst also names `where` the missing content sits relative
+    to the chunk it gave: `"after"` on the *last* chunk means nothing is missing inside any
+    chunk — it is missing past all of them, with no chunk to point at — so this returns
+    `None`, exactly as a `null` chunk always has. `"after"` short of the last chunk moves the
+    pointer forward one, because a thing missing after chunk k is missing at the start of
+    chunk k+1. `"before"` and `"inside"` both land on the named chunk itself, which is also
+    where an absent or unrecognised `where` falls back to — the table this resolves is the
+    product owner's, not a guess the parser is free to make on an unfamiliar value; an
+    unrecognised one is logged with what it was rather than silently swallowed.
+
+    `where` is read only when `kind` is `missing`: every other kind is a statement about the
+    chunk itself, so a `where` alongside one is ignored without comment.
     """
     if isinstance(raw, bool) or not isinstance(raw, int | str):
         return None
@@ -343,6 +421,13 @@ def _segment_pointed_at(raw: Any, segments: list[IRSegment]) -> str | None:
         return None
     if position < 1 or position > len(segments):
         return None
+
+    if kind is FindingKind.MISSING and where is not None:
+        if not isinstance(where, str) or where not in _VALID_WHERE:
+            _refused(f"unrecognised where {where!r}", raw_reply, session)
+        elif where == "after":
+            return None if position == len(segments) else segments[position].id
+
     return segments[position - 1].id
 
 
@@ -364,8 +449,13 @@ async def analyse_telling_back(
     But under-reporting is not the same as not reporting. Returning a clean analysis when
     the call itself failed made an outage indistinguishable from a clean telling-back, and
     the room then told the team their work was checked and closed the passage for good.
-    None says "never ran"; only a real, sufficient, findingless analysis may mean "ran,
-    and found nothing".
+    Only a real, sufficient, findingless analysis may mean "ran, and found nothing".
+
+    The two ways of not having an analysis are kept apart here, because the route answers
+    them differently. A provider that failed raises ``UpstreamServiceError`` from this
+    boundary, with the cause attached and the stack trace logged. A provider that answered
+    something the parser refused returns None — the parser has already logged the reply
+    and why — and that is not an outage, whatever the old single None used to say.
     """
     cfg = settings or get_settings()
     system = render(
@@ -383,9 +473,11 @@ async def analyse_telling_back(
             max_output_tokens=2000,
             settings=cfg,
         )
-    except Exception:
+    except Exception as failure:
         logger.exception("BT analysis failed for %s", pericope_num)
-        return None
+        raise UpstreamServiceError(
+            "a análise do contado de volta não pôde ser feita agora"
+        ) from failure
     return _parse_analysis(raw, segments)
 
 

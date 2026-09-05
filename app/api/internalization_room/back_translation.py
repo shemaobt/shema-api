@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import UnreadableReply, UpstreamServiceError, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
@@ -331,8 +331,9 @@ async def finish(
         if read is None:
             # Nothing is saved: `checked` stays as it was and `analysed_segment_ids` does not
             # advance, so pressing `terminei` again actually re-runs the analyst instead of
-            # serving a verdict nobody ever reached.
-            raise UpstreamServiceError("a análise do contado de volta não pôde ser feita agora")
+            # serving a verdict nobody ever reached. An outage never reaches this line: the
+            # service raises it as the upstream failure it is.
+            raise UnreadableReply("a resposta do analista não pôde ser lida")
         state.findings = read.findings
         state.evidence_sufficient = read.evidence_sufficient
         state.analysed_segment_ids = [segment.id for segment in told]
