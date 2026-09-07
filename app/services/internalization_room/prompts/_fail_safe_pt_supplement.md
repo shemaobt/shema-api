@@ -8,8 +8,9 @@ but not for B, C and E — and the room speaks Portuguese, so without these the 
 switch to English at exactly the worst moment: a question the map cannot answer, a handoff, a
 hard stop.
 
-Second, section H, which the authored file has no counterpart for in any language, because the
-situation it names did not exist when that file was written.
+Second, the sections the authored file has no counterpart for in any language, because the
+situations they name did not exist when that file was written: H and I. Each carries its own
+English block here as well as its `-pt` one, since there is no authored English to fall back to.
 
 Translated from the authored English, matching the register of the existing `-pt` blocks:
 warm, short sentences, `vocês`, spoken pronoun placement. Reviewed and approved by Marcia
@@ -78,3 +79,51 @@ already told, rather than telling what was not).
 - "Ainda falta parte da passagem para vocês me contarem. Vamos terminar isso primeiro, e depois eu confiro tudo junto."
 - "Ainda tem pedaço que vocês não me contaram. Me contem, e aí eu olho a passagem inteira."
 - "Ainda falta contar um pouco. Quando vocês terminarem, eu confiro tudo de uma vez."
+
+## I. A stretch was pointed at, and correcting it replaces it
+
+**Not authored by the project. Written for ENG-693 with the product owner's authorization,
+2026-09-01, and given as fixed: the wording is not the implementer's to adjust.**
+
+⚠ Neither the English nor the Spanish here has been read by a native speaker. ENG-683 records
+that this is true of every English and Spanish line the room speaks, not just this one.
+
+**Spoken, not shipped**, for the same reason H is: it rides on the verdict's own clip, which
+the server is synthesizing in that very request, so no app release stands between the team and
+hearing it.
+
+Not a failure either. The room heard everything and the analyst read all of it; what happened
+is that a finding landed on one stretch and the screen is now offering the two voices of that
+stretch side by side, each with a microphone. Tapping one **replaces** that stretch: the new
+telling-back takes its position and the old one stops counting. A team that records only the
+amendment — which is what anybody would do — loses everything they had already told there, and
+nothing on a screen the room barely uses would say so. Measured in a real session: the same
+stretch was corrected three times, and each round took the round before it out of circulation.
+
+Two other ways out were considered and refused. A warning on screen puts the load-bearing
+sentence on the weakest channel a talking room has. Making the server add instead of replace
+touches the versioning by position, which is correct today and is what the Refine artifact
+reads.
+
+**What the sentence may not do**, from a log where a draft was rejected for doing it:
+
+- **It does not name the bridge language.** "in English" is false in a Spanish session, and
+  the facilitator is already speaking the bridge language, so "tell me" anchors it alone.
+- **It does not claim the two recordings were compared.** The Guide never checks the mother
+  tongue and says that limit out loud; claiming the comparison is an epistemic-policy
+  violation.
+- **It does not instruct the interface.** "Tell me this whole part again" describes work and
+  passes; "tap the button" is a flow-policy violation.
+
+It is said only where the screen actually offers those two microphones — a finding that names
+a stretch and asks the boundary question. A finding with no stretch, or one that only says the
+telling was unclear, hands nothing over, so there is nothing there to replace and nothing to
+warn about.
+
+### I.
+
+- "I need you to tell me this whole part again — what you already told me, and what was missing too."
+
+### I-pt. (Português brasileiro)
+
+- "Preciso que vocês me contem esta parte inteira de novo — o que já tinham contado, e também o que faltou."
