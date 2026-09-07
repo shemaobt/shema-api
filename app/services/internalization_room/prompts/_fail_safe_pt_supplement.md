@@ -94,7 +94,8 @@ hearing it.
 
 Not a failure either. The room heard everything and the analyst read all of it; what happened
 is that a finding landed on one stretch and the screen is now offering the two voices of that
-stretch side by side, each with a microphone. Tapping one **replaces** that stretch: the new
+stretch side by side, with a microphone to tell it again — one on each voice for most findings,
+one alone for a missing element. Recording there **replaces** that stretch: the new
 telling-back takes its position and the old one stops counting. A team that records only the
 amendment — which is what anybody would do — loses everything they had already told there, and
 nothing on a screen the room barely uses would say so. Measured in a real session: the same
@@ -115,8 +116,8 @@ reads.
 - **It does not instruct the interface.** "Tell me this whole part again" describes work and
   passes; "tap the button" is a flow-policy violation.
 
-It is said only where the screen actually offers those two microphones — a finding that names
-a stretch and asks the boundary question. A finding with no stretch, or one that only says the
+It is said only where the screen actually offers a microphone on one stretch — a finding that
+names a stretch and asks the boundary question. A finding with no stretch, or one that only says the
 telling was unclear, hands nothing over, so there is nothing there to replace and nothing to
 warn about.
 
