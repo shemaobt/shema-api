@@ -157,7 +157,7 @@ def _marks_the_app_added(handed: list[str], written: str) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_no_probe_block_reaches_the_guide_or_the_validator(
+async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The block is what answered a language problem with a microphone line: holding a
@@ -167,6 +167,10 @@ async def test_no_probe_block_reaches_the_guide_or_the_validator(
     A turn with no probe standing is the one that shows it plainest — the block was written
     even then, and its four lines were pure instruction: invent no other semantic test,
     authorize exactly one move, follow the app-owned instruction only.
+
+    The sentence is the one from the ticket, and what the turn does with it is the whole
+    point: it goes to the Guide, in the Guide's own words, off the conversation. Not a
+    fail-safe, not a fixed line, and nothing about the sound.
     """
     models = _RecordingModels()
     monkeypatch.setattr(
@@ -174,8 +178,13 @@ async def test_no_probe_block_reaches_the_guide_or_the_validator(
     )
     session = await _a_room_that_has_asked_something(db_session)
 
-    await _the_team_answers(db_session, session, text="é difícil explicar isso em português")
+    turn, _ = await _the_team_answers(
+        db_session, session, text="é difícil explicar isso em português"
+    )
 
+    assert turn.outcome.speech == GUIDE_LINE
+    assert not turn.outcome.used_fail_safe
+    assert not turn.outcome.degraded
     assert models.guide and models.validator
     to_the_guide = _marks_the_app_added(models.guide, GUIDE)
     to_the_validator = _marks_the_app_added(models.validator, VALIDATOR)
