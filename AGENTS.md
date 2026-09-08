@@ -12,7 +12,7 @@ JWT_SECRET_KEY=test-secret-for-pytest-only DATABASE_URL=sqlite+aiosqlite:///./te
 uv run mypy app/
 uv run ruff check . && uv run ruff format --check .
 DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python -c "import app.main"
-uv run alembic heads   # the graph must stand at exactly one head
+PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no duplicate ids
 ```
 
 The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and reaches neither database.

@@ -18,10 +18,15 @@ The kind is a short string column rather than a Postgres enum, for the reason `b
 one: a database type is a second place the vocabulary lives, and a migration on both sides
 every time it grows a value.
 
-A row halted before the distinction existed carries no kind and is answered blocking. That is
-the conservative reading: treating an unknown halt as one that stops the room sends somebody
-to a team that did not need them, while the other way round leaves a stopped room waiting.
+A row halted before the distinction existed carries no kind. While such a halt still stands it
+is answered blocking, which is the conservative reading: treating an unknown halt as one that
+stops the room sends somebody to a team that did not need them, while the other way round
+leaves a stopped room waiting. Once it has been lifted it is answered as no halt at all, since
+nothing on the row says otherwise, and guessing there would put a blocking halt into the
+history of a conversation that may never have had one.
 
-What has not moved yet is **Needs a person** itself. On `main` it is still a value of the
-**Session** status enum, so today the kind of a halt travels beside the status while the fact
-of it still travels inside. Taking it out of the status is ENG-605, which is not merged.
+What has not moved is **Needs a person** itself: it is still a value of the **Session** status
+enum, so today the kind of a halt travels beside the status while the fact of the halt still
+travels inside it, and a reader needs both. The Desk's card is already the other way round —
+it carries the halt as a field of its own beside the state — but that is the wire shape, not
+this enum, and no ticket currently covers taking the value out of the enum.

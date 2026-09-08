@@ -3,7 +3,7 @@ status: accepted
 date: 2026-09-08
 ---
 
-# `Range` stays in the bucket CORS allowlist; `PUT` and `x-goog-resumable` are out
+# `Range` stays in the Sound Necklace bucket's CORS allowlist; `PUT` and `x-goog-resumable` are out
 
 The **Sound Necklace** single-page app only ever issues signed GET requests against its
 bucket. Uploads travel through the API rather than a signed URL, so the write verb and the
@@ -20,6 +20,10 @@ the content length back. Keeping the header covers both paths and costs nothing.
 
 Source: the Fetch standard, CORS-safelisted request-header
 (https://fetch.spec.whatwg.org/#cors-safelisted-request-header).
+
+This decision is about that one bucket. The platform bucket is a different case — browsers do
+upload to it directly — so it keeps the write verb and the resumable header, and reading this
+record as a rule for every bucket would be reading it wrong.
 
 The two CORS files are applied by hand and by nobody else — no workflow, script or startup
 path reads them — so they can drift from the live buckets silently, and one of them already

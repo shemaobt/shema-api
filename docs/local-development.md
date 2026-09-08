@@ -58,6 +58,9 @@ and app: a second run updates the existing grant rather than adding a second one
 also a self-service path through the access-request route, reviewed by an admin, whose
 automatic approval is off by default.
 
+For the resource request form the role keys are `equipe`, `mesa` and `gestor`, mirroring the
+frontend's own capability map.
+
 ## Data in the local database
 
 `docker compose up` populates the database for you. On a database that does not exist yet, a
@@ -75,6 +78,14 @@ The pilot needs replaying because production carries the Ruth pilot's artifacts 
 the rows that bind them to a project — those only ever existed in the dev database, so no
 production dump will ever have them. The replay script guards every statement, so applying it
 twice is a no-op, and it is written against the production schema rather than dev's.
+
+**It asserts no consent.** The collection-consent column is `false` on every binding it
+writes. That column is asserted by hand, by a human, through the seed script's
+`--consent` flag, and nobody ever recorded it for the pilot rows. A seed file must not put an
+agreement into your database that never happened, so do not flip it to make a gate pass.
+
+Its project grant is keyed on the platform-admin flag rather than on a person, because naming
+one address would leave every other developer with a project they cannot open.
 
 To skip the production data entirely:
 
@@ -104,12 +115,37 @@ want it — so the first two lines on their own arm the next `docker compose up`
 production straight back down. Keep the variable set for as long as you want the machine
 clean.
 
+The database itself asks for a password — `POSTGRES_PASSWORD`, `tripod-local` unless you
+override it — so the published port is not an open door onto that data for every account on
+the machine. Socket connections inside the container stay trusted, which is what
+`docker compose exec db psql` and the seed hook use, so nothing here needs it.
+
 ## The dump bucket
 
 Dumps live in `gs://tripod-db-dumps`. Taking one is a manual admin procedure, deliberately not
-a script in this repository: it reads production and writes nothing to it. Stage the file as
-`.partial` and upload only on success, because a redirect writes whatever the command produced
-before it failed, and an aborted dump would otherwise publish a truncated file.
+a script in this repository: it reads production and writes nothing to it.
+
+```sh
+umask 077                                    # the file below is production data
+FILE="tripod-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+if PGURL="$(gcloud secrets versions access latest \
+  --secret=tripod_backend_neon_database_url --project=shemaobt-secrets)" \
+  docker compose run --rm --no-deps -T -e PGURL --entrypoint sh db \
+  -c 'pg_dump --format=custom --no-owner --no-privileges "$PGURL"' > "$FILE.partial" \
+  && [ -s "$FILE.partial" ]; then
+  mv "$FILE.partial" "$FILE"
+  gcloud storage cp "$FILE" "gs://tripod-db-dumps/$FILE" --project=shemaobt-secrets
+  rm "$FILE"
+else
+  echo "dump failed — nothing uploaded"; rm -f "$FILE.partial"
+fi
+```
+
+The `umask` is part of the procedure, not decoration: the file it writes is production data.
+Staging it as `.partial` and uploading only on success matters for the same kind of reason — a
+redirect writes whatever the command produced before it failed, so an aborted dump would
+otherwise publish a truncated file.
 
 Three details matter. The connection string travels through the environment rather than as an
 argument, because argv is readable by any local process and it carries the production

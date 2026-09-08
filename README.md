@@ -10,7 +10,8 @@ FastAPI · SQLAlchemy 2 async · Alembic · PostgreSQL on Neon · uv · Docker �
 
 ## Running it
 
-You need the gcloud CLI, access to the secrets project, and Docker. Runtime secrets are
+You need the gcloud CLI, access to the secrets project, and Docker. The suite runs on the host
+rather than in Compose, so it also needs `uv`, Python 3.11 and `ffmpeg`. Runtime secrets are
 fetched from GCP Secret Manager at startup; nothing sensitive is committed here.
 
 ```sh

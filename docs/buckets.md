@@ -20,7 +20,8 @@ A Cloud Run service answers on two URL forms. The deterministic one is
 the legacy one carries a random hash Cloud Run assigns at creation, which cannot be known in
 advance.
 
-That distinction has already produced a wrong entry here: a hash-form URL for a service that
-did not exist yet identified nothing at all. Read the real URL off the deployment once a
-service is deployed and replace the entry, rather than assuming the deterministic form is
-enough — Cloud Run gives every service both.
+That distinction has already produced a wrong entry, and it is still live: the Sound Necklace
+CORS file lists a hash-form origin for a service that did not exist when it was written, so
+that hash was never read off a deployment and identifies nothing. Once the service is deployed,
+read its real URL and replace that origin, rather than deleting the line and assuming the
+deterministic form is enough — Cloud Run gives every service both.

@@ -1,9 +1,10 @@
 # CI
 
-Every workflow below runs on a pull request. They also run on `integration/**` pushes, which
-have no pull request of their own; that filter stays narrow on purpose, because the test job
-has been measured between 6 and 56 minutes and a chain merged one step at a time pays the
-slowest job once per step.
+The first three below are the gates: they run on every pull request, and also on
+`integration/**` pushes, which have no pull request of their own. That filter stays narrow on
+purpose, because the test job has been measured between 6 and 56 minutes and a chain merged
+one step at a time pays the slowest job once per step. The rest run on their own triggers,
+named in the table.
 
 | Workflow | What it gates |
 |---|---|
@@ -16,7 +17,12 @@ slowest job once per step.
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
 | Claude mention | Answers an `@claude` mention on a pull request or issue. |
 | Claude cost report | A weekly usage rollup, posted to a webhook when one is configured. |
-| Reviews | Two review workflows run on demand. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
+| Reviews | Two review workflows, each fired by requesting its reviewer on the pull request; re-request to re-run. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
+
+Both deploys pull their configuration from GCP Secret Manager and set only a handful of plain
+environment variables on the service directly — the environment name, the mail provider, the
+job-queue app id and the platform bucket. Anything secret comes from Secret Manager, never
+from the workflow file.
 
 The migrations job is expected to go red on an integration branch between certain steps, and
 that is not a reason to switch it off: every merge that brings its own migration leaves the
