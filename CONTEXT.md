@@ -62,7 +62,7 @@ _Avoid_: L2, Portuguese, Língua-ponte
 
 **Stretch** (`segment`):
 The persistent, addressable object of one told slice of the passage: a slice of a rehearsal take, the matching back-translation take, the transcript, the order and the pass. A correction is a new row that supersedes the previous one, never an edit.
-_Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk
+_Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk (the ephemeral position in one reading, not this object)
 
 **Chunk**:
 The numbered position of a stretch in the list the analyst receives in one reading. It exists only for the length of the call; the server turns the number back into a stretch.
