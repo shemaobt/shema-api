@@ -24,7 +24,7 @@ _Avoid_: analyst (it judges content, not speech), Validador
 
 **Correction check** (`verify_correction`):
 The call that checks whether a correction answered the finding, counting the elements the stretch carried, those still told, and those the new telling brought back. Resolved and broken are independent answers.
-_Avoid_: analyst, validator, Verificador de correção
+_Avoid_: analyst (it reads a whole scope; this answers one finding), validator (it judges speech, not content), Verificador de correção
 
 **Team** (`project`):
 The group of translators that owns the work. In the schema the column is called `project_id`; the Desk and the backlog say team.
@@ -46,7 +46,7 @@ _Avoid_: passage (that is what the id names, not the id itself), text, Perícope
 
 **Scope**:
 The slice of the passage checked in one reading by the analyst, which can be smaller than the pericope.
-_Avoid_: window, stretch, trecho, Escopo
+_Avoid_: stretch (the persistent object; a scope is one reading's slice of the passage), trecho, window, Escopo
 
 **Take**:
 An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, the whole passage in the mother tongue) or back-translation (`retro`, a stretch told in the bridge language).
@@ -66,7 +66,7 @@ _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, ch
 
 **Chunk**:
 The numbered position of a stretch in the list the analyst receives in one reading. It exists only for the length of the call; the server turns the number back into a stretch.
-_Avoid_: stretch, segment
+_Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name)
 
 **Pass** (`pass_number`):
 How many times a stretch has been told: one on the first telling, two when told again after a finding.
@@ -118,7 +118,7 @@ _Avoid_: position, offset, Onde
 The distinction between "no difference appeared" and "too little was told to check". When it is false, there is always an insufficient evidence or unclear finding naming the limit.
 _Avoid_: confidence, score, Evidência suficiente
 
-**Points at a stretch**:
+**Points at a stretch** (`points_at_a_stretch`):
 The property of a finding that puts one specific stretch on screen with the two microphones. It decides the closing of the verdict.
 _Avoid_: has an address, Aponta um trecho
 
