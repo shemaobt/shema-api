@@ -385,9 +385,37 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
     session.attended_at = None
     session.attended_by = None
     session.lifted_halt = None
+    session.person_arrived_at = None
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
+    """Somebody long-pressed this halted room to say they are here (ENG-792).
+
+    **First press wins.** The moment records when a person reached the room, and one that
+    moved on every press would record the last time a hand touched the screen instead — a
+    team pressing again because nothing visibly happened would keep resetting the one fact
+    the Desk reads off this row.
+
+    The moment belongs to the halt it answers, so ``mark_needs_person`` clears it: a room that
+    stopped again is asking again, and carrying the arrival forward would show the new halt as
+    already answered by somebody who came for the old one.
+
+    Not gated on the room being halted. A press can only come from a screen that is showing
+    the halt, and refusing one that arrives just as a turn lands would lose the arrival of a
+    person who is standing in the room either way.
+
+    Answers the moment rather than the row, the way ``record_needs_person`` does on the device
+    side: the caller wants the one thing this writes, and a row typed as nullable would make
+    every caller handle a null this function has just ruled out.
+    """
+    if session.person_arrived_at is None:
+        session.person_arrived_at = datetime.now(UTC)
+        await db.commit()
+        await db.refresh(session)
+    return session.person_arrived_at
 
 
 async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
