@@ -18,6 +18,7 @@ class IRPromptKey(enum.StrEnum):
     BOOK_PANORAMA = "book_panorama"
     DRAFT_SELF_CHECK = "draft_self_check"
     BT_ANALYST = "bt_analyst"
+    BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
     COMPREHENSION_ASSESSOR = "comprehension_assessor"
 
