@@ -6,9 +6,9 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.bridge_language import strays_from
-from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
+from app.services.internalization_room.panorama_turn import run_panorama_turn
 from app.services.internalization_room.passage_turn import run_turn
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.prompt_blocks import (
@@ -23,7 +23,6 @@ from app.services.internalization_room.redraft_note import (
 )
 from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import (
-    OPENING_INSTRUCTION,
     OPENING_MOVEMENT_MARK,
     split_opening_movements,
 )
@@ -39,6 +38,7 @@ __all__ = [
     "call_agent",
     "coverage_status_block",
     "detects_peer_cue",
+    "run_panorama_turn",
     "run_turn",
     "split_opening_movements",
     "strays_from",
@@ -47,61 +47,6 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 MAX_REDRAFTS = 2
-
-
-async def run_panorama_turn(
-    *,
-    transcript: str,
-    messages: list[dict[str, Any]],
-    panorama_prompt: str,
-    validator_prompt: str,
-    book: str,
-    book_material: str,
-    session_language: str = LANGUAGE_NAMES[FLOOR],
-    language_code: str = FLOOR,
-    opening: bool = False,
-    settings: Settings | None = None,
-    session_id: str = "?",
-    validator_context: str = "",
-    ask_for_movements: bool = False,
-) -> TurnOutcome:
-    """One exchange of a Book Panorama — the session before a book's first passage.
-
-    No coverage spine: a panorama never completes. The team has not lived any passage yet,
-    so every one of the book's withholdings is still ahead of them.
-    """
-    cfg = settings or get_settings()
-
-    if not opening and not transcript.strip():
-        speech, line = choose(FailSafe.INAUDIBLE, language_code, turn=len(messages))
-        return TurnOutcome(
-            speech=speech,
-            transcript="",
-            used_fail_safe=True,
-            degraded=True,
-            fixed_line=line,
-        )
-
-    return await _voiced_after_validation(
-        speaker_system=render(
-            panorama_prompt,
-            BOOK_NAME=book,
-            SESSION_LANGUAGE=session_language,
-            BOOK_MATERIAL=book_material,
-        ),
-        validator_prompt=validator_prompt,
-        standard_of_truth=book_material,
-        transcript=transcript,
-        messages=messages,
-        session_language=session_language,
-        language_code=language_code,
-        opening=opening,
-        opening_instruction=OPENING_INSTRUCTION,
-        settings=cfg,
-        session_id=session_id,
-        validator_context=validator_context,
-        ask_for_movements=ask_for_movements,
-    )
 
 
 #: The slot a stored prompt row must carry for the closing to reach the Speaker.
