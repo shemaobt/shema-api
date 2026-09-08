@@ -260,6 +260,11 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     unattend_id, _ = await _a_recorded_session_of(db, owner, f"u{tag}")
     patch_device = await _a_device_of(db, owner, f"p{tag}")
     delete_device = await _a_device_of(db, owner, f"d{tag}")
+    # One device per route, for the reason the two sessions above are separate: the mark and
+    # its undo are one claim written and withdrawn, and sharing a device would make each
+    # case depend on the other having run first.
+    attend_device = await _a_device_of(db, owner, f"v{tag}")
+    unattend_device = await _a_device_of(db, owner, f"w{tag}")
     claim = await _claim_of(db, owner, f"c{tag}")
     absent = "nao-existe-em-lugar-nenhum"
 
@@ -284,6 +289,18 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owned": (f"{DESK}/devices/{delete_device}", {}),
             "absent": (f"{DESK}/devices/{absent}", {}),
             "ids": (delete_device, absent),
+        },
+        {
+            "method": "POST",
+            "owned": (f"{DESK}/devices/{attend_device}/attended", {}),
+            "absent": (f"{DESK}/devices/{absent}/attended", {}),
+            "ids": (attend_device, absent),
+        },
+        {
+            "method": "DELETE",
+            "owned": (f"{DESK}/devices/{unattend_device}/attended", {}),
+            "absent": (f"{DESK}/devices/{absent}/attended", {}),
+            "ids": (unattend_device, absent),
         },
         {
             "method": "GET",
@@ -408,6 +425,8 @@ REFUSING_TEMPLATES = {
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),
+    ("POST", f"{DESK}/devices/{{device_id}}/attended"),
+    ("DELETE", f"{DESK}/devices/{{device_id}}/attended"),
     ("GET", f"{DESK}/teams/{{team_id}}"),
     ("GET", f"{DESK}/teams/{{team_id}}/devices"),
     ("GET", f"{DESK}/teams/{{team_id}}/coverage"),
