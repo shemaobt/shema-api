@@ -1,169 +1,169 @@
-# Sala de Internalização (servidor)
+# Internalization Room (server)
 
-O lado do servidor da Sala: guarda o que a equipe grava, conduz a retrotradução, chama o analista para conferir o que foi contado contra o Mapa de Sentido, resolve cada achado num endereço e decide como a fala do veredito termina. O app do tablet e a Mesa são os clientes.
+The server side of the Room: it keeps what the team records, runs the back-translation, calls the analyst to check what was told against the Meaning Map, settles every finding at an address, and decides how the verdict speech ends. The tablet app and the Desk are its clients.
 
 ## Language
 
-### Vozes e papéis
+### Voices and roles
 
-**Guia** (`guide`):
-A persona que conduz a conversa com a equipe durante toda a sessão, fora do veredito de retrotradução.
-_Avoid_: narrador, condutor
+**Guide**:
+The persona that leads the conversation with the team throughout the session, outside the back-translation verdict.
+_Avoid_: narrator, conductor, Guia
 
-**Falante** (`speaker`):
-A persona que diz o veredito da retrotradução à equipe, mais quente que o analista. Um único papel.
-_Avoid_: voice (nome interno alternativo), narrador falado, TTS
+**Speaker**:
+The persona that says the back-translation verdict to the team, warmer than the analyst. A single role.
+_Avoid_: voice (alternative internal name), spoken narrator, TTS, Falante
 
-**Analista** (`analyst`):
-A entidade que lê só os trechos contados e o Mapa de Sentido, nunca fala com a equipe e devolve apenas achados em JSON.
-_Avoid_: verificador, revisor, classificador
+**Analyst**:
+The entity that reads only the told stretches and the Meaning Map, never speaks to the team, and returns findings as JSON and nothing else.
+_Avoid_: checker, reviewer, classifier, Analista
 
-**Validador** (`validator`):
-A entidade que confere o rascunho de fala da Guia ou do Falante antes da síntese de áudio e pode recusá-lo, disparando a fala de segurança.
-_Avoid_: analista (julga o conteúdo, não a fala)
+**Validator**:
+The entity that checks the Guide's or the Speaker's draft speech before audio synthesis and can refuse it, triggering the safety speech.
+_Avoid_: analyst (it judges content, not speech), Validador
 
-**Verificador de correção** (`verify_correction`):
-A chamada que confere se um conserto respondeu ao achado, contando os elementos que o trecho carregava, os que continuam ditos e os que a nova contagem trouxe de volta. Resolve e quebra são respostas independentes.
-_Avoid_: analista, validador
+**Correction check** (`verify_correction`):
+The call that checks whether a correction answered the finding, counting the elements the stretch carried, those still told, and those the new telling brought back. Resolved and broken are independent answers.
+_Avoid_: analyst, validator, Verificador de correção
 
-**Equipe** (`project`):
-O grupo de tradutores dono do trabalho. No schema a coluna chama-se `project_id`; a Mesa e o backlog dizem "equipe".
-_Avoid_: team (nome antigo da coluna), usuário
+**Team** (`project`):
+The group of translators that owns the work. In the schema the column is called `project_id`; the Desk and the backlog say team.
+_Avoid_: project (in prose; it is the schema's word for the same entity), user, Equipe
 
-**Mesa** (`desk`):
-O app web do facilitador, consumidor das rotas de perguntas, paradas e sessões por equipe.
-_Avoid_: painel, dashboard
+**Desk**:
+The facilitator's web app, consumer of the routes for questions, halts and sessions by team.
+_Avoid_: panel, dashboard, Mesa
 
-**Sala** (`room`):
-O sistema inteiro visto pela equipe: a composição de Guia, Falante, Analista e Validador. Metáfora de produto, não uma classe.
-_Avoid_: bot, assistente
+**Room**:
+The whole system as the team sees it: the composition of Guide, Speaker, Analyst and Validator. A product metaphor, not a class.
+_Avoid_: bot, assistant, Sala
 
-### Unidades de texto e áudio
+### Units of text and audio
 
-**Perícope** (`pericope`):
-O identificador da passagem bíblica, unidade de trabalho de uma sessão.
-_Avoid_: passage (em prosa), texto
+**Pericope**:
+The identifier of the biblical passage, the unit of work of a session.
+_Avoid_: passage (that is what the id names, not the id itself), text, Perícope
 
-**Escopo** (`scope`):
-O recorte da passagem conferido numa leitura do analista, que pode ser menor que a perícope.
-_Avoid_: janela, trecho
+**Scope**:
+The slice of the passage checked in one reading by the analyst, which can be smaller than the pericope.
+_Avoid_: window, stretch, trecho, Escopo
 
-**Take** (`take`):
-Um arquivo de áudio gravado pela equipe, de um de dois tipos: ensaio (a passagem inteira na língua materna) ou retro (um pedaço contado na língua-ponte).
-_Avoid_: gravação, áudio
+**Take**:
+An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, the whole passage in the mother tongue) or back-translation (`retro`, a stretch told in the bridge language).
+_Avoid_: recording, audio
 
-**Língua materna** (`mother tongue`):
-A língua da equipe, em que o ensaio é gravado e que ninguém no servidor entende.
-_Avoid_: native, L1
+**Mother tongue**:
+The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
+_Avoid_: native, L1, Língua materna
 
-**Língua-ponte** (`bridge language`):
-A língua em que a equipe conta de volta, na qual o analista lê. O estado de calibração dessa língua é o `bridge_mode`.
-_Avoid_: L2, português
+**Bridge language**:
+The language the team tells back in, and which the analyst reads. `bridge_mode` is the calibration state of that language.
+_Avoid_: L2, Portuguese, Língua-ponte
 
-**Segmento** (`segment`):
-O objeto persistente e endereçável de um trecho contado: fatia de um take do ensaio, take de retro correspondente, transcrição, ordem e passe. Uma correção é uma linha nova que substitui a anterior, nunca uma edição. No app, o mesmo objeto chama-se trecho.
-_Avoid_: chunk, stretch (prosa), trecho (nome do lado do app)
+**Stretch** (`segment`):
+The persistent, addressable object of one told slice of the passage: a slice of a rehearsal take, the matching back-translation take, the transcript, the order and the pass. A correction is a new row that supersedes the previous one, never an edit.
+_Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk
 
-**Chunk** (`chunk`):
-A posição numerada de um segmento na lista que o analista recebe numa leitura. Existe só durante a chamada; o servidor traduz o número em segmento.
-_Avoid_: segmento, trecho
+**Chunk**:
+The numbered position of a stretch in the list the analyst receives in one reading. It exists only for the length of the call; the server turns the number back into a stretch.
+_Avoid_: stretch, segment
 
-**Passe** (`pass_number`):
-Quantas vezes um segmento foi contado: um na primeira contagem, dois quando recontado depois de um achado.
-_Avoid_: tentativa, versão
+**Pass** (`pass_number`):
+How many times a stretch has been told: one on the first telling, two when told again after a finding.
+_Avoid_: attempt, version, Passe
 
-**Contar de volta** (`telling back`):
-O ato de dizer, na língua-ponte, o que um trecho da língua materna contém.
-_Avoid_: traduzir, transcrever
+**Telling back**:
+The act of saying, in the bridge language, what a stretch of the mother tongue holds.
+_Avoid_: translating, transcribing, Contar de volta
 
-**Não contado** (`untold`):
-Um segmento gravado na língua materna que ainda não foi contado de volta. Não é um achado: só falta contar, e o analista não é chamado.
-_Avoid_: faltante, pendente
+**Untold**:
+A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called.
+_Avoid_: missing, pending, Não contado
 
-**Ensaio** (`rehearsal`):
-A gravação da passagem inteira na língua materna e a estação em que ela acontece. É para onde a equipe volta quando falta algo depois de tudo.
-_Avoid_: rehearsal (em prosa), gravação
+**Rehearsal** (`ensaio`):
+The recording of the whole passage in the mother tongue, and the station where it happens. It is where the team returns when something is missing beyond everything already told.
+_Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 
-**Mapa de Sentido** (`meaning map`):
-O conteúdo canônico da perícope contra o qual o analista compara, incluindo regras de preservação e o silêncio marcado que não se revela.
-_Avoid_: gabarito, texto-base
+**Meaning Map**:
+The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
+_Avoid_: answer key, base text, Mapa de Sentido
 
-**Colar** (`necklace`) e **conta** (`bead`):
-A cobertura da passagem vista como um cordão de contas, cada conta um elemento do Mapa que passa por não encontrada, aflorada e engajada.
-_Avoid_: progresso, checklist
+**Necklace** and **bead** (`element`):
+The coverage of the passage seen as a string of beads, each bead an element of the Map that travels through not encountered, surfaced, partially engaged and engaged.
+_Avoid_: progress, checklist, Colar, conta, Sound Necklace (a different product in this repository)
 
-**Panorama** (`panorama`):
-A visão geral do livro falada antes da primeira passagem; uma sessão registra que veio logo depois dele para a Guia não se apresentar duas vezes.
-_Avoid_: introdução
+**Panorama**:
+The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice.
+_Avoid_: introduction
 
-### Achados
+### Findings
 
-**Achado** (`finding`):
-A resposta do analista sobre um trecho contado: um tipo, uma nota e, quando há, um segmento. Os tipos: falta, adição, mudança de sentido, relação errada, evento reordenado, violação de preservação, evidência insuficiente, incerto.
-_Avoid_: erro, problema
+**Finding**:
+The analyst's answer about a told stretch: a kind, a note and, when there is one, a stretch. The kinds: missing, addition, meaning change, wrong relation, reordered event, preservation violation, insufficient evidence, unclear.
+_Avoid_: error, problem, Achado
 
-**Falta com endereço** (`missing` com `where` before ou inside):
-Um elemento do Mapa ausente cujo lugar cabe num chunk existente. A equipe regrava e reconta aquele trecho.
-_Avoid_: falta interna
+**Missing with an address** (`missing` with `where` before or inside):
+An element of the Map that is absent and whose place fits inside an existing chunk. The team records that stretch again and tells it again.
+_Avoid_: internal missing, Falta com endereço
 
-**Falta sem endereço** (`missing` com `where` after no último chunk):
-Um elemento ausente que fica depois de tudo o que foi contado. O segmento é nulo e a fala manda gravar mais e voltar ao ensaio, sem apagar nada.
-_Avoid_: falta externa, missing null
+**Missing without an address** (`missing` with `where` after on the last chunk):
+An element that is absent and sits after everything that was told. The stretch is null and the speech sends the team to record more and go back to the rehearsal, erasing nothing.
+_Avoid_: external missing, missing null, Falta sem endereço
 
-**Onde** (`where`):
-O campo de um achado de falta que diz se o conteúdo ausente fica antes, dentro ou depois do chunk citado.
-_Avoid_: posição, offset
+**Where**:
+The field of a missing finding that says whether the absent content sits before, inside or after the chunk it cites.
+_Avoid_: position, offset, Onde
 
-**Evidência suficiente** (`evidence_sufficient`):
-A distinção entre "nenhuma diferença apareceu" e "pouco foi contado para conferir". Quando falsa, há sempre um achado de evidência insuficiente ou incerto nomeando o limite.
-_Avoid_: confiança, score
+**Sufficient evidence** (`evidence_sufficient`):
+The distinction between "no difference appeared" and "too little was told to check". When it is false, there is always an insufficient evidence or unclear finding naming the limit.
+_Avoid_: confidence, score, Evidência suficiente
 
-**Aponta um trecho** (`points_at_a_stretch`):
-A propriedade de um achado que põe um segmento específico na tela com os dois microfones. Decide o fechamento do veredito.
-_Avoid_: tem endereço
+**Points at a stretch**:
+The property of a finding that puts one specific stretch on screen with the two microphones. It decides the closing of the verdict.
+_Avoid_: has an address, Aponta um trecho
 
-### Correção e verificação
+### Correction and verification
 
-**Correção** (`correction`):
-A retomada de exatamente um segmento, no lugar apontado pelo achado atual, para responder a ele. Detectada porque só uma posição da lista mudou.
-_Avoid_: conserto (nome do lado do app para o mesmo gesto), fix, retell
+**Correction**:
+The retaking of exactly one stretch, at the place the current finding points to, to answer it. Detected because only one position of the list changed.
+_Avoid_: mend (the app's word for the same gesture), fix, retell (the count of tellings, not this gesture), Correção
 
-**Reconto** (`retell`):
-Cada nova contagem do mesmo trecho depois de um achado. No terceiro reconto a sala pede uma pessoa: um aviso, nunca um teto.
-_Avoid_: tentativa, retry
+**Retell**:
+Each new telling of the same stretch after a finding. On the third retell the room asks for a person: a warning, never a cap.
+_Avoid_: attempt, retry, Reconto
 
-**Substituída** (`superseded`):
-Uma tentativa de contar de volta trocada por uma gravação nova. Seus achados viram histórico marcado, não desaparecem.
-_Avoid_: apagada, descartada
+**Superseded**:
+An attempt at telling back that was replaced by a new recording. Its findings become marked history; they never vanish.
+_Avoid_: erased, discarded, Substituída
 
-**Conferida** (`checked`):
-O estado em que a passagem foi contada e verificada por uma leitura inteira do analista e sai da roda para sempre. Verificações pontuais de correção nunca a produzem.
-_Avoid_: concluída, done
+**Checked**:
+The state in which the passage has been told and verified by one whole reading of the analyst and leaves the rotation for good. Spot correction checks never produce it.
+_Avoid_: complete, done, Conferida
 
-**Ouviu o ensaio** (`playback_confirms_rehearsal`):
-A evidência de que a equipe ouviu o ensaio inteiro, sobre o take vigente, antes de fechar.
-_Avoid_: playback completo
+**Heard the rehearsal** (`playback_confirms_rehearsal`):
+The evidence that the team listened to the whole rehearsal, on the current take, before closing.
+_Avoid_: complete playback, Ouviu o ensaio
 
-### Fechamentos do veredito
+### Verdict closings
 
-**Fechamento** (`closing`):
-Como o Falante termina o turno do veredito: devolvendo a escolha à tela, com uma pergunta, sem pergunta porque a passagem está conferida, pedindo resposta falada, ou mandando gravar mais e voltar ao ensaio.
-_Avoid_: encerramento, outro
+**Closing**:
+How the Speaker ends the verdict turn: handing the choice back to the screen, with a question, without a question because the passage is checked, asking for a spoken answer, or sending the team to record more and go back to the rehearsal.
+_Avoid_: ending, other, Fechamento
 
-### Estados da sessão
+### Session states
 
-**Sessão** (`session`):
-O trabalho de uma equipe sobre uma perícope, com status em andamento, concluída ou precisa de pessoa.
-_Avoid_: passagem, rodada
+**Session**:
+The work of one team on one pericope, with status in progress, done or needs a person.
+_Avoid_: passage, round, Sessão
 
-**Precisa de pessoa** (`needs_person`):
-Uma parada, não um fim: viaja ao lado do status, nunca dentro dele, com o tipo bloqueante ou aviso.
-_Avoid_: erro, falha, status
+**Needs a person** (`needs_person`):
+A halt, not an end: it travels beside the status, never inside it, with the kind blocking or warning.
+_Avoid_: error, failure, status, Precisa de pessoa
 
-**Parada** (`halt`):
-O motivo pelo qual a sala parou por uma pessoa: bloqueante ou aviso. Uma parada anterior à distinção lê-se como bloqueante.
-_Avoid_: bloqueio, travamento
+**Halt**:
+The reason the room stopped for a person: blocking or warning. A halt from before the distinction reads as blocking.
+_Avoid_: blockage, lockup, Parada
 
 **Refine**:
-A etapa posterior do produto que recebe o artefato da retrotradução. Não vive neste servidor.
-_Avoid_: revisão, refinamento
+The later product stage that receives the back-translation artifact. It does not live on this server.
+_Avoid_: review, refinement
