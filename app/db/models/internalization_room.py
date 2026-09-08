@@ -129,6 +129,16 @@ class IRSession(Base):
     #: room stops, the queue reopens, and the kind it announces belongs to a halt somebody
     #: cleared an hour earlier.
     lifted_halt: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: When somebody long-pressed this halted room to say they had arrived (ENG-792). Null
+    #: until the first press, and cleared by every new halt — the moment belongs to the halt
+    #: it answered, and carrying it forward would show a fresh halt as already answered.
+    #:
+    #: First press wins while a halt stands: it records when a person reached the room, not
+    #: the last time a hand touched the screen. A team pressing again because nothing visibly
+    #: happened would otherwise keep resetting the very fact the Desk reads.
+    person_arrived_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

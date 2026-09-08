@@ -27,11 +27,13 @@ from app.models.device import (
     ERROR_CODE_CLAIM_CODE_ALREADY_USED,
     ERROR_CODE_CLAIM_CODE_EXPIRED,
     ERROR_CODE_CLAIM_CODE_UNKNOWN,
+    DeviceAttendedResponse,
     DeviceClaimRequest,
     DeviceClaimResponse,
     DeviceLabelUpdateRequest,
     TeamDeviceResponse,
 )
+from app.services.device.attended import attend_device, unattend_device
 from app.services.device.claim_device import ClaimRefusal, InvalidClaimCodeError
 from app.services.device.claim_device_as_facilitator import claim_device_as_facilitator
 from app.services.device.set_team_device_label import set_team_device_label
@@ -153,3 +155,37 @@ async def unlink_device_route(
     """
     await unlink_device(db, user=user, device_id=device_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@facilitator_devices_router.post("/{device_id}/attended", response_model=DeviceAttendedResponse)
+async def mark_device_attended_route(
+    device_id: str,
+    user: FacilitatorUser,
+    db: AsyncSession = Depends(get_db),
+) -> DeviceAttendedResponse:
+    """A facilitator went to this tablet: the halt lifts, and who went is recorded.
+
+    Two routes and not a boolean on some larger update, so that the undo is as plain as the
+    mark — the same shape the session pair has, and for the same reason. A mark is a claim
+    about the physical world, and the person who taps it is the person who will notice thirty
+    seconds later that they tapped the wrong row.
+
+    Idempotent, and a tablet that never halted can be marked all the same; ``attend_device``
+    is where both of those are argued, along with the two refusals.
+    """
+    return DeviceAttendedResponse.of(await attend_device(db, user=user, device_id=device_id))
+
+
+@facilitator_devices_router.delete("/{device_id}/attended", response_model=DeviceAttendedResponse)
+async def undo_device_attended_route(
+    device_id: str,
+    user: FacilitatorUser,
+    db: AsyncSession = Depends(get_db),
+) -> DeviceAttendedResponse:
+    """Nobody went after all: the stamps clear and the tablet asks again, from when it asked.
+
+    A tablet nobody marked answers 200 and changes nothing — there is no claim to withdraw,
+    and treating the absence as an error would make an idempotent undo impossible to write on
+    the Desk.
+    """
+    return DeviceAttendedResponse.of(await unattend_device(db, user=user, device_id=device_id))

@@ -101,6 +101,33 @@ class Device(Base):
         UtcDateTime(timezone=True), nullable=True
     )
 
+    #: When a facilitator said they went to this tablet, and who said it (ENG-792). Null is
+    #: the ordinary answer: most tablets are never marked. The pair moves together — the undo
+    #: clears both — because half of it records nothing anybody can act on.
+    #:
+    #: ``attended_by`` is a user id and not a name, the way ``IRSession.attended_by`` is: the
+    #: Desk resolves names itself, and a name copied here would be the name that person had
+    #: on the day of the visit.
+    attended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    attended_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+    #: The halt moment the visit above lifted, null when it lifted none — a facilitator may
+    #: mark a tablet that is working perfectly well, and most marks lift nothing.
+    #:
+    #: **The moment and not a flag**, because the undo has to put the halt back where it was.
+    #: ``needs_person_since`` is null while the mark stands, so an undo with nothing to read
+    #: from would restamp the halt at the moment somebody changed their mind. The queue is
+    #: ordered by that column, newest halt first, so the tablet would return above rooms that
+    #: really did stop after it, announcing a halt that never happened.
+    #:
+    #: Cleared when the device opens a session, which is the tablet's own exit and would have
+    #: lifted the halt with or without the visit. That is ``lifted_halt``'s reasoning applied
+    #: to the device: once the room has come back there is nothing left to put back, and an
+    #: undo that still restored would stop a tablet in the middle of a session.
+    attended_lifted_since: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
+
     #: The last time this device asked the API anything. Null until it does. Nothing but
     #: ``GET /api/devices/me`` moves it, because that is the only request a device makes.
     last_seen_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
