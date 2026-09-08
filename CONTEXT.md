@@ -2,6 +2,9 @@
 
 The server side of the Room: it keeps what the team records, runs the back-translation, calls the analyst to check what was told against the Meaning Map, settles every finding at an address, and decides how the verdict speech ends. The tablet app and the Desk are its clients.
 
+This glossary covers the Internalization Room. Other subsystems of this server are named
+only where a decision record needs their words.
+
 ## Language
 
 ### Voices and roles
@@ -12,7 +15,11 @@ _Avoid_: narrator, conductor, Guia
 
 **Speaker**:
 The persona that says the back-translation verdict to the team, warmer than the analyst. A single role.
-_Avoid_: voice (alternative internal name), spoken narrator, TTS, Falante
+_Avoid_: voice (alternative internal name, and this server's word for the synthesized voice id — see Voice), spoken narrator, TTS, Falante
+
+**Voice** (`voice_id`):
+The synthesized voice a line is spoken with, one per language the Room speaks.
+_Avoid_: Speaker (the persona spoken by it), narrator, Voz
 
 **Analyst**:
 The entity that reads only the told stretches and the Meaning Map, never speaks to the team, and returns findings as JSON and nothing else.
@@ -96,6 +103,24 @@ _Avoid_: progress, checklist, Colar, conta, Sound Necklace (a different product 
 The overview of the book spoken before the first passage; a session records that it followed the panorama, so that the Guide does not introduce itself twice.
 _Avoid_: introduction
 
+**Address**:
+Where a stretch sits: the take it belongs to, and its start and end in milliseconds inside
+that one file.
+_Avoid_: range, offset, position, Endereço
+
+**Divided stretch** (`parent_id`, `ordinal`):
+A stretch cut out of another one, numbered among its own siblings rather than among the
+session's stretches.
+_Avoid_: child, split, subsegment, Trecho dividido
+
+**Element kind**:
+What a bead of the Meaning Map is: scene, being, place, object, time, absence or preserved.
+_Avoid_: type, category, Tipo de elemento
+
+**Coverage event** (`ir_coverage_events`):
+One recorded movement of a bead from one coverage state to the next.
+_Avoid_: log, history, audit, Evento de cobertura
+
 ### Findings
 
 **Finding**:
@@ -144,6 +169,16 @@ _Avoid_: complete, done, Conferida
 The evidence that the team listened to the whole rehearsal, on the current take, before closing.
 _Avoid_: complete playback, Ouviu o ensaio
 
+**Abandoned**:
+A superseded stretch that never got a replacement, which is what starting a telling-back
+over leaves behind on every stretch of a session at once.
+_Avoid_: erased, discarded, cancelled, Abandonada
+
+**Rebuild**:
+A new passage take assembled around a stretch that was recorded again, which every stretch
+of the recording it replaces is then re-pointed at.
+_Avoid_: version, merge, recomposition, Reconstrução
+
 ### Verdict closings
 
 **Closing**:
@@ -164,6 +199,40 @@ _Avoid_: error, failure, status, Precisa de pessoa
 The reason the room stopped for a person: blocking or warning. A halt from before the distinction reads as blocking.
 _Avoid_: blockage, lockup, Parada
 
+**Halt kind** (`halt_kind`):
+Whether a halt stops the room or only calls somebody over: blocking, or warning.
+_Avoid_: severity, level, status, Tipo de parada
+
 **Refine**:
 The later product stage that receives the back-translation artifact. It does not live on this server.
 _Avoid_: review, refinement
+
+### Other subsystems
+
+**Sound Necklace**:
+The interview product of this server, whose answer path has had no caller since the
+2026-09-01 scope cut.
+_Avoid_: Necklace (the Room's bead metaphor), Colar de Sons
+
+**Transcription**:
+The first model step of the Sound Necklace answer path, which writes down what was said and
+cleans nothing.
+_Avoid_: STT, speech recognition, Transcrição
+
+**Disfluency cleanup**:
+The model step that takes hesitations out of a transcript, after transcription and before
+the facilitator confirms it on screen.
+_Avoid_: editing, polishing, correction, Limpeza
+
+**Verbatim**:
+The property of a transcript that carries what was said without cleanup, completion or
+summary.
+_Avoid_: literal, raw, Literal
+
+**App** (`apps`):
+One application this server serves, holding the roles that access to it is granted through.
+_Avoid_: product, tenant, client, Aplicativo
+
+**Grant**:
+One person's role on one app, without which they reach nothing of it.
+_Avoid_: permission, membership, access, Concessão

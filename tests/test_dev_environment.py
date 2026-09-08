@@ -245,8 +245,8 @@ def test_a_failing_restore_never_blocks_the_stack() -> None:
 
 
 def test_the_cleanup_instruction_is_not_undone_by_the_next_up() -> None:
-    readme = (ROOT / "README.md").read_text()
-    warning = readme[readme.index("**The dump is not anonymized.**") :][:1200]
+    guide = (ROOT / "docs" / "local-development.md").read_text()
+    warning = guide[guide.index("**The dump is not anonymized.**") :][:1200]
 
     assert "down -v" in warning
     assert f"rm {DUMP_DIR}/latest.dump" in warning
