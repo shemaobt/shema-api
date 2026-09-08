@@ -1,0 +1,29 @@
+# CI
+
+Every workflow below runs on a pull request. They also run on `integration/**` pushes, which
+have no pull request of their own; that filter stays narrow on purpose, because the test job
+has been measured between 6 and 56 minutes and a chain merged one step at a time pays the
+slowest job once per step.
+
+| Workflow | What it gates |
+|---|---|
+| Lint | `ruff check` and `ruff format --check` over the repository. |
+| Lint, boot job | The application imports in a clean interpreter. A suite's collection order can hide an import cycle; this cannot. |
+| Lint, mypy job | Type checking over the application package. |
+| Test | The pytest suite on SQLite, with `ffmpeg` installed first so recordings are measured the way the deployed image measures them. |
+| Migrations | The graph stands at one head with no duplicate revision ids, and the newest migrations walk down and back up on a clean Postgres. |
+| Deploy | A push to `main` builds the image, upgrades the production database and deploys to Cloud Run. |
+| Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
+| Claude mention | Answers an `@claude` mention on a pull request or issue. |
+| Claude cost report | A weekly usage rollup, posted to a webhook when one is configured. |
+| Reviews | Two review workflows run on demand. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
+
+The migrations job is expected to go red on an integration branch between certain steps, and
+that is not a reason to switch it off: every merge that brings its own migration leaves the
+graph with more than one head until a merge revision collapses them. Red there means a merge
+revision is owed. The suite stays green through all of it, because pytest creates its tables
+directly and never walks the graph — which is the whole reason that job exists.
+
+Merge gates differ by target. A pull request into `dev` needs the checks and a blocking bot
+review, with no human approval; one into `main` needs the checks and one human approval, with
+the bot advisory.
