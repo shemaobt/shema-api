@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import segments as service
-from app.services.internalization_room.sessions import MAX_RETELLS
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 
 PREFIX = "/api/internalization-room"
@@ -741,11 +741,11 @@ async def test_the_service_refuses_a_moved_slice_carrying_an_explanation_on_its_
 # Correcting a stretch spends retell budget — ENG-685
 # ---------------------------------------------------------------------------
 #
-# `MAX_RETELLS` exists so a team never gets stuck retelling: when it runs out the room stops
-# and asks for a person. It was charged on the telling-back route alone, and a correction does
-# not go through there — so the one limit the room has against trapping a team did not cover
-# the path the team actually corrects by. In a room where nobody reads and the facilitator is
-# a voice, a team stuck in that cycle has no way to ask for help.
+# `RETELLS_BEFORE_A_WARNING` exists so a team never gets stuck retelling: when it runs out
+# the room stops and asks for a person. It was charged on the telling-back route alone, and a
+# correction does not go through there — so the one limit the room has against trapping a team
+# did not cover the path the team actually corrects by. In a room where nobody reads and the
+# facilitator is a voice, a team stuck in that cycle has no way to ask for help.
 
 
 async def _budget(client: httpx.AsyncClient, session_id: str) -> int:
@@ -807,12 +807,12 @@ async def test_the_budget_runs_out_and_the_room_offers_a_person(client: httpx.As
     """
     session_id, _, _ = await _one_told_stretch(client)
 
-    for _ in range(MAX_RETELLS):
+    for _ in range(RETELLS_BEFORE_A_WARNING):
         standing = (await _units(client, session_id))[0]
         answered = await _correct(client, session_id, standing)
         assert answered.status_code == 200, answered.text
 
-    assert await _budget(client, session_id) >= MAX_RETELLS
+    assert await _budget(client, session_id) >= RETELLS_BEFORE_A_WARNING
     assert await _asks_for_a_person(client, session_id) is True
     assert answered.json()["segments"], "a resposta daquela correção não se perde no caminho"
 
@@ -911,7 +911,7 @@ async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.Asyn
     having mentioned it once.
     """
     session_id, _, _ = await _one_told_stretch(client)
-    for _ in range(MAX_RETELLS):
+    for _ in range(RETELLS_BEFORE_A_WARNING):
         standing = (await _units(client, session_id))[0]
         await _correct(client, session_id, standing)
 

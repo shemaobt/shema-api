@@ -22,7 +22,7 @@ from app.services.internalization_room.segments import (
     segment_for_session,
     slice_moved,
 )
-from app.services.internalization_room.sessions import MAX_RETELLS
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 
 router = APIRouter()
@@ -184,7 +184,7 @@ async def replace(
 
     state.retells = told_again
     await room.save_back_translation(db, session, state)
-    spent = told_again >= MAX_RETELLS
+    spent = told_again >= RETELLS_BEFORE_A_WARNING
     if spent:
         await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
 
