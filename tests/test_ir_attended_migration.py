@@ -35,6 +35,18 @@ TABLE = "ir_sessions"
 NEW_COLUMNS = {"attended_at", "attended_by", "halt_kind", "lifted_halt"}
 OPENED = "2026-09-04 09:00:00"
 
+#: ENG-792 — the moment somebody long-pressed a halted room to say they had arrived. One
+#: column, on the same table, walked the same way, so the two walks sit here rather than in a
+#: file of their own.
+#:
+#: Its predecessor is ENG-792's *device* migration and not ``REVISION``: that slice adds three
+#: columns to ``devices`` and one here, and the two are separate revisions because the device
+#: migration tests build every table but ``devices`` from the model's metadata — a single
+#: migration touching both would meet its own ``ir_sessions`` column and stop their walk.
+ARRIVED_REVISION = "20260908_arr02"
+ARRIVED_PREVIOUS_REVISION = "20260908_arr01"
+ARRIVED_COLUMN = "person_arrived_at"
+
 
 def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -86,15 +98,24 @@ async def _scalar(database_url: str, sql: str, params: dict) -> object:
     return value
 
 
-@pytest.fixture()
-async def applied_database(tmp_path) -> dict[str, str]:
-    database_url = f"sqlite+aiosqlite:///{tmp_path / 'ir_attended_migration.db'}"
+async def _applied_at(tmp_path, revision: str, filename: str) -> dict[str, str]:
+    database_url = f"sqlite+aiosqlite:///{tmp_path / filename}"
     session_id = await _build_and_seed(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = _run_alembic(database_url, "stamp", revision)
     assert stamped.returncode == 0, stamped.stderr
 
     return {"url": database_url, "session": session_id}
+
+
+@pytest.fixture()
+async def applied_database(tmp_path) -> dict[str, str]:
+    return await _applied_at(tmp_path, REVISION, "ir_attended_migration.db")
+
+
+@pytest.fixture()
+async def arrived_database(tmp_path) -> dict[str, str]:
+    return await _applied_at(tmp_path, ARRIVED_REVISION, "ir_arrived_migration.db")
 
 
 async def test_the_columns_go_away_on_downgrade_and_come_back_on_upgrade(applied_database):
@@ -136,4 +157,45 @@ async def test_the_round_trip_keeps_every_session(applied_database):
     assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
     assert _run_alembic(url, "upgrade", REVISION).returncode == 0
 
+    assert await _scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
+
+
+async def test_the_arrival_column_goes_away_on_downgrade_and_comes_back_on_upgrade(
+    arrived_database,
+):
+    """ENG-792 — the moment a person reached a halted room travels both ways.
+
+    No backfill here either, and for the reason the visit columns have none: a room nobody
+    walked into must not read as one somebody did. A halt raised before this migration has
+    nothing recorded about who arrived, and null is the true answer.
+    """
+    url = arrived_database["url"]
+
+    assert ARRIVED_COLUMN in await _columns(url)
+
+    down = _run_alembic(url, "downgrade", ARRIVED_PREVIOUS_REVISION)
+    assert down.returncode == 0, down.stderr
+    assert ARRIVED_COLUMN not in await _columns(url), (
+        "o downgrade deixou a coluna para trás, e o upgrade seguinte falha ao recriá-la"
+    )
+
+    up = _run_alembic(url, "upgrade", ARRIVED_REVISION)
+    assert up.returncode == 0, up.stderr
+    assert ARRIVED_COLUMN in await _columns(url)
+
+
+async def test_a_room_halted_before_the_arrival_migration_gains_no_arrival(arrived_database):
+    """Nenhuma parada antiga ganha uma chegada que não houve, nem perde a parada que tem."""
+    url = arrived_database["url"]
+
+    assert _run_alembic(url, "downgrade", ARRIVED_PREVIOUS_REVISION).returncode == 0
+    assert _run_alembic(url, "upgrade", ARRIVED_REVISION).returncode == 0
+
+    where = {"id": arrived_database["session"]}
+    assert await _scalar(url, "SELECT status FROM ir_sessions WHERE id = :id", where) == (
+        "needs_person"
+    )
+    assert (
+        await _scalar(url, f"SELECT {ARRIVED_COLUMN} FROM ir_sessions WHERE id = :id", where)
+    ) is None
     assert await _scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
