@@ -12,16 +12,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from app.services.internalization_room.comprehension.assessor import (
-    is_semantically_empty_answer,
-)
-from app.services.internalization_room.comprehension.probe import (
-    PROBES_THAT_INVITE_A_REHEARSAL,
-    ActiveProbe,
-    ProbePurpose,
-    is_process_only,
-)
-from app.services.internalization_room.languages import FLOOR
+from app.services.internalization_room.comprehension.probe import ActiveProbe
 from app.services.internalization_room.oral_decision import (
     normalize_oral_decision,
     oral_clause_has_negation,
@@ -36,6 +27,108 @@ from app.services.internalization_room.rehearsal_readiness import (
     is_exact_rehearsal_consent_question,
     is_exact_rehearsal_readiness_cue,
 )
+
+
+def _tokens(text: str) -> list[str]:
+    decomposed = unicodedata.normalize("NFD", text)
+    stripped = "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn")
+    cleaned = re.sub(r"[^\w]+", " ", stripped.casefold(), flags=re.UNICODE)
+    return [token for token in cleaned.split() if token]
+
+
+_POLAR = frozenset(
+    [
+        "sim",
+        "nao",
+        "yes",
+        "no",
+        "si",
+        "oui",
+        "non",
+        "ja",
+        "nein",
+        "yeah",
+        "yep",
+        "nope",
+        "uh",
+        "huh",
+        "uhuh",
+        "uhum",
+        "aham",
+        "mhm",
+        "certo",
+        "correto",
+        "isso",
+        "ok",
+        "okay",
+        "e",
+        "concordo",
+        "certeza",
+    ]
+)
+_FILLER = frozenset(
+    [
+        "eh",
+        "eisso",
+        "ta",
+        "esta",
+        "bem",
+        "mesmo",
+        "issoai",
+        "acho",
+        "que",
+        "i",
+        "think",
+        "so",
+        "right",
+        "exactly",
+        "exatamente",
+        "claro",
+        "com",
+        "foi",
+        "era",
+        "aconteceu",
+        "verdade",
+    ]
+)
+
+
+def is_bare_polar_answer(text: str) -> bool:
+    tokens = _tokens(text)
+    if not tokens:
+        return False
+    return any(token in _POLAR for token in tokens) and all(
+        token in _POLAR or token in _FILLER for token in tokens
+    )
+
+
+_EMPTY_ANSWERS = frozenset(
+    {
+        "nao sei",
+        "eu nao sei",
+        "dont know",
+        "i dont know",
+        "don t know",
+        "i don t know",
+        "do not know",
+        "i do not know",
+        "no se",
+        "yo no se",
+        "je ne sais pas",
+    }
+)
+
+
+def is_semantically_empty_answer(text: str) -> bool:
+    """A reliable answer that reports nothing — a shrug, a bare "sim", "não sei".
+
+    It came here with the assessor's parser, which is where it was written and where its
+    only other caller was. It never asked a model anything: it is the room reading the
+    words it already has, which is why it outlived the component around it.
+    """
+    if not text.strip() or is_bare_polar_answer(text):
+        return True
+    return " ".join(_tokens(text)) in _EMPTY_ANSWERS
 
 
 def _normalize(text: str) -> str:
@@ -204,62 +297,6 @@ def confirms_completed_mother_tongue_practice(
     return direct_confirmation and any(_AFFIRMATIVE.match(segment) for segment in segments)
 
 
-_PRACTICE_PROMPT = {
-    "pt": (
-        "Agora ensaiem juntos esta cena na língua de vocês. "
-        "Quando terminarem, digam somente: pronto."
-    ),
-    "en": (
-        "Now rehearse this scene together in your own language. "
-        "When you have finished, just say: done."
-    ),
-    "es": (
-        "Ahora ensayen juntos esta escena en su lengua. Cuando terminen, digan solamente: listo."
-    ),
-}
-
-
-def mother_tongue_practice_prompt(language: str = FLOOR) -> str:
-    return _PRACTICE_PROMPT.get(language, _PRACTICE_PROMPT[FLOOR])
-
-
-def is_exact_mother_tongue_practice_prompt(text: str) -> bool:
-    """Whether a line the room already said was the practice prompt, in any language.
-
-    Any language's, for the same reason the rehearsal matchers take all of them: the text
-    was written on an earlier turn, and a room that only recognised the current language
-    would fail to recognise its own question.
-    """
-    return _normalize(text) in {_normalize(said) for said in _PRACTICE_PROMPT.values()}
-
-
-def the_practice_invitation_is_owed_by_the_app(
-    prior_probe: ActiveProbe | None,
-    planned_probe: ActiveProbe | None,
-    previous_guide_utterance: str,
-) -> bool:
-    """Whether the app still has to say the fixed line because the Guide never invited.
-
-    The invitation belongs to the Guide, at the end of the opening, in its own words and
-    carrying the contract the team answers: rehearse, then come back and tell in the
-    bridge language what you understood. Speaking the fixed sentence in that place took
-    the turn away from the Guide, so the opening closed on a passage question and the app
-    asked for the same rehearsal a turn later under a different contract.
-
-    What is left for the fixed line is the turn after a probe stood through a whole turn
-    with no invitation said. Reading the last line rather than the probe is what keeps it
-    from arriving twice: the Guide's invitation and the app's own both read as
-    invitations, so neither is followed by the other.
-    """
-    if planned_probe is None or planned_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE:
-        return False
-    if prior_probe is None or prior_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE:
-        return False
-    if prior_probe.practice_scene_ids != planned_probe.practice_scene_ids:
-        return False
-    return not guide_invited_mother_tongue_practice(previous_guide_utterance)
-
-
 #: The subject a spoken condition opens on. A condition names who it is about — "se vocês
 #: quiserem", "se a família ficasse", "if you want" — while the same letters against a verb
 #: are the clitic that verb carries: "teve que se mudar", "eles se casaram", "la familia se
@@ -398,17 +435,6 @@ def bridge_language_retelling_completes_practice(
     return not is_semantically_empty_answer(team_utterance)
 
 
-def confident_non_bridge_audio_completes_scoped_practice(
-    probe: ActiveProbe | None, confidently_non_bridge: bool
-) -> bool:
-    """A confident non-bridge-language recording is process evidence only when it answers
-    the exact app-authored practice probe. It can mark that scoped practice happened, but
-    can never become semantic evidence or mark an unknown/all-scenes scope."""
-    return confidently_non_bridge and (
-        probe is not None and probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL
-    )
-
-
 def scenes_practiced_by_the_telling_the_guide_invited(
     prior_probe: ActiveProbe | None,
     previous_guide_utterance: str,
@@ -441,11 +467,7 @@ def scenes_practiced_by_the_telling_the_guide_invited(
     agreeing to record would otherwise be read as a team reporting a rehearsal of whatever
     scene the pointer was on.
     """
-    if (
-        prior_probe is not None
-        and is_process_only(prior_probe)
-        and prior_probe.purpose is not ProbePurpose.MOTHER_TONGUE_PRACTICE
-    ):
+    if prior_probe is not None:
         return []
     if current_scene is None:
         return []
@@ -454,7 +476,3 @@ def scenes_practiced_by_the_telling_the_guide_invited(
     ):
         return []
     return [current_scene]
-
-
-def practiced_scenes_authorized_by_probe(probe: ActiveProbe, practice_reported: bool) -> list[str]:
-    return list(probe.practice_scene_ids) if practice_reported else []

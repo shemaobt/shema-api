@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
-from app.services.internalization_room.comprehension.evidence import EvidenceMethod
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.sessions import (
     append_exchange,
@@ -131,31 +130,10 @@ class _AgreeingModels:
 
 
 @pytest.fixture()
-def models_agree(monkeypatch: pytest.MonkeyPatch, target_checkpoint: str) -> None:
+def models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Guide drafts and the Validator passes it."""
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
-    )
-
-    async def _assessor(**_: Any) -> str:
-        return json.dumps(
-            {
-                "observations": [
-                    {
-                        "checkpoint_id": target_checkpoint,
-                        "result": "demonstrated",
-                        "evidence_excerpt": EXCERPT,
-                        "rationale": "names the return",
-                    }
-                ],
-                "mother_tongue_practice_reported": False,
-                "practice_evidence_excerpt": "",
-            }
-        )
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.comprehension.assessor"],
-        "call_agent",
-        _assessor,
     )
 
 
@@ -174,12 +152,7 @@ async def waiting_room(db_session: AsyncSession, target_checkpoint: str) -> IRSe
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
     state = comprehension_of(session)
-    state.active_probe = ActiveProbe(
-        id="probe-1",
-        checkpoint_ids=[target_checkpoint],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.INITIAL_CHECK,
-    )
+    state.active_probe = ActiveProbe(id="probe-1", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
     return await save_comprehension(db_session, session, state)
 
 
@@ -221,28 +194,6 @@ async def test_a_turn_the_room_never_spoke_leaves_no_probe_waiting_on_it(
     assert after.active_probe.id == "probe-1"
 
 
-async def test_a_turn_the_room_never_spoke_records_no_evidence_for_it(
-    client: httpx.AsyncClient,
-    waiting_room: IRSession,
-    voice: _SynthesisThatCanBreak,
-    models_agree: None,
-    reread,
-) -> None:
-    """What the session knows it asked and what it holds as evidence describe one turn.
-
-    This is the damage: the ledger gains an observation while the exchange that would have
-    recorded the question is never appended, so the room's evidence outruns its own
-    conversation by a turn and nothing afterwards can tell.
-    """
-    voice.working = False
-
-    await _the_team_answers(client, waiting_room.id)
-
-    session = await reread(waiting_room.id)
-    assert comprehension_of(session).ledger == []
-    assert _guide_lines(session) == [FIRST_QUESTION]
-
-
 async def test_a_turn_the_room_did_speak_is_remembered_whole(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
@@ -251,13 +202,17 @@ async def test_a_turn_the_room_did_speak_is_remembered_whole(
     reread,
 ) -> None:
     """The counterweight. A room that speaks and forgets is worse than one that remembers
-    too eagerly, so the happy path has to keep every one of the three writes."""
+    too eagerly, so the happy path has to keep every one of the three writes.
+
+    The pair reads the comprehension write from both sides: the question nobody heard leaves
+    its probe standing, and the question the room did speak spends it.
+    """
     answered = await _the_team_answers(client, waiting_room.id)
 
     assert answered.status_code == 200, answered.text[:300]
     session = await reread(waiting_room.id)
     state = comprehension_of(session)
-    assert state.ledger, "a evidência do turno falado tem de ficar gravada"
+    assert state.active_probe is None, "o estado do turno falado tem de ficar gravado"
     assert _guide_lines(session) == [FIRST_QUESTION, GUIDE_LINE]
     assert voice.spoken == [GUIDE_LINE]
 
@@ -304,5 +259,3 @@ async def test_a_turn_that_fails_after_the_voice_still_reaches_no_one(
 
     assert answered.status_code == 500
     assert "audio_url" not in answered.text
-
-
