@@ -1,10 +1,10 @@
-"""Mother-tongue practice as an app-owned process fact.
+"""Mother-tongue practice as a process fact the room reads, never one it scripts.
 
-A scene is marked practiced only after an app-authored invitation bound to that scene,
-confirmed by a completed-practice report, a bound completion word, or substantial audio
-confidently recognized as not being the bridge language. The system never turns language
-detection into a claim that it understood the content — it does not understand the team's
-mother tongue at all. Ported from ``src/comprehension/practice.ts``.
+A scene is marked practiced only after the Guide's own invitation for that scene, answered
+by the telling it asked for or by the closing word it named. The system never turns
+language detection into a claim that it understood the content — it does not understand
+the team's mother tongue at all. Ported from ``src/comprehension/practice.ts``, where the
+invitation was the app's own fixed sentence and its scope came from a probe.
 """
 
 from __future__ import annotations
@@ -457,6 +457,10 @@ def scenes_practiced_by_the_telling_the_guide_invited(
     the last line was not an invitation, which is what keeps an ordinary answer to an
     ordinary question from counting as a rehearsal.
 
+    The closing word counts beside the telling, and it has to: a Guide that names one word
+    and gets it back has the report it asked for, and the bare word is not a telling by any
+    reading — it was heard through the practice probe, and the probe went with the contract.
+
     A process-only probe of another purpose standing is the room saying what the turn is
     about, and it is not this — a scene opening included: it names the scene it is inviting
     for, and that scope is the probe's to give, not the pointer's. A semantic probe is no
@@ -471,8 +475,12 @@ def scenes_practiced_by_the_telling_the_guide_invited(
         return []
     if current_scene is None:
         return []
-    if not bridge_language_retelling_completes_practice(
+    told_back = bridge_language_retelling_completes_practice(
         previous_guide_utterance, team_utterance, reliable_bridge_speech
-    ):
+    )
+    closing_word = reliable_bridge_speech and confirms_completed_mother_tongue_practice(
+        previous_guide_utterance, team_utterance
+    )
+    if not told_back and not closing_word:
         return []
     return [current_scene]

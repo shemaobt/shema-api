@@ -691,6 +691,58 @@ async def test_a_declined_handoff_leaves_no_practice_probe_the_room_never_voiced
 
 
 @pytest.mark.asyncio
+class InvitingAgentAskingForTheWord:
+    """A Guide that invites the rehearsal and names the one word it wants back."""
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return (
+            "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
+            "Rehearse this scene together in your own language; when you have finished, "
+            "just say: done."
+        )
+
+
+@pytest.fixture
+def guide_asks_for_the_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(module, "call_agent", InvitingAgentAskingForTheWord())
+
+
+@pytest.mark.asyncio
+async def test_the_closing_word_the_guide_asked_for_closes_the_scene(
+    db_session: AsyncSession, guide_asks_for_the_word: None
+) -> None:
+    """The one word the room asked for was heard while the app owned the invitation.
+
+    The reader for it hung off the practice probe, and the probe went with the contract, so
+    a team that rehearsed and came back with exactly the word it was told to say would have
+    had that word land on nothing. The invitation moved to the Guide; what answers it did
+    not change.
+    """
+    session = await create_session(
+        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
+    )
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    invitation = await _say(db_session, session, "we can start")
+    assert guide_invited_mother_tongue_practice(invitation)
+
+    await _say(db_session, session, "done")
+
+    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+
+
+@pytest.mark.asyncio
 async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
     db_session: AsyncSession, guide_invites: None
 ) -> None:
