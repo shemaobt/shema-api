@@ -45,7 +45,32 @@ outcome available. When wording changed and content did not, you report nothing.
 
 ## What to decide
 
-**1. Was the finding answered?** (`resolved`)
+**1. What did the earlier telling carry?** (`carried`)
+
+Before you judge anything, count. List the elements of the Meaning Map that the **earlier**
+telling of this stretch states — one entry each, in {{SESSION_LANGUAGE}}, written as the short
+phrase you would use to name that element to the team. Not the map's wording, not a whole
+sentence, and only elements the map gives for {{SCOPE}}: a detail the team added on their own
+is not one, and neither is an element the map gives that the earlier telling never stated.
+
+Then take each entry on its own and say whether the **new** telling still states it —
+`still_told: true` or `false`. In any words: this is the same content question the whole of
+your calibration above turns on, so other words, another order and another amount of detail
+all still count as stated. Judge each entry against that entry alone, before you have formed
+any view of the retelling as a whole.
+
+Count first because of what counting is for. Read whole, a retelling shows you what it says,
+and you will confirm every one of those and read straight past the one clause that quietly
+went — an absence leaves nothing on the page to notice. Going element by element is what turns
+"is anything missing?" into a question that has an answer.
+
+Now list the other direction (`brought_back`): elements the Map gives for {{SCOPE}} that the
+**new** telling states and the **earlier** one did not — one short phrase each, in
+{{SESSION_LANGUAGE}}, the same way you named `carried` entries. These are the correction
+arriving, never an addition: an element listed here must never also appear in `findings` as
+`"addition"`.
+
+**2. Was the finding answered?** (`resolved`)
 
 Read the finding, and ask only whether the new telling now carries what it asked for, measured
 against the Meaning Map. `true` when it does; `false` when it does not. A finding about an
@@ -53,7 +78,7 @@ element the map gives is answered when that element is stated in the new telling
 Do not require the team to have said it the way the map says it, and do not require them to have
 mentioned the finding itself.
 
-**2. Did answering it break something?** (`findings`)
+**3. Did answering it break something?** (`findings`)
 
 Compare the new telling against the earlier one and against the map, and report only these:
 
@@ -61,9 +86,16 @@ Compare the new telling against the earlier one and against the map, and report 
   and the new one no longer states. This is the regression this whole check exists to catch:
   retelling a stretch can quietly drop something only that stretch carried. Report it only when
   the element is in the map — something the team simply said differently, or a detail the map
-  does not give, is not a loss.
+  does not give, is not a loss. You have already counted these: every entry you marked
+  `still_told: false` is a loss, and the room reads it straight from your count. You do not
+  need to write it again here. If you do, name the element in the note in the same words you
+  gave it in `carried`, so the room can see that the two are one loss and not two.
 - **Added** (`"addition"`): something the new telling states that the map does not tell — a name,
-  a cause, a pairing, an outside detail. Quote it briefly in the note.
+  a cause, a pairing, an outside detail. Quote it briefly in the note. An element the map does
+  give for {{SCOPE}} is never an addition, even when the earlier telling did not carry it and
+  `still_told` above is your own report of that: a correction that brings back what the earlier
+  telling was missing is exactly what answering a finding looks like. `carried` exists to find
+  what this stretch **lost**, never to make what it never had into something new.
 - **Meaning changed** (`"meaning_change"`): the new telling states something the map tells
   differently — altered in what it means, not merely absent or extra.
 - **Preservation violated** (`"preservation_violation"`): the new telling makes explicit
@@ -85,6 +117,12 @@ Return **only** this JSON (no prose, no fences):
 
 ```json
 {
+  "carried": [
+    { "element": "one short phrase, in {{SESSION_LANGUAGE}}, naming an element the earlier telling stated", "still_told": true }
+  ],
+  "brought_back": [
+    "one short phrase, in {{SESSION_LANGUAGE}}, naming an element the new telling states that the earlier one did not"
+  ],
   "resolved": true,
   "findings": [
     { "kind": "missing" | "addition" | "meaning_change" | "preservation_violation" | "unclear", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
@@ -94,7 +132,8 @@ Return **only** this JSON (no prose, no fences):
 
 `resolved` and `findings` are independent. A correction can answer the finding and still lose an
 element (`true` with findings), or leave the finding standing while breaking nothing (`false`
-with none). A clean correction is `{ "resolved": true, "findings": [] }`.
+with none). A clean correction is a `carried` list whose entries are all `still_told: true`,
+with `{ "resolved": true, "findings": [] }` beside it.
 
 ## The Meaning Map
 
