@@ -309,6 +309,7 @@ async def finish(
             correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
             session_language=LANGUAGE_NAMES[session.language],
             settings=get_settings(),
+            session_id=session.id,
         )
         if verified is None:
             # Nothing is saved, exactly as on the reading below: a verification that never
@@ -327,6 +328,7 @@ async def finish(
             session_language=LANGUAGE_NAMES[session.language],
             language_code=session.language,
             settings=get_settings(),
+            session_id=session.id,
         )
         if read is None:
             # Nothing is saved: `checked` stays as it was and `analysed_segment_ids` does not
@@ -347,6 +349,7 @@ async def finish(
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
             session_language=LANGUAGE_NAMES[session.language],
             settings=get_settings(),
+            session_id=session.id,
         )
         if closing is None:
             raise UpstreamServiceError(
