@@ -39,8 +39,9 @@ Each layer has a single responsibility: routers call services, services use db m
 | `@claude` mention in PR/issue | Claude answers in-thread (Opus 4.7) |
 | Weekly (Mon 09:00 UTC) | Claude usage rollup → optional Discord webhook |
 | Push to `main` | Build image → `alembic upgrade head` → deploy to Cloud Run |
+| Push to `dev` | Build image → `alembic upgrade head` on the Neon `staging` branch → deploy to Cloud Run `tripod-backend-staging` → `/health` check → Inngest sync |
 
-Config is pulled from GCP Secret Manager at container startup — no env vars are set manually in production or CI.
+Config is pulled from GCP Secret Manager at container startup. The deploy workflows set a handful of plain environment variables on the service — `ENV`, `EMAIL_PROVIDER`, `INNGEST_APP_ID` and `GCS_PLATFORM_BUCKET` on staging, `GCS_PLATFORM_BUCKET` on production — and everything else comes from Secret Manager.
 
 ### Code review
 
@@ -335,7 +336,7 @@ docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv
 docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade head"
 ```
 
-Production migrations run automatically on deploy (after merge to `main`).
+Production migrations run automatically on deploy (after merge to `main`); staging's run on every push to `dev`.
 
 ## Lint
 
