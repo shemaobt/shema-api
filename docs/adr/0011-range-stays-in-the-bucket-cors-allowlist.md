@@ -18,8 +18,10 @@ response-header allowlist into the allowed-headers field. That same field become
 exposed-headers list on simple requests, which is what lets a player read the content range and
 the content length back. Keeping the header covers both paths and costs nothing.
 
-Source: the Fetch standard, CORS-safelisted request-header
-(https://fetch.spec.whatwg.org/#cors-safelisted-request-header).
+Sources: the Fetch standard, CORS-safelisted request-header
+(https://fetch.spec.whatwg.org/#cors-safelisted-request-header), and the Cloud Storage CORS
+documentation (https://docs.cloud.google.com/storage/docs/cross-origin), which is what says a
+preflight is answered with the response-header allowlist.
 
 This decision is about that one bucket. The platform bucket is a different case — browsers do
 upload to it directly — so it keeps the write verb and the resumable header, and reading this

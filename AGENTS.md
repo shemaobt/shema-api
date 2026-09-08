@@ -15,7 +15,7 @@ DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-
 PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no duplicate ids
 ```
 
-The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and reaches neither database.
+The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon.
 
 ## Rules
 

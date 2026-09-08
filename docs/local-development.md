@@ -32,13 +32,20 @@ gcloud secrets versions access latest --secret=tripod_backend_jwt_secret --proje
 
 ```sh
 SECRETS_PROJECT_ID=shemaobt-secrets docker compose up --build backend
-
-docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade head"
-docker compose exec backend sh -c "set -a && . /run/secrets/.env && set +a && uv run pytest tests"
 ```
 
-An empty database is migrated to head on startup, so the stack comes up usable with no extra
-step.
+A database that does not exist yet is migrated to head as it is created, so the stack comes up
+usable with no extra step. You apply migrations by hand for the other cases: a migration
+written since the stack came up, and a database restored from a dump older than the newest
+migration.
+
+```sh
+docker compose run --rm backend sh -c "set -a && . /run/secrets/.env && set +a && uv run alembic upgrade head"
+docker compose run --rm backend sh -c "set -a && . /run/secrets/.env && set +a && uv run pytest tests"
+```
+
+`run --rm` starts a container of its own and throws it away, so neither of those needs the
+stack to be up.
 
 ## Granting app access
 
@@ -86,6 +93,21 @@ agreement into your database that never happened, so do not flip it to make a ga
 
 Its project grant is keyed on the platform-admin flag rather than on a person, because naming
 one address would leave every other developer with a project they cannot open.
+
+When the pilot changes in dev, the seed file is regenerated from the dev database rather than
+edited by hand. Read the rows out of dev through a throwaway container, with the connection
+string passed in the environment rather than as an argument:
+
+```sh
+DEV="$(gcloud secrets versions access latest \
+  --secret=tripod_backend_neon_database_url_local --project=shemaobt-secrets)" \
+  docker compose run --rm --no-deps -T -e DEV --entrypoint sh db \
+  -c 'psql "$DEV" -tAc "SELECT ... FROM sn_audio_refs"'
+```
+
+Emit `INSERT` statements for the audio bindings, the pilot's project row and its language row,
+and name only columns that exist in a restored production dump — dev carries columns from
+branches that never merged, and a seed naming one of those fails on everybody else's machine.
 
 To skip the production data entirely:
 

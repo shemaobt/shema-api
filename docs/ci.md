@@ -1,7 +1,7 @@
 # CI
 
-The first three below are the gates: they run on every pull request, and also on
-`integration/**` pushes, which have no pull request of their own. That filter stays narrow on
+Lint, Test and Migrations are the pull request gates: they run on every pull request, and also
+on `integration/**` pushes, which have no pull request of their own. That filter stays narrow on
 purpose, because the test job has been measured between 6 and 56 minutes and a chain merged
 one step at a time pays the slowest job once per step. The rest run on their own triggers,
 named in the table.
@@ -19,10 +19,12 @@ named in the table.
 | Claude cost report | A weekly usage rollup, posted to a webhook when one is configured. |
 | Reviews | Two review workflows, each fired by requesting its reviewer on the pull request; re-request to re-run. A third, `claude-review.yml.disabled`, is switched off and runs nothing. |
 
-Both deploys pull their configuration from GCP Secret Manager and set only a handful of plain
-environment variables on the service directly — the environment name, the mail provider, the
-job-queue app id and the platform bucket. Anything secret comes from Secret Manager, never
-from the workflow file.
+Both deploys pull their configuration from GCP Secret Manager, and each sets a few plain
+environment variables on the service directly. They are not the same few. Production sets one,
+the platform bucket. Staging sets that one and three more — the environment name, the mail
+provider and the job-queue app id — because each has to differ from production's: the app id
+in particular, since a second registration under production's id would overwrite it. Anything
+secret comes from Secret Manager, never from a workflow file.
 
 The migrations job is expected to go red on an integration branch between certain steps, and
 that is not a reason to switch it off: every merge that brings its own migration leaves the
