@@ -35,6 +35,7 @@ from app.services.internalization_room.sessions import (
     apply_coverage,
     back_translation_of,
     begin_back_translation_again,
+    comprehension_of,
     create_session,
     get_session,
     mark_needs_person,
@@ -328,3 +329,36 @@ async def test_two_retakes_keep_both_histories_in_order(db_session: AsyncSession
         "primeira tentativa",
         "segunda tentativa",
     ]
+
+
+async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
+    db_session: AsyncSession,
+) -> None:
+    """Seventeen live sessions on this machine hold a probe purpose that is gone.
+
+    A tablet keeps the session id on disk with no expiry and reopens it: the passage it
+    was left in comes back by id, and every turn on it reads this state. A typed submodel
+    that no longer validates makes that a 500, and the app only forgets a saved id on a
+    404 — so the passage would be stuck on that tablet at every opening, with no way out
+    through the app.
+    """
+    session = await create_session(db_session, language="pt", pericope=P)
+    session.comprehension = {
+        "ledger": [],
+        "active_probe": {
+            "id": "probe-1",
+            "checkpoint_ids": ["proposition:P01:P1"],
+            "method": "micro_tellback",
+            "purpose": "initial_check",
+            "practice_scene_ids": [],
+        },
+        "practiced_scene_ids": ["S1"],
+        "recording_consent_given": True,
+    }
+    await db_session.commit()
+
+    state = comprehension_of(session)
+
+    assert state.active_probe is None
+    assert state.practiced_scene_ids == ["S1"]
+    assert state.recording_consent_given
