@@ -1,0 +1,143 @@
+name: Deploy tripod-backend-staging to Cloud Run
+
+on:
+  push:
+    branches: [ dev ]
+  workflow_dispatch:
+
+# Staging tracks a branch people push to all day. Without a group, two pushes race
+# through `gcloud run deploy` and the older image can win the traffic switch.
+# `cancel-in-progress: false` because a cancelled run can leave the migration applied
+# and the deploy never made.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  BACKEND_SERVICE: tripod-backend-staging
+  GAR_REPO: tripod-backend
+  SECRETS_PROJECT_NUMBER: ${{ secrets.SECRETS_PROJECT_NUMBER }}
+  # Opt JavaScript-based actions into Node.js 24 ahead of the 2026-06-02
+  # forced switch. Remove once the runner default is Node 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          if [ -z "${{ secrets.GCP_PROJECT_ID }}" ]; then echo "::error::GCP_PROJECT_ID is not set. Add it in Settings → Secrets and variables → Actions."; exit 1; fi
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ]; then echo "::error::GCP_SA_KEY is not set. Add the GCP service account key JSON in Settings → Secrets and variables → Actions."; exit 1; fi
+          if [ -z "${{ secrets.SECRETS_PROJECT_NUMBER }}" ]; then echo "::error::SECRETS_PROJECT_NUMBER is not set. Add it in Settings → Secrets and variables → Actions."; exit 1; fi
+          echo "Required secrets are set."
+
+      - name: Google Auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker Auth
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and Push Backend
+        run: |
+          docker build -t us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} .
+          docker push us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }}
+
+      - name: Run migrations
+        run: |
+          docker run --rm \
+            -e DATABASE_URL="$(gcloud secrets versions access latest --secret=tripod_backend_neon_database_url_staging --project=shemaobt-secrets)" \
+            us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} \
+            sh -c "uv run alembic upgrade head"
+
+      - name: Deploy Backend
+        run: |
+          gcloud run deploy ${{ env.BACKEND_SERVICE }} \
+            --image us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} \
+            --project ${{ env.PROJECT_ID }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory=4Gi \
+            --cpu=2 \
+            --concurrency=80 \
+            --timeout=300 \
+            --no-cpu-throttling \
+            --update-env-vars="ENV=staging,EMAIL_PROVIDER=log,INNGEST_APP_ID=tripod-backend-staging,GCS_PLATFORM_BUCKET=tripod-platform-staging" \
+            --set-secrets="DATABASE_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_neon_database_url_staging:latest,JWT_SECRET_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_jwt_secret_staging:latest,GOOGLE_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_api_key:latest,GOOGLE_MAPS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_maps_api_key:latest,QDRANT_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_url:latest,QDRANT_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_api_key:latest,GCS_BUCKET_NAME=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_gcs_bucket_name_staging:latest,INNGEST_EVENT_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_event_key_staging:latest,INNGEST_SIGNING_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_signing_key_staging:latest,ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_elevenlabs_api_key:latest,PH_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_ph_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_api_key:latest"
+
+      # `--allow-unauthenticated` needs run.services.setIamPolicy to bind allUsers to
+      # roles/run.invoker. roles/run.developer does not have it — and when the binding
+      # fails, `gcloud run deploy` STILL EXITS 0. The failure is a warning buried in the
+      # log while every request answers 403. So the exit code of the step above proves
+      # nothing; only reading the URL does.
+      #
+      # The URL is read from Cloud Run rather than written down, because staging has no
+      # domain of its own and the sync below must reach the service that was just
+      # deployed — never an origin production is registered under.
+      - name: Verify the service is publicly reachable
+        id: verify
+        run: |
+          URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} \
+            --project ${{ env.PROJECT_ID }} \
+            --region ${{ env.REGION }} \
+            --format='value(status.url)')
+
+          if [ -z "$URL" ]; then
+            echo "::error::Cloud Run reported no URL for ${{ env.BACKEND_SERVICE }}."
+            exit 1
+          fi
+
+          echo "Deployed to: ${URL}"
+
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
+            --retry 5 --retry-delay 5 --retry-all-errors --max-time 30 "${URL}/health")
+
+          if [ "$STATUS" = "403" ]; then
+            echo "::error::${URL} answers 403, so the service is not public. --allow-unauthenticated failed to bind allUsers to roles/run.invoker and the deploy step exited 0 anyway. Check the deployer service account still holds roles/run.admin — roles/run.developer cannot do this."
+            exit 1
+          fi
+
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::${URL}/health answers ${STATUS}, expected 200."
+            exit 1
+          fi
+
+          echo "${URL}/health answers 200."
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      # Inngest Cloud only knows the functions it registered at the last sync, and a
+      # deploy is not a sync. `transcribe-session-answers` shipped in #123 and went
+      # unregistered for two weeks: the API published the event, no function matched
+      # it, and every Sound Necklace report spun on "transcribing" forever while the
+      # three functions from the original sync kept working. Nothing surfaces this —
+      # the app is healthy, the event send returns 200, the drafts just stay pending.
+      # So the sync belongs to the deploy, not to whoever remembers.
+      #
+      # Runs after the traffic switch: the sync makes Inngest read the serve endpoint,
+      # which must already be the revision carrying the new functions.
+      #
+      # This registers under `tripod-backend-staging`, the app id the service reads from
+      # INNGEST_APP_ID above. Under production's id the sync would overwrite production's
+      # serve endpoint with this URL.
+      - name: Sync Inngest app
+        run: |
+          curl --fail-with-body -sS -X PUT \
+            "${{ steps.verify.outputs.url }}/api/inngest" \
+            --retry 3 --retry-connrefused --max-time 60
