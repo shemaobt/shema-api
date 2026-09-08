@@ -22,8 +22,9 @@ from google_crc32c import Checksum
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRTakeKind
+from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import segments as service
+from app.services.internalization_room.sessions import MAX_RETELLS
 from app.services.platform.storage import StoredObject
 
 PREFIX = "/api/internalization-room"
@@ -734,3 +735,186 @@ async def test_the_service_refuses_a_moved_slice_carrying_an_explanation_on_its_
 
     kept = await service.final_segments(db_session, session.id)
     assert [one.id for one in kept] == [told.id], "e a recusa não mexeu no que estava lá"
+
+
+# ---------------------------------------------------------------------------
+# Correcting a stretch spends retell budget — ENG-685
+# ---------------------------------------------------------------------------
+#
+# `MAX_RETELLS` exists so a team never gets stuck retelling: when it runs out the room stops
+# and asks for a person. It was charged on the telling-back route alone, and a correction does
+# not go through there — so the one limit the room has against trapping a team did not cover
+# the path the team actually corrects by. In a room where nobody reads and the facilitator is
+# a voice, a team stuck in that cycle has no way to ask for help.
+
+
+async def _budget(client: httpx.AsyncClient, session_id: str) -> int:
+    """How much of the retell budget the room has marked as spent."""
+    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    assert state.status_code == 200, state.text
+    return int(state.json()["back_translation"]["retells"])
+
+
+async def _asks_for_a_person(client: httpx.AsyncClient, session_id: str) -> bool:
+    """Whether the room has stopped and put a person in front of the team."""
+    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+    assert state.status_code == 200, state.text
+    return bool(state.json()["status"] == IRSessionStatus.NEEDS_PERSON.value)
+
+
+async def _correct(
+    client: httpx.AsyncClient,
+    session_id: str,
+    stretch: dict[str, Any],
+    *,
+    saying: str | None = "Noemi mandou Rute voltar, e Rute foi junto.",
+) -> httpx.Response:
+    """The team explains one stretch again over the recording that did not move.
+
+    `saying=None` is the transcriber coming back with nothing, which is the shape of an outage.
+    """
+    if saying is not None:
+        client.said.append(saying)  # type: ignore[attr-defined]
+    else:
+        client.said.append("")  # type: ignore[attr-defined]
+    return await _replace(
+        client,
+        session_id,
+        stretch["segment_id"],
+        take_id=stretch["take_id"],
+        starts_ms=stretch["starts_ms"],
+        ends_ms=stretch["ends_ms"],
+        audio=b"contado de novo",
+    )
+
+
+async def test_correcting_a_stretch_spends_retell_budget(client: httpx.AsyncClient) -> None:
+    """Case 1. The budget means what it says it means, on the route the team corrects by."""
+    session_id, _, stretch = await _one_told_stretch(client)
+    before = await _budget(client, session_id)
+
+    answered = await _correct(client, session_id, stretch)
+
+    assert answered.status_code == 200, answered.text
+    assert await _budget(client, session_id) == before + 1
+
+
+async def test_the_budget_runs_out_and_the_room_offers_a_person(client: httpx.AsyncClient) -> None:
+    """Case 2. What the limit is for: the team stops being alone with a cycle it cannot end.
+
+    The correction that spends the last of the budget still answers with the stretches — losing
+    the team's own work to the moment the room asked for help would be worse than the problem.
+    """
+    session_id, _, _ = await _one_told_stretch(client)
+
+    for _ in range(MAX_RETELLS):
+        standing = (await _units(client, session_id))[0]
+        answered = await _correct(client, session_id, standing)
+        assert answered.status_code == 200, answered.text
+
+    assert await _budget(client, session_id) >= MAX_RETELLS
+    assert await _asks_for_a_person(client, session_id) is True
+    assert answered.json()["segments"], "a resposta daquela correção não se perde no caminho"
+
+
+async def test_the_budget_is_spent_on_the_attempt_not_on_the_result(
+    client: httpx.AsyncClient,
+) -> None:
+    """Case 3. The same argument the telling-back route already carries in writing.
+
+    If only a correction that landed counted, then during a transcriber outage — when every
+    attempt comes back empty — the team could correct forever, the budget would never run out,
+    and the room's only route to a person would be unreachable exactly when the room is broken.
+    """
+    session_id, _, stretch = await _one_told_stretch(client)
+    before = await _budget(client, session_id)
+
+    answered = await _correct(client, session_id, stretch, saying=None)
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["captured"] is False, "nada pôde ser entendido, então nada foi trocado"
+    assert await _budget(client, session_id) == before + 1
+
+
+async def test_telling_a_new_stretch_never_spends_retell_budget(client: httpx.AsyncClient) -> None:
+    """Case 4, and the control that matters most here.
+
+    Without it this becomes "every recording sent spends a retell", and a team telling six
+    stretches back for the first time would be handed to a person without having retold
+    anything at all — punishing the path where nothing went wrong.
+    """
+    session_id = await _session(client)
+    take_id = await _rehearse(client, session_id, b"a equipe ensaiou a passagem inteira")
+
+    for piece in range(6):
+        client.said.append(f"o trecho {piece + 1}")  # type: ignore[attr-defined]
+        told = await _tell(
+            client, session_id, take_id, piece * 5000, (piece + 1) * 5000, b"um trecho"
+        )
+        assert told.status_code == 200, told.text
+
+    assert await _budget(client, session_id) == 0
+    assert await _asks_for_a_person(client, session_id) is False
+
+
+async def test_the_telling_back_route_still_counts_the_way_it_counted(
+    client: httpx.AsyncClient,
+) -> None:
+    """Case 5. Control against the change leaking into the neighbour.
+
+    The telling-back route spends the budget only when the team says it is retelling, and that
+    is unchanged: a first telling costs nothing, a marked retelling costs one.
+    """
+    session_id, take_id, _ = await _one_told_stretch(client)
+    assert await _budget(client, session_id) == 0
+
+    client.said.append("Noemi mandou Rute voltar, de novo.")  # type: ignore[attr-defined]
+    retold = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers=HEADERS,
+        data={
+            "take_id": take_id,
+            "starts_ms": "0",
+            "ends_ms": "20000",
+            "retelling": "true",
+        },
+        files={"file": ("trecho.m4a", b"de novo", "audio/mp4")},
+    )
+
+    assert retold.status_code == 200, retold.text
+    assert await _budget(client, session_id) == 1
+
+
+async def test_dividing_a_stretch_is_not_correcting_and_spends_nothing(
+    client: httpx.AsyncClient,
+) -> None:
+    """Dividing is the team hearing two ideas where they told one, not telling one again.
+
+    It writes two rows against a recording that was already there — no audio crosses the wire
+    and nothing is retold — so charging it would spend a team's budget on an act of reading.
+    """
+    session_id, _, whole = await _one_told_stretch(client)
+
+    cut = await _divide(client, session_id, whole["segment_id"], 8000)
+
+    assert cut.status_code == 200, cut.text
+    assert await _budget(client, session_id) == 0
+    assert await _asks_for_a_person(client, session_id) is False
+
+
+async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.AsyncClient) -> None:
+    """The stopping survives the answer that carried it.
+
+    The reply to the correction says `needs_person`, and a client that ignores that field would
+    otherwise lose the one moment the room asked for help. It is written into the session's own
+    status too, so the next read of the session finds it — the room stays stopped rather than
+    having mentioned it once.
+    """
+    session_id, _, _ = await _one_told_stretch(client)
+    for _ in range(MAX_RETELLS):
+        standing = (await _units(client, session_id))[0]
+        await _correct(client, session_id, standing)
+
+    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
+
+    assert state.json()["status"] == IRSessionStatus.NEEDS_PERSON.value
