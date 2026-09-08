@@ -19,9 +19,9 @@ The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordin
 
 ## Rules
 
-Every schema change is an Alembic migration, and nothing is applied by hand. Routers never
-touch the database and services never raise HTTP:
-[ADR 0009](docs/adr/0009-routers-never-touch-the-database.md).
+Every schema change is an Alembic migration, and nothing is applied by hand. Routers never touch the database and services never raise HTTP: [ADR 0009](docs/adr/0009-routers-never-touch-the-database.md).
+
+All repository documentation — this file, `CONTEXT.md`, the ADRs, `README.md` and `docs/` — is written in English. Code identifiers and model prompts are not touched.
 
 ## Staging
 
