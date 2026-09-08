@@ -697,7 +697,6 @@ async def test_a_declined_handoff_leaves_no_practice_probe_the_room_never_voiced
     assert turn.state.practiced_scene_ids == []
 
 
-@pytest.mark.asyncio
 class InvitingAgentAskingForTheWord:
     """A Guide that invites the rehearsal and names the one word it wants back."""
 
