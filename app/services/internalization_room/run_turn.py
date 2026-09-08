@@ -10,6 +10,7 @@ from app.services.internalization_room.bridge_language import strays_from
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
+from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.prompt_blocks import (
     coverage_status_block,
     meaning_map_block,
@@ -46,26 +47,6 @@ logger = logging.getLogger(__name__)
 MAX_REDRAFTS = 2
 _RECENT_TURNS = 6
 
-_PEER_CUE_PHRASES = (
-    "entre vocês",
-    "entre voces",
-    "conversem",
-    "ensaiem",
-    "ensaie",
-    "na língua de vocês",
-    "na lingua de voces",
-    "among yourselves",
-    "talk it over",
-    "rehearse",
-    "in your own language",
-    "entre ustedes",
-    "conversen",
-    "ensayen",
-    "ensaye",
-    "en su lengua",
-    "en su propia lengua",
-)
-
 
 @dataclass
 class TurnOutcome:
@@ -84,16 +65,6 @@ class TurnOutcome:
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
     needs_person: bool = False
-
-
-def detects_peer_cue(speech: str) -> bool:
-    """Whether the turn hands the talking to the team rather than back to the app.
-
-    Read off the validated speech because the Guide returns prose, not a flag. It is a
-    heuristic: a cleaner design would have the Guide mark the cue explicitly.
-    """
-    lowered = speech.casefold()
-    return any(phrase in lowered for phrase in _PEER_CUE_PHRASES)
 
 
 def recent_conversation_block(messages: list[dict[str, Any]]) -> str:
