@@ -199,7 +199,7 @@ async def test_a_session_that_already_spoke_is_not_opened_twice(
 
 
 class LongPanoramaAgent:
-    """A Guide whose first movement runs past even the panorama's wider ceiling."""
+    """A Guide whose first movement runs past what the panorama used to be allowed."""
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         if "corrected_response" in system_prompt:
@@ -208,9 +208,16 @@ class LongPanoramaAgent:
 
 
 @pytest.mark.asyncio
-async def test_even_the_panorama_has_a_ceiling(
+async def test_a_long_opening_is_spoken_in_its_two_movements(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The mark the Guide drew is what divides the opening, and length no longer undoes it.
+
+    An opening whose whole ran past the panorama's ceiling was refused, redrafted and then
+    replaced by a fixed line, and a fail-safe carries no movements — so the two clips the
+    team was supposed to hear collapsed into one canned sentence on the exact turn the room
+    had the most to say.
+    """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongPanoramaAgent())
     session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
@@ -225,8 +232,9 @@ async def test_even_the_panorama_has_a_ceiling(
         settings=_settings(),
     )
 
-    assert turn.outcome.used_fail_safe
-    assert turn.outcome.movements == []
+    assert not turn.outcome.used_fail_safe
+    assert len(turn.outcome.movements) == 2
+    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
 
 
 @pytest.mark.asyncio
@@ -261,9 +269,15 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
 
 
 @pytest.mark.asyncio
-async def test_a_turn_after_the_opening_still_answers_to_the_budget(
+async def test_a_turn_that_runs_long_is_spoken_as_it_is(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Length is prompt style, never a reject — and an ordinary turn answers to no ceiling.
+
+    Sixty words on a turn measured at forty-five were redrafted twice and then thrown away
+    for a fixed line, so a team that had just told something back heard the room say nothing
+    about it. Brevity is asked for in the Guide's own prompt now, and nowhere else.
+    """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongWindedAgent())
     session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
@@ -274,15 +288,16 @@ async def test_a_turn_after_the_opening_still_answers_to_the_budget(
     turn = await run_comprehension_turn(
         db_session,
         session,
-        speech=HeardSpeech(transcript="a fome chegou", is_substantial=True),
+        speech=HeardSpeech(text="a fome chegou"),
         opening=False,
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
 
-    assert turn.outcome.used_fail_safe
-    assert turn.outcome.fixed_line
+    assert not turn.outcome.used_fail_safe
+    assert not turn.outcome.fixed_line
+    assert len(turn.outcome.speech.split()) > 45
 
 
 @pytest.mark.asyncio
@@ -1018,38 +1033,3 @@ async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
     )
 
     assert "S2" in told_back.state.practiced_scene_ids
-
-
-def test_a_scene_opening_turn_is_measured_as_the_scene_movement_it_is() -> None:
-    """The turn that opens a scene carries the map's sentence or two plus the invitation.
-
-    Measured as an ordinary 45-word turn it overran the ceiling on the first real Portuguese
-    run and fell to the fail-safe before the second attempt fit; the passage opening had the
-    same defect and #322 gave its scene movement the room it needs. This turn is that
-    movement on its own.
-    """
-    from app.services.internalization_room.comprehension.probe import ActiveProbe
-    from app.services.internalization_room.live_turn import speech_budget_for
-    from app.services.internalization_room.run_turn import (
-        OPENING_BUDGET,
-        SCENE_MOVEMENT_BUDGET,
-        TURN_BUDGET,
-    )
-
-    opening = ActiveProbe(
-        id="o",
-        checkpoint_ids=[],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.SCENE_OPENING,
-        practice_scene_ids=["S2"],
-    )
-    semantic = ActiveProbe(
-        id="s",
-        checkpoint_ids=["proposition:P01:P5"],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.INITIAL_CHECK,
-    )
-    assert speech_budget_for(True, None) is OPENING_BUDGET
-    assert speech_budget_for(False, opening) is SCENE_MOVEMENT_BUDGET
-    assert speech_budget_for(False, semantic) is TURN_BUDGET
-    assert speech_budget_for(False, None) is TURN_BUDGET

@@ -10,7 +10,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompts import get_prompt_text
-from app.services.internalization_room.run_turn import OPENING_BUDGET, run_turn
+from app.services.internalization_room.run_turn import run_turn
 from app.services.internalization_room.sessions import get_session, is_panorama
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
@@ -59,7 +59,6 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 language_code=spoken,
                 settings=get_settings(),
                 session_id=panorama_session_id,
-                budget=OPENING_BUDGET,
             )
             if outcome.used_fail_safe:
                 logger.info("Not keeping a fail-safe as the prepared opening")

@@ -103,10 +103,6 @@ from app.services.internalization_room.rehearsal_readiness import (
     should_offer_recording_consent,
 )
 from app.services.internalization_room.run_turn import (
-    OPENING_BUDGET,
-    SCENE_MOVEMENT_BUDGET,
-    TURN_BUDGET,
-    SpeechBudget,
     TurnOutcome,
     detects_peer_cue,
     run_turn,
@@ -136,22 +132,6 @@ def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | Non
         if not by_scene[scene]:
             return f"S{scene}"
     return None
-
-
-def speech_budget_for(opening: bool, next_probe: ActiveProbe | None) -> SpeechBudget:
-    """The ceiling a Guide turn is measured against.
-
-    The passage opening gets the panorama and the scene movement together. A turn that opens
-    a scene and ends on the rehearsal invitation is the scene movement on its own — a
-    sentence or two from the map plus the 22-word invitation — and measured as an ordinary
-    turn it overran the ceiling every second time and fell to the fail-safe, which is exactly
-    what #322 had just fixed for the passage opening. Every other turn keeps the turn budget.
-    """
-    if opening:
-        return OPENING_BUDGET
-    if next_probe is not None and next_probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL:
-        return SCENE_MOVEMENT_BUDGET
-    return TURN_BUDGET
 
 
 def told_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
@@ -648,7 +628,6 @@ async def run_comprehension_turn(
             session_id=session.id,
             app_context=app_context,
             validator_context=validator_context,
-            budget=speech_budget_for(opening, next_probe),
             ask_for_movements=opening and not messages,
         )
 

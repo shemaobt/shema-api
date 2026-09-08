@@ -64,55 +64,8 @@ def _nobody_spoke_this_turn(telling_back: str, language_code: str) -> str:
     return messages["told_back"] if telling_back else messages["opening"]
 
 
-MAX_SPOKEN_TURN_WORDS = 45
-MAX_SPOKEN_TURN_SENTENCES = 3
-
-MAX_SPOKEN_PANORAMA_WORDS = 90
-MAX_SPOKEN_PANORAMA_SENTENCES = 6
-
-#: What the invitation costs the movement that has to end on it. The contract runs to
-#: twenty-two words in English and twenty in Portuguese, said as one sentence or as two.
-MAX_SPOKEN_INVITATION_WORDS = 25
-MAX_SPOKEN_INVITATION_SENTENCES = 2
-
-
-@dataclass(frozen=True)
-class SpeechBudget:
-    """How much a single spoken movement may be.
-
-    A ceiling per movement rather than one for the whole turn: the panorama that opens a
-    passage has to carry the shape of the story and cannot say it in three sentences, while
-    the scene that follows it — and every turn after — must stay short enough that a team
-    hearing it once can hold it. Removing the ceiling from the opening altogether produced a
-    ninety-second monologue, which is the thing the Guide's own prompt forbids.
-    """
-
-    words: int
-    sentences: int
-
-    def fits(self, text: str) -> bool:
-        words = len(text.split())
-        sentences = len([part for part in re.split(r"[.!?…]+", text) if part.strip()])
-        return words <= self.words and sentences <= self.sentences
-
-
-TURN_BUDGET = SpeechBudget(MAX_SPOKEN_TURN_WORDS, MAX_SPOKEN_TURN_SENTENCES)
-PANORAMA_BUDGET = SpeechBudget(MAX_SPOKEN_PANORAMA_WORDS, MAX_SPOKEN_PANORAMA_SENTENCES)
-SCENE_MOVEMENT_BUDGET = SpeechBudget(
-    MAX_SPOKEN_TURN_WORDS + MAX_SPOKEN_INVITATION_WORDS,
-    MAX_SPOKEN_TURN_SENTENCES + MAX_SPOKEN_INVITATION_SENTENCES,
-)
-OPENING_BUDGET = SpeechBudget(
-    MAX_SPOKEN_PANORAMA_WORDS + SCENE_MOVEMENT_BUDGET.words,
-    MAX_SPOKEN_PANORAMA_SENTENCES + SCENE_MOVEMENT_BUDGET.sentences,
-)
-
 OPENING_MOVEMENT_MARK = "[[CENA]]"
 _MOVEMENT_MARK = re.compile(r"^[ \t]*\[\[CENA\]\][ \t]*$", re.M)
-
-
-def spoken_turn_fits_budget(text: str) -> bool:
-    return TURN_BUDGET.fits(text)
 
 
 def split_opening_movements(draft: str) -> tuple[str, list[str]]:
@@ -134,16 +87,6 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
     if not whole or not scene:
         return clean, []
     return clean, [whole, scene]
-
-
-def _broken_ceiling(speech: str, movements: list[str], budget: SpeechBudget) -> SpeechBudget | None:
-    """The ceiling the speech went over, or None when it fits."""
-    if movements:
-        for text, ceiling in zip(movements, (PANORAMA_BUDGET, SCENE_MOVEMENT_BUDGET), strict=True):
-            if not ceiling.fits(text):
-                return ceiling
-        return None
-    return None if budget.fits(speech) else budget
 
 
 _PEER_CUE_PHRASES = (
@@ -382,7 +325,6 @@ async def _voiced_after_validation(
     settings: Settings,
     session_id: str = "?",
     validator_context: str = "",
-    budget: SpeechBudget | None = None,
     opening_instruction: str = "",
     ask_for_movements: bool = False,
     telling_back: str = "",
@@ -413,8 +355,8 @@ async def _voiced_after_validation(
     being broken — which stops a session over an outage that lasted seconds.
 
     The ``try`` holds only the two calls and the reading of their replies. Everything the
-    room decides for itself afterwards — the ceiling, the bridge-language check, the peer
-    cue, the redraft note — sits outside it on purpose: a defect in one of those is ours,
+    room decides for itself afterwards — the bridge-language check, the peer cue, the
+    redraft note — sits outside it on purpose: a defect in one of those is ours,
     and answering it with an outage line would spend the team's turn hiding it in a log
     instead of surfacing it. ``Exception`` and not ``BaseException`` for the same kind of
     reason: a cancelled or interrupted turn has no team left to answer, and dressing
@@ -486,14 +428,7 @@ async def _voiced_after_validation(
             model_failed = True
             break
 
-        broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
-        if broken is not None:
-            issues = [*issues, {"problem": "over_speech_budget"}]
-            _draft_rejected(
-                "over_speech_budget", session_id, attempt + 1, f"{len(speech)} characters"
-            )
-            speech = ""
-        elif speech and strays_from(speech, language_code):
+        if speech and strays_from(speech, language_code):
             issues = [*issues, {"problem": "off_bridge_language"}]
             _draft_rejected(
                 "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
@@ -510,7 +445,7 @@ async def _voiced_after_validation(
                 movements=movements,
             )
 
-        redraft_note = _redraft_note(issues, language_code, ceiling=broken)
+        redraft_note = _redraft_note(issues, language_code)
     else:
         logger.warning("Fail-safe fired after %s redrafts: issues=%s", MAX_REDRAFTS, issues)
 
@@ -550,7 +485,6 @@ async def run_turn(
     session_id: str = "?",
     app_context: str = "",
     validator_context: str = "",
-    budget: SpeechBudget | None = None,
     ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
@@ -594,7 +528,6 @@ async def run_turn(
         settings=cfg,
         session_id=session_id,
         validator_context=validator_context,
-        budget=budget,
         ask_for_movements=ask_for_movements,
     )
 
@@ -613,7 +546,6 @@ async def run_panorama_turn(
     settings: Settings | None = None,
     session_id: str = "?",
     validator_context: str = "",
-    budget: SpeechBudget | None = None,
     ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """One exchange of a Book Panorama — the session before a book's first passage.
@@ -651,7 +583,6 @@ async def run_panorama_turn(
         settings=cfg,
         session_id=session_id,
         validator_context=validator_context,
-        budget=budget,
         ask_for_movements=ask_for_movements,
     )
 
@@ -742,22 +673,6 @@ async def run_verdict_turn(
     )
 
 
-_OVER_BUDGET_NOTE: dict[str, str] = {
-    "pt": (
-        "A resposta anterior era longa demais para uma sala oral. Refaça com no máximo "
-        "{sentences} frases curtas e {words} palavras."
-    ),
-    "en": (
-        "The previous response was too long for an oral room. Redo it with at most "
-        "{sentences} short sentences and {words} words."
-    ),
-    "es": (
-        "La respuesta anterior era demasiado larga para una sala oral. Rehazla con un "
-        "máximo de {sentences} frases cortas y {words} palabras."
-    ),
-}
-
-
 _OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
     "pt": (
         "A resposta anterior saiu do idioma da sessão e por isso não pôde ser falada. "
@@ -782,42 +697,29 @@ _OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
 _LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "es": "español", "pt": "português"}
 
 _NO_ISSUES_NOTE: dict[str, str] = {
-    "pt": "A resposta anterior não passou na conferência. Refaça, dizendo menos.",
-    "en": "The previous response did not pass review. Redo it, saying less.",
-    "es": "La respuesta anterior no pasó la revisión. Rehazla, diciendo menos.",
+    "pt": "A resposta anterior não passou na conferência. Refaça.",
+    "en": "The previous response did not pass review. Redo it.",
+    "es": "La respuesta anterior no pasó la revisión. Rehazla.",
 }
 
 _DESCRIBED_ISSUES_NOTE: dict[str, str] = {
     "pt": (
         "A resposta anterior foi rejeitada na conferência contra o mapa. Problemas "
-        "apontados — {described}. Refaça o turno sem essas afirmações, dizendo menos."
+        "apontados — {described}. Refaça o turno sem essas afirmações."
     ),
     "en": (
         "The previous response was rejected against the map. Issues raised — "
-        "{described}. Redo the turn without those claims, saying less."
+        "{described}. Redo the turn without those claims."
     ),
     "es": (
         "La respuesta anterior fue rechazada frente al mapa. Problemas señalados — "
-        "{described}. Rehaz el turno sin esas afirmaciones, diciendo menos."
+        "{described}. Rehaz el turno sin esas afirmaciones."
     ),
 }
 
 
-def _redraft_note(
-    issues: list[dict[str, Any]],
-    language_code: str = FLOOR,
-    ceiling: SpeechBudget | None = None,
-) -> str:
-    """What to tell a Guide whose draft did not pass, written in the session's own language.
-
-    The ceiling quoted back is the one that actually broke, not the smallest one there is:
-    telling a Guide that busted the panorama to redraft in three sentences asks for the wrong
-    turn.
-    """
-    if any(issue.get("problem") == "over_speech_budget" for issue in issues):
-        held = ceiling or TURN_BUDGET
-        template = _OVER_BUDGET_NOTE.get(language_code, _OVER_BUDGET_NOTE[FLOOR])
-        return template.format(sentences=held.sentences, words=held.words)
+def _redraft_note(issues: list[dict[str, Any]], language_code: str = FLOOR) -> str:
+    """What to tell a Guide whose draft did not pass, written in the session's own language."""
     if any(issue.get("problem") == "off_bridge_language" for issue in issues):
         template = _OFF_BRIDGE_LANGUAGE_NOTE.get(language_code, _OFF_BRIDGE_LANGUAGE_NOTE[FLOOR])
         autonym = _LANGUAGE_AUTONYMS.get(language_code, _LANGUAGE_AUTONYMS[FLOOR])
