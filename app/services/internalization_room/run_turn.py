@@ -1,3 +1,15 @@
+"""What the rest of the room still calls the turn, and what the fakes are installed on.
+
+The turn itself moved out — `passage_turn`, `panorama_turn`, `verdict_turn` and the engine
+under them — and this file imports all of it back, so not one import line anywhere else had
+to change. The names are not free to follow it: twenty-seven sites across thirteen test files
+install their fake model by writing over `call_agent` on this module, one writes over
+`strays_from`, and `tests/test_internalization_room_model_failure.py` asserts on records whose
+`record.name` is exactly this module's. `validated_turn` reads those four off here at call
+time for the same reason, and `__all__` is what stops ruff removing the imports that are the
+whole point of the file.
+"""
+
 from __future__ import annotations
 
 import logging
