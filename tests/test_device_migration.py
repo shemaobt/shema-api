@@ -63,6 +63,7 @@ DEVICE_COLUMN_MIGRATIONS = (
     ("20260820_qcomp", "20260820_devcred"),  # ENG-448 — rotation and revocation
     ("20260902_room09", "20260903_devcoll"),  # ENG-622 — the collection moment
     ("20260903_devcoll", "20260904_devnp"),  # ENG-624 — the halt with no session
+    ("20260904_att01", "20260908_arr01"),  # ENG-792 — the visit that lifts a tablet's halt
 )
 
 #: The column ENG-624 adds, named here because one test below is about it leaving again.
@@ -71,6 +72,18 @@ DEVICE_COLUMN_MIGRATIONS = (
 #: mentions `devices`, which is the whole of this migration. A downgrade that dropped
 #: nothing would pass all three of them.
 NEEDS_PERSON_COLUMN = "needs_person_since"
+
+#: The migration that adds it, named rather than taken as the newest device migration in the
+#: tuple above. It was the newest on the day it was written and stopped being so with ENG-792:
+#: a downgrade aimed at "the last pair" would walk back that slice's columns instead and leave
+#: this one standing, so the case below would fail while saying nothing about its own column.
+NEEDS_PERSON_REVISION = "20260904_devnp"
+
+#: What ENG-792 adds to `devices`: the visit a facilitator records from the Desk, and the halt
+#: moment that visit lifted — kept so an undo can put the halt back at the moment it was
+#: raised rather than at the moment somebody changed their mind.
+ATTENDED_COLUMNS = {"attended_at", "attended_by", "attended_lifted_since"}
+ATTENDED_REVISION = "20260908_arr01"
 
 #: The migration these tests are actually about: the one that creates the table.
 DEVICE_TABLE_REVISION = "20260817_0001"
@@ -306,9 +319,35 @@ async def test_the_halt_column_arrives_with_its_migration_and_leaves_with_its_do
     migrated_columns, _indexes = await _migrated_shape(stamped_database)
     assert NEEDS_PERSON_COLUMN in {name for name, _nullable in migrated_columns}
 
-    _predecessor, newest = DEVICE_COLUMN_MIGRATIONS[-1]
-    down = _run_alembic(stamped_database, "downgrade", f"{newest}-1")
+    down = _run_alembic(stamped_database, "downgrade", f"{NEEDS_PERSON_REVISION}-1")
     assert down.returncode == 0, down.stderr
 
     after_downgrade, _again = await _migrated_shape(stamped_database)
     assert NEEDS_PERSON_COLUMN not in {name for name, _nullable in after_downgrade}
+
+
+async def test_the_visit_columns_arrive_with_their_migration_and_leave_with_its_downgrade(
+    stamped_database,
+):
+    """ENG-792 — the three columns a facilitator's visit to a tablet is recorded in.
+
+    Same blind spot as the case above: every round-trip in this file filters on the table's
+    own name, so a ``downgrade`` that dropped none of these would be green everywhere else.
+
+    ``attended_lifted_since`` travels with the pair rather than being derived on the way back,
+    because the fact it holds cannot be recovered afterwards: ``needs_person_since`` is null
+    once the visit lifted the halt, and an undo with nothing to read from would put the halt
+    back stamped now. The queue is ordered by that column, newest halt first, so the tablet
+    would return announcing a stop that never happened and sit above rooms that really did
+    stop after it.
+    """
+    _walk_the_device_column_migrations(stamped_database)
+
+    migrated_columns, _indexes = await _migrated_shape(stamped_database)
+    assert {name for name, _nullable in migrated_columns} >= ATTENDED_COLUMNS
+
+    down = _run_alembic(stamped_database, "downgrade", f"{ATTENDED_REVISION}-1")
+    assert down.returncode == 0, down.stderr
+
+    after_downgrade, _again = await _migrated_shape(stamped_database)
+    assert ATTENDED_COLUMNS.isdisjoint({name for name, _nullable in after_downgrade})

@@ -251,6 +251,9 @@ class TeamSessionResponse(BaseModel):
     #: which is most of them.
     attended_at: datetime | None
     attended_by: str | None
+    #: When somebody long-pressed the halted room to say they had arrived (ENG-792). Null
+    #: when nobody did, and null again on every halt after the one it answered.
+    person_arrived_at: datetime | None
     coverage: list[SessionBead]
 
 
@@ -646,6 +649,10 @@ class FacilitatorSessionView(BaseModel):
     #: A user id. The Desk resolves names itself, as the questions inbox does with
     #: `answered_by` — a name copied here would be the name that person had that day.
     attended_by: str | None = None
+    #: ISO-8601 with an offset. Somebody is standing in that room and pressed to say so
+    #: (ENG-792) — a different fact from `attended_at`, which is a facilitator saying it from
+    #: the Desk afterwards. Null until the first press, and null again on the next halt.
+    person_arrived_at: str | None = None
 
 
 class AttendedResponse(BaseModel):
@@ -675,6 +682,35 @@ class FacilitatorHaltedDeviceView(BaseModel):
     device_id: str
     label: str | None
     since: datetime
+    #: When a facilitator said they went to this tablet, and who (ENG-792).
+    #:
+    #: **Null on every row this queue can currently produce, and served anyway.** Only two
+    #: writes leave ``needs_person_since`` standing — the tablet raising a halt and a
+    #: facilitator undoing their mark — and since the halt clears the previous visit's stamps
+    #: on the same guarded write, both leave these null. A row here saying somebody went is a
+    #: row nothing in this codebase can write today.
+    #:
+    #: They travel because the row is read beside two others that do carry them: the sessions
+    #: half of this same answer, where a marked ``DONE`` room stays listed with its stamps,
+    #: and the team's devices panel, which is where a marked tablet is read *after* it leaves
+    #: this queue. A Desk switching on the pair would otherwise have to know that one of the
+    #: three lists it draws answers a different shape for the same fact.
+    attended_at: datetime | None = None
+    attended_by: str | None = None
+
+
+class PersonArrivedResponse(BaseModel):
+    """What the tablet gets back when somebody long-presses to say they have arrived.
+
+    The moment is the one of the *first* press against this halt, not of this call. A team
+    pressing again because nothing visibly happened is told the same thing every time, which
+    is what keeps the Desk reading when a person reached the room rather than when a hand
+    last touched the screen.
+    """
+
+    session_id: str
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    person_arrived_at: str
 
 
 class FacilitatorSessionsResponse(BaseModel):
