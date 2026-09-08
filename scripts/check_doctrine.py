@@ -23,8 +23,11 @@ in nine other parts of the system (ENG-747) that this guard has no business flag
 The six mechanisms are being deleted under a ladder of separate tickets, not this one, so
 the guard cannot be green against an empty allowlist yet. Until the ladder lands,
 `doctrine_allowlist.ALLOWLIST` names every site the guard finds today; a hit not on that
-list is a violation, and an allowlist entry the scan can no longer confirm is a stale
-line nobody deleted. Run as a script:
+list is a violation, and an allowlist entry the scan can no longer confirm is stale — a
+site nobody deleted the row for. Entries are matched by `(file, rule, text)`, never by
+`line`: eighteen tickets in the ladder touch `live_turn.py` alone, and a line-keyed
+allowlist would call every site below an unrelated edit both stale and freshly violating,
+on every one of those PRs. Run as a script:
 
     uv run python scripts/check_doctrine.py
 """
@@ -32,6 +35,7 @@ line nobody deleted. Run as a script:
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -103,6 +107,7 @@ class Hit:
     file: str
     line: int
     rule: Rule
+    text: str
     message: str
 
 
@@ -126,19 +131,47 @@ def scan(roots: tuple[Path, ...] = SCAN_ROOTS, base: Path = REPO_ROOT) -> list[H
             for rule in RULES:
                 for lineno, text in enumerate(lines, start=1):
                     if rule.pattern.search(text):
-                        hits.append(Hit(file=rel, line=lineno, rule=rule.id, message=rule.message))
+                        hits.append(
+                            Hit(
+                                file=rel,
+                                line=lineno,
+                                rule=rule.id,
+                                text=text.strip(),
+                                message=rule.message,
+                            )
+                        )
     return hits
 
 
 def evaluate(
     hits: list[Hit], allowlist: list[AllowlistEntry]
 ) -> tuple[list[Hit], list[AllowlistEntry]]:
-    """Hits the allowlist does not cover, and allowlist entries no hit confirms any more."""
-    allowed = {(e.file, e.line, e.rule) for e in allowlist}
-    found = {(h.file, h.line, h.rule) for h in hits}
+    """Hits the allowlist does not cover, and allowlist entries no hit confirms any more.
 
-    violations = [h for h in hits if (h.file, h.line, h.rule) not in allowed]
-    stale = [e for e in allowlist if (e.file, e.line, e.rule) not in found]
+    Matched as a multiset on `(file, rule, text)`, never on `line`: an edit above a listed
+    site shifts every line below it, and a line-keyed allowlist would call each of those
+    shifted sites both a stale entry and a fresh violation, for a file nobody touched. Two
+    identical offending lines in one file consume two allowlist rows, not one shared by both.
+    """
+    allowed_left = Counter((e.file, e.rule, e.text) for e in allowlist)
+    found_left = Counter((h.file, h.rule, h.text) for h in hits)
+
+    violations: list[Hit] = []
+    for hit in hits:
+        key = (hit.file, hit.rule, hit.text)
+        if allowed_left[key] > 0:
+            allowed_left[key] -= 1
+        else:
+            violations.append(hit)
+
+    stale: list[AllowlistEntry] = []
+    for entry in allowlist:
+        key = (entry.file, entry.rule, entry.text)
+        if found_left[key] > 0:
+            found_left[key] -= 1
+        else:
+            stale.append(entry)
+
     return violations, stale
 
 
@@ -153,8 +186,9 @@ def main() -> int:
         print(f"✗ {hit.file}:{hit.line}  [{hit.rule}] {hit.message}")
     for entry in stale:
         print(
-            f"✗ {entry.file}:{entry.line}  [{entry.rule}] allowlist entry no longer matches "
-            "any hit — remove it or the mechanism it named moved without the list updating"
+            f"✗ {entry.file}  [{entry.rule}] allowlist entry no longer matches any hit: "
+            f"{entry.text!r} — remove it or the mechanism it named moved without the list "
+            "updating"
         )
     return 1
 

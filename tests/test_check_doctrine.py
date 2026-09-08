@@ -33,7 +33,7 @@ def test_the_guard_finds_every_site_the_allowlist_already_names() -> None:
     _violations, stale = evaluate(hits, ALLOWLIST)
     assert not stale, (
         "the allowlist names sites the scan no longer confirms: "
-        f"{[(e.file, e.line, e.rule) for e in stale]}"
+        f"{[(e.file, e.rule, e.text) for e in stale]}"
     )
 
 
@@ -70,19 +70,26 @@ def test_a_mechanism_reintroduced_outside_the_allowlist_fails_with_its_doctrine_
 def test_an_allowlist_entry_the_scan_can_no_longer_confirm_is_reported_stale(
     tmp_path: Path,
 ) -> None:
-    """A row naming a site the scan does not find is a stale entry, not a silent pass.
+    """A row whose text no longer matches any hit is stale — even when the file and rule still do.
 
-    This is the other half of the ladder's promise: a removal ticket that deletes the code
-    but forgets the matching allowlist row must not go green by accident — it has to be
-    the guard's own signal to finish the edit, with a test independent of which ticket it is.
+    Keying on the offending text, not just `(file, rule)`, is what makes a rewritten line
+    visible: a row surviving unchanged for a site whose wording moved would otherwise absorb
+    a fresh violation silently instead of reporting either half honestly. This is also the
+    other half of the ladder's promise — a removal ticket that deletes the code but forgets
+    the matching allowlist row must not go green by accident.
     """
     room = tmp_path / "room"
     room.mkdir()
-    (room / "cleaned.py").write_text("def fits(text: str) -> bool:\n    return True\n")
+    (room / "reworded.py").write_text(
+        'def fits(text: str) -> bool:\n    return True\n\nSpeechBudget = "reworded since"\n'
+    )
 
     hits = scan((room,), base=tmp_path)
-    stale_entry = AllowlistEntry("room/cleaned.py", 4, Rule.CEILING)
+    stale_entry = AllowlistEntry(
+        "room/reworded.py", Rule.CEILING, 'SpeechBudget = "the old wording"'
+    )
     violations, stale = evaluate(hits, [stale_entry])
 
-    assert violations == []
     assert stale == [stale_entry]
+    assert len(violations) == 1
+    assert violations[0].text == 'SpeechBudget = "reworded since"'
