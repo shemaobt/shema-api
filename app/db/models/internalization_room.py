@@ -319,8 +319,17 @@ class IRSegment(Base):
     **The slice is ``(take_id, starts_ms, ends_ms)``, and the two times are relative to that
     one file.** Never global over the concatenated passage: it is the globalness, not the use
     of intervals, that made re-recording one stretch shift every stretch after it. Relative to
-    an immutable file they never shift, and subdividing becomes writing rows rather than
-    cutting audio — which is what lets the room do it with no connection.
+    a file, subdividing becomes writing rows rather than cutting audio — which is what lets the
+    room do it with no connection.
+
+    The address is rewritten on exactly one occasion, and it is not a stretch changing: when a
+    stretch is re-recorded in the mother tongue the room rebuilds the passage around it, and
+    every stretch that was a slice of the recording it rebuilt is re-pointed at the file that
+    came out, at the time it now sits there. The audio under each of them is the same audio;
+    what moved is the file it is inside. Stretches of *another* recording are not touched, and
+    a session can hold more than one — a rebuilding that could not be done leaves the
+    correction on its own file. `compose.py` is where that happens and why it is not a version
+    of anything.
 
     ``take_id`` is the mother tongue; ``bridge_take_id`` and ``transcript`` are the team's own
     explanation of it in Portuguese, which is the only transcript that exists. The two travel

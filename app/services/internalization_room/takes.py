@@ -187,6 +187,17 @@ async def take_in_session(db: AsyncSession, session_id: str, take_id: str) -> IR
     return take
 
 
+async def take_bytes(take: IRTake) -> bytes | None:
+    """The audio a take names, or nothing when the object is not in the bucket.
+
+    Nothing rather than a refusal: a row whose object never landed is a real state here — the
+    row is written after the upload precisely so the reverse cannot happen, but a bucket that
+    lost the object, or a take stored before this API owned the key, both read the same way.
+    The caller decides what an absent recording means to it.
+    """
+    return await _store().get(take.storage_key)
+
+
 async def listen_url(take: IRTake, *, settings: Settings | None = None) -> str:
     """A short-lived signed URL, so the bytes never pass through the API.
 
