@@ -13,13 +13,7 @@ from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import element_keys, elements_for
 from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
     scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
 )
 from app.services.internalization_room.comprehension.practice import (
     guide_invited_mother_tongue_practice,
@@ -492,8 +486,11 @@ async def _session_at_the_recording_handoff(
     db_session: AsyncSession, *, practice_reported: bool = True
 ) -> IRSession:
     """Everything the passage asks for is done except the recording: the coverage floor is
-    met and every checkpoint is demonstrated, so the app is about to offer its own
-    question.
+    met and every scene was rehearsed, so the app is about to offer its own question.
+
+    The ledger is empty and stays empty. Nothing writes to it any more, and the gate no
+    longer asks it anything — what has to be true is the floor, the rehearsals and the
+    team's consent.
 
     `practice_reported=False` is the same room with nobody having said the closing word:
     every bead is engaged while the practice record stays empty."""
@@ -503,19 +500,7 @@ async def _session_at_the_recording_handoff(
     session = await save_comprehension(
         db_session,
         session,
-        ComprehensionState(
-            ledger=[
-                EvidenceObservation(
-                    id=f"ev-{index}",
-                    unit_id=checkpoint.id,
-                    probe_id=f"probe-{index}",
-                    method=EvidenceMethod.MICRO_TELLBACK,
-                    result=EvidenceResult.DEMONSTRATED,
-                )
-                for index, checkpoint in enumerate(checkpoints_for(P))
-            ],
-            practiced_scene_ids=scene_ids_for(P) if practice_reported else [],
-        ),
+        ComprehensionState(practiced_scene_ids=scene_ids_for(P) if practice_reported else []),
     )
     session = await apply_coverage(
         db_session, session.id, merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
@@ -538,6 +523,28 @@ async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> 
         db_session, session, team_utterance=utterance, guide_response=turn.outcome.speech
     )
     return turn.outcome.speech
+
+
+@pytest.mark.asyncio
+async def test_a_passage_worked_through_reaches_the_recording_question_with_nothing_written(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """The ledger informs; it never ends the conversation.
+
+    Every critical unit nobody had recorded a note about used to be a blocker, and the only
+    writer of those notes was the classifier that read the team's answers for the room.
+    Removed, the gate would have closed on every session for good: the consent question is
+    never offered, the interview never finishes, and nothing reaches the Refine package.
+    """
+    session = await _session_at_the_recording_handoff(db_session)
+    assert comprehension_of(session).ledger == []
+
+    assert await _say(db_session, session, "acho que já falamos de tudo") == (
+        rehearsal_consent_question("pt")
+    )
+    assert await _say(db_session, session, "sim") == rehearsal_readiness_cue("pt")
+    assert comprehension_of(session).recording_consent_given
+    assert comprehension_of(session).ledger == []
 
 
 @pytest.mark.asyncio
