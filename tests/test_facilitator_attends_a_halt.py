@@ -684,27 +684,6 @@ class _AgreeingModels:
         return GUIDE_LINE
 
 
-@pytest.fixture()
-def the_assessor_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Guide and Validator work; only the comprehension assessor cannot be reached.
-
-    Copied from `test_internalization_room_turn_durability.py`, which is where the hard stop
-    is already driven over HTTP — this file reaches it the same way rather than reaching
-    inside the service to fake the outcome.
-    """
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
-    )
-
-    async def _assessor(**_: Any) -> str:
-        raise RuntimeError("assessor transport is down")
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.comprehension.assessor"],
-        "call_agent",
-        _assessor,
-    )
-
 
 @pytest.fixture()
 def the_assessor_agrees(monkeypatch: pytest.MonkeyPatch, target_checkpoint: str) -> None:
@@ -767,31 +746,6 @@ async def the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
 
-
-async def test_the_hard_stop_is_a_blocking_halt(
-    client: httpx.AsyncClient,
-    facilitator_a: Facilitator,
-    waiting_room,
-    the_assessor_is_down: None,
-) -> None:
-    """The assessor failing three turns running is the room saying it cannot go on.
-
-    Driven through the turn route, the way `test_the_hard_stop_outlives_the_request_that_
-    raised_it` drives it: the halt this asks about is the one the room raises for itself.
-    """
-    halted = False
-    for _ in range(6):
-        answered = await the_team_answers(client, waiting_room.id)
-        assert answered.status_code == 200, answered.text[:300]
-        if (await tablet_state(client, waiting_room.id))["status"] == "needs_person":
-            halted = True
-            break
-
-    assert halted, "o assessor caiu turno após turno e a sala nunca parou"
-    assert (await tablet_state(client, waiting_room.id))["halt"] == BLOCKING
-    standing = await queued(client, facilitator_a, waiting_room.id)
-    assert standing is not None
-    assert standing["halt"] == BLOCKING
 
 
 # --- Case 5 — a mark on a room that is not halted -----------------------------------------

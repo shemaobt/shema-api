@@ -9,8 +9,7 @@ wording. A probe becomes state only after its question was actually voiced, so e
 never bound to an unvoiced prompt.
 
 An assessor call that failed is not an answer the room read and found empty: it degrades
-through the fail-safe, and a run of them reaches the hard stop and asks for a person rather
-than putting the same question a fourth time as though it were the first.
+through the fail-safe.
 
 The opening turn always belongs to the Guide: no probe is planned and no app-owned line
 may hijack it, because the Voice must open the passage before anything is asked of the
@@ -20,7 +19,6 @@ invitation for a scene is only planned once that scene has been opened in covera
 
 from __future__ import annotations
 
-import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -113,8 +111,6 @@ from app.services.internalization_room.run_turn import (
 )
 from app.services.internalization_room.sessions import comprehension_of
 
-logger = logging.getLogger(__name__)
-
 
 @dataclass
 class ComprehensionTurn:
@@ -171,28 +167,8 @@ def told_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
     return [f"S{scene}" for scene in sorted(told) if told[scene]]
 
 
-_ASSESSOR_FAILURES_BEFORE_HARD_STOP = 3
-
-
 def _observation_id(tail: str) -> str:
     return f"voice:{uuid.uuid4()}:{tail}"
-
-
-def _assessor_failures_after(prior: int, assessment: TurnAssessment) -> int:
-    """Failed assessor calls in a row: one more on a failure, none once a reply comes back.
-
-    The count is of calls, not of turns. A fail-safe clears the active probe, so the turn
-    after one never reaches the assessor at all — and a turn that never called it leaves the
-    count where it stood, because it is evidence of nothing either way and clearing it there
-    would let a process turn hide an outage.
-
-    Only a reply clears it. An answer the room settles without asking anyone — a shrug, a
-    bare "sim" — completes the assessment locally, and treating that as proof of health
-    would let one shrug mid-outage zero the ladder and strand the team in category A.
-    """
-    if assessment.failed:
-        return prior + 1
-    return 0 if assessment.replied else prior
 
 
 async def run_comprehension_turn(
@@ -298,8 +274,6 @@ async def run_comprehension_turn(
             speech_recognition_uncertain=uncertain,
             settings=settings,
         )
-
-    assessor_failures = _assessor_failures_after(state.assessor_failures, assessment)
 
     new_attempts, no_report_observation = resolve_no_usable_report(
         probe=prior_probe,
@@ -581,7 +555,6 @@ async def run_comprehension_turn(
         [bridge_mode_validator_context(bridge_mode), comprehension_status, contract]
     )
 
-    hard_stop = False
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
         outcome = TurnOutcome(
@@ -605,25 +578,13 @@ async def run_comprehension_turn(
                 fixed_line=fixed,
             )
     elif assessment.failed:
-        hard_stop = assessor_failures >= _ASSESSOR_FAILURES_BEFORE_HARD_STOP
-        if hard_stop:
-            logger.warning(
-                "Hard stop after %d failed assessor calls in session %s",
-                assessor_failures,
-                session.id,
-            )
-        line, fixed = choose(
-            FailSafe.HARD_STOP if hard_stop else FailSafe.UNREPAIRABLE,
-            session.language,
-            turn=len(messages),
-        )
+        line, fixed = choose(FailSafe.UNREPAIRABLE, session.language, turn=len(messages))
         outcome = TurnOutcome(
             speech=line,
             transcript=transcript,
             used_fail_safe=True,
             degraded=True,
             fixed_line=fixed,
-            needs_person=hard_stop,
         )
     elif app_owned_line is not None:
         outcome = TurnOutcome(
@@ -671,7 +632,6 @@ async def run_comprehension_turn(
             state.adaptive_free_retell_attempted or adaptive_attempt_this_turn
         ),
         no_report_attempts=[*state.no_report_attempts, *new_attempts],
-        assessor_failures=0 if hard_stop else assessor_failures,
         stt_recovery=state.stt_recovery if recovery_needs_clarification else stt_plan.next_state,
         recording_consent_given=(
             state.recording_consent_given or (eligible and consent_decision == "accepted")
