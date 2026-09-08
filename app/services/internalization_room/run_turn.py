@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,6 +25,7 @@ from app.services.internalization_room.turn_instructions import (
     _nobody_spoke_this_turn,
     split_opening_movements,
 )
+from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
 
 __all__ = ["OPENING_MOVEMENT_MARK"]
 
@@ -95,35 +94,6 @@ def recent_conversation_block(messages: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-_UNPARSEABLE_VERDICT: dict[str, Any] = {
-    "verdict": "regenerate",
-    "issues": [{"problem": "unparseable_verdict"}],
-}
-
-
-def _parse_verdict(raw: str) -> tuple[dict[str, Any], str | None]:
-    """The Validator's reply as a verdict, and the condition that refused it when one did.
-
-    A parse failure still returns a usable ``regenerate`` verdict — the loop above asks for
-    another draft either way — but the second element names *why* this reply could not be
-    trusted, so the caller can leave the trace `_refused` exists for instead of the silence
-    that used to sit here for two of these three exits.
-    """
-    text = raw.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return _UNPARSEABLE_VERDICT, "not JSON"
-    if not isinstance(parsed, dict):
-        return _UNPARSEABLE_VERDICT, "verdict reply is not a JSON object"
-    if "verdict" not in parsed:
-        return _UNPARSEABLE_VERDICT, "verdict reply has no 'verdict' key"
-    return parsed, None
-
-
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     """Every refused Validator reply leaves itself behind, whole, with what refused it.
 
@@ -161,19 +131,6 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
         detail,
         extra={"session_id": session_id, "attempt": attempt, "condition": condition},
     )
-
-
-def _issues_as_dicts(raw: Any) -> list[dict[str, Any]]:
-    """The Validator's ``issues`` in the shape every reader of them assumes.
-
-    The field comes straight from a model, so its rows are whatever the model wrote and a
-    list of strings is as likely as a list of objects. Every reader asks each row for
-    ``problem``, and a bare string there raises in the middle of the generative path, where
-    the cost is the whole turn instead of one rejected draft.
-    """
-    if not isinstance(raw, list):
-        return []
-    return [row if isinstance(row, dict) else {"problem": str(row)} for row in raw]
 
 
 async def _draft(
