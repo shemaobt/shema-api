@@ -9,12 +9,13 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.bridge_language import strays_from
-from app.services.internalization_room.canon.book_material import story_so_far
-from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import remaining
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent
+from app.services.internalization_room.prompt_blocks import (
+    coverage_status_block,
+    meaning_map_block,
+)
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
@@ -137,28 +138,6 @@ def detects_peer_cue(speech: str) -> bool:
     """
     lowered = speech.casefold()
     return any(phrase in lowered for phrase in _PEER_CUE_PHRASES)
-
-
-def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> str:
-    left = remaining(coverage_state, pericope_num)
-    if not left:
-        return "REMAINING: (nada — todos os elementos foram trabalhados pela equipe)"
-    lines = ["REMAINING (ainda não trabalhados pela equipe, nas palavras deles):"]
-    lines.extend(f"- [{element.key}] {element.label}" for element in left)
-    return "\n".join(lines)
-
-
-def meaning_map_block(pericope_num: str, book: str) -> str:
-    """The passage's map verbatim, plus the digests of strictly earlier passages.
-
-    *Tripod Internalization · Interaction Flows*
-    (`internalization-room/docs/spec/interaction-flows.md`, §1, diagram caption) calls the
-    Guide's standard of truth "MEANING MAP + story-so-far", and the earlier-only scoping is
-    what keeps a later disclosure from reaching this session.
-    """
-    passage = load_map(pericope_num).body
-    earlier = story_so_far(book, pericope_num)
-    return f"{passage}\n\n{earlier}" if earlier else passage
 
 
 def recent_conversation_block(messages: list[dict[str, Any]]) -> str:
