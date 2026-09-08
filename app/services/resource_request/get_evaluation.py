@@ -30,7 +30,7 @@ async def get_evaluation(
     if snapshot is None:
         raise NotFoundError(f"No evaluation: request {request_id} has not been submitted.")
 
-    record = await load_evaluation(db, snapshot.id, loaded.request.request_type.value)
+    record = await load_evaluation(db, snapshot.id, loaded.request.request_type)
     if record is None:
         raise NotFoundError(f"No evaluation yet for request {request_id}.")
     return record

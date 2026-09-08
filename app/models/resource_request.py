@@ -218,11 +218,29 @@ class EvaluationOut(BaseModel):
     other derived number in the module. ``evaluator_id`` and ``evaluated_at`` are the
     server's stamps: who signed on behalf of the mesa, and when the decision was recorded
     — ``evaluated_at`` stays null while the evaluation is still a draft without one.
+
+    ``request_type`` is the rubric these six scores belong to, and it is here because
+    the screen was guessing it. Parte C took the criteria set from the team's **local
+    draft**, which is a different axis: a ``?request=`` naming a *treinamento* request
+    opened under a *traducao* draft loaded six blank boxes, since no criterion key
+    matched. It is a property of the request, not of the reader, and it is disclosure of
+    nothing — it already travels inside ``document``.
+
+    ``evaluator_email`` is the ``AllocationOut`` precedent word for word: the id stays
+    in the ledger and in forensics, and the line a person reads gets the e-mail. §11
+    forbids displaying an opaque id, and until now only the id travelled. Only the
+    e-mail — no ``display_name`` — because that is the identifier the frontend already
+    renders and stores. It is ``None`` on an evaluation nobody has signed, which is a
+    real state (a draft, and every row the seed writes), never an error.
+
+    **Ours, not the client's**, both of them.
     """
 
     id: str
     snapshot_id: str
+    request_type: RRRequestType
     evaluator_id: str | None
+    evaluator_email: str | None
     decision: RRDecision | None
     comments: str
     team_note: str | None
@@ -239,15 +257,24 @@ class EvaluationOut(BaseModel):
         evaluation: RREvaluation,
         scores: list[RREvaluationScore],
         attendees: list[str],
+        request_type: RRRequestType,
+        evaluator_email: str | None,
     ) -> Self:
-        """Build the envelope from the aggregate's three parts — the ``RequestOut.of``
+        """Build the envelope from the aggregate's parts — the ``RequestOut.of``
         precedent, here for the same reason: ``CLAUDE.md`` §2 keeps SQLAlchemy models out
         of the api layer, and deriving the ``/30`` at shaping time is what keeps it a
-        computation and never a column."""
+        computation and never a column.
+
+        The two new parameters are appended rather than inserted so that the routes stay
+        ``EvaluationOut.of(*record)`` — a positional unpack of ``EvaluationRecord``,
+        which is what keeps the thin-router rule true by construction instead of by
+        care."""
         return cls(
             id=evaluation.id,
             snapshot_id=evaluation.snapshot_id,
+            request_type=request_type,
             evaluator_id=evaluation.evaluator_id,
+            evaluator_email=evaluator_email,
             decision=evaluation.decision,
             comments=evaluation.comments,
             team_note=evaluation.team_note,

@@ -208,6 +208,6 @@ async def save_evaluation(
 
     await post(letters)
 
-    record = await load_evaluation(db, snapshot.id, request.request_type.value)
+    record = await load_evaluation(db, snapshot.id, request.request_type)
     assert record is not None
     return record

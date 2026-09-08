@@ -275,6 +275,29 @@ A refusal it makes on purpose: `user_id` is a real FK, so a mesa member with no 
 cannot be recorded. That is the right failure rather than a gap, and BE-17 (OBT-477) — the
 half of D1 the client separated himself — is what closes it.
 
+**On the wire the signature is read as an e-mail, and the id stays where forensics needs
+it** (4/set/2026). `EvaluationOut` carried `evaluator_id` alone — an opaque uuid the
+frontend may not display (its §11) — so the screen had a signature it could not write down.
+`load_evaluation` now **outer-joins** `User` and the envelope carries `evaluator_email`
+beside the id, which is `AllocationOut`'s precedent word for word: *the id stays in the
+ledger and in forensics, and the line a person reads gets the e-mail*. Only the e-mail — no
+`display_name` — because that is the identifier the frontend already reads and stores, so
+the gap closed with **no line of frontend**.
+
+⚠️ **Outer, and the word carries the whole risk.** `evaluator_id` is nullable — a draft
+nobody has signed is a legitimate state, and it is every row the seed writes — so an inner
+join would answer `None` for a row that exists and turn each unsigned evaluation into a
+silent 404, which the screen renders as *not evaluated yet*.
+`test_an_unsigned_evaluation_carries_no_name_at_all` is what catches it.
+
+**And the envelope now says which rubric it scores.** `request_type` rides on
+`EvaluationRecord`, which both callers already held before they got there, so no second
+query pays for it. It is a property of the request and not of the reader, and it is
+disclosure of nothing — it already travels inside `document`. Parte C was taking the
+criteria set from the team's **local draft**, a different axis entirely: a `?request=`
+naming a *treinamento* request opened under a *traducao* draft loaded six blank boxes,
+because no criterion key matched. Both fields are **ours to decide**, not the client's.
+
 ### 4.2 Request shape: a queried spine, and sections that are not columns — **Decided**
 
 The asymmetry decides it, and the issue already states it: the spine (id, type, project

@@ -20,20 +20,40 @@ from typing import NamedTuple
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.auth import User
 from app.db.models.resource_request import (
     RRDecision,
     RREvaluation,
     RREvaluationAttendee,
     RREvaluationScore,
+    RRRequestType,
     RRSnapshot,
 )
 from app.utils.resource_request_vocabularies import CRITERION_KEYS
 
 
 class EvaluationRecord(NamedTuple):
+    """The aggregate plus the two facts about it that only the request row knows.
+
+    ``request_type`` rides here rather than being asked for again downstream because
+    both callers already hold it — ``get_evaluation`` and ``save_evaluation`` each load
+    the request before they get this far — and the rubric the six scores belong to is a
+    property of the request, never of the reader. Serving it is what lets Parte C stop
+    taking the criteria set from the team's local draft, which is a different axis
+    entirely (a ``?request=`` of one type opened under a draft of another loaded six
+    blank boxes, because no criterion key matched).
+
+    ``evaluator_email`` is the ``AllocationOut`` precedent applied unchanged: the id
+    stays for the ledger and for forensics, and the line a person reads gets the
+    e-mail. Only the e-mail — no ``display_name`` — because that is the identifier the
+    frontend already renders and stores.
+    """
+
     evaluation: RREvaluation
     scores: list[RREvaluationScore]
     attendees: list[str]
+    request_type: RRRequestType
+    evaluator_email: str | None
 
 
 class TeamOutcome(NamedTuple):
@@ -54,14 +74,28 @@ async def latest_snapshot(db: AsyncSession, request_id: str) -> RRSnapshot | Non
 
 
 async def load_evaluation(
-    db: AsyncSession, snapshot_id: str, request_type: str
+    db: AsyncSession, snapshot_id: str, request_type: RRRequestType
 ) -> EvaluationRecord | None:
-    """The whole aggregate for one snapshot, or ``None`` when the mesa has not started."""
-    evaluation = (
-        await db.execute(select(RREvaluation).where(RREvaluation.snapshot_id == snapshot_id))
-    ).scalar_one_or_none()
-    if evaluation is None:
+    """The whole aggregate for one snapshot, or ``None`` when the mesa has not started.
+
+    The join onto ``User`` is an **outer** one, and that is the whole risk of this read.
+    ``evaluator_id`` is nullable — an evaluation may be a draft nobody has signed, and
+    the seed writes exactly that — so an inner join would answer ``None`` for a row that
+    exists and turn every unsigned evaluation into a silent 404, which the screen would
+    render as *not evaluated yet*. ``test_an_unsigned_evaluation_carries_no_name_at_all``
+    is the assertion that catches it.
+    """
+    row = (
+        await db.execute(
+            select(RREvaluation, User.email)
+            .outerjoin(User, User.id == RREvaluation.evaluator_id)
+            .where(RREvaluation.snapshot_id == snapshot_id)
+        )
+    ).first()
+    if row is None:
         return None
+
+    evaluation, evaluator_email = row
 
     scores = list(
         (
@@ -72,7 +106,7 @@ async def load_evaluation(
         .scalars()
         .all()
     )
-    canonical = {key: index for index, key in enumerate(CRITERION_KEYS[request_type])}
+    canonical = {key: index for index, key in enumerate(CRITERION_KEYS[request_type.value])}
     scores.sort(
         key=lambda row: (canonical.get(row.criterion_key, len(canonical)), row.criterion_key)
     )
@@ -89,7 +123,13 @@ async def load_evaluation(
         .all()
     )
 
-    return EvaluationRecord(evaluation=evaluation, scores=scores, attendees=attendees)
+    return EvaluationRecord(
+        evaluation=evaluation,
+        scores=scores,
+        attendees=attendees,
+        request_type=request_type,
+        evaluator_email=evaluator_email,
+    )
 
 
 async def team_outcome(db: AsyncSession, request_id: str) -> TeamOutcome:
