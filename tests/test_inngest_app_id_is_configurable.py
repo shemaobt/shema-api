@@ -19,9 +19,13 @@ from app.core.inngest_client import build_inngest_client
 
 APP = Path(__file__).resolve().parent.parent / "app"
 
+#: The one module allowed to name an app id. Matching on the file name alone would
+#: exempt any `config.py` anywhere under `app/`, including one that does not exist yet.
+CONFIG = (APP / "core" / "config.py").resolve()
+
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
-#: An Inngest app id of this project's family. `config.py` is where it may appear.
+#: An Inngest app id of this project's family. Only `CONFIG` above may name one.
 _APP_ID = re.compile(r'"tripod-backend[\w.\-]*"')
 
 
@@ -50,7 +54,7 @@ def test_no_module_hardcodes_the_app_id() -> None:
     offenders = {
         str(path.relative_to(APP)): _APP_ID.findall(path.read_text())
         for path in APP.rglob("*.py")
-        if path.name != "config.py" and _APP_ID.search(path.read_text())
+        if path.resolve() != CONFIG and _APP_ID.search(path.read_text())
     }
     assert not offenders, (
         f"these modules pin the Inngest app id in source: {offenders}. "
