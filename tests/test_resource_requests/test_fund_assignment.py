@@ -30,6 +30,7 @@ from app.db.models.resource_request import (
 )
 from app.services.resource_request import list_fund_options as options_service
 from app.services.resource_request._fund_choices import options_from
+from tests.test_resource_requests.test_endorsement import as_lider
 from tests.test_resource_requests.test_evaluations import (
     as_gestor,
     endorse,
@@ -427,6 +428,79 @@ async def test_a_equipe_nao_ve_o_fundo_mudar_no_seu_pedido(db_session, client, r
     envelope = (await client.get(f"{REQUESTS}/{card}", headers=team)).json()
 
     assert "fund_id" not in envelope
+
+
+async def test_o_gestor_le_de_que_fundo_o_pedido_puxa(db_session, client, rrf_app) -> None:
+    """A decisão do dono, 4/set/2026, na frase dele: **ler não é atribuir**.
+
+    Só o Gestor renomeia um fundo, e era justamente a sessão dele que não tinha etiqueta
+    de fundo em cartão nenhum onde ver o rename acontecer — ler o fundo de um pedido era
+    ``GET …/fund-options``, rota da mesa. A bancada leu isso como o rename falhando; o
+    ``rename_fund.py`` estava certo o tempo todo.
+
+    A etiqueta mora no Painel, e quem abre o Painel é quem tem ``manage_funds`` — mesa e
+    Gestor, e mais ninguém. É por isso que a capacidade que serve o campo é essa, e não
+    ``assign_fund``: a GATE-01 D4 não se move e continua sendo só a mesa quem escreve.
+    """
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    gestor = await as_gestor(db_session, rrf_app)
+    await make_fund(db_session, "linguas", "Shema Línguas")
+    card = await submitted(client, team)
+    assert (await put_fund(client, mesa, card, "linguas")).status_code == 200
+
+    assert (await client.get(f"{REQUESTS}/{card}", headers=gestor)).json()["fund_id"] == "linguas"
+    assert (await client.get(f"{REQUESTS}/{card}", headers=mesa)).json()["fund_id"] == "linguas"
+
+    na_listagem = (await client.get(REQUESTS, headers=gestor)).json()
+    assert next(linha for linha in na_listagem if linha["id"] == card)["fund_id"] == "linguas"
+
+
+async def test_sem_fundo_a_mesa_le_nulo_e_a_equipe_nao_le_chave_nenhuma(
+    db_session, client, rrf_app
+) -> None:
+    """Ausente e ``null`` são respostas a perguntas diferentes, e o campo diz as duas.
+
+    Um pedido em triagem não tem fundo (GATE-01 D4: nada no formulário diz de que fundo se
+    pede), e a mesa precisa saber disso para desenhar *Sem fundo* — então ela lê ``null``,
+    que é a afirmação de que não há. A equipe não lê chave nenhuma, que é a ausência de
+    afirmação. Uma chave sempre presente teria de dizer ``null`` à equipe sobre um pedido
+    **que tem** fundo, e aí o mesmo valor carregaria *não há* e *não é seu* ao mesmo tempo
+    — a afirmação sem dado que o §9 proíbe.
+    """
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    card = await submitted(client, team)
+
+    da_mesa = (await client.get(f"{REQUESTS}/{card}", headers=mesa)).json()
+    assert "fund_id" in da_mesa
+    assert da_mesa["fund_id"] is None
+
+    assert "fund_id" not in (await client.get(f"{REQUESTS}/{card}", headers=team)).json()
+
+
+async def test_o_lider_que_alcanca_toda_submetida_nao_conta_pedidos_por_fundo(
+    db_session, client, rrf_app
+) -> None:
+    """O vazamento agregado que a versão larga tinha nomeado e adiado para a INT-06.
+
+    O Líder de Base alcança **toda** solicitação submetida (``_scope.py``) porque endossa,
+    e com o campo na espinha para todo mundo ele passaria a contar quantos pedidos puxam
+    de cada fundo sem conseguir nomear nenhum — id opaco não é anonimato quando se pode
+    agrupar por ele. Ele não tem ``manage_funds``, então não há o que agrupar, e não sobra
+    nada desta porta para a revisão adversarial pesar.
+    """
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    lider = await as_lider(db_session, rrf_app)
+    await make_fund(db_session, "linguas", "Shema Línguas")
+    card = await submitted(client, team)
+    assert (await put_fund(client, mesa, card, "linguas")).status_code == 200
+
+    assert "fund_id" not in (await client.get(f"{REQUESTS}/{card}", headers=lider)).json()
+    assert all(
+        "fund_id" not in linha for linha in (await client.get(REQUESTS, headers=lider)).json()
+    )
 
 
 async def test_give_fund_e_o_endpoint_escrevem_a_mesma_coluna(db_session, client, rrf_app) -> None:

@@ -33,7 +33,15 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    ValidationInfo,
+    field_validator,
+    model_serializer,
+)
 
 from app.db.models.resource_request import (
     RRAttachment,
@@ -290,15 +298,28 @@ class EvaluationOut(BaseModel):
 class RequestStatusOut(BaseModel):
     """What a team is told about its request — GATE-03 D4's *status and nothing else*.
 
-    Exactly four fields, and the count is the contract: ``stage`` and ``submitted_at``
-    are the journey, ``decision`` is the outcome the team is entitled to, and
-    ``team_note`` is the one sentence of the evaluation aggregate addressed to the team.
-    No scores, no comments, no attendees, no evaluator — adding a field here is handing
-    the team a piece of the evaluation, which is §5.3 broken by a projection.
+    **Five fields since 4/set/2026, and the reason the count moved is worth reading**,
+    because the rule it protects did not. ``stage`` and ``submitted_at`` are the journey,
+    ``decision`` is the outcome the team is entitled to, and ``team_note`` is the one
+    sentence of the evaluation aggregate addressed to the team. No scores, no comments, no
+    attendees, no evaluator — **adding a field *of the evaluation* here is handing the team
+    a piece of it**, which is §5.3 broken by a projection, and that sentence is what the
+    count was standing in for.
+
+    ``request_type`` is the fifth and is **not** of the evaluation: it is metadata of the
+    team's own document, and it already travels inside ``document`` on every read of the
+    request itself. It is here because this is the door that answers when there is **no
+    evaluation yet** — that route is a 404 until the mesa starts, and Parte C needs to know
+    which rubric to draw precisely then. Until now it took the criteria set from the team's
+    local draft, a different axis: a ``?request=`` naming a *treinamento* request opened
+    under a *traducao* draft loaded six blank boxes, because no criterion key matched.
+    ``extra="forbid"`` stays, and it is the guard that actually holds — ours, not the
+    client's.
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    request_type: RRRequestType
     stage: RRStage
     submitted_at: datetime | None
     decision: RRDecision | None
@@ -499,9 +520,47 @@ class RequestOut(BaseModel):
     the team seeing *endorsed on this date* is status, which GATE-03 D4 allows, not the
     evaluation, which §5.3 closes. The display pair the paper form had (``leader_name``,
     ``leader_date``) stays inside the document, where the contract's 45 keys put it.
+
+    **``request_type`` and ``fund_id`` joined the spine on 4/set/2026**, and both are
+    columns that already existed — no migration, and no second query, since ``of()`` reads
+    the row it is already handed.
+
+    ``request_type`` is **disclosure of nothing**: it already travels inside ``document``,
+    and it is the team's own request. What it buys is two screens that were guessing.
+    ``/acompanhamento`` identified each row by **date alone** — opened on, submitted on —
+    because fetching a document per row to get a title would cost a round trip per request
+    on a field connection, and inventing one would be fabricated data. And Parte C took
+    the criteria set from the team's **local draft**, a different axis entirely.
+
+    ``fund_id`` **is** new information, and it is served to ``manage_funds`` alone — the
+    mesa and the Gestor, who are exactly who opens the Painel where the chip renders.
+    **The decision is the owner's** (4/set/2026) and it is stated as *reading is not
+    assigning*: ``assign_fund`` stays mesa-only (GATE-01 D4) and nothing here touches who
+    may write the column. What the owner decided was that the **Gestor** sees which fund a
+    request draws from — he renames funds and had no card to see a rename on, because
+    reading a request's fund was ``GET …/fund-options``, mesa-only.
+
+    **Serving it to every caller would have been wider than that decision, and it broke a
+    rule that was already written**: ``test_a_equipe_nao_ve_o_fundo_mudar_no_seu_pedido``
+    says the team's envelope carries no fund, on GATE-03 D4 — *status and nothing else*,
+    and which fund pays is the mesa's conversation. The first version of this field put it
+    on the spine for everyone and that test is what caught it; it passes here **unedited**,
+    which is the proof the ceiling survived. Scoping also dissolves an aggregate leak the
+    wide version had named and deferred: the Líder reaches every submitted request
+    (``_scope.py``) and would have been able to count requests per fund without naming
+    one. He does not hold ``manage_funds``, so there is nothing left for INT-06 to weigh.
+
+    **Absent and not ``null``, and the difference is the whole design.** A key that is
+    always present would have to say ``null`` to the team about a request that *has* a
+    fund — one key carrying *no fund assigned* and *not yours to read* at once, which is
+    the claim-without-data §9 forbids. So the mesa reads ``null`` and means the first, and
+    the team finds no key at all and learns nothing either way. ``of()`` therefore takes
+    ``reads_funds`` with **no default**: a route added tomorrow cannot forget to decide.
     """
 
     id: str
+    request_type: RRRequestType
+    fund_id: str | None = None
     stage: RRStage
     created_by: str | None
     revision_of_id: str | None
@@ -512,8 +571,30 @@ class RequestOut(BaseModel):
     updated_at: datetime
     document: dict[str, Any]
 
+    @model_serializer(mode="wrap")
+    def _the_fund_is_absent_from_who_may_not_read_it(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        """Drop ``fund_id`` from the wire when nobody set it.
+
+        ``of()`` sets the field only for a caller holding ``manage_funds``, so *unset* and
+        *not yours to read* are the same state and the key simply does not appear. A mesa
+        session reading a request with no fund sets it to ``None`` explicitly, so it does
+        appear, as ``null`` — which is the honest answer to a different question.
+
+        Written here rather than as a route-level ``response_model_exclude`` because the
+        audience is the **caller**, not the route: the team and the Painel read the same
+        ``GET /requests/{id}``, and an exclusion declared on the path would apply to both.
+        """
+        data: dict[str, Any] = handler(self)
+        if "fund_id" not in self.model_fields_set:
+            data.pop("fund_id", None)
+        return data
+
     @classmethod
-    def of(cls, request: RRRequest, document: dict[str, Any], **extra: Any) -> Self:
+    def of(
+        cls, request: RRRequest, document: dict[str, Any], *, reads_funds: bool, **extra: Any
+    ) -> Self:
         """Build the envelope from a request row.
 
         Here and not in the router because ``CLAUDE.md`` §2 keeps SQLAlchemy models out of
@@ -529,8 +610,11 @@ class RequestOut(BaseModel):
         ``snapshot_id``, and a base-typed constructor would hand both back as the parent and
         let a route promise a field it never returns.
         """
+        fund = {"fund_id": request.fund_id} if reads_funds else {}
         return cls(
             id=request.id,
+            request_type=request.request_type,
+            **fund,
             stage=request.stage,
             created_by=request.created_by,
             revision_of_id=request.revision_of_id,
