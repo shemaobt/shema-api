@@ -260,7 +260,7 @@ async def test_migration_round_trip_leaves_existing_rows_intact(stamped_database
 
 
 async def test_migration_builds_the_table_the_model_declares(stamped_database):
-    """CLAUDE.md §4 forbids schema changes outside Alembic, which only means anything
+    """AGENTS.md forbids schema changes outside Alembic, which only means anything
     if the migration and the model agree. A model the migration does not build is a
     schema change that happened outside Alembic by omission."""
     _walk_the_device_column_migrations(stamped_database)
