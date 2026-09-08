@@ -682,9 +682,19 @@ class FacilitatorHaltedDeviceView(BaseModel):
     device_id: str
     label: str | None
     since: datetime
-    #: When a facilitator said they went to this tablet, and who (ENG-792). Null on almost
-    #: every row here, because a marked tablet leaves this queue — they are served so that a
-    #: tablet that halts again after a visit does not read as a fresh, unanswered halt.
+    #: When a facilitator said they went to this tablet, and who (ENG-792).
+    #:
+    #: **Null on every row this queue can currently produce, and served anyway.** Only two
+    #: writes leave ``needs_person_since`` standing — the tablet raising a halt and a
+    #: facilitator undoing their mark — and since the halt clears the previous visit's stamps
+    #: on the same guarded write, both leave these null. A row here saying somebody went is a
+    #: row nothing in this codebase can write today.
+    #:
+    #: They travel because the row is read beside two others that do carry them: the sessions
+    #: half of this same answer, where a marked ``DONE`` room stays listed with its stamps,
+    #: and the team's devices panel, which is where a marked tablet is read *after* it leaves
+    #: this queue. A Desk switching on the pair would otherwise have to know that one of the
+    #: three lists it draws answers a different shape for the same fact.
     attended_at: datetime | None = None
     attended_by: str | None = None
 
