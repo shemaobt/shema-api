@@ -1,5 +1,11 @@
 """Session-local comprehension evidence ledger and readiness rule.
 
+A unit nobody recorded anything about no longer blocks. The only writer of semantic
+evidence was the classifier that read the team's answers for the room, and the person who
+checks the retelling is the Guide now, item by item against the map — so an empty ledger
+is a session nobody wrote a note about, not a session nobody understood. What is left of
+the gate is the coverage floor, every scene rehearsed, and the team's own consent.
+
 ``demonstrated`` means the semantic content appeared without an answer-revealing cue.
 ``supported_prompted`` is useful but weaker evidence: the team selected or confirmed the
 content after structured support. The remaining values are explicit limits or open
@@ -246,8 +252,6 @@ def evaluate_readiness(
         if unit.critical:
             if assessment.has_conflict:
                 blockers.append(ReadinessBlocker(code="critical_unit_conflict", unit_id=unit.id))
-            elif assessment.support is SupportLevel.NONE and not has_explicit_open_limit:
-                blockers.append(ReadinessBlocker(code="critical_unit_unchecked", unit_id=unit.id))
             elif (
                 assessment.support is SupportLevel.NONE
                 and has_explicit_open_limit
