@@ -47,3 +47,22 @@ def test_the_list_of_nevers_carries_the_second_law_in_one_line() -> None:
         "- Never answer a request to understand with a redirection or a repeat; "
         "never invite rehearsal before the team has the part." in nevers
     )
+
+
+def test_the_passage_stays_focused_line_says_which_question_it_is_for() -> None:
+    """Her ruling of 7 September: the honest-silence line is only for a question outside it.
+
+    "a linha B nunca responde a um pedido de entender ('explica de novo', 'quem é esse') —
+    isso a voz responde a partir da passagem. B é só para pergunta que está fora da passagem."
+    Nothing fires that line by code on our side — `FailSafe.OUTSIDE_MAP` has no caller — so the
+    whole exposure was that the Guide held the words with no rule about when they are the wrong
+    words. The words stay; the paragraph now says which ask they belong to.
+    """
+    anchor = "**If the map simply does not address the question at all**"
+    assert anchor in GUIDE
+    path = GUIDE[GUIDE.index(anchor) :]
+    path = path[: path.index("\n")]
+
+    assert "Let's stay with what the passage is showing us." in path
+    assert "This is not the line for a request to understand." in path
+    assert "never with the sentence above" in path
