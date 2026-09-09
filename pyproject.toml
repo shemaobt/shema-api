@@ -65,6 +65,12 @@ exclude = [".venv", ".git", "alembic/versions"]
 select = ["E", "F", "I", "B", "UP", "C4", "SIM", "PIE", "PGH", "RUF"]
 ignore = ["B008"]
 
+# doctrine_allowlist.py's entries carry the offending source line verbatim, for a reader
+# comparing an allowlist row against the site it names — wrapping that text would break the
+# match it exists to preserve.
+[tool.ruff.lint.per-file-ignores]
+"scripts/doctrine_allowlist.py" = ["E501"]
+
 [tool.ruff.format]
 quote-style = "double"
 
