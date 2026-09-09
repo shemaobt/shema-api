@@ -516,9 +516,9 @@ async def test_a_session_in_flight_with_a_retired_kind_still_loads_and_still_voi
 ) -> None:
     """A row written by the older server still opens, in the findings and in the superseded.
 
-    Nothing is rewritten in the database, so the team that pressed `terminei` yesterday
-    resumes today: the retired kind reads as addition on the way out of the row, and the
-    session goes on to its verdict instead of failing to load at all.
+    No migration touches the row, so the team that pressed `terminei` yesterday resumes
+    today: the retired kind reads as addition on the way out of the row, in the findings and
+    in the superseded ones, and the round runs to a verdict instead of failing to load.
     """
     session_id = await _four_stretches_told(client)
     told = await _resumed(client, session_id)

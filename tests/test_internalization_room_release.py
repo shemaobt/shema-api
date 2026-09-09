@@ -525,29 +525,11 @@ async def _a_row_written_before_the_taxonomy_shrank(db: AsyncSession, session: I
     is bound to the rehearsal exactly as it is in the field, and only the kinds are then set
     to the names the older server wrote.
     """
-    told = await _one_stretch(db, session)
-    await _reported_playback(
-        db,
-        session,
-        BackTranslationState(
-            scope=P,
-            findings=[
-                Finding(
-                    kind=FindingKind.ADDITION,
-                    note="a equipe disse que Noemi voltou alegre",
-                    segment_id=told.id,
-                )
-            ],
-            evidence_sufficient=True,
-            checked=False,
-            superseded=[
-                SupersededAttempt(
-                    findings=[Finding(kind=FindingKind.ADDITION, note="trocaram quem pediu")]
-                )
-            ],
-            analysed_segment_ids=[told.id],
-        ),
-    )
+    state = await _told_back_with_an_open_finding(db, session)
+    state.superseded = [
+        SupersededAttempt(findings=[Finding(kind=FindingKind.ADDITION, note="trocaram quem pediu")])
+    ]
+    await _reported_playback(db, session, state)
     stored = dict(session.back_translation)
     stored["findings"] = [dict(stored["findings"][0], kind="meaning_change")]
     stored["superseded"] = [
