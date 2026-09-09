@@ -66,6 +66,14 @@ jobs:
             us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} \
             sh -c "uv run alembic upgrade head"
 
+      # Staging is exercised from front-ends a developer runs locally, so those two
+      # origins are its whole allowlist. Naming it is what keeps the application's
+      # default out: that default carries production's domains, and staging holds a
+      # Neon branch of production's data.
+      #
+      # ^|^ makes '|' the separator instead of ',', because CORS_ORIGINS is itself a
+      # comma-separated list. The delimiter may not appear in any value, which rules
+      # out ':' — every origin carries one (http://localhost:5173).
       - name: Deploy Backend
         run: |
           gcloud run deploy ${{ env.BACKEND_SERVICE }} \
@@ -79,7 +87,7 @@ jobs:
             --concurrency=80 \
             --timeout=300 \
             --no-cpu-throttling \
-            --update-env-vars="ENV=staging,EMAIL_PROVIDER=log,INNGEST_APP_ID=tripod-backend-staging,GCS_PLATFORM_BUCKET=tripod-platform-staging" \
+            --update-env-vars="^|^ENV=staging|EMAIL_PROVIDER=log|INNGEST_APP_ID=tripod-backend-staging|GCS_PLATFORM_BUCKET=tripod-platform-staging|CORS_ORIGINS=http://localhost:5173,http://localhost:3000" \
             --set-secrets="DATABASE_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_neon_database_url_staging:latest,JWT_SECRET_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_jwt_secret_staging:latest,GOOGLE_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_api_key:latest,GOOGLE_MAPS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_maps_api_key:latest,QDRANT_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_url:latest,QDRANT_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_api_key:latest,GCS_BUCKET_NAME=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_gcs_bucket_name_staging:latest,INNGEST_EVENT_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_event_key_staging:latest,INNGEST_SIGNING_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_signing_key_staging:latest,ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_elevenlabs_api_key:latest,PH_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_ph_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_api_key:latest"
 
       # `--allow-unauthenticated` needs run.services.setIamPolicy to bind allUsers to
