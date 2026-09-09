@@ -5,6 +5,9 @@ because a stretch can be replaced and the replaced one must never come back into
 by accident; leaf, because a stretch that was divided stops being a unit in favour of what it
 was divided into. Every caller downstream — the analyst's prompt, the release artifact, the
 state a tablet resumes from — asks `final_segments` and repeats none of it.
+
+A told stretch's take is numbered here too, with the ordinal the stretch is given the moment
+it is captured.
 """
 
 from __future__ import annotations
@@ -126,9 +129,10 @@ async def capture_segment(
         ordinal = await _next_ordinal(db, session.id, parent_id)
 
     if bridge_take_id is not None:
-        bridge_take = (
-            await db.execute(select(IRTake).where(IRTake.id == bridge_take_id))
-        ).scalar_one_or_none()
+        result = await db.execute(
+            select(IRTake).where(IRTake.id == bridge_take_id, IRTake.session_id == session.id)
+        )
+        bridge_take = result.scalar_one_or_none()
         if bridge_take is not None:
             bridge_take.chunk_index = ordinal
 

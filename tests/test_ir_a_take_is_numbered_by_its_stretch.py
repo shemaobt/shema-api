@@ -10,6 +10,7 @@ written when `capture_segment` assigns it — and a take that told no stretch ca
 from __future__ import annotations
 
 import base64
+import hashlib
 from typing import Any
 
 import httpx
@@ -171,7 +172,30 @@ async def _retro_takes(db: AsyncSession, session_id: str) -> list[IRTake]:
     return list(result.scalars().all())
 
 
-async def _a_failed_capture_then_two_good_ones(client: httpx.AsyncClient) -> tuple[str, str]:
+async def _retro_take_by_audio(db: AsyncSession, session_id: str, audio: bytes) -> IRTake:
+    """The retro row for this exact recording, told apart from its siblings by content.
+
+    `created_at` has only second resolution on SQLite, so three captures made in one test can
+    land in the same second with no defined order between them — a position in a list ordered
+    by it is not a stable identity. The bytes are.
+    """
+    digest = hashlib.sha256(audio).hexdigest()
+    result = await db.execute(
+        select(IRTake).where(
+            IRTake.session_id == session_id,
+            IRTake.kind == IRTakeKind.RETRO,
+            IRTake.sha256 == digest,
+        )
+    )
+    return result.scalar_one()
+
+
+async def _retro_take_by_id(db: AsyncSession, take_id: str) -> IRTake:
+    result = await db.execute(select(IRTake).where(IRTake.id == take_id))
+    return result.scalar_one()
+
+
+async def _a_failed_capture_then_two_good_ones(client: httpx.AsyncClient) -> str:
     """One session: a stretch told back three times, the first attempt inaudible.
 
     The retry over the same slice is what takes the first place; the third call is a new
@@ -190,7 +214,7 @@ async def _a_failed_capture_then_two_good_ones(client: httpx.AsyncClient) -> tup
     await _tell_back(
         client, session_id, take_id=take_id, starts_ms=9000, ends_ms=21000, audio=b"terceiro trecho"
     )
-    return session_id, take_id
+    return session_id
 
 
 async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
@@ -224,20 +248,20 @@ async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, 
 async def test_a_failed_capture_claims_no_place_and_the_next_one_takes_the_first(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session_id, _ = await _a_failed_capture_then_two_good_ones(client)
+    session_id = await _a_failed_capture_then_two_good_ones(client)
 
-    retro_rows = await _retro_takes(db_session, session_id)
-    assert [row.chunk_index for row in retro_rows] == [None, 1, 2], (
+    mute = await _retro_take_by_audio(db_session, session_id, b"tentativa muda")
+    assert mute.chunk_index is None, (
         "a tentativa muda não fica com número nenhum, e a próxima toma o primeiro lugar"
     )
 
     stretches = await room.final_segments(db_session, session_id)
     assert [segment.ordinal for segment in stretches] == [1, 2]
 
-    by_id = {row.id: row for row in retro_rows}
     for segment in stretches:
         assert segment.bridge_take_id is not None
-        assert by_id[segment.bridge_take_id].chunk_index == segment.ordinal, (
+        bridge_take = await _retro_take_by_id(db_session, segment.bridge_take_id)
+        assert bridge_take.chunk_index == segment.ordinal, (
             "o índice do take contado é o ordinal do trecho que ele conta"
         )
 
@@ -250,7 +274,7 @@ async def test_a_failed_capture_claims_no_place_and_the_next_one_takes_the_first
 async def test_the_packet_never_shows_two_takes_at_one_place(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session_id, _ = await _a_failed_capture_then_two_good_ones(client)
+    session_id = await _a_failed_capture_then_two_good_ones(client)
     session = await room.get_session(db_session, session_id)
 
     artifact = await _ready_for_release(db_session, session)
