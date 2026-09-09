@@ -245,14 +245,6 @@ ALLOWLIST: list[AllowlistEntry] = [
         "id=str(uuid.uuid4()), purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT",
     ),
     AllowlistEntry(
-        "app/services/internalization_room/llm.py", Rule.MODEL, "return settings.gemini_fast_model"
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/llm.py",
-        Rule.MODEL,
-        "DELIBERATE = types.ThinkingLevel.LOW",
-    ),
-    AllowlistEntry(
         "app/services/internalization_room/rehearsal_readiness.py",
         Rule.PROBE,
         "from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose",
