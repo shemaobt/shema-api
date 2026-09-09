@@ -5,6 +5,7 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
+from app.services.internalization_room.llm import cache_break_at_end
 from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
@@ -45,7 +46,7 @@ async def run_panorama_turn(
 
     return await _voiced_after_validation(
         speaker_system=render(
-            panorama_prompt,
+            cache_break_at_end(panorama_prompt),
             BOOK_NAME=book,
             SESSION_LANGUAGE=session_language,
             BOOK_MATERIAL=book_material,

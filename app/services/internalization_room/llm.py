@@ -37,6 +37,18 @@ def cache_break_before(template: str, placeholder: str) -> str:
     return template.replace(placeholder, CACHE_BREAK + placeholder, 1)
 
 
+def cache_break_at_end(template: str) -> str:
+    """Mark a whole prompt template as repeating, for one that holds nothing per-turn.
+
+    The panorama's is the case: every slot in it is fixed for the length of the session, so
+    there is no first varying byte to sit in front of and the boundary is the end of the
+    prompt itself. Kept separate from naming a placeholder, because "nothing here moves" is a
+    claim about the template that should be made deliberately rather than by passing a slot
+    that happens to be last today.
+    """
+    return template + CACHE_BREAK
+
+
 def voice_ladder(settings: Settings) -> list[str]:
     """The rungs behind the room's facilitation, most capable first."""
     return _ladder(settings.tripod_voice_model)

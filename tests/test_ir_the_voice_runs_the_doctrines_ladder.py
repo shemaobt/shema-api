@@ -207,3 +207,41 @@ async def test_every_turn_leaves_behind_what_it_cost_and_how_long_it_took(
         "a latência do turno inteiro não era medida em lugar nenhum, e 10 s e 56 s eram a "
         "mesma coisa para quem lesse o log"
     )
+
+
+async def test_the_book_the_panorama_reads_from_is_sent_once_and_cached(
+    recording_client,
+) -> None:
+    from app.services.internalization_room.canon.book_material import build_book_material
+    from app.services.internalization_room.run_turn import run_panorama_turn
+
+    messages = recording_client(draft="Vamos conhecer o livro.")
+    material = build_book_material("Ruth")
+    panorama = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
+
+    for said in ("", "o que é esse livro?"):
+        await run_panorama_turn(
+            session_language="Portuguese",
+            language_code="pt",
+            transcript=said,
+            messages=[],
+            panorama_prompt=panorama,
+            validator_prompt=VALIDATOR,
+            book="Ruth",
+            book_material=material,
+            opening=not said,
+            settings=_settings(),
+        )
+
+    speakers = [c for c in messages.calls if not _is_validator(c)]
+    first, second = (call["system"] for call in speakers)
+    assert isinstance(first, list), (
+        "o panorama mandava o livro inteiro como texto solto, sem fronteira de cache"
+    )
+    assert first[0]["cache_control"] == {"type": "ephemeral"}, (
+        "os digests do livro e as regras de preservação iam como entrada nova a cada turno, "
+        "e o panorama é a sessão que mais dura"
+    )
+    assert first[0]["text"] == second[0]["text"], (
+        "o prefixo do panorama mudava de bytes entre turnos e nada era servido do cache"
+    )
