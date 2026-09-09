@@ -77,9 +77,7 @@ What you must NOT do:
   different order than the map, is not a finding.
 - Do not re-judge pass-2 chunks differently; they are later additions to the same telling-back.
 - Never import outside Bible knowledge; the map is the entire world.
-- When the evidence is thin for one element, prefer NO finding — a false "missing" costs the
-  team real work. When the evidence is thin for the whole scope, that is exactly what
-  `"insufficient_evidence"` and `evidence_sufficient: false` are for.
+- When the evidence is thin, prefer NO finding — a false "missing" costs the team real work.
 
 ## Your output
 
@@ -87,17 +85,11 @@ Return **only** this JSON (no prose, no fences):
 
 ```json
 {
-  "evidence_sufficient": true,
   "findings": [
     { "kind": "missing" | "addition" | "unclear", "chunk": 3, "where": "before" | "inside" | "after", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
   ]
 }
 ```
-
-`"evidence_sufficient"` is whether there was enough telling-back to genuinely look for
-differences across this scope. When you set it to `false`, include at least one
-`"insufficient_evidence"` or `"unclear"` finding naming the limit; when `true`, never include
-`"insufficient_evidence"`.
 
 `"chunk"` is the chunk number the finding lands on. For every kind but `missing`, that is all —
 omit `"where"`.
@@ -111,7 +103,7 @@ to* the chunk you name in `"chunk"`:
   everything the team told** is `"after"` on the *last* chunk — never `null`, and never a
   chunk number past the last one.
 
-A complete, faithful telling-back returns `{ "evidence_sufficient": true, "findings": [] }`.
+A complete, faithful telling-back returns `{ "findings": [] }`.
 
 ## The Meaning Map
 
