@@ -67,12 +67,12 @@ _Avoid_: native, L1, Língua materna
 The language the team tells back in, and which the analyst reads. `bridge_mode` is the calibration state of that language.
 _Avoid_: L2, Portuguese, Língua-ponte
 
-**Stretch** (`segment`):
+**Stretch** (`segment`; frase, in Marcia's method and her prompts):
 The persistent, addressable object of one told slice of the passage: a slice of a rehearsal take, the matching back-translation take, the transcript, the order and the pass. A correction is a new row that supersedes the previous one, never an edit.
 _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk (the ephemeral position in one reading, not this object)
 
 **Chunk**:
-The numbered position of a stretch in the list the analyst receives in one reading. It exists only for the length of the call; the server turns the number back into a stretch.
+The numbered position of a stretch in the list the analyst receives in one reading, the frase number of the prompts. It exists only for the length of the call; the server turns the number back into a stretch.
 _Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name)
 
 **Pass** (`pass_number`):
@@ -124,8 +124,8 @@ _Avoid_: log, history, audit, Evento de cobertura
 ### Findings
 
 **Finding**:
-The analyst's answer about a told stretch: a kind, a note and, when there is one, a stretch. The kinds: missing, addition, meaning change, wrong relation, reordered event, preservation violation, insufficient evidence, unclear.
-_Avoid_: error, problem, Achado
+The analyst's answer about a told stretch: a kind, a note and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear.
+_Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
 
 **Missing with an address** (`missing` with `where` before or inside):
 An element of the Map that is absent and whose place fits inside an existing chunk. The team records that stretch again and tells it again.
@@ -138,10 +138,6 @@ _Avoid_: external missing, missing null, Falta sem endereço
 **Where**:
 The field of a missing finding that says whether the absent content sits before, inside or after the chunk it cites.
 _Avoid_: position, offset, Onde
-
-**Sufficient evidence** (`evidence_sufficient`):
-The distinction between "no difference appeared" and "too little was told to check". When it is false, there is always an insufficient evidence or unclear finding naming the limit.
-_Avoid_: confidence, score, Evidência suficiente
 
 **Points at a stretch** (`points_at_a_stretch`):
 The property of a finding that puts one specific stretch on screen with the two microphones. It decides the closing of the verdict.
@@ -162,7 +158,7 @@ An attempt at telling back that was replaced by a new recording. Its findings be
 _Avoid_: erased, discarded, Substituída
 
 **Checked**:
-The state in which the passage has been told and verified by one whole reading of the analyst and leaves the rotation for good. Spot correction checks never produce it.
+The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it.
 _Avoid_: complete, done, Conferida
 
 **Heard the rehearsal** (`playback_confirms_rehearsal`):
