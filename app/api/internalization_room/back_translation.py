@@ -97,7 +97,7 @@ async def add_chunk(
         scope=state.scope or session.pericope,
         audio=audio_bytes,
         pass_number=pass_number,
-        chunk_index=len(told) + 1,
+        chunk_index=None,
         content_type=file.content_type or "audio/mp4",
     )
 
