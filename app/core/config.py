@@ -23,6 +23,13 @@ class Settings(BaseSettings):
 
     google_api_key: str = ""
     google_maps_api_key: str = ""
+    anthropic_api_key: str = ""
+    #: The workspace an identity-bound key acts in, sent as the `anthropic-workspace-id`
+    #: header. A Console key tied to a person is not scoped to a workspace on its own, and
+    #: every call under one answers 400 until the workspace is named; a classic workspace key
+    #: carries its own scope and wants this empty, so it is a value the deployment supplies
+    #: rather than a branch in the code.
+    anthropic_workspace_id: str = ""
     google_embedding_model: str = "gemini-embedding-001"
     google_llm_model: str = "gemini-3.1-pro-preview"
     #: The two Gemini tiers every feature speaks through. They were literals in nine
@@ -33,6 +40,16 @@ class Settings(BaseSettings):
     #: features failing at once. Here, moving off one is an environment variable.
     gemini_fast_model: str = "gemini-3-flash-preview"
     gemini_quality_model: str = "gemini-3-flash-preview"
+    #: The room's three model ladders, most capable first, comma-separated. A ladder rather
+    #: than one id because a key is not entitled to every model: the room steps down a rung
+    #: when the API answers that this key cannot use the one above, and only then — a rate
+    #: limit keeps the rung it is on. The voice carries the Guide and the Validator, and
+    #: DOCTRINE.md forbids anything but a frontier model there; analysis reads the telling
+    #: back against the map; the classifier only moves beads and runs off the voice path.
+    #: These and their parameters are Marcia's artifacts (DOCTRINE.md 5.1), not ours to tune.
+    tripod_voice_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
+    tripod_analysis_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
+    tripod_classifier_model: str = "claude-sonnet-5,claude-sonnet-4-6"
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5

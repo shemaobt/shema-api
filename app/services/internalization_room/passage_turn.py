@@ -5,6 +5,7 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
+from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import (
     coverage_status_block,
     meaning_map_block,
@@ -61,7 +62,7 @@ async def run_turn(
         coverage_status = f"{coverage_status}\n\n{app_context}"
     return await _voiced_after_validation(
         speaker_system=render(
-            guide_prompt,
+            cache_break_before(guide_prompt, "{{COVERAGE_STATUS}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=map_block,
             COVERAGE_STATUS=coverage_status,

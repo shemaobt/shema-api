@@ -10,12 +10,39 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import merge, remaining
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import call_agent
+from app.services.internalization_room.llm import call_agent, classifier_ladder
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
 
 _BRACKETED_KEY = re.compile(r"^-?\s*\[([^\]]+)\]")
+
+#: The shape the classifier is bound to answer in, and the same one `_parse` reads. The three
+#: statuses are named here rather than left to the prompt's prose because a fourth word coming
+#: back is a bead that quietly does not move: `_parse` has no bucket for it, and the session it
+#: stalls looks from outside like a team that simply never covered the passage.
+_DECISIONS: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "decisions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "element_id": {"type": "string"},
+                    "new_status": {
+                        "type": "string",
+                        "enum": ["surfaced", "partially_engaged", "engaged"],
+                    },
+                },
+                "required": ["element_id", "new_status"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["decisions"],
+    "additionalProperties": False,
+}
 
 #: What the classifier's TEAM_UTTERANCE slot carries when nobody has spoken this turn, in
 #: the session's own language. Keyed by the language code, in the shape `calibration.py`
@@ -155,8 +182,10 @@ async def classify_coverage(
         raw = await call_agent(
             system_prompt=system,
             user_content="Classifique esta troca.",
-            temperature=0.0,
-            max_output_tokens=1500,
+            ladder=classifier_ladder(cfg),
+            max_output_tokens=4096,
+            thinks=False,
+            schema=_DECISIONS,
             settings=cfg,
         )
     except Exception:
