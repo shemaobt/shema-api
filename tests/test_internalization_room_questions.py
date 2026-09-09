@@ -9,11 +9,12 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
+from app.db.models.internalization_room import IRCoverageEvent, IRQuestion, IRQuestionStatus
 from app.services.internalization_room import questions as service
 from app.services.internalization_room import sessions as session_service
 from tests.baker import make_language, make_project, make_project_user_access, make_user
@@ -77,6 +78,13 @@ async def _raise_the_hand(client: httpx.AsyncClient, *, session_id: str) -> str:
     )
     assert response.status_code == 200, response.text
     return response.json()["question_id"]
+
+
+async def _coverage_events(db: AsyncSession, session_id: str) -> list[IRCoverageEvent]:
+    result = await db.execute(
+        select(IRCoverageEvent).where(IRCoverageEvent.session_id == session_id)
+    )
+    return list(result.scalars().all())
 
 
 async def _raise(
@@ -281,3 +289,19 @@ async def test_a_panorama_question_keeps_the_sessions_own_pericope(
     assert question is not None
     assert question.pericope == OV
     assert question.pericope == session.pericope
+
+
+async def test_raising_a_hand_in_the_panorama_touches_no_coverage(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    """The boundary this half of ENG-779 does not move: the hand reads no map and writes no
+    coverage event, so the session's necklace is exactly what it was before the question."""
+    session = await session_service.create_session(db_session, pericope="OV")
+    state_before = dict(session.coverage_state)
+    events_before = await _coverage_events(db_session, session.id)
+
+    await _raise_the_hand(room_client, session_id=session.id)
+
+    await db_session.refresh(session)
+    assert session.coverage_state == state_before
+    assert await _coverage_events(db_session, session.id) == events_before
