@@ -38,34 +38,33 @@ wording changed and content did not, report nothing.
 ## What to check
 
 Walk the map's material for {{SCOPE}} — every person, place, object, time, event, and marked
-detail — against the telling-back:
+detail — against the whole telling-back, all frases together:
 
-1. **Missing** (`"missing"`): an element the map gives for this scope that appears in NO chunk.
-   Count an element as present only when some chunk states it explicitly — never bridge, infer,
-   or assume between chunks. Be charitable with names: near-spellings and plausible mishearings
-   of the map's names count as present (the telling was transcribed by an imperfect ear).
+1. **Missing** (`"missing"`): an element the map gives for this scope that appears in NO frase.
+   Count an element as present when it is stated in ANY frase — the team pauses where they like,
+   so a detail may sit in a different frase than you expect, or be spread across two frases (one
+   frase says who, the next says where). That is natural; it is not a finding. Count an element as
+   present only when some frase actually states it — never bridge, infer, or assume between frases.
+   Be charitable with names: near-spellings and plausible mishearings of the map's names count as
+   present (the telling was transcribed by an imperfect ear). If it helps, say in `chunk` the
+   number of the frase after which the missing element would naturally sit.
 2. **Added** (`"addition"`): something the telling-back states that the map does not tell —
-   a name, a cause, a pairing, any outside detail. Quote it briefly in the note. A synonym, an
-   adjective, or a paraphrase of a proposition the map already gives is not something outside
-   the map — see the calibration above.
-3. **Meaning changed** (`"meaning_change"`): the telling-back states something the map tells
-   differently — not merely absent or extra, but altered in what it means.
-4. **Wrong relation** (`"wrong_relation"`): a participant, addressee, cause, or relationship the
-   map gives is swapped in the telling-back — who did what to whom, who speaks to whom.
-5. **Reordered event** (`"reordered_event"`): the telling-back asserts a meaning-bearing order of
-   events that contradicts the map. This is about asserted sequence inside the telling, never
-   about the order the chunks were told in — the chunks are pauses in a listening session.
-6. **Preservation violated** (`"preservation_violation"`): the telling-back makes explicit
-   something a preservation rule (a do_not_decide item) or a marked silence deliberately
-   withholds. A filled marked silence belongs here. If the telling-back correctly keeps a
-   silence, report nothing — a kept silence is not a finding. **Never emit `"missing"` for
-   withheld content**, and never name the withheld content itself in a note (write "fills a
-   silence the passage keeps about the cause of the famine", never the filled-in claim).
-7. **Not enough to judge** (`"insufficient_evidence"`): the telling-back as a whole is too thin
-   to compare a real part of this scope — so little was told back that "no difference appeared"
-   would be dishonest. Name what stretch needs a fuller telling.
-8. **Unclear** (`"unclear"`): a chunk too garbled to judge (likely transcription failure). Point
-   at the chunk number.
+   a name, a cause, a pairing, any outside detail. Quote it briefly in the note and give the
+   number of the frase that says it in `chunk`. Where it collides with a preservation rule (a
+   do_not_decide item), say so in the note. When the addition is a RELATION — who did what, why,
+   to whom: a swapped cause, swapped agents, a pairing — the note quotes the WHOLE relation exactly
+   as the team told it back (e.g. *que Noemi decidiu voltar porque as noras pediram*), never just
+   a name: the Speaker's sentence "isso a história não conta" is true only when it names the
+   relation itself.
+3. **Marked silences:** where the map marks a deliberate absence, the telling-back
+   must ALSO be silent there. If the telling-back fills a marked silence, that is an `"addition"`
+   finding (with its frase number). If it correctly keeps the silence, report nothing — a kept
+   silence is not a finding. **Never emit a `"missing"` finding for withheld content**: a marked
+   silence is not a missing element, and your notes must never name the withheld content itself
+   (write "fills a silence the passage keeps about the cause of the famine", never the filled-in
+   claim as if it belonged).
+4. **Unclear** (`"unclear"`): a frase too garbled to judge (likely transcription failure). Give its
+   number in `chunk`.
 
 The team may be working in a guided mode: the telling-back can arrive as fragments, single
 names, or agrammatical {{SESSION_LANGUAGE}}. Judge only whether the meaning is present — a
@@ -73,7 +72,9 @@ fragment states an element as well as a sentence does. Grammar, fluency, and len
 findings.
 
 What you must NOT do:
-- No findings about continuity, flow, style, naturalness, or duplication.
+- No findings about order, continuity, flow, style, naturalness, or duplication — the frases are
+  the pauses of a listening session, not a composition. A detail told twice, or told in a
+  different order than the map, is not a finding.
 - Do not re-judge pass-2 chunks differently; they are later additions to the same telling-back.
 - Never import outside Bible knowledge; the map is the entire world.
 - When the evidence is thin for one element, prefer NO finding — a false "missing" costs the
@@ -88,7 +89,7 @@ Return **only** this JSON (no prose, no fences):
 {
   "evidence_sufficient": true,
   "findings": [
-    { "kind": "missing" | "addition" | "meaning_change" | "wrong_relation" | "reordered_event" | "preservation_violation" | "insufficient_evidence" | "unclear", "chunk": 3, "where": "before" | "inside" | "after", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
+    { "kind": "missing" | "addition" | "unclear", "chunk": 3, "where": "before" | "inside" | "after", "note": "one short sentence, in {{SESSION_LANGUAGE}}, phrased about the telling-back" }
   ]
 }
 ```

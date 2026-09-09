@@ -375,9 +375,7 @@ async def test_the_team_is_told_which_element_fell(
     assert STILL_TOLD not in about, "o que continua dito não é uma perda"
 
 
-_FINDING_LINE = re.compile(
-    r"^- (?:missing|addition|meaning_change|preservation_violation|unclear): (.+)$", re.M
-)
+_FINDING_LINE = re.compile(r"^- (?:missing|addition|unclear): (.+)$", re.M)
 
 
 def _the_finding_the_speaker_was_given(spoken: list[str]) -> str:
@@ -451,9 +449,9 @@ async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
 ) -> None:
     """The guard on the derivation's reach: it decides losses, and nothing else.
 
-    Everything the earlier telling carried is still told, and what the reader raises is a
-    changed meaning. A derivation that read the enumeration as evidence about anything but
-    presence would answer the team about a loss that did not happen.
+    Everything the earlier telling carried is still told, and what the reader raises is an
+    addition. A derivation that read the enumeration as evidence about anything but presence
+    would answer the team about a loss that did not happen.
     """
     body, _ = await _a_correction_verified_as(
         client,
@@ -461,12 +459,47 @@ async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
         analyst,
         _a_reply_enumerating(
             [_element(STILL_TOLD, still_told=True), _element(NO_LONGER_TOLD, still_told=True)],
-            findings=[{"kind": "meaning_change", "note": "A nova contagem diz que ela insistiu."}],
+            findings=[{"kind": "addition", "note": "A nova contagem diz que ela insistiu."}],
         ),
     )
 
     assert body["findings_remaining"] == 1
-    assert body["finding_kind"] == "meaning_change"
+    assert body["finding_kind"] == "addition"
+
+
+@pytest.mark.asyncio
+async def test_a_correction_check_that_names_a_retired_kind_reads_as_addition(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ReaderOfTellings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A reader still writing the older taxonomy is read, not refused.
+
+    A correction check that comes back with a retired kind used to leave the room with no
+    verdict for a stretch the team had just retold. The name reads as the addition it
+    describes, and the check goes on being a check.
+    """
+    with caplog.at_level(logging.WARNING, logger=ROOM_LOG):
+        body, _ = await _a_correction_verified_as(
+            client,
+            db_session,
+            analyst,
+            _a_reply_enumerating(
+                [_element(STILL_TOLD, still_told=True), _element(NO_LONGER_TOLD, still_told=True)],
+                findings=[
+                    {
+                        "kind": "preservation_violation",
+                        "note": "A nova contagem diz o que a história guarda.",
+                    }
+                ],
+            ),
+        )
+
+    assert body["findings_remaining"] == 1
+    assert body["finding_kind"] == "addition"
+    assert "unknown finding kind" not in caplog.text
+    assert "cannot judge" not in caplog.text
 
 
 @pytest.mark.asyncio
