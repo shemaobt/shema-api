@@ -10,6 +10,7 @@ from anthropic.types import (
     OutputConfigParam,
     TextBlockParam,
     ThinkingConfigAdaptiveParam,
+    ThinkingConfigDisabledParam,
 )
 
 from app.core.config import Settings, get_settings
@@ -75,14 +76,22 @@ async def call_agent(
     ladder: list[str] | None = None,
     max_output_tokens: int = 2000,
     effort: Effort = "high",
+    thinks: bool = True,
     schema: dict[str, Any] | None = None,
     settings: Settings | None = None,
 ) -> str:
     """Ask one of the room's models, and hand back the text it spoke.
 
-    Thinking is adaptive on every call rather than a level the caller picks: the ladder's
-    rungs disagree about the default — omitting it on `claude-opus-4-8` means not thinking at
-    all — so a rung that answered well would answer worse purely by being stepped down onto.
+    Thinking is adaptive rather than a level the caller dials: the ladder's rungs disagree
+    about the default — omitting it on `claude-opus-4-8` means not thinking at all — so a rung
+    that answered well would answer worse purely by being stepped down onto. A caller can turn
+    it off, and only the bookkeeping ones do; `thinks=False` on anything the team hears is what
+    DOCTRINE.md forbids in as many words.
+
+    **Thinking is spent out of `max_output_tokens`, not beside it.** A ceiling carried over
+    from a provider where it was not is a ceiling the reasoning can eat whole, and the call
+    then returns empty with `stop_reason: max_tokens` — which reads downstream as a model that
+    answered badly rather than one that was never given room to answer.
 
     A `schema` is for a reply that is read rather than spoken: it binds the answer to a shape
     the caller can parse. The spoken calls pass none, because the team hears prose.
@@ -94,7 +103,11 @@ async def call_agent(
     """
     settings = settings or get_settings()
     rungs = ladder or voice_ladder(settings)
-    thinking: ThinkingConfigAdaptiveParam = {"type": "adaptive"}
+    adaptive: ThinkingConfigAdaptiveParam = {"type": "adaptive"}
+    disabled: ThinkingConfigDisabledParam = {"type": "disabled"}
+    thinking: ThinkingConfigAdaptiveParam | ThinkingConfigDisabledParam = (
+        adaptive if thinks else disabled
+    )
     output_config: OutputConfigParam = {"effort": effort}
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}

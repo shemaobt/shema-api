@@ -183,7 +183,8 @@ async def classify_coverage(
             system_prompt=system,
             user_content="Classifique esta troca.",
             ladder=classifier_ladder(cfg),
-            max_output_tokens=1500,
+            max_output_tokens=4096,
+            thinks=False,
             schema=_DECISIONS,
             settings=cfg,
         )

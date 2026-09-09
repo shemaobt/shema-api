@@ -8,6 +8,7 @@ asks the model to answer in a fixed shape.
 from __future__ import annotations
 
 import json
+import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -36,13 +37,14 @@ def _settings(**overrides: Any) -> Settings:
 class RecordingMessages:
     def __init__(self, reply: str):
         self.reply = reply
+        self.stop_reason = "end_turn"
         self.calls: list[dict[str, Any]] = []
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
         return SimpleNamespace(
             content=[SimpleNamespace(type="text", text=self.reply)],
-            stop_reason="end_turn",
+            stop_reason=self.stop_reason,
             model=kwargs["model"],
             usage=SimpleNamespace(
                 input_tokens=10,
@@ -119,4 +121,38 @@ async def test_a_reply_in_the_promised_shape_still_moves_the_beads(recording_cli
 
     assert advanced[elements[0]] == "engaged", (
         "o esquema mudou a forma da resposta e o parser deixou de reconhecê-la"
+    )
+
+
+async def test_the_classifier_spends_its_ceiling_on_decisions_and_not_on_thinking(
+    recording_client,
+) -> None:
+    messages = recording_client()
+
+    await _settle()
+
+    call = messages.calls[0]
+    assert call["thinking"] == {"type": "disabled"}, (
+        "o pensamento adaptativo comia o teto antes de qualquer saída: no smoke, 3 de 4 "
+        "chamadas pararam em max_tokens e duas voltaram com texto VAZIO"
+    )
+    assert call["max_tokens"] >= 4096, (
+        "1500 era o teto do Gemini, onde o pensamento não contava na saída; a lista de "
+        "decisões dos 29 elementos de P01 não cabe nele"
+    )
+
+
+async def test_a_classification_cut_off_at_the_ceiling_says_so(recording_client, caplog) -> None:
+    messages = recording_client()
+    messages.stop_reason = "max_tokens"
+    messages.reply = ""
+    before = initial_state(P)
+
+    with caplog.at_level(logging.WARNING):
+        after = await _settle()
+
+    assert after == before, "uma classificação cortada não pode mover conta nenhuma"
+    assert "max_tokens" in caplog.text, (
+        "a chamada voltava vazia e o log só dizia que o JSON era ilegível, então o teto — a "
+        "causa — não aparecia em lugar nenhum e a leitura era 'o modelo respondeu mal'"
     )
