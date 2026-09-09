@@ -26,12 +26,14 @@ origins. Staging sets five of its own — the environment name, the mail provide
 app id, its bucket and its CORS origins — because each has to differ from production's: the app
 id in particular, since a second registration under production's id would overwrite it. Anything
 secret comes from Secret Manager, never from a workflow file, and the Azure client secret is
-mounted from there like the other thirteen; the tenant and client ids beside it are not secret.
+mounted from there like the rest; the tenant and client ids beside it are not secret.
 
 A workflow that names only some of the service's plain variables still deploys, because
 `--update-env-vars` merges: whatever was set by hand survives, unnamed and unrecorded. The
 secret set has no such mercy — `--set-secrets` replaces it whole, so a mapping missing from the
-file is a mount removed from the service on the next merge.
+file is a mount removed from the service on the next merge. The other edge of naming them is that
+these keys now belong to the file: changing a CORS origin is a pull request, and an edit made on
+the service by hand is reverted, silently, by the next deploy.
 
 The migrations job is expected to go red on an integration branch between certain steps, and
 that is not a reason to switch it off: every merge that brings its own migration leaves the

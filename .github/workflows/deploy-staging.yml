@@ -72,8 +72,7 @@ jobs:
       # Neon branch of production's data.
       #
       # ^|^ makes '|' the separator instead of ',', because CORS_ORIGINS is itself a
-      # comma-separated list. The delimiter may not appear in any value, which rules
-      # out ':' — every origin carries one (http://localhost:5173).
+      # comma-separated list.
       - name: Deploy Backend
         run: |
           gcloud run deploy ${{ env.BACKEND_SERVICE }} \

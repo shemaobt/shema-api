@@ -64,10 +64,10 @@ jobs:
       # Every plain variable the service runs with is named here. Four of them lived
       # only on the service, set by hand, so the repository could not say what
       # production was running. --update-env-vars merges, which is why they survived
-      # unnamed; --set-secrets replaces the whole set, which is how a merge to main
-      # dropped the Azure client secret mount and left the service without its
-      # e-mail credential. The secret belongs in the mapping below, and the tenant
-      # and client ids beside it are not secret and stay plain.
+      # unnamed; --set-secrets replaces the whole set, so a mapping missing from this
+      # file is a mount removed from the service on the next merge — which is what
+      # took the Azure client secret off it. The secret belongs in the mapping below,
+      # and the tenant and client ids beside it are not secret and stay plain.
       #
       # ^|^ makes '|' the separator instead of ',', because CORS_ORIGINS is itself a
       # comma-separated list. The delimiter may not appear in any value, which rules
