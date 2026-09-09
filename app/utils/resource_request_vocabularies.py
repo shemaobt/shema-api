@@ -22,11 +22,14 @@ Everything below either reads that file or is asserted against it by
 BE-10 (OBT-471) made a fund a row the Gestor creates, so the emitted list is a picture of
 what the frontend shipped with and can never be the set of valid ids — a ``FUND_IDS``
 constant sitting in this module would be a validation list waiting to be used as one, and
-using it would refuse every fund the client typed. The emission is still checksummed for
-its length, in ``test_vocabularies.py``, straight off ``EMISSION["funds"]`` — the shape
-``projectCategory``, ``supportedGoal`` and ``decisionStates`` already use for the same
-reason: a count is what makes a stale vendored copy visible, and a name here would be a
-promise the database no longer keeps.
+using it would refuse every fund the client typed.
+
+**Since 07/sep/2026 the emission does not carry the funds at all**, and the checksum over
+``EMISSION["funds"]`` went with them. The frontend stopped declaring a list it no longer
+owns — FE-26 (OBT-472) made the server the place that knows which funds exist — so the
+count had nothing left to count. What is lost with it is real and worth naming: a fund
+list arriving stale is no longer visible here, because there is no longer a fund list to
+arrive. The other counts still do that job for the lists the frontend does own.
 
 **One thing is written here rather than read, and it is the section→field map.** The
 emission carries the per-type composition of Parte A and Parte B, because those are
@@ -86,13 +89,30 @@ MAX_SCORE_PER_CRITERION: int = _EMISSION["limits"]["maxScorePerCriterion"]
 MAX_TOTAL_SCORE: int = _EMISSION["limits"]["maxTotalScore"]
 CRITERIA_PER_TYPE: int = _EMISSION["limits"]["criteriaPerType"]
 
-#: Parte C's three text keys. They are among the emitted 45 because wave 1 keeps the
+#: Parte C's four text keys. They are among the emitted 48 because wave 1 keeps the
 #: evaluation inside the draft — and that is the one shape wave 2 must not copy
 #: (``docs/resource_requests.md`` §4.1), so they are named apart from the request's own
 #: fields rather than mixed into ``SECTION_TEXT_FIELDS``.
+#:
+#: ``board_team_note`` is the fourth, emitted 03/sep/2026: the mesa's short message to the
+#: team on a *revisar* and on a *condicional*. It belongs to the evaluation aggregate
+#: (BE-06) and is served beside the request, never inside it.
 EVALUATION_TEXT_FIELDS: frozenset[str] = frozenset(
-    {"board_comments", "board_evaluator", "board_evaldate"}
+    {"board_comments", "board_evaluator", "board_evaldate", "board_team_note"}
 )
+
+#: The two emitted keys that are neither asked by a type nor the evaluation's, and the
+#: reason there is a third set at all rather than a home found for them in the first two.
+#:
+#: The paper form has the Líder de Base's signature line, so the frontend counts it among
+#: its text keys. On this server the endorsement is **not a field**: ``endorsed_by`` and
+#: ``endorsed_at`` are spine columns written by the act (BE-16, OBT-476), stamped from the
+#: session the way ``submitted_at`` is, and they ride in ``RequestOut``'s envelope rather
+#: than in the document. Filing them under ``EVALUATION_TEXT_FIELDS`` would have made the
+#: partition pass while saying the endorsement is the mesa's, and putting them in
+#: ``SECTION_TEXT_FIELDS`` would make them askable — which is the hole this module exists
+#: to keep shut, since a key a section owns is a key a payload may carry.
+SPINE_TEXT_FIELDS: frozenset[str] = frozenset({"endorsed_by", "endorsed_at"})
 
 #: Section slot → the text keys that section asks. Parte A's slots carry the variant
 #: where the composition does (``A1`` renders twelve keys full and four slim; ``A4``
