@@ -20,6 +20,7 @@ from app.services.internalization_room.calibration import (
     resolve_initial_calibration,
     resolve_one_shot_calibration,
 )
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.platform.tts import SynthesizedSpeech
@@ -27,6 +28,7 @@ from app.services.platform.tts import SynthesizedSpeech
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 PANORAMA = "OV"
+THE_TEAM_ANSWERS = "Uma pergunta curta de cada vez."
 
 #: The method question as the ticket quotes it, in the three languages the room claims.
 #: Read from the ticket rather than from `bridge_calibration_question`, which this branch
@@ -47,6 +49,7 @@ THE_METHOD_QUESTION = {
 }
 
 GUIDE_OPENING = "Bem-vindos. Vamos conhecer o livro inteiro antes de entrar nele."
+GUIDE_REPLY = "O livro começa numa fome, e uma família sai de casa por causa dela."
 
 
 @pytest.fixture()
@@ -55,6 +58,9 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     The method question is appended in the router, after the panorama turn has already
     returned, so no service seam can see it. What reaches the voice is the whole of it.
+
+    `heard` is the other half: what the Guide was handed. A turn the app answers by
+    itself never reaches the Guide at all, and an empty `heard` is how that shows.
     """
     from fastapi import FastAPI
 
@@ -66,9 +72,18 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
     said: list[str] = []
+    heard: list[str] = []
 
-    async def _panorama(**_: Any) -> TurnOutcome:
-        return TurnOutcome(speech=GUIDE_OPENING, transcript="", used_fail_safe=False)
+    async def _panorama(**handed: Any) -> TurnOutcome:
+        heard.append(str(handed["transcript"]))
+        return TurnOutcome(
+            speech=GUIDE_OPENING if handed["opening"] else GUIDE_REPLY,
+            transcript=str(handed["transcript"]),
+            used_fail_safe=False,
+        )
+
+    async def _heard_speech(*_: Any, **__: Any) -> HeardSpeech:
+        return HeardSpeech(text=THE_TEAM_ANSWERS, language_code="pt", transcript_confidence=0.99)
 
     async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         said.append(text)
@@ -88,6 +103,7 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
     monkeypatch.setattr(sessions_api, "prepare_opening", _nothing)
     monkeypatch.setattr(sessions_api, "settle_coverage", _nothing)
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard_speech)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -99,7 +115,7 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client, said
+        yield client, said, heard
 
 
 async def _open_cold(client: httpx.AsyncClient, *, pericope: str, language: str) -> str:
@@ -113,9 +129,9 @@ async def _open_cold(client: httpx.AsyncClient, *, pericope: str, language: str)
 
 
 async def test_the_opening_is_the_guides_own_words_from_first_syllable_to_last(
-    spoken: tuple[httpx.AsyncClient, list[str]],
+    spoken: tuple[httpx.AsyncClient, list[str], list[str]],
 ) -> None:
-    client, said = spoken
+    client, said, _ = spoken
     session_id = await _open_cold(client, pericope=PANORAMA, language="pt")
 
     opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
@@ -271,3 +287,27 @@ def test_the_method_choice_is_asked_and_answered_in_every_language_the_room_clai
             f"as três respostas caíram para a mesma frase em {spoken!r}: a equipe escolhe "
             "um método e ouve de volta a confirmação de outro"
         )
+
+
+async def test_the_teams_first_utterance_is_a_turn_like_any_other(
+    spoken: tuple[httpx.AsyncClient, list[str], list[str]],
+) -> None:
+    client, said, heard = spoken
+    session_id = await _open_cold(client, pericope=PANORAMA, language="pt")
+    await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+
+    answered = await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        headers={"X-Room-Key": KEY},
+        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200, answered.text[:200]
+    assert heard == ["", THE_TEAM_ANSWERS], (
+        "a resposta da equipe era lida por um parser de regex e o Guia nem era chamado — "
+        f"chegou nele {heard}"
+    )
+    assert said[-1] == GUIDE_REPLY, (
+        "a sala respondia com uma das nove falas fixas de reconhecimento, escolhida pelo "
+        f"modo que o parser tinha acabado de decidir — a equipe ouviu {said[-1]!r}"
+    )

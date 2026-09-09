@@ -68,16 +68,6 @@ ALLOWLIST: list[AllowlistEntry] = [
     AllowlistEntry(
         "app/api/internalization_room/sessions.py",
         Rule.MODE,
-        "if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:",
-    ),
-    AllowlistEntry(
-        "app/api/internalization_room/sessions.py",
-        Rule.MODE,
-        "session = await room.set_bridge_mode(db, session, resolved.mode.value)",
-    ),
-    AllowlistEntry(
-        "app/api/internalization_room/sessions.py",
-        Rule.MODE,
         "switched = resolve_bridge_mode_for_turn(BridgeMode(session.bridge_mode), transcript)",
     ),
     AllowlistEntry(

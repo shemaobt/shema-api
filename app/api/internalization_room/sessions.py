@@ -36,9 +36,7 @@ from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.calibration import (
     BridgeMode,
-    bridge_calibration_acknowledgement,
     resolve_bridge_mode_for_turn,
-    resolve_one_shot_calibration,
 )
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.canon.elements import absence_index
@@ -514,33 +512,24 @@ async def take_turn(
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
-        if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
-            choice_speech = "" if not speech_heard.reliable_bridge_speech else transcript
-            resolved = resolve_one_shot_calibration(choice_speech)
-            session = await room.set_bridge_mode(db, session, resolved.mode.value)
-            outcome = TurnOutcome(
-                speech=bridge_calibration_acknowledgement(resolved.mode, session.language),
-                transcript=transcript,
-            )
-        else:
-            if not opening and transcript.strip():
-                switched = resolve_bridge_mode_for_turn(BridgeMode(session.bridge_mode), transcript)
-                if switched.explicit:
-                    session = await room.set_bridge_mode(db, session, switched.mode.value)
-            book = book_of(session.pericope)
-            outcome = await room.run_panorama_turn(
-                transcript=transcript,
-                messages=session.messages or [],
-                session_language=LANGUAGE_NAMES[session.language],
-                language_code=session.language,
-                panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
-                validator_prompt=validator_prompt,
-                book=book,
-                book_material=build_book_material(book),
-                opening=opening,
-                settings=get_settings(),
-                session_id=session.id,
-            )
+        if not opening and transcript.strip():
+            switched = resolve_bridge_mode_for_turn(BridgeMode(session.bridge_mode), transcript)
+            if switched.explicit:
+                session = await room.set_bridge_mode(db, session, switched.mode.value)
+        book = book_of(session.pericope)
+        outcome = await room.run_panorama_turn(
+            transcript=transcript,
+            messages=session.messages or [],
+            session_language=LANGUAGE_NAMES[session.language],
+            language_code=session.language,
+            panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
+            validator_prompt=validator_prompt,
+            book=book,
+            book_material=build_book_material(book),
+            opening=opening,
+            settings=get_settings(),
+            session_id=session.id,
+        )
     else:
         turn = await room.run_comprehension_turn(
             db,
