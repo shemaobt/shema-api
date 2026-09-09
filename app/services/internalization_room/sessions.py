@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -277,7 +278,24 @@ async def set_bridge_mode(db: AsyncSession, session: IRSession, mode: str) -> IR
 
 
 def comprehension_of(session: IRSession) -> ComprehensionState:
-    return ComprehensionState.model_validate(session.comprehension or {})
+    """The comprehension state, reading past a probe this build no longer knows.
+
+    The only tolerant `model_validate` in this repository, and it is here because of a
+    count: seventeen sessions on the machine that drives the room hold an `active_probe`
+    whose purpose went with the probe machinery, and a tablet reopens a passage by an id
+    it keeps on disk with no expiry. A typed submodel that will not validate makes every
+    turn on those a 500, and the app only forgets a saved id on a 404 — so the passage
+    would be stuck on that tablet at every opening, with no way out through the app.
+
+    Only the probe is dropped, and only when the whole state refuses to load. Everything
+    else that was saved is kept, and a state that still will not load raises as before.
+    """
+    stored = dict(session.comprehension or {})
+    try:
+        return ComprehensionState.model_validate(stored)
+    except PydanticValidationError:
+        stored.pop("active_probe", None)
+        return ComprehensionState.model_validate(stored)
 
 
 async def save_comprehension(

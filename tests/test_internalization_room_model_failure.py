@@ -123,22 +123,6 @@ def _the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> None:
     monkeypatch.setattr(module, "call_agent", _Agent(list(script)))
 
 
-def _the_assessor_finds_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep the assessor out of the way on turns that carry a team answer."""
-    module = sys.modules["app.services.internalization_room.comprehension.assessor"]
-
-    async def _empty(**_: Any) -> str:
-        return json.dumps(
-            {
-                "observations": [],
-                "mother_tongue_practice_reported": False,
-                "practice_evidence_excerpt": "",
-            }
-        )
-
-    monkeypatch.setattr(module, "call_agent", _empty)
-
-
 async def _a_room_opening_a_passage(client: httpx.AsyncClient) -> str:
     created = await client.post(
         f"{PREFIX}/sessions",
@@ -191,7 +175,6 @@ async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
     from app.api.internalization_room import sessions as sessions_api
 
     _the_models_answer(monkeypatch, GUIDE_LINE, json.dumps({"verdict": "pass", "issues": []}))
-    _the_assessor_finds_nothing(monkeypatch)
     session_id = await _a_room_opening_a_passage(client)
     assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
 
@@ -286,7 +269,6 @@ async def test_a_failed_call_is_logged_without_repeating_what_the_team_said(
     infrastructure fact, and a transcript in an operations log is the team's speech kept
     somewhere nobody agreed to.
     """
-    _the_assessor_finds_nothing(monkeypatch)
     _the_models_answer(monkeypatch, GUIDE_LINE, _passes(), RuntimeError("the model is gone"))
     session_id = await _a_room_opening_a_passage(client)
     await _the_room_takes_a_turn(client, session_id)

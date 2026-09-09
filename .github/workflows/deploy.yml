@@ -61,6 +61,17 @@ jobs:
             us-central1-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.GAR_REPO }}/backend:${{ github.sha }} \
             sh -c "uv run alembic upgrade head"
 
+      # Every plain variable the service runs with is named here. Four of them lived
+      # only on the service, set by hand, so the repository could not say what
+      # production was running. --update-env-vars merges, which is why they survived
+      # unnamed; --set-secrets replaces the whole set, so a mapping missing from this
+      # file is a mount removed from the service on the next merge — which is what
+      # took the Azure client secret off it. The secret belongs in the mapping below,
+      # and the tenant and client ids beside it are not secret and stay plain.
+      #
+      # ^|^ makes '|' the separator instead of ',', because CORS_ORIGINS is itself a
+      # comma-separated list. The delimiter may not appear in any value, which rules
+      # out ':' — every origin carries one (http://localhost:5173).
       - name: Deploy Backend
         run: |
           gcloud run deploy ${{ env.BACKEND_SERVICE }} \
@@ -75,8 +86,8 @@ jobs:
             --timeout=300 \
             --no-cpu-throttling \
             --min-instances=1 \
-            --update-env-vars="GCS_PLATFORM_BUCKET=tripod-platform" \
-            --set-secrets="DATABASE_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_neon_database_url:latest,JWT_SECRET_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_jwt_secret:latest,GOOGLE_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_api_key:latest,GOOGLE_MAPS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_maps_api_key:latest,QDRANT_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_url:latest,QDRANT_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_api_key:latest,GCS_BUCKET_NAME=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_gcs_bucket_name:latest,INNGEST_EVENT_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_event_key:latest,INNGEST_SIGNING_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_signing_key:latest,ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_elevenlabs_api_key:latest,PH_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_ph_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_api_key:latest"
+            --update-env-vars="^|^GCS_PLATFORM_BUCKET=tripod-platform|EMAIL_PROVIDER=microsoft_graph|AZURE_TENANT_ID=5864d665-2933-42ba-9e2c-7212795b1b1a|AZURE_CLIENT_ID=9b01b5d1-7fed-4f24-a282-5cb72c5b266d|CORS_ORIGINS=http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com" \
+            --set-secrets="DATABASE_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_neon_database_url:latest,JWT_SECRET_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_jwt_secret:latest,GOOGLE_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_api_key:latest,GOOGLE_MAPS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_google_maps_api_key:latest,QDRANT_URL=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_url:latest,QDRANT_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_qdrant_api_key:latest,GCS_BUCKET_NAME=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_gcs_bucket_name:latest,INNGEST_EVENT_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_event_key:latest,INNGEST_SIGNING_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_inngest_signing_key:latest,ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_elevenlabs_api_key:latest,PH_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_ph_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_ELEVENLABS_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_elevenlabs_api_key:latest,INTERNALIZATION_ROOM_API_KEY=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/internalization_room_api_key:latest,AZURE_CLIENT_SECRET=projects/${{ env.SECRETS_PROJECT_NUMBER }}/secrets/tripod_backend_azure_client_secret:latest"
 
       # Inngest Cloud only knows the functions it registered at the last sync, and a
       # deploy is not a sync. `transcribe-session-answers` shipped in #123 and went

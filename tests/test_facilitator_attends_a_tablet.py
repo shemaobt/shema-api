@@ -35,8 +35,6 @@ from app.services.device import claim_device_as_facilitator, create_device
 from app.services.device.unlink_device import unlink_device
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
-from app.services.internalization_room.comprehension.evidence import EvidenceMethod
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     grant_facilitator_app_role,
@@ -445,31 +443,10 @@ def target_checkpoint() -> str:
 
 
 @pytest.fixture()
-def the_assessor_agrees(monkeypatch: pytest.MonkeyPatch, target_checkpoint: str) -> None:
+def the_models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Guide drafts and the Validator passes it."""
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
-    )
-
-    async def _assessor(**_: Any) -> str:
-        return json.dumps(
-            {
-                "observations": [
-                    {
-                        "checkpoint_id": target_checkpoint,
-                        "result": "demonstrated",
-                        "evidence_excerpt": EXCERPT,
-                        "rationale": "names the return",
-                    }
-                ],
-                "mother_tongue_practice_reported": False,
-                "practice_evidence_excerpt": "",
-            }
-        )
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.comprehension.assessor"],
-        "call_agent",
-        _assessor,
     )
 
 
@@ -486,14 +463,7 @@ async def waiting_room(db_session: AsyncSession, team_a: Team, target_checkpoint
     session = await room.append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
-    state = room.comprehension_of(session)
-    state.active_probe = ActiveProbe(
-        id="probe-1",
-        checkpoint_ids=[target_checkpoint],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.INITIAL_CHECK,
-    )
-    return await room.save_comprehension(db_session, session, state)
+    return session
 
 
 async def the_session_halts(client: httpx.AsyncClient, session_id: str) -> None:
@@ -537,7 +507,7 @@ async def test_the_long_press_is_recorded_once_and_a_new_halt_is_a_new_wait(
     db_session: AsyncSession,
     team_a: Team,
     waiting_room,
-    the_assessor_agrees: None,
+    the_models_agree: None,
 ) -> None:
     """Somebody is standing in the room, and until now only the room knew.
 
