@@ -4,6 +4,13 @@ The parser recognizes only clear task-shaped preferences; anything unclear falls
 modest adaptive track at the one-shot boundary and the Voice never re-offers the menu.
 """
 
+from typing import Any
+
+import httpx
+import pytest
+from httpx import ASGITransport
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.services.internalization_room.calibration import (
     BridgeMode,
     bridge_calibration_acknowledgement,
@@ -14,6 +21,110 @@ from app.services.internalization_room.calibration import (
     resolve_one_shot_calibration,
 )
 from app.services.internalization_room.languages import ROOM_LANGUAGES
+from app.services.internalization_room.run_turn import TurnOutcome
+from app.services.platform.tts import SynthesizedSpeech
+
+PREFIX = "/api/internalization-room"
+KEY = "sala-de-teste"
+PANORAMA = "OV"
+
+#: The method question as the ticket quotes it, in the three languages the room claims.
+#: Read from the ticket rather than from `bridge_calibration_question`, which this branch
+#: deletes: an expectation taken from the code under test agrees with it by construction.
+THE_METHOD_QUESTION = {
+    "pt": (
+        "Quando trabalharmos as passagens, qual jeito fica melhor para vocês: "
+        "contar naturalmente em português ou receber uma pergunta curta de cada vez?"
+    ),
+    "en": (
+        "When we work through the passages, which suits you better: "
+        "telling it back in your own words, or one short question at a time?"
+    ),
+    "es": (
+        "Cuando trabajemos los pasajes, ¿qué les queda mejor: "
+        "contarlo con sus propias palabras, o recibir una pregunta corta a la vez?"
+    ),
+}
+
+GUIDE_OPENING = "Bem-vindos. Vamos conhecer o livro inteiro antes de entrar nele."
+
+
+@pytest.fixture()
+async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    """A room whose every synthesized line is kept, so a test can read what was said.
+
+    The method question is appended in the router, after the panorama turn has already
+    returned, so no service seam can see it. What reaches the voice is the whole of it.
+    """
+    from fastapi import FastAPI
+
+    from app.api.internalization_room import router
+    from app.api.internalization_room import sessions as sessions_api
+    from app.core.config import get_settings
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+
+    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
+    said: list[str] = []
+
+    async def _panorama(**_: Any) -> TurnOutcome:
+        return TurnOutcome(speech=GUIDE_OPENING, transcript="", used_fail_safe=False)
+
+    async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
+        said.append(text)
+        entry = SynthesizedSpeech(
+            audio=b"audio",
+            mime_type="audio/mpeg",
+            etag="e",
+            cached=False,
+            key=f"tts/voice/m/f/{abs(hash(text))}.mp3",
+        )
+        return entry, False
+
+    async def _nothing(*_: Any, **__: Any) -> None:
+        return None
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api, "prepare_opening", _nothing)
+    monkeypatch.setattr(sessions_api, "settle_coverage", _nothing)
+
+    test_app = FastAPI()
+    test_app.include_router(router, prefix=PREFIX)
+    register_exception_handlers(test_app)
+
+    async def _get_db():
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client, said
+
+
+async def _open_cold(client: httpx.AsyncClient, *, pericope: str, language: str) -> str:
+    created = await client.post(
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": pericope, "language": language},
+    )
+    assert created.status_code == 200, created.text[:200]
+    return str(created.json()["session_id"])
+
+
+async def test_the_opening_is_the_guides_own_words_from_first_syllable_to_last(
+    spoken: tuple[httpx.AsyncClient, list[str]],
+) -> None:
+    client, said = spoken
+    session_id = await _open_cold(client, pericope=PANORAMA, language="pt")
+
+    opened = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+
+    assert opened.status_code == 200, opened.text[:200]
+    assert said == [GUIDE_OPENING], (
+        "a sala grampeava a pergunta de método no fim da abertura e mandava o texto "
+        f"emendado para a voz — a equipe ouvia {said}"
+    )
 
 
 def test_a_clear_full_retell_preference_is_explicit() -> None:

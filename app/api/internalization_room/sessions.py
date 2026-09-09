@@ -37,7 +37,6 @@ from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.calibration import (
     BridgeMode,
     bridge_calibration_acknowledgement,
-    bridge_calibration_question,
     resolve_bridge_mode_for_turn,
     resolve_one_shot_calibration,
 )
@@ -542,12 +541,6 @@ async def take_turn(
                 settings=get_settings(),
                 session_id=session.id,
             )
-            if (
-                opening
-                and not outcome.used_fail_safe
-                and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value
-            ):
-                outcome.speech = f"{outcome.speech} {bridge_calibration_question(session.language)}"
     else:
         turn = await room.run_comprehension_turn(
             db,
