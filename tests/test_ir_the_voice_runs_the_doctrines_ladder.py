@@ -103,11 +103,14 @@ def recording_client(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-async def _a_turn(settings: Settings | None = None) -> None:
+async def _a_turn(
+    settings: Settings | None = None,
+    transcript: str = "A fome chegou e eles partiram.",
+) -> None:
     await run_turn(
         session_language="Portuguese",
         language_code="pt",
-        transcript="A fome chegou e eles partiram.",
+        transcript=transcript,
         coverage_state=initial_state(P),
         messages=[],
         guide_prompt=GUIDE,
@@ -136,4 +139,35 @@ async def test_the_guide_and_the_validator_both_think_adaptively_at_high_effort(
         )
         assert call["max_tokens"] == 4096, (
             f"o teto de saída do {role} cortava a resposta inteira ao meio da frase"
+        )
+
+
+async def test_the_map_that_repeats_every_turn_rides_in_one_cached_block(
+    recording_client,
+) -> None:
+    messages = recording_client()
+
+    await _a_turn(transcript="A fome chegou e eles partiram.")
+    await _a_turn(transcript="Quem era Noemi?")
+
+    for role, calls in (
+        ("Guia", [c for c in messages.calls if not _is_validator(c)]),
+        ("Validador", [c for c in messages.calls if _is_validator(c)]),
+    ):
+        first, second = (call["system"] for call in calls)
+        assert isinstance(first, list), (
+            f"o system do {role} ia como um texto só, sem fronteira entre o que repete e o "
+            f"que muda, e o cache não tem onde ser marcado"
+        )
+        assert first[0]["cache_control"] == {"type": "ephemeral"}, (
+            f"o prefixo do {role} ia inteiro a cada turno e o mapa era relido do zero"
+        )
+        assert first[0]["text"] == second[0]["text"], (
+            f"o prefixo do {role} mudava de bytes entre turnos, então nada era servido do cache"
+        )
+        assert "cache_control" not in first[1], (
+            f"o que varia por turno no {role} entrava no cache e escrevia uma entrada por turno"
+        )
+        assert "Meaning Map" in first[0]["text"], (
+            f"o bloco cacheado do {role} não continha o mapa, que é o volume que paga o cache"
         )

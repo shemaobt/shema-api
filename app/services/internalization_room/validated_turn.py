@@ -26,6 +26,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
@@ -228,7 +229,7 @@ async def _voiced_after_validation(
                 movements = []
 
             validator_system = render(
-                validator_prompt,
+                cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,

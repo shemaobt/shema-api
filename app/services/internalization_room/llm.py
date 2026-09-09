@@ -8,6 +8,7 @@ from anthropic.types import (
     Message,
     MessageParam,
     OutputConfigParam,
+    TextBlockParam,
     ThinkingConfigAdaptiveParam,
 )
 
@@ -16,6 +17,23 @@ from app.core.config import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+#: Where a system prompt stops repeating. A caller that knows which half of its prompt is the
+#: same every turn writes this in at the boundary, and the two halves are sent as separate
+#: blocks so the first can be cached. Caching is a prefix match, so the mark has to sit ahead
+#: of the first byte that moves: one placeholder filled in the wrong order, and the map behind
+#: it stops matching and is paid for again on every turn of every session.
+CACHE_BREAK = "\n<!--CACHE_BREAK-->\n"
+
+
+def cache_break_before(template: str, placeholder: str) -> str:
+    """Mark a prompt template as repeating up to `placeholder`.
+
+    Takes the template rather than the filled prompt, so the boundary is named by the slot
+    that moves instead of by whatever text happened to land in it this turn — a filled value
+    can contain anything, including the mark's own bytes.
+    """
+    return template.replace(placeholder, CACHE_BREAK + placeholder, 1)
 
 
 def room_model(settings: Settings) -> str:
@@ -53,11 +71,29 @@ async def call_agent(
         max_tokens=max_output_tokens,
         thinking=thinking,
         output_config=output_config,
-        system=system_prompt,
+        system=_system_blocks(system_prompt),
         messages=messages,
     )
     _report_unfinished(response, max_output_tokens)
     return _spoken_text(response)
+
+
+def _system_blocks(system_prompt: str) -> str | list[TextBlockParam]:
+    """Split a system prompt at its cache mark, marking the half that repeats.
+
+    A prompt with no mark is sent whole and uncached: a caller that has not said which half
+    repeats has not earned a cache entry, and guessing a boundary here would write one entry
+    per turn and read none of them.
+    """
+    stable, mark, volatile = system_prompt.partition(CACHE_BREAK)
+    if not mark:
+        return system_prompt
+    blocks: list[TextBlockParam] = [
+        {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}}
+    ]
+    if volatile.strip():
+        blocks.append({"type": "text", "text": volatile})
+    return blocks
 
 
 def _spoken_text(response: Message) -> str:
