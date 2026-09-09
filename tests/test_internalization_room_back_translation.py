@@ -15,6 +15,7 @@ from app.services.internalization_room.back_translation import (
     CLOSING_ON_SCREEN,
     CLOSING_PLAIN,
     CLOSING_SPOKEN,
+    EVIDENCE_LIMIT_KINDS,
     BackTranslationState,
     Finding,
     FindingKind,
@@ -22,7 +23,9 @@ from app.services.internalization_room.back_translation import (
     closing_block,
     findings_block,
     played_ranges_cover_clip,
+    points_at_a_stretch,
     segments_block,
+    verify_correction,
 )
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
@@ -40,6 +43,7 @@ RETIRED_WIRE_NAMES = (
     "wrong_relation",
     "reordered_event",
     "preservation_violation",
+    "insufficient_evidence",
 )
 #: The kinds the Analyst reports, as the model is asked to write them.
 THREE_KINDS = '"kind": "missing" | "addition" | "unclear"'
@@ -133,7 +137,6 @@ async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> No
 
     assert analysis is not None
     assert analysis.findings == []
-    assert analysis.evidence_sufficient
 
 
 @pytest.mark.asyncio
@@ -413,7 +416,13 @@ async def test_one_malformed_finding_rejects_the_whole_reading(patch_analyst) ->
 
 
 @pytest.mark.asyncio
-async def test_insufficiency_must_name_its_limit(patch_analyst) -> None:
+async def test_a_thin_reading_that_names_no_difference_is_no_finding(patch_analyst) -> None:
+    """Thin evidence about a legible frase is no finding, so this reading confers.
+
+    The reply says the telling-back was thin and names nothing concrete. It used to be
+    refused for not naming its limit, which asked the team to tell a legible frase again
+    and never let the passage close.
+    """
     patch_analyst(json.dumps({"evidence_sufficient": False, "findings": []}))
 
     analysis = await analyse_telling_back(
@@ -424,30 +433,23 @@ async def test_insufficiency_must_name_its_limit(patch_analyst) -> None:
         settings=_settings(),
     )
 
-    assert analysis is None
+    assert analysis is not None
+    assert analysis.findings == []
 
 
 @pytest.mark.asyncio
-async def test_a_sufficient_flag_yields_to_an_insufficiency_finding(
-    patch_analyst,
-) -> None:
-    """This case used to assert the opposite: that the reading came back None.
+async def test_an_evidence_flag_of_any_shape_is_read_and_ignored(patch_analyst) -> None:
+    """A key the server no longer defines cannot refuse a reply that still carries it.
 
-    It changed because the old rule discarded a valid finding together with the
-    contradiction — in the session that became ENG-719, a good `addition` went out
-    with the reply, and the room told the team the service was down. The finding is the
-    statement of insufficiency, with content; the flag is its summary with no information
-    of its own. So the finding wins, and the invariant `BtAnalysis` promises — when the
-    flag is False, a finding names the limit — holds by way of that finding.
+    The prompt stopped asking for it, but replies written against the older one are still
+    in the air, and one of them costing a team its round would be the field outliving its
+    own removal.
     """
     patch_analyst(
         json.dumps(
             {
-                "evidence_sufficient": True,
-                "findings": [
-                    {"kind": "missing", "note": "Orfa"},
-                    {"kind": "insufficient_evidence", "note": "pouco"},
-                ],
+                "evidence_sufficient": "sim",
+                "findings": [{"kind": "missing", "chunk": 1, "note": "Orfa"}],
             }
         )
     )
@@ -461,59 +463,79 @@ async def test_a_sufficient_flag_yields_to_an_insufficiency_finding(
     )
 
     assert analysis is not None
-    assert not analysis.evidence_sufficient
-    assert [f.kind for f in analysis.findings] == [
-        FindingKind.MISSING,
-        FindingKind.INSUFFICIENT_EVIDENCE,
-    ]
-
-
-@pytest.mark.asyncio
-async def test_a_thin_telling_back_is_an_open_limit_not_a_clean_check(
-    patch_analyst,
-) -> None:
-    patch_analyst(
-        json.dumps(
-            {
-                "evidence_sufficient": False,
-                "findings": [
-                    {"kind": "insufficient_evidence", "chunk": 1, "note": "contaram muito pouco"}
-                ],
-            }
-        )
-    )
-
-    analysis = await analyse_telling_back(
-        segments=_told(),
-        scope=P,
-        pericope_num=P,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
-
-    assert analysis is not None
-    assert not analysis.evidence_sufficient
-    assert analysis.findings[0].kind is FindingKind.INSUFFICIENT_EVIDENCE
-
-
-@pytest.mark.asyncio
-async def test_a_legacy_reply_without_the_sufficiency_field_still_reads(
-    patch_analyst,
-) -> None:
-    """The ir_prompts row seeded by an older deploy keeps answering in the old shape."""
-    patch_analyst(json.dumps({"findings": [{"kind": "missing", "note": "Orfa"}]}))
-
-    analysis = await analyse_telling_back(
-        segments=_told(),
-        scope=P,
-        pericope_num=P,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
-
-    assert analysis is not None
-    assert analysis.evidence_sufficient
     assert [f.kind for f in analysis.findings] == [FindingKind.MISSING]
+
+
+@pytest.mark.asyncio
+async def test_the_retired_evidence_kind_is_dropped_and_the_rest_of_the_reply_kept(
+    patch_analyst, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The name the room retired is no finding; the reply around it is still the team's.
+
+    Refusing the whole reply over a name the prompt itself stopped offering would cost the
+    round a verdict, which is the ENG-719 failure with a different trigger. So the entry is
+    dropped, the reading is accepted, and the drop is written down with the reply behind it.
+    """
+    raw = json.dumps(
+        {
+            "evidence_sufficient": True,
+            "findings": [
+                {"kind": "missing", "chunk": 1, "note": "Orfa"},
+                {"kind": "insufficient_evidence", "chunk": 2, "note": "pouco"},
+            ],
+        }
+    )
+    patch_analyst(raw)
+
+    with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
+        analysis = await analyse_telling_back(
+            segments=_told(),
+            scope=P,
+            pericope_num=P,
+            analyst_prompt=ANALYST,
+            settings=_settings(),
+        )
+
+    assert analysis is not None
+    assert [f.kind for f in analysis.findings] == [FindingKind.MISSING]
+    assert raw in caplog.text, "o log mostra a resposta inteira"
+    assert "insufficient_evidence" in caplog.text.replace(raw, ""), "e diz qual espécie caiu"
+    assert "reading accepted" in caplog.text
+    assert "refused" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_the_retired_evidence_kind_is_dropped_from_a_correction_too(
+    patch_analyst, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The verification reads the check and drops the name, instead of refusing the reply.
+
+    It is the same statement one step later, and a verification read as None is a finding
+    the team is never asked about again.
+    """
+    raw = json.dumps(
+        {
+            "resolved": True,
+            "findings": [{"kind": "insufficient_evidence", "note": "pouco para julgar"}],
+        }
+    )
+    patch_analyst(raw)
+
+    with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
+        check = await verify_correction(
+            finding=Finding(kind=FindingKind.MISSING, note="Orfa", segment_id="segmento-1"),
+            earlier=_segment(1, "Noemi mandou Rute voltar."),
+            corrected=_segment(2, "Noemi mandou Rute voltar para a casa da mãe."),
+            scope=P,
+            pericope_num=P,
+            correction_prompt=CORRECTION,
+            settings=_settings(),
+        )
+
+    assert check is not None, "a correção é verificada, não descartada"
+    assert check.resolved is True
+    assert check.findings == []
+    assert "insufficient_evidence" in caplog.text.replace(raw, ""), "e o descarte é anotado"
 
 
 def test_contiguous_playback_covers_the_clip() -> None:
@@ -647,26 +669,18 @@ async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speak
     assert "Never mention the map, findings, analysis" in spoken_to
 
 
-@pytest.mark.asyncio
-async def test_insufficient_evidence_is_never_the_teams_failure(patch_speaker) -> None:
-    """Scenario 3, first half: the instruction survives the rewrite."""
-    thin = Finding(kind=FindingKind.INSUFFICIENT_EVIDENCE, note="pouco contado")
+def test_a_garbled_stretch_is_still_not_a_stretch_to_hand_over() -> None:
+    """The evidence limit that survives is `unclear`, and it still puts nothing on screen.
 
-    spoken_to = await _verdict_for(thin, patch_speaker)
+    The screen answers a boundary question — *is it in your recording, or did it come in
+    with the telling?* — and a frase nobody could hear was never asked one.
+    """
+    garbled = _on_a_stretch(FindingKind.UNCLEAR, "não deu para ouvir")
+    told_more = _on_a_stretch(FindingKind.ADDITION, "Noemi voltou alegre")
 
-    assert "never their failure and never a difference" in spoken_to
-    assert "too little to check is not a clean check" in spoken_to
-
-
-def test_thin_evidence_is_not_read_as_a_clean_check() -> None:
-    """Scenario 3, second half: and it does not reach `checked` either."""
-    state = BackTranslationState(
-        scope=P,
-        evidence_sufficient=False,
-        findings=[Finding(kind=FindingKind.INSUFFICIENT_EVIDENCE, note="pouco contado")],
-    )
-
-    assert (state.current_finding is None and state.evidence_sufficient) is False
+    assert points_at_a_stretch(garbled) is False
+    assert points_at_a_stretch(told_more) is True
+    assert frozenset({FindingKind.UNCLEAR}) == EVIDENCE_LIMIT_KINDS
 
 
 @pytest.mark.asyncio
@@ -1176,8 +1190,7 @@ def test_every_other_kind_closes_exactly_as_before(
     evidence limit asks out loud even on a stretch, as before.
     """
     finding = Finding(kind=kind, note="Orfa", segment_id=segment_id)
-    evidence_limits = {FindingKind.INSUFFICIENT_EVIDENCE, FindingKind.UNCLEAR}
-    asked_on_a_stretch = segment_id is not None and kind not in evidence_limits
+    asked_on_a_stretch = segment_id is not None and kind is not FindingKind.UNCLEAR
 
     assert closing_block(finding) == (CLOSING_ON_SCREEN if asked_on_a_stretch else CLOSING_SPOKEN)
 
@@ -1291,11 +1304,17 @@ def test_the_analyst_is_never_asked_for_a_kind_it_may_not_report() -> None:
         assert name not in ANALYST, f"o prompt do analista ainda pede {name}"
     assert "Meaning changed" not in ANALYST
     assert "Preservation violated" not in ANALYST
+    assert "evidence_sufficient" not in ANALYST, (
+        "o analista não responde mais sobre quanta evidência teve"
+    )
 
 
 def test_the_speaker_has_no_branch_for_a_kind_that_is_never_produced() -> None:
     """A branch for a kind nobody emits is an instruction the Speaker can still take."""
     assert "Meaning changed / wrong relation / reordered event" not in SPEAKER
+    assert "Insufficient evidence:" not in SPEAKER, (
+        "o Falante ainda pediria um relato mais cheio de um trecho perfeitamente legível"
+    )
     assert "is an addition with one more sentence" in SPEAKER, (
         "o silêncio preenchido perdeu a frase a mais que o distingue de uma adição comum"
     )
