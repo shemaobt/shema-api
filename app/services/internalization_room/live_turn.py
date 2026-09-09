@@ -1,26 +1,21 @@
 """The comprehension-aware passage turn.
 
 Order matters — this is the state machine the handoff document calls "app-owned": resolve
-the bridge mode (explicit switches only), plan STT recovery, resolve the process decisions
-bound to the PRIOR persisted probe (carry, recovery choice, consent), assess that probe's
-answer semantically, fold the evidence, plan the NEXT probe, and only then let the Guide
-speak — or bypass it entirely with exact app-owned speech where safety demands fixed
-wording. A probe becomes state only after its question was actually voiced, so evidence is
-never bound to an unvoiced prompt.
+the bridge mode (explicit switches only), resolve the recording-handoff consent bound to
+the prior persisted question, read what the team's telling settles about practice, and
+only then let the Guide speak — or bypass it entirely with exact app-owned speech where
+safety demands fixed wording. The consent question becomes state only after it was
+actually voiced, so an answer is never bound to an unvoiced prompt.
 
-An assessor call that failed is not an answer the room read and found empty: it degrades
-through the fail-safe, and a run of them reaches the hard stop and asks for a person rather
-than putting the same question a fourth time as though it were the first.
+The Guide checks the retelling itself, item by item against the pinned map, with the whole
+conversation in context. Nothing here tells it what it may say next.
 
-The opening turn always belongs to the Guide: no probe is planned and no app-owned line
-may hijack it, because the Voice must open the passage before anything is asked of the
-team — frame first, elicit second. For the same reason, the mother-tongue practice
-invitation for a scene is only planned once that scene has been opened in coverage.
+The opening turn always belongs to the Guide, because the Voice must open the passage
+before anything is asked of the team — frame first, elicit second.
 """
 
 from __future__ import annotations
 
-import logging
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -28,7 +23,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.calibration import (
     BridgeMode,
     bridge_mode_status_line,
@@ -38,53 +33,24 @@ from app.services.internalization_room.calibration import (
 )
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.assessor import TurnAssessment, assess_turn
 from app.services.internalization_room.comprehension.checkpoints import (
-    Checkpoint,
     checkpoints_for,
     scene_ids_for,
 )
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
 from app.services.internalization_room.comprehension.practice import (
-    PROBES_THAT_INVITE_A_REHEARSAL,
-    bridge_language_retelling_completes_practice,
-    confident_non_bridge_audio_completes_scoped_practice,
-    confirms_completed_mother_tongue_practice,
-    mother_tongue_practice_prompt,
-    practiced_scenes_authorized_by_probe,
     scenes_practiced_by_the_telling_the_guide_invited,
-    the_practice_invitation_is_owed_by_the_app,
 )
 from app.services.internalization_room.comprehension.probe import (
     ActiveProbe,
     ProbePurpose,
-    is_process_only,
     process_choice_freezes_bridge_mode,
-    resolve_carry_to_refine_decision,
     select_probe_after_oral_turn,
-)
-from app.services.internalization_room.comprehension.probe_plan import (
-    FocusedRecovery,
-    ProbePlanInput,
-    plan_next_probe,
-    render_active_probe_contract,
 )
 from app.services.internalization_room.comprehension.session_readiness import (
     evaluate_session_comprehension,
-    events_for_observations,
     render_comprehension_status,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.comprehension.stt_recovery import (
-    plan_stt_recovery,
-    resolve_stt_recovery_choice,
-    stt_recovery_reduce_burden_line,
-)
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     engaged_scene_ids,
@@ -93,7 +59,6 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.rehearsal_readiness import (
     explicitly_requests_recording_handoff,
     rehearsal_consent_declined_line,
@@ -103,17 +68,11 @@ from app.services.internalization_room.rehearsal_readiness import (
     should_offer_recording_consent,
 )
 from app.services.internalization_room.run_turn import (
-    OPENING_BUDGET,
-    SCENE_MOVEMENT_BUDGET,
-    TURN_BUDGET,
-    SpeechBudget,
     TurnOutcome,
     detects_peer_cue,
     run_turn,
 )
 from app.services.internalization_room.sessions import comprehension_of
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -124,8 +83,11 @@ class ComprehensionTurn:
 
 
 def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | None:
-    """The first scene whose own coverage is not fully engaged — the deterministic scene
-    pointer the probe planner scopes to. The Guide never selects the scene itself."""
+    """The first scene whose own coverage is not fully engaged.
+
+    It is what the rehearsal the Guide invites is read against: the Guide opens the scene
+    the pointer names, and it never selects a scene itself.
+    """
     by_scene: dict[int, bool] = {}
     for element in elements_for(pericope):
         if element.scene is None:
@@ -136,63 +98,6 @@ def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | Non
         if not by_scene[scene]:
             return f"S{scene}"
     return None
-
-
-def speech_budget_for(opening: bool, next_probe: ActiveProbe | None) -> SpeechBudget:
-    """The ceiling a Guide turn is measured against.
-
-    The passage opening gets the panorama and the scene movement together. A turn that opens
-    a scene and ends on the rehearsal invitation is the scene movement on its own — a
-    sentence or two from the map plus the 22-word invitation — and measured as an ordinary
-    turn it overran the ceiling every second time and fell to the fail-safe, which is exactly
-    what #322 had just fixed for the passage opening. Every other turn keeps the turn budget.
-    """
-    if opening:
-        return OPENING_BUDGET
-    if next_probe is not None and next_probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL:
-        return SCENE_MOVEMENT_BUDGET
-    return TURN_BUDGET
-
-
-def told_scene_ids(coverage_state: dict[str, Any], pericope: str) -> list[str]:
-    """Scenes the team has taken up — at least one element engaged or partially engaged.
-
-    A bead the Guide only mentioned is `surfaced`, and a scene with nothing more than that is
-    not one the team was told; the practice and scene-opening planners ask exactly that
-    question, and a mention in passing is not an answer to it.
-    """
-    taken_up = {CoverageStatus.ENGAGED.value, CoverageStatus.PARTIALLY_ENGAGED.value}
-    told: dict[int, bool] = {}
-    for element in elements_for(pericope):
-        if element.scene is None:
-            continue
-        standing = coverage_state.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value)
-        told[element.scene] = told.get(element.scene, False) or standing in taken_up
-    return [f"S{scene}" for scene in sorted(told) if told[scene]]
-
-
-_ASSESSOR_FAILURES_BEFORE_HARD_STOP = 3
-
-
-def _observation_id(tail: str) -> str:
-    return f"voice:{uuid.uuid4()}:{tail}"
-
-
-def _assessor_failures_after(prior: int, assessment: TurnAssessment) -> int:
-    """Failed assessor calls in a row: one more on a failure, none once a reply comes back.
-
-    The count is of calls, not of turns. A fail-safe clears the active probe, so the turn
-    after one never reaches the assessor at all — and a turn that never called it leaves the
-    count where it stood, because it is evidence of nothing either way and clearing it there
-    would let a process turn hide an outage.
-
-    Only a reply clears it. An answer the room settles without asking anyone — a shrug, a
-    bare "sim" — completes the assessment locally, and treating that as proof of health
-    would let one shrug mid-outage zero the ladder and strand the team in category A.
-    """
-    if assessment.failed:
-        return prior + 1
-    return 0 if assessment.replied else prior
 
 
 async def run_comprehension_turn(
@@ -228,10 +133,7 @@ async def run_comprehension_turn(
     empty = not transcript.strip()
     reliable = not uncertain and not mother_tongue
 
-    recovery_choice_pending = (
-        state.stt_recovery is not None and state.stt_recovery.stage == "recovery_choice_pending"
-    )
-    freeze = process_choice_freezes_bridge_mode(prior_probe, recovery_choice_pending)
+    freeze = process_choice_freezes_bridge_mode(prior_probe)
     choice_speech = "" if (mother_tongue or uncertain or freeze) else transcript
     current_mode = BridgeMode(session.bridge_mode)
     if current_mode is BridgeMode.CALIBRATION_PENDING:
@@ -239,30 +141,6 @@ async def run_comprehension_turn(
     else:
         bridge_mode = resolve_bridge_mode_for_turn(current_mode, choice_speech).mode
 
-    recovery_scope: list[str] = []
-    if prior_probe is not None and not is_process_only(prior_probe):
-        recovery_scope = [
-            checkpoint_id
-            for checkpoint_id in prior_probe.checkpoint_ids
-            if any(c.id == checkpoint_id and c.critical for c in checkpoints)
-        ][:1]
-    stt_plan = plan_stt_recovery(
-        prior=state.stt_recovery,
-        probe_id=prior_probe.id if prior_probe and recovery_scope else None,
-        checkpoint_ids=recovery_scope,
-        method=prior_probe.method if prior_probe and recovery_scope else None,
-        transcript_uncertain=uncertain or empty,
-    )
-    recovery_choice = (
-        "unclear"
-        if (uncertain or mother_tongue)
-        else resolve_stt_recovery_choice(state.stt_recovery, transcript)
-    )
-    carry_decision = (
-        "unclear"
-        if (uncertain or mother_tongue)
-        else resolve_carry_to_refine_decision(prior_probe, last_guide, transcript)
-    )
     consent_decision = resolve_rehearsal_consent(
         probe=prior_probe,
         previous_guide_utterance=last_guide,
@@ -270,195 +148,28 @@ async def run_comprehension_turn(
         reliable_bridge_speech=reliable,
     )
 
-    assessment = TurnAssessment(observations=[])
-    if (
-        prior_probe is not None
-        and not is_process_only(prior_probe)
-        and current_mode is not BridgeMode.CALIBRATION_PENDING
-        and transcript.strip()
-        and not mother_tongue
-        and last_guide.strip()
-    ):
-        allowed = [c for c in checkpoints if c.id in set(prior_probe.checkpoint_ids)]
-        assessment = await assess_turn(
-            assessor_prompt=get_prompt_text(IRPromptKey.COMPREHENSION_ASSESSOR),
-            session_language=LANGUAGE_NAMES[session.language],
-            observation_id_prefix=_observation_id("assess"),
-            probe_id=prior_probe.id,
-            method=prior_probe.method,
-            checkpoints=allowed,
-            meaning_map=load_map(pericope).body,
-            previous_guide_question=last_guide,
-            team_utterance=transcript,
-            mode=(
-                bridge_mode
-                if bridge_mode is not BridgeMode.CALIBRATION_PENDING
-                else BridgeMode.ADAPTIVE
-            ),
-            speech_recognition_uncertain=uncertain,
-            settings=settings,
-        )
-
-    assessor_failures = _assessor_failures_after(state.assessor_failures, assessment)
-
-    new_attempts, no_report_observation = resolve_no_usable_report(
-        probe=prior_probe,
-        prior_attempts=state.no_report_attempts,
-        transcript=transcript,
-        reliable_bridge_speech=reliable,
-        assessor_found_no_evidence=assessment.assessment_completed and not assessment.observations,
-        observation_id=_observation_id("no-report"),
-    )
-
     scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
-    practice_by_audio = confident_non_bridge_audio_completes_scoped_practice(
-        prior_probe, mother_tongue
-    )
-    practice_confirmed = (
-        prior_probe is not None
-        and prior_probe.purpose in PROBES_THAT_INVITE_A_REHEARSAL
-        and (
-            practice_by_audio
-            or (reliable and confirms_completed_mother_tongue_practice(last_guide, transcript))
-            or bridge_language_retelling_completes_practice(last_guide, transcript, reliable)
-        )
-    )
-    practiced_now = (
-        practiced_scenes_authorized_by_probe(
-            prior_probe, practice_confirmed or assessment.mother_tongue_practice_reported
-        )
-        if prior_probe is not None
-        else []
-    ) or scenes_practiced_by_the_telling_the_guide_invited(
+    practiced_now = scenes_practiced_by_the_telling_the_guide_invited(
         prior_probe, last_guide, transcript, reliable, scene_pointer
     )
-
-    process_observations: list[EvidenceObservation] = []
-    if no_report_observation is not None:
-        process_observations.append(no_report_observation)
-    pending_recovery_unit = (
-        state.stt_recovery.checkpoint_ids[0]
-        if state.stt_recovery is not None
-        and state.stt_recovery.stage == "recovery_choice_pending"
-        and state.stt_recovery.checkpoint_ids
-        else None
-    )
-    recovery_process_resolved = bool(
-        pending_recovery_unit
-        and (
-            recovery_choice != "unclear"
-            or (
-                prior_probe is not None
-                and prior_probe.purpose is ProbePurpose.CARRY_TO_REFINE_CHOICE
-                and carry_decision != "unclear"
-            )
-        )
-    )
-    if recovery_process_resolved and pending_recovery_unit and state.stt_recovery is not None:
-        process_observations.append(
-            EvidenceObservation(
-                id=_observation_id("stt"),
-                unit_id=pending_recovery_unit,
-                probe_id=state.stt_recovery.probe_id,
-                method=state.stt_recovery.method,
-                result=EvidenceResult.STT_UNCERTAIN,
-                note="Speech recognition remained uncertain after the single permitted retry.",
-            )
-        )
-    if carry_decision == "carry" and prior_probe is not None and prior_probe.checkpoint_ids:
-        recovery = state.stt_recovery
-        recovery_bound = (
-            recovery_process_resolved
-            and pending_recovery_unit == prior_probe.checkpoint_ids[0]
-            and recovery is not None
-        )
-        process_observations.append(
-            EvidenceObservation(
-                id=_observation_id("carry"),
-                unit_id=prior_probe.checkpoint_ids[0],
-                probe_id=recovery.probe_id if recovery_bound and recovery else prior_probe.id,
-                method=recovery.method if recovery_bound and recovery else prior_probe.method,
-                result=EvidenceResult.CARRY_TO_REFINE,
-                note=(
-                    "The team explicitly chose to leave this STT-limited point open for "
-                    "community review in Refine."
-                    if recovery_bound
-                    else "The team explicitly chose to carry this exact open point into Refine."
-                ),
-            )
-        )
-    elif (
-        recovery_choice == "carry_to_refine"
-        and state.stt_recovery is not None
-        and state.stt_recovery.stage == "recovery_choice_pending"
-        and state.stt_recovery.checkpoint_ids
-    ):
-        process_observations.append(
-            EvidenceObservation(
-                id=_observation_id("carry"),
-                unit_id=state.stt_recovery.checkpoint_ids[0],
-                probe_id=state.stt_recovery.probe_id,
-                method=state.stt_recovery.method,
-                result=EvidenceResult.CARRY_TO_REFINE,
-                note=(
-                    "The team explicitly chose to leave this exact point open for "
-                    "community review in Refine."
-                ),
-            )
-        )
-
-    observations = [*assessment.observations, *process_observations]
-    events = (
-        events_for_observations(
-            state.ledger,
-            observations,
-            conflict_resolution_checkpoint_ids=(
-                list(prior_probe.checkpoint_ids)
-                if prior_probe is not None and prior_probe.purpose is ProbePurpose.CLARIFY_CONFLICT
-                else []
-            ),
-        )
-        if (prior_probe is not None or process_observations)
-        else []
-    )
-    projected_ledger = [*state.ledger, *events]
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
     engaged_scenes = engaged_scene_ids(session.coverage_state or {}, pericope)
 
     comprehension_status = render_comprehension_status(
         checkpoints=checkpoints,
         scene_ids=scene_ids,
-        ledger=projected_ledger,
+        ledger=state.ledger,
         practiced_scene_ids=projected_practice,
         engaged_scene_ids=engaged_scenes,
         current_scene=scene_pointer,
     )
-
-    recovery_needs_clarification = (
-        state.stt_recovery is not None
-        and state.stt_recovery.stage == "recovery_choice_pending"
-        and recovery_choice == "unclear"
-        and carry_decision == "unclear"
-        and reliable
-        and not empty
-    )
-    recovery_clarification_checkpoint: Checkpoint | None = None
-    if (
-        recovery_needs_clarification
-        and state.stt_recovery is not None
-        and state.stt_recovery.checkpoint_ids
-    ):
-        recovery_clarification_checkpoint = next(
-            (c for c in checkpoints if c.id == state.stt_recovery.checkpoint_ids[0] and c.critical),
-            None,
-        )
 
     coverage_complete = floor_met(session.coverage_state or {}, pericope)
     semantic_ready = bridge_mode is not BridgeMode.CALIBRATION_PENDING and (
         evaluate_session_comprehension(
             checkpoints=checkpoints,
             scene_ids=scene_ids,
-            ledger=projected_ledger,
+            ledger=state.ledger,
             practiced_scene_ids=projected_practice,
             engaged_scene_ids=engaged_scenes,
         ).evaluation.outcome.value
@@ -470,73 +181,8 @@ async def run_comprehension_turn(
         and reliable
         and explicitly_requests_recording_handoff(transcript)
     )
-    adaptive_attempt_this_turn = (
-        current_mode is BridgeMode.ADAPTIVE
-        and prior_probe is not None
-        and prior_probe.purpose is ProbePurpose.FREE_RETELL
-        and reliable
-        and bool(transcript.strip())
-    )
 
-    if opening or bridge_mode is BridgeMode.CALIBRATION_PENDING or consent_decision == "accepted":
-        planned_probe: ActiveProbe | None = None
-    elif recovery_clarification_checkpoint is not None and state.stt_recovery is not None:
-        planned_probe = ActiveProbe(
-            id=str(uuid.uuid4()),
-            checkpoint_ids=[recovery_clarification_checkpoint.id],
-            method=state.stt_recovery.method,
-            purpose=ProbePurpose.CARRY_TO_REFINE_CHOICE,
-        )
-    else:
-        focused: FocusedRecovery | None = None
-        if (
-            recovery_choice == "smaller_question"
-            or (
-                carry_decision == "try_again"
-                and prior_probe is not None
-                and prior_probe.purpose is ProbePurpose.CARRY_TO_REFINE_CHOICE
-            )
-        ) and (
-            state.stt_recovery is not None
-            and state.stt_recovery.stage == "recovery_choice_pending"
-            and state.stt_recovery.checkpoint_ids
-        ):
-            focused = FocusedRecovery(
-                checkpoint_id=state.stt_recovery.checkpoint_ids[0],
-                previous_method=state.stt_recovery.method,
-            )
-        planned_probe = plan_next_probe(
-            ProbePlanInput(
-                id=str(uuid.uuid4()),
-                mode=bridge_mode,
-                checkpoints=checkpoints,
-                ledger=projected_ledger,
-                scene_ids=scene_ids,
-                current_scene=scene_pointer,
-                practiced_scene_ids=projected_practice,
-                engaged_scene_ids=engaged_scenes,
-                told_scene_ids=told_scene_ids(session.coverage_state or {}, pericope),
-                returning_to_full_retell=(
-                    bridge_mode is BridgeMode.FULL_RETELL
-                    and current_mode is not BridgeMode.FULL_RETELL
-                ),
-                skip_carry_offer_for_checkpoint_ids=(
-                    [prior_probe.checkpoint_ids[0]]
-                    if carry_decision == "try_again"
-                    and prior_probe is not None
-                    and prior_probe.checkpoint_ids
-                    else []
-                ),
-                focused_recovery=focused,
-                adaptive_free_retell_attempt_completed=(
-                    bridge_mode is BridgeMode.ADAPTIVE
-                    and (state.adaptive_free_retell_attempted or adaptive_attempt_this_turn)
-                ),
-                no_usable_report_attempts=[*state.no_report_attempts, *new_attempts],
-            )
-        )
-
-    next_probe = planned_probe
+    next_probe: ActiveProbe | None = None
     if not opening and should_offer_recording_consent(
         eligible=eligible,
         paused=state.recording_handoff_paused,
@@ -546,84 +192,35 @@ async def run_comprehension_turn(
         reliable_bridge_speech=reliable,
     ):
         next_probe = ActiveProbe(
-            id=str(uuid.uuid4()),
-            checkpoint_ids=[],
-            method=EvidenceMethod.MICRO_TELLBACK,
-            purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT,
+            id=str(uuid.uuid4()), purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT
         )
 
     app_owned_line: str | None = None
     if not opening and eligible and consent_decision == "accepted":
         app_owned_line = rehearsal_readiness_cue(session.language)
-    elif (
-        prior_probe is not None
-        and prior_probe.purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT
-        and consent_decision == "declined"
-    ):
+    elif prior_probe is not None and consent_decision == "declined":
         app_owned_line = rehearsal_consent_declined_line(session.language)
-    elif next_probe is not None and next_probe.purpose is ProbePurpose.RECORDING_HANDOFF_CONSENT:
+    elif next_probe is not None:
         app_owned_line = rehearsal_consent_question(session.language)
-    elif the_practice_invitation_is_owed_by_the_app(prior_probe, next_probe, last_guide):
-        app_owned_line = mother_tongue_practice_prompt(session.language)
 
-    contract = render_active_probe_contract(
-        next_probe,
-        checkpoints,
-        coverage_complete=coverage_complete,
-        semantic_ready=semantic_ready,
-        handoff_paused=state.recording_handoff_paused and not resume_requested,
-        practiced_scene_ids=projected_practice,
-    )
-    app_context = "\n\n".join(
-        [bridge_mode_status_line(bridge_mode), comprehension_status, contract]
-    )
+    app_context = "\n\n".join([bridge_mode_status_line(bridge_mode), comprehension_status])
     validator_context = "\n\n".join(
-        [bridge_mode_validator_context(bridge_mode), comprehension_status, contract]
+        [bridge_mode_validator_context(bridge_mode), comprehension_status]
     )
 
-    hard_stop = False
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
         outcome = TurnOutcome(
             speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
         )
     elif not opening and (empty or uncertain):
-        if stt_plan.action == "reduce_burden":
-            outcome = TurnOutcome(
-                speech=stt_recovery_reduce_burden_line(session.language),
-                transcript=transcript,
-                used_fail_safe=True,
-                degraded=True,
-            )
-        else:
-            line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
-            outcome = TurnOutcome(
-                speech=line,
-                transcript=transcript,
-                used_fail_safe=True,
-                degraded=True,
-                fixed_line=fixed,
-            )
-    elif assessment.failed:
-        hard_stop = assessor_failures >= _ASSESSOR_FAILURES_BEFORE_HARD_STOP
-        if hard_stop:
-            logger.warning(
-                "Hard stop after %d failed assessor calls in session %s",
-                assessor_failures,
-                session.id,
-            )
-        line, fixed = choose(
-            FailSafe.HARD_STOP if hard_stop else FailSafe.UNREPAIRABLE,
-            session.language,
-            turn=len(messages),
-        )
+        line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
         outcome = TurnOutcome(
             speech=line,
             transcript=transcript,
             used_fail_safe=True,
             degraded=True,
             fixed_line=fixed,
-            needs_person=hard_stop,
         )
     elif app_owned_line is not None:
         outcome = TurnOutcome(
@@ -648,7 +245,6 @@ async def run_comprehension_turn(
             session_id=session.id,
             app_context=app_context,
             validator_context=validator_context,
-            budget=speech_budget_for(opening, next_probe),
             ask_for_movements=opening and not messages,
         )
 
@@ -656,23 +252,15 @@ async def run_comprehension_turn(
         outcome="fail_safe" if outcome.used_fail_safe else "pass",
         prior_probe=prior_probe,
         next_probe=next_probe,
-        target_practice_completed=practice_by_audio,
         transcript_uncertain=uncertain,
         transcript_was_mother_tongue=mother_tongue,
         transcript_empty=empty,
-        preserve_semantic_probe_for_retry=stt_plan.preserve_semantic_probe,
     )
 
     new_state = ComprehensionState(
-        ledger=projected_ledger,
+        ledger=state.ledger,
         active_probe=final_probe,
         practiced_scene_ids=projected_practice,
-        adaptive_free_retell_attempted=(
-            state.adaptive_free_retell_attempted or adaptive_attempt_this_turn
-        ),
-        no_report_attempts=[*state.no_report_attempts, *new_attempts],
-        assessor_failures=0 if hard_stop else assessor_failures,
-        stt_recovery=state.stt_recovery if recovery_needs_clarification else stt_plan.next_state,
         recording_consent_given=(
             state.recording_consent_given or (eligible and consent_decision == "accepted")
         ),

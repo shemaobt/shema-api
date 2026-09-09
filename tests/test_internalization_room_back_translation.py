@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import sys
 from typing import Any
@@ -29,8 +30,23 @@ from app.services.internalization_room.run_turn import run_turn, run_verdict_tur
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
+CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 P = "P03"
+PARSER_LOGGER = "app.services.internalization_room.back_translation"
+#: The wire names an older reply may still carry. No prompt of ours may ask for one.
+RETIRED_WIRE_NAMES = (
+    "meaning_change",
+    "wrong_relation",
+    "reordered_event",
+    "preservation_violation",
+)
+#: The kinds the Analyst reports, as the model is asked to write them.
+THREE_KINDS = '"kind": "missing" | "addition" | "unclear"'
+#: Marcia's line, from the merged prompt: it is why order and duplication are not findings.
+MARCIAS_FORBIDDEN_FINDINGS = (
+    "No findings about order, continuity, flow, style, naturalness, or duplication"
+)
 
 
 def _settings() -> Settings:
@@ -329,60 +345,48 @@ def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
     assert state.current_finding is None
 
 
+@pytest.mark.parametrize(
+    "retired",
+    ["meaning_change", "wrong_relation", "reordered_event", "preservation_violation", "silence"],
+)
 @pytest.mark.asyncio
-async def test_the_full_taxonomy_is_parsed(patch_analyst) -> None:
+async def test_a_retired_kind_reads_as_addition(
+    retired: str, patch_analyst, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A kind the Analyst no longer reports still arrives, and the round still has a verdict.
+
+    Replies written against the older taxonomy carry the four retired kinds, and `silence`
+    was always folded. Refusing a reply over the name would cost the whole round to a team
+    that did nothing wrong, so a retired kind reads as the addition it describes and the
+    reading is accepted.
+    """
     patch_analyst(
         json.dumps(
             {
                 "evidence_sufficient": True,
                 "findings": [
-                    {"kind": "meaning_change", "note": "a"},
-                    {"kind": "wrong_relation", "note": "b"},
-                    {"kind": "reordered_event", "note": "c"},
-                    {"kind": "preservation_violation", "note": "d"},
+                    {"kind": retired, "chunk": 2, "note": "contaram o que a história não conta"}
                 ],
             }
         )
     )
 
-    analysis = await analyse_telling_back(
-        segments=_told(),
-        scope=P,
-        pericope_num=P,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
-
-    assert analysis is not None
-    assert [f.kind for f in analysis.findings] == [
-        FindingKind.MEANING_CHANGE,
-        FindingKind.WRONG_RELATION,
-        FindingKind.REORDERED_EVENT,
-        FindingKind.PRESERVATION_VIOLATION,
-    ]
-
-
-@pytest.mark.asyncio
-async def test_a_silence_finding_is_folded_into_addition(patch_analyst) -> None:
-    patch_analyst(
-        json.dumps(
-            {
-                "evidence_sufficient": True,
-                "findings": [{"kind": "silence", "note": "preencheu um silêncio"}],
-            }
+    with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
+        analysis = await analyse_telling_back(
+            segments=_told(),
+            scope=P,
+            pericope_num=P,
+            analyst_prompt=ANALYST,
+            settings=_settings(),
         )
-    )
-
-    analysis = await analyse_telling_back(
-        segments=_told(),
-        scope=P,
-        pericope_num=P,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
 
     assert analysis is not None
     assert [f.kind for f in analysis.findings] == [FindingKind.ADDITION]
+    assert analysis.findings[0].segment_id == "segmento-2", (
+        "o achado dobrado continua apontando para o trecho que a resposta nomeou"
+    )
+    assert "reading accepted" in caplog.text
+    assert "refused" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -430,7 +434,7 @@ async def test_a_sufficient_flag_yields_to_an_insufficiency_finding(
     """This case used to assert the opposite: that the reading came back None.
 
     It changed because the old rule discarded a valid finding together with the
-    contradiction — in the session that became ENG-719, a good `meaning_change` went out
+    contradiction — in the session that became ENG-719, a good `addition` went out
     with the reply, and the room told the team the service was down. The finding is the
     statement of insufficiency, with content; the flag is its summary with no information
     of its own. So the finding wins, and the invariant `BtAnalysis` promises — when the
@@ -636,7 +640,7 @@ async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_s
 @pytest.mark.asyncio
 async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speaker) -> None:
     """Scenario 2. The one law, which the new closing may not loosen along with the rest."""
-    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.MEANING_CHANGE), patch_speaker)
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.ADDITION), patch_speaker)
 
     assert "never know what their recording says" in spoken_to
     assert "o que você me contou" in spoken_to
@@ -1273,6 +1277,41 @@ def test_the_analyst_is_told_where_a_missing_element_sits() -> None:
     )
 
 
+def test_the_analyst_is_never_asked_for_a_kind_it_may_not_report() -> None:
+    """The taxonomy the model is handed is the one the parser and Refine define.
+
+    A prompt that still names a retired kind asks the Analyst for an answer the room then
+    has to fold, and a team whose round depends on that fold pays for a sentence nobody
+    meant to leave behind. The forbidden-findings line is Marcia's, and it is the reason
+    order and duplication never become findings at all.
+    """
+    assert ANALYST.count(THREE_KINDS) == 1, "a lista de tipos na saída não é a dos três"
+    assert MARCIAS_FORBIDDEN_FINDINGS in ANALYST
+    for name in RETIRED_WIRE_NAMES:
+        assert name not in ANALYST, f"o prompt do analista ainda pede {name}"
+    assert "Meaning changed" not in ANALYST
+    assert "Preservation violated" not in ANALYST
+
+
+def test_the_speaker_has_no_branch_for_a_kind_that_is_never_produced() -> None:
+    """A branch for a kind nobody emits is an instruction the Speaker can still take."""
+    assert "Meaning changed / wrong relation / reordered event" not in SPEAKER
+    assert "is an addition with one more sentence" in SPEAKER, (
+        "o silêncio preenchido perdeu a frase a mais que o distingue de uma adição comum"
+    )
+
+
+def test_the_correction_check_asks_for_the_same_three_kinds() -> None:
+    """CORRECTION_KINDS and this prompt are one contract read from two sides.
+
+    Asking the reader for a kind the parser then refuses turns a correction check the team
+    already paid for into no verdict at all.
+    """
+    assert CORRECTION.count(THREE_KINDS) == 1
+    for name in RETIRED_WIRE_NAMES:
+        assert name not in CORRECTION, f"o prompt da correção ainda pede {name}"
+
+
 def test_the_analyst_does_not_count_a_word_as_a_change() -> None:
     """R11 (03/09, session P02): the map says only *rest, each in the house of her husband*
     for Ruth 1:9a; the team said "may they be happy, each in the house of her **new**
@@ -1283,22 +1322,16 @@ def test_the_analyst_does_not_count_a_word_as_a_change() -> None:
 
     The correction prompt already carries this calibration ("Wording varies. Content does
     not.") for judging one retelling against another; the analyst compares telling-back
-    against the map and has never had it. Give it the same law, and say it again inside the
-    `addition` definition itself — the paragraph a re-reader actually lands on.
+    against the map and had never had it. It is a section of its own here, above *What to
+    check*, because the kinds themselves are Marcia's words and take no additions.
     """
-    assert "Wording varies. Content does not." in ANALYST, (
-        "a âncora de calibração do verificador não está no prompt do analista"
+    calibration = re.search(
+        r"## Wording varies\. Content does not\..*?(?=\n## )", ANALYST, re.DOTALL
     )
 
-    # O item 2 (Added/addition) vive dentro da mesma lista numerada que os outros sete
-    # achados, sem linha em branco entre eles — então isola-se pelo próprio marcador
-    # numérico, não por um split em blocos de parágrafo (que pegaria a seção de
-    # calibração inteira, e essa também cita "adjective" no próprio exemplo).
-    addition_item = re.search(r"2\. \*\*Added\*\*.*?(?=\n\d+\. \*\*)", ANALYST, re.DOTALL)
-    assert addition_item, "não achei o item 2 (Added/addition) do What to check"
-    addition_text = addition_item.group(0)
-    assert any(word in addition_text for word in ("synonym", "paraphrase", "adjective")), (
-        "a definição de addition não diz que sinônimo/paráfrase/adjetivo não conta"
+    assert calibration, "a âncora de calibração não está no prompt do analista"
+    assert any(word in calibration.group(0) for word in ("synonym", "paraphrase", "adjective")), (
+        "a calibração não diz que sinônimo/paráfrase/adjetivo não conta"
     )
 
 

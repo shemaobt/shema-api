@@ -353,7 +353,7 @@ async def _told_back_with_an_open_finding(
         scope=P,
         findings=[
             Finding(
-                kind=FindingKind.MEANING_CHANGE,
+                kind=FindingKind.ADDITION,
                 note="a equipe disse que Noemi voltou alegre",
                 segment_id=told.id,
             )
@@ -427,7 +427,7 @@ async def test_the_finding_travels_in_the_package_it_unblocked(
     artifact = await build_internalization_release(db_session, session)
 
     carried = artifact["back_translation"]["findings"]
-    assert [finding["kind"] for finding in carried] == ["meaning_change"]
+    assert [finding["kind"] for finding in carried] == ["addition"]
     assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
     assert carried[0]["segment_id"] is not None
 
@@ -516,3 +516,49 @@ async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     assert whole.id not in [
         one["segment_id"] for one in artifact["back_translation"]["superseded_segments"]
     ], "nem entre os aposentados, porque nada tomou o lugar dele"
+
+
+async def _a_row_written_before_the_taxonomy_shrank(db: AsyncSession, session: IRSession) -> None:
+    """A stored telling-back carrying a retired kind in `findings` and in a superseded one.
+
+    Written through the room's own write path first, so the report of what the tablet played
+    is bound to the rehearsal exactly as it is in the field, and only the kinds are then set
+    to the names the older server wrote.
+    """
+    state = await _told_back_with_an_open_finding(db, session)
+    state.superseded = [
+        SupersededAttempt(findings=[Finding(kind=FindingKind.ADDITION, note="trocaram quem pediu")])
+    ]
+    await _reported_playback(db, session, state)
+    stored = dict(session.back_translation)
+    stored["findings"] = [dict(stored["findings"][0], kind="meaning_change")]
+    stored["superseded"] = [
+        dict(
+            stored["superseded"][0],
+            findings=[dict(stored["superseded"][0]["findings"][0], kind="wrong_relation")],
+        )
+    ]
+    session.back_translation = stored
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
+    db_session: AsyncSession,
+) -> None:
+    """Refine reads the three kinds, whatever the row was written with.
+
+    A retired name reaching the packet would put a kind nobody downstream defines in front
+    of the people who have to act on it, on a session the team started before the change.
+    """
+    session = await _ready_session(db_session)
+    await _a_row_written_before_the_taxonomy_shrank(db_session, session)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert [f["kind"] for f in artifact["back_translation"]["findings"]] == ["addition"]
+    assert [
+        f["kind"]
+        for attempt in artifact["back_translation"]["superseded_attempts"]
+        for f in attempt["findings"]
+    ] == ["addition"]

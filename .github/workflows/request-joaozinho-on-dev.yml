@@ -1,0 +1,108 @@
+name: Request Joãozinho on dev
+
+# A pull request into `dev` merges with no human approval, so the bot review is the
+# only reviewer it gets — and a gate that waits for someone to remember it is not a
+# gate. This requests the reviewer on every head that reaches a pull request into
+# `dev`, which is what fires `joaozinho-review.yml`. That file names the same login
+# explicitly, so the two move together.
+#
+# The App token is not a preference. Nothing GITHUB_TOKEN creates triggers a workflow,
+# so the `review_requested` it emitted would fire no run at all: `joaozinho / review`
+# would never appear on the head SHA and every pull request into `dev` would sit on
+# "Expected — waiting for status" with nothing behind the wait.
+#
+# A required check is keyed to the head SHA, so each new head needs its own
+# `review_requested` event. Requesting someone already requested is a silent no-op
+# that emits no event, so the reviewer is removed and requested again every time:
+# removing someone who was not requested answers 200 and costs one call, while
+# guessing which triggers can leave a stale request is how a pull request ends up
+# waiting on a check that will never come.
+#
+# `edited` is in the list for one activity only, a change of base. GitHub retargets a
+# stacked pull request onto its grandparent when the parent merges, and emits nothing
+# else — the head does not move, so no `synchronize` follows. Without it a pull
+# request that lands on `dev` that way waits forever.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+    branches: [dev]
+
+env:
+  # Opt JavaScript-based actions into Node.js 24 ahead of the 2026-06-02
+  # forced switch. Remove once the runner default is Node 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+# Not `cancel-in-progress`: a run cancelled between its removal and its request would
+# leave the reviewer removed and nothing to add him back. The review itself is the
+# thing that must not pile up, and its own workflow already cancels.
+concurrency:
+  group: request-joaozinho-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  request-joaozinho:
+    # A draft is skipped by the review workflow anyway, so there is nothing to fire.
+    # Every other `edited` — a title, a body — moves no head and needs no new request.
+    if: >-
+      github.event.pull_request.draft == false &&
+      (github.event.action != 'edited' || github.event.changes.base != null)
+    runs-on: ubuntu-latest
+    # Every call below authenticates as the App. GITHUB_TOKEN is used by nothing here,
+    # and must not be: see the note at the top of this file.
+    permissions: {}
+    steps:
+      # Two authors can never carry `joaozinho / review`: GitHub refuses a review
+      # request from the author, and the review workflow skips authors ending in
+      # `[bot]`. Asking anyway would fire an event whose job skips, and a skipped job
+      # publishes the check as `skipped`, which GitHub counts as passing — the gate
+      # would open on a pull request nobody reviewed. So the request is not made, the
+      # check never appears, and the pull request stays blocked until an admin merges
+      # it. `enforce_admins` is off on `dev` for exactly that.
+      - name: Decide whether the reviewer can be requested
+        id: gate
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          if [ "$AUTHOR" = "joaocarvoli" ]; then
+            reason="@joaocarvoli authored this pull request, and GitHub refuses a review request from the author."
+          elif [ "${AUTHOR%'[bot]'}" != "$AUTHOR" ]; then
+            reason="A bot authored this pull request, and the review workflow skips bot authors."
+          else
+            reason=""
+          fi
+
+          if [ -n "$reason" ]; then
+            {
+              echo "### Joãozinho was not requested"
+              echo
+              echo "$reason So \`joaozinho / review\` will never report here and the"
+              echo "required check stays pending. Merge with admin rights:"
+              echo "\`enforce_admins\` is off on \`dev\` for this case."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "request=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "request=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mint Joãozinho App token
+        id: app-token
+        if: steps.gate.outputs.request == 'true'
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.JOAOZINHO_APP_ID }}
+          private-key: ${{ secrets.JOAOZINHO_APP_PRIVATE_KEY }}
+
+      - name: Request the review on this head
+        if: steps.gate.outputs.request == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api -X DELETE "repos/$REPO/pulls/$PR/requested_reviewers" \
+            -f 'reviewers[]=joaocarvoli' --silent
+          gh api -X POST "repos/$REPO/pulls/$PR/requested_reviewers" \
+            -f 'reviewers[]=joaocarvoli' --silent

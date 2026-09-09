@@ -175,8 +175,6 @@ def resolve_rehearsal_consent(
         not reliable_bridge_speech
         or probe is None
         or probe.purpose is not ProbePurpose.RECORDING_HANDOFF_CONSENT
-        or probe.checkpoint_ids
-        or probe.practice_scene_ids
         or not is_exact_rehearsal_consent_question(previous_guide_utterance)
     ):
         return "unclear"

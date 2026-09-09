@@ -5,7 +5,7 @@ with valid kinds and non-empty notes — and the room told the team three times 
 analysis "could not be done right now". The service had not failed. The reply carried
 `evidence_sufficient: true` beside an `insufficient_evidence` finding, the parser read
 that as a contradiction and returned None without a word, and the route called None an
-upstream failure. A good `meaning_change` finding went out with it.
+upstream failure. A good `addition` finding went out with it.
 
 Three things are pinned here. A well-formed reply is never discarded whole. Every refusal
 the parser makes says which condition refused and shows what the analyst sent. And a
@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.exceptions import ERROR_CODE_UPSTREAM
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRTakeKind
+from app.services.internalization_room import sessions as room
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
 from app.services.platform.storage import StoredObject
@@ -124,7 +125,7 @@ async def _read(reply: str, patch_analyst):
 
 @pytest.mark.asyncio
 async def test_a_well_formed_reply_is_never_thrown_away_whole(patch_analyst) -> None:
-    """Case 1, at the parser. The `meaning_change` on the third stretch exists after the read.
+    """Case 1, at the parser. The finding on the third stretch exists after the read.
 
     The specific finding wins over the general flag: an `insufficient_evidence` finding
     *is* the statement that evidence is insufficient, with content — which stretch, why —
@@ -136,7 +137,7 @@ async def test_a_well_formed_reply_is_never_thrown_away_whole(patch_analyst) -> 
 
     assert analysis is not None, "uma resposta bem formada nunca é descartada inteira"
     assert [f.kind for f in analysis.findings] == [
-        FindingKind.MEANING_CHANGE,
+        FindingKind.ADDITION,
         FindingKind.INSUFFICIENT_EVIDENCE,
     ]
     assert analysis.findings[0].segment_id == "segmento-3"
@@ -428,11 +429,11 @@ async def test_the_valid_finding_reaches_the_session(
     assert answered.status_code == 200, answered.text
     body = answered.json()
     assert body["findings_remaining"] == 2
-    assert body["finding_kind"] == FindingKind.MEANING_CHANGE.value
+    assert body["finding_kind"] == FindingKind.ADDITION.value
     assert body["checked"] is False, "há achado aberto; a passagem não é dada por conferida"
 
     resumed = await _resumed(client, session_id)
-    assert resumed["finding_kind"] == FindingKind.MEANING_CHANGE.value, (
+    assert resumed["finding_kind"] == FindingKind.ADDITION.value, (
         "e o achado está no estado que o tablet retoma, não só na resposta"
     )
     assert resumed["finding_segment_id"] == resumed["segments"][2]["segment_id"]
@@ -479,3 +480,64 @@ async def test_a_provider_that_is_down_is_still_an_upstream_failure(
     assert answered.status_code == 502, answered.text
     assert answered.json()["code"] == ERROR_CODE_UPSTREAM
     assert UPSTREAM_LOG_LINE in caplog.text
+
+
+def _a_state_stored_before_the_taxonomy_shrank(segment_id: str) -> dict[str, Any]:
+    """The row a session in flight has, written when the retired kinds were still emitted."""
+    return {
+        "scope": PASSAGE,
+        "findings": [
+            {
+                "kind": "meaning_change",
+                "note": "contaram que Noemi voltou alegre",
+                "segment_id": segment_id,
+            }
+        ],
+        "evidence_sufficient": True,
+        "checked": False,
+        "superseded": [
+            {
+                "findings": [
+                    {"kind": "wrong_relation", "note": "trocaram quem pediu", "segment_id": None}
+                ],
+                "evidence_sufficient": True,
+                "played_ranges": [],
+                "clip_duration_ms": None,
+            }
+        ],
+        "played_ranges": [],
+        "clip_duration_ms": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_session_in_flight_with_a_retired_kind_still_loads_and_still_voices(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    """A row written by the older server still opens, in the findings and in the superseded.
+
+    No migration touches the row, so the team that pressed `terminei` yesterday resumes
+    today: the retired kind reads as addition on the way out of the row, in the findings and
+    in the superseded ones, and the round runs to a verdict instead of failing to load.
+    """
+    session_id = await _four_stretches_told(client)
+    told = await _resumed(client, session_id)
+    session = await room.get_session(db_session, session_id)
+    session.back_translation = _a_state_stored_before_the_taxonomy_shrank(
+        told["segments"][0]["segment_id"]
+    )
+    await db_session.commit()
+
+    state = room.back_translation_of(await room.get_session(db_session, session_id))
+    assert state.findings[0].kind is FindingKind.ADDITION
+    assert state.superseded[0].findings[0].kind is FindingKind.ADDITION
+
+    resumed = await _resumed(client, session_id)
+    assert resumed["finding_kind"] == FindingKind.ADDITION.value
+
+    answered = await _finish(client, session_id)
+
+    assert answered.status_code == 200, answered.text
+    assert answered.json()["checked"] is True, (
+        "uma leitura inteira limpa com evidência suficiente confere a passagem"
+    )

@@ -541,7 +541,6 @@ async def take_turn(
                 opening=opening,
                 settings=get_settings(),
                 session_id=session.id,
-                budget=room.OPENING_BUDGET if opening else room.TURN_BUDGET,
             )
             if (
                 opening
