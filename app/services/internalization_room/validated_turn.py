@@ -21,6 +21,7 @@ read off it raises. The tests reach the same module the same way.
 from __future__ import annotations
 
 import importlib
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -154,6 +155,30 @@ async def _draft(
     return draft.strip()
 
 
+def _timed(outcome: TurnOutcome, started: float, session_id: str) -> TurnOutcome:
+    """Say how long the turn took and how it ended, on its way out.
+
+    Both exits pass through here rather than each logging for itself, because the two numbers
+    only mean anything next to each other: a turn is allowed to take 56 seconds, and the way
+    to tell that apart from a turn that gave up is whether it was voiced or fell to a line.
+    """
+    shim = importlib.import_module("app.services.internalization_room.run_turn")
+
+    elapsed_ms = round((time.monotonic() - started) * 1000)
+    shim.logger.info(
+        "Turn answered in %s ms after %s redrafts",
+        elapsed_ms,
+        outcome.redrafts,
+        extra={
+            "session_id": session_id,
+            "turn_ms": elapsed_ms,
+            "redrafts": outcome.redrafts,
+            "used_fail_safe": outcome.used_fail_safe,
+        },
+    )
+    return outcome
+
+
 async def _voiced_after_validation(
     *,
     speaker_system: str,
@@ -207,6 +232,7 @@ async def _voiced_after_validation(
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
+    started = time.monotonic()
     conversation = recent_conversation_block(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
@@ -279,13 +305,17 @@ async def _voiced_after_validation(
             speech = ""
 
         if speech:
-            return TurnOutcome(
-                speech=speech,
-                transcript=transcript,
-                peer_cue=detects_peer_cue(speech),
-                redrafts=attempt,
-                issues=issues,
-                movements=movements,
+            return _timed(
+                TurnOutcome(
+                    speech=speech,
+                    transcript=transcript,
+                    peer_cue=detects_peer_cue(speech),
+                    redrafts=attempt,
+                    issues=issues,
+                    movements=movements,
+                ),
+                started,
+                session_id,
             )
 
         redraft_note = _redraft_note(issues, language_code)
@@ -302,12 +332,16 @@ async def _voiced_after_validation(
         language_code,
         turn=len(messages),
     )
-    return TurnOutcome(
-        speech=speech,
-        transcript=transcript,
-        used_fail_safe=True,
-        degraded=True,
-        redrafts=shim.MAX_REDRAFTS,
-        issues=issues,
-        fixed_line=line,
+    return _timed(
+        TurnOutcome(
+            speech=speech,
+            transcript=transcript,
+            used_fail_safe=True,
+            degraded=True,
+            redrafts=shim.MAX_REDRAFTS,
+            issues=issues,
+            fixed_line=line,
+        ),
+        started,
+        session_id,
     )

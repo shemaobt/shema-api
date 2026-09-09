@@ -10,6 +10,7 @@ exists to catch.
 from __future__ import annotations
 
 import json
+import logging
 from types import SimpleNamespace
 from typing import Any
 
@@ -184,4 +185,25 @@ async def test_no_bead_is_classified_while_the_team_waits_for_an_answer(
     assert "claude-sonnet-5" not in spoken_on, (
         "o classificador entrou no turno e a equipe esperou por uma chamada que só mexe "
         "nas contas do colar; no runner das sessões-ouro esse turno mediu 322 s"
+    )
+
+
+async def test_every_turn_leaves_behind_what_it_cost_and_how_long_it_took(
+    recording_client, caplog
+) -> None:
+    recording_client()
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+
+    calls = [r for r in caplog.records if getattr(r, "cache_read_tokens", None) is not None]
+    assert len(calls) == 2, (
+        "o piloto não tinha como saber quanto do mapa veio do cache, então a conta da sessão "
+        "era um palpite e o cache podia estar desligado sem ninguém notar"
+    )
+    assert {r.rung for r in calls} == {"claude-fable-5-1"}
+    turn = next(r for r in caplog.records if getattr(r, "turn_ms", None) is not None)
+    assert turn.turn_ms >= 0, (
+        "a latência do turno inteiro não era medida em lugar nenhum, e 10 s e 56 s eram a "
+        "mesma coisa para quem lesse o log"
     )

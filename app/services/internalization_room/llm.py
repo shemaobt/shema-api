@@ -123,6 +123,7 @@ async def call_agent(
             )
             continue
         _SETTLED[rungs[0]] = model
+        _report_spend(response, model)
         _report_unfinished(response, max_output_tokens)
         return _spoken_text(response)
     raise AssertionError("unreachable: the last rung either answers or raises")
@@ -171,6 +172,33 @@ def _spoken_text(response: Message) -> str:
             return block.text
     logger.warning("Room agent returned no content at all")
     return ""
+
+
+def _report_spend(response: Message, model: str) -> None:
+    """What this call cost and which rung answered it.
+
+    `cache_read_tokens` is the reason the field is here rather than a total: a cache that
+    silently stops matching costs the map's full price on every turn and changes nothing else
+    that anyone would notice, so a run where this number is flat at zero is the symptom.
+    Carrying the rung beside it is what makes a session's spend legible when the ladder moved
+    partway through it. The team's own words never reach this logger, only counts.
+    """
+    usage = response.usage
+    logger.info(
+        "Room agent answered on %s: in=%s cache_read=%s cache_write=%s out=%s",
+        model,
+        usage.input_tokens,
+        usage.cache_read_input_tokens,
+        usage.cache_creation_input_tokens,
+        usage.output_tokens,
+        extra={
+            "rung": model,
+            "input_tokens": usage.input_tokens,
+            "cache_read_tokens": usage.cache_read_input_tokens,
+            "cache_write_tokens": usage.cache_creation_input_tokens,
+            "output_tokens": usage.output_tokens,
+        },
+    )
 
 
 def _report_unfinished(response: Message, max_output_tokens: int) -> None:
