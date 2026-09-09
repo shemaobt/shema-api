@@ -194,7 +194,7 @@ async def test_a_session_that_already_spoke_is_not_opened_twice(
 
 
 class LongPanoramaAgent:
-    """A Guide whose first movement runs past even the panorama's wider ceiling."""
+    """A Guide whose first movement runs past what the panorama used to be allowed."""
 
     async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
         if "corrected_response" in system_prompt:
@@ -203,9 +203,16 @@ class LongPanoramaAgent:
 
 
 @pytest.mark.asyncio
-async def test_even_the_panorama_has_a_ceiling(
+async def test_a_long_opening_is_spoken_in_its_two_movements(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The mark the Guide drew is what divides the opening, and length no longer undoes it.
+
+    An opening whose whole ran past the panorama's ceiling was refused, redrafted and then
+    replaced by a fixed line, and a fail-safe carries no movements — so the two clips the
+    team was supposed to hear collapsed into one canned sentence on the exact turn the room
+    had the most to say.
+    """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongPanoramaAgent())
     session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
@@ -220,8 +227,9 @@ async def test_even_the_panorama_has_a_ceiling(
         settings=_settings(),
     )
 
-    assert turn.outcome.used_fail_safe
-    assert turn.outcome.movements == []
+    assert not turn.outcome.used_fail_safe
+    assert len(turn.outcome.movements) == 2
+    assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
 
 
 @pytest.mark.asyncio
@@ -256,9 +264,15 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
 
 
 @pytest.mark.asyncio
-async def test_a_turn_after_the_opening_still_answers_to_the_budget(
+async def test_a_turn_that_runs_long_is_spoken_as_it_is(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Length is prompt style, never a reject — and an ordinary turn answers to no ceiling.
+
+    Sixty words on a turn measured at forty-five were redrafted twice and then thrown away
+    for a fixed line, so a team that had just told something back heard the room say nothing
+    about it. Brevity is asked for in the Guide's own prompt now, and nowhere else.
+    """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongWindedAgent())
     session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
@@ -269,15 +283,16 @@ async def test_a_turn_after_the_opening_still_answers_to_the_budget(
     turn = await run_comprehension_turn(
         db_session,
         session,
-        speech=HeardSpeech(transcript="a fome chegou", is_substantial=True),
+        speech=HeardSpeech(text="a fome chegou"),
         opening=False,
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
 
-    assert turn.outcome.used_fail_safe
-    assert turn.outcome.fixed_line
+    assert not turn.outcome.used_fail_safe
+    assert not turn.outcome.fixed_line
+    assert len(turn.outcome.speech.split()) > 45
 
 
 @pytest.mark.asyncio

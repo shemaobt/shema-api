@@ -68,9 +68,6 @@ from app.services.internalization_room.rehearsal_readiness import (
     should_offer_recording_consent,
 )
 from app.services.internalization_room.run_turn import (
-    OPENING_BUDGET,
-    TURN_BUDGET,
-    SpeechBudget,
     TurnOutcome,
     detects_peer_cue,
     run_turn,
@@ -101,16 +98,6 @@ def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | Non
         if not by_scene[scene]:
             return f"S{scene}"
     return None
-
-
-def speech_budget_for(opening: bool) -> SpeechBudget:
-    """The ceiling a Guide turn is measured against.
-
-    The passage opening gets the panorama and the scene movement together; every other turn
-    keeps the turn budget. The wider scene-movement ceiling was raised off the purpose of
-    the probe the app had planned, and there is no such purpose to read any more.
-    """
-    return OPENING_BUDGET if opening else TURN_BUDGET
 
 
 async def run_comprehension_turn(
@@ -258,7 +245,6 @@ async def run_comprehension_turn(
             session_id=session.id,
             app_context=app_context,
             validator_context=validator_context,
-            budget=speech_budget_for(opening),
             ask_for_movements=opening and not messages,
         )
 
