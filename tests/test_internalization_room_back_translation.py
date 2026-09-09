@@ -51,6 +51,13 @@ THREE_KINDS = '"kind": "missing" | "addition" | "unclear"'
 MARCIAS_FORBIDDEN_FINDINGS = (
     "No findings about order, continuity, flow, style, naturalness, or duplication"
 )
+#: Also hers, verbatim: what the Analyst does when the evidence is thin. Since ADR 0013 it is
+#: the whole instruction — a thin reading names nothing and the round confers.
+MARCIAS_UNDER_REPORTING = (
+    'When the evidence is thin, prefer NO finding — a false "missing" costs the team real work.'
+)
+#: The clean reply, as she wrote it. It is the shape the parser answers with no findings.
+A_CLEAN_REPLY = 'returns `{ "findings": [] }`'
 
 
 def _settings() -> Settings:
@@ -1307,6 +1314,8 @@ def test_the_analyst_is_never_asked_for_a_kind_it_may_not_report() -> None:
     assert "evidence_sufficient" not in ANALYST, (
         "o analista não responde mais sobre quanta evidência teve"
     )
+    assert MARCIAS_UNDER_REPORTING in ANALYST, "a linha da Marcia sobre evidência fina"
+    assert A_CLEAN_REPLY in ANALYST, "e a resposta limpa que ela escreveu"
 
 
 def test_the_speaker_has_no_branch_for_a_kind_that_is_never_produced() -> None:

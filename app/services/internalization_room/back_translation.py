@@ -203,7 +203,20 @@ class BackTranslationState(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _thin_evidence_is_no_finding(cls, data: Any) -> Any:
-        return _without_the_retired_evidence_kind(data)
+        """The retired name leaves the row, and the verdict it produced leaves with it.
+
+        A row that stored that finding also stored the clip the Speaker said about it, and
+        `terminei` serves a stored verdict rather than reading again. Dropping the finding
+        and keeping the verdict left the team hearing *too little to check* on every press,
+        about a frase the room no longer has anything to say about, until they recorded
+        something. Without it the next press decides again on what the row still holds: no
+        finding left is the checked closing, and a `missing` that survived the drop is
+        voiced instead. The analyst is not asked again — the reading it already did stands.
+        """
+        without = _without_the_retired_evidence_kind(data)
+        if without is data or len(without["findings"]) == len(data["findings"]):
+            return without
+        return {**without, "verdict": None}
 
     @property
     def current_finding(self) -> Finding | None:
@@ -313,7 +326,7 @@ def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str
 def _refused(condition: str, raw: str, session: str) -> None:
     """Every refusal leaves the reply behind it, whole, with the condition that refused.
 
-    Five of the exits below used to return None in silence. A reply the model did
+    They used to return None in silence. A reply the model did
     produce was then indistinguishable from one it never did, and the night of 2026-09-01
     was spent unable to say what the analyst had answered. The reply is logged whole
     rather than cut at a few hundred characters: it is bounded by the call's output cap,
@@ -323,13 +336,17 @@ def _refused(condition: str, raw: str, session: str) -> None:
     logger.warning("BT analyst reply refused (%s) for session %s: %s", condition, session, raw)
 
 
-def _dropped(raw: str, *, about: str) -> None:
-    """A name the room retired leaves the reply, and the rest of it is still read.
+def _dropped(entries: list[Any], raw: str, about: str) -> None:
+    """A name the room retired left the reply, and the rest of it was read.
 
-    Its own line rather than `_refused`'s: this reading is accepted, and calling a drop a
-    refusal is how the next investigation starts in the wrong place. The reply is behind it
-    whole, for the reason every refusal carries one.
+    Said only once the reading has been accepted: a reply carrying the retired name beside
+    a malformed entry is refused, and announcing a drop it then threw away with everything
+    else would send the next investigation to the wrong place. Its own line rather than
+    `_refused`'s for the same reason, and the reply is behind it whole, as every refusal
+    carries one.
     """
+    if not any(_is_the_retired_evidence_kind(entry) for entry in entries):
+        return
     logger.warning(
         "BT reply named %s, which is no finding; dropped it and read the rest (%s): %s",
         _RETIRED_EVIDENCE_KIND,
@@ -374,12 +391,9 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         return None
 
     reported = parsed["findings"]
-    kept_entries = [entry for entry in reported if not _is_the_retired_evidence_kind(entry)]
-    if len(kept_entries) != len(reported):
-        _dropped(raw, about=f"session {session}")
 
     findings: list[Finding] = []
-    for entry in kept_entries:
+    for entry in [one for one in reported if not _is_the_retired_evidence_kind(one)]:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
@@ -408,6 +422,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             )
         )
 
+    _dropped(reported, raw, f"session {session}")
     return BtAnalysis(findings=findings)
 
 
@@ -719,12 +734,8 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
     if not isinstance(raw_findings, list):
         return None
 
-    kept_entries = [entry for entry in raw_findings if not _is_the_retired_evidence_kind(entry)]
-    if len(kept_entries) != len(raw_findings):
-        _dropped(raw, about=f"segment {segment_id}")
-
     findings: list[Finding] = []
-    for entry in kept_entries:
+    for entry in [one for one in raw_findings if not _is_the_retired_evidence_kind(one)]:
         if not isinstance(entry, dict):
             return None
         note = str(entry.get("note", "")).strip()
@@ -753,6 +764,7 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
             for element in lost or []
             if not _already_reported(element, reported)
         )
+    _dropped(raw_findings, raw, f"segment {segment_id}")
     return CorrectionCheck(resolved=bool(parsed["resolved"]), findings=findings)
 
 
@@ -949,12 +961,6 @@ def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
     the one that strikes the passage off the wheel for good. It only ever matters when
     `finding` is `None`: a turn with a finding is not the checked turn, whatever `checked`
     says, so the flag is read nowhere else in this function.
-
-    Since ADR 0013 the room's own caller cannot reach `CLOSING_PLAIN`: `state.checked` is
-    `finding is None` there, so a finding-less turn is always the checked one. The branch
-    stays because this is a pure function with its own callers and its own tests, and a
-    closing that affirms without striking the passage off is the answer if one of them ever
-    asks for it again.
 
     Chosen here rather than by the Speaker reading a branch, because the finding carries the
     deciding fact and the prompt does not: `findings_block` sends kind and note, never the

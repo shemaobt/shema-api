@@ -32,12 +32,14 @@ from google_crc32c import Checksum
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import back_translation as bt_api
 from app.core.config import Settings
 from app.core.exceptions import ERROR_CODE_UPSTREAM
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
+from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
 
 PREFIX = "/api/internalization-room"
@@ -435,12 +437,10 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     the Speaker is never asked to say anything, nothing is saved, and the next press asks
     the analyst again rather than serving a verdict nobody reached.
     """
-    from app.api.internalization_room import back_translation as bt_api
-
     verdicts: list[str] = []
     voiced = bt_api.room.run_verdict_turn
 
-    async def counting(*args: Any, **kwargs: Any):
+    async def counting(*args: Any, **kwargs: Any) -> Any:
         verdicts.append(kwargs.get("closing", ""))
         return await voiced(*args, **kwargs)
 
@@ -659,3 +659,110 @@ async def test_a_stored_thin_evidence_finding_reads_as_no_finding_at_all(
 
     resumed = await _resumed(client, session_id)
     assert resumed["finding_kind"] == FindingKind.MISSING.value
+
+
+#: The clip the Speaker made when the row below was written, about the finding that has
+#: since stopped being one.
+STALE_CLIP = "clipe-do-veredito-de-ontem"
+
+
+def _a_row_whose_verdict_was_about_thin_evidence(
+    findings: list[dict[str, Any]], analysed: list[str]
+) -> dict[str, Any]:
+    """The row of a team that pressed `terminei` yesterday and heard "too little to check".
+
+    It carries what makes `terminei` serve an answer without asking the analyst again: the
+    stretches it already read, and the verdict it already voiced.
+    """
+    return {
+        "scope": PASSAGE,
+        "findings": findings,
+        "evidence_sufficient": False,
+        "checked": False,
+        "analysed_segment_ids": analysed,
+        "verdict": {"clip_key": STALE_CLIP, "fixed_line": "", "used_fail_safe": False},
+        "superseded": [],
+        "played_ranges": [],
+        "clip_duration_ms": None,
+    }
+
+
+async def _stored(
+    client: httpx.AsyncClient,
+    db: AsyncSession,
+    session_id: str,
+    findings: list[dict[str, Any]],
+) -> None:
+    told = await _resumed(client, session_id)
+    session = await room.get_session(db, session_id)
+    session.back_translation = _a_row_whose_verdict_was_about_thin_evidence(
+        findings, [one["segment_id"] for one in told["segments"]]
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_a_verdict_about_thin_evidence_is_not_served_again(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    """The team pressed `terminei` yesterday and heard it. Today the room decides again.
+
+    The stored finding is no finding at all, so the answer it produced cannot stand either:
+    serving it back would ask for a fuller telling of a legible frase on every press, which
+    is exactly what the rule removed. Nothing was told back since, so the analyst is not
+    asked to read again — what it already read is what confers the passage.
+    """
+    session_id = await _four_stretches_told(client)
+    await _stored(
+        client,
+        db_session,
+        session_id,
+        [{"kind": "insufficient_evidence", "note": "contaram pouco", "segment_id": None}],
+    )
+
+    answered = await _finish(client, session_id)
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["checked"] is True
+    assert body["findings_remaining"] == 0
+    assert analyst.readings == 0, "a leitura que o analista já fez continua valendo"
+    assert body["audio_url"] != clip_url(STALE_CLIP), "o clipe de ontem não é a resposta"
+    assert body["audio_url"], "e o Falante disse o fechamento de passagem conferida"
+
+
+@pytest.mark.asyncio
+async def test_a_finding_that_survives_the_drop_is_what_the_room_says(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
+) -> None:
+    """The other half: what the team still has to answer is what they hear about.
+
+    Deciding again is not conferring again — the round only closes when nothing is left.
+    """
+    session_id = await _four_stretches_told(client)
+    told = await _resumed(client, session_id)
+    await _stored(
+        client,
+        db_session,
+        session_id,
+        [
+            {"kind": "insufficient_evidence", "note": "contaram pouco", "segment_id": None},
+            {
+                "kind": "missing",
+                "note": "Orfa não apareceu",
+                "segment_id": told["segments"][1]["segment_id"],
+            },
+        ],
+    )
+
+    answered = await _finish(client, session_id)
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["finding_kind"] == FindingKind.MISSING.value
+    assert body["checked"] is False
+    assert body["findings_remaining"] == 1
+    assert analyst.readings == 0
+    assert body["audio_url"] != clip_url(STALE_CLIP), (
+        "o que a equipe ouve é sobre a falta, não a fala de ontem sobre pouca evidência"
+    )

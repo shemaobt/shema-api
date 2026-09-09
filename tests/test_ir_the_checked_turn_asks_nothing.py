@@ -131,6 +131,18 @@ async def test_an_obedient_narrator_passes_the_checked_turn(patch_loop) -> None:
     assert outcome.speech == "A passagem foi contada e conferida."
 
 
+def test_a_turn_that_is_not_the_checked_one_keeps_asking() -> None:
+    """The pure contract of the plain closing: no finding, not checked, so the turn goes on.
+
+    `closing_block` is asked for a closing by more than the room's own `finish`, and this is
+    the answer when a finding-less turn is not the one that strikes the passage off — it
+    affirms and invites the team to carry on telling back.
+    """
+    assert closing_block(None, checked=False) == CLOSING_PLAIN
+    assert closing_block(None) == CLOSING_PLAIN
+    assert CONTINUES_TELLING_BACK in closing_block(None, checked=False)
+
+
 def test_a_finding_ignores_the_checked_flag() -> None:
     """Case 5 (guard). Com achado, nada muda — os fechamentos de achado continuam os de hoje.
 
