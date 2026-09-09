@@ -503,7 +503,7 @@ async def take_turn(
             peer_cue=outcome.peer_cue,
             coverage=_coverage_view(session),
             done=False,
-            )
+        )
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None

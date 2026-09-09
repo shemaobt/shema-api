@@ -136,14 +136,6 @@ ALLOWLIST: list[AllowlistEntry] = [
         "with the session. ``bridge_mode`` itself lives in its own column so intake validation and",
     ),
     AllowlistEntry(
-        "app/services/internalization_room/live_turn.py", Rule.MODE, "bridge_mode_status_line,"
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/live_turn.py",
-        Rule.MODE,
-        "bridge_mode_validator_context,",
-    ),
-    AllowlistEntry(
         "app/services/internalization_room/live_turn.py", Rule.MODE, "resolve_bridge_mode_for_turn,"
     ),
     AllowlistEntry(
@@ -176,16 +168,6 @@ ALLOWLIST: list[AllowlistEntry] = [
         "app/services/internalization_room/live_turn.py",
         Rule.MODE,
         "semantic_ready = bridge_mode is not BridgeMode.CALIBRATION_PENDING and (",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/live_turn.py",
-        Rule.MODE,
-        'app_context = "\\n\\n".join([bridge_mode_status_line(bridge_mode), comprehension_status])',
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/live_turn.py",
-        Rule.MODE,
-        "[bridge_mode_validator_context(bridge_mode), comprehension_status]",
     ),
     AllowlistEntry(
         "app/services/internalization_room/live_turn.py",

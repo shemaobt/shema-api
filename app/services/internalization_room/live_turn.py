@@ -26,8 +26,6 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.calibration import (
     BridgeMode,
-    bridge_mode_status_line,
-    bridge_mode_validator_context,
     resolve_bridge_mode_for_turn,
     resolve_one_shot_calibration,
 )
@@ -47,6 +45,7 @@ from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
 from app.services.internalization_room.comprehension.session_readiness import (
+    APP_OWNED_STATE,
     evaluate_session_comprehension,
     render_comprehension_status,
 )
@@ -203,10 +202,8 @@ async def run_comprehension_turn(
     elif next_probe is not None:
         app_owned_line = rehearsal_consent_question(session.language)
 
-    app_context = "\n\n".join([bridge_mode_status_line(bridge_mode), comprehension_status])
-    validator_context = "\n\n".join(
-        [bridge_mode_validator_context(bridge_mode), comprehension_status]
-    )
+    app_context = comprehension_status
+    validator_context = f"{APP_OWNED_STATE}\n{comprehension_status}"
 
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
