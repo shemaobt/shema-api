@@ -464,10 +464,15 @@ async def test_the_stored_snapshot_is_the_document_the_team_saw(
 async def test_an_incomplete_draft_cannot_be_submitted(db_session, client, rrf_app) -> None:
     """The submission-time rules run against what is stored, not against a fresh payload.
 
-    **400 and not 422**, because there is no body to locate an error in — the refusal is
-    about a stored draft, and this API renders ``ValidationError`` as 400. The message
-    carries the field names, which is what a client needs to show *what is missing* rather
-    than merely *no*.
+    **400 and not 422**, and the reason changed shape without changing the answer. It used
+    to be *there is no body to locate an error in*; there is now a located list beside the
+    sentence (``IncompleteSubmission``, 9/set/2026), so that half is no longer true. What
+    keeps the status is the deployed client: it maps 400 to *incomplete* and every other
+    status to *the request never reached the server*, so promoting this to 422 would make
+    a refusal that arrived read on screen as a silence that never happened.
+
+    The message still carries the field names — a client that only reads ``detail`` is not
+    broken by the addition — and ``errors`` is what a client should read instead.
     """
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers, declaration=False)
@@ -476,6 +481,81 @@ async def test_an_incomplete_draft_cannot_be_submitted(db_session, client, rrf_a
 
     assert res.status_code == 400, res.text
     assert "declaration" in res.json()["detail"]
+
+
+async def test_the_submission_refusal_carries_no_dump_of_the_stored_draft(
+    db_session, client, rrf_app
+) -> None:
+    """The defect this lane exists for, and it was measured on a real refusal.
+
+    The refusal used to be ``str(PydanticValidationError)`` in one sentence, and that
+    string carries ``input_value=`` — a truncated dump of the stored document. The
+    frontend cannot locate an error in a paragraph, so it scanned the whole sentence for
+    the 45 known field keys by substring and found keys that were never at fault:
+    ``reg_name``, ``why_needed``, ``proj_goals`` and ``board_evaldate`` — two real and two
+    invented, the last one a Parte C key the team cannot even see. A screen that marks a
+    filled field as missing is worse than one that says only *no*.
+
+    Two assertions, and the second is the one that would rot without the first: no dump,
+    and none of the phantom keys anywhere in the body.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers, declaration=False)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 400, res.text
+    assert "input_value" not in res.text
+    for fantasma in ("proj_goals", "board_evaldate"):
+        assert fantasma not in res.text, f"o corpo ainda nomeia {fantasma}"
+
+
+async def test_an_incomplete_submission_locates_each_fault_on_its_own_field(
+    db_session, client, rrf_app
+) -> None:
+    """``errors`` beside ``detail``: the shape a client can act on.
+
+    ``loc`` is structural — Pydantic locates a ``field_validator`` on the field it guards,
+    so a missing answer lands on ``fields`` and a refused declaration on ``declaration``
+    — and the offending keys are named inside ``msg``. That pair is what lets a screen
+    mark the right section and say which answers are missing, instead of printing a
+    paragraph.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers, declaration=False, fields={"reg_name": ""})
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 400, res.text
+    corpo = res.json()
+    assert isinstance(corpo["errors"], list) and corpo["errors"]
+
+    locais = {".".join(str(parte) for parte in erro["loc"]) for erro in corpo["errors"]}
+    assert "declaration" in locais
+    assert "fields" in locais
+
+    campos = next(erro for erro in corpo["errors"] if erro["loc"] == ["fields"])
+    assert "reg_name" in campos["msg"]
+
+
+async def test_the_incomplete_submission_still_answers_400_and_names_its_code(
+    db_session, client, rrf_app
+) -> None:
+    """The half that must not move, and the reason is on the client and not here.
+
+    The deployed frontend reads 400 as *incomplete* and everything else as *the request
+    never reached the server*. A status promoted to 422 would turn a refusal that arrived
+    into a silence that never happened — which is the same class of lie the evaluation
+    save was telling before BE-06's 400 reached the screen.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers, declaration=False)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 400
+    assert res.json()["code"] == "BAD_REQUEST"
+    assert isinstance(res.json()["detail"], str)
 
 
 async def test_a_submitted_request_is_not_a_draft_any_more(db_session, client, rrf_app) -> None:

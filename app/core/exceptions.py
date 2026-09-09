@@ -117,6 +117,43 @@ class ValidationError(Exception):
     pass
 
 
+class IncompleteSubmission(ValidationError):
+    """A stored draft that submission's own rules refuse — located field by field.
+
+    **The status does not move, and that is deliberate.** It stays 400 like every other
+    ``ValidationError``, because the deployed frontend maps 400 to *incomplete* and every
+    other status to *the request never reached the server*: promoting this to 422 would
+    make a refusal that arrived read on screen as a silence that never happened. What
+    changes is not the status but what travels beside ``detail``.
+
+    **Why ``errors`` had to exist.** The refusal used to be ``str(PydanticValidationError)``
+    interpolated into one sentence, and that string carries Pydantic's ``input_value=``
+    — a truncated dump of the stored document. The frontend cannot locate an error in a
+    paragraph, so it scanned the whole sentence for the 45 known field keys by substring,
+    and the dump made it find keys that were never at fault: measured against a real
+    refusal it reported ``reg_name``, ``why_needed``, ``proj_goals`` and
+    ``board_evaldate`` — two real and two invented, one of them a Parte C key the team
+    cannot even see. A screen that marks a filled field as missing is worse than one that
+    says only *no*.
+
+    So the errors are carried as data: ``errors`` is Pydantic's own list, rendered with
+    ``include_url=False``, ``include_context=False`` and **``include_input=False``** —
+    that last flag is what removes the dump, and by itself it retires both phantoms with
+    no line of frontend. ``loc`` is structural (``fields``, ``declaration``, ``budget``),
+    because that is how Pydantic locates a ``field_validator``, and the offending keys are
+    named inside ``msg``; the pair is what a client needs to mark the right section and
+    say which answers are missing.
+
+    The document is **never** echoed back. It is the team's own, so nothing is disclosed
+    to a stranger — but a refusal that repeats what it refused is a payload nobody asked
+    for, and it is what made the sentence unparseable in the first place.
+    """
+
+    def __init__(self, detail: str, errors: list[dict[str, object]]) -> None:
+        super().__init__(detail)
+        self.errors = errors
+
+
 class UpstreamServiceError(Exception):
     """A third-party provider failed on us — not a bad request from our client.
 
@@ -239,6 +276,23 @@ async def handle_unknown_reference(_request: Request, exc: UnknownReferenceError
     )
 
 
+async def handle_incomplete_submission(
+    _request: Request, exc: IncompleteSubmission
+) -> JSONResponse:
+    """The 400 above, plus the located list — the body every other 400 has, widened.
+
+    Registered as its own handler because Starlette walks the exception's MRO and takes
+    the most specific match: without this line ``IncompleteSubmission`` would answer
+    through ``handle_validation_error`` and lose ``errors`` silently, which is the kind of
+    absence nothing fails on.
+    """
+    body: dict[str, object] = {
+        **_error_body(str(exc), ERROR_CODE_BAD_REQUEST),
+        "errors": exc.errors,
+    }
+    return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=body)
+
+
 async def handle_validation_error(_request: Request, exc: ValidationError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -314,5 +368,6 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
+    app.add_exception_handler(IncompleteSubmission, handle_incomplete_submission)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)
