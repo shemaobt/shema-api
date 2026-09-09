@@ -42,7 +42,12 @@ from app.services.project.facilitated_scope import confined_to, facilitated_proj
 from app.services.project.facilitates_project import facilitates_project
 
 PANORAMA_ALIAS = "OV"
-MAX_RETELLS = 3
+#: How many second tellings of a stretch before the room asks for a person to come and
+#: watch. A warning, not a cap: nothing is refused at or past this number, the next stretch
+#: is taken like any other, and the next turn that lands clears the mark. Measured in the
+#: field at six against three with the passage checked, and kept that way by decision of
+#: the product owner (ENG-706): a team that keeps missing gets company, not a closed door.
+RETELLS_BEFORE_A_WARNING = 3
 
 #: Re-exported so the room's callers go on asking the session service what a panorama is.
 #: The answer moved next to the coverage spine it is really about — see `coverage`.
@@ -380,9 +385,37 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
     session.attended_at = None
     session.attended_by = None
     session.lifted_halt = None
+    session.person_arrived_at = None
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def person_arrived(db: AsyncSession, session: IRSession) -> datetime:
+    """Somebody long-pressed this halted room to say they are here (ENG-792).
+
+    **First press wins.** The moment records when a person reached the room, and one that
+    moved on every press would record the last time a hand touched the screen instead — a
+    team pressing again because nothing visibly happened would keep resetting the one fact
+    the Desk reads off this row.
+
+    The moment belongs to the halt it answers, so ``mark_needs_person`` clears it: a room that
+    stopped again is asking again, and carrying the arrival forward would show the new halt as
+    already answered by somebody who came for the old one.
+
+    Not gated on the room being halted. A press can only come from a screen that is showing
+    the halt, and refusing one that arrives just as a turn lands would lose the arrival of a
+    person who is standing in the room either way.
+
+    Answers the moment rather than the row, the way ``record_needs_person`` does on the device
+    side: the caller wants the one thing this writes, and a row typed as nullable would make
+    every caller handle a null this function has just ruled out.
+    """
+    if session.person_arrived_at is None:
+        session.person_arrived_at = datetime.now(UTC)
+        await db.commit()
+        await db.refresh(session)
+    return session.person_arrived_at
 
 
 async def attend(db: AsyncSession, session: IRSession, *, by: str) -> IRSession:
@@ -500,13 +533,18 @@ async def begin_back_translation_again(
     """Start the telling-back over on a freshly recorded clip, archiving the old attempt.
 
     Only the re-record reaches here. Telling one stretch again does not pass through: it
-    adds a stretch beside the others, and its budget is counted where that happens.
+    adds a stretch beside the others, and it is counted where that happens.
 
     The replaced attempt is kept, clearly marked as superseded, rather than erased: its
     stretches and findings are the history the Refine artifact carries, and the team's open
     questions must survive their own retake. The stretches stay where they are and stop
     counting — nothing takes their place, because the clip they explained was thrown away —
     and only what was never theirs is copied in here.
+
+    The retell count carries across. `BackTranslationState(scope=...)` takes every other
+    default, so it went back to zero — and re-recording is a room-key route the team drives
+    by voice. The count that decides when the room asks for a person was reset by tapping
+    "record again", which is exactly the tap a stuck team makes.
     """
     state = back_translation_of(session)
     told = await final_segments(db, session.id)
@@ -521,10 +559,6 @@ async def begin_back_translation_again(
             )
         )
     await retire_every_segment(db, session.id)
-    # The retell count carries across. `BackTranslationState(scope=...)` takes every other
-    # default, so it went back to zero — and re-recording is a room-key route the team
-    # drives by voice. The budget that exists so a loop cannot be a loop was reachable by
-    # tapping "record again", which is exactly the tap a stuck team makes.
     await save_back_translation(
         db,
         session,

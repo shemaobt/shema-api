@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.core.exceptions import UnreadableReply, UpstreamServiceError, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
@@ -20,7 +20,7 @@ from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
-from app.services.internalization_room.sessions import MAX_RETELLS
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 from app.services.internalization_room.voice_handles import clip_url
 
@@ -55,9 +55,10 @@ async def add_chunk(
     chunk nobody could make out returns before it.
 
     `retelling` says the team is telling one stretch back a second time after a finding.
-    That is the one cycle they can repeat at will, so it is counted and capped here: past
-    the budget the room asks for a person instead of buying another analyst round. The
-    chunk is kept either way — their work is never the thing thrown away.
+    That is the one cycle they can repeat at will, so it is counted here: at
+    `RETELLS_BEFORE_A_WARNING` the room asks for a person to come and watch. A warning,
+    not a cap — nothing is refused past it, and the chunk is kept either way. Their work
+    is never the thing thrown away.
 
     That ask is a `WARNING` and not a hard stop (ENG-706): the room wants somebody to come and
     watch, and refuses nothing — the team may go on telling. Naming the kind is what lets the
@@ -102,21 +103,21 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
-        # The budget is spent on the attempt, not on the transcript. Returning above this
-        # meant that during a transcriber outage — when every attempt comes back empty —
-        # the team could retell forever, `MAX_RETELLS` was never reached, and the room's
-        # only route to a person was unreachable exactly when the room was broken.
+        # The attempt is counted, not the transcript. Returning above this meant that
+        # during a transcriber outage — when every attempt comes back empty — the team
+        # could retell forever, `RETELLS_BEFORE_A_WARNING` was never reached, and the
+        # room's only route to a person was unreachable exactly when the room was broken.
         state.retells = told_again
         await room.save_back_translation(db, session, state)
-        spent = retelling and told_again >= MAX_RETELLS
-        if spent:
+        warned = retelling and told_again >= RETELLS_BEFORE_A_WARNING
+        if warned:
             await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(told),
             captured=False,
             pass_number=pass_number,
-            needs_person=spent,
+            needs_person=warned,
         )
     await room.capture_segment(
         db,
@@ -132,15 +133,15 @@ async def add_chunk(
     state.retells = told_again
     await room.save_back_translation(db, session, state)
 
-    spent = retelling and told_again >= MAX_RETELLS
-    if spent:
+    warned = retelling and told_again >= RETELLS_BEFORE_A_WARNING
+    if warned:
         await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) + 1,
         captured=True,
         pass_number=pass_number,
-        needs_person=spent,
+        needs_person=warned,
     )
 
 
@@ -189,6 +190,37 @@ async def finish(
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
 
+    **No passage is checked on stretch-by-stretch verifications alone.** A verification answers
+    the finding it was shown and nothing else, so a list it emptied has never been measured
+    against the set — and two things live only in the set: a correction can answer, by
+    accident, a finding raised on another stretch, and whether the telling-back is too thin to
+    judge at all. So when nothing is outstanding and only verifications have looked since the
+    last whole reading, one whole reading runs, and it is the one that decides. The fast test
+    while working; the whole suite before closing.
+
+    It is not paid for twice. The reading turns the flag off and takes the signature with it,
+    so pressing `terminei` again with nothing changed reaches neither branch — and a team that
+    got it right the first time never turns the flag on at all, so it is checked on one reading
+    and not two.
+
+    A closing reading that could not be made saves nothing, exactly as the reading above it
+    does: a passage checked because the analyst was unreachable would be struck off the wheel
+    on an outage, and a finished passage never comes back.
+
+    A verdict that lands on one stretch carries the I family after it, on the same clip: the
+    screen is about to offer a microphone on that stretch — two for most findings, one for a
+    missing element — and tapping it replaces everything the team had told there.
+    `with_the_whole_stretch_asked_for` is where that is decided.
+
+    A verdict that degraded to a fail-safe carries nothing after it, which the same function
+    decides: those are played from inside the app by name, so a sentence appended to one would
+    reach the transcript and never the room.
+
+    The request and the verification are two halves of the same correction. This is what asks
+    the team for the whole stretch; `verify_correction` a few lines above is what reads what
+    they told, against the finding that sent them back. A team that re-recorded only the
+    amendment would hand that verification a fragment to judge the finding by.
+
     Pressed again over the same stretches, the room serves the verdict it already reached and
     consults nothing. The press is the same question, and answering it afresh cost a validator
     and a spoken synthesis every time and wrote the room into the conversation as having spoken
@@ -215,7 +247,8 @@ async def finish(
             clip_duration_ms=payload.clip_duration_ms,
         )
 
-    if len(told) < len(final):
+    untold = room.first_untold(final)
+    if untold is not None:
         waiting, _ = choose(
             FailSafe.UNTOLD_STRETCH,
             session.language,
@@ -229,6 +262,7 @@ async def finish(
             audio_url=clip_url(spoken.key),
             fixed_line="",
             checked=False,
+            untold_segment_id=untold.id,
             findings_remaining=0,
         )
 
@@ -264,7 +298,29 @@ async def finish(
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
-    if not state.already_analysed(told):
+    correction = room.correction_to_verify(state, told, await room.retired_segments(db, session.id))
+    if correction is not None:
+        answered, earlier, corrected = correction
+        verified = await room.verify_correction(
+            finding=answered,
+            earlier=earlier,
+            corrected=corrected,
+            scope=state.scope or session.pericope,
+            pericope_num=session.pericope,
+            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
+            session_language=LANGUAGE_NAMES[session.language],
+            settings=get_settings(),
+            session_id=session.id,
+        )
+        if verified is None:
+            # Nothing is saved, exactly as on the reading below: a verification that never
+            # happened must not read as one that passed. Dropping the finding here would take
+            # it off the list for good, and the team would never be asked about it again.
+            raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
+        state.findings = room.findings_after_correction(state.findings, verified, corrected)
+        state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = True
+    elif not state.already_analysed(told):
         read = await room.analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
@@ -273,41 +329,68 @@ async def finish(
             session_language=LANGUAGE_NAMES[session.language],
             language_code=session.language,
             settings=get_settings(),
+            session_id=session.id,
         )
         if read is None:
             # Nothing is saved: `checked` stays as it was and `analysed_segment_ids` does not
             # advance, so pressing `terminei` again actually re-runs the analyst instead of
-            # serving a verdict nobody ever reached.
-            raise UpstreamServiceError("a análise do contado de volta não pôde ser feita agora")
+            # serving a verdict nobody ever reached. An outage never reaches this line: the
+            # service raises it as the upstream failure it is.
+            raise UnreadableReply("a resposta do analista não pôde ser lida")
         state.findings = read.findings
         state.evidence_sufficient = read.evidence_sufficient
         state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = False
+
+    if state.current_finding is None and state.verified_since_whole_reading:
+        closing = await room.analyse_telling_back(
+            segments=told,
+            scope=state.scope or session.pericope,
+            pericope_num=session.pericope,
+            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+            session_language=LANGUAGE_NAMES[session.language],
+            settings=get_settings(),
+            session_id=session.id,
+        )
+        if closing is None:
+            raise UpstreamServiceError(
+                "a leitura final do contado de volta não pôde ser feita agora"
+            )
+        state.findings = closing.findings
+        state.evidence_sufficient = closing.evidence_sufficient
+        state.analysed_segment_ids = [segment.id for segment in told]
+        state.verified_since_whole_reading = False
+
     finding = state.current_finding
     state.checked = finding is None and state.evidence_sufficient
 
     outcome = await room.run_verdict_turn(
         findings_text=room.findings_block(finding),
-        closing=room.closing_block(finding),
+        closing=room.closing_block(finding, checked=state.checked),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],
+        telling_back=room.segments_block(told),
         speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
         validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
         session_language=LANGUAGE_NAMES[session.language],
         language_code=session.language,
         settings=get_settings(),
+        session_id=session.id,
     )
 
+    said = room.with_the_whole_stretch_asked_for(
+        outcome.speech,
+        finding,
+        session.language,
+        used_fail_safe=outcome.used_fail_safe,
+    )
     voiced = (
         None
         if outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(outcome.speech, language=session.language))[
-            0
-        ]
+        else (await room.synthesize_facilitator_speech(said, language=session.language))[0]
     )
-    session = await room.append_exchange(
-        db, session, team_utterance="", guide_response=outcome.speech
-    )
+    session = await room.append_exchange(db, session, team_utterance="", guide_response=said)
     state.verdict = VoicedVerdict(
         clip_key=voiced.key if voiced else "",
         fixed_line=outcome.fixed_line,

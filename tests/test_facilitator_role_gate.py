@@ -46,6 +46,8 @@ _REQUESTS: dict[tuple[str, str], dict] = {
     },
     ("PATCH", "/api/facilitator/devices/{device_id}"): {"json": {"label": "tablet da sala"}},
     ("DELETE", "/api/facilitator/devices/{device_id}"): {},
+    ("POST", "/api/facilitator/devices/{device_id}/attended"): {},
+    ("DELETE", "/api/facilitator/devices/{device_id}/attended"): {},
     ("GET", "/api/facilitator/teams"): {},
     ("GET", "/api/facilitator/teams/{team_id}"): {},
     ("GET", "/api/facilitator/teams/{team_id}/devices"): {},

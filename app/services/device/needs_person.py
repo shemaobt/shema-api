@@ -20,18 +20,19 @@ facilitators of the device's team, so one on a device nobody claimed, or one tak
 service, is a call for help addressed to nobody. Refusing it is what keeps "recorded" and
 "someone will see this" the same sentence.
 
-**It lifts on the room going again, not on a clock and not on a facilitator.** The lift is
-called when that device opens a session, which is the shape a session's ``NEEDS_PERSON``
-already has: it ends when a turn lands, because the room moving is the evidence that the
-halt is over. A facilitator marking it attended from the Desk is a different event —
-somebody came — and is still nobody's, which is why nothing here does it. ENG-609's API
-slice gave that lift to the *session* halts and deliberately left this half alone, so the
-device queue still drains only by the tablet coming back.
+**It lifts two ways: the room going again, and the facilitator saying they went.** The first
+is called when that device opens a session, which is the shape a session's ``NEEDS_PERSON``
+already has — it ends when a turn lands, because the room moving is the evidence that the
+halt is over. The second is ENG-792's and lives in ``app/services/device/attended.py``: a
+facilitator walks over, helps, and leaves while the team is still gathering themselves, and
+until that route existed the queue drained on the room's schedule rather than on theirs.
+ENG-609 gave that lift to the *session* halts and left this half to a follow-up; this is the
+follow-up, and the two halves now drain the same way.
 """
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
@@ -53,6 +54,14 @@ async def record_needs_person(db: AsyncSession, device_id: str) -> datetime:
     guard is on the write rather than on the read above it, so a retry arriving beside the
     original cannot move the moment either. A halt that is not standing after the write is
     one this call lost to an unlink, and it is refused rather than reported.
+
+    **A new ask is an unattended ask**, so the visit that answered the *previous* halt is
+    cleared by the same write (ENG-792) — the argument ``mark_needs_person`` makes on the
+    session side, applied to the tablet. The stamps are what a facilitator reads to skip a row
+    a colleague already walked to; carried forward, they tell them to skip a tablet nobody has
+    been to for this halt. It rides on the guarded write rather than beside it so that a
+    retrying tablet clears nothing: the guard is what makes "a new halt" and "the first write
+    of this halt" the same event.
     """
     device = await get_device(db, device_id)
     if device is None:
@@ -68,7 +77,12 @@ async def record_needs_person(db: AsyncSession, device_id: str) -> datetime:
             Device.unlinked_at.is_(None),
             Device.needs_person_since.is_(None),
         )
-        .values(needs_person_since=datetime.now(UTC))
+        .values(
+            needs_person_since=datetime.now(UTC),
+            attended_at=None,
+            attended_by=None,
+            attended_lifted_since=None,
+        )
     )
     await db.commit()
     await db.refresh(device)
@@ -80,15 +94,33 @@ async def record_needs_person(db: AsyncSession, device_id: str) -> datetime:
 
 
 async def clear_needs_person(db: AsyncSession, device_id: str) -> None:
-    """Lift the halt on ``device_id``, if one stands. Silent when none does.
+    """Lift the halt on ``device_id``, if one stands, and end any visit's claim on it.
 
     Unguarded, unlike the write above: there is one state to reach and reaching it twice is
     reaching it once.
+
+    ``attended_lifted_since`` goes with it (ENG-792). It is the halt a facilitator's visit
+    lifted and which undoing that visit would put back; once the tablet has opened a session
+    there is nothing left to put back — the session is the tablet's own exit and would have
+    lifted the halt with or without the visit — so leaving it set lets a facilitator
+    correcting a ten-minute-old tap stop a tablet in the middle of a session. The stamps
+    themselves are deliberately **not** cleared: who went and when is what the panel is for,
+    and a tablet coming back is no evidence they did not go.
+
+    The two are cleared in one write, and the condition names both: a mark that lifted a halt
+    leaves ``needs_person_since`` null, so a filter on that column alone would skip exactly
+    the row that still has a lift record to drop.
     """
     await db.execute(
         update(Device)
-        .where(Device.id == device_id, Device.needs_person_since.is_not(None))
-        .values(needs_person_since=None)
+        .where(
+            Device.id == device_id,
+            or_(
+                Device.needs_person_since.is_not(None),
+                Device.attended_lifted_since.is_not(None),
+            ),
+        )
+        .values(needs_person_since=None, attended_lifted_since=None)
     )
     await db.commit()
 

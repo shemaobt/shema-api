@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 
 PREFIX = "/api/internalization-room"
@@ -194,13 +195,13 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     )
 
 
-async def test_a_transcriber_outage_still_spends_the_retell_budget(
+async def test_a_transcriber_outage_still_counts_the_retell(
     client: httpx.AsyncClient,
 ) -> None:
     """Every attempt comes back empty during an outage, and every one used to be free.
 
-    `MAX_RETELLS` was never reached, so the room's only route to a person was unreachable
-    exactly when the room was broken.
+    `RETELLS_BEFORE_A_WARNING` was never reached, so the room's only route to a person was
+    unreachable exactly when the room was broken.
     """
     session_id, take_id = await _rehearsed(client)
 
@@ -210,6 +211,39 @@ async def test_a_transcriber_outage_still_spends_the_retell_budget(
 
     assert last is not None
     assert last.json()["needs_person"] is True
+
+
+async def test_reaching_the_number_warns_and_still_takes_the_next_retell(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The count is a warning, not a cap: nothing is refused past it.
+
+    Measured in the field with six retells against a number of three, the passage checked
+    and the session in progress (ENG-706). The product owner's decision is that this is the
+    behaviour: the room asks for a person to come and watch, and goes on taking the team's
+    work. This case is what says so in code.
+    """
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a equipe contou o trecho de novo"
+
+    monkeypatch.setattr(bt_api, "heard", _heard)
+    session_id, take_id = await _rehearsed(client)
+
+    asked = [
+        (await _tell_back(client, session_id, take_id, retelling="true")).json()["needs_person"]
+        for _ in range(RETELLS_BEFORE_A_WARNING)
+    ]
+    assert asked == [False] * (RETELLS_BEFORE_A_WARNING - 1) + [True]
+
+    accepted = await _tell_back(client, session_id, take_id, retelling="true")
+
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["captured"] is True
+    assert accepted.json()["chunks"] == RETELLS_BEFORE_A_WARNING + 1, (
+        "o trecho entra na conta como qualquer outro; a marca é um pedido de companhia"
+    )
 
 
 @pytest.mark.parametrize(

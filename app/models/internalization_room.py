@@ -251,6 +251,9 @@ class TeamSessionResponse(BaseModel):
     #: which is most of them.
     attended_at: datetime | None
     attended_by: str | None
+    #: When somebody long-pressed the halted room to say they had arrived (ENG-792). Null
+    #: when nobody did, and null again on every halt after the one it answered.
+    person_arrived_at: datetime | None
     coverage: list[SessionBead]
 
 
@@ -322,6 +325,19 @@ class SegmentsResponse(BaseModel):
     #: exactly as it was — replacing a good explanation with an empty one over a transcriber
     #: outage would lose the team's work to somebody else's failure.
     captured: bool = True
+    #: True when the retells ran out on this correction. The room stops instead of buying
+    #: another round, and it is said here as well as on the telling-back route: a team that
+    #: spends the last of the budget still gets the stretches back, and would otherwise have no
+    #: sign that the room had stopped.
+    needs_person: bool = False
+    #: The recording of the passage that was rebuilt around a stretch re-recorded in the mother
+    #: tongue. Every stretch above that was a slice of the recording it replaced is now a slice
+    #: of this one; a stretch of some other recording is untouched. Absent when nothing was
+    #: rebuilt:
+    #: the correction touched no mother-tongue audio, or the rebuilding could not be done and
+    #: the correction stands on its own recording. Either way absence is the app's cue to go on
+    #: playing the passage stretch by stretch.
+    composed_take_id: str | None = None
 
 
 class BackTranslationProgress(BaseModel):
@@ -418,7 +434,9 @@ class BackTranslationChunkResponse(BaseModel):
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
     #: no business deciding which one a chunk is.
     pass_number: int = 1
-    #: True when the retells ran out. The room stops instead of buying another round.
+    #: True when the retells reached `RETELLS_BEFORE_A_WARNING`: the room asks for a person
+    #: to come and watch. A warning the app voices, not a stop — this chunk was taken, the
+    #: next one will be too, and the next turn that lands clears the mark.
     needs_person: bool = False
 
 
@@ -450,6 +468,14 @@ class BackTranslationVerdictResponse(BaseModel):
     #: Which stretch the finding lands on, by its own address, so the room can take the team
     #: straight to that slice of their recording instead of starting the whole passage over.
     finding_segment_id: str | None = None
+    #: Which stretch was recorded in the mother tongue but never told back, by its own
+    #: address, when that is what stopped the reading. Its own field rather than
+    #: `finding_segment_id` because the two ask the room for different things: a finding is
+    #: a stretch the team told and the analyst has a correction about, and this is a stretch
+    #: with no telling-back at all. Reading one from the absence of the other is the
+    #: inference that cost a team their morning — the app had no address, inferred "start
+    #: over", and threw away every recording of the passage.
+    untold_segment_id: str | None = None
     findings_remaining: int = 0
     used_fail_safe: bool = False
 
@@ -623,6 +649,10 @@ class FacilitatorSessionView(BaseModel):
     #: A user id. The Desk resolves names itself, as the questions inbox does with
     #: `answered_by` — a name copied here would be the name that person had that day.
     attended_by: str | None = None
+    #: ISO-8601 with an offset. Somebody is standing in that room and pressed to say so
+    #: (ENG-792) — a different fact from `attended_at`, which is a facilitator saying it from
+    #: the Desk afterwards. Null until the first press, and null again on the next halt.
+    person_arrived_at: str | None = None
 
 
 class AttendedResponse(BaseModel):
@@ -652,6 +682,35 @@ class FacilitatorHaltedDeviceView(BaseModel):
     device_id: str
     label: str | None
     since: datetime
+    #: When a facilitator said they went to this tablet, and who (ENG-792).
+    #:
+    #: **Null on every row this queue can currently produce, and served anyway.** Only two
+    #: writes leave ``needs_person_since`` standing — the tablet raising a halt and a
+    #: facilitator undoing their mark — and since the halt clears the previous visit's stamps
+    #: on the same guarded write, both leave these null. A row here saying somebody went is a
+    #: row nothing in this codebase can write today.
+    #:
+    #: They travel because the row is read beside two others that do carry them: the sessions
+    #: half of this same answer, where a marked ``DONE`` room stays listed with its stamps,
+    #: and the team's devices panel, which is where a marked tablet is read *after* it leaves
+    #: this queue. A Desk switching on the pair would otherwise have to know that one of the
+    #: three lists it draws answers a different shape for the same fact.
+    attended_at: datetime | None = None
+    attended_by: str | None = None
+
+
+class PersonArrivedResponse(BaseModel):
+    """What the tablet gets back when somebody long-presses to say they have arrived.
+
+    The moment is the one of the *first* press against this halt, not of this call. A team
+    pressing again because nothing visibly happened is told the same thing every time, which
+    is what keeps the Desk reading when a person reached the room rather than when a hand
+    last touched the screen.
+    """
+
+    session_id: str
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    person_arrived_at: str
 
 
 class FacilitatorSessionsResponse(BaseModel):

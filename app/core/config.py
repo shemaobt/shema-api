@@ -76,6 +76,12 @@ class Settings(BaseSettings):
 
     inngest_event_key: str = ""
     inngest_signing_key: str = ""
+    #: The app Inngest registers this deploy under. It was a literal, which made every
+    #: service built from this image the same app: the sync writes the serve endpoint of
+    #: the id it is given, so a second service registering as `tripod-backend` takes
+    #: production's endpoint and production's events start arriving at it. Staging sets
+    #: this; the default is production, so an unset variable deploys what it always did.
+    inngest_app_id: str = "tripod-backend"
 
     password_reset_token_expire_minutes: int = 60
     access_invite_expire_days: int = 7

@@ -18,6 +18,7 @@ class IRPromptKey(enum.StrEnum):
     BOOK_PANORAMA = "book_panorama"
     DRAFT_SELF_CHECK = "draft_self_check"
     BT_ANALYST = "bt_analyst"
+    BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
     COMPREHENSION_ASSESSOR = "comprehension_assessor"
 
@@ -128,6 +129,16 @@ class IRSession(Base):
     #: room stops, the queue reopens, and the kind it announces belongs to a halt somebody
     #: cleared an hour earlier.
     lifted_halt: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: When somebody long-pressed this halted room to say they had arrived (ENG-792). Null
+    #: until the first press, and cleared by every new halt — the moment belongs to the halt
+    #: it answered, and carrying it forward would show a fresh halt as already answered.
+    #:
+    #: First press wins while a halt stands: it records when a person reached the room, not
+    #: the last time a hand touched the screen. A team pressing again because nothing visibly
+    #: happened would otherwise keep resetting the very fact the Desk reads.
+    person_arrived_at: Mapped[datetime | None] = mapped_column(
+        UtcDateTime(timezone=True), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -318,8 +329,17 @@ class IRSegment(Base):
     **The slice is ``(take_id, starts_ms, ends_ms)``, and the two times are relative to that
     one file.** Never global over the concatenated passage: it is the globalness, not the use
     of intervals, that made re-recording one stretch shift every stretch after it. Relative to
-    an immutable file they never shift, and subdividing becomes writing rows rather than
-    cutting audio — which is what lets the room do it with no connection.
+    a file, subdividing becomes writing rows rather than cutting audio — which is what lets the
+    room do it with no connection.
+
+    The address is rewritten on exactly one occasion, and it is not a stretch changing: when a
+    stretch is re-recorded in the mother tongue the room rebuilds the passage around it, and
+    every stretch that was a slice of the recording it rebuilt is re-pointed at the file that
+    came out, at the time it now sits there. The audio under each of them is the same audio;
+    what moved is the file it is inside. Stretches of *another* recording are not touched, and
+    a session can hold more than one — a rebuilding that could not be done leaves the
+    correction on its own file. `compose.py` is where that happens and why it is not a version
+    of anything.
 
     ``take_id`` is the mother tongue; ``bridge_take_id`` and ``transcript`` are the team's own
     explanation of it in Portuguese, which is the only transcript that exists. The two travel

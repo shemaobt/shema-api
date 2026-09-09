@@ -24,6 +24,7 @@ from app.models.internalization_room import (
     FacilitatorSessionsResponse,
     FacilitatorSessionView,
     NeedsPersonResponse,
+    PersonArrivedResponse,
     SegmentView,
     SessionStateResponse,
     SpokenSegment,
@@ -344,6 +345,11 @@ async def facilitator_sessions(
                     else None
                 ),
                 attended_by=session.attended_by,
+                person_arrived_at=(
+                    as_utc(session.person_arrived_at).isoformat()
+                    if session.person_arrived_at is not None
+                    else None
+                ),
             )
             for session in waiting
             if (team := session.project_id) is not None
@@ -353,6 +359,8 @@ async def facilitator_sessions(
                 device_id=device.id,
                 label=device.label,
                 since=as_utc(halted),
+                attended_at=as_utc(device.attended_at) if device.attended_at else None,
+                attended_by=device.attended_by,
             )
             for device in await devices_waiting_on_a_person(db, scope)
             if (halted := device.needs_person_since) is not None
@@ -378,6 +386,31 @@ async def ask_for_a_person(
     return NeedsPersonResponse(
         session_id=session.id,
         needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/person-arrived",
+    response_model=PersonArrivedResponse,
+    dependencies=[room_caller_dep],
+)
+async def a_person_arrived(
+    session_id: str, db: AsyncSession = Depends(get_db)
+) -> PersonArrivedResponse:
+    """Somebody long-pressed the halted room to say they are standing in it (ENG-792).
+
+    The halt says a person is needed; nothing said one had come. A facilitator reading the
+    queue could not tell a room still waiting from one a colleague is already standing in, so
+    two people walk to the same room while a third waits.
+
+    Answered with the moment of the *first* press against this halt, so a team pressing again
+    because nothing visibly happened is told the same thing every time. `person_arrived` is
+    where that and the clearing on a new halt are argued.
+    """
+    session = await room.get_session(db, session_id)
+    arrived = await room.person_arrived(db, session)
+    return PersonArrivedResponse(
+        session_id=session.id, person_arrived_at=as_utc(arrived).isoformat()
     )
 
 
@@ -507,6 +540,7 @@ async def take_turn(
                 book_material=build_book_material(book),
                 opening=opening,
                 settings=get_settings(),
+                session_id=session.id,
                 budget=room.OPENING_BUDGET if opening else room.TURN_BUDGET,
             )
             if (
