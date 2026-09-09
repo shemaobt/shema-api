@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Any, Literal
 
 import anthropic
 from anthropic.types import (
@@ -41,6 +41,11 @@ def room_model(settings: Settings) -> str:
     return _ladder(settings.tripod_voice_model)[0]
 
 
+def classifier_model(settings: Settings) -> str:
+    """The model that moves the beads, off the voice path and a tier below it."""
+    return _ladder(settings.tripod_classifier_model)[0]
+
+
 def _ladder(configured: str) -> list[str]:
     return [rung.strip() for rung in configured.split(",") if rung.strip()]
 
@@ -52,6 +57,7 @@ async def call_agent(
     model: str | None = None,
     max_output_tokens: int = 2000,
     effort: Effort = "high",
+    schema: dict[str, Any] | None = None,
     settings: Settings | None = None,
 ) -> str:
     """Ask one of the room's models, and hand back the text it spoke.
@@ -59,11 +65,16 @@ async def call_agent(
     Thinking is adaptive on every call rather than a level the caller picks: the ladder's
     rungs disagree about the default — omitting it on `claude-opus-4-8` means not thinking at
     all — so a rung that answered well would answer worse purely by being stepped down onto.
+
+    A `schema` is for a reply that is read rather than spoken: it binds the answer to a shape
+    the caller can parse. The spoken calls pass none, because the team hears prose.
     """
     settings = settings or get_settings()
     model = model or room_model(settings)
     thinking: ThinkingConfigAdaptiveParam = {"type": "adaptive"}
     output_config: OutputConfigParam = {"effort": effort}
+    if schema is not None:
+        output_config["format"] = {"type": "json_schema", "schema": schema}
     messages: list[MessageParam] = [{"role": "user", "content": user_content}]
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     response = await client.messages.create(

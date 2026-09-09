@@ -171,3 +171,17 @@ async def test_the_map_that_repeats_every_turn_rides_in_one_cached_block(
         assert "Meaning Map" in first[0]["text"], (
             f"o bloco cacheado do {role} não continha o mapa, que é o volume que paga o cache"
         )
+
+
+async def test_no_bead_is_classified_while_the_team_waits_for_an_answer(
+    recording_client,
+) -> None:
+    messages = recording_client()
+
+    await _a_turn()
+
+    spoken_on = [call["model"] for call in messages.calls]
+    assert "claude-sonnet-5" not in spoken_on, (
+        "o classificador entrou no turno e a equipe esperou por uma chamada que só mexe "
+        "nas contas do colar; no runner das sessões-ouro esse turno mediu 322 s"
+    )
