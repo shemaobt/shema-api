@@ -493,9 +493,7 @@ async def test_the_evaluation_names_its_evaluator_by_email_beside_the_id(
     assert saved["evaluator_id"] != saved["evaluator_email"]
 
 
-async def test_an_unsigned_evaluation_carries_no_name_at_all(
-    db_session, client, rrf_app
-) -> None:
+async def test_an_unsigned_evaluation_carries_no_name_at_all(db_session, client, rrf_app) -> None:
     """O risco número um da mudança, e por isso ele tem teste próprio.
 
     ``evaluator_id`` é anulável e o seed grava avaliação sem autor — um ``join``
@@ -506,9 +504,7 @@ async def test_an_unsigned_evaluation_carries_no_name_at_all(
     created = await submitted_request(client, team)
 
     snapshot = (
-        await db_session.execute(
-            select(RRSnapshot).where(RRSnapshot.request_id == created["id"])
-        )
+        await db_session.execute(select(RRSnapshot).where(RRSnapshot.request_id == created["id"]))
     ).scalar_one()
     db_session.add(RREvaluation(snapshot_id=snapshot.id, comments="do seed, sem autor"))
     await db_session.commit()
@@ -547,8 +543,15 @@ async def test_revise_end_to_end_opens_a_revision(db_session, client, rrf_app) -
 
 
 async def test_the_team_reads_status_and_nothing_else(db_session, client, rrf_app) -> None:
-    """GATE-03 D4 plus the 28/aug answer: four fields, among them the note addressed to
-    the team — and not one field more, which is the assertion that matters."""
+    """GATE-03 D4 plus the 28/aug answer: the note addressed to the team travels, and
+    nothing of the evaluation travels beside it — which is the assertion that matters.
+
+    It used to say *four fields*, and the count was the wrong way to state the rule: a
+    fifth arrived (``request_type``, BE-20) that spends none of it, because it is metadata
+    of the team's **own** document and not a piece of the evaluation. The ceiling the §5.3
+    docstring asks for is still here — the set is exact — and what it keeps out is named
+    rather than counted.
+    """
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
     created = await decidable(db_session, client, team)
@@ -560,7 +563,7 @@ async def test_the_team_reads_status_and_nothing_else(db_session, client, rrf_ap
 
     assert res.status_code == 200, res.text
     body = res.json()
-    assert set(body) == {"stage", "submitted_at", "decision", "team_note"}
+    assert set(body) == {"request_type", "stage", "submitted_at", "decision", "team_note"}
     assert body["stage"] == "revisar"
     assert body["submitted_at"] is not None
     assert body["decision"] == "revise"

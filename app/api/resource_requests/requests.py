@@ -17,6 +17,13 @@ where the reason is written: putting it in the router would be an access rule ou
 layer that owns access rules, and a listing that filtered in two places would eventually
 filter differently in each.
 
+**``ReadsFunds`` is a fact and not a door**, and it is the one thing here that varies by
+caller rather than by route. ``fund_id`` on the envelope is the Painel's chip, so it is
+served to ``manage_funds`` — mesa and Gestor — and is **absent** for the team, whose
+envelope GATE-03 D4 keeps at *status and nothing else*. Every handler that builds an
+envelope takes it and ``of()`` demands it with no default, so a route added later cannot
+serve the column by forgetting to think about it.
+
 The endorsement route guards on ``CanEndorseRequest`` and takes no body: like the submit
 above it, the act is the payload — who and when are stamped from the session, and a body
 that could carry them would be a body that could lie about who vouched.
@@ -33,6 +40,7 @@ from app.api.resource_requests._deps import (
     CanEndorseRequest,
     CanReadRequests,
     Db,
+    ReadsFunds,
 )
 from app.models.resource_request import (
     DiscardedOut,
@@ -48,27 +56,31 @@ from app.services.resource_request._loading import Loaded
 router = APIRouter(tags=["resource requests"])
 
 
-def _out(loaded: Loaded) -> RequestOut:
-    return RequestOut.of(loaded.request, document(*loaded))
+def _out(loaded: Loaded, reads_funds: bool) -> RequestOut:
+    return RequestOut.of(loaded.request, document(*loaded), reads_funds=reads_funds)
 
 
 @router.post("/requests", status_code=status.HTTP_201_CREATED)
-async def create_request(draft: RequestDraftIn, user: CanEditRequests, db: Db) -> RequestOut:
+async def create_request(
+    draft: RequestDraftIn, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+) -> RequestOut:
     request = await service.create_draft(db, draft, author_id=user.id)
     loaded = await service.get_request(db, request.id, user, APP_KEY)
-    return _out(loaded)
+    return _out(loaded, reads_funds)
 
 
 @router.get("/requests")
-async def list_requests(user: CanReadRequests, db: Db) -> list[RequestOut]:
+async def list_requests(user: CanReadRequests, db: Db, reads_funds: ReadsFunds) -> list[RequestOut]:
     """The spine only — the documents are not read by a listing and are not sent to one."""
     rows = await service.list_requests(db, user, APP_KEY)
-    return [RequestOut.of(row, {}) for row in rows]
+    return [RequestOut.of(row, {}, reads_funds=reads_funds) for row in rows]
 
 
 @router.get("/requests/{request_id}")
-async def read_request(request_id: str, user: CanReadRequests, db: Db) -> RequestOut:
-    return _out(await service.get_request(db, request_id, user, APP_KEY))
+async def read_request(
+    request_id: str, user: CanReadRequests, db: Db, reads_funds: ReadsFunds
+) -> RequestOut:
+    return _out(await service.get_request(db, request_id, user, APP_KEY), reads_funds)
 
 
 @router.patch("/requests/{request_id}")
@@ -77,6 +89,7 @@ async def update_request(
     draft: RequestDraftIn,
     user: CanEditRequests,
     db: Db,
+    reads_funds: ReadsFunds,
     saved_at: Annotated[
         datetime | None,
         Query(description="When the client last saved its own copy, for latest-wins."),
@@ -89,30 +102,44 @@ async def update_request(
     """
     saved = await service.update_draft(db, request_id, draft, user, APP_KEY, saved_at)
     discarded = None if saved.discarded is None else DiscardedOut(**saved.discarded._asdict())
-    return RequestSavedOut.of(saved.loaded.request, document(*saved.loaded), discarded=discarded)
+    return RequestSavedOut.of(
+        saved.loaded.request,
+        document(*saved.loaded),
+        reads_funds=reads_funds,
+        discarded=discarded,
+    )
 
 
 @router.post("/requests/{request_id}/submit")
-async def submit_request(request_id: str, user: CanEditRequests, db: Db) -> SubmissionOut:
+async def submit_request(
+    request_id: str, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+) -> SubmissionOut:
     """No body: the draft is already here, and the snapshot freezes what was saved."""
     submitted = await service.submit_request(db, request_id, user, APP_KEY)
     return SubmissionOut.of(
-        submitted.request, submitted.snapshot.document, snapshot_id=submitted.snapshot.id
+        submitted.request,
+        submitted.snapshot.document,
+        reads_funds=reads_funds,
+        snapshot_id=submitted.snapshot.id,
     )
 
 
 @router.post("/requests/{request_id}/endorse")
-async def endorse_request(request_id: str, user: CanEndorseRequest, db: Db) -> RequestOut:
+async def endorse_request(
+    request_id: str, user: CanEndorseRequest, db: Db, reads_funds: ReadsFunds
+) -> RequestOut:
     """No body: the endorsement is an act over what is stored, stamped from the session.
 
     No reload either: the service reads the request to check it and hands back what it
     read, unlike the two routes above, whose row is new (PR #281, review).
     """
-    return _out(await service.endorse_request(db, request_id, user, APP_KEY))
+    return _out(await service.endorse_request(db, request_id, user, APP_KEY), reads_funds)
 
 
 @router.post("/requests/{request_id}/revise", status_code=status.HTTP_201_CREATED)
-async def revise_request(request_id: str, user: CanEditRequests, db: Db) -> RequestOut:
+async def revise_request(
+    request_id: str, user: CanEditRequests, db: Db, reads_funds: ReadsFunds
+) -> RequestOut:
     """Answers 201 and the **new** request: a revision is a row, never an edit."""
     revision = await service.open_revision(db, request_id, user, APP_KEY)
-    return _out(await service.get_request(db, revision.id, user, APP_KEY))
+    return _out(await service.get_request(db, revision.id, user, APP_KEY), reads_funds)
