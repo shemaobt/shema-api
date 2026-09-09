@@ -142,3 +142,41 @@ async def test_the_analysis_ladder_starts_where_the_voice_ladder_does(recording_
     assert messages.calls[0]["model"] == "claude-fable-5-1", (
         "o padrão do papel de análise saiu de baixo da escada da voz sem ela ter dito isso"
     )
+
+
+async def test_the_analysts_ceiling_holds_a_reading_and_the_thinking_that_reaches_it(
+    recording_client,
+) -> None:
+    messages = recording_client(json.dumps({"evidence_sufficient": True, "findings": []}))
+
+    await analyse_telling_back(
+        segments=[_segment(1, "A fome chegou e eles partiram.")],
+        scope="1-5",
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert messages.calls[0]["max_tokens"] >= 4096, (
+        "2000 era o teto do Gemini, onde o pensamento não saía de dentro dele; aqui sai, e "
+        "uma leitura vazia vira UnreadableReply — o 'terminei' da equipe dá erro, não veredito"
+    )
+
+
+async def test_the_correction_checks_ceiling_holds_the_thinking_too(recording_client) -> None:
+    messages = recording_client(json.dumps({"resolved": True, "findings": []}))
+
+    await verify_correction(
+        finding=Finding(kind=FindingKind.MISSING, note="a fome nao foi contada"),
+        earlier=_segment(1, "Eles partiram."),
+        corrected=_segment(2, "A fome chegou e eles partiram."),
+        scope="1-5",
+        pericope_num=P,
+        correction_prompt=CORRECTION,
+        settings=_settings(),
+    )
+
+    assert messages.calls[0]["max_tokens"] >= 4096, (
+        "1500 deixava a checagem voltar vazia, e uma correção que ninguém conseguiu ler "
+        "conta como não resolvida — a equipe regrava o trecho que já tinha consertado"
+    )

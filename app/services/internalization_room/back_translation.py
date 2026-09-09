@@ -516,7 +516,7 @@ async def analyse_telling_back(
             system_prompt=system,
             user_content="Compare o contado de volta com o mapa.",
             ladder=analysis_ladder(cfg),
-            max_output_tokens=2000,
+            max_output_tokens=4096,
             settings=cfg,
         )
     except Exception as failure:
@@ -842,7 +842,7 @@ async def verify_correction(
             system_prompt=system,
             user_content="Verifique a correção contra o achado.",
             ladder=analysis_ladder(cfg),
-            max_output_tokens=1500,
+            max_output_tokens=4096,
             settings=cfg,
         )
     except Exception:
