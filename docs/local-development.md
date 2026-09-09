@@ -8,6 +8,15 @@ Locally the only secret needed is the JWT signing key; the database is the local
 container, and Compose never points at Neon. Production additionally needs its Neon
 connection string.
 
+Outgoing mail reads two more on Cloud Run — `tripod_backend_email_provider` (`log`, `resend`
+or `microsoft_graph`) and `tripod_backend_resend_api_key`. Compose reads both too, but treats
+them as optional: when unreadable, the provider falls back to `log` and no e-mail leaves a
+local machine. The sender is **not** a secret: `EMAIL_FROM_ADDRESS` is unset everywhere and
+defaults to `noreply@shemaywam.com`, the address the code has always sent from. It must stay a
+verified sender on the Resend domain — pointing it at another address is an administrative
+change on the provider first, and a rejected sender surfaces only as a log line, never as an
+error to the caller.
+
 > Bringing up the composed API — the integration branch, on its own port, with a database of
 > its own — is a different procedure, and it is in [RUNNING-LOCALLY.md](../RUNNING-LOCALLY.md).
 
@@ -65,8 +74,35 @@ and app: a second run updates the existing grant rather than adding a second one
 also a self-service path through the access-request route, reviewed by an admin, whose
 automatic approval is off by default.
 
-For the resource request form the role keys are `equipe`, `mesa` and `gestor`, mirroring the
-frontend's own capability map.
+For the resource request form the role keys are `equipe`, `mesa`, `gestor` and `lider`,
+mirroring the frontend's own capability map. GATE-02 (OBT-448, 27/aug/2026) answered that
+**anyone with an account** reaches the form — `apps.auto_approve = true` — while Parte C and
+the Painel stay closed by capability. The first mesa and Gestor accounts are still granted
+with the command above; turning that into a process is BE-17 (OBT-477), which blocks nothing.
+
+`scripts/seed_resource_requests.py` fills the module's own tables with the prototype's ten
+board cards and the one fund they draw from. It is idempotent and safe to re-run, which
+matters because `rr_fund_movements` is append-only and a doubled run could not be corrected
+with an UPDATE.
+
+**It takes the e-mail of an existing account**, and refuses to run without one:
+
+```sh
+uv run python -m scripts.seed_resource_requests <email>   # or RR_SEED_AUTHOR=<email>
+```
+
+Every request and every movement it writes names that person as author, because `created_by`
+stopped being nullable when the gate answered accounts. The account is **looked up, never
+created**: inventing one would put a fabricated human in `users`, which is exactly what the
+invented `solicitante` names in the fixture exist to avoid.
+
+GATE-01 (OBT-447, 26/aug/2026) confirmed **Shema Línguas** and left the other four names of
+PRD v1.1 §3 undecided, so one fund is written and `provisional = false`. Its allocation is
+**sample money** — asked for the real figures, the client answered that none exist yet and
+asked to leave them open, since the Gestores fill each fund themselves. A real deployment
+therefore seeds no allocation at all: its ledger starts at the first Gestor movement. Three of
+the ten cards carry no fund, which is not a gap — the mesa assigns one at triage, so a request
+in `triagem` legitimately has none.
 
 ## Data in the local database
 

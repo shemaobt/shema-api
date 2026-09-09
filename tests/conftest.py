@@ -41,7 +41,18 @@ async def test_engine():
 @pytest.fixture()
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     async with test_engine.begin() as conn:
+        # Foreign keys are off for the drop and on for everything else. `rr_requests` and
+        # `rr_snapshots` reference each other (a request names the snapshot it revises, a
+        # snapshot names its request), so there is no order in which both tables can be
+        # dropped with the constraint enforced once a row actually uses the link. SQLite
+        # cannot ALTER a constraint into place, so `use_alter=True` — which is what makes
+        # this work on PostgreSQL — writes the FK inline here instead.
+        #
+        # Latent until BE-04 (OBT-453), which is the first issue to write `revision_of_id`.
+        # Enforcing referential integrity while demolishing the schema protects nothing.
+        await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
         await conn.run_sync(Base.metadata.drop_all)
+        await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
         await conn.run_sync(Base.metadata.create_all)
 
     session_factory = async_sessionmaker(

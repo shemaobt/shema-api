@@ -37,4 +37,5 @@ gcloud run services describe tripod-backend-staging --region us-central1 --forma
 
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. Use its terms in code, tests and commits.
 - [`docs/adr/`](docs/adr/) — one hard-to-reverse decision each. Conventions and runbooks: [local development](docs/local-development.md), [database](docs/database.md), [API conventions](docs/api-conventions.md), [code style](docs/code-style.md), [CI](docs/ci.md), [buckets](docs/buckets.md), and the pinned [Sound Necklace snapshot](docs/sound_necklace_interview_package.md).
+- [`docs/resource_requests.md`](docs/resource_requests.md) — the Resource Circle module: layout, aggregate ownership, the two client-gated seams in both variants, and the open questions with the gate that owns each.
 - [`RUNNING-LOCALLY.md`](RUNNING-LOCALLY.md) — the composed API on its own port. [`http/`](http/) — request examples.

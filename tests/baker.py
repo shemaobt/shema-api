@@ -132,8 +132,9 @@ async def make_app(
     app_key: str = "test-app",
     name: str = "Test App",
     is_active: bool = True,
+    auto_approve: bool = False,
 ) -> App:
-    app = App(app_key=app_key, name=name, is_active=is_active)
+    app = App(app_key=app_key, name=name, is_active=is_active, auto_approve=auto_approve)
     db.add(app)
     await db.commit()
     await db.refresh(app)

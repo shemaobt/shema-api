@@ -29,7 +29,7 @@ production dump and the warnings that go with it, the Hebrew text data — is in
 - [`AGENTS.md`](AGENTS.md) — how to run and check everything, in one page.
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. It is what the words in this repository mean.
 - [`docs/adr/`](docs/adr/) — the decisions, one to a file, each with what was rejected.
-- [`docs/`](docs/) — conventions and runbooks.
+- [`docs/`](docs/) — conventions and runbooks, and [`docs/resource_requests.md`](docs/resource_requests.md) for the Resource Circle module.
 - [`RUNNING-LOCALLY.md`](RUNNING-LOCALLY.md) — the composed API on its own port.
 - [`http/`](http/) — request examples for health, auth and roles.
 
