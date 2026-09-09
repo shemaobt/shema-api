@@ -134,6 +134,7 @@ CanAssignFund = Annotated[User, require_capability("assign_fund")]
 CanAllocateFunds = Annotated[User, require_capability("allocate_funds")]
 CanEndorseRequest = Annotated[User, require_capability("endorse_request")]
 CanAdministerFunds = Annotated[User, require_capability("administer_funds")]
+CanGrantAccess = Annotated[User, require_capability("grant_access")]
 CanReadRequests = Annotated[User, require_any_capability("edit_requests", "endorse_request")]
 
 ReadsFunds = Annotated[bool, reads_capability("manage_funds")]

@@ -143,16 +143,14 @@ async def test_a_team_token_reaches_no_evaluation_and_no_fund(db_session, client
 
     assert (await client.get(CAP_PROBES["edit_requests"], headers=headers)).status_code == 200
 
-    for capability in (
-        "view_evaluation",
-        "edit_evaluation",
-        "manage_funds",
-        "move_board",
-        "assign_fund",
-        "allocate_funds",
-        "endorse_request",
-        "administer_funds",
-    ):
+    # Derivada da tabela, e não escrita à mão: a lista tinha oito nomes quando havia
+    # nove capacidades, então a décima (``grant_access``, 8/set/2026) entrou sem ninguém
+    # afirmar que a equipe não a alcança — que é exatamente a asserção deste teste. Agora
+    # a décima primeira entra sozinha, e um dia em que ``equipe`` ganhe uma segunda
+    # capacidade este laço a exclui sem mentir sobre as outras.
+    for capability in CAPABILITIES:
+        if capability in ROLE_CAPABILITIES["equipe"]:
+            continue
         res = await client.get(CAP_PROBES[capability], headers=headers)
         assert res.status_code == 403, f"equipe reached {capability}"
         assert capability in res.json()["detail"]

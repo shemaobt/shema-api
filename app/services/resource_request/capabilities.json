@@ -1,5 +1,5 @@
 {
-  "emitted_from": "065871a7092f54fec8040a1ad2c78e5d61f82bb6",
+  "emitted_from": "ff2a289fe793dfccf66255ed3895536fe1f1995d",
   "capabilities": [
     "edit_requests",
     "view_evaluation",
@@ -9,14 +9,16 @@
     "assign_fund",
     "allocate_funds",
     "endorse_request",
-    "administer_funds"
+    "administer_funds",
+    "grant_access"
   ],
   "screenCapabilities": [
     "edit_requests",
     "view_evaluation",
     "edit_evaluation",
     "manage_funds",
-    "move_board"
+    "move_board",
+    "grant_access"
   ],
   "controlCapabilities": [
     "assign_fund",
@@ -62,7 +64,8 @@
         "manage_funds",
         "move_board",
         "allocate_funds",
-        "administer_funds"
+        "administer_funds",
+        "grant_access"
       ]
     },
     {

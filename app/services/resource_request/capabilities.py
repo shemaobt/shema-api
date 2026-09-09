@@ -108,7 +108,7 @@ that OR, and the Líder's reach itself (submitted requests, no drafts) is decide
 ``_scope.py``, in writing.
 """
 
-#: The nine ids of the frontend's ``CAPABILITIES``, in its order.
+#: The ten ids of the frontend's ``CAPABILITIES``, in its order.
 CAPABILITIES: tuple[str, ...] = (
     "edit_requests",
     "view_evaluation",
@@ -119,6 +119,7 @@ CAPABILITIES: tuple[str, ...] = (
     "allocate_funds",
     "endorse_request",
     "administer_funds",
+    "grant_access",
 )
 
 #: The four ``role_key`` values ``scripts/seed_apps_roles.py`` writes for this app.
@@ -145,6 +146,7 @@ ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
             "move_board",
             "allocate_funds",
             "administer_funds",
+            "grant_access",
         }
     ),
     "lider": frozenset({"endorse_request"}),
