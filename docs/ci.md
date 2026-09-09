@@ -26,6 +26,24 @@ provider and the job-queue app id — because each has to differ from production
 in particular, since a second registration under production's id would overwrite it. Anything
 secret comes from Secret Manager, never from a workflow file.
 
+Staging answers at <https://tripod-backend-staging-f7ssqjozfq-uc.a.run.app>. Each client names
+that address in its own variable, not a shared one: the Internalization Room reads
+`BACKEND_URL`, and the Facilitator Desk reads `SHEMA_API_URL` for the dev server's proxy, or
+`VITE_API_BASE_URL` with the `/api` prefix to reach the API directly. Outside 08:00–00:00
+America/São_Paulo the service keeps no warm instance and wakes on the first request, which
+costs a cold start of a few seconds. Running
+`gcloud scheduler jobs run staging-on-8am --location us-central1`
+warms it, but that instance then stands until the next midnight job — nothing switches it
+off earlier — so at night the cold start is usually the better trade. If you do warm it, run
+`gcloud scheduler jobs run staging-off-midnight --location us-central1`
+when you are done.
+
+Renewing staging's data is a Neon operation, not a deploy: open the `staging` branch and use
+**Reset from parent**. That brings production's rows back and drops every migration that
+reached `dev` after the branch point, so reapply them with `gh workflow run
+deploy-staging.yml --ref dev`. It is done on request only — a reset erases whatever a team
+was testing.
+
 The migrations job is expected to go red on an integration branch between certain steps, and
 that is not a reason to switch it off: every merge that brings its own migration leaves the
 graph with more than one head until a merge revision collapses them. Red there means a merge
