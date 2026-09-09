@@ -46,48 +46,12 @@ class AllowlistEntry:
 #: stt_recovery/no_report/render_active_probe_contract deleted), ENG-793's ceiling ticket
 #: (word ceilings and "dizendo menos" deleted), and ENG-793's split of run_turn.py into
 #: nine modules — 198 sites down to 65: the memory window now lives in validated_turn.py,
-#: `gemini_*`/`ThinkingLevel.LOW` in llm.py stay for ENG-747, `bridge_mode` in
-#: calibration.py/sessions.py/the model files stays for ENG-800. Sorted by file, then
-#: rule, then the line the text came from, purely for a readable diff.
+#: `gemini_*`/`ThinkingLevel.LOW` in llm.py stay for ENG-747. The mode rule has nothing
+#: left to allow: ENG-800 deleted calibration.py, the column, the wire fields and the two
+#: prompt sections, so a `bridge_mode` anywhere the guard reads is now a violation with no
+#: row to hide behind. Sorted by file, then rule, then the line the text came from, purely
+#: for a readable diff.
 ALLOWLIST: list[AllowlistEntry] = [
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py", Rule.MODE, 'FULL_RETELL = "full_retell"'
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py",
-        Rule.MODE,
-        'GUIDED_MICROCHECKS = "guided_microchecks"',
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py",
-        Rule.MODE,
-        "def is_selected_bridge_mode(value: object) -> bool:",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py",
-        Rule.MODE,
-        "def resolve_bridge_mode_for_turn(",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py",
-        Rule.MODE,
-        "def bridge_mode_status_line(mode: BridgeMode) -> str:",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py",
-        Rule.MODE,
-        "def bridge_mode_validator_context(mode: BridgeMode) -> str:",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py",
-        Rule.MODE,
-        'return f"[APP-OWNED SESSION STATE — not team speech]\\n{bridge_mode_status_line(mode)}"',
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/calibration.py",
-        Rule.PROBE,
-        'return f"BRIDGE MODE: {mode.value}"',
-    ),
     AllowlistEntry(
         "app/services/internalization_room/comprehension/probe.py",
         Rule.PROBE,
@@ -97,11 +61,6 @@ ALLOWLIST: list[AllowlistEntry] = [
         "app/services/internalization_room/comprehension/probe.py",
         Rule.PROBE,
         "purpose: ProbePurpose",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/comprehension/state.py",
-        Rule.MODE,
-        "with the session. ``bridge_mode`` itself lives in its own column so intake validation and",
     ),
     AllowlistEntry("app/services/internalization_room/live_turn.py", Rule.PROBE, "ProbePurpose,"),
     AllowlistEntry(

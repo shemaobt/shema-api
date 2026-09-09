@@ -1,7 +1,16 @@
-"""The one-shot oral calibration and the explicit-only mode switch.
+"""The demolition guard for the method question and the mode that followed it.
 
-The parser recognizes only clear task-shaped preferences; anything unclear falls to the
-modest adaptive track at the one-shot boundary and the Voice never re-offers the menu.
+A team opened a session and the first thing it heard was the app: the Guide's opening with
+a fixed method-choice question welded onto the end, and then a whole turn answered by a
+regex parser instead of by the Guide. What the parser decided was written onto the session
+row, said back to the tablet, posted again on the next `createSession`, and read into the
+Guide's own prompt every turn after that.
+
+These tests describe absence. The parser they replace exercised nine pattern families and
+three languages of a menu nobody is offered any more; what stands in its place has to hold
+the four places the mechanism could come back — the opening the team hears, the turn after
+it, the wire the tablet talks over, and the label the Validator reads the evidence by. The
+fifth is the doctrine guard, which is the room's own oracle for "nothing stores a mode".
 """
 
 import json
@@ -16,17 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.calibration import (
-    BridgeMode,
-    bridge_calibration_acknowledgement,
-    bridge_calibration_question,
-    is_selected_bridge_mode,
-    resolve_bridge_mode_for_turn,
-    resolve_initial_calibration,
-    resolve_one_shot_calibration,
-)
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.platform.tts import SynthesizedSpeech
 
@@ -151,152 +150,6 @@ async def test_the_opening_is_the_guides_own_words_from_first_syllable_to_last(
     )
 
 
-def test_a_clear_full_retell_preference_is_explicit() -> None:
-    resolved = resolve_initial_calibration("Conseguimos contar a história em português.")
-    assert resolved.mode is BridgeMode.FULL_RETELL
-    assert resolved.explicit
-
-
-def test_a_short_questions_preference_selects_guided() -> None:
-    resolved = resolve_initial_calibration("Preferimos perguntas curtas, uma de cada vez.")
-    assert resolved.mode is BridgeMode.GUIDED_MICROCHECKS
-    assert resolved.explicit
-
-
-def test_naming_the_second_option_selects_guided() -> None:
-    assert resolve_initial_calibration("a segunda").mode is BridgeMode.GUIDED_MICROCHECKS
-
-
-def test_uncertainty_followed_by_a_trial_selects_adaptive() -> None:
-    resolved = resolve_initial_calibration("Não sabemos, vamos tentar.")
-    assert resolved.mode is BridgeMode.ADAPTIVE
-
-
-def test_both_preferences_in_one_answer_are_adaptive() -> None:
-    resolved = resolve_initial_calibration(
-        "Podemos contar a história inteira, mas também queremos perguntas curtas."
-    )
-    assert resolved.mode is BridgeMode.ADAPTIVE
-
-
-def test_a_negated_capability_is_not_the_positive_choice() -> None:
-    resolved = resolve_initial_calibration("Não conseguimos contar tudo em português.")
-    assert resolved.mode is BridgeMode.CALIBRATION_PENDING
-
-
-def test_negating_one_option_still_selects_the_other() -> None:
-    resolved = resolve_initial_calibration(
-        "Não conseguimos contar a história toda; preferimos perguntas curtas."
-    )
-    assert resolved.mode is BridgeMode.GUIDED_MICROCHECKS
-
-
-def test_a_question_back_resolves_nothing() -> None:
-    resolved = resolve_initial_calibration("O que acontece se a gente errar?")
-    assert resolved.mode is BridgeMode.CALIBRATION_PENDING
-    assert not resolved.explicit
-
-
-def test_the_one_shot_boundary_converts_silence_to_adaptive() -> None:
-    resolved = resolve_one_shot_calibration("")
-    assert resolved.mode is BridgeMode.ADAPTIVE
-    assert not resolved.explicit
-
-
-def test_the_one_shot_boundary_converts_an_unclear_answer_to_adaptive() -> None:
-    assert resolve_one_shot_calibration("hmm, sei lá").mode is BridgeMode.ADAPTIVE
-
-
-def test_the_one_shot_boundary_keeps_an_explicit_answer() -> None:
-    resolved = resolve_one_shot_calibration("queremos contar tudo")
-    assert resolved.mode is BridgeMode.FULL_RETELL
-    assert resolved.explicit
-
-
-def test_story_speech_never_switches_an_established_mode() -> None:
-    resolved = resolve_bridge_mode_for_turn(
-        BridgeMode.GUIDED_MICROCHECKS, "Rute voltou para contar tudo a Noemi"
-    )
-    assert resolved.mode is BridgeMode.GUIDED_MICROCHECKS
-    assert not resolved.explicit
-
-
-def test_a_bare_sim_never_switches_the_mode() -> None:
-    resolved = resolve_bridge_mode_for_turn(BridgeMode.FULL_RETELL, "sim")
-    assert resolved.mode is BridgeMode.FULL_RETELL
-
-
-def test_an_explicit_request_switches_to_guided() -> None:
-    resolved = resolve_bridge_mode_for_turn(
-        BridgeMode.FULL_RETELL, "preferimos perguntas curtas agora"
-    )
-    assert resolved.mode is BridgeMode.GUIDED_MICROCHECKS
-    assert resolved.explicit
-
-
-def test_an_explicit_request_switches_back_to_full_retell() -> None:
-    resolved = resolve_bridge_mode_for_turn(
-        BridgeMode.GUIDED_MICROCHECKS, "queremos contar a história inteira"
-    )
-    assert resolved.mode is BridgeMode.FULL_RETELL
-
-
-def test_a_question_about_switching_does_not_switch() -> None:
-    resolved = resolve_bridge_mode_for_turn(
-        BridgeMode.FULL_RETELL, "Devemos mudar para perguntas curtas?"
-    )
-    assert resolved.mode is BridgeMode.FULL_RETELL
-
-
-def test_switching_never_infers_adaptive() -> None:
-    resolved = resolve_bridge_mode_for_turn(BridgeMode.FULL_RETELL, "tanto faz, sei lá")
-    assert resolved.mode is BridgeMode.FULL_RETELL
-
-
-def test_only_selected_modes_pass_the_intake_boundary() -> None:
-    assert is_selected_bridge_mode("full_retell")
-    assert is_selected_bridge_mode("guided_microchecks")
-    assert is_selected_bridge_mode("adaptive")
-    assert not is_selected_bridge_mode("calibration_pending")
-    assert not is_selected_bridge_mode("fluente")
-    assert not is_selected_bridge_mode(None)
-
-
-def test_the_menu_offers_methods_not_ability_labels() -> None:
-    lowered = bridge_calibration_question("pt").lower()
-    for label in ("nível", "básico", "avançado", "fraco", "fluente"):
-        assert label not in lowered
-
-
-def test_every_acknowledgement_is_fixed_and_moves_to_the_panorama() -> None:
-    for mode in (BridgeMode.FULL_RETELL, BridgeMode.GUIDED_MICROCHECKS, BridgeMode.ADAPTIVE):
-        line = bridge_calibration_acknowledgement(mode, "pt")
-        assert line.startswith("Certo.")
-        assert "panorama do livro" in line
-
-
-def test_the_method_choice_is_asked_and_answered_in_every_language_the_room_claims() -> None:
-    asked = {spoken: bridge_calibration_question(spoken) for spoken in ROOM_LANGUAGES}
-
-    assert len(set(asked.values())) == len(ROOM_LANGUAGES), (
-        "um idioma reivindicado caiu na pergunta de outro: a equipe escolhe o método "
-        f"ouvindo uma frase que não é da língua da sessão — {asked}"
-    )
-    for spoken in ROOM_LANGUAGES:
-        said = {
-            bridge_calibration_acknowledgement(mode, spoken)
-            for mode in (
-                BridgeMode.FULL_RETELL,
-                BridgeMode.GUIDED_MICROCHECKS,
-                BridgeMode.ADAPTIVE,
-            )
-        }
-        assert len(said) == 3, (
-            f"as três respostas caíram para a mesma frase em {spoken!r}: a equipe escolhe "
-            "um método e ouve de volta a confirmação de outro"
-        )
-
-
 async def test_the_teams_first_utterance_is_a_turn_like_any_other(
     spoken: tuple[httpx.AsyncClient, list[str], list[str]],
 ) -> None:
@@ -394,3 +247,18 @@ async def test_the_validator_still_reads_the_evidence_as_the_apps_and_not_as_the
     assert "BRIDGE MODE" not in handed, (
         f"o modo continuava viajando dentro do estado do app entregue ao Validador: {handed[-400:]}"
     )
+
+
+def test_no_file_the_doctrine_guard_reads_names_a_bridge_language_mode() -> None:
+    """The room's own oracle for "nothing chooses, stores or inherits a mode".
+
+    Marcia's guard greps `guided_microchecks|full_retell` in TypeScript and our backend is
+    Python, so this rule of hers had nothing scanning it here until the Python guard was
+    written. Its allowlist named every site the removal ladder had not reached yet; this
+    ticket is the one that empties the mode half of it.
+    """
+    from scripts.check_doctrine import Rule, scan
+
+    named = [f"{hit.file}:{hit.line} {hit.text}" for hit in scan() if hit.rule is Rule.MODE]
+
+    assert named == [], f"a bridge-language mode is still named in the voice path: {named}"
