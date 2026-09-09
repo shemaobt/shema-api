@@ -86,6 +86,15 @@ class TeamDeviceResponse(BaseModel):
     #: (ENG-624), or null. Additive: the Desk's reader takes the fields it knows off the row
     #: and ignores the rest, so this is served before anything draws it.
     needs_person_since: datetime | None = None
+    #: When a facilitator said they went to this tablet, and who (ENG-792). Null on every
+    #: tablet nobody marked, which is most of them. Additive, like the field above it.
+    #:
+    #: A marked tablet leaves the person queue, so this panel is where the mark stays
+    #: readable — it is the screen a facilitator opens about a team they already suspect,
+    #: and "somebody has been to that one" is the thing they cannot otherwise learn.
+    attended_at: datetime | None = None
+    #: A user id. The Desk resolves names itself, the way it does for a session's visit.
+    attended_by: str | None = None
 
     @classmethod
     def of(cls, device: Device) -> "TeamDeviceResponse":
@@ -104,6 +113,8 @@ class TeamDeviceResponse(BaseModel):
             needs_person_since=(
                 as_utc(device.needs_person_since) if device.needs_person_since else None
             ),
+            attended_at=as_utc(device.attended_at) if device.attended_at else None,
+            attended_by=device.attended_by,
         )
 
 
@@ -180,3 +191,29 @@ class DeviceNeedsPersonResponse(BaseModel):
 
     device_id: str
     needs_person_since: datetime
+
+
+class DeviceAttendedResponse(BaseModel):
+    """What a facilitator gets back after saying they went to a tablet, or that they did not.
+
+    The halt travels with the stamps because the mark's whole point is to move it: an answer
+    carrying only the visit would leave the Desk to guess whether the tablet is still asking,
+    and guessing wrong is a facilitator walking away from a stopped room.
+    """
+
+    device_id: str
+    needs_person_since: datetime | None = None
+    attended_at: datetime | None = None
+    attended_by: str | None = None
+
+    @classmethod
+    def of(cls, device: Device) -> "DeviceAttendedResponse":
+        """The answer, with every moment read through ``as_utc`` for the reason above."""
+        return cls(
+            device_id=device.id,
+            needs_person_since=(
+                as_utc(device.needs_person_since) if device.needs_person_since else None
+            ),
+            attended_at=as_utc(device.attended_at) if device.attended_at else None,
+            attended_by=device.attended_by,
+        )

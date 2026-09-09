@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
+from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
@@ -21,6 +22,7 @@ from app.services.internalization_room.segments import (
     segment_for_session,
     slice_moved,
 )
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 
 router = APIRouter()
@@ -104,6 +106,13 @@ async def replace(
     own slice and the new audio. That is the same correction as the first case, which is why
     there is no third verb.
 
+    A re-recorded mother tongue also rebuilds the recording of the passage around it, and the
+    answer names what it rebuilt. Without that the correction was real and unhearable: the
+    corrected minute lived in a file of its own and the rest of the passage in another, so
+    playing the passage back meant stitching, and the product asked three times for the other
+    thing — one recording, updated. `recompose_passage` is where it happens and why a failure
+    there answers 200 with nothing named rather than losing the team their correction.
+
     The bytes are stored before anything is asked of them, as on the telling-back route: a
     transcriber that times out must not take the recording with it. And when nothing could be
     made out, **the stretch is not replaced at all** — swapping a good explanation for an empty
@@ -121,7 +130,7 @@ async def replace(
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
     if file is None:
-        await room.capture_segment(
+        version = await room.capture_segment(
             db,
             session,
             take_id=rehearsal.id,
@@ -130,7 +139,19 @@ async def replace(
             pass_number=segment.pass_number,
             replaces=segment,
         )
-        return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+        rebuilt = await room.recompose_passage(
+            db,
+            session,
+            device_id=device_id,
+            replaced=segment,
+            corrected=rehearsal,
+            version=version,
+        )
+        return SegmentsResponse(
+            session_id=session.id,
+            segments=await _units(db, session.id),
+            composed_take_id=rebuilt.id if rebuilt is not None else None,
+        )
 
     if slice_moved(segment, rehearsal.id, starts_ms, ends_ms):
         raise ValidationError(
@@ -141,6 +162,9 @@ async def replace(
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
+
+    state = room.back_translation_of(session)
+    told_again = state.retells + 1
 
     retro = await store_take(
         db,
@@ -157,9 +181,19 @@ async def replace(
     )
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
+
+    state.retells = told_again
+    await room.save_back_translation(db, session, state)
+    spent = told_again >= RETELLS_BEFORE_A_WARNING
+    if spent:
+        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
+
     if not text.strip():
         return SegmentsResponse(
-            session_id=session.id, segments=await _units(db, session.id), captured=False
+            session_id=session.id,
+            segments=await _units(db, session.id),
+            captured=False,
+            needs_person=spent,
         )
 
     await room.capture_segment(
@@ -173,4 +207,6 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
-    return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
+    return SegmentsResponse(
+        session_id=session.id, segments=await _units(db, session.id), needs_person=spent
+    )

@@ -4,8 +4,10 @@
 `c68bf5e`.
 **Audience:** whoever builds the system that hosts the interview next. It is written so
 you do **not** have to read the code to decide whether this package is what you want.
-**Inputs:** [`CLAUDE.md`](../CLAUDE.md) — where this document and it disagree about how
-this repository is written, `CLAUDE.md` wins and this one has rotted.
+**Inputs:** [`AGENTS.md`](../AGENTS.md) — where this document and it disagree about how
+this repository is written, `AGENTS.md` wins and this one has rotted.
+**Reading it:** this is a snapshot, pinned to the commit named above. It is not kept in
+step with the tree, and every path in it is true of that commit and of nothing else.
 
 ---
 
@@ -103,8 +105,8 @@ artifact by this API. The draft is a *suggestion about* the recording; the recor
 evidence. That is why the text lives in its own table rather than on the answer row — a
 `force` throws the suggestion away and never touches the evidence.
 
-This is also the constraint that keeps the whole path inside [`CLAUDE.md`
-§9](../CLAUDE.md): every model step on the answer path runs **before** a facilitator reads
+This is also the constraint that keeps the whole path inside
+[ADR 0010](adr/0010-three-model-steps-on-the-answer-path.md): every model step on the answer path runs **before** a facilitator reads
 and confirms the sentence on screen, so nothing a model wrote reaches an artifact
 unreviewed. Moving the confirmation later — or making the artifact read the draft directly
 — breaks exactly that property. It is not a refactor to make casually.
@@ -437,4 +439,4 @@ expensive to get right.
 | What the confirm guarantees | `tests/test_sound_necklace/test_retranslate.py` |
 | Byte-identity of the artifacts | `tests/test_sound_necklace/test_artifacts.py` |
 | The job's concurrency and retries | `tests/test_sn_transcription.py` |
-| Why the model steps on this path are limited to three | [`CLAUDE.md` §9](../CLAUDE.md) |
+| Why the model steps on this path are limited to three | [ADR 0010](adr/0010-three-model-steps-on-the-answer-path.md) |

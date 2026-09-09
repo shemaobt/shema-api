@@ -159,6 +159,116 @@ async def test_the_listing_carries_the_spine_and_not_the_documents(
     assert res.json()[0]["document"] == {}
 
 
+async def test_the_listing_names_each_requests_type_without_its_document(
+    db_session, client, rrf_app
+) -> None:
+    """A listagem devolvia a espinha sem dizer de que tipo é cada linha.
+
+    O custo aparecia na tela de acompanhamento: sem o tipo, cada solicitação é
+    identificada por **data** — aberta em, enviada em — e nada mais, porque
+    buscar o documento de cada linha só para ter um título custaria uma ida e
+    volta por solicitação numa conexão de campo. O tipo é divulgação de nada: já
+    viaja dentro de ``document``, e é o próprio pedido da equipe.
+
+    A asserção de que o documento continua vazio fica, e é metade do teste: o
+    campo entra na **espinha**, não é o documento voltando pela porta dos fundos.
+    """
+    headers = await as_team(db_session, rrf_app)
+    for request_type in v.REQUEST_TYPES:
+        over: dict[str, object] = {}
+        if request_type in v.TYPES_WITH_TEAM:
+            over["team"] = [{"name": "Ana", "role": "coordenação"}]
+        await create(client, headers, request_type=request_type, **over)
+
+    res = await client.get(REQUESTS, headers=headers)
+
+    assert res.status_code == 200
+    assert sorted(row["request_type"] for row in res.json()) == sorted(v.REQUEST_TYPES)
+    assert all(row["document"] == {} for row in res.json())
+
+
+async def test_the_status_says_which_type_it_is_about(db_session, client, rrf_app) -> None:
+    """A segunda porta de que a Parte C precisa, e a que responde quando ainda **não
+    há avaliação**.
+
+    A rota da avaliação responde 404 até a mesa começar, e é exatamente aí que a tela
+    precisa saber qual rubrico desenhar. O `extra="forbid"` e a contagem de campos
+    continuam sendo o teto que o §5.3 pede — o que a docstring proíbe é entregar à
+    equipe um pedaço da **avaliação**, e o tipo é metadado do documento da própria
+    equipe.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(
+        client, headers, request_type="treinamento", team=[{"name": "Ana", "role": "coord"}]
+    )
+
+    res = await client.get(f"{REQUESTS}/{created['id']}/status", headers=headers)
+
+    assert res.status_code == 200, res.text
+    assert res.json()["request_type"] == "treinamento"
+    assert set(res.json()) == {
+        "request_type",
+        "stage",
+        "submitted_at",
+        "decision",
+        "team_note",
+    }
+
+
+async def test_a_request_in_triagem_says_no_fund_and_not_a_fund(
+    db_session, client, rrf_app
+) -> None:
+    """Nada no formulário diz de que fundo uma solicitação pede — a mesa atribui na
+    triagem (GATE-01 D4) —, então a linha nasce sem fundo e o envelope diz isso com
+    ``null``, que é diferente de não dizer nada.
+
+    Lido pela **mesa**, porque é para quem o campo viaja: ``fund_id`` é servido a
+    ``manage_funds`` e some do envelope da equipe, cujo teto a GATE-03 D4 já fixava
+    (``test_a_equipe_nao_ve_o_fundo_mudar_no_seu_pedido``). As duas metades do par
+    ausente/``null`` estão em ``test_fund_assignment.py``, ao lado da regra que as decide.
+    """
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await create(client, team)
+
+    res = await client.get(f"{REQUESTS}/{created['id']}", headers=mesa)
+    assert res.json()["fund_id"] is None
+
+
+async def test_the_envelope_grew_by_two_spine_fields_and_by_nothing_of_the_evaluation(
+    db_session, client, rrf_app
+) -> None:
+    """A guarda que impede esta porta de virar outra.
+
+    O envelope da solicitação é o que a **equipe** lê, e a avaliação é agregado
+    separado com leitura própria (§4.1). Um campo da espinha entrou onde ela lê; nenhum
+    campo da avaliação pode entrar junto, hoje ou depois — e um teste que nomeasse
+    só o novo não pegaria um terceiro chegando amanhã.
+
+    ``fund_id`` não está neste conjunto e é assim que tem de ser: ele é servido a
+    ``manage_funds``, e o envelope da equipe fica onde a GATE-03 D4 o deixou. Quem conta
+    a chave para quem a lê é ``test_sem_fundo_a_mesa_le_nulo_e_a_equipe_nao_le_chave_nenhuma``.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers)
+
+    assert set(created) == {
+        "id",
+        "request_type",
+        "stage",
+        "created_by",
+        "revision_of_id",
+        "submitted_at",
+        "endorsed_by",
+        "endorsed_at",
+        "created_at",
+        "updated_at",
+        "document",
+    }
+    for chave in ("scores", "total", "decision", "comments", "team_note", "evaluator_id"):
+        assert chave not in created
+
+
 # ——— who reaches which rows ——————————————————————————————————————————————————————
 
 
@@ -354,10 +464,15 @@ async def test_the_stored_snapshot_is_the_document_the_team_saw(
 async def test_an_incomplete_draft_cannot_be_submitted(db_session, client, rrf_app) -> None:
     """The submission-time rules run against what is stored, not against a fresh payload.
 
-    **400 and not 422**, because there is no body to locate an error in — the refusal is
-    about a stored draft, and this API renders ``ValidationError`` as 400. The message
-    carries the field names, which is what a client needs to show *what is missing* rather
-    than merely *no*.
+    **400 and not 422**, and the reason changed shape without changing the answer. It used
+    to be *there is no body to locate an error in*; there is now a located list beside the
+    sentence (``IncompleteSubmission``, 9/set/2026), so that half is no longer true. What
+    keeps the status is the deployed client: it maps 400 to *incomplete* and every other
+    status to *the request never reached the server*, so promoting this to 422 would make
+    a refusal that arrived read on screen as a silence that never happened.
+
+    The message still carries the field names — a client that only reads ``detail`` is not
+    broken by the addition — and ``errors`` is what a client should read instead.
     """
     headers = await as_team(db_session, rrf_app)
     created = await create(client, headers, declaration=False)
@@ -366,6 +481,81 @@ async def test_an_incomplete_draft_cannot_be_submitted(db_session, client, rrf_a
 
     assert res.status_code == 400, res.text
     assert "declaration" in res.json()["detail"]
+
+
+async def test_the_submission_refusal_carries_no_dump_of_the_stored_draft(
+    db_session, client, rrf_app
+) -> None:
+    """The defect this lane exists for, and it was measured on a real refusal.
+
+    The refusal used to be ``str(PydanticValidationError)`` in one sentence, and that
+    string carries ``input_value=`` — a truncated dump of the stored document. The
+    frontend cannot locate an error in a paragraph, so it scanned the whole sentence for
+    the 45 known field keys by substring and found keys that were never at fault:
+    ``reg_name``, ``why_needed``, ``proj_goals`` and ``board_evaldate`` — two real and two
+    invented, the last one a Parte C key the team cannot even see. A screen that marks a
+    filled field as missing is worse than one that says only *no*.
+
+    Two assertions, and the second is the one that would rot without the first: no dump,
+    and none of the phantom keys anywhere in the body.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers, declaration=False)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 400, res.text
+    assert "input_value" not in res.text
+    for fantasma in ("proj_goals", "board_evaldate"):
+        assert fantasma not in res.text, f"o corpo ainda nomeia {fantasma}"
+
+
+async def test_an_incomplete_submission_locates_each_fault_on_its_own_field(
+    db_session, client, rrf_app
+) -> None:
+    """``errors`` beside ``detail``: the shape a client can act on.
+
+    ``loc`` is structural — Pydantic locates a ``field_validator`` on the field it guards,
+    so a missing answer lands on ``fields`` and a refused declaration on ``declaration``
+    — and the offending keys are named inside ``msg``. That pair is what lets a screen
+    mark the right section and say which answers are missing, instead of printing a
+    paragraph.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers, declaration=False, fields={"reg_name": ""})
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 400, res.text
+    corpo = res.json()
+    assert isinstance(corpo["errors"], list) and corpo["errors"]
+
+    locais = {".".join(str(parte) for parte in erro["loc"]) for erro in corpo["errors"]}
+    assert "declaration" in locais
+    assert "fields" in locais
+
+    campos = next(erro for erro in corpo["errors"] if erro["loc"] == ["fields"])
+    assert "reg_name" in campos["msg"]
+
+
+async def test_the_incomplete_submission_still_answers_400_and_names_its_code(
+    db_session, client, rrf_app
+) -> None:
+    """The half that must not move, and the reason is on the client and not here.
+
+    The deployed frontend reads 400 as *incomplete* and everything else as *the request
+    never reached the server*. A status promoted to 422 would turn a refusal that arrived
+    into a silence that never happened — which is the same class of lie the evaluation
+    save was telling before BE-06's 400 reached the screen.
+    """
+    headers = await as_team(db_session, rrf_app)
+    created = await create(client, headers, declaration=False)
+
+    res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=headers)
+
+    assert res.status_code == 400
+    assert res.json()["code"] == "BAD_REQUEST"
+    assert isinstance(res.json()["detail"], str)
 
 
 async def test_a_submitted_request_is_not_a_draft_any_more(db_session, client, rrf_app) -> None:

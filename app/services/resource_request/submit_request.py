@@ -4,7 +4,7 @@ from typing import NamedTuple
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, ConflictError, ValidationError
+from app.core.exceptions import AuthorizationError, ConflictError, IncompleteSubmission
 from app.db.models.auth import User
 from app.db.models.resource_request import RRRequest, RRSnapshot
 from app.models.resource_request import RequestSubmissionIn
@@ -33,7 +33,7 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     ``RequestSubmissionIn``. That is the second thing the one-serializer rule buys, after the
     snapshot itself.
 
-    A Pydantic failure is re-raised as this API's ``ValidationError`` rather than escaping:
+    A Pydantic failure is re-raised as ``IncompleteSubmission`` rather than escaping:
     it is not a malformed request body — the body is empty — it is a stored draft that is not
     finished, and it deserves to say so.
 
@@ -95,7 +95,19 @@ async def submit_request(db: AsyncSession, request_id: str, user: User, app_key:
     try:
         RequestSubmissionIn.model_validate(frozen)
     except PydanticValidationError as incomplete:
-        raise ValidationError(f"This request cannot be submitted yet: {incomplete}") from None
+        # `include_input=False` is the flag that matters: without it every error carries a
+        # truncated dump of the stored document, which is what made the sentence
+        # unparseable and made the frontend's key scan invent faults. The other two only
+        # drop noise a client has no use for — a docs URL and Pydantic's own context.
+        located = incomplete.errors(include_url=False, include_context=False, include_input=False)
+        raise IncompleteSubmission(
+            "This request cannot be submitted yet: "
+            + "; ".join(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in located
+            ),
+            [{"loc": list(error["loc"]), "msg": error["msg"]} for error in located],
+        ) from None
 
     snapshot = RRSnapshot(request_id=request_id, document=frozen)
     db.add(snapshot)

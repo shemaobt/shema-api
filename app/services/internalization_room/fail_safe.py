@@ -17,6 +17,7 @@ class FailSafe(enum.StrEnum):
     INSTANT_ACK = "F"
     OFF_BRIDGE_LANGUAGE = "G"
     UNTOLD_STRETCH = "H"
+    STRETCH_TO_CORRECT = "I"
 
 
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)

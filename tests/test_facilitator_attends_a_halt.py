@@ -45,7 +45,7 @@ from app.services.internalization_room.comprehension.evidence import (
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.sessions import MAX_RETELLS
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
@@ -650,7 +650,7 @@ async def test_the_retell_budget_running_out_is_a_warning_and_not_a_block(
     session = await a_session(db_session, team_id=facilitator_a.team_id)
     take_id = await _a_rehearsal(client, session.id)
 
-    for _ in range(MAX_RETELLS - 1):
+    for _ in range(RETELLS_BEFORE_A_WARNING - 1):
         spending = await _tell_back_again(client, session.id, take_id)
         assert spending.status_code == 200, spending.text[:300]
         assert spending.json()["needs_person"] is False, (

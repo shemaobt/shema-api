@@ -22,6 +22,48 @@ logger = logging.getLogger(__name__)
 MAX_REDRAFTS = 2
 _RECENT_TURNS = 6
 
+#: What an app-owned block says when the turn has none. The Validator is shared with every
+#: conversation turn, where there is no finding, no ordered closing and no telling-back, and
+#: an empty heading there reads as evidence withheld rather than as a block that does not
+#: apply. The prompt says so in words; this is the same sentence in the slot itself.
+NOT_THIS_TURN = "(não se aplica a este turno)"
+
+#: What the Validator is told when nobody spoke this turn, in the session's own language.
+#: Keyed by language code, in the shape `calibration.py` already uses — an unclaimed
+#: language falls back to the authored English line. Two cases per language: the opening
+#: turn, where nobody has spoken yet, and the verdict path, where the team has spoken —
+#: outside the conversation, into the telling-back — and the opening line would say the
+#: opposite, which is the sentence the Validator quoted back when it refused the verdict.
+_NO_TEAM_UTTERANCE: dict[str, dict[str, str]] = {
+    "pt": {
+        "opening": "(a equipe ainda não falou — abertura da sessão)",
+        "told_back": (
+            "(a equipe não falou nesta conversa; o que ela contou de volta está no bloco abaixo)"
+        ),
+    },
+    "en": {
+        "opening": "(the team has not spoken yet — session opening)",
+        "told_back": (
+            "(the team has not spoken in this conversation; what they told back is in the "
+            "block below)"
+        ),
+    },
+    "es": {
+        "opening": "(el equipo aún no ha hablado — apertura de la sesión)",
+        "told_back": (
+            "(el equipo no ha hablado en esta conversación; lo que contaron de vuelta está "
+            "en el bloque de abajo)"
+        ),
+    },
+}
+
+
+def _nobody_spoke_this_turn(telling_back: str, language_code: str) -> str:
+    """What stands where the team's utterance would, on a turn that had none."""
+    messages = _NO_TEAM_UTTERANCE.get(language_code, _NO_TEAM_UTTERANCE[FLOOR])
+    return messages["told_back"] if telling_back else messages["opening"]
+
+
 MAX_SPOKEN_TURN_WORDS = 45
 MAX_SPOKEN_TURN_SENTENCES = 3
 
@@ -186,7 +228,20 @@ def recent_conversation_block(messages: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _parse_verdict(raw: str) -> dict[str, Any]:
+_UNPARSEABLE_VERDICT: dict[str, Any] = {
+    "verdict": "regenerate",
+    "issues": [{"problem": "unparseable_verdict"}],
+}
+
+
+def _parse_verdict(raw: str) -> tuple[dict[str, Any], str | None]:
+    """The Validator's reply as a verdict, and the condition that refused it when one did.
+
+    A parse failure still returns a usable ``regenerate`` verdict — the loop above asks for
+    another draft either way — but the second element names *why* this reply could not be
+    trusted, so the caller can leave the trace `_refused` exists for instead of the silence
+    that used to sit here for two of these three exits.
+    """
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
@@ -194,11 +249,51 @@ def _parse_verdict(raw: str) -> dict[str, Any]:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        logger.warning("Validator returned unparseable JSON: %s", raw[:300])
-        return {"verdict": "regenerate", "issues": [{"problem": "unparseable_verdict"}]}
-    if not isinstance(parsed, dict) or "verdict" not in parsed:
-        return {"verdict": "regenerate", "issues": [{"problem": "unparseable_verdict"}]}
-    return parsed
+        return _UNPARSEABLE_VERDICT, "not JSON"
+    if not isinstance(parsed, dict):
+        return _UNPARSEABLE_VERDICT, "verdict reply is not a JSON object"
+    if "verdict" not in parsed:
+        return _UNPARSEABLE_VERDICT, "verdict reply has no 'verdict' key"
+    return parsed, None
+
+
+def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
+    """Every refused Validator reply leaves itself behind, whole, with what refused it.
+
+    Same idea as `back_translation._refused` on the Analyst side (ENG-719, a sibling change
+    not yet on `main` as of this writing): the night of 2026-09-01 the room fell to the
+    family-A fail-safe and nothing here said what the Validator had actually answered. The
+    reply is logged whole rather than cut short — a truncated reply is exactly what could
+    not be diagnosed — and it is the Validator's own output, not the team's speech, so the
+    policy that keeps the team's words off this logger does not apply to it.
+    """
+    logger.warning(
+        "Validator reply refused (%s) for session %s, attempt %s: %s",
+        condition,
+        session_id,
+        attempt,
+        raw,
+        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
+    )
+
+
+def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) -> None:
+    """The room's own gate rejecting spoken text: the condition and a number, never the words.
+
+    The rejected text is the Guide's draft on a `pass` verdict, or the Validator's own
+    ``corrected_response`` on a `correct` one — either way ``detail`` may never be that text
+    itself, because both can echo the team's own turn back at them, which is exactly what
+    `test_a_failed_call_is_logged_without_repeating_what_the_team_said` forbids on this
+    logger.
+    """
+    logger.warning(
+        "Guide draft rejected (%s) for session %s, attempt %s: %s",
+        condition,
+        session_id,
+        attempt,
+        detail,
+        extra={"session_id": session_id, "attempt": attempt, "condition": condition},
+    )
 
 
 def _issues_as_dicts(raw: Any) -> list[dict[str, Any]]:
@@ -232,16 +327,6 @@ OPENING_MOVEMENT_INSTRUCTION = (
     "passagem, o arco e o tom. Depois da linha: abra a primeira cena e convide. "
     "Não escreva a marca em nenhum outro lugar e não a comente."
 )
-
-#: What the Validator's TEAM_UTTERANCE slot carries on the opening turn, when nobody has
-#: spoken yet, in the session's own language. Keyed by the language code, in the shape
-#: `calibration.py` already uses — an unclaimed language falls back to the authored English
-#: line.
-_NO_TEAM_UTTERANCE_AT_OPENING: dict[str, str] = {
-    "pt": "(a equipe ainda não falou — abertura da sessão)",
-    "en": "(the team has not spoken yet — session opening)",
-    "es": "(el equipo aún no ha hablado — apertura de la sesión)",
-}
 
 
 async def _draft(
@@ -295,15 +380,25 @@ async def _voiced_after_validation(
     language_code: str,
     opening: bool,
     settings: Settings,
+    session_id: str = "?",
     validator_context: str = "",
     budget: SpeechBudget | None = None,
     opening_instruction: str = "",
     ask_for_movements: bool = False,
+    telling_back: str = "",
+    finding: str = "",
+    ordered_closing: str = "",
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
     The Panorama runs through this too, with the book material standing where a passage
     session puts its map: containment is enforced twice either way.
+
+    `telling_back`, `finding` and `ordered_closing` are the verdict turn's own context — what
+    the team told back outside the conversation, what the analyst found, and the ending the
+    Speaker was ordered to write. Every other turn leaves them empty, and the Validator is told
+    in words that an empty block is a block that does not apply to this turn rather than
+    evidence being withheld, so nothing about a conversation turn changes.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
@@ -352,42 +447,57 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=conversation,
-                TEAM_UTTERANCE=transcript
-                or _NO_TEAM_UTTERANCE_AT_OPENING.get(
-                    language_code, _NO_TEAM_UTTERANCE_AT_OPENING[FLOOR]
-                ),
+                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
                 DRAFTED_RESPONSE=draft,
+                TELLING_BACK=telling_back or NOT_THIS_TURN,
+                FINDING=finding or NOT_THIS_TURN,
+                ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
             )
             if validator_context:
                 validator_system = f"{validator_system}\n\n{validator_context}"
-            verdict = _parse_verdict(
-                await call_agent(
-                    system_prompt=validator_system,
-                    user_content="Julgue a resposta rascunhada.",
-                    temperature=0.0,
-                    max_output_tokens=2000,
-                    settings=settings,
-                )
+            raw_verdict = await call_agent(
+                system_prompt=validator_system,
+                user_content="Julgue a resposta rascunhada.",
+                temperature=0.0,
+                max_output_tokens=2000,
+                settings=settings,
             )
+            verdict, refusal = _parse_verdict(raw_verdict)
             issues = _issues_as_dicts(verdict.get("issues"))
 
             speech = ""
-            if verdict.get("verdict") == "pass":
-                speech = draft
-            elif verdict.get("verdict") == "correct":
-                speech = (verdict.get("corrected_response") or "").strip()
-                movements = []
+            if refusal is None:
+                if verdict.get("verdict") == "pass":
+                    speech = draft
+                elif verdict.get("verdict") == "correct":
+                    speech = (verdict.get("corrected_response") or "").strip()
+                    movements = []
+                    if not speech:
+                        refusal = "correct verdict has an empty corrected_response"
+                else:
+                    refusal = f"verdict is {verdict.get('verdict')!r}"
+            if refusal is not None:
+                _refused(refusal, raw_verdict, session_id, attempt + 1)
         except Exception:
-            logger.exception("Guide or Validator call failed; the turn degrades to a fail-safe")
+            logger.exception(
+                "Guide or Validator call failed; the turn degrades to a fail-safe",
+                extra={"session_id": session_id, "attempt": attempt + 1},
+            )
             model_failed = True
             break
 
         broken = _broken_ceiling(speech, movements, budget) if speech and budget else None
         if broken is not None:
             issues = [*issues, {"problem": "over_speech_budget"}]
+            _draft_rejected(
+                "over_speech_budget", session_id, attempt + 1, f"{len(speech)} characters"
+            )
             speech = ""
         elif speech and strays_from(speech, language_code):
             issues = [*issues, {"problem": "off_bridge_language"}]
+            _draft_rejected(
+                "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
+            )
             speech = ""
 
         if speech:
@@ -437,6 +547,7 @@ async def run_turn(
     opening: bool = False,
     already_met: bool = False,
     settings: Settings | None = None,
+    session_id: str = "?",
     app_context: str = "",
     validator_context: str = "",
     budget: SpeechBudget | None = None,
@@ -481,6 +592,7 @@ async def run_turn(
         opening=opening,
         opening_instruction=(ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION),
         settings=cfg,
+        session_id=session_id,
         validator_context=validator_context,
         budget=budget,
         ask_for_movements=ask_for_movements,
@@ -499,6 +611,7 @@ async def run_panorama_turn(
     language_code: str = FLOOR,
     opening: bool = False,
     settings: Settings | None = None,
+    session_id: str = "?",
     validator_context: str = "",
     budget: SpeechBudget | None = None,
     ask_for_movements: bool = False,
@@ -536,6 +649,7 @@ async def run_panorama_turn(
         opening=opening,
         opening_instruction=OPENING_INSTRUCTION,
         settings=cfg,
+        session_id=session_id,
         validator_context=validator_context,
         budget=budget,
         ask_for_movements=ask_for_movements,
@@ -544,6 +658,12 @@ async def run_panorama_turn(
 
 #: The slot a stored prompt row must carry for the closing to reach the Speaker.
 CLOSING_SLOT = "{{CLOSING}}"
+
+#: The slots a stored Validator row must carry for the verdict's own context to reach it.
+#: Their absence is how this failed the first time: `render` drops a value whose placeholder
+#: is not in the template without a word, so the Validator went on judging a verdict it could
+#: not see the evidence for, and the team heard a fail-safe line with nothing to say why.
+VALIDATOR_CONTEXT_SLOTS = ("{{TELLING_BACK}}", "{{FINDING}}", "{{ORDERED_CLOSING}}")
 
 
 async def run_verdict_turn(
@@ -555,20 +675,30 @@ async def run_verdict_turn(
     messages: list[dict[str, Any]],
     speaker_prompt: str,
     validator_prompt: str,
+    telling_back: str = "",
     book: str = "Ruth",
     session_language: str = LANGUAGE_NAMES[FLOOR],
     language_code: str = FLOOR,
     settings: Settings | None = None,
+    session_id: str = "?",
 ) -> TurnOutcome:
     """Voice the back-translation verdict — one finding, then stop.
 
     The Speaker never sees the recording, only what the team told back, so its judgment is
     always about the telling-back. Runs through the Validator like every other voiced turn.
 
-    The missing slot is refused rather than rendered around. A speaker prompt file saved
-    before the slot existed would not carry it, and `render` drops a value whose placeholder
-    is absent without a word — so the closing would simply never reach the Speaker, and the
-    turn would go on asking for a spoken answer while the screen waits for a tap. Nothing
+    The Validator is handed the same three things the Speaker was: the finding, the telling-back
+    and the closing it was ordered to end with. Without them it judged a draft that spoke of a
+    telling-back against evidence saying nobody had spoken, and refused it — correctly, on what
+    it had. This is stricter than what it replaced, not looser: a claim about the telling-back
+    now has a record to be measured against, and a navigation instruction is legitimate only as
+    far as the closing block goes.
+
+    A missing slot is refused rather than rendered around, on both sides. A speaker prompt file
+    saved before a slot existed would not carry it, and `render` drops a value whose placeholder
+    is absent without a word — so the closing would never reach the Speaker and the turn would
+    ask for a spoken answer while the screen waits for a tap, or the context would never reach
+    the Validator and the verdict would fall to a fail-safe line in front of a team. Nothing
     anywhere would say so.
     """
     cfg = settings or get_settings()
@@ -578,6 +708,15 @@ async def run_verdict_turn(
             f"The verdict speaker prompt has no {CLOSING_SLOT}: the closing would be dropped "
             "and the turn would ask for an answer the screen no longer collects"
         )
+    absent = [slot for slot in VALIDATOR_CONTEXT_SLOTS if slot not in validator_prompt]
+    if absent:
+        raise ValidationError(
+            f"The validator prompt has no {', '.join(absent)}: the verdict would be judged "
+            "without the telling-back, the finding or the closing that was ordered, and a "
+            "team would hear a fail-safe line instead of what was found"
+        )
+
+    spoken_closing = closing.format(session_language=session_language)
 
     return await _voiced_after_validation(
         speaker_system=render(
@@ -586,7 +725,7 @@ async def run_verdict_turn(
             SCOPE=scope,
             MEANING_MAP=map_block,
             FINDINGS=findings_text,
-            CLOSING=closing.format(session_language=session_language),
+            CLOSING=spoken_closing,
         ),
         validator_prompt=validator_prompt,
         standard_of_truth=map_block,
@@ -596,6 +735,10 @@ async def run_verdict_turn(
         language_code=language_code,
         opening=True,
         settings=cfg,
+        session_id=session_id,
+        telling_back=telling_back,
+        finding=findings_text,
+        ordered_closing=spoken_closing,
     )
 
 

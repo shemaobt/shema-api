@@ -97,6 +97,34 @@ def require_any_capability(*capabilities: str) -> Any:
     return Depends(_check)
 
 
+def reads_capability(capability: str) -> Any:
+    """Whether the caller holds ``capability`` — a **fact handed to the handler**, never a
+    door that refuses.
+
+    The two guards above answer *may this person be here at all*; this one answers *how
+    much of the answer is theirs to read*, on a route they already passed. It exists
+    because ``fund_id`` on the request envelope has two audiences on one route: the
+    Painel — ``manage_funds``, mesa and Gestor — reads which fund a card draws from, and
+    the team reading its own row does not (GATE-03 D4). A second route for the same row
+    would be an N+1 on the board; a second model would put the choice in the router.
+
+    A platform admin reads it, for the same standing reason the guards admit them: an
+    admin who wanted the value can grant themselves ``mesa`` with one call.
+
+    It costs one ``list_roles`` beyond the guard's own, deliberately not shared with it:
+    ``holds_capability`` reads the database on every call so a grant made mid-request is
+    visible immediately, and threading a cache through here to save a small query would
+    trade that property for the wrong half.
+    """
+
+    async def _reads(user: CurrentUser, db: Db) -> bool:
+        if user.is_platform_admin:
+            return True
+        return await holds_capability(db, user.id, APP_KEY, capability)
+
+    return Depends(_reads)
+
+
 CanEditRequests = Annotated[User, require_capability("edit_requests")]
 CanViewEvaluation = Annotated[User, require_capability("view_evaluation")]
 CanEditEvaluation = Annotated[User, require_capability("edit_evaluation")]
@@ -106,4 +134,7 @@ CanAssignFund = Annotated[User, require_capability("assign_fund")]
 CanAllocateFunds = Annotated[User, require_capability("allocate_funds")]
 CanEndorseRequest = Annotated[User, require_capability("endorse_request")]
 CanAdministerFunds = Annotated[User, require_capability("administer_funds")]
+CanGrantAccess = Annotated[User, require_capability("grant_access")]
 CanReadRequests = Annotated[User, require_any_capability("edit_requests", "endorse_request")]
+
+ReadsFunds = Annotated[bool, reads_capability("manage_funds")]

@@ -435,6 +435,87 @@ async def test_the_signature_freezes_with_the_decision(db_session, client, rrf_a
     assert edited["comments"] == "revista"
     assert edited["evaluator_id"] == decided["evaluator_id"]
 
+    # O e-mail segue o id congelado, e não a sessão de quem escreveu por último:
+    # é a mesma assinatura dita de duas formas, e não duas assinaturas.
+    assert decided["evaluator_email"] == "mesa.b@rr.test"
+    assert edited["evaluator_email"] == decided["evaluator_email"]
+
+
+# ——— o que a avaliação diz de si ——————————————————————————————————————————————————
+
+
+async def test_the_evaluation_says_which_type_it_scores(db_session, client, rrf_app) -> None:
+    """O rubrico é do **pedido**, e até aqui a resposta não dizia qual.
+
+    A Parte C pegava o tipo do rascunho local da equipe — outro eixo — e um
+    ``?request=`` de treinamento aberto sob um rascunho de tradução carregava seis
+    caixas em branco, porque nenhuma chave de critério casava. O envelope diz agora,
+    e a tela para de adivinhar."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+
+    for request_type in v.REQUEST_TYPES:
+        # O que cada tipo precisa para ser submissível é lido da composição, e não
+        # escrito à mão: `equipamentos` **não pode** mandar equipe e `treinamento`
+        # tem de mandar a A5, e um quarto tipo entraria aqui sem editar o laço.
+        over: dict[str, object] = {}
+        if request_type in v.TYPES_WITH_TEAM:
+            over["team"] = [{"name": "Ana", "role": "coordenação"}]
+        if request_type in v.TYPES_WITH_TRAINING_PROFILE:
+            over["checks"] = {"teamtype": ["tradutores"], "trainformat": ["cursos"]}
+
+        created = await create(client, team, request_type=request_type, **over)
+        res = await client.post(f"{REQUESTS}/{created['id']}/submit", headers=team)
+        assert res.status_code == 200, res.text
+
+        saved = await put_evaluation(client, mesa, created["id"], request_type=request_type)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["request_type"] == request_type
+
+        read = await client.get(f"{REQUESTS}/{created['id']}/evaluation", headers=mesa)
+        assert read.json()["request_type"] == request_type
+
+
+async def test_the_evaluation_names_its_evaluator_by_email_beside_the_id(
+    db_session, client, rrf_app
+) -> None:
+    """O precedente é o ``AllocationOut``, e a razão é dele, palavra por palavra: o id
+    fica no razão e na forense, a linha que uma pessoa lê recebe o e-mail. §11 proíbe
+    exibir o id, e era só o id que viajava."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app, email="quem.assina@rr.test")
+    created = await submitted_request(client, team)
+
+    saved = (await put_evaluation(client, mesa, created["id"])).json()
+
+    assert saved["evaluator_email"] == "quem.assina@rr.test"
+    assert saved["evaluator_id"] is not None
+    assert saved["evaluator_id"] != saved["evaluator_email"]
+
+
+async def test_an_unsigned_evaluation_carries_no_name_at_all(db_session, client, rrf_app) -> None:
+    """O risco número um da mudança, e por isso ele tem teste próprio.
+
+    ``evaluator_id`` é anulável e o seed grava avaliação sem autor — um ``join``
+    interno faria toda avaliação não assinada responder 404, **calada**, e o que se
+    veria na tela seria *ainda não avaliado* sobre uma avaliação que existe."""
+    team = await as_team(db_session, rrf_app)
+    mesa = await as_mesa(db_session, rrf_app)
+    created = await submitted_request(client, team)
+
+    snapshot = (
+        await db_session.execute(select(RRSnapshot).where(RRSnapshot.request_id == created["id"]))
+    ).scalar_one()
+    db_session.add(RREvaluation(snapshot_id=snapshot.id, comments="do seed, sem autor"))
+    await db_session.commit()
+
+    read = await client.get(f"{REQUESTS}/{created['id']}/evaluation", headers=mesa)
+
+    assert read.status_code == 200, read.text
+    assert read.json()["evaluator_id"] is None
+    assert read.json()["evaluator_email"] is None
+    assert read.json()["comments"] == "do seed, sem autor"
+
 
 async def test_revise_end_to_end_opens_a_revision(db_session, client, rrf_app) -> None:
     """The whole chain against ``open_revision``: the mesa asks through the real endpoint,
@@ -462,8 +543,15 @@ async def test_revise_end_to_end_opens_a_revision(db_session, client, rrf_app) -
 
 
 async def test_the_team_reads_status_and_nothing_else(db_session, client, rrf_app) -> None:
-    """GATE-03 D4 plus the 28/aug answer: four fields, among them the note addressed to
-    the team — and not one field more, which is the assertion that matters."""
+    """GATE-03 D4 plus the 28/aug answer: the note addressed to the team travels, and
+    nothing of the evaluation travels beside it — which is the assertion that matters.
+
+    It used to say *four fields*, and the count was the wrong way to state the rule: a
+    fifth arrived (``request_type``, BE-20) that spends none of it, because it is metadata
+    of the team's **own** document and not a piece of the evaluation. The ceiling the §5.3
+    docstring asks for is still here — the set is exact — and what it keeps out is named
+    rather than counted.
+    """
     team = await as_team(db_session, rrf_app)
     mesa = await as_mesa(db_session, rrf_app)
     created = await decidable(db_session, client, team)
@@ -475,7 +563,7 @@ async def test_the_team_reads_status_and_nothing_else(db_session, client, rrf_ap
 
     assert res.status_code == 200, res.text
     body = res.json()
-    assert set(body) == {"stage", "submitted_at", "decision", "team_note"}
+    assert set(body) == {"request_type", "stage", "submitted_at", "decision", "team_note"}
     assert body["stage"] == "revisar"
     assert body["submitted_at"] is not None
     assert body["decision"] == "revise"

@@ -4,12 +4,13 @@ from typing import NamedTuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.resource_request import RRDecision, RRStage
+from app.db.models.resource_request import RRDecision, RRRequestType, RRStage
 from app.services.resource_request._evaluation import team_outcome
 from app.services.resource_request.get_request import get_request
 
 
 class RequestStatus(NamedTuple):
+    request_type: RRRequestType
     stage: RRStage
     submitted_at: datetime | None
     decision: RRDecision | None
@@ -21,7 +22,9 @@ async def request_status(
 ) -> RequestStatus:
     """What a team is told about its request — GATE-03 D4's *status and nothing else*.
 
-    Four values and no more, and the ceiling is the point: ``stage`` and ``submitted_at``
+    Five values and no more, and the ceiling is the point — what it keeps out is the
+    **evaluation**, and ``request_type`` (4/set/2026) is metadata of the team's own
+    document, which is why it does not spend the rule: ``stage`` and ``submitted_at``
     are the journey, ``decision`` is the outcome the team is entitled to, and ``team_note``
     is the one sentence of the evaluation aggregate addressed **to the team** (client,
     28/aug/2026) — the team does not start reading the evaluation, it starts reading a
@@ -43,6 +46,7 @@ async def request_status(
     decision, team_note = await team_outcome(db, request_id)
 
     return RequestStatus(
+        request_type=request.request_type,
         stage=request.stage,
         submitted_at=request.submitted_at,
         decision=decision,
