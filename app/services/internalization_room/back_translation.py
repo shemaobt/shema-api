@@ -30,18 +30,19 @@ class FindingKind(enum.StrEnum):
 
 EVIDENCE_LIMIT_KINDS = frozenset({FindingKind.INSUFFICIENT_EVIDENCE, FindingKind.UNCLEAR})
 
-RETIRED_KINDS: dict[str, FindingKind] = {
-    "silence": FindingKind.ADDITION,
-    "meaning_change": FindingKind.ADDITION,
-    "wrong_relation": FindingKind.ADDITION,
-    "reordered_event": FindingKind.ADDITION,
-    "preservation_violation": FindingKind.ADDITION,
-}
+_NAMES_READ_AS_ADDITION = frozenset(
+    {
+        "silence",
+        "meaning_change",
+        "wrong_relation",
+        "reordered_event",
+        "preservation_violation",
+    }
+)
 
 
-def _what_a_retired_kind_reads_as(kind_raw: str) -> str:
-    retired = RETIRED_KINDS.get(kind_raw)
-    return retired.value if retired is not None else kind_raw
+def _what_a_name_reads_as(kind_raw: str) -> str:
+    return FindingKind.ADDITION.value if kind_raw in _NAMES_READ_AS_ADDITION else kind_raw
 
 
 class Finding(BaseModel):
@@ -63,8 +64,8 @@ class Finding(BaseModel):
 
     @field_validator("kind", mode="before")
     @classmethod
-    def _a_retired_kind_reads_as_addition(cls, value: Any) -> Any:
-        return _what_a_retired_kind_reads_as(value) if isinstance(value, str) else value
+    def _a_name_that_reads_as_addition(cls, value: Any) -> Any:
+        return _what_a_name_reads_as(value) if isinstance(value, str) else value
 
 
 class BtAnalysis(BaseModel):
@@ -355,7 +356,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
-        kind_raw = _what_a_retired_kind_reads_as(str(entry.get("kind", "")))
+        kind_raw = _what_a_name_reads_as(str(entry.get("kind", "")))
         note = str(entry.get("note", "")).strip()
         if not note:
             _refused("a finding has an empty note", raw, session)
@@ -712,8 +713,9 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
         note = str(entry.get("note", "")).strip()
         if not note:
             return None
+        kind_raw = _what_a_name_reads_as(str(entry.get("kind", "")))
         try:
-            kind = FindingKind(_what_a_retired_kind_reads_as(str(entry.get("kind", ""))))
+            kind = FindingKind(kind_raw)
         except ValueError:
             logger.warning("BT correction returned an unknown finding kind: %s", entry)
             return None

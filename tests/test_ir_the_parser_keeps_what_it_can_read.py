@@ -5,7 +5,7 @@ with valid kinds and non-empty notes — and the room told the team three times 
 analysis "could not be done right now". The service had not failed. The reply carried
 `evidence_sufficient: true` beside an `insufficient_evidence` finding, the parser read
 that as a contradiction and returned None without a word, and the route called None an
-upstream failure. A good `meaning_change` finding went out with it.
+upstream failure. A good `addition` finding went out with it.
 
 Three things are pinned here. A well-formed reply is never discarded whole. Every refusal
 the parser makes says which condition refused and shows what the analyst sent. And a

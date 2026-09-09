@@ -30,9 +30,23 @@ from app.services.internalization_room.run_turn import run_turn, run_verdict_tur
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
+CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 P = "P03"
 PARSER_LOGGER = "app.services.internalization_room.back_translation"
+#: The wire names an older reply may still carry. No prompt of ours may ask for one.
+RETIRED_WIRE_NAMES = (
+    "meaning_change",
+    "wrong_relation",
+    "reordered_event",
+    "preservation_violation",
+)
+#: The kinds the Analyst reports, as the model is asked to write them.
+THREE_KINDS = '"kind": "missing" | "addition" | "unclear"'
+#: Marcia's line, from the merged prompt: it is why order and duplication are not findings.
+MARCIAS_FORBIDDEN_FINDINGS = (
+    "No findings about order, continuity, flow, style, naturalness, or duplication"
+)
 
 
 def _settings() -> Settings:
@@ -420,7 +434,7 @@ async def test_a_sufficient_flag_yields_to_an_insufficiency_finding(
     """This case used to assert the opposite: that the reading came back None.
 
     It changed because the old rule discarded a valid finding together with the
-    contradiction — in the session that became ENG-719, a good `meaning_change` went out
+    contradiction — in the session that became ENG-719, a good `addition` went out
     with the reply, and the room told the team the service was down. The finding is the
     statement of insufficiency, with content; the flag is its summary with no information
     of its own. So the finding wins, and the invariant `BtAnalysis` promises — when the
@@ -1261,6 +1275,41 @@ def test_the_analyst_is_told_where_a_missing_element_sits() -> None:
     assert any("first thing" in block and "chunk 1" in block for block in where_block), (
         "o parágrafo do where não liga o chunk 1 à falta antes de tudo"
     )
+
+
+def test_the_analyst_is_never_asked_for_a_kind_it_may_not_report() -> None:
+    """The taxonomy the model is handed is the one the parser and Refine define.
+
+    A prompt that still names a retired kind asks the Analyst for an answer the room then
+    has to fold, and a team whose round depends on that fold pays for a sentence nobody
+    meant to leave behind. The forbidden-findings line is Marcia's, and it is the reason
+    order and duplication never become findings at all.
+    """
+    assert ANALYST.count(THREE_KINDS) == 1, "a lista de tipos na saída não é a dos três"
+    assert MARCIAS_FORBIDDEN_FINDINGS in ANALYST
+    for name in RETIRED_WIRE_NAMES:
+        assert name not in ANALYST, f"o prompt do analista ainda pede {name}"
+    assert "Meaning changed" not in ANALYST
+    assert "Preservation violated" not in ANALYST
+
+
+def test_the_speaker_has_no_branch_for_a_kind_that_is_never_produced() -> None:
+    """A branch for a kind nobody emits is an instruction the Speaker can still take."""
+    assert "Meaning changed / wrong relation / reordered event" not in SPEAKER
+    assert "is an addition with one more sentence" in SPEAKER, (
+        "o silêncio preenchido perdeu a frase a mais que o distingue de uma adição comum"
+    )
+
+
+def test_the_correction_check_asks_for_the_same_three_kinds() -> None:
+    """CORRECTION_KINDS and this prompt are one contract read from two sides.
+
+    Asking the reader for a kind the parser then refuses turns a correction check the team
+    already paid for into no verdict at all.
+    """
+    assert CORRECTION.count(THREE_KINDS) == 1
+    for name in RETIRED_WIRE_NAMES:
+        assert name not in CORRECTION, f"o prompt da correção ainda pede {name}"
 
 
 def test_the_analyst_does_not_count_a_word_as_a_change() -> None:
