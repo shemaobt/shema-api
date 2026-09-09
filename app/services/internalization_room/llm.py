@@ -36,35 +36,43 @@ def cache_break_before(template: str, placeholder: str) -> str:
     return template.replace(placeholder, CACHE_BREAK + placeholder, 1)
 
 
-def room_model(settings: Settings) -> str:
-    """The model behind the room's facilitation."""
-    return _ladder(settings.tripod_voice_model)[0]
+def voice_ladder(settings: Settings) -> list[str]:
+    """The rungs behind the room's facilitation, most capable first."""
+    return _ladder(settings.tripod_voice_model)
 
 
-def analysis_model(settings: Settings) -> str:
-    """The model that reads a telling-back against the map. Never spoken, never cheapened.
+def analysis_ladder(settings: Settings) -> list[str]:
+    """The rungs that read a telling-back against the map. Never spoken, never cheapened.
 
-    Its own setting rather than the voice's, though both ladders start at the same rung: the
-    analyst is not on the voice path, so a deployment can move it without touching what the
-    team hears, and the doctrine's floor for the Guide and the Validator does not reach here.
+    Its own setting rather than the voice's, though both start at the same rung: the analyst
+    is not on the voice path, so a deployment can move it without touching what the team
+    hears, and the doctrine's floor for the Guide and the Validator does not reach here.
     """
-    return _ladder(settings.tripod_analysis_model)[0]
+    return _ladder(settings.tripod_analysis_model)
 
 
-def classifier_model(settings: Settings) -> str:
-    """The model that moves the beads, off the voice path and a tier below it."""
-    return _ladder(settings.tripod_classifier_model)[0]
+def classifier_ladder(settings: Settings) -> list[str]:
+    """The rungs that move the beads, off the voice path and a tier below it."""
+    return _ladder(settings.tripod_classifier_model)
 
 
 def _ladder(configured: str) -> list[str]:
     return [rung.strip() for rung in configured.split(",") if rung.strip()]
 
 
+#: The rung each ladder actually answered on, once a key has been found to lack the ones above
+#: it. Remembered for the life of the process rather than re-derived per call: without it every
+#: call pays a refusal on each missing rung before reaching the one it will use, and a session
+#: on a key with no frontier access would spend two round trips per turn discovering the same
+#: thing. Cleared only by a restart, which is also when a key's entitlements can have changed.
+_SETTLED: dict[str, str] = {}
+
+
 async def call_agent(
     *,
     system_prompt: str,
     user_content: str,
-    model: str | None = None,
+    ladder: list[str] | None = None,
     max_output_tokens: int = 2000,
     effort: Effort = "high",
     schema: dict[str, Any] | None = None,
@@ -78,9 +86,14 @@ async def call_agent(
 
     A `schema` is for a reply that is read rather than spoken: it binds the answer to a shape
     the caller can parse. The spoken calls pass none, because the team hears prose.
+
+    The ladder is walked only for the one error that means *this key may not use this model*.
+    Everything else — a rate limit, an overload, a bad gateway — keeps the rung it is on and
+    rises to the caller: those say the model is busy, not that it is unavailable, and stepping
+    down on a busy minute would quietly finish the session on a weaker model than it started.
     """
     settings = settings or get_settings()
-    model = model or room_model(settings)
+    rungs = ladder or voice_ladder(settings)
     thinking: ThinkingConfigAdaptiveParam = {"type": "adaptive"}
     output_config: OutputConfigParam = {"effort": effort}
     if schema is not None:
@@ -89,16 +102,35 @@ async def call_agent(
     client = anthropic.AsyncAnthropic(
         api_key=settings.anthropic_api_key, default_headers=_workspace_header(settings)
     )
-    response = await client.messages.create(
-        model=model,
-        max_tokens=max_output_tokens,
-        thinking=thinking,
-        output_config=output_config,
-        system=_system_blocks(system_prompt),
-        messages=messages,
-    )
-    _report_unfinished(response, max_output_tokens)
-    return _spoken_text(response)
+    for model in _from_the_settled_rung(rungs):
+        try:
+            response = await client.messages.create(
+                model=model,
+                max_tokens=max_output_tokens,
+                thinking=thinking,
+                output_config=output_config,
+                system=_system_blocks(system_prompt),
+                messages=messages,
+            )
+        except anthropic.NotFoundError:
+            if model == rungs[-1]:
+                raise
+            logger.warning(
+                "This key cannot use %s; the room steps down to %s",
+                model,
+                rungs[rungs.index(model) + 1],
+                extra={"rung": model, "next_rung": rungs[rungs.index(model) + 1]},
+            )
+            continue
+        _SETTLED[rungs[0]] = model
+        _report_unfinished(response, max_output_tokens)
+        return _spoken_text(response)
+    raise AssertionError("unreachable: the last rung either answers or raises")
+
+
+def _from_the_settled_rung(rungs: list[str]) -> list[str]:
+    settled = _SETTLED.get(rungs[0])
+    return rungs[rungs.index(settled) :] if settled in rungs else rungs
 
 
 def _workspace_header(settings: Settings) -> dict[str, str] | None:

@@ -15,7 +15,7 @@ from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import analysis_model, call_agent
+from app.services.internalization_room.llm import analysis_ladder, call_agent
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
@@ -502,7 +502,7 @@ async def analyse_telling_back(
         raw = await call_agent(
             system_prompt=system,
             user_content="Compare o contado de volta com o mapa.",
-            model=analysis_model(cfg),
+            ladder=analysis_ladder(cfg),
             max_output_tokens=2000,
             settings=cfg,
         )
@@ -835,7 +835,7 @@ async def verify_correction(
         raw = await call_agent(
             system_prompt=system,
             user_content="Verifique a correção contra o achado.",
-            model=analysis_model(cfg),
+            ladder=analysis_ladder(cfg),
             max_output_tokens=1500,
             settings=cfg,
         )

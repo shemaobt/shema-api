@@ -2,6 +2,8 @@ import logging
 from types import SimpleNamespace
 from typing import Any
 
+import anthropic
+import httpx2
 import pytest
 
 from app.core.config import Settings
@@ -137,4 +139,72 @@ async def test_a_classic_key_sends_no_workspace_header_at_all(fake_client) -> No
     assert holder["client"].options["default_headers"] is None, (
         "um cabeçalho de workspace vazio viaja em toda chamada de uma chave clássica, que "
         "não tem workspace nenhum para nomear"
+    )
+
+
+def _refusal_response() -> httpx2.Response:
+    """A real response object, because the SDK's errors read `response.request` on the way up."""
+    return httpx2.Response(
+        status_code=404, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    )
+
+
+class LadderMessages:
+    """A key that cannot use the rungs above `usable`, and answers on the first it can."""
+
+    def __init__(self, usable: str, refusal: type[Exception]):
+        self.usable = usable
+        self.refusal = refusal
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if kwargs["model"] != self.usable:
+            raise self.refusal("nope", response=_refusal_response(), body=None)
+        return _reply("ok")
+
+
+@pytest.fixture(autouse=True)
+def _forget_which_rung_answered():
+    """The settled rung outlives a test, so a step-down here would steer a later file."""
+    llm._SETTLED.clear()
+    yield
+    llm._SETTLED.clear()
+
+
+@pytest.fixture
+def ladder_client(monkeypatch: pytest.MonkeyPatch):
+    def _install(usable: str, refusal: type[Exception]) -> LadderMessages:
+        messages = LadderMessages(usable, refusal)
+        monkeypatch.setattr(
+            llm.anthropic,
+            "AsyncAnthropic",
+            lambda **options: SimpleNamespace(messages=messages, options=options),
+        )
+        return messages
+
+    return _install
+
+
+async def test_a_model_this_key_cannot_use_steps_down_to_the_next_rung(ladder_client) -> None:
+    messages = ladder_client("claude-opus-5", anthropic.NotFoundError)
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"], (
+        "uma chave sem acesso ao topo da escada derrubava o turno inteiro em vez de descer "
+        "um degrau, e a sala respondia com linha enlatada por uma questão de permissão"
+    )
+    assert text == "ok"
+
+
+async def test_a_rate_limit_keeps_the_rung_it_is_on(ladder_client) -> None:
+    messages = ladder_client("nunca", anthropic.RateLimitError)
+
+    with pytest.raises(anthropic.RateLimitError):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1"], (
+        "um limite de taxa gastava a escada inteira e a sessão seguia num modelo mais fraco "
+        "por um minuto de pressa; a escada é sobre o que a chave PODE usar, não sobre pressa"
     )

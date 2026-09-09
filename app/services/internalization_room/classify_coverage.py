@@ -10,7 +10,7 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import merge, remaining
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import call_agent, classifier_model
+from app.services.internalization_room.llm import call_agent, classifier_ladder
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
@@ -182,7 +182,7 @@ async def classify_coverage(
         raw = await call_agent(
             system_prompt=system,
             user_content="Classifique esta troca.",
-            model=classifier_model(cfg),
+            ladder=classifier_ladder(cfg),
             max_output_tokens=1500,
             schema=_DECISIONS,
             settings=cfg,
