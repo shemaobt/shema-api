@@ -1273,22 +1273,16 @@ def test_the_analyst_does_not_count_a_word_as_a_change() -> None:
 
     The correction prompt already carries this calibration ("Wording varies. Content does
     not.") for judging one retelling against another; the analyst compares telling-back
-    against the map and has never had it. Give it the same law, and say it again inside the
-    `addition` definition itself — the paragraph a re-reader actually lands on.
+    against the map and had never had it. It is a section of its own here, above *What to
+    check*, because the kinds themselves are Marcia's words and take no additions.
     """
-    assert "Wording varies. Content does not." in ANALYST, (
-        "a âncora de calibração do verificador não está no prompt do analista"
+    calibration = re.search(
+        r"## Wording varies\. Content does not\..*?(?=\n## )", ANALYST, re.DOTALL
     )
 
-    # O item 2 (Added/addition) vive dentro da mesma lista numerada que os outros sete
-    # achados, sem linha em branco entre eles — então isola-se pelo próprio marcador
-    # numérico, não por um split em blocos de parágrafo (que pegaria a seção de
-    # calibração inteira, e essa também cita "adjective" no próprio exemplo).
-    addition_item = re.search(r"2\. \*\*Added\*\*.*?(?=\n\d+\. \*\*)", ANALYST, re.DOTALL)
-    assert addition_item, "não achei o item 2 (Added/addition) do What to check"
-    addition_text = addition_item.group(0)
-    assert any(word in addition_text for word in ("synonym", "paraphrase", "adjective")), (
-        "a definição de addition não diz que sinônimo/paráfrase/adjetivo não conta"
+    assert calibration, "a âncora de calibração não está no prompt do analista"
+    assert any(word in calibration.group(0) for word in ("synonym", "paraphrase", "adjective")), (
+        "a calibração não diz que sinônimo/paráfrase/adjetivo não conta"
     )
 
 

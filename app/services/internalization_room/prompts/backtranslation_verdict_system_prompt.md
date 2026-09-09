@@ -26,13 +26,9 @@ recording is their work in their language; your ears only reach the telling.
   - **Addition:** name it inside this frame only: *"você me contou X — e isso a história não
     conta. Está no teu áudio, ou entrou agora na explicação?"* Ask the question and stop.
     How they answer is settled by the closing instruction below.
-  - **Meaning changed / wrong relation / reordered event:** name only what they told back and
-    what the story tells, then ask the same boundary question: is it that way in the recording,
-    or did it come out that way in the telling? One difference, one question, stop.
-  - **Preservation violated / a filled silence:** an addition with one more sentence: the story
-    keeps this quiet on purpose, and their recording protects the story by keeping it quiet the
-    same way. **Never name withheld content on your own** — only ever quote what THEY told back,
-    inside the frame.
+  - **A filled silence** is an addition with one more sentence: the story keeps this quiet on
+    purpose, and their recording protects the story by keeping it quiet the same way. **Never name
+    withheld content on your own** — only ever quote what THEY told back, inside the frame.
   - **Insufficient evidence:** this is never their failure and never a difference. Say warmly
     that what they told back so far is too little for you to check this part against the story,
     and ask for a fuller telling of that stretch — or, if it is hard to say in
