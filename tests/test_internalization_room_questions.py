@@ -5,17 +5,23 @@ anyway — telling a team that cannot read that their question had been received
 here exists so that knot stands for something.
 """
 
+import httpx
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRQuestionStatus
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus
 from app.services.internalization_room import questions as service
+from app.services.internalization_room import sessions as session_service
 from tests.baker import make_language, make_project, make_project_user_access, make_user
 
 DEVICE = "tablet-da-equipe-1"
 OTHER_DEVICE = "tablet-de-outra-equipe"
+OV = "OV-Ruth"
+QUESTIONS = "/api/internalization-room/questions"
 
 
 class MemoryStore:
@@ -27,6 +33,50 @@ class MemoryStore:
 
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         self.objects[key] = data
+
+
+@pytest.fixture()
+async def room_client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    """The tablet's side of the router — real HTTP, real SQLite, a faked speech store."""
+    from app.api.internalization_room.questions import router as questions_router
+    from app.core.config import get_settings
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+
+    monkeypatch.setattr(
+        get_settings(), "internalization_room_api_key", "chave-da-sala", raising=False
+    )
+    monkeypatch.setattr(service, "_store", lambda *a, **kw: MemoryStore())
+
+    async def broken(audio: bytes, *, language: str, mime_type: str) -> str:
+        raise TypeError("o transcritor nao esta sob teste aqui")
+
+    monkeypatch.setattr(service, "transcribe_speech", broken)
+
+    test_app = FastAPI()
+    test_app.include_router(questions_router, prefix="/api/internalization-room")
+    register_exception_handlers(test_app)
+
+    async def _get_db():
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    async with httpx.AsyncClient(
+        transport=ASGITransport(app=test_app),
+        base_url="http://test",
+        headers={"X-Room-Key": "chave-da-sala", "X-Room-Device": DEVICE},
+    ) as client:
+        yield client
+
+
+async def _raise_the_hand(client: httpx.AsyncClient, *, session_id: str) -> str:
+    response = await client.post(
+        QUESTIONS,
+        params={"session_id": session_id},
+        files={"file": ("pergunta.m4a", b"a equipe levantou a mao", "audio/mp4")},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["question_id"]
 
 
 async def _raise(
@@ -215,3 +265,19 @@ async def test_resolving_does_not_bury_a_reply_nobody_has_heard(
 
     waiting = await service.replies_for(db_session, DEVICE)
     assert [q.id for q in waiting] == [question.id]
+
+
+async def test_a_panorama_question_keeps_the_sessions_own_pericope(
+    db_session: AsyncSession, room_client: httpx.AsyncClient
+) -> None:
+    """A hand raised on the Book Panorama screen names OV-Ruth, never a fallback or a book id
+    stripped of its prefix (ENG-802)."""
+    session = await session_service.create_session(db_session, pericope="OV")
+    assert session.pericope == OV
+
+    question_id = await _raise_the_hand(room_client, session_id=session.id)
+
+    question = await db_session.get(IRQuestion, question_id)
+    assert question is not None
+    assert question.pericope == OV
+    assert question.pericope == session.pericope
