@@ -179,7 +179,6 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         coverage=_coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
         back_translation=await _progress(db, session),
-        bridge_mode=session.bridge_mode,
         language=session.language,
         halt=halt.standing(session),
     )
@@ -243,7 +242,6 @@ async def create_session(
         pericope=payload.pericope,
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
-        bridge_mode=payload.bridge_mode,
         language=payload.language,
     )
     if caller is not None:
@@ -438,7 +436,6 @@ async def _say_it_again(session: IRSession) -> TurnResponse:
         peer_cue=detects_peer_cue(last),
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
-        bridge_mode=session.bridge_mode,
     )
 
 
@@ -506,8 +503,7 @@ async def take_turn(
             peer_cue=outcome.peer_cue,
             coverage=_coverage_view(session),
             done=False,
-            bridge_mode=session.bridge_mode,
-        )
+            )
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
@@ -573,6 +569,5 @@ async def take_turn(
         degraded=outcome.degraded,
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
-        bridge_mode=session.bridge_mode,
         segments=segments,
     )

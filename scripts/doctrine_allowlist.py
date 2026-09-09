@@ -54,18 +54,6 @@ ALLOWLIST: list[AllowlistEntry] = [
         "app/api/internalization_room/sessions.py", Rule.MODE, "resolve_bridge_mode_for_turn,"
     ),
     AllowlistEntry(
-        "app/api/internalization_room/sessions.py", Rule.MODE, "bridge_mode=session.bridge_mode,"
-    ),
-    AllowlistEntry(
-        "app/api/internalization_room/sessions.py", Rule.MODE, "bridge_mode=payload.bridge_mode,"
-    ),
-    AllowlistEntry(
-        "app/api/internalization_room/sessions.py", Rule.MODE, "bridge_mode=session.bridge_mode,"
-    ),
-    AllowlistEntry(
-        "app/api/internalization_room/sessions.py", Rule.MODE, "bridge_mode=session.bridge_mode,"
-    ),
-    AllowlistEntry(
         "app/api/internalization_room/sessions.py",
         Rule.MODE,
         "switched = resolve_bridge_mode_for_turn(BridgeMode(session.bridge_mode), transcript)",
@@ -81,28 +69,9 @@ ALLOWLIST: list[AllowlistEntry] = [
         "session = await room.set_bridge_mode(db, session, turn.bridge_mode)",
     ),
     AllowlistEntry(
-        "app/api/internalization_room/sessions.py", Rule.MODE, "bridge_mode=session.bridge_mode,"
-    ),
-    AllowlistEntry(
         "app/db/models/internalization_room.py",
         Rule.MODE,
         "bridge_mode: Mapped[str] = mapped_column(",
-    ),
-    AllowlistEntry(
-        "app/models/internalization_room.py",
-        Rule.MODE,
-        "bridge_mode: str | None = Field(default=None, max_length=24)",
-    ),
-    AllowlistEntry(
-        "app/models/internalization_room.py", Rule.MODE, 'bridge_mode: str = "calibration_pending"'
-    ),
-    AllowlistEntry(
-        "app/models/internalization_room.py",
-        Rule.MODE,
-        "#: Said back so the app can see which language it actually got, the way `bridge_mode` is.",
-    ),
-    AllowlistEntry(
-        "app/models/internalization_room.py", Rule.MODE, 'bridge_mode: str = "calibration_pending"'
     ),
     AllowlistEntry("app/services/internalization_room/__init__.py", Rule.MODE, "set_bridge_mode,"),
     AllowlistEntry(

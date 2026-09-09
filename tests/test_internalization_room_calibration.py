@@ -311,3 +311,29 @@ async def test_the_teams_first_utterance_is_a_turn_like_any_other(
         "a sala respondia com uma das nove falas fixas de reconhecimento, escolhida pelo "
         f"modo que o parser tinha acabado de decidir — a equipe ouviu {said[-1]!r}"
     )
+
+
+async def test_a_mode_named_by_the_tablet_is_taken_in_and_never_said_back(
+    spoken: tuple[httpx.AsyncClient, list[str], list[str]],
+) -> None:
+    client, _, _ = spoken
+    created = await client.post(
+        f"{PREFIX}/sessions",
+        headers={"X-Room-Key": KEY},
+        json={"pericope": PANORAMA, "language": "pt", "bridge_mode": "guided_microchecks"},
+    )
+
+    assert created.status_code == 200, (
+        "o app do piloto ainda manda o modo no createSession, e recusar a chave deixa a "
+        f"equipe sem sessão nenhuma — veio {created.status_code}: {created.text[:200]}"
+    )
+    session_id = created.json()["session_id"]
+    turned = await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+
+    assert "bridge_mode" not in created.json(), (
+        "a sala devolvia o modo ao tablet, que o guardava e o mandava de volta na sessão "
+        f"seguinte — era assim que um modo atravessava sessões: {created.json()}"
+    )
+    assert "bridge_mode" not in turned.json(), (
+        f"o turno também dizia o modo de volta, a cada turno: {turned.json()}"
+    )
