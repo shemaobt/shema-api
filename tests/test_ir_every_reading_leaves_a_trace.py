@@ -131,7 +131,7 @@ async def test_an_accepted_correction_reading_leaves_an_info_record(
     )
     patch_model(raw)
     finding = Finding(
-        kind=FindingKind.MEANING_CHANGE, note="Boaz não falou nisso", segment_id="segmento-1"
+        kind=FindingKind.ADDITION, note="Boaz não falou nisso", segment_id="segmento-1"
     )
     earlier = _segment(1, "Boaz fala pra Rute colher espigas em outros campos.")
     corrected = _segment(

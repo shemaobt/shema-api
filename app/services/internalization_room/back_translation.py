@@ -7,7 +7,7 @@ import re
 import unicodedata
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
@@ -24,15 +24,24 @@ logger = logging.getLogger(__name__)
 class FindingKind(enum.StrEnum):
     MISSING = "missing"
     ADDITION = "addition"
-    MEANING_CHANGE = "meaning_change"
-    WRONG_RELATION = "wrong_relation"
-    REORDERED_EVENT = "reordered_event"
-    PRESERVATION_VIOLATION = "preservation_violation"
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     UNCLEAR = "unclear"
 
 
 EVIDENCE_LIMIT_KINDS = frozenset({FindingKind.INSUFFICIENT_EVIDENCE, FindingKind.UNCLEAR})
+
+RETIRED_KINDS: dict[str, FindingKind] = {
+    "silence": FindingKind.ADDITION,
+    "meaning_change": FindingKind.ADDITION,
+    "wrong_relation": FindingKind.ADDITION,
+    "reordered_event": FindingKind.ADDITION,
+    "preservation_violation": FindingKind.ADDITION,
+}
+
+
+def _what_a_retired_kind_reads_as(kind_raw: str) -> str:
+    retired = RETIRED_KINDS.get(kind_raw)
+    return retired.value if retired is not None else kind_raw
 
 
 class Finding(BaseModel):
@@ -51,6 +60,11 @@ class Finding(BaseModel):
     #: as a position in the list that call was given and resolved to an address here, where
     #: it is already being validated.
     segment_id: str | None = None
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _a_retired_kind_reads_as_addition(cls, value: Any) -> Any:
+        return _what_a_retired_kind_reads_as(value) if isinstance(value, str) else value
 
 
 class BtAnalysis(BaseModel):
@@ -310,7 +324,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     statement that a real part of the scope could not be compared, naming the stretch;
     the flag is that same statement summarised over the scope, with no information of its
     own. When they disagree the flag is the side without evidence. The alternatives are
-    both worse: refusing the reply threw away a good ``meaning_change`` together with the
+    both worse: refusing the reply threw away a good ``addition`` together with the
     contradiction (ENG-719, the session that stopped a team three times), and letting the
     flag win would have marked as checked a passage the analyst itself said stops at
     verse 8. Whoever reads this as a contradiction to be refused: it was, and that is
@@ -341,9 +355,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
-        kind_raw = str(entry.get("kind", ""))
-        if kind_raw == "silence":
-            kind_raw = FindingKind.ADDITION.value
+        kind_raw = _what_a_retired_kind_reads_as(str(entry.get("kind", "")))
         note = str(entry.get("note", "")).strip()
         if not note:
             _refused("a finding has an empty note", raw, session)
@@ -539,17 +551,9 @@ class CorrectionCheck(BaseModel):
 
 #: What the verification may report. Deliberately short of the analyst's list: `missing` here
 #: means *this stretch said it before and does not now*, never the analyst's global sense, and
-#: the kinds defined over the whole telling-back — `insufficient_evidence`, `reordered_event`,
-#: `wrong_relation` — cannot be judged from one stretch at all.
-CORRECTION_KINDS = frozenset(
-    {
-        FindingKind.MISSING,
-        FindingKind.ADDITION,
-        FindingKind.MEANING_CHANGE,
-        FindingKind.PRESERVATION_VIOLATION,
-        FindingKind.UNCLEAR,
-    }
-)
+#: the kind defined over the whole telling-back — `insufficient_evidence` — cannot be judged
+#: from one stretch at all.
+CORRECTION_KINDS = frozenset({FindingKind.MISSING, FindingKind.ADDITION, FindingKind.UNCLEAR})
 
 
 #: A word long enough to carry meaning rather than grammar. The dedupe below asks whether a
@@ -709,7 +713,7 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
         if not note:
             return None
         try:
-            kind = FindingKind(str(entry.get("kind", "")))
+            kind = FindingKind(_what_a_retired_kind_reads_as(str(entry.get("kind", ""))))
         except ValueError:
             logger.warning("BT correction returned an unknown finding kind: %s", entry)
             return None

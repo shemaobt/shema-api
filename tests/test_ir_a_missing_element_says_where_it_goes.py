@@ -176,9 +176,9 @@ async def test_an_unrecognised_where_is_ignored_and_leaves_a_trace(
 async def test_other_kinds_ignore_where(patch_analyst) -> None:
     """Case 7 (guard): `where` only means something for a `missing` finding."""
     findings = await _findings_for(
-        '{"findings":[{"kind":"meaning_change","chunk":2,"where":"after","note":"mudou"}]}',
+        '{"findings":[{"kind":"unclear","chunk":2,"where":"after","note":"não deu"}]}',
         patch_analyst,
     )
 
-    assert findings[0].kind is FindingKind.MEANING_CHANGE
+    assert findings[0].kind is FindingKind.UNCLEAR
     assert findings[0].segment_id == "segmento-2"

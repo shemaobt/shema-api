@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import sys
 from typing import Any
@@ -31,6 +32,7 @@ GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 P = "P03"
+PARSER_LOGGER = "app.services.internalization_room.back_translation"
 
 
 def _settings() -> Settings:
@@ -329,60 +331,48 @@ def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
     assert state.current_finding is None
 
 
+@pytest.mark.parametrize(
+    "retired",
+    ["meaning_change", "wrong_relation", "reordered_event", "preservation_violation", "silence"],
+)
 @pytest.mark.asyncio
-async def test_the_full_taxonomy_is_parsed(patch_analyst) -> None:
+async def test_a_retired_kind_reads_as_addition(
+    retired: str, patch_analyst, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A kind the Analyst no longer reports still arrives, and the round still has a verdict.
+
+    Replies written against the older taxonomy carry the four retired kinds, and `silence`
+    was always folded. Refusing a reply over the name would cost the whole round to a team
+    that did nothing wrong, so a retired kind reads as the addition it describes and the
+    reading is accepted.
+    """
     patch_analyst(
         json.dumps(
             {
                 "evidence_sufficient": True,
                 "findings": [
-                    {"kind": "meaning_change", "note": "a"},
-                    {"kind": "wrong_relation", "note": "b"},
-                    {"kind": "reordered_event", "note": "c"},
-                    {"kind": "preservation_violation", "note": "d"},
+                    {"kind": retired, "chunk": 2, "note": "contaram o que a história não conta"}
                 ],
             }
         )
     )
 
-    analysis = await analyse_telling_back(
-        segments=_told(),
-        scope=P,
-        pericope_num=P,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
-
-    assert analysis is not None
-    assert [f.kind for f in analysis.findings] == [
-        FindingKind.MEANING_CHANGE,
-        FindingKind.WRONG_RELATION,
-        FindingKind.REORDERED_EVENT,
-        FindingKind.PRESERVATION_VIOLATION,
-    ]
-
-
-@pytest.mark.asyncio
-async def test_a_silence_finding_is_folded_into_addition(patch_analyst) -> None:
-    patch_analyst(
-        json.dumps(
-            {
-                "evidence_sufficient": True,
-                "findings": [{"kind": "silence", "note": "preencheu um silêncio"}],
-            }
+    with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
+        analysis = await analyse_telling_back(
+            segments=_told(),
+            scope=P,
+            pericope_num=P,
+            analyst_prompt=ANALYST,
+            settings=_settings(),
         )
-    )
-
-    analysis = await analyse_telling_back(
-        segments=_told(),
-        scope=P,
-        pericope_num=P,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
 
     assert analysis is not None
     assert [f.kind for f in analysis.findings] == [FindingKind.ADDITION]
+    assert analysis.findings[0].segment_id == "segmento-2", (
+        "o achado dobrado continua apontando para o trecho que a resposta nomeou"
+    )
+    assert "reading accepted" in caplog.text
+    assert "refused" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -636,7 +626,7 @@ async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_s
 @pytest.mark.asyncio
 async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speaker) -> None:
     """Scenario 2. The one law, which the new closing may not loosen along with the rest."""
-    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.MEANING_CHANGE), patch_speaker)
+    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.ADDITION), patch_speaker)
 
     assert "never know what their recording says" in spoken_to
     assert "o que você me contou" in spoken_to
