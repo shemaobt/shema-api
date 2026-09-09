@@ -41,6 +41,16 @@ def room_model(settings: Settings) -> str:
     return _ladder(settings.tripod_voice_model)[0]
 
 
+def analysis_model(settings: Settings) -> str:
+    """The model that reads a telling-back against the map. Never spoken, never cheapened.
+
+    Its own setting rather than the voice's, though both ladders start at the same rung: the
+    analyst is not on the voice path, so a deployment can move it without touching what the
+    team hears, and the doctrine's floor for the Guide and the Validator does not reach here.
+    """
+    return _ladder(settings.tripod_analysis_model)[0]
+
+
 def classifier_model(settings: Settings) -> str:
     """The model that moves the beads, off the voice path and a tier below it."""
     return _ladder(settings.tripod_classifier_model)[0]
