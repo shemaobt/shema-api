@@ -8,7 +8,6 @@ from app.services.app.list_user_apps import list_user_apps
 async def list_user_apps_display(
     db: AsyncSession, user_id: str, *, is_admin: bool
 ) -> list[UserAppResponse]:
-    """Return app display models, with admin users seeing every app."""
     if is_admin:
         all_apps = await list_apps(db)
         user_apps_map: dict[str, list[str]] = {}
@@ -24,7 +23,7 @@ async def list_user_apps_display(
                 app_url=app.app_url,
                 ios_url=app.ios_url,
                 android_url=app.android_url,
-                platform=app.platform,
+                platforms=app.platforms,
                 is_active=app.is_active,
                 created_at=app.created_at,
                 roles=user_apps_map.get(app.id, []),
@@ -44,7 +43,7 @@ async def list_user_apps_display(
             app_url=app.app_url,
             ios_url=app.ios_url,
             android_url=app.android_url,
-            platform=app.platform,
+            platforms=app.platforms,
             is_active=app.is_active,
             created_at=app.created_at,
             roles=role_keys,

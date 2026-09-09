@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +16,7 @@ async def create_app(
     app_url: str | None = None,
     ios_url: str | None = None,
     android_url: str | None = None,
-    platform: str = "web",
+    platforms: Sequence[str] | None = None,
     is_active: bool = True,
     auto_approve: bool = False,
 ) -> App:
@@ -30,7 +32,7 @@ async def create_app(
         app_url=app_url,
         ios_url=ios_url,
         android_url=android_url,
-        platform=platform,
+        platforms=list(platforms) if platforms else ["web"],
         is_active=is_active,
         auto_approve=auto_approve,
     )

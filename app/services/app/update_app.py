@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -18,7 +19,7 @@ async def update_app(
     app_url: str | None = None,
     ios_url: str | None = None,
     android_url: str | None = None,
-    platform: str | None = None,
+    platforms: Sequence[str] | None = None,
     is_active: bool | None = None,
     auto_approve: bool | None = None,
     actor: User | None = None,
@@ -36,8 +37,8 @@ async def update_app(
         app.ios_url = ios_url
     if android_url is not None:
         app.android_url = android_url
-    if platform is not None:
-        app.platform = platform
+    if platforms is not None:
+        app.platforms = list(platforms)
     if is_active is not None:
         app.is_active = is_active
 
@@ -56,9 +57,6 @@ async def update_app(
 async def _approve_pending_requests_for_app(
     db: AsyncSession, app: App, *, actor: User | None
 ) -> None:
-    """Sweep every pending request for this app to approved + grant the default
-    role. Runs in the same session as update_app so the toggle and the grants
-    commit together."""
     role_key = default_role_for(app.app_key)
     now = datetime.now(UTC)
     actor_id = actor.id if actor is not None else None
