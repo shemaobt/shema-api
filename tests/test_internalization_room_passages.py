@@ -8,13 +8,14 @@ from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.parse_map import (
     SURVEYED_STATUS,
     load_book,
     load_map,
 )
 from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
-from app.services.internalization_room.passage_lines import line_for
+from app.services.internalization_room.passage_lines import _sections, line_for
 
 
 NAMED_IN_PORTUGUESE: dict[str, str] = {
@@ -87,6 +88,31 @@ def test_the_wheel_names_the_passage_and_says_nothing_else_about_it(
     assert said == written, (
         "a roda dizia uma frase autoral por passagem, e algumas contavam a passagem antes "
         f"de a equipe escolher — P07 entregava o nome do resgatador: {said}"
+    )
+
+
+def _the_book_named_in(language: str) -> str:
+    """What this book's own catalogue calls the person the book is named after."""
+    named = next(element for element in labelled_elements("P01") if element.label_en == "Ruth")
+    return str(getattr(named, f"label_{language}"))
+
+
+def test_no_line_in_the_file_carries_a_word_its_map_does_not() -> None:
+    """The reference, with the book renamed for the language, is the whole of what may be said.
+
+    Read off the maps and the label catalogue, so a line rewritten to carry story again has
+    nothing to agree with — in any language the file grows, not only the two it has today.
+    """
+    strayed = {
+        (pericope_num, spoken): said
+        for (pericope_num, spoken), said in _sections().items()
+        if said
+        != f"{_the_book_named_in(spoken)} {load_map(pericope_num).reference.split(' ', 1)[1]}"
+    }
+
+    assert strayed == {}, (
+        "a frase de cada passagem era autoral e nenhum validador a via, então a roda contava "
+        f"a passagem antes de a equipe escolher: {strayed}"
     )
 
 

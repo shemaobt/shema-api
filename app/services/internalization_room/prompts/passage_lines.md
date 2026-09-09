@@ -31,17 +31,11 @@
 ### P01-en
 - "Ruth 1:1–5"
 
-### P01-es
-- "El hambre, y la familia que sale de Belén."
-
 ### P02-pt
 - "Rute 1:6–14"
 
 ### P02-en
 - "Ruth 1:6–14"
-
-### P02-es
-- "El camino de vuelta, y Rut que no suelta a Noemí."
 
 ### P03-pt
 - "Rute 1:15–18"
@@ -49,17 +43,11 @@
 ### P03-en
 - "Ruth 1:15–18"
 
-### P03-es
-- "El último ruego de Noemí, y la promesa de Rut."
-
 ### P04-pt
 - "Rute 1:19–22"
 
 ### P04-en
 - "Ruth 1:19–22"
-
-### P04-es
-- "La llegada a Belén, y Noemí que se cambia el nombre."
 
 ### P05-pt
 - "Rute 2:1–7"
@@ -67,17 +55,11 @@
 ### P05-en
 - "Ruth 2:1–7"
 
-### P05-es
-- "Rut sale a espigar, y el campo al que llega."
-
 ### P06-pt
 - "Rute 2:8-16"
 
 ### P06-en
 - "Ruth 2:8-16"
-
-### P06-es
-- "Booz le habla a Rut en el campo."
 
 ### P07-pt
 - "Rute 2:17-23"
@@ -85,17 +67,11 @@
 ### P07-en
 - "Ruth 2:17-23"
 
-### P07-es
-- "Lo que Rut lleva a casa, y el nombre del redentor."
-
 ### P08-pt
 - "Rute 3:1-5"
 
 ### P08-en
 - "Ruth 3:1-5"
-
-### P08-es
-- "El plan de Noemí, y Rut que lo acepta entero."
 
 ### P09-pt
 - "Rute 3:6-13"
@@ -103,17 +79,11 @@
 ### P09-en
 - "Ruth 3:6-13"
 
-### P09-es
-- "La noche en la era, y el juramento."
-
 ### P10-pt
 - "Rute 3:14-18"
 
 ### P10-en
 - "Ruth 3:14-18"
-
-### P10-es
-- "El amanecer, las seis medidas, y esperar sentada."
 
 ### P11-pt
 - "Rute 4:1-8"
@@ -121,17 +91,11 @@
 ### P11-en
 - "Ruth 4:1-8"
 
-### P11-es
-- "La puerta de la ciudad, y la sandalia."
-
 ### P12-pt
 - "Rute 4:9-12"
 
 ### P12-en
 - "Ruth 4:9-12"
-
-### P12-es
-- "«Ustedes son testigos», y la bendición en la puerta."
 
 ### P13-pt
 - "Rute 4:13-17"
@@ -139,14 +103,8 @@
 ### P13-en
 - "Ruth 4:13-17"
 
-### P13-es
-- "Nace Obed, y el niño en el regazo de Noemí."
-
 ### P14-pt
 - "Rute 4:18-22"
 
 ### P14-en
 - "Ruth 4:18-22"
-
-### P14-es
-- "Las generaciones, hasta David."
