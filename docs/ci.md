@@ -31,9 +31,12 @@ that address in its own variable, not a shared one: the Internalization Room rea
 `BACKEND_URL`, and the Facilitator Desk reads `SHEMA_API_URL` for the dev server's proxy, or
 `VITE_API_BASE_URL` with the `/api` prefix to reach the API directly. Outside 08:00–00:00
 America/São_Paulo the service keeps no warm instance and wakes on the first request, which
-costs a cold start of a few seconds; to have it warm before that, run
-`gcloud scheduler jobs run staging-on-8am --location us-central1`, which holds one minimum
-instance until the midnight job clears it.
+costs a cold start of a few seconds. Running
+`gcloud scheduler jobs run staging-on-8am --location us-central1`
+warms it, but that instance then stands until the next midnight job — nothing switches it
+off earlier — so at night the cold start is usually the better trade. If you do warm it, run
+`gcloud scheduler jobs run staging-off-midnight --location us-central1`
+when you are done.
 
 Renewing staging's data is a Neon operation, not a deploy: open the `staging` branch and use
 **Reset from parent**. That brings production's rows back and drops every migration that
