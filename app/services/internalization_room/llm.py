@@ -86,7 +86,9 @@ async def call_agent(
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}
     messages: list[MessageParam] = [{"role": "user", "content": user_content}]
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.AsyncAnthropic(
+        api_key=settings.anthropic_api_key, default_headers=_workspace_header(settings)
+    )
     response = await client.messages.create(
         model=model,
         max_tokens=max_output_tokens,
@@ -97,6 +99,20 @@ async def call_agent(
     )
     _report_unfinished(response, max_output_tokens)
     return _spoken_text(response)
+
+
+def _workspace_header(settings: Settings) -> dict[str, str] | None:
+    """Name the workspace when the key needs one named, and stay quiet when it does not.
+
+    An identity-bound Console key belongs to a person rather than to a workspace, so every
+    call under one is refused with 400 `not scoped to a workspace` until this rides along. A
+    classic workspace key already carries its scope and is given no header at all — an empty
+    one would travel on every call of a deployment that has no workspace to name.
+    """
+    workspace = settings.anthropic_workspace_id.strip()
+    if not workspace:
+        return None
+    return {"anthropic-workspace-id": workspace}
 
 
 def _system_blocks(system_prompt: str) -> str | list[TextBlockParam]:

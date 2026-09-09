@@ -111,3 +111,30 @@ async def test_an_empty_answer_still_says_why(fake_client, caplog):
         assert await llm.call_agent(system_prompt="s", user_content="u", settings=_settings()) == ""
 
     assert "no content" in caplog.text
+
+
+async def test_an_identity_bound_key_names_the_workspace_it_acts_in(fake_client) -> None:
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(
+        system_prompt="s",
+        user_content="u",
+        settings=_settings(anthropic_workspace_id="wrkspc-de-teste"),
+    )
+
+    headers = holder["client"].options["default_headers"]
+    assert headers["anthropic-workspace-id"] == "wrkspc-de-teste", (
+        "a chave do Console é ligada a uma pessoa e a API responde 400 'not scoped to a "
+        "workspace' sem esse cabeçalho: a sala inteira ficava muda em produção"
+    )
+
+
+async def test_a_classic_key_sends_no_workspace_header_at_all(fake_client) -> None:
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert holder["client"].options["default_headers"] is None, (
+        "um cabeçalho de workspace vazio viaja em toda chamada de uma chave clássica, que "
+        "não tem workspace nenhum para nomear"
+    )

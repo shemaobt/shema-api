@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     google_maps_api_key: str = ""
     anthropic_api_key: str = ""
+    #: The workspace an identity-bound key acts in, sent as the `anthropic-workspace-id`
+    #: header. A Console key tied to a person is not scoped to a workspace on its own, and
+    #: every call under one answers 400 until the workspace is named; a classic workspace key
+    #: carries its own scope and wants this empty, so it is a value the deployment supplies
+    #: rather than a branch in the code.
+    anthropic_workspace_id: str = ""
     google_embedding_model: str = "gemini-embedding-001"
     google_llm_model: str = "gemini-3.1-pro-preview"
     #: The two Gemini tiers every feature speaks through. They were literals in nine
