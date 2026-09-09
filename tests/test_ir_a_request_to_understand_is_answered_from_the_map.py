@@ -66,3 +66,49 @@ def test_the_passage_stays_focused_line_says_which_question_it_is_for() -> None:
     assert "Let's stay with what the passage is showing us." in path
     assert "This is not the line for a request to understand." in path
     assert "never with the sentence above" in path
+
+
+def test_the_rehearsal_is_invited_once_the_team_shows_it_has_the_part() -> None:
+    """The other half of the same law, and the other half of the same demo.
+
+    On 9 September, on the code that had just merged, a cold Ruth 1:1-5 opening closed with
+    "Agora ensaiem essa primeira cena juntos, na língua de vocês" before anyone at the table
+    had said a word. Rule 3 of the July port made the invitation the close every opening owed,
+    so it went out whether or not the team had the part. Her prompt keeps mother-tongue
+    rehearsal in this stage and forbids the automatism, and names what to do when the Guide
+    guesses the moment wrong.
+    """
+    law = _law()
+
+    assert "Never invite rehearsal as the automatic close of an opening." in law
+    assert "Rehearsal is invited when the team shows it has the part" in law
+    assert "Until then, you stay with them in the understanding." in law
+    assert "you were early" in law
+    assert "go back, and open the part again — more fully this time." in law
+
+
+def test_no_rule_makes_the_invitation_the_close_every_opening_owes() -> None:
+    """Rule 3 read as a mandate, and it was one: the invitation was how the part ended.
+
+    That clause came from a room where the app spoke a fixed invitation of its own whenever the
+    Guide's turn went by without one, and making the Guide always invite was what stopped the
+    two voices. The probe machinery and that fixed line are gone, so nothing is waiting to speak
+    over a Guide that stays in the understanding — and what the clause costs now is a cold
+    opening that sends a team to rehearse a scene it has not been given yet.
+
+    The step keeps everything the room reads: the verb, the phrase naming the language, the
+    telling-back it asks for, and the worked example. What it loses is the obligation to end on
+    them.
+    """
+    lead = "**Open the part, then — once they have it — send them to REHEARSE it"
+    assert lead in GUIDE
+    rule = GUIDE[GUIDE.index(lead) :]
+    rule = rule[: rule.index("\n")]
+
+    assert (
+        "Never close the opening of a scene with a passage question in place of this invitation"
+        not in GUIDE
+    )
+    assert "the invitation is how the part ends" not in GUIDE
+    assert "the invitation waits until they show they have the part" in rule
+    assert "The telling they bring back is what says the rehearsal happened." in rule
