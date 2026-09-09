@@ -1173,6 +1173,17 @@ Re-pointing costs nothing because none of the eight has run against a shared dat
 module is not on `main` and the API is not deployed. The day either is true, this stops
 being a re-point and becomes a merge revision.
 
+**It moved a fourth time, and the fourth one is not the branch moving — it is the target**
+(09/sep/2026). This junction was re-aimed from `main` at `dev`, which the repository had
+meanwhile made the branch every pull request lands on, and `dev` had grown `20260908_arr01`
+and `20260908_arr02` off that same `att01`. So the graph forked at `att01` exactly as it had
+forked at `seg01` and at `join4`, and `20260825_rr01` was re-pointed a fourth time, now at
+`arr02`. Two things follow. The rule is about **the branch this stack lands on**, not about
+`main` by name — the command is `git log --oneline -1 origin/dev -- alembic/versions` for as
+long as `dev` is the target. And the eligibility test is unchanged and still passes: the
+module is on neither branch and the API is still not deployed, so this is a re-point and not
+yet the merge revision the paragraph above reserves.
+
 ### 8.4 A request and its snapshot reference each other, so a flush needs telling
 
 `rr_snapshots.request_id` points at the request and `rr_requests.revision_of_id` points
