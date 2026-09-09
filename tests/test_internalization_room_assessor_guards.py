@@ -35,7 +35,6 @@ from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
     save_comprehension,
-    set_bridge_mode,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -95,7 +94,7 @@ def _settings() -> Settings:
 
 
 async def _a_room_that_has_asked_something(db: AsyncSession) -> IRSession:
-    session = await create_session(db, language="pt", pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(db, language="pt", pericope=P)
     return await append_exchange(
         db, session, team_utterance="", guide_response="Quem aparece nesta parte?"
     )
@@ -114,7 +113,6 @@ async def _the_team_answers(
         validator_prompt=VALIDATOR,
         settings=_settings(),
     )
-    session = await set_bridge_mode(db, session, turn.bridge_mode)
     session = await save_comprehension(db, session, turn.state)
     session = await append_exchange(
         db, session, team_utterance=turn.outcome.transcript, guide_response=turn.outcome.speech

@@ -91,7 +91,7 @@ async def _told_back_and_read(db: AsyncSession) -> tuple[IRSession, IRTake]:
     whole, the analyst run over it, the clip played through. Every case below starts here and
     changes one thing.
     """
-    session = await create_session(db, pericope=P, bridge_mode="guided_microchecks", language="pt")
+    session = await create_session(db, pericope=P, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P))
     take = _rehearsal_take(session.id, sha256="a" * 64)

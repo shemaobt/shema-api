@@ -34,10 +34,6 @@ from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
-from app.services.internalization_room.calibration import (
-    BridgeMode,
-    resolve_bridge_mode_for_turn,
-)
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.canon.elements import absence_index
 from app.services.internalization_room.coverage import counts
@@ -508,10 +504,6 @@ async def take_turn(
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
-        if not opening and transcript.strip():
-            switched = resolve_bridge_mode_for_turn(BridgeMode(session.bridge_mode), transcript)
-            if switched.explicit:
-                session = await room.set_bridge_mode(db, session, switched.mode.value)
         book = book_of(session.pericope)
         outcome = await room.run_panorama_turn(
             transcript=transcript,
@@ -540,7 +532,6 @@ async def take_turn(
 
     voiced, segments = await _voice_the_turn(outcome, language=session.language)
     if turn is not None:
-        session = await room.set_bridge_mode(db, session, turn.bridge_mode)
         session = await room.save_comprehension(db, session, turn.state)
     session = await room.append_exchange(
         db,
