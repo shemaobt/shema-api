@@ -1,21 +1,30 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
-from google import genai
-from google.genai import types
+import anthropic
+from anthropic.types import (
+    Message,
+    MessageParam,
+    OutputConfigParam,
+    ThinkingConfigAdaptiveParam,
+)
 
 from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
 
 def room_model(settings: Settings) -> str:
     """The model behind the room's facilitation."""
-    return settings.gemini_fast_model
+    return _ladder(settings.tripod_voice_model)[0]
 
 
-DELIBERATE = types.ThinkingLevel.LOW
+def _ladder(configured: str) -> list[str]:
+    return [rung.strip() for rung in configured.split(",") if rung.strip()]
 
 
 async def call_agent(
@@ -23,41 +32,48 @@ async def call_agent(
     system_prompt: str,
     user_content: str,
     model: str | None = None,
-    temperature: float = 0.4,
     max_output_tokens: int = 2000,
-    thinking: types.ThinkingLevel = DELIBERATE,
+    effort: Effort = "high",
     settings: Settings | None = None,
 ) -> str:
+    """Ask one of the room's models, and hand back the text it spoke.
+
+    Thinking is adaptive on every call rather than a level the caller picks: the ladder's
+    rungs disagree about the default — omitting it on `claude-opus-4-8` means not thinking at
+    all — so a rung that answered well would answer worse purely by being stepped down onto.
+    """
     settings = settings or get_settings()
     model = model or room_model(settings)
-    client = genai.Client(api_key=settings.google_api_key)
-    response = await client.aio.models.generate_content(
+    thinking: ThinkingConfigAdaptiveParam = {"type": "adaptive"}
+    output_config: OutputConfigParam = {"effort": effort}
+    messages: list[MessageParam] = [{"role": "user", "content": user_content}]
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    response = await client.messages.create(
         model=model,
-        contents=[{"role": "user", "parts": [{"text": user_content}]}],
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            thinking_config=types.ThinkingConfig(thinking_level=thinking),
-        ),
+        max_tokens=max_output_tokens,
+        thinking=thinking,
+        output_config=output_config,
+        system=system_prompt,
+        messages=messages,
     )
     _report_unfinished(response, max_output_tokens)
-    return response.text or ""
+    return _spoken_text(response)
 
 
-def _report_unfinished(response: types.GenerateContentResponse, max_output_tokens: int) -> None:
-    candidates = response.candidates or []
-    if not candidates:
-        logger.warning("Room agent returned no candidates at all")
+def _spoken_text(response: Message) -> str:
+    for block in response.content:
+        if block.type == "text":
+            return block.text
+    logger.warning("Room agent returned no content at all")
+    return ""
+
+
+def _report_unfinished(response: Message, max_output_tokens: int) -> None:
+    if response.stop_reason in (None, "end_turn"):
         return
-    reason = candidates[0].finish_reason
-    if reason is types.FinishReason.STOP:
-        return
-    usage = response.usage_metadata
     logger.warning(
-        "Room agent stopped as %s with a ceiling of %d tokens: thoughts=%s output=%s",
-        reason,
+        "Room agent stopped as %s with a ceiling of %d tokens: output=%s",
+        response.stop_reason,
         max_output_tokens,
-        getattr(usage, "thoughts_token_count", None),
-        getattr(usage, "candidates_token_count", None),
+        response.usage.output_tokens,
     )

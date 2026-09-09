@@ -155,7 +155,6 @@ async def classify_coverage(
         raw = await call_agent(
             system_prompt=system,
             user_content="Classifique esta troca.",
-            temperature=0.0,
             max_output_tokens=1500,
             settings=cfg,
         )

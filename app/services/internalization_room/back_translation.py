@@ -502,7 +502,6 @@ async def analyse_telling_back(
         raw = await call_agent(
             system_prompt=system,
             user_content="Compare o contado de volta com o mapa.",
-            temperature=0.0,
             max_output_tokens=2000,
             settings=cfg,
         )
@@ -835,7 +834,6 @@ async def verify_correction(
         raw = await call_agent(
             system_prompt=system,
             user_content="Verifique a correção contra o achado.",
-            temperature=0.0,
             max_output_tokens=1500,
             settings=cfg,
         )

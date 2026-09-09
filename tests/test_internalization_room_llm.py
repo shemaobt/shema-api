@@ -1,74 +1,84 @@
 import logging
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from google.genai import types
 
 from app.core.config import Settings
 from app.services.internalization_room import llm
 
 
-def _settings() -> Settings:
-    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
+def _settings(**overrides: Any) -> Settings:
+    base: dict[str, Any] = {
+        "database_url": "sqlite+aiosqlite:///./test.db",
+        "anthropic_api_key": "sk-ant-fake",
+    }
+    base.update(overrides)
+    return Settings(**base)
 
 
-class FakeModels:
-    def __init__(self, response: types.GenerateContentResponse):
-        self.response = response
-        self.config: types.GenerateContentConfig | None = None
+class FakeMessages:
+    def __init__(self, reply: SimpleNamespace):
+        self.reply = reply
+        self.kwargs: dict[str, Any] = {}
 
-    async def generate_content(self, **kwargs: Any) -> types.GenerateContentResponse:
-        self.config = kwargs["config"]
-        return self.response
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.kwargs = kwargs
+        return self.reply
 
 
 class FakeClient:
-    def __init__(self, response: types.GenerateContentResponse):
-        self.aio = type("Aio", (), {"models": FakeModels(response)})()
+    def __init__(self, reply: SimpleNamespace, **options: Any):
+        self.messages = FakeMessages(reply)
+        self.options = options
 
 
-def _response(
-    text: str, reason: types.FinishReason, thoughts: int = 0, output: int = 0
-) -> types.GenerateContentResponse:
-    return types.GenerateContentResponse(
-        candidates=[
-            types.Candidate(
-                content=types.Content(role="model", parts=[types.Part(text=text)]),
-                finish_reason=reason,
-            )
-        ],
-        usage_metadata=types.GenerateContentResponseUsageMetadata(
-            thoughts_token_count=thoughts, candidates_token_count=output
+def _reply(
+    text: str,
+    stop_reason: str = "end_turn",
+    output: int = 0,
+    cache_read: int = 0,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        content=[SimpleNamespace(type="text", text=text)],
+        stop_reason=stop_reason,
+        model="claude-fable-5-1",
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=output,
+            cache_read_input_tokens=cache_read,
+            cache_creation_input_tokens=0,
         ),
     )
 
 
 @pytest.fixture
 def fake_client(monkeypatch: pytest.MonkeyPatch):
-    def _install(response: types.GenerateContentResponse) -> FakeClient:
-        client = FakeClient(response)
-        monkeypatch.setattr(llm.genai, "Client", lambda **_: client)
-        return client
+    def _install(reply: SimpleNamespace) -> dict[str, FakeClient]:
+        holder: dict[str, FakeClient] = {}
+
+        def _build(**options: Any) -> FakeClient:
+            holder["client"] = FakeClient(reply, **options)
+            return holder["client"]
+
+        monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", _build)
+        return holder
 
     return _install
 
 
-@pytest.mark.asyncio
-async def test_every_room_call_names_a_thinking_level(fake_client):
-    client = fake_client(_response("ok", types.FinishReason.STOP))
+async def test_the_guide_drafts_on_the_frontier_model_the_doctrine_names(fake_client):
+    holder = fake_client(_reply("ok"))
 
     await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
 
-    thinking = client.aio.models.config.thinking_config
-    assert thinking is not None, (
-        "sem nível explícito o modelo pensa sem teto e come o orçamento de saída"
+    assert holder["client"].messages.kwargs["model"] == "claude-fable-5-1", (
+        "a sala rascunhava no gemini-3-flash-preview, o modelo da falha do dia 3 de setembro"
     )
-    assert thinking.thinking_level is types.ThinkingLevel.LOW
 
 
-@pytest.mark.asyncio
 async def test_a_truncated_answer_is_reported_not_swallowed(fake_client, caplog):
-    fake_client(_response('{"verd', types.FinishReason.MAX_TOKENS, thoughts=1151, output=45))
+    fake_client(_reply('{"verd', stop_reason="max_tokens", output=45))
 
     with caplog.at_level(logging.WARNING):
         await llm.call_agent(
@@ -78,14 +88,12 @@ async def test_a_truncated_answer_is_reported_not_swallowed(fake_client, caplog)
             settings=_settings(),
         )
 
-    assert "MAX_TOKENS" in caplog.text
-    assert "1151" in caplog.text
+    assert "max_tokens" in caplog.text
     assert "1200" in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_a_finished_answer_stays_quiet(fake_client, caplog):
-    fake_client(_response("ok", types.FinishReason.STOP, thoughts=10, output=2))
+    fake_client(_reply("ok", output=2))
 
     with caplog.at_level(logging.WARNING):
         text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
@@ -94,12 +102,12 @@ async def test_a_finished_answer_stays_quiet(fake_client, caplog):
     assert caplog.text == ""
 
 
-@pytest.mark.asyncio
 async def test_an_empty_answer_still_says_why(fake_client, caplog):
-    response = types.GenerateContentResponse(candidates=[])
+    reply = _reply("ok")
+    reply.content = []
 
-    fake_client(response)
+    fake_client(reply)
     with caplog.at_level(logging.WARNING):
         assert await llm.call_agent(system_prompt="s", user_content="u", settings=_settings()) == ""
 
-    assert "no candidates" in caplog.text
+    assert "no content" in caplog.text
