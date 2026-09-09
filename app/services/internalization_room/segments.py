@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
-from app.db.models.internalization_room import IRSegment, IRSession
+from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 
 
 def slice_moved(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> bool:
@@ -124,6 +124,13 @@ async def capture_segment(
     else:
         parent_id = parent.id if parent is not None else None
         ordinal = await _next_ordinal(db, session.id, parent_id)
+
+    if bridge_take_id is not None:
+        bridge_take = (
+            await db.execute(select(IRTake).where(IRTake.id == bridge_take_id))
+        ).scalar_one_or_none()
+        if bridge_take is not None:
+            bridge_take.chunk_index = ordinal
 
     segment_id = str(uuid.uuid4())
     if replaces is not None:
