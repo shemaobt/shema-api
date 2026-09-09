@@ -1,25 +1,20 @@
-"""Recovery without penalizing the team: no-report rotation, STT retry, practice, consent."""
+"""What the room still reads for itself: practice reported, consent given, empty answers.
 
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.no_report import resolve_no_usable_report
+The rehearsal invitation is the Guide's own sentence now, so the invitations written here
+are ordinary Guide lines rather than a fixed prompt imported from the app. What the reader
+asks of them is unchanged: it has to name the rehearsal, the team's own language, and the
+word it wants back.
+"""
+
 from app.services.internalization_room.comprehension.practice import (
     bridge_language_retelling_completes_practice,
-    confident_non_bridge_audio_completes_scoped_practice,
     confirms_completed_mother_tongue_practice,
     guide_invited_mother_tongue_practice,
-    mother_tongue_practice_prompt,
+    is_bare_polar_answer,
+    is_semantically_empty_answer,
     scenes_practiced_by_the_telling_the_guide_invited,
 )
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
-from app.services.internalization_room.comprehension.probe_plan import NoUsableReportAttempt
-from app.services.internalization_room.comprehension.stt_recovery import (
-    SttRecoveryState,
-    plan_stt_recovery,
-    resolve_stt_recovery_choice,
-)
 from app.services.internalization_room.rehearsal_readiness import (
     RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
     rehearsal_consent_question,
@@ -28,149 +23,15 @@ from app.services.internalization_room.rehearsal_readiness import (
     should_offer_recording_consent,
 )
 
-
-def _semantic_probe(probe_id: str = "p1", method=EvidenceMethod.MICRO_TELLBACK) -> ActiveProbe:
-    return ActiveProbe(
-        id=probe_id,
-        checkpoint_ids=["u1"],
-        method=method,
-        purpose=ProbePurpose.INITIAL_CHECK,
-    )
-
-
-def test_the_first_nao_sei_records_only_a_process_attempt() -> None:
-    attempts, observation = resolve_no_usable_report(
-        probe=_semantic_probe(),
-        prior_attempts=[],
-        transcript="não sei",
-        reliable_bridge_speech=True,
-        assessor_found_no_evidence=False,
-        observation_id="obs-1",
-    )
-    assert len(attempts) == 1
-    assert observation is None
-
-
-def test_a_second_attempt_with_a_different_method_opens_the_bridge_limit() -> None:
-    prior = [
-        NoUsableReportAttempt(
-            probe_id="p0", checkpoint_ids=["u1"], method=EvidenceMethod.MICRO_TELLBACK
-        )
-    ]
-    attempts, observation = resolve_no_usable_report(
-        probe=_semantic_probe("p1", method=EvidenceMethod.PEER_CONFIRMATION),
-        prior_attempts=prior,
-        transcript="não sei",
-        reliable_bridge_speech=True,
-        assessor_found_no_evidence=False,
-        observation_id="obs-2",
-    )
-    assert len(attempts) == 1
-    assert observation is not None
-    assert observation.result is EvidenceResult.UNCLEAR_DUE_BRIDGE
-    assert "not lack of understanding" in (observation.note or "")
-
-
-def test_the_same_method_twice_never_opens_the_limit() -> None:
-    prior = [
-        NoUsableReportAttempt(
-            probe_id="p0", checkpoint_ids=["u1"], method=EvidenceMethod.MICRO_TELLBACK
-        )
-    ]
-    _, observation = resolve_no_usable_report(
-        probe=_semantic_probe("p1"),
-        prior_attempts=prior,
-        transcript="não sei",
-        reliable_bridge_speech=True,
-        assessor_found_no_evidence=False,
-        observation_id="obs-3",
-    )
-    assert observation is None
-
-
-def test_unreliable_speech_produces_no_report_bookkeeping() -> None:
-    attempts, observation = resolve_no_usable_report(
-        probe=_semantic_probe(),
-        prior_attempts=[],
-        transcript="não sei",
-        reliable_bridge_speech=False,
-        assessor_found_no_evidence=True,
-        observation_id="obs-4",
-    )
-    assert attempts == [] and observation is None
-
-
-def test_the_first_uncertainty_retries_the_same_probe() -> None:
-    decision = plan_stt_recovery(
-        prior=None,
-        probe_id="p1",
-        checkpoint_ids=["u1"],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        transcript_uncertain=True,
-    )
-    assert decision.action == "retry_same_probe"
-    assert decision.preserve_semantic_probe
-    assert decision.next_state is not None and decision.next_state.stage == "retry_requested"
-
-
-def test_the_second_uncertainty_reduces_the_burden() -> None:
-    prior = SttRecoveryState(
-        probe_id="p1",
-        checkpoint_ids=["u1"],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        stage="retry_requested",
-    )
-    decision = plan_stt_recovery(
-        prior=prior,
-        probe_id="p1",
-        checkpoint_ids=["u1"],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        transcript_uncertain=True,
-    )
-    assert decision.action == "reduce_burden"
-    assert not decision.preserve_semantic_probe
-    assert (
-        decision.next_state is not None and decision.next_state.stage == "recovery_choice_pending"
-    )
-
-
-def test_a_clear_transcript_clears_the_recovery() -> None:
-    decision = plan_stt_recovery(
-        prior=None,
-        probe_id="p1",
-        checkpoint_ids=["u1"],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        transcript_uncertain=False,
-    )
-    assert decision.action == "none" and decision.next_state is None
-
-
-_PENDING = SttRecoveryState(
-    probe_id="p1",
-    checkpoint_ids=["u1"],
-    method=EvidenceMethod.MICRO_TELLBACK,
-    stage="recovery_choice_pending",
-)
-
-
-def test_the_two_option_recovery_refuses_a_polar_answer() -> None:
-    assert resolve_stt_recovery_choice(_PENDING, "sim") == "unclear"
-
-
-def test_the_recovery_accepts_an_explicit_smaller_question() -> None:
-    assert resolve_stt_recovery_choice(_PENDING, "uma pergunta curta") == "smaller_question"
-
-
-def test_the_recovery_accepts_an_explicit_carry() -> None:
-    assert resolve_stt_recovery_choice(_PENDING, "pode deixar para o Refine") == "carry_to_refine"
-
-
-def test_naming_both_branches_stays_unclear() -> None:
-    assert resolve_stt_recovery_choice(_PENDING, "pergunta curta ou refine, tanto faz") == "unclear"
+INVITATION = {
+    "pt": "Ensaiem esta cena juntos na língua de vocês; quando terminarem, digam pronto.",
+    "en": "Rehearse this scene together in your own language; when you have finished, say done.",
+    "es": "Ensayen juntos esta escena en su lengua; cuando terminen, digan listo.",
+}
 
 
 def test_pronto_after_the_exact_practice_prompt_confirms() -> None:
-    assert confirms_completed_mother_tongue_practice(mother_tongue_practice_prompt("pt"), "pronto")
+    assert confirms_completed_mother_tongue_practice(INVITATION["pt"], "pronto")
 
 
 def test_a_bare_sim_confirms_only_a_direct_practice_question() -> None:
@@ -182,7 +43,7 @@ def test_a_bare_sim_confirms_only_a_direct_practice_question() -> None:
 
 def test_a_denied_practice_never_confirms() -> None:
     assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "não terminamos de ensaiar na nossa língua"
+        INVITATION["pt"], "não terminamos de ensaiar na nossa língua"
     )
 
 
@@ -194,60 +55,42 @@ def test_a_future_plan_never_confirms() -> None:
 
 
 def test_a_plain_report_of_finished_practice_confirms() -> None:
-    assert confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "já ensaiamos"
-    )
+    assert confirms_completed_mother_tongue_practice(INVITATION["pt"], "já ensaiamos")
 
 
 def test_the_completion_word_confirms_inside_a_longer_utterance() -> None:
+    assert confirms_completed_mother_tongue_practice(INVITATION["pt"], "pronto, terminamos")
     assert confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "pronto, terminamos"
-    )
-    assert confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"),
+        INVITATION["pt"],
         "a gente leu, depois ensaiou junto, pronto, pode seguir",
     )
 
 
 def test_asking_about_practice_never_confirms() -> None:
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "já ensaiamos?")
     assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "já ensaiamos?"
-    )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "a gente tem que ensaiar agora?"
+        INVITATION["pt"], "a gente tem que ensaiar agora?"
     )
 
 
 def test_a_postponed_practice_never_confirms() -> None:
     assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "acho que a gente pode ensaiar depois"
+        INVITATION["pt"], "acho que a gente pode ensaiar depois"
     )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "ainda não"
-    )
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "ainda não")
 
 
 def test_a_negated_practice_never_confirms() -> None:
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "ainda não ensaiamos"
-    )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "não, pronto não"
-    )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "não, pronto"
-    )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "sim, mas ainda não"
-    )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "pronto, mas ainda não"
-    )
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "ainda não ensaiamos")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "não, pronto não")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "não, pronto")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "sim, mas ainda não")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "pronto, mas ainda não")
 
 
 def test_wanting_another_round_does_not_undo_a_finished_practice() -> None:
     assert confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "já ensaiamos, mas queremos de novo"
+        INVITATION["pt"], "já ensaiamos, mas queremos de novo"
     )
 
 
@@ -259,15 +102,13 @@ def test_nothing_confirms_a_practice_the_room_never_invited() -> None:
 def test_a_spanish_room_confirms_a_finished_practice_but_never_a_denied_one() -> None:
     """A Spanish room could not answer its practice probe at all: no matcher carried a
     Spanish word, so the room's own prompt was never read as an invitation."""
-    assert confirms_completed_mother_tongue_practice(mother_tongue_practice_prompt("es"), "listo")
+    assert confirms_completed_mother_tongue_practice(INVITATION["es"], "listo")
     assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("es"), "no, todavía no ensayamos"
+        INVITATION["es"], "no, todavía no ensayamos"
     )
+    assert not confirms_completed_mother_tongue_practice(INVITATION["es"], "ya no ensayamos")
     assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("es"), "ya no ensayamos"
-    )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("es"), "ya vamos a ensayar esta escena"
+        INVITATION["es"], "ya vamos a ensayar esta escena"
     )
 
 
@@ -286,48 +127,22 @@ def test_the_closing_word_is_heard_at_the_end_of_a_clause_too() -> None:
     pt/es while every English case stayed green. `ya no está listo` is refused here by the
     opening having to touch the word, not by the negation list — no Spanish `no` reaches
     it (ENG-731) — so it is exactly the case a widened opening would lose."""
-    english = mother_tongue_practice_prompt("en")
+    english = INVITATION["en"]
 
     assert confirms_completed_mother_tongue_practice(english, "I already said, it's done.")
     assert confirms_completed_mother_tongue_practice(english, "it's done")
     assert confirms_completed_mother_tongue_practice(english, "it is done")
-    assert confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "já está pronto"
-    )
-    assert confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("es"), "ya está listo"
-    )
+    assert confirms_completed_mother_tongue_practice(INVITATION["pt"], "já está pronto")
+    assert confirms_completed_mother_tongue_practice(INVITATION["es"], "ya está listo")
 
     assert not confirms_completed_mother_tongue_practice(english, "it's not done")
     assert not confirms_completed_mother_tongue_practice(english, "it will be done")
     assert not confirms_completed_mother_tongue_practice(english, "is it done?")
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("pt"), "já não está pronto"
-    )
-    assert not confirms_completed_mother_tongue_practice(
-        mother_tongue_practice_prompt("es"), "ya no está listo"
-    )
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "já não está pronto")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["es"], "ya no está listo")
 
 
-def test_confident_foreign_audio_completes_only_the_practice_probe() -> None:
-    practice = ActiveProbe(
-        id="x",
-        checkpoint_ids=[],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.MOTHER_TONGUE_PRACTICE,
-        practice_scene_ids=["S1"],
-    )
-    assert confident_non_bridge_audio_completes_scoped_practice(practice, True)
-    assert not confident_non_bridge_audio_completes_scoped_practice(_semantic_probe(), True)
-    assert not confident_non_bridge_audio_completes_scoped_practice(practice, False)
-
-
-_CONSENT_PROBE = ActiveProbe(
-    id="consent",
-    checkpoint_ids=[],
-    method=EvidenceMethod.MICRO_TELLBACK,
-    purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT,
-)
+_CONSENT_PROBE = ActiveProbe(id="consent", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
 
 
 def test_consent_needs_the_exact_question_and_probe() -> None:
@@ -351,7 +166,7 @@ def test_consent_needs_the_exact_question_and_probe() -> None:
     )
     assert (
         resolve_rehearsal_consent(
-            probe=_semantic_probe(),
+            probe=None,
             previous_guide_utterance=rehearsal_consent_question("pt"),
             team_utterance="sim",
             reliable_bridge_speech=True,
@@ -498,12 +313,7 @@ def test_the_rooms_own_consent_question_never_marks_a_scene_practiced() -> None:
     the readiness cue that follows is an app-owned invitation with no probe behind it at
     all. What settles it is the line — the room's own recording speech never counts, while
     the fixed practice prompt, which is a real invitation, still does."""
-    consent = ActiveProbe(
-        id="c",
-        checkpoint_ids=[],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT,
-    )
+    consent = ActiveProbe(id="c", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
     assert (
         scenes_practiced_by_the_telling_the_guide_invited(
             consent,
@@ -527,7 +337,7 @@ def test_the_rooms_own_consent_question_never_marks_a_scene_practiced() -> None:
     ) == ["S1"]
     assert scenes_practiced_by_the_telling_the_guide_invited(
         None,
-        mother_tongue_practice_prompt("en"),
+        INVITATION["en"],
         "A famine came and a family left Bethlehem to live in Moab",
         True,
         "S1",
@@ -541,8 +351,8 @@ def test_an_announced_plan_is_not_the_telling_the_invitation_asked_for() -> None
     path was written without it: fluent, substantial, no question, no hedge, no denial, no
     echo — and no rehearsal yet. The scene would enter the practised list on a rehearsal
     that had not started."""
-    invitation_pt = mother_tongue_practice_prompt("pt")
-    invitation_es = mother_tongue_practice_prompt("es")
+    invitation_pt = INVITATION["pt"]
+    invitation_es = INVITATION["es"]
 
     assert not bridge_language_retelling_completes_practice(
         invitation_pt, "vamos ensaiar essa cena agora", True
@@ -665,8 +475,8 @@ def test_a_told_scene_closes_the_practice_where_a_real_condition_still_refuses()
     unchanged: it opens its clause and names who it is about, and a reply that is one short
     clause is still refused for a condition anywhere in it, so "a gente ensaia se vocês
     quiserem" does not become a rehearsal either."""
-    invitation_pt = mother_tongue_practice_prompt("pt")
-    invitation_es = mother_tongue_practice_prompt("es")
+    invitation_pt = INVITATION["pt"]
+    invitation_es = INVITATION["es"]
 
     assert bridge_language_retelling_completes_practice(
         invitation_es, "La familia se mudó a Moab por el hambre", True
@@ -701,7 +511,7 @@ def test_a_hedge_inside_a_told_scene_is_a_person_remembering_not_a_refusal() -> 
     the gate read it the same way it reads "acho que a gente ensaiou" — a reply with no
     telling around it at all, where the hedge really is the whole answer. Two clauses of
     three words or more are what separates them."""
-    invitation_pt = mother_tongue_practice_prompt("pt")
+    invitation_pt = INVITATION["pt"]
 
     assert bridge_language_retelling_completes_practice(
         invitation_pt,
@@ -763,7 +573,7 @@ def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
         None, _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True, "S1"
     ) == ["S1"]
     for language in ("pt", "en", "es"):
-        assert guide_invited_mother_tongue_practice(mother_tongue_practice_prompt(language))
+        assert guide_invited_mother_tongue_practice(INVITATION[language])
 
     assert guide_invited_mother_tongue_practice(
         "Does any of that sound familiar? Now rehearse this scene together in your own "
@@ -802,3 +612,14 @@ def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
         "Isso apareceu na prática na língua de vocês?",
     ):
         assert not guide_invited_mother_tongue_practice(about_a_rehearsal), about_a_rehearsal
+
+
+def test_bare_polar_answers_are_semantically_empty() -> None:
+    """The reader came here with the assessor's parser, and this is what it is for: a shrug
+    is not a report, and it is not a misunderstanding either."""
+    for text in ("sim", "não", "isso mesmo", "aham", "ok"):
+        assert is_bare_polar_answer(text)
+        assert is_semantically_empty_answer(text)
+    assert not is_bare_polar_answer("Noemi voltou")
+    assert is_semantically_empty_answer("não sei")
+    assert not is_semantically_empty_answer("sim, Noemi voltou para Belém")

@@ -1,10 +1,21 @@
-"""The assessor's fail-closed parser: every evidence row must quote the team exactly and
-survive negation, polarity, and duplicate guards.
+"""The demolition guard for the Assessor and the probe machinery around it.
 
-The second half reads the same guard from the live turn: what the team hears when the
-assessor call itself fails, and where a room goes when it keeps failing.
+A team said *"é difícil explicar tudo isso em português"* and the room answered with a line
+about the microphone. The Assessor classified the turn, the planner picked the next station,
+and the Guide was handed a contract that left it nothing to do but the scripted micro-check —
+so a problem about language was answered as a problem about sound. The ruling is that the
+machinery which produces that should not exist.
+
+These tests do not describe behaviour that was built. They describe absence, and they are
+the only thing standing between the absence and someone rebuilding it a piece at a time:
+no module of it can be imported, no field of a session remembers it, no purpose is left to
+hand the Guide, no block of it reaches either model, and no count of failed calls can end
+an interview. Named symbol by symbol rather than matched by prefix, the way the retired
+acousteme surface is named: the package around them is alive, and a prefix guard here would
+be widened until it meant nothing.
 """
 
+import importlib
 import json
 import sys
 from typing import Any
@@ -15,275 +26,83 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.comprehension.assessor import (
-    TurnAssessment,
-    excerpt_drops_nearby_negation,
-    is_bare_polar_answer,
-    is_exact_excerpt,
-    is_semantically_empty_answer,
-    parse_turn_assessor_decision,
-    semantic_excerpt_has_unresolved_polarity,
-)
-from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
-from app.services.internalization_room.comprehension.evidence import EvidenceMethod
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.comprehension.probe import ProbePurpose
+from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.live_turn import (
-    ComprehensionTurn,
-    _assessor_failures_after,
-    run_comprehension_turn,
-)
+from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
 from app.services.internalization_room.sessions import (
     append_exchange,
-    comprehension_of,
     create_session,
     save_comprehension,
     set_bridge_mode,
 )
 
-ALLOWED = ["proposition:P03:P1"]
-
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 P = "P03"
-TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
+
+RETIRED_MODULES = (
+    "app.services.internalization_room.comprehension.assessor",
+    "app.services.internalization_room.comprehension.probe_plan",
+    "app.services.internalization_room.comprehension.question_contract",
+    "app.services.internalization_room.comprehension.stt_recovery",
+    "app.services.internalization_room.comprehension.no_report",
+)
 
 
-def _raw(rows: list[dict], **extra) -> str:
-    return json.dumps({"observations": rows, **extra})
+def test_no_module_of_the_probe_machinery_can_be_imported() -> None:
+    alive = []
+    for name in RETIRED_MODULES:
+        try:
+            importlib.import_module(name)
+        except ModuleNotFoundError:
+            continue
+        alive.append(name)
+
+    assert not alive, f"the probe machinery is back: {alive}"
 
 
-def _row(**overrides) -> dict:
-    row = {
-        "checkpoint_id": ALLOWED[0],
-        "result": "demonstrated",
-        "evidence_excerpt": "Noemi voltou",
-        "rationale": "names the return",
+def test_no_field_of_the_session_remembers_the_probe_machinery() -> None:
+    retired = {
+        "assessor_failures",
+        "stt_recovery",
+        "no_report_attempts",
+        "adaptive_free_retell_attempted",
     }
-    row.update(overrides)
-    return row
+
+    assert not retired & set(ComprehensionState.model_fields)
 
 
-def test_a_grounded_row_with_an_exact_quote_survives() -> None:
-    parsed = parse_turn_assessor_decision(_raw([_row()]), "Noemi voltou para Belém", ALLOWED)
-    assert parsed is not None
-    observations, _ = parsed
-    assert len(observations) == 1
-    assert observations[0].result == "demonstrated"
+def test_the_one_purpose_left_is_the_recording_handoff_consent() -> None:
+    """The purposes were the contract: each one told the Guide what it could and could not
+    say next. The consent question is the app's own fixed sentence and the only reason a
+    probe is still raised at all."""
+    assert [purpose.value for purpose in ProbePurpose] == ["recording_handoff_consent"]
 
 
-def test_a_row_quoting_words_the_team_never_said_is_dropped() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(evidence_excerpt="Rute ficou no campo")]), "Noemi voltou", ALLOWED
-    )
-    assert parsed is not None and parsed[0] == []
-
-
-def test_a_quote_that_drops_a_nearby_negation_is_dropped() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(evidence_excerpt="Noemi voltou")]), "não foi que Noemi voltou", ALLOWED
-    )
-    assert parsed is not None and parsed[0] == []
-
-
-def test_a_proposition_inside_uncertainty_is_not_positive_evidence() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(evidence_excerpt="Noemi voltou")]),
-        "não tenho certeza se Noemi voltou",
-        ALLOWED,
-    )
-    assert parsed is not None and parsed[0] == []
-
-
-def test_a_question_then_denial_is_not_an_assertion() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(evidence_excerpt="Noemi voltou")]), "Noemi voltou? Não.", ALLOWED
-    )
-    assert parsed is not None and parsed[0] == []
-
-
-def test_an_unknown_checkpoint_id_is_dropped() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(checkpoint_id="proposition:P03:P99")]), "Noemi voltou", ALLOWED
-    )
-    assert parsed is not None and parsed[0] == []
-
-
-def test_a_transcript_the_assessor_cannot_read_is_reported_as_its_own_result() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(result="unclear_due_transcript", evidence_excerpt="Only a roof stayed there")]),
-        "Only a roof stayed there",
-        ALLOWED,
-    )
-    assert parsed is not None
-    observations, _ = parsed
-    assert [item.result for item in observations] == ["unclear_due_transcript"]
-
-
-def test_a_contradiction_the_assessor_does_not_dispute_is_still_a_conflict() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(result="conflict", evidence_excerpt="Noemi voltou sozinha")]),
-        "Noemi voltou sozinha",
-        ALLOWED,
-    )
-    assert parsed is not None
-    observations, _ = parsed
-    assert [item.result for item in observations] == ["conflict"]
-
-
-def test_the_model_cannot_return_carry_or_stt_results() -> None:
-    for result in ("carry_to_refine", "stt_uncertain", "no_evidence"):
-        parsed = parse_turn_assessor_decision(_raw([_row(result=result)]), "Noemi voltou", ALLOWED)
-        assert parsed is not None and parsed[0] == []
-
-
-def test_two_competing_rows_for_one_checkpoint_cancel_each_other() -> None:
-    parsed = parse_turn_assessor_decision(
-        _raw([_row(), _row(result="conflict", evidence_excerpt="Noemi voltou")]),
-        "Noemi voltou",
-        ALLOWED,
-    )
-    assert parsed is not None and parsed[0] == []
-
-
-def test_extra_keys_on_a_row_fail_that_row_closed() -> None:
-    parsed = parse_turn_assessor_decision(_raw([_row(extra_field="x")]), "Noemi voltou", ALLOWED)
-    assert parsed is not None and parsed[0] == []
-
-
-def test_unparseable_output_fails_the_whole_envelope() -> None:
-    assert parse_turn_assessor_decision("nada de json", "Noemi voltou", ALLOWED) is None
-
-
-def test_practice_needs_an_exact_quote_and_an_explicit_report() -> None:
-    utterance = "já ensaiamos esta cena na nossa língua"
-    parsed = parse_turn_assessor_decision(
-        _raw(
-            [],
-            mother_tongue_practice_reported=True,
-            practice_evidence_excerpt=utterance,
-        ),
-        utterance,
-        ALLOWED,
-    )
-    assert parsed is not None and parsed[1] is True
-
-    parsed = parse_turn_assessor_decision(
-        _raw(
-            [],
-            mother_tongue_practice_reported=True,
-            practice_evidence_excerpt="falamos terena",
-        ),
-        "falamos terena",
-        ALLOWED,
-    )
-    assert parsed is not None and parsed[1] is False
-
-
-def test_bare_polar_answers_are_semantically_empty() -> None:
-    for text in ("sim", "não", "isso mesmo", "aham", "ok"):
-        assert is_bare_polar_answer(text)
-        assert is_semantically_empty_answer(text)
-    assert not is_bare_polar_answer("Noemi voltou")
-    assert is_semantically_empty_answer("não sei")
-    assert not is_semantically_empty_answer("sim, Noemi voltou para Belém")
-
-
-def test_excerpt_matching_ignores_case_and_spacing_but_not_content() -> None:
-    assert is_exact_excerpt("NOEMI  voltou", "noemi voltou para belém")
-    assert not is_exact_excerpt("noemi partiu", "noemi voltou")
-
-
-def test_polarity_guard_accepts_a_plainly_asserted_quote() -> None:
-    assert not semantic_excerpt_has_unresolved_polarity(
-        "Noemi voltou", "Noemi voltou para Belém", positive_result=True
-    )
-
-
-def test_negation_dropping_guard_sees_nearby_negators() -> None:
-    assert excerpt_drops_nearby_negation("voltou", "ela não voltou")
-    assert not excerpt_drops_nearby_negation("não voltou", "ela não voltou")
-
-
-def test_negation_dropping_guard_ignores_ordinary_portuguese_function_words() -> None:
-    assert not excerpt_drops_nearby_negation("campo de Boaz", "Rute foi trabalhar no campo de Boaz")
-    assert not excerpt_drops_nearby_negation(
-        "tempo da colheita", "Noemi voltou para Belém no tempo da colheita"
-    )
-    assert not excerpt_drops_nearby_negation("para Belém", "Noemi voltou, né, para Belém")
-
-
-class _ApprovingGuide:
-    """A Guide that drafts one short line and a Validator that passes it."""
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return GUIDE_LINE
-
-
-class _ScriptedAssessor:
-    """The assessor call answering as this test's script says, one entry per call.
-
-    ``raise`` breaks the transport, ``unreadable`` returns a reply no parser can use, and
-    ``no_evidence`` returns a well-formed report that simply found nothing to quote. Once
-    the script runs out the assessor works: a call a test did not plan for can only make
-    the room healthier, never manufacture the failure the test is looking for.
-    """
-
-    def __init__(self, script: list[str]) -> None:
-        self._script = list(script)
-
-    async def __call__(self, **kwargs: Any) -> str:
-        behaviour = self._script.pop(0) if self._script else "no_evidence"
-        if behaviour == "raise":
-            raise RuntimeError("assessor transport is down")
-        if behaviour == "unreadable":
-            return "desculpa, não consegui"
-        return json.dumps(
-            {
-                "observations": [],
-                "mother_tongue_practice_reported": False,
-                "practice_evidence_excerpt": "",
-            }
-        )
-
-
-@pytest.fixture
-def guide_that_approves(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", _ApprovingGuide())
-
-
-def _assessor_answers(monkeypatch: pytest.MonkeyPatch, *script: str) -> None:
-    module = sys.modules["app.services.internalization_room.comprehension.assessor"]
-    monkeypatch.setattr(module, "call_agent", _ScriptedAssessor(list(script)))
+PROBE_BLOCK_MARKS = (
+    "ACTIVE COMPREHENSION PROBE",
+    "EVIDENCE METHOD:",
+    "QUESTION SHAPE",
+    "PROCESS DECISION:",
+)
 
 
 def _settings() -> Settings:
     return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
 
 
-async def _a_room_waiting_on_an_answer(db: AsyncSession) -> IRSession:
+async def _a_room_that_has_asked_something(db: AsyncSession) -> IRSession:
     session = await create_session(db, language="pt", pericope=P, bridge_mode="guided_microchecks")
-    session = await append_exchange(
+    return await append_exchange(
         db, session, team_utterance="", guide_response="Quem aparece nesta parte?"
     )
-    target = next(checkpoint for checkpoint in checkpoints_for(P) if checkpoint.critical)
-    state = comprehension_of(session)
-    state.active_probe = ActiveProbe(
-        id="probe-1",
-        checkpoint_ids=[target.id],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.INITIAL_CHECK,
-    )
-    return await save_comprehension(db, session, state)
 
 
 async def _the_team_answers(
-    db: AsyncSession, session: IRSession, text: str = TEAM_ANSWER
+    db: AsyncSession, session: IRSession, text: str
 ) -> tuple[ComprehensionTurn, IRSession]:
     """One whole turn as the endpoint runs it, so what one turn leaves the next one reads."""
     turn = await run_comprehension_turn(
@@ -303,165 +122,105 @@ async def _the_team_answers(
     return turn, session
 
 
-@pytest.mark.asyncio
-async def test_an_assessor_that_cannot_be_reached_degrades_the_turn(
-    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A broken assessor call is not an answer the room understood and found empty.
+class _RecordingModels:
+    """A Guide and a Validator that keep everything they were handed, prompt and message.
 
-    Voicing an ordinary re-ask there tells the team their answer landed and was found
-    wanting, and leaves the room free to ask the same question forever.
+    Both halves matter: the contract rode into the Guide inside the coverage-status slot of
+    the user message and into the Validator appended to its system prompt, so a guard that
+    read only one of the two would stay green with the block still reaching the other.
     """
-    _assessor_answers(monkeypatch, "raise")
-    session = await _a_room_waiting_on_an_answer(db_session)
 
-    turn, _ = await _the_team_answers(db_session, session)
+    def __init__(self) -> None:
+        self.guide: list[str] = []
+        self.validator: list[str] = []
 
-    assert turn.outcome.used_fail_safe
-    assert turn.outcome.degraded
-    assert turn.outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-
-
-@pytest.mark.asyncio
-async def test_an_assessor_reply_nobody_can_read_degrades_the_same_turn(
-    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Malformed JSON and a dead socket cost the room the same thing: the answer."""
-    _assessor_answers(monkeypatch, "unreadable")
-    session = await _a_room_waiting_on_an_answer(db_session)
-
-    turn, _ = await _the_team_answers(db_session, session)
-
-    assert turn.outcome.used_fail_safe
-    assert turn.outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            self.validator.append(f"{system_prompt}\n\n{user_content}")
+            return json.dumps({"verdict": "pass", "issues": []})
+        self.guide.append(f"{system_prompt}\n\n{user_content}")
+        return GUIDE_LINE
 
 
-@pytest.mark.asyncio
-async def test_an_on_topic_answer_with_no_evidence_is_still_an_ordinary_re_ask(
-    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The assessor read the answer and found nothing to quote — that is not a failure.
+def _marks_the_app_added(handed: list[str], written: str) -> list[str]:
+    """The marks a call carries beyond the ones the written prompt already names.
 
-    This is the pair that keeps the fix from marking every empty-handed turn as broken.
+    Both prompt documents still describe the contract in prose, and a prompt is reviewed by
+    the person who writes it rather than by a grep — what this asks is only that the app
+    stops appending the block itself.
     """
-    _assessor_answers(monkeypatch, "no_evidence")
-    session = await _a_room_waiting_on_an_answer(db_session)
+    return [
+        mark
+        for mark in PROBE_BLOCK_MARKS
+        if any(one.count(mark) > written.count(mark) for one in handed)
+    ]
 
-    turn, _ = await _the_team_answers(db_session, session)
 
-    assert not turn.outcome.used_fail_safe
+@pytest.mark.asyncio
+async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The block is what answered a language problem with a microphone line: holding a
+    contract that authorized only the scripted micro-check, the Guide had nothing else it
+    was allowed to do with what the team had just said.
+
+    A turn with no probe standing is the one that shows it plainest — the block was written
+    even then, and its four lines were pure instruction: invent no other semantic test,
+    authorize exactly one move, follow the app-owned instruction only.
+
+    The sentence is the one from the ticket, and what the turn does with it is the whole
+    point: it goes to the Guide, in the Guide's own words, off the conversation. Not a
+    fail-safe, not a fixed line, and nothing about the sound.
+    """
+    models = _RecordingModels()
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
+    )
+    session = await _a_room_that_has_asked_something(db_session)
+
+    turn, _ = await _the_team_answers(
+        db_session, session, text="é difícil explicar isso em português"
+    )
+
     assert turn.outcome.speech == GUIDE_LINE
+    assert not turn.outcome.used_fail_safe
+    assert not turn.outcome.degraded
+    assert models.guide and models.validator
+    to_the_guide = _marks_the_app_added(models.guide, GUIDE)
+    to_the_validator = _marks_the_app_added(models.validator, VALIDATOR)
+
+    assert not to_the_guide, f"a probe block is still handed to the Guide: {to_the_guide}"
+    assert not to_the_validator, f"and to the Validator: {to_the_validator}"
+
+
+class _BrokenModels:
+    """Every model call this room places goes nowhere."""
+
+    async def __call__(self, **kwargs: Any) -> str:
+        raise RuntimeError("the model transport is down")
 
 
 @pytest.mark.asyncio
-async def test_three_assessor_failures_running_reach_the_hard_stop(
-    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
+async def test_a_room_whose_model_keeps_failing_is_never_stopped_for_a_person(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The ladder the fail-safe policy promises: repeated failure stops looping and calls a
-    person, instead of asking the same question a fourth time as though it were the first.
+    """A component that no longer exists cannot decide a session is over.
 
-    Five turns to spend three failed calls: a fail-safe clears the active probe, so the turn
-    after one never reaches the assessor at all.
+    The failures the ladder counted were the Assessor's own, and three in a row ended the
+    interview and called somebody. What still asks for a person lives outside the turn —
+    the tablet asking, the retelling ceiling, the back-translation ceiling, the device
+    halt — and none of it counts model calls.
     """
-    _assessor_answers(monkeypatch, "raise", "raise", "raise")
-    session = await _a_room_waiting_on_an_answer(db_session)
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
+    )
+    session = await _a_room_that_has_asked_something(db_session)
 
     spoken = []
-    for _ in range(5):
-        turn, session = await _the_team_answers(db_session, session)
+    for _ in range(6):
+        turn, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
         spoken.append(turn.outcome.speech)
-
-    assert spoken[-1] in utterances(FailSafe.HARD_STOP, "pt")
-    assert turn.outcome.used_fail_safe
-    assert turn.outcome.degraded
-    assert turn.outcome.needs_person
-
-
-@pytest.mark.asyncio
-async def test_a_reply_that_comes_back_clears_what_the_failures_owed(
-    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Hiccups spread over a working room never add up to a facilitator handoff.
-
-    The room reaches a carry-to-refine offer before a third call is ever placed, which is
-    the no-usable-report ladder doing its own job. What is pinned here is the whole path
-    staying out of category E; the clearing rule itself is pinned on
-    ``_assessor_failures_after``, where no other ladder can divert it.
-    """
-    _assessor_answers(monkeypatch, "raise", "no_evidence", "raise", "no_evidence", "raise")
-    session = await _a_room_waiting_on_an_answer(db_session)
-
-    spoken = []
-    for _ in range(7):
-        turn, session = await _the_team_answers(db_session, session)
-        spoken.append(turn.outcome.speech)
+        assert not turn.outcome.needs_person
 
     hard_stop = utterances(FailSafe.HARD_STOP, "pt")
     assert not any(line in hard_stop for line in spoken)
-
-
-def test_only_a_reply_clears_what_the_failures_owed() -> None:
-    """The three things a turn can learn about the assessor, and what each does to the count.
-
-    Behaviour cannot reach this cleanly: the no-usable-report ladder offers carry-to-refine
-    before a third call is placed, so an interleaved room never spends its failures.
-    """
-    assert _assessor_failures_after(2, TurnAssessment(observations=[], failed=True)) == 3
-
-    replied = TurnAssessment(observations=[], assessment_completed=True, replied=True)
-    assert _assessor_failures_after(2, replied) == 0
-
-    never_asked = TurnAssessment(observations=[])
-    assert _assessor_failures_after(2, never_asked) == 2
-
-    settled_locally = TurnAssessment(
-        observations=[], assessment_completed=True, no_usable_report=True
-    )
-    assert _assessor_failures_after(2, settled_locally) == 2
-
-
-@pytest.mark.asyncio
-async def test_a_shrug_mid_outage_does_not_clear_the_ladder(
-    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """ "Não sei" is settled without asking anyone, so it is no proof the assessor is back.
-
-    The room decides a semantically empty answer locally and never places the call. Counting
-    that as a healthy reply would let one shrug during an outage zero the ladder, and a team
-    that keeps shrugging at a room that keeps breaking would never reach a person.
-    """
-    _assessor_answers(monkeypatch, "raise", "raise", "raise")
-    session = await _a_room_waiting_on_an_answer(db_session)
-
-    turn, session = await _the_team_answers(db_session, session)
-    turn, session = await _the_team_answers(db_session, session)
-    turn, session = await _the_team_answers(db_session, session, text="não sei")
-    for _ in range(3):
-        turn, session = await _the_team_answers(db_session, session)
-
-    assert turn.outcome.speech in utterances(FailSafe.HARD_STOP, "pt")
-    assert turn.outcome.needs_person
-
-
-@pytest.mark.asyncio
-async def test_the_handoff_spends_the_count_it_was_owed(
-    db_session: AsyncSession, guide_that_approves: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Calling a person is the escalation, so the next failure starts the ladder again.
-
-    Otherwise every later failure of the same outage answers with the identical category-E
-    sentence and asks for a person who is already standing there — which is the looping the
-    policy asks the hard stop to end.
-    """
-    _assessor_answers(monkeypatch, "raise", "raise", "raise", "raise")
-    session = await _a_room_waiting_on_an_answer(db_session)
-
-    for _ in range(5):
-        turn, session = await _the_team_answers(db_session, session)
-    assert turn.outcome.needs_person
-
-    for _ in range(2):
-        turn, session = await _the_team_answers(db_session, session)
-
-    assert turn.outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-    assert not turn.outcome.needs_person

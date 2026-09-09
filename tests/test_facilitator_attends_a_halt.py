@@ -12,7 +12,7 @@ refused. Both wrote `needs_person`, and no reader could tell which it was lookin
 Everything here is read through a route — the tablet's state, the facilitator's queue, the
 team's history. The mark and the undo are HTTP calls by a real facilitator, and the halts are
 raised the three ways the room actually raises them: the tablet's own route, the retell
-budget, and the assessor failing until the room hard-stops.
+budget.
 """
 
 from __future__ import annotations
@@ -42,7 +42,6 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceObservation,
     EvidenceResult,
 )
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
@@ -457,7 +456,7 @@ async def test_undoing_a_mark_nobody_made_does_not_re_halt_a_room_that_healed_it
     client: httpx.AsyncClient,
     facilitator_a: Facilitator,
     waiting_room,
-    the_assessor_agrees: None,
+    the_models_agree: None,
 ) -> None:
     """The reachable half of "undoing an unmarked session is a no-op".
 
@@ -490,7 +489,7 @@ async def test_undoing_a_visit_to_a_room_the_team_restarted_itself_does_not_halt
     client: httpx.AsyncClient,
     facilitator_a: Facilitator,
     waiting_room,
-    the_assessor_agrees: None,
+    the_models_agree: None,
 ) -> None:
     """The intersection the two cases above each cover only half of.
 
@@ -527,7 +526,7 @@ async def test_a_second_halt_is_not_reported_as_a_room_somebody_already_went_to(
     client: httpx.AsyncClient,
     facilitator_a: Facilitator,
     waiting_room,
-    the_assessor_agrees: None,
+    the_models_agree: None,
 ) -> None:
     """A new ask is an unattended ask, whoever answered the last one.
 
@@ -560,7 +559,7 @@ async def test_undoing_a_visit_after_the_team_came_back_does_not_stop_them_again
     client: httpx.AsyncClient,
     facilitator_a: Facilitator,
     waiting_room,
-    the_assessor_agrees: None,
+    the_models_agree: None,
 ) -> None:
     """The same staleness as `halt_kind`, one step further along, and it bites the same way.
 
@@ -685,53 +684,10 @@ class _AgreeingModels:
 
 
 @pytest.fixture()
-def the_assessor_is_down(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The Guide and Validator work; only the comprehension assessor cannot be reached.
-
-    Copied from `test_internalization_room_turn_durability.py`, which is where the hard stop
-    is already driven over HTTP — this file reaches it the same way rather than reaching
-    inside the service to fake the outcome.
-    """
+def the_models_agree(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Guide drafts and the Validator passes it."""
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
-    )
-
-    async def _assessor(**_: Any) -> str:
-        raise RuntimeError("assessor transport is down")
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.comprehension.assessor"],
-        "call_agent",
-        _assessor,
-    )
-
-
-@pytest.fixture()
-def the_assessor_agrees(monkeypatch: pytest.MonkeyPatch, target_checkpoint: str) -> None:
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _AgreeingModels()
-    )
-
-    async def _assessor(**_: Any) -> str:
-        return json.dumps(
-            {
-                "observations": [
-                    {
-                        "checkpoint_id": target_checkpoint,
-                        "result": "demonstrated",
-                        "evidence_excerpt": EXCERPT,
-                        "rationale": "names the return",
-                    }
-                ],
-                "mother_tongue_practice_reported": False,
-                "practice_evidence_excerpt": "",
-            }
-        )
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.comprehension.assessor"],
-        "call_agent",
-        _assessor,
     )
 
 
@@ -750,14 +706,7 @@ async def waiting_room(
     session = await room.append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION
     )
-    state = room.comprehension_of(session)
-    state.active_probe = ActiveProbe(
-        id="probe-1",
-        checkpoint_ids=[target_checkpoint],
-        method=EvidenceMethod.MICRO_TELLBACK,
-        purpose=ProbePurpose.INITIAL_CHECK,
-    )
-    return await room.save_comprehension(db_session, session, state)
+    return session
 
 
 async def the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
@@ -766,32 +715,6 @@ async def the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.
         headers={"X-Room-Key": ROOM_KEY},
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
     )
-
-
-async def test_the_hard_stop_is_a_blocking_halt(
-    client: httpx.AsyncClient,
-    facilitator_a: Facilitator,
-    waiting_room,
-    the_assessor_is_down: None,
-) -> None:
-    """The assessor failing three turns running is the room saying it cannot go on.
-
-    Driven through the turn route, the way `test_the_hard_stop_outlives_the_request_that_
-    raised_it` drives it: the halt this asks about is the one the room raises for itself.
-    """
-    halted = False
-    for _ in range(6):
-        answered = await the_team_answers(client, waiting_room.id)
-        assert answered.status_code == 200, answered.text[:300]
-        if (await tablet_state(client, waiting_room.id))["status"] == "needs_person":
-            halted = True
-            break
-
-    assert halted, "o assessor caiu turno após turno e a sala nunca parou"
-    assert (await tablet_state(client, waiting_room.id))["halt"] == BLOCKING
-    standing = await queued(client, facilitator_a, waiting_room.id)
-    assert standing is not None
-    assert standing["halt"] == BLOCKING
 
 
 # --- Case 5 — a mark on a room that is not halted -----------------------------------------
@@ -922,7 +845,7 @@ async def test_a_turn_that_lands_still_lifts_the_halt_and_keeps_the_mark(
     client: httpx.AsyncClient,
     facilitator_a: Facilitator,
     waiting_room,
-    the_assessor_agrees: None,
+    the_models_agree: None,
 ) -> None:
     """The team's own way out is untouched, and it does not erase who went.
 

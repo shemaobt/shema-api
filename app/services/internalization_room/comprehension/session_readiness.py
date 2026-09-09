@@ -13,10 +13,8 @@ from app.services.internalization_room.comprehension.checkpoints import Checkpoi
 from app.services.internalization_room.comprehension.evidence import (
     ComprehensionUnit,
     EvidenceEvent,
-    EvidenceObservation,
     EvidenceResult,
     ReadinessEvaluation,
-    ReopenedEvent,
     assess_unit,
     evaluate_readiness,
 )
@@ -122,35 +120,3 @@ def render_comprehension_status(
             "grounded point.",
         ]
     )
-
-
-def events_for_observations(
-    ledger: list[EvidenceEvent],
-    observations: list[EvidenceObservation],
-    *,
-    conflict_resolution_checkpoint_ids: list[str] | None = None,
-) -> list[EvidenceEvent]:
-    """A later positive answer to the same checkpoint can resolve an earlier
-    contradiction, but only by starting a new evidence epoch. History stays append-only
-    for field review."""
-    events: list[EvidenceEvent] = []
-    working: list[EvidenceEvent] = list(ledger)
-    may_resolve = set(conflict_resolution_checkpoint_ids or [])
-    for item in observations:
-        positive = item.result in (
-            EvidenceResult.DEMONSTRATED,
-            EvidenceResult.SUPPORTED_PROMPTED,
-        )
-        if (
-            positive
-            and item.unit_id in may_resolve
-            and assess_unit(working, item.unit_id).has_conflict
-        ):
-            reopened = ReopenedEvent(
-                id=f"{item.id}:reopen", unit_id=item.unit_id, reason="team_reconsidered"
-            )
-            events.append(reopened)
-            working.append(reopened)
-        events.append(item)
-        working.append(item)
-    return events
