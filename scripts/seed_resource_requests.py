@@ -25,9 +25,11 @@ reads them as ported:
 
 * **The submission itself.** A board fixture is a picture of the board, and it says
   nothing about the act that put a card there. Every card is therefore written *submitted*
-  — the stamp and the frozen snapshot together, the way ``submit_request`` writes them —
-  because on this server a card is on the board only by having been submitted. The fixture
-  used to skip it, and the ten cards it wrote could not be moved at all.
+  — the stamp, the frozen snapshot and the accepted declaration together, the way
+  ``submit_request`` writes them — because on this server a card is on the board only by
+  having been submitted. The fixture used to skip it, and the ten cards it wrote could not
+  be moved at all. What is mirrored is the **row**; the frozen document stays the board
+  card's and is not a submittable one, which ``_seed_card`` measures and explains.
 * **The request type.** The board fixture has no type field. Each card takes the type its
   own subject states, and every card that comes out ``traducao`` names a Tipo 1 category
   outright — *NT*, *Tradução oral/áudio*, *Pesquisa sociolinguística*, *Porções* and
@@ -332,13 +334,15 @@ async def _require_confirmed_fund(db: AsyncSession) -> None:
 async def _seed_card(
     db: AsyncSession, card: SeedCard, author: User, submitted_at: datetime
 ) -> None:
-    """One board card, in the state ``submit_request`` would have left it in.
+    """One board card, submitted the way the row records a submission.
 
-    **The stamp and the snapshot are written together, and for every card**, because that
-    is the only way the service knows how to produce either: ``submit_request`` sets
-    ``submitted_at`` and writes the frozen document in one transaction. A row carrying one
-    without the other describes a state no route can reach — a card on the board that was
-    never submitted, or a frozen document nobody ever froze.
+    **The stamp, the snapshot and the accepted declaration are written together, and for
+    every card**, because that is the only way the service knows how to produce any of
+    them: ``submit_request`` sets ``submitted_at``, writes the frozen document and refuses
+    outright a document whose ``declaration`` is false, all in one transaction. A row
+    carrying one without the others describes a state no route can reach — a card on the
+    board that was never submitted, a frozen document nobody ever froze, or a submission
+    nobody accepted.
 
     The cost of getting it wrong was measured rather than imagined (03/set/2026). With the
     stamp missing, ``move_request`` refused all ten — *"not on the board yet"* — so no card
@@ -346,6 +350,32 @@ async def _seed_card(
     in production came apart: ``move_request`` reads ``submitted_at`` and
     ``save_evaluation`` reads the snapshot, and a fixture that separates them makes a
     refusal test pass for the wrong reason.
+
+    **What is mirrored is the row, and deliberately not the document** — the first version
+    of this docstring said *"the state ``submit_request`` would have left it in"*, and that
+    was a larger claim than the fixture makes. Measured by running each of the ten frozen
+    documents through ``RequestSubmissionIn`` exactly as ``submit_request`` does
+    (09/set/2026), the ten are refused in **five** ways, and only the fifth was a defect:
+
+    * ``fields`` — the three essays plus the category are blank, all ten;
+    * ``team`` — no team row, the nine cards whose type renders A4;
+    * ``checks`` — no A5 trained team or format, the four ``treinamento`` cards;
+    * ``budget`` — none of the twenty-six categories, all ten;
+    * ``declaration`` — false against a submitted row, all ten. **Fixed here.**
+
+    The first four are the fixture being what it is: ``_sections`` ports a *board card*,
+    and a board card carries chips, a value and a stage. It has no essays, no team and no
+    budget to port, and inventing them would be fabricating the answers of ten teams that
+    do not exist — the same reason the ``solicitante`` names are invented rather than real.
+    The declaration is different in kind: it is not content the board card lacks, it is a
+    fact about the act this script claims to reproduce, and a submitted row that never
+    accepted it is a pair ``RequestSubmissionIn._declared`` refuses by name.
+
+    So these ten exercise the board, the ledger and the evaluation, which is what the bench
+    needs them for. **They do not exercise submission**, and a test that submits one of
+    them would fail for four reasons that are the fixture's shape rather than a defect in
+    the route. Making the ten genuinely submittable is a different piece of work — it means
+    authoring sample answers, not fixing a line — and it belongs to whoever needs it.
     """
     request_id = f"rr-seed-request-{card.n}"
     request = (
@@ -364,6 +394,7 @@ async def _seed_card(
         tpp_name=card.solicitante,
         created_by=author.id,
         submitted_at=submitted_at,
+        declaration=True,
     )
     db.add(row)
     await db.flush()
