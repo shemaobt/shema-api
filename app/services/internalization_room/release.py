@@ -192,6 +192,11 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     blank or whitespace before they get here. The rule is read off ``told_back`` rather than
     restated, so what counts as words stays one sentence in one place: the analyst is numbered
     off that same list, and the two must not drift.
+
+    ``package_sha256`` is taken before ``created_at`` is written into the returned dict:
+    ``created_at`` records when this read happened, not what the session holds, and two reads
+    of an unchanged session must carry one hash. Stamping the clock first fingerprinted it
+    along with the content.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -268,7 +273,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "handoff_type": "internalization_release",
         "purpose": "first_team_rehearsal",
         "readiness": "ready_for_refine",
-        "created_at": datetime.now(UTC).isoformat(),
         "session_id": session.id,
         "pericope": session.pericope,
         "book": load_map(session.pericope).book,
@@ -312,4 +316,5 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
+    artifact["created_at"] = datetime.now(UTC).isoformat()
     return artifact

@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.services.internalization_room import release as release_module
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -119,6 +120,34 @@ def _ensaio_take(
     return take
 
 
+def _retro_take(
+    session_id: str,
+    *,
+    scope: str = P,
+    pass_number: int | None = None,
+    ordinal: int | None = None,
+    sha256: str = "a" * 64,
+    created_at: datetime | None = None,
+) -> IRTake:
+    take = IRTake(
+        session_id=session_id,
+        device_id="tablet-1",
+        pericope=P,
+        kind=IRTakeKind.RETRO,
+        scope=scope,
+        pass_number=pass_number,
+        ordinal=ordinal,
+        storage_key=f"takes/{session_id}/retro/{sha256}",
+        size_bytes=2048,
+        sha256=sha256,
+        crc32c="AAAAAAA=",
+        content_type="audio/mp4",
+    )
+    if created_at is not None:
+        take.created_at = created_at
+    return take
+
+
 async def _reported_playback(
     db: AsyncSession,
     session: IRSession,
@@ -199,10 +228,57 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     assert artifact["back_translation"]["played_ranges"] == [[0, 61000]]
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
+    sealed.pop("created_at")
     assert len(stamp) == 64
     from app.services.internalization_room.release import _package_sha256
 
     assert stamp == _package_sha256(sealed)
+
+
+class _FixedClock:
+    """A stand-in for the module's ``datetime``, answering ``now`` from a fixed queue."""
+
+    def __init__(self, instants: list[datetime]) -> None:
+        self._instants = list(instants)
+
+    def now(self, tz=None):
+        return self._instants.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await _ready_session(db_session)
+    first_instant = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    second_instant = datetime(2026, 9, 10, 9, 0, tzinfo=UTC)
+    monkeypatch.setattr(release_module, "datetime", _FixedClock([first_instant, second_instant]))
+
+    first = await build_internalization_release(db_session, session)
+    second = await build_internalization_release(db_session, session)
+
+    assert first["created_at"] == first_instant.isoformat()
+    assert second["created_at"] == second_instant.isoformat()
+    assert first["package_sha256"] == second["package_sha256"], (
+        "duas leituras da mesma sessão não mudaram nada além do relógio de exportação"
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_more_stretch_told_changes_the_packet_hash(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await _ready_session(db_session)
+    frozen = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    monkeypatch.setattr(release_module, "datetime", _FixedClock([frozen, frozen]))
+
+    before = await build_internalization_release(db_session, session)
+    await _one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    after = await build_internalization_release(db_session, session)
+
+    assert before["package_sha256"] != after["package_sha256"], (
+        "o mesmo relógio nas duas leituras não pode esconder que o conteúdo mudou"
+    )
 
 
 @pytest.mark.asyncio
@@ -330,6 +406,42 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
         "sem a passada, quem abrisse a passagem no Refine ouvia o ensaio abandonado como "
         "o primeiro da equipe, e pela chegada a ordem sairia trocada"
     )
+
+
+@pytest.mark.asyncio
+async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    told_last = _retro_take(
+        session.id,
+        pass_number=2,
+        sha256="d" * 64,
+        created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
+    )
+    told_first = _retro_take(
+        session.id,
+        pass_number=1,
+        sha256="e" * 64,
+        created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
+    )
+    told_second = _retro_take(
+        session.id,
+        pass_number=1,
+        sha256="f" * 64,
+        created_at=datetime(2026, 8, 23, 11, 0, tzinfo=UTC),
+    )
+    db_session.add_all([told_last, told_first, told_second])
+    await db_session.commit()
+
+    artifact = await build_internalization_release(db_session, session)
+
+    retro_takes = artifact["back_translation"]["retro_takes"]
+    assert [take["take_id"] for take in retro_takes] == [
+        told_first.id,
+        told_second.id,
+        told_last.id,
+    ], "sem ordinal, o pacote lista pela passada e depois pela chegada"
 
 
 async def _told_back_with_an_open_finding(

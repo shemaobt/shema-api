@@ -123,7 +123,7 @@ def require_walkable(meaning_map: MeaningMap) -> None:
     and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
     passage; running costs Refine a false assurance, which is the more expensive of the two.
 
-    The two signals are read separately on purpose. Ruth's last eight passages happen to
+    The two signals are read separately on purpose. Ruth's passages past the edge happen to
     carry both — no preservation layer *and* a pending survey — but agreement is not either
     one being read, and a layer written before the survey closes would otherwise walk.
     """
@@ -163,7 +163,8 @@ def build_book_material(book: str) -> str:
         f"{header}\n\n{digests}\n\n"
         "## PRESERVATION NOTES — the book's withholdings "
         "(HARD CONSTRAINTS, union of all passages)\n"
-        f"{notes}\n"
+        "The panorama must honor each — never state, pair, name, or attribute what a "
+        f"passage withholds until its moment.\n\n{notes}\n"
     )
 
 
@@ -178,7 +179,12 @@ def story_so_far(book: str, current_pericope: str) -> str:
     if not earlier:
         return ""
     digests = "\n\n".join(pericope_digest(m) for m in earlier)
-    return f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n\n{digests}\n"
+    return (
+        f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n"
+        "Grounded material: it may be used to answer the team's questions about the story "
+        "so far and to situate the current passage in the book. Nothing beyond these "
+        f"passages and the current map exists.\n\n{digests}\n"
+    )
 
 
 def vendor_pin() -> str:

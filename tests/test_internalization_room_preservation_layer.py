@@ -2,9 +2,9 @@
 
 The completion floor the design names is *every concrete element of the map — each scene,
 being, place, object, time, significant absence, **and preserved element** — engaged*. The
-last eight passages of Ruth carry no `do_not_decide` audit entry at all, so their coverage
-spine is built without a single `preserved:` bead and their comprehension pack without a
-single `preserved_element` checkpoint. Nothing refused them: the room walked them, met a
+passages of Ruth past the canon's edge carry no `do_not_decide` audit entry at all, so their
+coverage spine is built without a single `preserved:` bead and their comprehension pack
+without a single `preserved_element` checkpoint. Nothing refused them: the room walked them, met a
 floor that was missing its top row, and handed Refine a package claiming the floor was met.
 
 Two tests carry the slice, in opposite directions.
@@ -14,10 +14,10 @@ the original code by the session being created normally.
 
 **`test_a_passage_that_carries_its_preservation_layer_still_opens`** is the counterweight,
 and is the more important of the two. A guard that overshoots takes the whole book down —
-six passages that are walkable today, and the room with them.
+seven passages that are walkable today, and the room with them.
 
-The canon is read here rather than named: a test that wrote "P07 to P14" would keep passing
-on the day the project writes those eight layers, which is exactly the day it must stop.
+The canon is read here rather than named: a test that wrote "P08 to P14" would keep passing
+on the day the project writes those seven layers, which is exactly the day it must stop.
 """
 
 from __future__ import annotations
@@ -155,7 +155,7 @@ async def test_a_passage_with_no_preservation_layer_does_not_open(
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
-    """The counterweight: the six that are walkable today go on being walkable, spine intact."""
+    """The counterweight: the seven that are walkable today go on being walkable, spine intact."""
     preserved = [
         element.key for element in elements_for(WITH_LAYER) if element.kind is ElementKind.PRESERVED
     ]
@@ -195,3 +195,26 @@ async def test_a_map_whose_survey_is_pending_is_not_consumable_canon(
         await create_session(db_session, pericope=a_passage_whose_survey_is_pending)
 
     assert a_passage_whose_survey_is_pending in str(refusal.value)
+
+
+def test_the_book_opens_as_far_as_ruth_2_17_23_and_no_further() -> None:
+    """Where the boundary actually falls, named by the reference and not by a pericope id.
+
+    The rule test above derives both of its sides from the same canon, so it holds whichever
+    passages carry a layer and says nothing about which ones do. The project wrote the seventh
+    passage's withholdings on 31 August and the vendored copy predated them, so the wheel
+    closed at 2:16: a team that finished the field was told the book had nothing left in it,
+    with seven passages still in the folder.
+    """
+    maps = load_book(ROOM_BOOK)
+    opens = [m.pericope_num for m in maps if not book_material.unwalkable(m)]
+    ends_at = next(m.pericope_num for m in maps if m.reference == "Ruth 2:17-23")
+
+    assert opens == CANON[: CANON.index(ends_at) + 1], (
+        f"o livro que se caminha vai de Rute 1:1 a 2:23, sem buraco no meio — abriram {opens}"
+    )
+
+    refusals = [book_material.unwalkable(m) for m in maps if m.pericope_num not in opens]
+    assert all(reason and "no preservation layer" in reason for reason in refusals), (
+        f"a recusa tem que nomear a camada que falta, e alguma recusou por outra coisa: {refusals}"
+    )
