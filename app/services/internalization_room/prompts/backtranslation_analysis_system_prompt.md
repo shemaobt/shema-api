@@ -91,17 +91,20 @@ Return **only** this JSON (no prose, no fences):
 }
 ```
 
-`"chunk"` is the chunk number the finding lands on. For every kind but `missing`, that is all —
-omit `"where"`.
+`"chunk"` is the frase number: the frases are numbered from 1 in the order the team told them,
+and `"chunk"` names one of those numbers. For every kind but `missing`, that is all — omit
+`"where"`.
 
+A `missing` finding always carries both `"chunk"` and `"where"`, never one without the other.
 For a **missing** element, also give `"where"` to say where the missing content sits *relative
 to* the chunk you name in `"chunk"`:
 - `"inside"`: it belongs inside that chunk itself, which is otherwise fine.
 - `"before"`: it belongs right before that chunk. A missing element that belongs before the
   first thing the team told is `"before"` on chunk 1.
-- `"after"`: it belongs right after that chunk. A missing element that belongs **after
-  everything the team told** is `"after"` on the *last* chunk — never `null`, and never a
-  chunk number past the last one.
+- `"after"`: it belongs right after that chunk. When the missing element sits after a frase,
+  say `"where": "after"` on that frase: after frase 3 is `"chunk": 3, "where": "after"`. A
+  missing element that belongs **after everything the team told** is `"after"` on the *last*
+  chunk — never `null`, and never a chunk number past the last one.
 
 A complete, faithful telling-back returns `{ "findings": [] }`.
 
