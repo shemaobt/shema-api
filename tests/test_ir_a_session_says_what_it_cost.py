@@ -122,6 +122,12 @@ def spoken_by(monkeypatch: pytest.MonkeyPatch):
 
 
 async def _a_turn(transcript: str = "A fome chegou e eles partiram.") -> None:
+    await _a_turn_on(_settings(), transcript)
+
+
+async def _a_turn_on(
+    settings: Settings, transcript: str = "A fome chegou e eles partiram."
+) -> None:
     await run_turn(
         session_language="Portuguese",
         language_code="pt",
@@ -131,13 +137,17 @@ async def _a_turn(transcript: str = "A fome chegou e eles partiram.") -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings,
         session_id="s-ferro",
     )
 
 
 def _usage_lines(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
-    return [r for r in caplog.records if getattr(r, "cost_usd", None) is not None]
+    return [r for r in caplog.records if getattr(r, "role", None) is not None]
+
+
+def _turn_line(caplog: pytest.LogCaptureFixture) -> logging.LogRecord:
+    return next(r for r in caplog.records if getattr(r, "turn_calls", None) is not None)
 
 
 async def test_every_model_call_leaves_one_line_of_what_it_cost(spoken_by, caplog) -> None:
@@ -166,4 +176,37 @@ async def test_every_model_call_leaves_one_line_of_what_it_cost(spoken_by, caplo
     assert (guide.cost_usd, validator.cost_usd) == (GUIDE_COST, VALIDATOR_COST), (
         "o custo de tabela não era calculado em lugar nenhum, e o piloto só descobriria o "
         "preço de uma sessão na fatura do mês seguinte"
+    )
+
+
+async def test_a_turn_totals_the_calls_it_made(spoken_by, caplog) -> None:
+    spoken_by()
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+
+    turn = _turn_line(caplog)
+    assert turn.turn_calls == 2
+    assert turn.turn_cost_usd == round(GUIDE_COST + VALIDATOR_COST, 6), (
+        "o turno não somava as suas próprias chamadas, então o número de referência da "
+        "Marcia — US$ 0,14 por turno com o mapa em cache — não tinha com o que ser comparado"
+    )
+    assert (turn.turn_input_tokens, turn.turn_output_tokens) == (3_000, 1_500)
+    assert (turn.turn_cache_read_tokens, turn.turn_cache_write_tokens) == (600_000, 100_000), (
+        "o total do turno não repetia o uso que o provedor reportou, e uma conta que não "
+        "reconcilia com a fatura não prova nada"
+    )
+    assert turn.turn_unpriced_calls == 0
+
+
+async def test_a_turn_on_an_unpriced_rung_says_the_total_is_short(spoken_by, caplog) -> None:
+    spoken_by()
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn_on(_settings(tripod_voice_model="claude-not-in-the-table"))
+
+    turn = _turn_line(caplog)
+    assert turn.turn_unpriced_calls == 2, (
+        "um degrau que a tabela não conhece entrava no total como zero dólares, e uma "
+        "sessão inteira num modelo novo era relatada como se fosse de graça"
     )

@@ -16,7 +16,7 @@ from anthropic.types import (
 )
 
 from app.core.config import Settings, get_settings
-from app.services.internalization_room.usage import cost_of
+from app.services.internalization_room.usage import cost_of, record
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +295,14 @@ def _report_spend(
             "cache_write_tokens": cache_write,
             "output_tokens": usage.output_tokens,
         },
+    )
+    record(
+        cost_usd=cost,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+        latency_ms=latency_ms,
     )
 
 

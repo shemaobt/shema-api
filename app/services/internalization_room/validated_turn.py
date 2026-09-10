@@ -39,6 +39,7 @@ from app.services.internalization_room.turn_instructions import (
     speak_this_turn,
     split_opening_movements,
 )
+from app.services.internalization_room.usage import Spend, open_ledger
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
 
 
@@ -164,25 +165,49 @@ async def _draft(
     return draft.strip()
 
 
-def _timed(outcome: TurnOutcome, started: float, session_id: str) -> TurnOutcome:
-    """Say how long the turn took and how it ended, on its way out.
+def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) -> TurnOutcome:
+    """Say how long the turn took, how it ended, and what it asked of the models.
 
-    Both exits pass through here rather than each logging for itself, because the two numbers
-    only mean anything next to each other: a turn is allowed to take 56 seconds, and the way
-    to tell that apart from a turn that gave up is whether it was voiced or fell to a line.
+    Both exits pass through here rather than each logging for itself, because the numbers only
+    mean anything next to each other: a turn is allowed to take 56 seconds, and the way to tell
+    that apart from a turn that gave up is whether it was voiced or fell to a line — and a turn
+    that cost ten times the usual is a different thing again depending on whether it redrafted
+    twice or read a 896-thousand-token map that stopped coming from cache.
+
+    `spend` is the turn's own ledger and not a running total: what a redraft costs is only
+    visible against turns that did not redraft. Every number it contributes is spelled
+    `turn_*`, as `turn_ms` already was — a reader filtering the log for the per-call lines
+    picks them out by the fields only a call has, and a summary that answered to the same
+    names would be counted as a third call of every turn.
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
     elapsed_ms = round((time.monotonic() - started) * 1000)
     shim.logger.info(
-        "Turn answered in %s ms after %s redrafts",
+        "[llm-turn] session %s answered in %s ms after %s redrafts, %s calls, US$ %s: "
+        "in=%s cache_read=%s cache_write=%s out=%s",
+        session_id,
         elapsed_ms,
         outcome.redrafts,
+        spend.calls,
+        spend.cost_usd,
+        spend.input_tokens,
+        spend.cache_read_tokens,
+        spend.cache_write_tokens,
+        spend.output_tokens,
         extra={
             "session_id": session_id,
             "turn_ms": elapsed_ms,
             "redrafts": outcome.redrafts,
             "used_fail_safe": outcome.used_fail_safe,
+            "turn_calls": spend.calls,
+            "turn_cost_usd": spend.cost_usd,
+            "turn_unpriced_calls": spend.unpriced_calls,
+            "turn_input_tokens": spend.input_tokens,
+            "turn_output_tokens": spend.output_tokens,
+            "turn_cache_read_tokens": spend.cache_read_tokens,
+            "turn_cache_write_tokens": spend.cache_write_tokens,
+            "turn_model_ms": spend.model_ms,
         },
     )
     return outcome
@@ -241,6 +266,7 @@ async def _voiced_after_validation(
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
     started = time.monotonic()
+    spend = open_ledger()
     conversation = _conversation_turns(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
@@ -324,6 +350,7 @@ async def _voiced_after_validation(
                 ),
                 started,
                 session_id,
+                spend,
             )
 
         redraft_note = _redraft_note(issues, language_code)
@@ -352,4 +379,5 @@ async def _voiced_after_validation(
         ),
         started,
         session_id,
+        spend,
     )
