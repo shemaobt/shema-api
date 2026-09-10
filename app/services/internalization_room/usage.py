@@ -85,6 +85,18 @@ class Spend:
     cache_write_tokens: int = 0
     model_ms: int = 0
 
+    @property
+    def cache_missed(self) -> bool:
+        """Whether work happened here and none of it was served from cache.
+
+        The one reading a zero among eight numbers does not give anybody. The map is what the
+        cache is for, it is pinned in front of every turn of every session, and a prefix that
+        silently stops matching costs its full price again on each of them while changing
+        nothing else anyone would notice. So the record says it in a word rather than leaving
+        it to be inferred from a counter nobody was looking at.
+        """
+        return self.calls > 0 and self.cache_read_tokens == 0
+
 
 #: The ledger every call in flight adds itself to, when one is open. A context variable and
 #: not an argument threaded through `call_agent`: twenty-seven test fakes stand in for that

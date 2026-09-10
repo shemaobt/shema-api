@@ -53,6 +53,11 @@ GUIDE_COST = 1.335
 #: Validator: 2 000 x 10 + 1 000 x 50 + 0 + 400 000 x 0.25 = 170 000 / 1e6.
 VALIDATOR_COST = 0.17
 
+#: The same two calls with the cache dead: every token the map contributed is billed as fresh
+#: input instead. Guide: (1 000 + 100 000 + 200 000) x 10 + 500 x 50 = 3 035 000 / 1e6.
+#: Validator: (2 000 + 400 000) x 10 + 1 000 x 50 = 4 070 000 / 1e6.
+UNCACHED_TURN_COST = 3.035 + 4.07
+
 
 def _settings(**overrides: Any) -> Settings:
     base: dict[str, Any] = {
@@ -74,18 +79,37 @@ def _is_validator(call: dict[str, Any]) -> bool:
     return "corrected_response" in _system_text(call)
 
 
+def _uncached(usage: dict[str, int]) -> dict[str, int]:
+    """The same call with the cache dead: what was served from it is billed as fresh input.
+
+    Written out rather than zeroing the counters, because zeroed counters alone would leave
+    the cost unchanged and the test would prove only that a number moved.
+    """
+    return {
+        "input_tokens": usage["input_tokens"]
+        + usage["cache_read_input_tokens"]
+        + usage["cache_creation_input_tokens"],
+        "output_tokens": usage["output_tokens"],
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+
+
 class Answers:
     """One fake model for a whole turn, reporting its own usage per role."""
 
-    def __init__(self, draft: str, verdict: dict[str, Any]):
+    def __init__(self, draft: str, verdict: dict[str, Any], cached: bool):
         self.draft = draft
         self.verdict = verdict
+        self.cached = cached
         self.calls: list[dict[str, Any]] = []
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls.append(kwargs)
         validating = _is_validator(kwargs)
         usage = VALIDATOR_USAGE if validating else GUIDE_USAGE
+        if not self.cached:
+            usage = _uncached(usage)
         return SimpleNamespace(
             content=[
                 SimpleNamespace(
@@ -109,8 +133,9 @@ def spoken_by(monkeypatch: pytest.MonkeyPatch):
     def _install(
         draft: str = "Ensaiem essa parte entre vocês.",
         verdict: dict[str, Any] | None = None,
+        cached: bool = True,
     ) -> Answers:
-        answers = Answers(draft, verdict or {"verdict": "pass", "issues": []})
+        answers = Answers(draft, verdict or {"verdict": "pass", "issues": []}, cached)
         monkeypatch.setattr(
             llm.anthropic,
             "AsyncAnthropic",
@@ -209,4 +234,23 @@ async def test_a_turn_on_an_unpriced_rung_says_the_total_is_short(spoken_by, cap
     assert turn.turn_unpriced_calls == 2, (
         "um degrau que a tabela não conhece entrava no total como zero dólares, e uma "
         "sessão inteira num modelo novo era relatada como se fosse de graça"
+    )
+
+
+async def test_a_turn_that_lost_the_cache_says_so_and_costs_the_difference(
+    spoken_by, caplog
+) -> None:
+    spoken_by(cached=False)
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+
+    turn = _turn_line(caplog)
+    assert turn.turn_cache_read_tokens == 0
+    assert turn.turn_cost_usd == round(UNCACHED_TURN_COST, 6)
+    assert turn.turn_cost_usd > round(GUIDE_COST + VALIDATOR_COST, 6) * 4
+    assert turn.cache_missed is True, (
+        "um turno que pagou o mapa inteiro de novo chegava ao log como mais um turno com um "
+        "zero no meio de oito números, e o cache podia estar desligado a sessão inteira sem "
+        "ninguém ler o zero"
     )
