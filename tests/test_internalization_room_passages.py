@@ -312,16 +312,6 @@ async def test_the_wheel_asked_for_nothing_speaks_the_floor(
     assert line_for("P01", "pt") not in said
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "A linha desta passagem é reescrita pela ENG-759, que troca as catorze pela "
-        "referência do H1 do mapa e cujo merge vem antes deste. Nesta branch a frase "
-        "autoral continua no arquivo, e o teste falha de propósito. Estrito: quando a "
-        "759 entrar, ele passa, a suíte fica vermelha e alguém tem de vir aqui remover "
-        "a marca."
-    ),
-)
 def test_the_line_for_ruth_2_17_23_names_the_passage_and_not_the_redeemer() -> None:
     """The one line the wheel speaks about a passage this branch is the reason it can offer.
 
