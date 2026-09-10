@@ -33,21 +33,45 @@ from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon import book_material, parse_map
 from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
+
+#: The passages a team can actually be standing on today — the rest are vendored but refused
+#: by `require_walkable`. Read from the canon, like `CANON` above, so this grows with the book
+#: rather than needing an edit every time a passage opens.
+WALKABLE = [
+    meaning_map.pericope_num
+    for meaning_map in load_book(ROOM_BOOK)
+    if not book_material.unwalkable(meaning_map)
+]
+
+
+def _without_a_preservation_layer(canon: list[str]) -> str | None:
+    """The first pericope with no `preserved:` bead, or `None` once the canon has none left.
+
+    A plain `next(...)` with no default raised `StopIteration` at import time on the day
+    every passage in `canon` carries the layer — that took the whole module down as a
+    collection error instead of reddening a test, which is ENG-925's `WITHOUT_LAYER` defect.
+    """
+    return next(
+        (
+            pericope
+            for pericope in canon
+            if not any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
+        ),
+        None,
+    )
+
 
 WITH_LAYER = next(
     pericope
     for pericope in CANON
     if any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
 )
-WITHOUT_LAYER = next(
-    pericope
-    for pericope in CANON
-    if not any(element.kind is ElementKind.PRESERVED for element in elements_for(pericope))
-)
+WITHOUT_LAYER = _without_a_preservation_layer(CANON)
 
 #: A whole little canon of its own — one map and one Compilation Log — so the two signals can
 #: be set against each other. The real Ruth material has them agreeing everywhere, and
@@ -140,10 +164,21 @@ def _forget_the_canon() -> None:
     book_material.preservation_rules.cache_clear()
 
 
+def test_the_lookup_answers_none_rather_than_raising_once_every_passage_has_the_layer() -> None:
+    """Falsifies the fix directly: a bare `next(...)` here raises `StopIteration` on an empty
+    generator, which is exactly what the day every pericope carries a layer produces — an
+    empty `canon` is that day's shape, since nothing in it is left to fail the `if`.
+    """
+    assert _without_a_preservation_layer([]) is None
+
+
 async def test_a_passage_with_no_preservation_layer_does_not_open(
     db_session: AsyncSession,
 ) -> None:
     """The gate. Refused, and the refusal says which layer is missing and for which passage."""
+    if WITHOUT_LAYER is None:
+        pytest.skip("every passage in the canon now carries a preservation layer")
+
     with pytest.raises(ValidationError) as refusal:
         await create_session(db_session, pericope=WITHOUT_LAYER)
 
@@ -218,3 +253,25 @@ def test_the_book_opens_as_far_as_ruth_2_17_23_and_no_further() -> None:
     assert all(reason and "no preservation layer" in reason for reason in refusals), (
         f"a recusa tem que nomear a camada que falta, e alguma recusou por outra coisa: {refusals}"
     )
+
+
+@pytest.mark.parametrize("pericope_num", WALKABLE)
+def test_every_preserved_bead_of_a_walkable_passage_has_a_label(pericope_num: str) -> None:
+    """The inverse of `labels.py`'s orphans guard — ENG-925.
+
+    `orphans` (`canon/labels.py`) catches a label the canon no longer serves; nothing caught
+    the other direction until now. The re-vendor that almost shipped in ENG-787 added seven
+    `preserved:*` beads to P07 with no matching catalogue entry, and the only reason it never
+    reached a facilitator is that the agent ran the suite before pushing — `labelled_elements`
+    already refuses per bead (`_text` raises when a key is not in the catalogue), so the gap
+    was never in the service, only in the suite. This closes it: a re-vendor that grows the
+    preservation layer without writing its labels fails here before it reaches a screen.
+    """
+    preserved = {
+        element.key
+        for element in elements_for(pericope_num)
+        if element.kind is ElementKind.PRESERVED
+    }
+    named = {element.key for element in labelled_elements(pericope_num)}
+
+    assert preserved <= named

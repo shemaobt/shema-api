@@ -57,9 +57,11 @@ class ElementLabelsBroken(Exception):
     Deliberately not a `ValidationError`, which is answered 400 with its own message in the
     body: a file of ours being wrong is not the caller's request being wrong, and answering
     it that way sends somebody to debug their own code over our deploy — with `P01 scene:1`
-    in front of them to do it with. It carries no handler for the same reason, so it is a
-    500 and is logged as ours, which is what the house rule asks of an infrastructure
-    failure.
+    in front of them to do it with. `app/core/exceptions.py` registers a handler of its own
+    for it: still a 500, still logged as ours, but naming the pericope, the key and the
+    language in the body rather than the generic catch-all's blank "try again later" — a
+    coverage bead with no label used to answer indistinguishably from any other crash on
+    three facilitator screens, and ENG-925 is what tells them apart on the wire.
 
     Asking for a pericope nobody has translated stays a `ValidationError`: that one really
     is about what was asked for. ENG-449 decided what its route answers, and the decision was

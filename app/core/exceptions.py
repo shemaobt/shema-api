@@ -290,6 +290,22 @@ async def handle_not_found_error(_request: Request, exc: NotFoundError) -> JSONR
     )
 
 
+async def handle_element_labels_broken(_request: Request, exc: Exception) -> JSONResponse:
+    """Our own label catalogue is holed — the caller's request was fine.
+
+    Still a 500, and still logged as ours: `ElementLabelsBroken`'s own docstring argues why a
+    hole in a file we ship is never the caller's mistake. What changes is that the body names
+    the pericope, the key and the language `str(exc)` already carries, instead of the generic
+    catch-all's "please try again later" — the difference between a blank Desk screen and one
+    that says which bead is missing.
+    """
+    logger.error("Label catalogue is broken: %s", exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=_error_body(str(exc), ERROR_CODE_INTERNAL),
+    )
+
+
 async def handle_unexpected(_request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled exception")
     return JSONResponse(
@@ -326,6 +342,12 @@ async def handle_http_exception(_request: Request, exc: StarletteHTTPException) 
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    # Imported here, not at module top: `canon/labels.py` reaches `canon/parse_map.py`, which
+    # imports `ValidationError` from this very module — a top-level import of
+    # `ElementLabelsBroken` up here would be a cycle. By the time this function runs, every
+    # router has already imported `canon/labels.py` in full, so the deferred import is safe.
+    from app.services.internalization_room.canon.labels import ElementLabelsBroken
+
     app.add_exception_handler(StarletteHTTPException, handle_http_exception)  # type: ignore[arg-type]
     app.add_exception_handler(AuthenticationError, handle_authentication_error)  # type: ignore[arg-type]
     app.add_exception_handler(AuthorizationError, handle_authorization_error)  # type: ignore[arg-type]
@@ -343,4 +365,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
+    app.add_exception_handler(ElementLabelsBroken, handle_element_labels_broken)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)
