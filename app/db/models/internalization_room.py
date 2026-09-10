@@ -16,7 +16,6 @@ class IRPromptKey(enum.StrEnum):
     VALIDATOR = "validator"
     COVERAGE_CLASSIFIER = "coverage_classifier"
     BOOK_PANORAMA = "book_panorama"
-    DRAFT_SELF_CHECK = "draft_self_check"
     BT_ANALYST = "bt_analyst"
     BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
