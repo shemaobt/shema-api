@@ -92,7 +92,7 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
     assert jobs <= defined, f"{filename} lost {jobs - defined}"
 
 
-#: ENG-913: `test`'s own green runs on 2026-09-10 took 13-16 minutes; 40 is twice the
+#: ENG-913: `test`'s own green runs on 8 September took 13-20 minutes; 40 is twice the
 #: slowest of those. A job with no `timeout-minutes` inherits GitHub's 360-minute default,
 #: which is how a hung run stayed "pending" for six hours instead of turning red.
 JOB_TIMEOUT_MINUTES = {
