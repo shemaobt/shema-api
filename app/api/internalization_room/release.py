@@ -74,5 +74,5 @@ async def approve_internalization_release(
         session_id=release.session_id,
         version=release.version,
         package_sha256=release.package_sha256,
-        finalized_at=as_utc(release.finalized_at).isoformat(),
+        approved_at=as_utc(release.approved_at).isoformat(),
     )

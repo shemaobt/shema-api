@@ -431,6 +431,10 @@ class IRRelease(Base):
     session opened on the shared room key names no project — which is why approving one is
     refused rather than numbered in a group belonging to nobody.
 
+    ``package_sha256`` keeps the packet's own key rather than the glossary's word, which is
+    *packet* and avoids *package*: the fingerprint travels to Refine under that name, and one
+    number with two spellings is worse than one spelling the glossary would rather retire.
+
     No foreign keys, matching every other table of the room: the ids come across an app
     boundary and have never been constrained.
     """
@@ -447,6 +451,6 @@ class IRRelease(Base):
     version: Mapped[int] = mapped_column(Integer)
     package_sha256: Mapped[str] = mapped_column(String(64))
     packet: Mapped[dict[str, Any]] = mapped_column(JSON)
-    finalized_at: Mapped[datetime] = mapped_column(
+    approved_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )

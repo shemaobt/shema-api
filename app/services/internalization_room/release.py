@@ -197,10 +197,12 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     restated, so what counts as words stays one sentence in one place: the analyst is numbered
     off that same list, and the two must not drift.
 
-    ``package_sha256`` is taken before ``created_at`` is written into the returned dict:
-    ``created_at`` records when this read happened, not what the session holds, and two reads
-    of an unchanged session must carry one hash. Stamping the clock first fingerprinted it
-    along with the content.
+    ``package_sha256`` is taken before ``created_at``, ``release_id`` and ``version`` are
+    written into the returned dict, so the hash covers none of the three. ``created_at``
+    records when this read happened and not what the session holds; the other two say which
+    approval this content became. All three would move without the content moving, and two
+    reads of an unchanged session must carry one hash. A consumer verifying the fingerprint
+    drops those three keys and hashes the rest.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -347,6 +349,12 @@ async def _release_of(db: AsyncSession, session_id: str, package_sha256: str) ->
 
 
 async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
+    """The last release of this passage for this team, whichever session wrote it.
+
+    Scoped to the project and the pericope and not to the session, because that is what the
+    number is per: two conversations about one passage share the sequence, and numbering each
+    session on its own would hand Marcia two drafts both called v1.
+    """
     result = await db.execute(
         select(IRRelease)
         .where(IRRelease.project_id == project_id, IRRelease.pericope == pericope)
@@ -374,7 +382,14 @@ async def approve_release(db: AsyncSession, session: IRSession) -> IRRelease:
     The number is one past the last, which two approvals arriving together can both read.
     The unique index is what refuses the second, and the refusal is answered rather than
     retried: the tablet asks again and the second ask returns the release the first one
-    wrote.
+    wrote, because by then the winner is what ``_latest_release`` reads.
+
+    The house loop for this shape retries the allocation instead — ``tier_a_service`` and
+    ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
+    winner. Rejected here on purpose: those allocate a number nobody is waiting on, while a
+    second approval of an unchanged packet must come back with the *same* release, and a loop
+    that re-allocates after losing the race would mint the version the idempotency check
+    exists to prevent. Answering the caller keeps the decision in one place.
     """
     if session.project_id is None:
         raise ReleaseWithoutProject(

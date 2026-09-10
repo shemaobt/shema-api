@@ -22,7 +22,7 @@ from pathlib import Path
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -32,6 +32,7 @@ from app.core.database import Base
 from app.core.enums import ProjectRole
 from app.db.models.auth import Role
 from app.db.models.internalization_room import IRRelease
+from app.services.internalization_room import release as release_module
 from app.services.internalization_room.sessions import create_session
 from tests.baker import (
     make_app,
@@ -56,6 +57,7 @@ REVISION = "20260910_rel01"
 PREVIOUS_REVISION = "20260910_meet01"
 TABLE = "ir_releases"
 UNIQUE_INDEX = "uq_ir_releases_version"
+SEEDED_SESSION = "3f6f7a1e-0f0e-4f7a-9d55-0b1c2d3e4f50"
 
 
 @pytest.fixture()
@@ -130,7 +132,7 @@ async def test_a_credentialed_team_that_approves_gets_version_one(client, db_ses
     assert body["version"] == 1
     assert len(body["package_sha256"]) == 64
     assert set(body["package_sha256"]) <= set("0123456789abcdef")
-    assert body["finalized_at"]
+    assert body["approved_at"]
     stored = await _releases_of(db_session, session.id)
     assert [row.version for row in stored] == [1]
     assert body["package_sha256"] == stored[0].package_sha256
@@ -158,6 +160,13 @@ async def test_approving_again_with_nothing_changed_returns_the_same_release(cli
 async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_one(
     client, db_session
 ):
+    """One more stretch told is what moves the content here, and it stands for the re-record.
+
+    A **Rebuild** reaches the packet the same way — it re-points every stretch at the file it
+    rebuilt, so the composed content differs — and it costs a whole recording to stage. What
+    the version turns on is the hash, not which edit changed it, so the cheaper change proves
+    the rule; `compose.py` owns the rebuild path and its own tests.
+    """
     project, credential = await a_claimed_device(db_session)
     session = await _ready_session(db_session, project_id=project.id)
 
@@ -246,8 +255,9 @@ async def test_the_version_is_never_the_callers(client, db_session):
 async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
     client, db_session, room_app
 ):
+    project, _credential = await a_claimed_device(db_session)
     session = await _ready_session(db_session)
-    desk = await _facilitator(db_session, room_app)
+    desk = await _facilitator(db_session, room_app, project)
 
     refused = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers={"X-Room-Key": KEY}
@@ -279,6 +289,77 @@ async def test_a_passage_the_packet_refuses_is_not_approved_either(client, db_se
     assert refused.status_code == 409, refused.text
     assert "no_telling_back" in refused.json()["detail"]
     assert await _releases_of(db_session, session.id) == []
+
+
+async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numbered(
+    client, db_session, monkeypatch
+):
+    """Two approvals read the same last version, and only one of them can write it.
+
+    The race is staged by holding the read still — `_latest_release` answers as it did before
+    the winner committed — because that is exactly what the loser of a real race saw, and two
+    event loops racing on one SQLite file would prove less about the rule and more about the
+    file. Everything after the read is real: the allocation, the insert, and the index that
+    refuses it.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session_id = (await _ready_session(db_session, project_id=project.id)).id
+    winner = IRRelease(
+        session_id=session_id,
+        project_id=project.id,
+        pericope=P,
+        version=1,
+        package_sha256="c" * 64,
+        packet={},
+    )
+    db_session.add(winner)
+    await db_session.commit()
+
+    async def _as_it_was_before_the_winner(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(release_module, "_latest_release", _as_it_was_before_the_winner)
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session_id}/release", headers=_team(credential)
+    )
+
+    assert refused.status_code == 409, refused.text
+    db_session.expunge_all()
+    numbered = (
+        await db_session.execute(
+            select(IRRelease.version).where(IRRelease.session_id == session_id)
+        )
+    ).scalars()
+    assert list(numbered) == [1], (
+        "o perdedor da corrida não pode deixar uma segunda linha com o mesmo número"
+    )
+
+
+async def test_a_second_conversation_about_one_passage_shares_the_sequence(client, db_session):
+    """The number is per pericope and per project, so two sessions do not both mint v1.
+
+    And "unchanged" is measured against that last release, whichever session wrote it: the
+    first session approving again after the second one landed is a later draft of the passage,
+    not the draft it approved before.
+    """
+    project, credential = await a_claimed_device(db_session)
+    first_session = await _ready_session(db_session, project_id=project.id)
+    second_session = await _ready_session(db_session, project_id=project.id)
+
+    first = await client.post(
+        f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential)
+    )
+    second = await client.post(
+        f"{PREFIX}/sessions/{second_session.id}/release", headers=_team(credential)
+    )
+    again = await client.post(
+        f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential)
+    )
+
+    assert [first.json()["version"], second.json()["version"]] == [1, 2]
+    assert again.json()["version"] == 3
+    assert again.json()["package_sha256"] == first.json()["package_sha256"]
+    assert again.json()["release_id"] != first.json()["release_id"]
 
 
 async def test_no_team_writes_a_release_on_another_teams_passage(client, db_session):
@@ -322,6 +403,14 @@ async def _tables(database_url: str) -> set[str]:
     return set(names)
 
 
+async def _scalar(database_url: str, sql: str, params: dict) -> object:
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        value = (await conn.execute(text(sql), params)).scalar_one_or_none()
+    await engine.dispose()
+    return value
+
+
 async def _indexes(database_url: str, table: str) -> dict[str, tuple[bool, list[str]]]:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
@@ -332,16 +421,28 @@ async def _indexes(database_url: str, table: str) -> dict[str, tuple[bool, list[
 
 @pytest.fixture()
 async def applied_database(tmp_path) -> str:
-    """The post-migration schema, stamped as applied, ready to be walked down and back up.
+    """The post-migration schema with rows in it, stamped as applied, ready to be walked.
 
     Alembic's full chain does not run on SQLite, which is why the sibling migration tests
     build the tables from ``Base.metadata`` and stamp the revision under test rather than
     upgrading into it.
+
+    The session row is what makes the round trip worth running: a downgrade that scratched a
+    table it never created would be found here and nowhere else.
     """
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'ir_releases_migration.db'}"
     engine = create_async_engine(database_url)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                "INSERT INTO ir_sessions (id, pericope, status, messages, after_panorama,"
+                " coverage_state, kept_takes, back_translation, comprehension, language,"
+                " created_at) VALUES (:id, 'P03', 'in_progress', '[]', 0, '{}', '{}', '{}',"
+                " '{}', 'pt', '2026-09-10 09:00:00')"
+            ),
+            {"id": SEEDED_SESSION},
+        )
     await engine.dispose()
 
     stamped = _run_alembic(database_url, "stamp", REVISION)
@@ -350,8 +451,6 @@ async def applied_database(tmp_path) -> str:
 
 
 async def test_the_migration_creates_the_table_and_its_unique_index_both_ways(applied_database):
-    assert TABLE in await _tables(applied_database)
-
     down = _run_alembic(applied_database, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
     assert TABLE not in await _tables(applied_database)
@@ -363,3 +462,11 @@ async def test_the_migration_creates_the_table_and_its_unique_index_both_ways(ap
         True,
         ["project_id", "pericope", "version"],
     ), "sem o índice único sobre essas colunas a alocação sozinha é a corrida do ENG-639"
+    assert (
+        await _scalar(
+            applied_database,
+            "SELECT pericope FROM ir_sessions WHERE id = :id",
+            {"id": SEEDED_SESSION},
+        )
+        == "P03"
+    ), "a ida e volta não pode arranhar as tabelas que a migração não criou"

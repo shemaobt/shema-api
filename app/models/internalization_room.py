@@ -742,6 +742,11 @@ class TakeResponse(BaseModel):
     recorded_at: str = ""
 
 
+class TakesResponse(BaseModel):
+    session_id: str
+    takes: list[TakeResponse]
+
+
 class ReleaseResponse(BaseModel):
     """What the tablet is told when the team's approval landed.
 
@@ -754,12 +759,7 @@ class ReleaseResponse(BaseModel):
     session_id: str
     version: int
     package_sha256: str
-    finalized_at: str
-
-
-class TakesResponse(BaseModel):
-    session_id: str
-    takes: list[TakeResponse]
+    approved_at: str
 
 
 class QuestionAudioResponse(BaseModel):

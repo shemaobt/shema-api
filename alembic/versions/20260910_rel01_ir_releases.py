@@ -37,7 +37,7 @@ def upgrade() -> None:
         sa.Column("package_sha256", sa.String(length=64), nullable=False),
         sa.Column("packet", sa.JSON(), nullable=False),
         sa.Column(
-            "finalized_at",
+            "approved_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
