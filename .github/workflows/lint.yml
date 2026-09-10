@@ -116,10 +116,11 @@ jobs:
       - name: Run the doctrine guard
         run: uv run python scripts/check_doctrine.py
 
-  # `--check` costs one network call to `MarciaSuzuki/tripod_compiler` and nothing invoked it
-  # (ENG-926): a vendored map edited by hand, or one that simply drifted upstream, passed this
-  # far green. `GITHUB_TOKEN` raises the runner's shared, unauthenticated GitHub API rate limit
-  # (60 requests/hour per egress IP) to the per-repository authenticated one.
+  # `--check` costs two API calls to `MarciaSuzuki/tripod_compiler` and one raw fetch per
+  # vendored file, and nothing invoked it (ENG-926): a vendored map edited by hand, or one
+  # that simply drifted upstream, passed this far green. `GITHUB_TOKEN` raises the runner's
+  # shared, unauthenticated GitHub API rate limit (60 requests/hour per egress IP) to the
+  # per-repository authenticated one — the two API calls are what that ceiling governs.
   canon:
     runs-on: ubuntu-latest
     steps:

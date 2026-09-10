@@ -1,4 +1,4 @@
-"""`--check` costs one network call and nothing invoked it.
+"""`--check` costs two API calls plus one raw fetch per vendored file, and nothing invoked it.
 
 `grep -rn canon .github/` found nothing (ENG-926): a vendored map edited by hand — or one that
 simply drifted from `MarciaSuzuki/tripod_compiler` — passed CI green, because the only thing
