@@ -185,7 +185,7 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
     elapsed_ms = round((time.monotonic() - started) * 1000)
     shim.logger.info(
         "[llm-turn] session %s answered in %s ms after %s redrafts, %s calls, US$ %s: "
-        "in=%s cache_read=%s cache_write=%s out=%s%s",
+        "in=%s cache_read=%s cache_write=%s out=%s%s%s",
         session_id,
         elapsed_ms,
         outcome.redrafts,
@@ -196,6 +196,9 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
         spend.cache_write_tokens,
         spend.output_tokens,
         " — nothing was served from cache" if spend.cache_missed else "",
+        f" — answered on rung {spend.rung_number}, {spend.rung_fell_because}"
+        if spend.rung_number > 1
+        else "",
         extra={
             "session_id": session_id,
             "turn_ms": elapsed_ms,
@@ -210,6 +213,8 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
             "turn_cache_write_tokens": spend.cache_write_tokens,
             "turn_model_ms": spend.model_ms,
             "cache_missed": spend.cache_missed,
+            "turn_rung_number": spend.rung_number,
+            "turn_rung_fell_because": spend.rung_fell_because,
         },
     )
     return outcome

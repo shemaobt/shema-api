@@ -84,6 +84,11 @@ class Spend:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     model_ms: int = 0
+    #: The lowest rung anything here answered on, and the reason it was reached — the deepest
+    #: of the calls rather than the last, because one call falling through the doctrine's
+    #: first rung is the whole finding and the call after it recovering does not undo it.
+    rung_number: int = 1
+    rung_fell_because: str = ""
 
     @property
     def cache_missed(self) -> bool:
@@ -127,6 +132,8 @@ def record(
     cache_read_tokens: int,
     cache_write_tokens: int,
     latency_ms: int,
+    rung_number: int,
+    rung_fell_because: str,
 ) -> None:
     """Add one answered call to the open ledger, if anything is counting.
 
@@ -148,3 +155,6 @@ def record(
     spend.cache_read_tokens += cache_read_tokens
     spend.cache_write_tokens += cache_write_tokens
     spend.model_ms += latency_ms
+    if rung_number > spend.rung_number:
+        spend.rung_number = rung_number
+        spend.rung_fell_because = rung_fell_because

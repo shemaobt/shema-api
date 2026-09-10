@@ -303,6 +303,8 @@ def _report_spend(
         cache_read_tokens=cache_read,
         cache_write_tokens=cache_write,
         latency_ms=latency_ms,
+        rung_number=rung_number,
+        rung_fell_because=_fell_because(skipped),
     )
 
 

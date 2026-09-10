@@ -18,6 +18,8 @@ import logging
 from types import SimpleNamespace
 from typing import Any
 
+import anthropic
+import httpx2
 import pytest
 
 from app.core.config import Settings
@@ -98,13 +100,23 @@ def _uncached(usage: dict[str, int]) -> dict[str, int]:
 class Answers:
     """One fake model for a whole turn, reporting its own usage per role."""
 
-    def __init__(self, draft: str, verdict: dict[str, Any], cached: bool):
+    def __init__(self, draft: str, verdict: dict[str, Any], cached: bool, refuses: str = ""):
         self.draft = draft
         self.verdict = verdict
         self.cached = cached
+        self.refuses = refuses
         self.calls: list[dict[str, Any]] = []
 
     async def create(self, **kwargs: Any) -> SimpleNamespace:
+        if kwargs["model"] == self.refuses:
+            raise anthropic.NotFoundError(
+                "nope",
+                response=httpx2.Response(
+                    status_code=404,
+                    request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"),
+                ),
+                body=None,
+            )
         self.calls.append(kwargs)
         validating = _is_validator(kwargs)
         usage = VALIDATOR_USAGE if validating else GUIDE_USAGE
@@ -122,6 +134,14 @@ class Answers:
         )
 
 
+@pytest.fixture(autouse=True)
+def _forget_which_rung_answered():
+    """The settled rung outlives a test, so a step-down here would steer a later file."""
+    llm._SETTLED.clear()
+    yield
+    llm._SETTLED.clear()
+
+
 @pytest.fixture
 def spoken_by(monkeypatch: pytest.MonkeyPatch):
     """Install one fake provider behind every client the room builds this test.
@@ -134,8 +154,9 @@ def spoken_by(monkeypatch: pytest.MonkeyPatch):
         draft: str = "Ensaiem essa parte entre vocês.",
         verdict: dict[str, Any] | None = None,
         cached: bool = True,
+        refuses: str = "",
     ) -> Answers:
-        answers = Answers(draft, verdict or {"verdict": "pass", "issues": []}, cached)
+        answers = Answers(draft, verdict or {"verdict": "pass", "issues": []}, cached, refuses)
         monkeypatch.setattr(
             llm.anthropic,
             "AsyncAnthropic",
@@ -254,3 +275,20 @@ async def test_a_turn_that_lost_the_cache_says_so_and_costs_the_difference(
         "zero no meio de oito números, e o cache podia estar desligado a sessão inteira sem "
         "ninguém ler o zero"
     )
+
+
+async def test_a_rung_the_key_cannot_use_shows_the_one_below_it_and_why(spoken_by, caplog) -> None:
+    spoken_by(refuses="claude-fable-5-1")
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+
+    guide = _usage_lines(caplog)[0]
+    assert (guide.rung, guide.rung_number) == ("claude-opus-5", 2)
+    assert guide.rung_fell_because == "the key cannot use claude-fable-5-1"
+    turn = _turn_line(caplog)
+    assert turn.turn_rung_number == 2, (
+        "uma sessão inteira podia rodar um degrau abaixo do que a doutrina manda e o resumo "
+        "do turno não dizia nada; a queda só aparecia numa linha de aviso solta"
+    )
+    assert turn.turn_rung_fell_because == "the key cannot use claude-fable-5-1"
