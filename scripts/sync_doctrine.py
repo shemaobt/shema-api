@@ -115,13 +115,20 @@ def write_pin(commit: str, digests: dict[str, str], pin_file: Path = PIN_FILE) -
 
 
 def drift(pin: Pin, root: Path = REPO_ROOT) -> list[str]:
-    """Every vendored path whose bytes are not the ones the pin recorded."""
+    """Every vendored path whose bytes are not the ones the pin recorded.
+
+    Walked over `VENDORED` rather than over the pin, because the pin is the thing being
+    checked: dropping a row and its file together is otherwise a vendored artefact that
+    silently stops being one, with the comparison green for having nothing left to compare.
+    """
     drifted = []
-    for path, recorded in sorted(pin.digests.items()):
+    for path in sorted(VENDORED.values()):
         local = root / path
-        if not local.exists():
+        if path not in pin.digests:
+            drifted.append(f"unpinned: {path}")
+        elif not local.exists():
             drifted.append(f"missing: {path}")
-        elif digest(local.read_bytes()) != recorded:
+        elif digest(local.read_bytes()) != pin.digests[path]:
             drifted.append(f"edited: {path}")
     return drifted
 
