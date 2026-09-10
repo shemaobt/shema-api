@@ -75,6 +75,14 @@ HONOUR = (
 )
 
 
+#: The story-so-far usage note as the ticket quotes it from `app/lib/liveTurn.ts:108-110`.
+GROUNDED = (
+    "Grounded material: it may be used to answer the team's questions about the story so "
+    "far and to situate the current passage in the book. Nothing beyond these passages and "
+    "the current map exists."
+)
+
+
 def _settings() -> Settings:
     return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
 
@@ -252,4 +260,17 @@ async def test_the_panorama_is_told_what_honouring_a_withholding_means(patch_age
     assert HONOUR in validator_system, (
         "os dois papéis leem o mesmo material do livro; a frase que governa o uso da lista "
         "não pode chegar só a um deles"
+    )
+
+
+async def test_the_story_so_far_says_what_it_may_be_used_for_to_both_roles(patch_agent) -> None:
+    guide_system, validator_system = await _systems(patch_agent(FakeAgent()), pericope_num="P02")
+
+    assert GROUNDED in guide_system, (
+        "os digests das passagens anteriores chegavam sob um título nu; nada dizia ao Guia "
+        "que podia responder com eles, nem que fora deles não existe mais nada"
+    )
+    assert GROUNDED in validator_system, (
+        "é a mesma nota que diz ao juiz que uma afirmação fundada numa passagem anterior "
+        "está fundada — sem ela, o bloco é evidência sem estatuto"
     )

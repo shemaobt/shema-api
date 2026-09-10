@@ -180,7 +180,12 @@ def story_so_far(book: str, current_pericope: str) -> str:
     if not earlier:
         return ""
     digests = "\n\n".join(pericope_digest(m) for m in earlier)
-    return f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n\n{digests}\n"
+    return (
+        f"# THE STORY SO FAR — {book}, passages before {current_pericope}\n"
+        "Grounded material: it may be used to answer the team's questions about the story "
+        "so far and to situate the current passage in the book. Nothing beyond these "
+        f"passages and the current map exists.\n\n{digests}\n"
+    )
 
 
 def vendor_pin() -> str:
