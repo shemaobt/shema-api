@@ -33,7 +33,10 @@ from app.services.internalization_room.coverage import (
     initial_state,
     is_panorama,
 )
-from app.services.internalization_room.coverage_events import record_transitions
+from app.services.internalization_room.coverage_events import (
+    necklace_with_touches,
+    record_transitions,
+)
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.progression import active_passage
@@ -106,6 +109,14 @@ async def create_session(
     and refusing a session without one would take every room in the field offline to gain a
     column value. Work with no project has no history to read, so it starts at the beginning.
 
+    The necklace is the team's and not this conversation's. A session on a passage the team
+    has already worked opens with those beads where the team's own coverage events left them,
+    so a tablet closed in the middle of the third scene on Tuesday comes back on Thursday to
+    the beads it filled, and the Guide is handed a REMAINING block naming what is actually
+    left rather than the whole passage again. A bead the events point at that this canon no
+    longer serves is dropped rather than carried: the spine is the canon's and the events are
+    only laid over it, which is `session_coverage_states`' rule and `floor_met`'s own bias.
+
     A request for the panorama is a request and not an instruction. The app asks for it at
     every launch, and a team that already heard it for the passage they stand on is answered
     with that passage instead, opened as any other session and not as one that follows a
@@ -139,6 +150,11 @@ async def create_session(
     spoken = normalize(language)
     if language is not None and spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
+    carried = (
+        {}
+        if panorama or project_id is None
+        else await necklace_with_touches(db, project_id=project_id, pericope=pericope)
+    )
     session = IRSession(
         project_id=project_id,
         pericope=pericope,
@@ -147,7 +163,12 @@ async def create_session(
         after_panorama=after_panorama,
         # A panorama has no coverage spine and never completes: it prepares the team to enter
         # the book, and asks no retelling of them.
-        coverage_state={} if panorama else initial_state(pericope),
+        coverage_state={}
+        if panorama
+        else {
+            element_key: carried[element_key].status.value if element_key in carried else status
+            for element_key, status in initial_state(pericope).items()
+        },
         kept_takes={},
         back_translation={},
         language=spoken or floor(),

@@ -311,19 +311,29 @@ async def test_two_conversations_on_one_bead_stay_on_their_own_cards(
 async def test_a_bead_already_engaged_is_not_walked_back_by_a_later_mention(
     db_session: AsyncSession,
 ) -> None:
-    """Furthest rank, never most recent — the rule the facilitator's panel already uses.
+    """Furthest rank, never most recent — and the backwards step is no longer even written.
 
-    Every session opens at `initial_state`, so a bead the team engaged on Tuesday earns a
-    fresh `surfaced` step the moment Wednesday's Guide mentions it: against Wednesday's own
-    tracker it really did move, and at team level it moved nowhere. Reading the latest step
-    instead would show the bead going backwards on the newer card.
+    Wednesday's session opens on the team's own necklace rather than at `initial_state`, so
+    when its Guide mentions a bead the team engaged on Tuesday, `record_transitions` compares
+    the mention against `engaged` and writes nothing at all: there is no backwards step left
+    for a reading by recency to find. The rank rule still answers the rows written before the
+    seeding, which is why the newer card is read here and not only the events.
+
+    Wednesday moves a bead of its own so that it has an instant of its own. A conversation
+    that moved nothing falls back to `created_at`, which is the database's clock and resolves
+    to the second on SQLite — it cannot be placed after one that moved something in the same
+    second.
     """
     keys = element_keys(P)
     tuesday = await service.create_session(db_session, pericope=P, project_id=TEAM)
     await service.apply_coverage(db_session, tuesday.id, {keys[0]: ENGAGED})
 
     wednesday = await service.create_session(db_session, pericope=P, project_id=TEAM)
-    await service.apply_coverage(db_session, wednesday.id, {keys[0]: SURFACED})
+    await service.apply_coverage(db_session, wednesday.id, {keys[0]: SURFACED, keys[1]: ENGAGED})
+
+    steps = await _events(db_session, wednesday.id)
+    mentioned = [event for event in steps if event.element_key == keys[0]]
+    assert mentioned == [], "a mencao voltou a virar passo, e o passo anda para tras"
 
     rebuilt = await necklaces_of(db_session, [wednesday, tuesday])
 
