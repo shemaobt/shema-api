@@ -96,7 +96,7 @@ def _ensaio_take(
     *,
     scope: str = "passagem-inteira",
     pass_number: int | None = None,
-    chunk_index: int | None = None,
+    ordinal: int | None = None,
     sha256: str = "a" * 64,
     created_at: datetime | None = None,
 ) -> IRTake:
@@ -107,7 +107,7 @@ def _ensaio_take(
         kind=IRTakeKind.ENSAIO,
         scope=scope,
         pass_number=pass_number,
-        chunk_index=chunk_index,
+        ordinal=ordinal,
         storage_key=f"takes/{session_id}/ensaio/{sha256}",
         size_bytes=2048,
         sha256=sha256,
@@ -292,7 +292,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     tablet's outbox drains whenever the link comes back, so the abandoned take can be
     written down after the take that replaced it.
 
-    The whole-passage take `_ready_session` leaves carries neither a chunk nor a pass, and
+    The whole-passage take `_ready_session` leaves carries neither an ordinal nor a pass, and
     it is read here too: it comes first on every engine now that `takes_of` says where a
     NULL belongs, which is the same reading order — the undivided recording before the
     parts, and a take from before the room sent a pass before the ones that carry it.
@@ -303,7 +303,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
             session.id,
             scope="parte-1",
             pass_number=2,
-            chunk_index=1,
+            ordinal=1,
             sha256="c" * 64,
             created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
         )
@@ -313,7 +313,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
             session.id,
             scope="parte-1",
             pass_number=1,
-            chunk_index=1,
+            ordinal=1,
             sha256="b" * 64,
             created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
         )
@@ -323,7 +323,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     artifact = await build_internalization_release(db_session, session)
 
     seen = [
-        (take["chunk_index"], take["pass_number"], take["sha256"])
+        (take["ordinal"], take["pass_number"], take["sha256"])
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 

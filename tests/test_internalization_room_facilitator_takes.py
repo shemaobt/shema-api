@@ -224,13 +224,13 @@ async def test_listening_without_a_login_is_refused(client, db_session, room_app
 async def test_a_reviewer_can_tell_the_stretches_apart(db_session: AsyncSession) -> None:
     """N indistinguishable `retro` rows is not a back translation anyone can read.
 
-    `chunk_index` and `pass_number` are stored and were not exposed, so the reviewer could
+    `ordinal` and `pass_number` are stored and were not exposed, so the reviewer could
     not tell stretch three from stretch seven, nor a first telling from its correction.
     """
     store = MemoryStore()
     # Stored out of reading order on purpose: a retry lands after a later stretch, and
     # ordering by arrival alone gives the reviewer the wrong sequence.
-    for index, (chunk, passe) in enumerate([(2, 2), (1, 1), (2, 1)]):
+    for index, (ordinal, passe) in enumerate([(2, 2), (1, 1), (2, 1)]):
         await service.store_take(
             db_session,
             session_id="s1",
@@ -240,12 +240,12 @@ async def test_a_reviewer_can_tell_the_stretches_apart(db_session: AsyncSession)
             scope="P01",
             audio=f"trecho {index}".encode(),
             pass_number=passe,
-            chunk_index=chunk,
+            ordinal=ordinal,
             store=store,
         )
 
     rows = await service.takes_of(db_session, "s1")
-    seen = [(take.chunk_index, take.pass_number) for take in rows]
+    seen = [(take.ordinal, take.pass_number) for take in rows]
 
     assert seen == [(1, 1), (2, 1), (2, 2)], (
         "e a ordem tem de ser a da leitura, não a da chegada: uma retentativa cai depois "
@@ -259,7 +259,7 @@ async def test_a_take_with_no_pass_holds_its_place_on_either_database(
 ) -> None:
     """A rehearsal recorded before the room sent a pass has to stay where it is.
 
-    `chunk_index` and `pass_number` are both nullable, and an unqualified ASC leaves where
+    `ordinal` and `pass_number` are both nullable, and an unqualified ASC leaves where
     the NULLs land to the engine: SQLite puts them first, PostgreSQL last. The suite only
     ever ran the first, so the oldest recording of a session read as the newest on the one
     database a team is actually served by. The order is named in the query now, and this

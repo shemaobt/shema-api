@@ -739,8 +739,13 @@ class TakeResponse(BaseModel):
     #: indistinguishable `retro` takes: no way to tell stretch three from stretch seven,
     #: and no way to tell a first telling from its correction. The labels are what travels
     #: to Refine.
-    chunk_index: int | None = None
+    ordinal: int | None = None
     pass_number: int | None = None
+    #: The tablet's name for `ordinal`, carrying the same number. The app in the field reads
+    #: this key on resume to find which part a rebuilt rehearsal recording answers for, and
+    #: a key that is not there reads as null, which skips that step without saying so.
+    #: ENG-923 teaches the app to read `ordinal` and takes this away.
+    chunk_index: int | None = None
     pericope: str = ""
     recorded_at: str = ""
 
