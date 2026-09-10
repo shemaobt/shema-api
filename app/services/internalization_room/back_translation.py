@@ -300,9 +300,9 @@ def playback_confirms_rehearsal(state: BackTranslationState, rehearsal_take_ids:
 #: language. Keyed by the language code, in the shape `calibration.py` already uses — an
 #: unclaimed language falls back to the authored English line.
 _NOTHING_TOLD_BACK_YET: dict[str, str] = {
-    "pt": "(a equipe ainda não contou nada de volta)",
-    "en": "(the team has not told anything back yet)",
-    "es": "(el equipo aún no ha contado nada de vuelta)",
+    "pt": "(a equipe ainda não traduziu nada)",
+    "en": "(the team has not translated anything yet)",
+    "es": "(el equipo aún no ha traducido nada)",
 }
 
 
@@ -544,16 +544,14 @@ async def analyse_telling_back(
     try:
         raw = await call_agent(
             system_prompt=system,
-            user_content="Compare o contado de volta com o mapa.",
+            user_content="Compare a tradução com o mapa.",
             ladder=analysis_ladder(cfg),
             max_output_tokens=4096,
             settings=cfg,
         )
     except Exception as failure:
         logger.exception("BT analysis failed for %s", pericope_num)
-        raise UpstreamServiceError(
-            "a análise do contado de volta não pôde ser feita agora"
-        ) from failure
+        raise UpstreamServiceError("a análise da tradução não pôde ser feita agora") from failure
     analysis = _parse_analysis(raw, segments)
     if analysis is not None:
         _log_accepted_reading(
@@ -893,7 +891,7 @@ async def verify_correction(
 def findings_block(finding: Finding | None) -> str:
     """Exactly one finding reaches the Speaker; the rest wait for the next round."""
     if finding is None:
-        return "(nenhum achado — o contado de volta está completo)"
+        return "(nenhum achado — a tradução está completa)"
     return f"- {finding.kind}: {finding.note}"
 
 

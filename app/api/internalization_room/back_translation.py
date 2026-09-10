@@ -352,9 +352,7 @@ async def finish(
             session_id=session.id,
         )
         if closing is None:
-            raise UpstreamServiceError(
-                "a leitura final do contado de volta não pôde ser feita agora"
-            )
+            raise UpstreamServiceError("a leitura final da tradução não pôde ser feita agora")
         state.findings = closing.findings
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
