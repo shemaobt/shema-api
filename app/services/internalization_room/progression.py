@@ -6,10 +6,11 @@ existed the server answered `DEFAULT_PERICOPE = "P01"` — every team, every tim
 passages of Ruth are vendored and no team had ever left the first, because nothing could
 move one.
 
-**Derived, never stored.** A team's position is a function of the coverage events it wrote
-and the canon's order, and there is no column that could disagree with them. A stored
-pointer would become a second opinion the moment a passage is reworked or the canon is
-re-vendored, and it would be the opinion the room actually obeys.
+**Derived, and what it is derived from moved.** A team's position is still a function of the
+book's order and of what the team did, and there is still no pointer anybody writes: nothing
+stores "this team is on P02". What it reads is no longer only the coverage events — it is the
+sessions that ended and the rehearsals kept in them, and both of those are records of things
+that happened rather than a computation that can be re-run to another answer.
 
 **The team's own recording is the mechanism.** A passage is closed when the team has a
 session on it that both reached the end of the conversation — `sessions.session_is_done`,
@@ -45,6 +46,15 @@ the narrower failure, and the one that mattered most, because the floor had been
 accept exactly that status. That was ENG-615. Both are fixed, and both lived in that file
 rather than in this one.
 
+**A re-vendored canon no longer re-opens a passage, and that is a change of kind.** The old
+resolution asked `floor_met` against today's spine every time, so renaming a bead un-closed
+the passage and sent the team back into it — the bias that
+`test_a_bead_the_canon_does_not_serve_cannot_close_a_passage` pinned. Closing on a recording
+cannot work that way: the team really did rehearse the passage they were given, and no edit to
+the canon undoes that. So a re-vendor that renames a bead leaves the closed passages closed,
+and the beads it added are not offered to a team that has already moved past them. Whether
+they should be is a question about re-work, which nothing in the product asks for yet.
+
 **A passage that never closes is a wall, and no one is told.** Classification runs on an
 LLM off the voice path and fails silently: the tracker is left untouched and the turn moves
 on. More turns give more chances, which handles a transient failure and does nothing for an
@@ -64,7 +74,7 @@ from collections.abc import Collection, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.models.internalization_room import PericopePosition, PericopeStanding
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
@@ -169,12 +179,21 @@ async def active_passages(
 async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> dict[str, Finished]:
     """Which passages each of these teams has finished a session on. One statement.
 
-    Two facts and both are required, because they are different facts. ``ir_sessions.status``
-    carries ``session_is_done`` — the coverage floor and the comprehension gate — and that is
-    what the room reads to let a team *into* the rehearsal. It is not what finishes a passage:
-    a team can reach it and stop, and the ledger informs, it never ends the conversation
-    (`DOCTRINE.md` §4). What ends it is the rehearsal itself arriving — a kept ``ensaio`` take
-    on that same session. "O fecho ('gravem o ensaio') é decisão do Guia", Marcia, answer 8.
+    Two facts and both are required, because they are different facts. ``ended_at`` is the
+    instant ``session_is_done`` became true — the coverage floor and the comprehension gate,
+    stamped once in ``apply_coverage`` — and that gate is what the room reads to let a team
+    *into* the rehearsal. It is not what finishes a passage: a team can reach it and stop, and
+    the ledger informs, it never ends the conversation (`DOCTRINE.md` §4). What ends it is the
+    rehearsal itself arriving — a kept ``ensaio`` take on that same session. "O fecho ('gravem
+    o ensaio') é decisão do Guia", Marcia, answer 8.
+
+    **The stamp and not the status**, though the two are written together. ``mark_needs_person``
+    overwrites the status with no guard on what it was, and the retell warning it raises only
+    ever reaches a session that has already recorded — the back-translation route refuses one
+    without a take. Read from the status, a team that finished a passage and then struggled to
+    tell a stretch back would have it handed to them again, and a landing turn restores
+    ``IN_PROGRESS`` and never ``DONE``, so it would stay handed back. ``ended_at`` is written
+    at the same instant and no halt writes over it.
 
     A retro take is a stretch told back to the room and is not the rehearsal, so the kind is
     part of the question.
@@ -194,7 +213,7 @@ async def finished_passages(db: AsyncSession, *, project_ids: Sequence[str]) -> 
         .join(IRTake, IRTake.session_id == IRSession.id)
         .where(
             IRSession.project_id.in_(project_ids),
-            IRSession.status == IRSessionStatus.DONE,
+            IRSession.ended_at.is_not(None),
             IRTake.kind == IRTakeKind.ENSAIO,
         )
         .distinct()

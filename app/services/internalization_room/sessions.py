@@ -115,7 +115,8 @@ async def create_session(
     the beads it filled, and the Guide is handed a REMAINING block naming what is actually
     left rather than the whole passage again. A bead the events point at that this canon no
     longer serves is dropped rather than carried: the spine is the canon's and the events are
-    only laid over it, which is `session_coverage_states`' rule and `floor_met`'s own bias.
+    only laid over it, which is `necklace_of`'s rule (`coverage_events.py`) and `floor_met`'s
+    own bias.
 
     A request for the panorama is a request and not an instruction. The app asks for it at
     every launch, and a team that already heard it for the passage they stand on is answered
