@@ -385,3 +385,33 @@ def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workf
     deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
 
     assert "--timeout=300" in deploy_step["run"]
+
+
+async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turns(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A panorama never 'completes' — not at the opening, not five turns in."""
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _panorama(*, transcript: str, **_: Any) -> TurnOutcome:
+        return TurnOutcome(speech="resposta.", transcript=transcript)
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(text="mais uma pergunta")
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", "language": "pt"}
+    )
+    session_id = created.json()["session_id"]
+    opening = await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
+    )
+
+    turns = [opening] + [await _speak(client, session_id, f"q{n}.m4a") for n in range(2, 6)]
+
+    assert [turn.json()["done"] for turn in turns] == [False] * 5, (
+        "nenhum turno do panorama pode dizer que a sessão terminou, em turno nenhum"
+    )
