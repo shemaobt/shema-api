@@ -86,7 +86,6 @@ async def _checked_telling_back(db: AsyncSession, session: IRSession) -> BackTra
     return BackTranslationState(
         scope=P,
         findings=[],
-        evidence_sufficient=True,
         checked=True,
         analysed_segment_ids=[told.id],
     )
@@ -260,10 +259,7 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
     session = await _ready_session(db_session)
     state = await _checked_telling_back(db_session, session)
     state.superseded = [
-        SupersededAttempt(
-            findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
-            evidence_sufficient=False,
-        )
+        SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
     ]
     await _reported_playback(db_session, session, state)
     await retire_every_segment(db_session, session.id)
@@ -275,7 +271,7 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
 
     archived = artifact["back_translation"]["superseded_attempts"][0]
     assert archived["findings"][0]["kind"] == "missing"
-    assert archived["evidence_sufficient"] is False
+    assert "evidence_sufficient" not in archived
     replaced = artifact["back_translation"]["superseded_segments"]
     assert abandoned.id in [one["segment_id"] for one in replaced]
     assert "tentativa antiga" in [one["text"] for one in replaced], (
@@ -345,8 +341,8 @@ async def _told_back_with_an_open_finding(
     `analysed_segment_ids` names the stretch because the analyst did read it — that is what
     makes the finding open rather than the verdict unasked.
 
-    `checked` is written as `finding is None and evidence_sufficient`, so an open finding
-    makes it false — which is the whole state this slice is about.
+    `checked` is written as `finding is None`, so an open finding makes it false — which is
+    the whole state this slice is about.
     """
     told = await _one_stretch(db, session)
     return BackTranslationState(
@@ -358,7 +354,6 @@ async def _told_back_with_an_open_finding(
                 segment_id=told.id,
             )
         ],
-        evidence_sufficient=True,
         checked=False,
         analysed_segment_ids=[told.id],
     )
@@ -562,3 +557,45 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
         for attempt in artifact["back_translation"]["superseded_attempts"]
         for f in attempt["findings"]
     ] == ["addition"]
+
+
+@pytest.mark.asyncio
+async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
+    db_session: AsyncSession,
+) -> None:
+    """A row written before the evidence flag went still ships, one finding lighter.
+
+    Nothing migrates the row: the stored key is ignored on the way in, and the thin-evidence
+    finding beside it is no finding at all. What the package carries is what the team still
+    has to answer, and `checked` alone says whether the reading came out clean.
+    """
+    session = await _ready_session(db_session)
+    told = await final_segments(db_session, session.id)
+    stored = dict(session.back_translation)
+    stored["evidence_sufficient"] = False
+    stored["checked"] = False
+    stored["findings"] = [
+        {"kind": "insufficient_evidence", "note": "contaram pouco", "segment_id": None},
+        {"kind": "missing", "note": "Orfa não apareceu", "segment_id": told[0].id},
+    ]
+    stored["superseded"] = [
+        {
+            "findings": [
+                {"kind": "insufficient_evidence", "note": "pouco na primeira", "segment_id": None}
+            ],
+            "evidence_sufficient": False,
+            "played_ranges": [],
+            "clip_duration_ms": None,
+        }
+    ]
+    session.back_translation = stored
+    await db_session.commit()
+
+    artifact = await build_internalization_release(db_session, session)
+
+    package = artifact["back_translation"]
+    assert "evidence_sufficient" not in package
+    assert all("evidence_sufficient" not in attempt for attempt in package["superseded_attempts"])
+    assert [f["kind"] for f in package["findings"]] == ["missing"]
+    assert package["superseded_attempts"][0]["findings"] == []
+    assert package["checked"] is False

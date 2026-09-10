@@ -131,12 +131,12 @@ async def test_an_obedient_narrator_passes_the_checked_turn(patch_loop) -> None:
     assert outcome.speech == "A passagem foi contada e conferida."
 
 
-def test_insufficient_evidence_keeps_the_plain_closing() -> None:
-    """Case 4 (guard). Sem achado mas com evidência insuficiente, o fechamento não muda.
+def test_a_turn_that_is_not_the_checked_one_keeps_asking() -> None:
+    """The pure contract of the plain closing: no finding, not checked, so the turn goes on.
 
-    Há próximo turno — a equipe vai contar mais — então a pergunta continua tendo para quem
-    responder. `state.checked` só fica `True` com achado nenhum *e* evidência suficiente; sem
-    a segunda metade, o chamador nunca passa `checked=True` para `closing_block`.
+    `closing_block` is asked for a closing by more than the room's own `finish`, and this is
+    the answer when a finding-less turn is not the one that strikes the passage off — it
+    affirms and invites the team to carry on telling back.
     """
     assert closing_block(None, checked=False) == CLOSING_PLAIN
     assert closing_block(None) == CLOSING_PLAIN

@@ -571,7 +571,6 @@ async def begin_back_translation_again(
         superseded.append(
             SupersededAttempt(
                 findings=state.findings,
-                evidence_sufficient=state.evidence_sufficient,
                 played_ranges=state.played_ranges,
                 clip_duration_ms=state.clip_duration_ms,
             )

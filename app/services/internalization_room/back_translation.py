@@ -7,7 +7,7 @@ import re
 import unicodedata
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
@@ -24,11 +24,33 @@ logger = logging.getLogger(__name__)
 class FindingKind(enum.StrEnum):
     MISSING = "missing"
     ADDITION = "addition"
-    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     UNCLEAR = "unclear"
 
 
-EVIDENCE_LIMIT_KINDS = frozenset({FindingKind.INSUFFICIENT_EVIDENCE, FindingKind.UNCLEAR})
+EVIDENCE_LIMIT_KINDS = frozenset({FindingKind.UNCLEAR})
+
+#: The wire name a reply or a stored row may still carry, which is no finding at all: thin
+#: evidence about a legible stretch does not stop the passage from being checked (ADR 0013).
+_RETIRED_EVIDENCE_KIND = "insufficient_evidence"
+
+
+def _is_the_retired_evidence_kind(entry: Any) -> bool:
+    return isinstance(entry, dict) and entry.get("kind") == _RETIRED_EVIDENCE_KIND
+
+
+def _without_the_retired_evidence_kind(data: Any) -> Any:
+    """The findings of a stored row or a fresh reply, with the retired name taken out.
+
+    The two stored containers validate through it, so a row written before the ruling opens
+    with that finding gone from `findings` and from `superseded[].findings`. `BtAnalysis`
+    does not: it is only ever built here, from findings this has already been over. A copy
+    rather than a mutation, because the row it is handed is the session's own JSON column.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("findings"), list):
+        return data
+    kept = [entry for entry in data["findings"] if not _is_the_retired_evidence_kind(entry)]
+    return {**data, "findings": kept}
+
 
 _NAMES_READ_AS_ADDITION = frozenset(
     {
@@ -69,15 +91,8 @@ class Finding(BaseModel):
 
 
 class BtAnalysis(BaseModel):
-    """One completed analyst pass.
+    """One completed analyst pass."""
 
-    ``evidence_sufficient`` is the difference between "no difference appeared" and "there
-    was not enough telling-back to look for one". Weak evidence must never read as a
-    clean check: when it is False, at least one finding names the limit, so the Voice has
-    something concrete to resolve or send to Refine.
-    """
-
-    evidence_sufficient: bool = True
     findings: list[Finding] = Field(default_factory=list)
 
 
@@ -91,9 +106,13 @@ class SupersededAttempt(BaseModel):
     """
 
     findings: list[Finding] = Field(default_factory=list)
-    evidence_sufficient: bool = True
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _thin_evidence_is_no_finding(cls, data: Any) -> Any:
+        return _without_the_retired_evidence_kind(data)
 
 
 class VoicedVerdict(BaseModel):
@@ -120,7 +139,6 @@ class BackTranslationState(BaseModel):
 
     scope: str = ""
     findings: list[Finding] = Field(default_factory=list)
-    evidence_sufficient: bool = True
     checked: bool = False
     superseded: list[SupersededAttempt] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
@@ -168,9 +186,9 @@ class BackTranslationState(BaseModel):
     #: Whether a stretch-by-stretch verification has run since the last whole reading. It is
     #: what the closing gate turns on: a verification answers the finding it was shown and
     #: nothing else, so a list emptied by verifications alone has never been measured against
-    #: the set. Two things live only in the set — a correction can answer, by accident, a
-    #: finding raised on another stretch, and whether the telling-back is too thin to judge at
-    #: all — and `checked` strikes the passage off the wheel for good, with no undo.
+    #: the set. One thing lives only in the set — a correction can answer, by accident, a
+    #: finding raised on another stretch — and `checked` strikes the passage off the wheel for
+    #: good, with no undo.
     #:
     #: A first reading never turns it on, which is what keeps a team that got it right the
     #: first time paying for one reading and not two.
@@ -181,6 +199,24 @@ class BackTranslationState(BaseModel):
     #: the analyst and then failed before the team heard anything — that one saves nothing at
     #: all, and the press after it does the whole turn.
     verdict: VoicedVerdict | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _thin_evidence_is_no_finding(cls, data: Any) -> Any:
+        """The retired name leaves the row, and the verdict it produced leaves with it.
+
+        A row that stored that finding also stored the clip the Speaker said about it, and
+        `terminei` serves a stored verdict rather than reading again. Dropping the finding
+        and keeping the verdict left the team hearing *too little to check* on every press,
+        about a frase the room no longer has anything to say about, until they recorded
+        something. Without it the next press decides again on what the row still holds: no
+        finding left is the checked closing, and a `missing` that survived the drop is
+        voiced instead. The analyst is not asked again — the reading it already did stands.
+        """
+        without = _without_the_retired_evidence_kind(data)
+        if without is data or len(without["findings"]) == len(data["findings"]):
+            return without
+        return {**without, "verdict": None}
 
     @property
     def current_finding(self) -> Finding | None:
@@ -197,8 +233,8 @@ class BackTranslationState(BaseModel):
         """The analyst has not read this telling-back at all.
 
         Distinct from `not already_analysed`, which is also true when more was told back
-        after the last pass. Never read is the state whose defaults — no findings, evidence
-        sufficient — are indistinguishable from a clean check.
+        after the last pass. Never read is the state whose default — no findings — is
+        indistinguishable from a clean check.
         """
         return self.analysed_segment_ids is None
 
@@ -290,7 +326,7 @@ def segments_block(segments: list[IRSegment], language_code: str = FLOOR) -> str
 def _refused(condition: str, raw: str, session: str) -> None:
     """Every refusal leaves the reply behind it, whole, with the condition that refused.
 
-    Five of the seven exits below used to return None in silence. A reply the model did
+    They used to return None in silence. A reply the model did
     produce was then indistinguishable from one it never did, and the night of 2026-09-01
     was spent unable to say what the analyst had answered. The reply is logged whole
     rather than cut at a few hundred characters: it is bounded by the call's output cap,
@@ -298,6 +334,25 @@ def _refused(condition: str, raw: str, session: str) -> None:
     the line can be tied to the request that got the 502, across replicas and teams.
     """
     logger.warning("BT analyst reply refused (%s) for session %s: %s", condition, session, raw)
+
+
+def _dropped(entries: list[Any], raw: str, about: str) -> None:
+    """A name the room retired left the reply, and the rest of it was read.
+
+    Said only once the reading has been accepted: a reply carrying the retired name beside
+    a malformed entry is refused, and announcing a drop it then threw away with everything
+    else would send the next investigation to the wrong place. Its own line rather than
+    `_refused`'s for the same reason, and the reply is behind it whole, as every refusal
+    carries one.
+    """
+    if not any(_is_the_retired_evidence_kind(entry) for entry in entries):
+        return
+    logger.warning(
+        "BT reply named %s, which is no finding; dropped it and read the rest (%s): %s",
+        _RETIRED_EVIDENCE_KIND,
+        about,
+        raw,
+    )
 
 
 def _session_of(segments: list[IRSegment]) -> str:
@@ -314,24 +369,12 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     telling-back and blessed the passage. A "silence" kind is folded into addition: a
     filled silence is something told that the passage does not tell.
 
-    A reply without ``evidence_sufficient`` is from a prompt version that predates the
-    field; it is read as sufficient, exactly what that prompt's replies always meant. When
-    the field is present it must agree with the findings one way: insufficient needs a
-    finding that names the limit, or nothing concrete reaches the Voice.
-
-    The other way it is allowed to disagree, and the disagreement is resolved rather than
-    refused. **A sufficient flag beside an ``insufficient_evidence`` finding is read as
-    insufficient, and every finding is kept.** The prompt defines that finding as the
-    statement that a real part of the scope could not be compared, naming the stretch;
-    the flag is that same statement summarised over the scope, with no information of its
-    own. When they disagree the flag is the side without evidence. The alternatives are
-    both worse: refusing the reply threw away a good ``addition`` together with the
-    contradiction (ENG-719, the session that stopped a team three times), and letting the
-    flag win would have marked as checked a passage the analyst itself said stops at
-    verse 8. Whoever reads this as a contradiction to be refused: it was, and that is
-    what it cost. The analyst did break the contract its prompt writes, so the case is
-    logged with the reply — silence about a model's drift is how the next one goes
-    unnoticed too.
+    Whatever the reply says about how much evidence it had is not read: the flag that used
+    to gate the conferral is gone, and a reply that still carries it is read with the key
+    ignored. An entry naming the retired evidence kind is dropped and the rest of the reply
+    kept, because refusing a reply whole over a name the prompt itself stopped offering is
+    the ENG-719 failure with a different trigger — a team stopped three times by a round
+    with no verdict, for a reading the room could have used.
     """
     session = _session_of(segments)
     text = raw.strip()
@@ -346,13 +389,11 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
     if not isinstance(parsed, dict) or not isinstance(parsed.get("findings"), list):
         _refused("findings is not a list", raw, session)
         return None
-    sufficient_raw = parsed.get("evidence_sufficient", True)
-    if not isinstance(sufficient_raw, bool):
-        _refused("evidence_sufficient is not a boolean", raw, session)
-        return None
+
+    reported = parsed["findings"]
 
     findings: list[Finding] = []
-    for entry in parsed["findings"]:
+    for entry in [one for one in reported if not _is_the_retired_evidence_kind(one)]:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
@@ -381,19 +422,8 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             )
         )
 
-    if not sufficient_raw and not any(f.kind in EVIDENCE_LIMIT_KINDS for f in findings):
-        _refused("evidence_sufficient is false and no finding names the limit", raw, session)
-        return None
-    if sufficient_raw and any(f.kind is FindingKind.INSUFFICIENT_EVIDENCE for f in findings):
-        logger.warning(
-            "BT analyst said evidence_sufficient is true beside an insufficient_evidence "
-            "finding for session %s; the finding wins and the reply is read as "
-            "insufficient: %s",
-            session,
-            raw,
-        )
-        sufficient_raw = False
-    return BtAnalysis(evidence_sufficient=sufficient_raw, findings=findings)
+    _dropped(reported, raw, f"session {session}")
+    return BtAnalysis(findings=findings)
 
 
 def _log_accepted_reading(
@@ -551,9 +581,7 @@ class CorrectionCheck(BaseModel):
 
 
 #: What the verification may report. Deliberately short of the analyst's list: `missing` here
-#: means *this stretch said it before and does not now*, never the analyst's global sense, and
-#: the kind defined over the whole telling-back — `insufficient_evidence` — cannot be judged
-#: from one stretch at all.
+#: means *this stretch said it before and does not now*, never the analyst's global sense.
 CORRECTION_KINDS = frozenset({FindingKind.MISSING, FindingKind.ADDITION, FindingKind.UNCLEAR})
 
 
@@ -707,7 +735,7 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
         return None
 
     findings: list[Finding] = []
-    for entry in raw_findings:
+    for entry in [one for one in raw_findings if not _is_the_retired_evidence_kind(one)]:
         if not isinstance(entry, dict):
             return None
         note = str(entry.get("note", "")).strip()
@@ -736,6 +764,7 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
             for element in lost or []
             if not _already_reported(element, reported)
         )
+    _dropped(raw_findings, raw, f"segment {segment_id}")
     return CorrectionCheck(resolved=bool(parsed["resolved"]), findings=findings)
 
 

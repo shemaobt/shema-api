@@ -231,7 +231,6 @@ async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, 
     told = await room.final_segments(db, session.id)
     state = room.back_translation_of(session)
     state.analysed_segment_ids = [segment.id for segment in told]
-    state.evidence_sufficient = True
     clip_end = max((segment.ends_ms for segment in told), default=0)
     await room.report_playback(
         db, session, state, played_ranges=[[0, clip_end]], clip_duration_ms=clip_end
