@@ -13,7 +13,7 @@ a release is never superseded: there is no row for a predicate to exclude.
 No foreign keys, matching every other table of the room.
 
 Revision ID: 20260910_rel01
-Revises: 20260910_meet01
+Revises: 20260910_hard01
 """
 
 import sqlalchemy as sa
@@ -21,7 +21,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "20260910_rel01"
-down_revision = "20260910_meet01"
+down_revision = "20260910_hard01"
 branch_labels = None
 depends_on = None
 

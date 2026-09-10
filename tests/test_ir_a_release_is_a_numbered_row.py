@@ -54,7 +54,7 @@ APP_KEY = "internalization-room"
 SCHEMA_VERSION = "tripod.internalization-release.v0.4"
 
 REVISION = "20260910_rel01"
-PREVIOUS_REVISION = "20260910_meet01"
+PREVIOUS_REVISION = "20260910_hard01"
 TABLE = "ir_releases"
 UNIQUE_INDEX = "uq_ir_releases_version"
 SEEDED_SESSION = "3f6f7a1e-0f0e-4f7a-9d55-0b1c2d3e4f50"
