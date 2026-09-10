@@ -1,10 +1,11 @@
 """The lines of DOCTRINE.md §4 that nothing in this repo was holding.
 
-§4 is the acceptance bar — "what must not regress" — and eleven of its lines already had tests
-that found them by another name: containment on P01, the second law, omission and addition,
-the two languages, the voice opening the session, YHWH spoken. Six had nothing at all. The
-rules were in the Guide prompt and would have survived exactly as long as nobody tightened the
-paragraph they sit in, which is the drift the doctrine was written against.
+§4 is the acceptance bar — "what must not regress" — and seven of its seventeen lines already
+had tests that found them by another name: the second law, omission and addition, the two
+languages, YHWH spoken, the voice opening the session, containment on P01. Nine had nothing at
+all. Those rules were in the Guide prompt and would have survived exactly as long as nobody
+tightened the paragraph they sit in, which is the drift the doctrine was written against. The
+seventeenth, the circle alive at `done`, is the app's and is recorded as pending.
 
 The seam is the rendered Guide prompt, `default_prompt(IRPromptKey.GUIDE)`, the same one
 `test_ir_a_request_to_understand_is_answered_from_the_map.py` reads. These lines are about what
@@ -96,3 +97,49 @@ def test_the_register_is_eighth_grade_and_the_proclisis_is_the_spoken_one() -> N
     assert "second language" in GUIDE
     assert '*"se levantou"*' in GUIDE, "the spoken-BR pronoun placement rule is gone"
     assert '*"levantou-se"*' in GUIDE, "the written-formal form the rule rejects is unnamed"
+
+
+def test_the_guide_introduces_itself_as_the_facilitador_digital() -> None:
+    """§4: "Facilitador Digital persona".
+
+    First on the bar, and the one a rewrite of the opening paragraph costs without looking like
+    a behaviour change. The persona is a colleague at the table rather than a teacher at the
+    front, and the Portuguese name is on the bar because that is what the team hears.
+    """
+    opening = GUIDE[: GUIDE.index("\n## ")]
+
+    assert "Facilitador Digital" in opening, "the Guide no longer gives the team its name"
+    assert "not a teacher at the front and not an expert" in opening, (
+        "the persona the name belongs to is gone, which leaves the name as decoration"
+    )
+
+
+def test_the_team_rehearses_to_each_other_and_the_guide_hands_the_talking_back() -> None:
+    """§4: "peer-mediated **ensaio** pedagogy (the team talks to each other)".
+
+    The pedagogy is the whole method: the passage goes in through the team's own mouths, not
+    through the Guide's. A build that loses this still sounds correct turn by turn and teaches
+    nobody, which is why it is a line on the bar rather than a matter of prompt style.
+    """
+    section = GUIDE[GUIDE.index("## You facilitate — you do not hold the conversation") :]
+    section = section[: section.index("\n## ")]
+
+    assert "not the main voice" in section, "the Guide may hold the conversation again"
+    assert "hand the talking back to the team, to *each other*" in section
+    assert "among themselves" in section
+
+
+def test_a_part_is_opened_before_the_team_is_asked_about_it() -> None:
+    """§4: "frame-before-elicit".
+
+    Eliciting from a team that has not heard the part yet is a memory test, and it reads as
+    rigour. Her rule names the order and the question that breaks it, so both are held: the
+    order, and "what do you remember about…" as the thing never to open with.
+    """
+    section = GUIDE[GUIDE.index("## Open a part before you ask about it") :]
+    section = section[: section.index("\n## ")]
+
+    assert "**Frame first, elicit second — always in that order.**" in section
+    assert 'Never ask *"what do you remember about…"*' in section, (
+        "the question the rule exists to forbid is no longer named"
+    )
