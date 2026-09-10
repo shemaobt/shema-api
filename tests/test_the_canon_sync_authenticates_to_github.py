@@ -23,7 +23,7 @@ def captured_request(monkeypatch: pytest.MonkeyPatch) -> list[urllib.request.Req
         def read(self) -> bytes:
             return b""
 
-        def __enter__(self) -> "_FakeResponse":
+        def __enter__(self) -> _FakeResponse:
             return self
 
         def __exit__(self, *exc_info: object) -> None:

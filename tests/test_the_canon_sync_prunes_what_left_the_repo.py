@@ -43,7 +43,8 @@ def test_sync_deletes_a_vendored_file_the_upstream_listing_no_longer_has(
 ) -> None:
     canon.sync(pin=SHA)
 
-    remaining = sorted(p.name for p in (vendor_with_a_file_upstream_no_longer_has / "meaning-map").iterdir())
+    meaning_map = vendor_with_a_file_upstream_no_longer_has / "meaning-map"
+    remaining = sorted(p.name for p in meaning_map.iterdir())
     assert remaining == ["P01-Ruth-1-1-5.md"]
 
 
