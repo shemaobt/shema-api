@@ -168,10 +168,11 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
 
-    The scenario carries calibration, evidence and practice because the floor alone stopped
-    closing anything: ``session_is_done`` folds those in, deliberately, so that
-    bridge-limited teams are not judged on Portuguese output. What is asserted here is
-    unchanged — that the close is *stamped* — only what it takes to reach a close moved.
+    The scenario carries calibration, evidence and practice, and none of them is what
+    holds it up today: with every bead engaged, the practice reading is met on the beads
+    alone, which is what the strict xfail above this says out loud. They are kept because
+    ENG-803 is about to make them load-bearing again. What is asserted here is unchanged
+    either way — that the close is *stamped*, not what it takes to reach one.
     """
     session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))

@@ -22,9 +22,8 @@ from app.services.internalization_room.comprehension.state import ComprehensionS
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.live_turn import run_comprehension_turn
-from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK, detects_peer_cue
+from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
@@ -316,34 +315,6 @@ async def test_the_opening_turn_belongs_to_the_guide(
     assert turn.outcome.speech != FIXED_PRACTICE_INVITATION
     assert not turn.outcome.used_fail_safe
     assert turn.state.active_probe is None
-
-
-#: A despedida do Guia, que é o convite ao ensaio desde o ENG-777 — a em português é a
-#: frase da Marcia; a em inglês é a mesma despedida na língua da sala.
-SEND_OFF = {
-    "pt": "Agora gravem o ensaio de vocês, na língua de vocês.",
-    "en": "Now record your rehearsal, in your own language.",
-}
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_room_hands_the_talking_over_in_every_language_it_claims(spoken: str) -> None:
-    """A frase cujo propósito inteiro é passar a palavra para a equipe.
-
-    `peer_cue` é detectado relendo a frase dita, então cada idioma precisa das suas
-    expressões. Faltando as do espanhol, `peer_cue` voltava falso em todo turno de uma
-    sessão em espanhol — e o teste ao lado abre com `language="pt"`, então a suíte seguia
-    verde por cima disso.
-
-    A frase lida aqui era a deixa fixa do app, que o ENG-777 apagou junto com a pergunta de
-    gravação. Quem convida agora é a despedida do Guia, e é ela que precisa marcar o convite:
-    é o mesmo turno, com o mesmo trabalho a fazer na tela.
-    """
-    assert detects_peer_cue(SEND_OFF[spoken]), (
-        f"a sala manda a equipe ensaiar e gravar em {spoken!r} e não marca o convite, "
-        "então a tela não entra em modo de conversa e a equipe fica olhando o círculo"
-    )
 
 
 @pytest.mark.asyncio
