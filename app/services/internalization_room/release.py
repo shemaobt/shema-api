@@ -61,8 +61,9 @@ from app.services.internalization_room.takes import takes_of
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
 #: key says ``segments`` because that is what they are. Bumped again to v0.3 when the
 #: conversation-mode key left the payload with the mode itself: a consumer diffing the two
-#: versions finds one key gone and nothing renamed.
-SCHEMA_VERSION = "tripod.internalization-release.v0.3"
+#: versions finds one key gone and nothing renamed. And to v0.4 with ``release_id`` and
+#: ``version``: the packet says which approved draft it is, or says it is none.
+SCHEMA_VERSION = "tripod.internalization-release.v0.4"
 
 
 class InternalizationReleaseBlocked(ConflictError):

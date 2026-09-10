@@ -50,7 +50,7 @@ APP_KEY = "internalization-room"
 #: What the packet says it is. One constant because the number moves for reasons that have
 #: nothing to do with this rule, and a version written into six assertions is six places to
 #: forget.
-SCHEMA_VERSION = "tripod.internalization-release.v0.3"
+SCHEMA_VERSION = "tripod.internalization-release.v0.4"
 
 REVISION = "20260910_rel01"
 PREVIOUS_REVISION = "20260910_meet01"
