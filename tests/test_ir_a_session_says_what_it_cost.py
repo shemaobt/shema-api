@@ -445,3 +445,27 @@ async def test_work_behind_the_turn_is_counted_into_the_session(spoken_by, caplo
         "o classificador rodava fora de qualquer total: a linha dele existia, e o custo "
         "dele não estava em nenhum resumo de sessão"
     )
+
+
+def test_the_oldest_session_falls_off_and_the_ones_still_running_do_not() -> None:
+    """A process answers turns for months; it must not hold a row per session it ever saw.
+
+    What may be dropped is the session nobody is adding to any more, which already has its
+    last line in the log. What may not is a session still being answered — so a session
+    touched again goes back to the end of the queue rather than ageing where it first landed.
+    """
+    for number in range(usage._SESSIONS_KEPT):
+        usage.session_total(f"s-{number}", usage.Spend(calls=1))
+    usage.session_total("s-0", usage.Spend(calls=1))
+
+    usage.session_total("s-nova", usage.Spend(calls=1))
+
+    assert "s-1" not in usage._SESSIONS, (
+        "o teto não descartava nada e um processo de meses carregava uma linha por sessão "
+        "que já tinha atendido"
+    )
+    assert usage._SESSIONS["s-0"].turns == 2, (
+        "a sessão mais antiga caía mesmo estando viva: quem foi tocado de novo envelhecia "
+        "no lugar onde entrou, e a sessão em andamento era a primeira a ser esquecida"
+    )
+    assert len(usage._SESSIONS) == usage._SESSIONS_KEPT
