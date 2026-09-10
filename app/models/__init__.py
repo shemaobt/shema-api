@@ -42,7 +42,6 @@ from app.models.org import (
     OrganizationResponse,
 )
 from app.models.phase import (
-    AttachPhaseRequest,
     DependencyCreate,
     PhaseCreate,
     PhaseDependencyResponse,
@@ -68,7 +67,6 @@ from app.models.role import (
 
 __all__ = [
     "AdminStatsResponse",
-    "AttachPhaseRequest",
     "AuthResponse",
     "DependencyCreate",
     "GenreCreate",
