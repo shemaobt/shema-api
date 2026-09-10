@@ -192,8 +192,13 @@ async def test_every_passage_the_wheel_offers_says_its_own_kind(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A caller reading the wheel needs to tell a passage from a panorama without guessing
-    from its id — kind says which, plainly, for every entry the wheel returns."""
+    from its id — kind says which, plainly, for every passage entry the wheel returns.
+
+    Stubs the panorama off explicitly rather than relying on today's file having no
+    section for it — that fact belongs to test_the_panorama_has_no_authored_line_yet,
+    not to this one, which is about the passages' own kind."""
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
     answer = await route.passages("Ruth", language="pt")
 
