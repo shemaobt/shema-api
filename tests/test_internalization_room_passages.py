@@ -17,7 +17,6 @@ from app.services.internalization_room.canon.parse_map import (
 from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
 from app.services.internalization_room.passage_lines import _sections, line_for
 
-
 NAMED_IN_PORTUGUESE: dict[str, str] = {
     "P01": "Rute 1:1–5",
     "P02": "Rute 1:6–14",
