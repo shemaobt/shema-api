@@ -17,6 +17,5 @@ class ComprehensionState(BaseModel):
     ledger: list[EvidenceEvent] = Field(default_factory=list)
     active_probe: ActiveProbe | None = None
     practiced_scene_ids: list[str] = Field(default_factory=list)
-    recording_consent_given: bool = False
     recording_handoff_paused: bool = False
     recording_handoff_paused_turns: int = 0

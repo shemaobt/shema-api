@@ -243,9 +243,6 @@ async def run_comprehension_turn(
         ledger=state.ledger,
         active_probe=final_probe,
         practiced_scene_ids=projected_practice,
-        recording_consent_given=(
-            state.recording_consent_given or (eligible and consent_decision == "accepted")
-        ),
         recording_handoff_paused=(
             True
             if consent_decision == "declined"

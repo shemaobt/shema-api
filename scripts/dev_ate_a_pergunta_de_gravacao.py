@@ -51,7 +51,6 @@ async def main() -> None:
         session.comprehension = ComprehensionState(
             ledger=list(ledger),
             practiced_scene_ids=scene_ids_for(session.pericope),
-            recording_consent_given=False,
         ).model_dump(mode="json")
         session.status = IRSessionStatus.IN_PROGRESS
         await db.commit()
