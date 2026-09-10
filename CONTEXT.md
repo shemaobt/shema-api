@@ -77,7 +77,7 @@ _Avoid_: stretch (the persistent object a chunk points to), segment (that object
 
 **Pass** (`pass_number`):
 How many times a stretch has been told: one on the first telling, two when told again after a finding.
-_Avoid_: attempt, version, Passe
+_Avoid_: attempt, version, Passe, tellings (the count of every telling of the stretch, kept on the row)
 
 **Telling back**:
 The act of saying, in the bridge language, what a stretch of the mother tongue holds. The Portuguese the room writes and speaks for it is *traduzir / tradução*, and its English and Spanish room literals say *translated* / *traducido*; *contar* belongs to the Conversation with the Guide alone, and *recontar* to the External Check.
