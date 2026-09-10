@@ -118,9 +118,7 @@ def test_every_redraft_note_covers_every_language_the_room_claims_to_speak(
 _UNNAMED_PROBLEM_ISSUE = [{"claim": "Rute era moabita"}]
 
 
-@pytest.mark.parametrize(
-    ("language_code", "label"), [("en", "problem"), ("pt", "problema")]
-)
+@pytest.mark.parametrize(("language_code", "label"), [("en", "problem"), ("pt", "problema")])
 def test_an_issue_missing_its_problem_key_falls_back_in_the_sessions_language(
     language_code: str, label: str
 ) -> None:

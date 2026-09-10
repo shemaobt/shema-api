@@ -331,9 +331,7 @@ async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothin
     from app.services.internalization_room.render import render as real_render
 
     P = "P01"
-    fully_engaged = merge(
-        initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys())
-    )
+    fully_engaged = merge(initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys()))
     assert fully_engaged  # a real pericope, or COVERAGE_ELEMENTS below proves nothing
 
     module = sys.modules["app.services.internalization_room.classify_coverage"]
@@ -376,9 +374,7 @@ def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
     from app.services.internalization_room.prompt_blocks import coverage_status_block
 
     P = "P01"
-    fully_engaged = merge(
-        initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys())
-    )
+    fully_engaged = merge(initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys()))
 
     assert coverage_status_block(fully_engaged, P) == (
         "REMAINING: (none — every element has been worked by the team)"

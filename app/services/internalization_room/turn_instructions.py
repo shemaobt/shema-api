@@ -19,8 +19,7 @@ NOT_THIS_TURN = "(not applicable to this turn)"
 _NO_TEAM_UTTERANCE: dict[str, str] = {
     "opening": "(the team has not spoken yet — session opening)",
     "told_back": (
-        "(the team has not spoken in this conversation; what they translated is in the "
-        "block below)"
+        "(the team has not spoken in this conversation; what they translated is in the block below)"
     ),
 }
 
