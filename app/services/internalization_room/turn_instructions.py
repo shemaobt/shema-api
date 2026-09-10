@@ -8,7 +8,7 @@ from app.services.internalization_room.languages import FLOOR
 #: conversation turn, where there is no finding, no ordered closing and no telling-back, and
 #: an empty heading there reads as evidence withheld rather than as a block that does not
 #: apply. The prompt says so in words; this is the same sentence in the slot itself.
-NOT_THIS_TURN = "(não se aplica a este turno)"
+NOT_THIS_TURN = "(not applicable to this turn)"
 
 #: What the Validator is told when nobody spoke this turn, in the session's own language.
 #: Keyed by language code, in the shape the other per-language tables use — an unclaimed
@@ -87,26 +87,28 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
 
 
 OPENING_INSTRUCTION = (
-    "A sessão está começando agora e a equipe ainda não falou. Abra a sessão: "
-    "apresente-se brevemente, dê à equipe o todo antes das partes, e fique com a "
-    "equipe na compreensão: o convite ao ensaio espera até ela mostrar que tem a parte."
+    "The session is starting now and the team has not spoken yet. Open the "
+    "session: introduce yourself briefly, give the team the whole before the "
+    "parts, and stay with the team on understanding — the invitation to rehearse "
+    "waits until they show they have the part."
 )
 
 ALREADY_MET_INSTRUCTION = (
-    "A sessão desta passagem está começando agora e a equipe ainda não falou. "
-    "Vocês acabaram de percorrer juntos o panorama do livro, então a equipe já "
-    "conhece você: NÃO se apresente de novo nem diga seu nome. Entre direto na "
-    "passagem: dê à equipe o todo antes das partes, e fique com a equipe na "
-    "compreensão: o convite ao ensaio espera até ela mostrar que tem a parte."
+    "This passage's session is starting now and the team has not spoken yet. "
+    "You just walked the book's panorama together, so the team already knows "
+    "you: do NOT introduce yourself again or say your name. Go straight into "
+    "the passage: give the team the whole before the parts, and stay with the "
+    "team on understanding — the invitation to rehearse waits until they show "
+    "they have the part."
 )
 
 OPENING_MOVEMENT_INSTRUCTION = (
-    "Escreva esta abertura em dois movimentos, separados por uma linha contendo "
-    f"apenas {OPENING_MOVEMENT_MARK} e nada mais. Antes da linha: o todo da "
-    "passagem, o arco e o tom. Depois da linha: abra a primeira cena e fique nela "
-    "com a equipe; o convite ao ensaio não fecha a abertura. "
-    "Não escreva a marca em nenhum outro lugar e não a comente."
+    "Write this opening in two movements, separated by a line containing only "
+    f"{OPENING_MOVEMENT_MARK} and nothing else. Before the line: the whole of the "
+    "passage, its arc and its tone. After the line: open the first scene and "
+    "stay in it with the team; the invitation to rehearse does not close the "
+    "opening. Do not write the mark anywhere else, and do not comment on it."
 )
 
 
-VALIDATOR_USER_MESSAGE = "Julgue a resposta rascunhada."
+VALIDATOR_USER_MESSAGE = "Validate the drafted response now. Return only the JSON object."

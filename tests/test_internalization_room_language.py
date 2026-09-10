@@ -10,6 +10,7 @@ team because somebody opened the phone settings mid-passage, and half a passage 
 language is worse than the whole of it in either.
 """
 
+import re
 from typing import Any
 
 import httpx
@@ -27,6 +28,13 @@ from app.services.platform.tts import SynthesizedSpeech
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
+
+#: A letter no English sentence in this codebase has ever needed. Every one of the backend's
+#: own Portuguese literals — the bug this guard exists for — carries at least one, so a plain
+#: character class catches a reintroduced literal without having to name it in advance. It
+#: does not, and must not, run against `prompts/*.md`: those carry Portuguese on purpose,
+#: reviewed by Marcia, not by a grep (ENG-822, item 7).
+_PORTUGUESE_MARKER = re.compile(r"[áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]")
 
 
 @pytest.fixture()
@@ -247,3 +255,33 @@ def test_the_injected_language_name_carries_marcias_grain_and_no_third_entry() -
     never find a third name to inject, and the Portuguese one must carry the grain her
     rebuilt prompts already use, not the bare autonym."""
     assert LANGUAGE_NAMES == {"en": "English", "pt": "Brazilian Portuguese"}
+
+
+def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
+    """These four are sent to the model on every session, in every language — unlike the
+    prompt files, nothing here is templated per {{SESSION_LANGUAGE}}, so a Portuguese literal
+    in any of them is Portuguese an English session hears too (ENG-822, item 3)."""
+    from app.services.internalization_room.turn_instructions import (
+        ALREADY_MET_INSTRUCTION,
+        NOT_THIS_TURN,
+        OPENING_INSTRUCTION,
+        OPENING_MOVEMENT_INSTRUCTION,
+        VALIDATOR_USER_MESSAGE,
+    )
+
+    for value in (
+        OPENING_INSTRUCTION,
+        ALREADY_MET_INSTRUCTION,
+        OPENING_MOVEMENT_INSTRUCTION,
+        NOT_THIS_TURN,
+        VALIDATOR_USER_MESSAGE,
+    ):
+        assert not _PORTUGUESE_MARKER.search(value), value
+
+
+def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:
+    from app.services.internalization_room.turn_instructions import VALIDATOR_USER_MESSAGE
+
+    assert (
+        VALIDATOR_USER_MESSAGE == "Validate the drafted response now. Return only the JSON object."
+    )
