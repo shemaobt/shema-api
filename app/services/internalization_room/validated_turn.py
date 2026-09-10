@@ -126,7 +126,6 @@ async def _draft(
     conversation: list[Turn],
     utterance: str,
     redraft_note: str,
-    language_code: str,
     settings: Settings,
     opening_instruction: str = "",
     ask_for_movements: bool = False,
@@ -148,7 +147,7 @@ async def _draft(
     if utterance:
         user_content = utterance
     else:
-        user_content = opening_instruction or speak_this_turn(language_code)
+        user_content = opening_instruction or speak_this_turn()
         if ask_for_movements:
             user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
     if redraft_note:
@@ -253,7 +252,6 @@ async def _voiced_after_validation(
                     conversation=conversation,
                     utterance="" if opening else transcript,
                     redraft_note=redraft_note,
-                    language_code=language_code,
                     settings=settings,
                     opening_instruction=opening_instruction,
                     ask_for_movements=ask_for_movements,

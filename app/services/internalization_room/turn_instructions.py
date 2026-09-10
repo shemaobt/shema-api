@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import re
 
-from app.services.internalization_room.languages import FLOOR
-
 #: What an app-owned block says when the turn has none. The Validator is shared with every
 #: conversation turn, where there is no finding, no ordered closing and no telling-back, and
 #: an empty heading there reads as evidence withheld rather than as a block that does not
@@ -33,15 +31,14 @@ def _nobody_spoke_this_turn(telling_back: str) -> str:
 #: back-translation verdict, whose whole instruction is already in its system prompt. The
 #: conversation used to reach the model as one block of text, which made a user message by
 #: accident; now that it travels as the turns it was, the request would end on the Guide's
-#: own last speech, and the API refuses that as an assistant prefill.
-_SPEAK_THIS_TURN: dict[str, str] = {
-    "pt": "Fale este turno.",
-    "en": "Speak this turn.",
-}
+#: own last speech, and the API refuses that as an assistant prefill. Composed in English like
+#: every other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language
+#: the team speaks.
+_SPEAK_THIS_TURN = "Speak this turn."
 
 
-def speak_this_turn(language_code: str) -> str:
-    return _SPEAK_THIS_TURN.get(language_code, _SPEAK_THIS_TURN[FLOOR])
+def speak_this_turn() -> str:
+    return _SPEAK_THIS_TURN
 
 
 OPENING_MOVEMENT_MARK = "[[CENA]]"
