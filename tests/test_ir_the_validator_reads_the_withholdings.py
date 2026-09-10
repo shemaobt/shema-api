@@ -53,6 +53,12 @@ P01_ABSENCES = (
 )
 
 
+#: The two headings the Validator's own prompt puts around the map slot
+#: (`prompts/validator_system_prompt.md:127,131`).
+MAP_SLOT = "## The Meaning Map (the only standard of truth)"
+NEXT_SLOT = "## Recent conversation"
+
+
 def _settings() -> Settings:
     return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
 
@@ -80,7 +86,12 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-async def _systems(agent: FakeAgent, pericope_num: str = "P01") -> tuple[str, str]:
+async def _systems(
+    agent: FakeAgent,
+    pericope_num: str = "P01",
+    session_language: str = "Portuguese",
+    language_code: str = "pt",
+) -> tuple[str, str]:
     await run_turn(
         transcript="",
         coverage_state={},
@@ -89,6 +100,8 @@ async def _systems(agent: FakeAgent, pericope_num: str = "P01") -> tuple[str, st
         validator_prompt=VALIDATOR,
         pericope_num=pericope_num,
         book="Ruth",
+        session_language=session_language,
+        language_code=language_code,
         opening=True,
         settings=_settings(),
     )
@@ -137,4 +150,30 @@ async def test_every_scene_of_the_passage_names_its_silence_under_the_absences_h
         )
     assert ABSENCES not in guide_system, (
         "o Guia lê as ausências como prosa do mapa; a lista rotulada é do juiz"
+    )
+
+
+def _standard_of_truth(validator_system: str) -> str:
+    """What sits in the Validator's map slot, cut out of a system the language does change."""
+    opens = validator_system.index(MAP_SLOT) + len(MAP_SLOT)
+    return validator_system[opens : validator_system.index(NEXT_SLOT, opens)]
+
+
+async def test_the_two_new_blocks_read_the_same_in_a_portuguese_and_an_english_session(
+    patch_agent,
+) -> None:
+    _, spoken_in_portuguese = await _systems(patch_agent(FakeAgent()))
+    _, spoken_in_english = await _systems(
+        patch_agent(FakeAgent()), session_language="English", language_code="en"
+    )
+
+    carried = _standard_of_truth(spoken_in_portuguese)
+
+    assert PROHIBITIONS in carried and ABSENCES in carried, (
+        "a fatia tem de ser o mapa mesmo; duas fatias vazias seriam iguais para sempre e o "
+        "teste passaria sem olhar para nada"
+    )
+    assert carried == _standard_of_truth(spoken_in_english), (
+        "o mapa é metadado em inglês dentro do prompt, e uma variante por língua faria a "
+        "mesma passagem ser julgada contra dois textos diferentes"
     )
