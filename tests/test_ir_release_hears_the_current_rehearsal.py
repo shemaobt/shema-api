@@ -144,7 +144,7 @@ async def _rehearsed(db: AsyncSession) -> tuple[IRSession, IRTake]:
 
     Comprehension supported, consent given, coverage satisfied, the passage rehearsed.
     """
-    session = await create_session(db, pericope=P, bridge_mode="guided_microchecks", language="pt")
+    session = await create_session(db, pericope=P, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P))
     take = _rehearsal_take(session.id, sha256="a" * 64)

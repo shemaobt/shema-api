@@ -10,7 +10,6 @@ from app.services.internalization_room.comprehension.checkpoints import checkpoi
 from app.services.internalization_room.comprehension.probe import (
     ActiveProbe,
     ProbePurpose,
-    process_choice_freezes_bridge_mode,
     select_probe_after_oral_turn,
 )
 
@@ -49,13 +48,6 @@ def test_a_probe_without_an_id_is_refused() -> None:
     except ValidationError:
         return
     raise AssertionError("a probe with no id was accepted")
-
-
-def test_a_pending_process_choice_freezes_the_bridge_mode() -> None:
-    """A "sim" that answers the app's own consent question must not also switch the
-    bridge-language method on its way past."""
-    assert process_choice_freezes_bridge_mode(_consent_probe())
-    assert not process_choice_freezes_bridge_mode(None)
 
 
 def test_a_voiced_turn_installs_the_next_probe() -> None:

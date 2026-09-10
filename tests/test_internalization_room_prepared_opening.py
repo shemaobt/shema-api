@@ -155,7 +155,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     async def _comprehension_turn(*_: Any, **__: Any) -> ComprehensionTurn:
         return ComprehensionTurn(
             outcome=TurnOutcome(speech=ON_DEMAND, transcript=""),
-            bridge_mode="adaptive",
             state=ComprehensionState(),
         )
 

@@ -24,13 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.calibration import (
-    BridgeMode,
-    bridge_mode_status_line,
-    bridge_mode_validator_context,
-    resolve_bridge_mode_for_turn,
-    resolve_one_shot_calibration,
-)
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -43,10 +36,10 @@ from app.services.internalization_room.comprehension.practice import (
 from app.services.internalization_room.comprehension.probe import (
     ActiveProbe,
     ProbePurpose,
-    process_choice_freezes_bridge_mode,
     select_probe_after_oral_turn,
 )
 from app.services.internalization_room.comprehension.session_readiness import (
+    APP_OWNED_STATE,
     evaluate_session_comprehension,
     render_comprehension_status,
 )
@@ -78,7 +71,6 @@ from app.services.internalization_room.sessions import comprehension_of
 @dataclass
 class ComprehensionTurn:
     outcome: TurnOutcome
-    bridge_mode: str
     state: ComprehensionState
 
 
@@ -133,14 +125,6 @@ async def run_comprehension_turn(
     empty = not transcript.strip()
     reliable = not uncertain and not mother_tongue
 
-    freeze = process_choice_freezes_bridge_mode(prior_probe)
-    choice_speech = "" if (mother_tongue or uncertain or freeze) else transcript
-    current_mode = BridgeMode(session.bridge_mode)
-    if current_mode is BridgeMode.CALIBRATION_PENDING:
-        bridge_mode = resolve_one_shot_calibration(choice_speech).mode
-    else:
-        bridge_mode = resolve_bridge_mode_for_turn(current_mode, choice_speech).mode
-
     consent_decision = resolve_rehearsal_consent(
         probe=prior_probe,
         previous_guide_utterance=last_guide,
@@ -165,7 +149,7 @@ async def run_comprehension_turn(
     )
 
     coverage_complete = floor_met(session.coverage_state or {}, pericope)
-    semantic_ready = bridge_mode is not BridgeMode.CALIBRATION_PENDING and (
+    semantic_ready = (
         evaluate_session_comprehension(
             checkpoints=checkpoints,
             scene_ids=scene_ids,
@@ -203,10 +187,8 @@ async def run_comprehension_turn(
     elif next_probe is not None:
         app_owned_line = rehearsal_consent_question(session.language)
 
-    app_context = "\n\n".join([bridge_mode_status_line(bridge_mode), comprehension_status])
-    validator_context = "\n\n".join(
-        [bridge_mode_validator_context(bridge_mode), comprehension_status]
-    )
+    app_context = comprehension_status
+    validator_context = f"{APP_OWNED_STATE}\n{comprehension_status}"
 
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
@@ -279,4 +261,4 @@ async def run_comprehension_turn(
             else state.recording_handoff_paused_turns
         ),
     )
-    return ComprehensionTurn(outcome=outcome, bridge_mode=bridge_mode.value, state=new_state)
+    return ComprehensionTurn(outcome=outcome, state=new_state)

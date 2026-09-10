@@ -53,13 +53,11 @@ async def main() -> None:
             practiced_scene_ids=scene_ids_for(session.pericope),
             recording_consent_given=True,
         ).model_dump(mode="json")
-        if session.bridge_mode == "calibration_pending":
-            session.bridge_mode = "adaptive"
         session.status = IRSessionStatus.DONE
         await db.commit()
 
         print(f"sessao {session.id}")
-        print(f"pericope {session.pericope} | bridge_mode {session.bridge_mode}")
+        print(f"pericope {session.pericope}")
         print(f"done: {session_is_done(session)} | status: {session.status.value}")
 
 
