@@ -9,8 +9,9 @@ The facilitator-facing element labels are the case that already exists: they sit
 `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a re-pin cannot delete
 them without a word.
 
-    uv run python scripts/sync_internalization_canon.py --check   # drift only, exits 1
-    uv run python scripts/sync_internalization_canon.py --sync    # re-pin to current main
+    uv run python scripts/sync_internalization_canon.py --check              # drift only, exits 1
+    uv run python scripts/sync_internalization_canon.py --sync               # re-pin to current main
+    uv run python scripts/sync_internalization_canon.py --sync --pin <sha>   # re-pin to that sha
 """
 
 from __future__ import annotations
@@ -62,8 +63,8 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:12]
 
 
-def sync() -> int:
-    sha = _head_sha()
+def sync(pin: str | None = None) -> int:
+    sha = pin if pin else _head_sha()
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
@@ -104,8 +105,9 @@ def main() -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--sync", action="store_true")
     group.add_argument("--check", action="store_true")
+    parser.add_argument("--pin", metavar="<sha>")
     args = parser.parse_args()
-    return sync() if args.sync else check()
+    return sync(pin=args.pin) if args.sync else check()
 
 
 if __name__ == "__main__":
