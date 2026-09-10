@@ -24,6 +24,7 @@ when she has ruled. Point it at a checkout of `fia/pilot-2026-09`.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import subprocess
 import sys
@@ -57,6 +58,20 @@ VENDORED = {
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"
 RULINGS_DIR = REPO_ROOT / "docs/doctrine/rulings"
+SEAM_FILE = REPO_ROOT / "docs/doctrine/MODEL_SEAM"
+
+#: Where the room asks a model anything. Narrower than `check_doctrine.SCAN_ROOTS` on purpose:
+#: §5.1 is about the ladder the room runs on, and the other services have ladders of their own.
+SEAM_ROOTS = ("app/services/internalization_room", "app/api/internalization_room")
+SEAM_SETTINGS = ("tripod_voice_model", "tripod_analysis_model", "tripod_classifier_model")
+
+#: The four parameters of a model call §5.1 reserves to her. `schema` and `system_prompt` are
+#: the caller's business; these four are what "the ladder and its parameters" names.
+GOVERNED = ("ladder", "max_output_tokens", "effort", "thinks")
+
+#: A row whose third column is this is an inherited default, frozen at today's value rather
+#: than credited to a ruling she never made. Moving one is a diff a reviewer cannot miss.
+UNRULED = "unruled"
 
 OWNERSHIP = (
     "DOCTRINE.md §5.1 — prompts/*.md, the model ladder and its parameters are Marcia's "
@@ -169,6 +184,105 @@ def unruled(pin: Pin, rulings: list[Ruling]) -> list[str]:
     return faults
 
 
+def _call_agent_defaults(root: Path) -> dict[str, str]:
+    tree = ast.parse((root / "app/services/internalization_room/llm.py").read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "call_agent":
+            named = node.args.kwonlyargs
+            return {
+                arg.arg: ast.unparse(default)
+                for arg, default in zip(named, node.args.kw_defaults, strict=True)
+                if arg.arg in GOVERNED and default is not None
+            }
+    return {}
+
+
+def model_seam(root: Path = REPO_ROOT) -> dict[str, str]:
+    """Every governed model parameter the room chooses, keyed by where it is chosen.
+
+    Read with `ast`, never with a line-shaped regex, and keyed by the enclosing function rather
+    than by a line: `doctrine_allowlist` records what a line-keyed register costs when eighteen
+    tickets touch one file. A site that names none of the four parameters still appears, with
+    `call_agent`'s own defaults spelled out — a budget inherited is a budget chosen.
+    """
+    seam: dict[str, str] = {}
+    config = root / "app/core/config.py"
+    for node in ast.walk(ast.parse(config.read_text())):
+        if (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id in SEAM_SETTINGS
+            and node.value is not None
+        ):
+            seam[f"app/core/config.py::{node.target.id}"] = ast.literal_eval(node.value)
+
+    defaults = _call_agent_defaults(root)
+    for scanned in SEAM_ROOTS:
+        for path in sorted((root / scanned).rglob("*.py")):
+            rel = path.relative_to(root).as_posix()
+            enclosing: list[str] = []
+
+            def visit(node: ast.AST, rel: str = rel, enclosing: list[str] = enclosing) -> None:
+                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                    enclosing.append(node.name)
+                    for child in ast.iter_child_nodes(node):
+                        visit(child)
+                    enclosing.pop()
+                    return
+                if isinstance(node, ast.Call):
+                    func = node.func
+                    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+                    if name == "call_agent":
+                        chosen = dict(defaults)
+                        chosen.update(
+                            {
+                                keyword.arg: ast.unparse(keyword.value)
+                                for keyword in node.keywords
+                                if keyword.arg in GOVERNED
+                            }
+                        )
+                        if chosen.get("ladder") == "None":
+                            chosen["ladder"] = "voice_ladder(settings)"
+                        spelled = " ".join(f"{k}={chosen[k]}" for k in GOVERNED if k in chosen)
+                        seam[f"{rel}::{enclosing[-1]}"] = spelled
+                for child in ast.iter_child_nodes(node):
+                    visit(child)
+
+            visit(ast.parse(path.read_text()))
+    return seam
+
+
+def read_seam_record(seam_file: Path = SEAM_FILE) -> dict[str, tuple[str, str]]:
+    record: dict[str, tuple[str, str]] = {}
+    for line in seam_file.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        key, value, ruling = (part.strip() for part in line.split("  ") if part.strip())
+        record[key] = (value, ruling)
+    return record
+
+
+def seam_drift(record: dict[str, tuple[str, str]], live: dict[str, str]) -> list[str]:
+    faults = []
+    for key in sorted(set(record) | set(live)):
+        if key not in live:
+            faults.append(f"vanished: {key} — the record names a model call that is gone")
+        elif key not in record:
+            faults.append(f"unrecorded: {key} — {live[key]}")
+        elif record[key][0] != live[key]:
+            faults.append(f"moved: {key} — {record[key][0]} → {live[key]}")
+    return faults
+
+
+def unnamed_rulings(record: dict[str, tuple[str, str]], rulings: list[Ruling]) -> list[str]:
+    written = {ruling.slug for ruling in rulings}
+    return [
+        f"{key}: no ruling {ruling}"
+        for key, (_value, ruling) in sorted(record.items())
+        if ruling != UNRULED and ruling not in written
+    ]
+
+
 def sync(source: Path) -> int:
     commit = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
@@ -200,14 +314,20 @@ def check() -> int:
         print(NOT_A_FORK, file=sys.stderr)
         return 1
 
-    missing = unruled(pin, read_rulings())
+    rulings = read_rulings()
+    record = read_seam_record()
+    missing = (
+        unruled(pin, rulings) + seam_drift(record, model_seam()) + unnamed_rulings(record, rulings)
+    )
     if missing:
         for line in missing:
             print(f"  {line}", file=sys.stderr)
         print(OWNERSHIP, file=sys.stderr)
         return 1
 
+    inherited = sum(1 for _value, ruling in record.values() if ruling == UNRULED)
     print(f"the vendored doctrine matches pin {pin.commit[:12]}")
+    print(f"the model seam matches its record — {inherited} of {len(record)} rows still unruled")
     return 0
 
 
