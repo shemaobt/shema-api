@@ -34,8 +34,9 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     The passage is written down beside the line. What it is for is `hand_over`; why it cannot
     be derived instead is on the column.
 
-    Failure here is silent on purpose: the prepared line is an optimisation, and the session
-    opens perfectly well without one.
+    Failure here is silent to the session, not to the log: the prepared line is an
+    optimisation and the session opens perfectly well without one, but a refusal or a
+    transport error still leaves a WARNING behind, naming the session and the pericope.
     """
     try:
         async with AsyncSessionLocal() as db:
