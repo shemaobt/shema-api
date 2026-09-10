@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_middleware import get_current_user
+from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
-from app.models.language import LanguageCreate, LanguageResponse
+from app.models.language import LanguageCreate, LanguageResponse, LanguageUpdate
 from app.services import language_service
 
 router = APIRouter()
@@ -49,4 +49,17 @@ async def get_language_by_id(
     _: User = Depends(get_current_user),
 ) -> LanguageResponse:
     language = await language_service.get_language_or_404(db, language_id)
+    return LanguageResponse.model_validate(language)
+
+
+@router.put("/{language_id}", response_model=LanguageResponse)
+async def update_language(
+    language_id: str,
+    payload: LanguageUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_platform_admin),
+) -> LanguageResponse:
+    language = await language_service.update_language(
+        db, language_id, name=payload.name, code=payload.code
+    )
     return LanguageResponse.model_validate(language)
