@@ -217,6 +217,10 @@ async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
     first = answer.passages[0]
     assert (first.kind, first.pericope) == ("panorama", "panorama")
     assert first.audio_url
+    assert (first.beads, first.absence_index) == (0, -1), (
+        "o panorama não tem elementos próprios — beads e absence_index não podem vir de "
+        "uma passagem por engano"
+    )
     assert [view.pericope for view in answer.passages[1:]] == without_panorama
 
 
