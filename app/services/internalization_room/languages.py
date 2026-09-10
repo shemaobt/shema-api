@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from app.core.config import Settings, get_settings
 
-ROOM_LANGUAGES: tuple[str, ...] = ("en", "es", "pt")
+ROOM_LANGUAGES: tuple[str, ...] = ("en", "pt")
 
 FLOOR = "en"
 

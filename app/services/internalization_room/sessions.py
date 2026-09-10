@@ -15,7 +15,6 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     SupersededAttempt,
 )
-from app.services.internalization_room.calibration import BridgeMode, is_selected_bridge_mode
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -79,7 +78,6 @@ async def create_session(
     pericope: str | None = None,
     after_panorama: bool = False,
     project_id: str | None = None,
-    bridge_mode: str | None = None,
     language: str | None = None,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
@@ -138,15 +136,9 @@ async def create_session(
     panorama = is_panorama(pericope)
     if not panorama:
         require_walkable(load_map(pericope))
-    if bridge_mode is not None and not is_selected_bridge_mode(bridge_mode):
-        raise ValidationError(f"Unknown bridge mode {bridge_mode!r}")
     spoken = normalize(language)
     if language is not None and spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
-    if bridge_mode is None:
-        bridge_mode = (
-            BridgeMode.CALIBRATION_PENDING.value if panorama else BridgeMode.ADAPTIVE.value
-        )
     session = IRSession(
         project_id=project_id,
         pericope=pericope,
@@ -158,7 +150,6 @@ async def create_session(
         coverage_state={} if panorama else initial_state(pericope),
         kept_takes={},
         back_translation={},
-        bridge_mode=bridge_mode,
         language=spoken or floor(),
         comprehension={},
     )
@@ -268,15 +259,6 @@ async def apply_coverage(
     return session
 
 
-async def set_bridge_mode(db: AsyncSession, session: IRSession, mode: str) -> IRSession:
-    if not is_selected_bridge_mode(mode) and mode != BridgeMode.CALIBRATION_PENDING.value:
-        raise ValidationError(f"Unknown bridge mode {mode!r}")
-    session.bridge_mode = mode
-    await db.commit()
-    await db.refresh(session)
-    return session
-
-
 def comprehension_of(session: IRSession) -> ComprehensionState:
     """The comprehension state, reading past a probe this build no longer knows.
 
@@ -308,10 +290,8 @@ async def save_comprehension(
 
 
 def semantics_ready(session: IRSession) -> bool:
-    """Whether the comprehension side of the gate is met — calibration done, readiness not
-    `needs_more_work` (which already folds in per-scene mother-tongue practice)."""
-    if session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
-        return False
+    """Whether the comprehension side of the gate is met — readiness not `needs_more_work`
+    (which already folds in per-scene mother-tongue practice)."""
     state = comprehension_of(session)
     readiness = evaluate_session_comprehension(
         checkpoints=list(checkpoints_for(session.pericope)),
@@ -571,7 +551,6 @@ async def begin_back_translation_again(
         superseded.append(
             SupersededAttempt(
                 findings=state.findings,
-                evidence_sufficient=state.evidence_sufficient,
                 played_ranges=state.played_ranges,
                 clip_duration_ms=state.clip_duration_ms,
             )

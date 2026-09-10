@@ -34,13 +34,6 @@ from app.services import internalization_room as room
 from app.services.device.needs_person import clear_needs_person, devices_waiting_on_a_person
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
-from app.services.internalization_room.calibration import (
-    BridgeMode,
-    bridge_calibration_acknowledgement,
-    bridge_calibration_question,
-    resolve_bridge_mode_for_turn,
-    resolve_one_shot_calibration,
-)
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.canon.elements import absence_index
 from app.services.internalization_room.coverage import counts
@@ -125,7 +118,7 @@ def _coverage_view(session: IRSession) -> CoverageView:
     )
 
 
-def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening: bool) -> bool:
+def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
     """Whether the turn carries anything the coverage classifier should be reading.
 
     A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
@@ -136,15 +129,15 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening:
     for the session's language back. Neither is an answer the room engaged with, and coverage
     only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
 
-    The opening is the one turn with beads to name and no utterance behind it, and it earns
-    that exception by being an opening the Guide actually wrote. It reaches `surfaced`, which
-    stays below `floor_met`, so settling it neither closes a passage nor stands in for the
-    team retelling it — while a fail-safe opening is the same contentless fixed line as any
-    other, the one `prepare_opening` throws away rather than keep.
+    The opening used to earn an exception here by being an opening the Guide actually wrote,
+    reaching `surfaced` on beads the team had not spoken a word toward. Coverage is
+    `engaged`-only on the team's screen: a sentence the room wrote for itself, however many
+    map elements it names, is not evidence of anything the team heard, so no turn with an
+    empty transcript is worth settling any more, opening or not.
     """
     if outcome.transcript.strip():
         return speech_heard.reliable_bridge_speech
-    return opening and not outcome.used_fail_safe
+    return False
 
 
 def _settle_later(
@@ -154,12 +147,15 @@ def _settle_later(
     team_utterance: str,
     guide_response: str,
 ) -> None:
-    """Hand the exchange to the off-path classifier, from whichever exit voiced it.
+    """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
-    A turn leaves this router by two doors — the opening the panorama wrote ahead, and the
-    line the room writes on demand — and only the second one ever asked. A prepared opening
-    names around ten map elements (ENG-684), so a team whose opening had been pre-warmed lost
-    all of them before saying a word, and nothing said so.
+    Two doors used to reach here — the opening the panorama wrote ahead, and the line the
+    room writes on demand. `3cfd823` (ENG-684) made the prepared door call unconditionally,
+    so a pre-warmed opening's roughly ten map elements would not go unclassified, while the
+    live door kept its guard and `_worth_settling` excused the opening from it. Coverage is
+    `engaged`-only on the team's screen now: a line the room wrote for itself is not
+    evidence of anything the team heard, whichever door it left by, so the prepared door no
+    longer calls here at all, and this is reached only from the door `_worth_settling` guards.
 
     A panorama is still handed nothing: it has no coverage spine to settle against.
     """
@@ -182,7 +178,6 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         coverage=_coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
         back_translation=await _progress(db, session),
-        bridge_mode=session.bridge_mode,
         language=session.language,
         halt=halt.standing(session),
     )
@@ -246,7 +241,6 @@ async def create_session(
         pericope=payload.pericope,
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
-        bridge_mode=payload.bridge_mode,
         language=payload.language,
     )
     if caller is not None:
@@ -441,7 +435,6 @@ async def _say_it_again(session: IRSession) -> TurnResponse:
         peer_cue=detects_peer_cue(last),
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
-        bridge_mode=session.bridge_mode,
     )
 
 
@@ -501,7 +494,6 @@ async def take_turn(
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
         session = await room.append_exchange(db, session, team_utterance="", guide_response=speech)
-        _settle_later(background, session, team_utterance="", guide_response=speech)
         return TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
@@ -509,45 +501,25 @@ async def take_turn(
             peer_cue=outcome.peer_cue,
             coverage=_coverage_view(session),
             done=False,
-            bridge_mode=session.bridge_mode,
         )
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     if is_panorama(session.pericope):
-        if not opening and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
-            choice_speech = "" if not speech_heard.reliable_bridge_speech else transcript
-            resolved = resolve_one_shot_calibration(choice_speech)
-            session = await room.set_bridge_mode(db, session, resolved.mode.value)
-            outcome = TurnOutcome(
-                speech=bridge_calibration_acknowledgement(resolved.mode, session.language),
-                transcript=transcript,
-            )
-        else:
-            if not opening and transcript.strip():
-                switched = resolve_bridge_mode_for_turn(BridgeMode(session.bridge_mode), transcript)
-                if switched.explicit:
-                    session = await room.set_bridge_mode(db, session, switched.mode.value)
-            book = book_of(session.pericope)
-            outcome = await room.run_panorama_turn(
-                transcript=transcript,
-                messages=session.messages or [],
-                session_language=LANGUAGE_NAMES[session.language],
-                language_code=session.language,
-                panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
-                validator_prompt=validator_prompt,
-                book=book,
-                book_material=build_book_material(book),
-                opening=opening,
-                settings=get_settings(),
-                session_id=session.id,
-            )
-            if (
-                opening
-                and not outcome.used_fail_safe
-                and session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value
-            ):
-                outcome.speech = f"{outcome.speech} {bridge_calibration_question(session.language)}"
+        book = book_of(session.pericope)
+        outcome = await room.run_panorama_turn(
+            transcript=transcript,
+            messages=session.messages or [],
+            session_language=LANGUAGE_NAMES[session.language],
+            language_code=session.language,
+            panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
+            validator_prompt=validator_prompt,
+            book=book,
+            book_material=build_book_material(book),
+            opening=opening,
+            settings=get_settings(),
+            session_id=session.id,
+        )
     else:
         turn = await room.run_comprehension_turn(
             db,
@@ -562,7 +534,6 @@ async def take_turn(
 
     voiced, segments = await _voice_the_turn(outcome, language=session.language)
     if turn is not None:
-        session = await room.set_bridge_mode(db, session, turn.bridge_mode)
         session = await room.save_comprehension(db, session, turn.state)
     session = await room.append_exchange(
         db,
@@ -573,7 +544,7 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
-    if _worth_settling(outcome, speech_heard, opening=opening):
+    if _worth_settling(outcome, speech_heard):
         _settle_later(
             background,
             session,
@@ -591,6 +562,5 @@ async def take_turn(
         degraded=outcome.degraded,
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
-        bridge_mode=session.bridge_mode,
         segments=segments,
     )

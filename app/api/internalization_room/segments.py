@@ -176,7 +176,7 @@ async def replace(
         scope=session.pericope,
         audio=audio_bytes,
         pass_number=segment.pass_number,
-        chunk_index=segment.ordinal,
+        ordinal=segment.ordinal,
         content_type=file.content_type or "audio/mp4",
     )
 

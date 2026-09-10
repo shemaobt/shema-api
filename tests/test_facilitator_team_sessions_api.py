@@ -153,7 +153,6 @@ async def a_session(
         db,
         pericope=pericope,
         project_id=project_id,
-        bridge_mode="guided_microchecks" if ready_to_close else None,
     )
     if ready_to_close:
         session = await room.save_comprehension(db, session, _ready_comprehension(pericope))

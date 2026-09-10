@@ -58,6 +58,12 @@ def evaluate_session_comprehension(
     )
 
 
+#: What tells the Validator that the block below is the app talking, not the team. It
+#: used to hang off the bridge-mode line and went out with it, leaving the evidence
+#: block appended to the Validator's prompt with nothing marking whose words it is.
+APP_OWNED_STATE = "[APP-OWNED SESSION STATE — not team speech]"
+
+
 def render_comprehension_status(
     *,
     checkpoints: list[Checkpoint],

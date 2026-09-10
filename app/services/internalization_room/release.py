@@ -31,7 +31,6 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.internalization_room.back_translation import playback_confirms_rehearsal
-from app.services.internalization_room.calibration import BridgeMode
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -57,8 +56,10 @@ from app.services.internalization_room.takes import takes_of
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
-#: key says ``segments`` because that is what they are.
-SCHEMA_VERSION = "tripod.internalization-release.v0.2"
+#: key says ``segments`` because that is what they are. Bumped again to v0.3 when the
+#: conversation-mode key left the payload with the mode itself: a consumer diffing the two
+#: versions finds one key gone and nothing renamed.
+SCHEMA_VERSION = "tripod.internalization-release.v0.3"
 
 
 class InternalizationReleaseBlocked(ConflictError):
@@ -101,7 +102,7 @@ def _take_view(take: IRTake) -> dict[str, Any]:
         "kind": take.kind.value,
         "scope": take.scope,
         "pass_number": take.pass_number,
-        "chunk_index": take.chunk_index,
+        "ordinal": take.ordinal,
         "sha256": take.sha256,
         "size_bytes": take.size_bytes,
         "content_type": take.content_type,
@@ -113,12 +114,12 @@ def _take_view(take: IRTake) -> dict[str, Any]:
 async def build_internalization_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """Build the closed-world release for one session, or refuse with typed blockers.
 
-    A telling-back has to exist; it does not have to have come out clean. ``checked`` is
-    written as ``finding is None and evidence_sufficient``, so any question the team chose
-    not to resolve made it false — and blocking on it denied the one outcome the room is
-    meant to be able to reach, taking the questions to Refine. The rehearsal, the coverage,
-    the ledger and the telling-back stayed on the tablet with no way out, for a team that
-    had done every piece of the work.
+    A telling-back has to exist; it does not have to have come out clean. ``checked`` says
+    one whole reading returned no finding (ADR 0013), so any question the team chose not to
+    resolve makes it false — and blocking on it denied the one outcome the room is meant to
+    be able to reach, taking the questions to Refine. The rehearsal, the coverage, the ledger
+    and the telling-back stayed on the tablet with no way out, for a team that had done every
+    piece of the work.
 
     ``superseded_segments`` carries the stretches that stopped counting, replaced or
     abandoned, each still naming the recording it was a slice of. They used to be copied into
@@ -132,14 +133,14 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     not the team erring, so what they said the first time is kept rather than the division
     being refused.
 
-    What the package says instead of refusing: ``checked`` false, ``evidence_sufficient``
-    as the analyst left it, and every open finding in ``findings``. Judging the quality of
-    a telling-back is not this artifact's job — carrying it honestly is.
+    What the package says instead of refusing: ``checked`` false and every open finding in
+    ``findings``. Judging the quality of a telling-back is not this artifact's job — carrying
+    it honestly is.
 
     That honesty is why an unread telling-back is still refused. A team that captured the
-    stretches and never asked for the verdict leaves no findings and ``evidence_sufficient``
-    at its default, which is the same package a clean check produces. Carrying the
-    questions is the point; carrying silence as if it were clean is not.
+    stretches and never asked for the verdict leaves no findings at all, which is the same
+    package a clean check produces. Carrying the questions is the point; carrying silence as
+    if it were clean is not.
 
     The report of playback is held to the same line, and it is why the gate names a rehearsal
     rather than only measuring one. Silence used to pass it — an absent report satisfied the
@@ -215,8 +216,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
 
-    if session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
-        blockers.append("bridge_language_never_calibrated")
     if readiness.evaluation.outcome.value == "needs_more_work":
         blockers.append("comprehension_needs_more_work")
     if not comprehension.recording_consent_given:
@@ -274,7 +273,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "pericope": session.pericope,
         "book": load_map(session.pericope).book,
         "canon_vendor_pin": vendor_pin(),
-        "bridge_mode": session.bridge_mode,
         "comprehension": {
             "outcome": readiness.evaluation.outcome.value,
             "supported_unit_ids": readiness.evaluation.supported_unit_ids,
@@ -290,7 +288,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "back_translation": {
             "scope": telling_back.scope,
             "checked": telling_back.checked,
-            "evidence_sufficient": telling_back.evidence_sufficient,
             "retells": telling_back.retells,
             "segments": [_segment_view(segment) for segment in told],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
@@ -312,7 +309,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
             for question in questions
         ],
         "open_questions": len(open_points)
-        + sum(1 for question in questions if question.status.value != "resolved"),
+        + sum(1 for question in questions if question.status.value != "resolved")
+        + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
     return artifact

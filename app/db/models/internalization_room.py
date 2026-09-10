@@ -16,7 +16,6 @@ class IRPromptKey(enum.StrEnum):
     VALIDATOR = "validator"
     COVERAGE_CLASSIFIER = "coverage_classifier"
     BOOK_PANORAMA = "book_panorama"
-    DRAFT_SELF_CHECK = "draft_self_check"
     BT_ANALYST = "bt_analyst"
     BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
@@ -83,9 +82,6 @@ class IRSession(Base):
     ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
-    )
-    bridge_mode: Mapped[str] = mapped_column(
-        String(24), default="calibration_pending", server_default="calibration_pending"
     )
     #: Which language the room speaks to this team, chosen by the tablet when the session
     #: opened and never afterwards. A per-request choice would let the room change language
@@ -306,7 +302,7 @@ class IRTake(Base):
     kind: Mapped[IRTakeKind] = mapped_column(_TAKE_KIND_TYPE)
     scope: Mapped[str] = mapped_column(String(120))
     pass_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     storage_key: Mapped[str] = mapped_column(String(512))
     size_bytes: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))

@@ -52,7 +52,6 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
     session_is_done,
     sessions_waiting_on_a_person,
-    set_bridge_mode,
     unattend,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
@@ -102,7 +101,6 @@ __all__ = [
     "segments_block",
     "session_is_done",
     "sessions_waiting_on_a_person",
-    "set_bridge_mode",
     "synthesize_facilitator_speech",
     "told_back",
     "unattend",

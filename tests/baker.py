@@ -37,7 +37,6 @@ from app.db.models.translation_helper import (
     THChatMessage,
 )
 from app.services.auth.hash_password import hash_password
-from app.services.internalization_room.calibration import BridgeMode
 from app.services.internalization_room.canon.elements import ElementKind, elements_for
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.coverage import initial_state
@@ -905,7 +904,6 @@ async def open_ir_session(
         coverage_state=initial_state(pericope),
         kept_takes={},
         back_translation={},
-        bridge_mode=BridgeMode.ADAPTIVE.value,
         comprehension={},
     )
     db.add(session)

@@ -97,7 +97,7 @@ async def add_chunk(
         scope=state.scope or session.pericope,
         audio=audio_bytes,
         pass_number=pass_number,
-        chunk_index=None,
+        ordinal=None,
         content_type=file.content_type or "audio/mp4",
     )
 
@@ -338,7 +338,6 @@ async def finish(
             # service raises it as the upstream failure it is.
             raise UnreadableReply("a resposta do analista não pôde ser lida")
         state.findings = read.findings
-        state.evidence_sufficient = read.evidence_sufficient
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
@@ -353,16 +352,13 @@ async def finish(
             session_id=session.id,
         )
         if closing is None:
-            raise UpstreamServiceError(
-                "a leitura final do contado de volta não pôde ser feita agora"
-            )
+            raise UpstreamServiceError("a leitura final da tradução não pôde ser feita agora")
         state.findings = closing.findings
-        state.evidence_sufficient = closing.evidence_sufficient
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
     finding = state.current_finding
-    state.checked = finding is None and state.evidence_sufficient
+    state.checked = finding is None
 
     outcome = await room.run_verdict_turn(
         findings_text=room.findings_block(finding),
