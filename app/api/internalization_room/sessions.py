@@ -157,8 +157,9 @@ def _settle_later(
     """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
     Two doors used to reach here — the opening the panorama wrote ahead, and the line the
-    room writes on demand — and `3cfd823` made both call unconditionally (ENG-684) so a
-    pre-warmed opening's roughly ten map elements would not go unclassified. Coverage is
+    room writes on demand. `3cfd823` (ENG-684) made the prepared door call unconditionally,
+    so a pre-warmed opening's roughly ten map elements would not go unclassified, while the
+    live door kept its guard and `_worth_settling` excused the opening from it. Coverage is
     `engaged`-only on the team's screen now: a line the room wrote for itself is not
     evidence of anything the team heard, whichever door it left by, so the prepared door no
     longer calls here at all, and this is reached only from the door `_worth_settling` guards.

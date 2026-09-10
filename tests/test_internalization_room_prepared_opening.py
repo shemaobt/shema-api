@@ -338,6 +338,7 @@ async def test_the_ready_line_reaches_the_team_without_ever_reaching_the_classif
     passage = await _passage_after(client, panorama)
     await _open_it(client, passage)
 
+    assert await _the_room_said(db_session, passage) == PREPARED
     assert settled == [], (
         "a abertura preparada chegava ao classificador por uma porta que o portão da "
         "abertura ao vivo não lê, e coverage é engaged-only na tela do time"
