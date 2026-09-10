@@ -398,6 +398,11 @@ class IRSegment(Base):
     #: of the telling rather than a second pass, but that is F7's argument to have, not a
     #: contract to change in the same diff that redefines the address.
     pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    #: How many times the team has told this stretch, counting every version of it: the row a
+    #: telling supersedes hands its count on, and a telling nobody could make out is counted
+    #: here in place, because it captured no row of its own. At `RETELLS_BEFORE_A_WARNING` the
+    #: stretch is a hard stretch and `ir_hard_stretches` keeps the fact.
+    tellings: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     bridge_take_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     superseded_at: Mapped[datetime | None] = mapped_column(
@@ -405,5 +410,32 @@ class IRSegment(Base):
     )
     superseded_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+
+
+class IRHardStretch(Base):
+    """A stretch the team told three times, kept for the consultant and cleared by nothing.
+
+    Its own table rather than a list inside the telling-back state, because starting the
+    telling-back over rewrites that state — and the whole point of the row is that nothing the
+    team does afterwards takes it away. The halt it raises is transient and may be lifted by
+    the next turn that lands; this is the fact underneath it.
+
+    No foreign keys, matching the four sibling tables of the room (ADR 0006). ``segment_id``
+    names the first row of the stretch's chain of replacements: a correction is a new row, so
+    the current row's id would name the version rather than the frase, and every crossing of
+    one frase has to answer with the same name.
+    """
+
+    __tablename__ = "ir_hard_stretches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    segment_id: Mapped[str] = mapped_column(String(36), index=True)
+    #: How many tellings the stretch carried when it crossed. Stored rather than derived: the
+    #: chain goes on growing afterwards, and what the consultant reads is the moment.
+    tellings: Mapped[int] = mapped_column(Integer)
+    crossed_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
