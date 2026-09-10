@@ -64,7 +64,7 @@ The team's language, the one the rehearsal is recorded in and that nobody on the
 _Avoid_: native, L1, Língua materna
 
 **Bridge language**:
-The language the team tells back in, and which the analyst reads. `bridge_mode` is the calibration state of that language.
+The language the team tells back in, and which the analyst reads.
 _Avoid_: L2, Portuguese, Língua-ponte
 
 **Stretch** (`segment`; frase, in Marcia's method and her prompts):

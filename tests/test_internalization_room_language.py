@@ -156,11 +156,12 @@ async def test_a_language_the_room_does_not_speak_is_refused_rather_than_answere
     assert refused.status_code == 400, refused.text[:200]
 
 
+@pytest.mark.parametrize("unspoken", ["fr", "es", "es-419"])
 async def test_a_language_the_room_does_not_speak_is_refused_at_the_wheel(
-    client: httpx.AsyncClient,
+    client: httpx.AsyncClient, unspoken: str
 ) -> None:
     refused = await client.get(
-        f"{PREFIX}/books/Ruth/passages?language=fr", headers={"X-Room-Key": KEY}
+        f"{PREFIX}/books/Ruth/passages?language={unspoken}", headers={"X-Room-Key": KEY}
     )
 
     assert refused.status_code == 400, refused.text[:200]
@@ -235,7 +236,7 @@ async def test_the_voice_route_refuses_a_language_the_room_does_not_speak(
 def test_a_locale_the_room_does_not_speak_is_not_quietly_narrowed_to_one_it_does() -> None:
     assert normalize("pt-BR") == "pt"
     assert normalize("PT") == "pt"
-    assert normalize("es-419") == "es"
+    assert normalize("es-419") is None
     assert normalize("ja") is None
     assert normalize("fr-CA") is None
     assert normalize(None) is None

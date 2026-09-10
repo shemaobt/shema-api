@@ -144,7 +144,7 @@ async def test_the_opening_is_cut_where_the_guide_marked_it(
     one long breath."""
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
-    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P)
 
     turn = await run_comprehension_turn(
         db_session,
@@ -174,7 +174,7 @@ async def test_a_session_that_already_spoke_is_not_opened_twice(
     """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", TwoMovementAgent())
-    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -215,7 +215,7 @@ async def test_a_long_opening_is_spoken_in_its_two_movements(
     """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongPanoramaAgent())
-    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P)
 
     turn = await run_comprehension_turn(
         db_session,
@@ -246,7 +246,7 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
     """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongWindedAgent())
-    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P)
 
     turn = await run_comprehension_turn(
         db_session,
@@ -275,7 +275,7 @@ async def test_a_turn_that_runs_long_is_spoken_as_it_is(
     """
     module = sys.modules["app.services.internalization_room.run_turn"]
     monkeypatch.setattr(module, "call_agent", LongWindedAgent())
-    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="adaptive")
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -305,9 +305,7 @@ async def test_the_opening_turn_belongs_to_the_guide(
     a passage nobody had opened yet — instant, unframed, and with no thinking. Frame
     first, elicit second: the opening always goes through the Guide.
     """
-    session = await create_session(
-        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="pt", pericope=P)
 
     turn = await run_comprehension_turn(
         db_session,
@@ -319,7 +317,6 @@ async def test_the_opening_turn_belongs_to_the_guide(
         settings=_settings(),
     )
 
-    assert turn.bridge_mode == "guided_microchecks"
     assert turn.outcome.speech == "Vamos começar pela primeira cena. O que vocês acham?"
     assert turn.outcome.speech != FIXED_PRACTICE_INVITATION
     assert not turn.outcome.used_fail_safe
@@ -353,9 +350,7 @@ async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
     is written here rather than imported because what the test asks is that nothing in
     the build can produce it.
     """
-    session = await create_session(
-        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -403,9 +398,7 @@ async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
 async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    session = await create_session(
-        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="quem aparece nesta parte?"
     )
@@ -448,9 +441,7 @@ async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_tim
     through for nothing, and it is the same wrong answer the ticket is named after: a
     problem the room could not hear answered as though the team had a point to defer.
     """
-    session = await create_session(
-        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="quem aparece nesta parte?"
     )
@@ -478,7 +469,7 @@ async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_tim
 async def test_a_turn_without_a_prior_probe_mints_no_evidence(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    session = await create_session(db_session, language="pt", pericope=P, bridge_mode="full_retell")
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )
@@ -509,9 +500,7 @@ async def _session_at_the_recording_handoff(
 
     `practice_reported=False` is the same room with nobody having said the closing word:
     every bead is engaged while the practice record stays empty."""
-    session = await create_session(
-        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await save_comprehension(
         db_session,
         session,
@@ -742,9 +731,7 @@ async def test_the_closing_word_the_guide_asked_for_closes_the_scene(
     had that word land on nothing. The invitation moved to the Guide; what answers it did
     not change.
     """
-    session = await create_session(
-        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="en", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="opening"
     )
@@ -774,9 +761,7 @@ async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
     belongs at the end of the opening, in the Guide's voice, and it asks the team to come
     back telling in the bridge language what it understood — so that telling is what
     finishes the practice, and the fixed line has nothing left to add."""
-    session = await create_session(
-        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="en", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="opening"
     )
@@ -828,9 +813,7 @@ async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_ex
     went back to asking for the rehearsal the team had already told, until the validator
     started refusing the Guide's drafts for not honouring a contract nobody could satisfy.
     """
-    session = await create_session(
-        db_session, language="en", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="en", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="opening"
     )
@@ -860,9 +843,7 @@ async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
     carry no passage content — could not have opened it either. The Guide opens it and
     invites the rehearsal in the same turn, and the telling that comes back closes it.
     """
-    session = await create_session(
-        db_session, language="pt", pericope=P, bridge_mode="guided_microchecks"
-    )
+    session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="abertura"
     )

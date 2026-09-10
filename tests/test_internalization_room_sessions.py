@@ -135,7 +135,7 @@ def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
 async def test_floor_plus_evidence_practice_and_consent_closes_the_session(
     db_session: AsyncSession,
 ) -> None:
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
@@ -161,7 +161,7 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     bridge-limited teams are not judged on Portuguese output. What is asserted here is
     unchanged — that the close is *stamped* — only what it takes to reach a close moved.
     """
-    session = await create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 

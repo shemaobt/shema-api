@@ -8,13 +8,48 @@ from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.canon.labels import labelled_elements
 from app.services.internalization_room.canon.parse_map import (
     SURVEYED_STATUS,
     load_book,
     load_map,
 )
 from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
-from app.services.internalization_room.passage_lines import line_for
+from app.services.internalization_room.passage_lines import _sections, line_for
+
+NAMED_IN_PORTUGUESE: dict[str, str] = {
+    "P01": "Rute 1:1–5",
+    "P02": "Rute 1:6–14",
+    "P03": "Rute 1:15–18",
+    "P04": "Rute 1:19–22",
+    "P05": "Rute 2:1–7",
+    "P06": "Rute 2:8-16",
+    "P07": "Rute 2:17-23",
+    "P08": "Rute 3:1-5",
+    "P09": "Rute 3:6-13",
+    "P10": "Rute 3:14-18",
+    "P11": "Rute 4:1-8",
+    "P12": "Rute 4:9-12",
+    "P13": "Rute 4:13-17",
+    "P14": "Rute 4:18-22",
+}
+
+NAMED_IN_ENGLISH: dict[str, str] = {
+    "P01": "Ruth 1:1–5",
+    "P02": "Ruth 1:6–14",
+    "P03": "Ruth 1:15–18",
+    "P04": "Ruth 1:19–22",
+    "P05": "Ruth 2:1–7",
+    "P06": "Ruth 2:8-16",
+    "P07": "Ruth 2:17-23",
+    "P08": "Ruth 3:1-5",
+    "P09": "Ruth 3:6-13",
+    "P10": "Ruth 3:14-18",
+    "P11": "Ruth 4:1-8",
+    "P12": "Ruth 4:9-12",
+    "P13": "Ruth 4:13-17",
+    "P14": "Ruth 4:18-22",
+}
 
 
 async def _instantly_voiced(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
@@ -36,6 +71,50 @@ def test_a_passage_nobody_has_written_a_line_for_stays_silent() -> None:
     assert line_for("Z99", "xx") == ""
 
 
+@pytest.mark.parametrize(
+    ("spoken", "written"), [("pt", NAMED_IN_PORTUGUESE), ("en", NAMED_IN_ENGLISH)]
+)
+def test_the_wheel_names_the_passage_and_says_nothing_else_about_it(
+    spoken: str, written: dict[str, str]
+) -> None:
+    """The reference each map carries in its own H1, and the book in the language spoken.
+
+    Transcribed from the fourteen maps rather than derived, including the verse dash the
+    canon is not consistent about — an en dash through P05, a hyphen from P06 on.
+    """
+    said = {m.pericope_num: line_for(m.pericope_num, spoken) for m in load_book("Ruth")}
+
+    assert said == written, (
+        "a roda dizia uma frase autoral por passagem, e algumas contavam a passagem antes "
+        f"de a equipe escolher — P07 entregava o nome do resgatador: {said}"
+    )
+
+
+def _the_book_named_in(language: str) -> str:
+    """What this book's own catalogue calls the person the book is named after."""
+    named = next(element for element in labelled_elements("P01") if element.label_en == "Ruth")
+    return str(getattr(named, f"label_{language}"))
+
+
+def test_no_line_in_the_file_carries_a_word_its_map_does_not() -> None:
+    """The reference, with the book renamed for the language, is the whole of what may be said.
+
+    Read off the maps and the label catalogue, so a line rewritten to carry story again has
+    nothing to agree with — in any language the file grows, not only the two it has today.
+    """
+    strayed = {
+        (pericope_num, spoken): said
+        for (pericope_num, spoken), said in _sections().items()
+        if said
+        != f"{_the_book_named_in(spoken)} {load_map(pericope_num).reference.split(' ', 1)[1]}"
+    }
+
+    assert strayed == {}, (
+        "a frase de cada passagem era autoral e nenhum validador a via, então a roda contava "
+        f"a passagem antes de a equipe escolher: {strayed}"
+    )
+
+
 def test_the_lines_are_one_breath_each() -> None:
     long_ones = {
         m.pericope_num: line_for(m.pericope_num, "pt")
@@ -50,12 +129,14 @@ def test_the_lines_are_one_breath_each() -> None:
 
 
 @pytest.mark.parametrize("pericope", ["P01", "P09", "P14"])
-def test_the_line_names_the_passage_without_a_number(pericope: str) -> None:
+def test_the_line_carries_the_passage_numbers_and_never_the_id_the_canon_files_it_under(
+    pericope: str,
+) -> None:
     said = line_for(pericope, "pt")
 
     assert said
     assert pericope not in said
-    assert not any(ch.isdigit() for ch in said)
+    assert any(ch.isdigit() for ch in said)
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)

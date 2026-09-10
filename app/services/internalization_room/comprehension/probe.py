@@ -31,12 +31,6 @@ class ActiveProbe(BaseModel):
         return self
 
 
-def process_choice_freezes_bridge_mode(probe: ActiveProbe | None) -> bool:
-    """A process answer belongs to exactly one app-owned parser — "sim" after the consent
-    question must not also switch the bridge-language method."""
-    return probe is not None
-
-
 def select_probe_after_oral_turn(
     *,
     outcome: str,

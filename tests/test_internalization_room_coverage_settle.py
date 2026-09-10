@@ -167,7 +167,7 @@ async def test_a_passage_settled_from_decisions_closes_the_session(
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_engaged(P))
-    session = await service.create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await service.create_session(db_session, pericope=P)
     session = await service.save_comprehension(
         db_session, session, _fully_supported_comprehension(P)
     )
@@ -220,7 +220,7 @@ async def test_a_passage_the_team_only_echoed_closes_like_one_it_worked_on_its_o
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_partially_engaged(P))
-    session = await service.create_session(db_session, pericope=P, bridge_mode="guided_microchecks")
+    session = await service.create_session(db_session, pericope=P)
     session = await service.save_comprehension(
         db_session, session, _fully_supported_comprehension(P)
     )

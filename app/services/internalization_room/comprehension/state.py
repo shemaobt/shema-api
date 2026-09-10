@@ -2,8 +2,7 @@
 
 Follows the ``BackTranslationState`` pattern: a Pydantic model the service folds and
 saves whole. It is session-local by design — never a proficiency score, and discarded
-with the session. ``bridge_mode`` itself lives in its own column so intake validation and
-inheritance stay queryable.
+with the session.
 """
 
 from __future__ import annotations

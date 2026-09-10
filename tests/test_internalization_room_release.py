@@ -175,7 +175,7 @@ async def _reported_playback(
 
 
 async def _ready_session(db: AsyncSession, **comprehension_kwargs):
-    session = await create_session(db, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(db, pericope=P)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
     db.add(_ensaio_take(session.id))
@@ -222,7 +222,6 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
 
     assert artifact["purpose"] == "first_team_rehearsal"
     assert artifact["readiness"] == "ready_for_refine"
-    assert artifact["bridge_mode"] == "guided_microchecks"
     assert artifact["comprehension"]["outcome"] == "ready_supported"
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
@@ -546,7 +545,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
-    session.bridge_mode = "calibration_pending"
     await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
     await db_session.commit()
@@ -555,7 +553,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
         await build_internalization_release(db_session, session)
 
     assert set(blocked.value.blockers) >= {
-        "bridge_language_never_calibrated",
         "comprehension_needs_more_work",
         "recording_consent_never_given",
         "coverage_floor_not_met",
