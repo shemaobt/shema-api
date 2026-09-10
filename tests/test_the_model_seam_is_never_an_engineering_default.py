@@ -107,3 +107,76 @@ def test_a_row_claiming_a_ruling_that_was_never_written_is_refused(tmp_path: Pat
     assert not unnamed_rulings(read_seam_record(), rulings), (
         "the repo's own record names a ruling it does not have"
     )
+
+
+def _fixture_tree(tmp_path: Path, fallback: str, calls: str) -> Path:
+    config = tmp_path / "app/core/config.py"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(
+        "class Settings:\n    tripod_voice_model: str = 'claude-fable-5-1'\n", encoding="utf-8"
+    )
+    room = tmp_path / "app/services/internalization_room"
+    room.mkdir(parents=True, exist_ok=True)
+    (room / "llm.py").write_text(
+        "async def call_agent(\n"
+        "    *,\n"
+        "    ladder: list[str] | None = None,\n"
+        "    max_output_tokens: int = 2000,\n"
+        "    effort: str = 'high',\n"
+        "    thinks: bool = True,\n"
+        ") -> str:\n"
+        f"    rungs = ladder or {fallback}\n"
+        "    return ''\n",
+        encoding="utf-8",
+    )
+    (room / "room.py").write_text(calls, encoding="utf-8")
+    (tmp_path / "app/api/internalization_room").mkdir(parents=True, exist_ok=True)
+    return tmp_path
+
+
+def test_the_ladder_a_site_inherits_is_read_from_the_code_and_never_written_here(
+    tmp_path: Path,
+) -> None:
+    """A site passing no ladder runs on whatever `call_agent` falls back to, and that moves.
+
+    The first version of this reader wrote the words `voice_ladder(settings)` into the row itself
+    when a site named no ladder, so the rung the team hears could be changed in `llm.py` with the
+    record still agreeing — the one thing §5.1 exists to stop. The fallback is read off the
+    assignment now, the way the other three governed parameters are read off the signature.
+    """
+    root = _fixture_tree(
+        tmp_path,
+        "panorama_ladder(settings)",
+        "async def _draft() -> str:\n    return await call_agent(max_output_tokens=4096)\n",
+    )
+
+    seam = model_seam(root)
+
+    assert seam["app/services/internalization_room/room.py::_draft"] == (
+        "ladder=panorama_ladder(settings) max_output_tokens=4096 effort='high' thinks=True"
+    ), f"the row does not carry the ladder this tree actually falls back to: {seam}"
+
+
+def test_two_model_calls_in_one_function_are_not_one_row(tmp_path: Path) -> None:
+    """Keyed by the function, so the second call used to land on the first one's row.
+
+    It does not fire in today's tree — five sites in five functions — but a second call added to
+    `_draft` would have been reported as one `moved:` naming the wrong site, and updating that row
+    to match would leave the first call's budget, effort and thinking ungoverned from then on.
+    """
+    root = _fixture_tree(
+        tmp_path,
+        "voice_ladder(settings)",
+        "async def _draft() -> str:\n"
+        "    first = await call_agent(max_output_tokens=4096)\n"
+        "    return await call_agent(max_output_tokens=512, thinks=False)\n",
+    )
+
+    seam = model_seam(root)
+
+    assert sorted(seam) == [
+        "app/core/config.py::tripod_voice_model",
+        "app/services/internalization_room/room.py::_draft",
+        "app/services/internalization_room/room.py::_draft#2",
+    ], f"the second call in the function did not get a row of its own: {sorted(seam)}"
+    assert "max_output_tokens=512" in seam["app/services/internalization_room/room.py::_draft#2"]

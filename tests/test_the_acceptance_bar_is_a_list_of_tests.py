@@ -118,3 +118,17 @@ def test_the_bar_is_parsed_from_the_vendored_doctrine_and_not_from_a_copy(tmp_pa
     )
 
     assert acceptance_bar(doctrine) == ["one", "two", "three", "four."]
+
+
+def test_a_row_that_claims_a_line_and_holds_nothing_is_refused() -> None:
+    """A fragment with no second column matched its line, was not stale, and held nothing.
+
+    `THE_BAR` says a line nobody claims is a line nobody is holding, and an empty claim list was
+    the one way to write a row that passes both halves of that sentence without a test behind it
+    — invisible in the `PENDING` count too, so the summary still said one.
+    """
+    faults = bar_faults(["no blessings"], {"no blessings": []}, REPO_ROOT)
+
+    assert faults == ["claims nothing: no blessings"], (
+        f"a row with no test and no PENDING was accepted: {faults}"
+    )

@@ -197,16 +197,36 @@ def unruled(pin: Pin, rulings: list[Ruling]) -> list[str]:
 
 
 def _call_agent_defaults(root: Path) -> dict[str, str]:
+    """What a site inherits by naming none of the four, read off `call_agent` itself.
+
+    `ladder` is the one whose default says nothing: it is `None`, and the rungs a site actually
+    runs on come from the `or` in the body. That expression is read too, because writing the words
+    `voice_ladder(settings)` into the row here would let the rung the team hears be changed in
+    `llm.py` with the record still agreeing — the one thing §5.1 exists to stop.
+    """
     tree = ast.parse((root / "app/services/internalization_room/llm.py").read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.AsyncFunctionDef) and node.name == "call_agent":
             named = node.args.kwonlyargs
-            return {
+            defaults = {
                 arg.arg: ast.unparse(default)
                 for arg, default in zip(named, node.args.kw_defaults, strict=True)
                 if arg.arg in GOVERNED and default is not None
             }
+            defaults["ladder"] = _ladder_fallback(node)
+            return defaults
     return {}
+
+
+def _ladder_fallback(call_agent: ast.AsyncFunctionDef) -> str:
+    for node in ast.walk(call_agent):
+        if (
+            isinstance(node, ast.BoolOp)
+            and isinstance(node.op, ast.Or)
+            and any(isinstance(v, ast.Name) and v.id == "ladder" for v in node.values)
+        ):
+            return ast.unparse(node.values[-1])
+    return "None"
 
 
 def model_seam(root: Path = REPO_ROOT) -> dict[str, str]:
@@ -216,6 +236,10 @@ def model_seam(root: Path = REPO_ROOT) -> dict[str, str]:
     than by a line: `doctrine_allowlist` records what a line-keyed register costs when eighteen
     tickets touch one file. A site that names none of the four parameters still appears, with
     `call_agent`'s own defaults spelled out — a budget inherited is a budget chosen.
+
+    A second call in one function takes `#2`, not the first one's row. It does not happen in
+    today's tree, and the row it would have overwritten is exactly the one a `moved:` fault would
+    then have named wrongly, leaving the first call ungoverned from then on.
     """
     seam: dict[str, str] = {}
     config = root / "app/core/config.py"
@@ -253,10 +277,13 @@ def model_seam(root: Path = REPO_ROOT) -> dict[str, str]:
                                 if keyword.arg in GOVERNED
                             }
                         )
-                        if chosen.get("ladder") == "None":
-                            chosen["ladder"] = "voice_ladder(settings)"
                         spelled = " ".join(f"{k}={chosen[k]}" for k in GOVERNED if k in chosen)
-                        seam[f"{rel}::{enclosing[-1]}"] = spelled
+                        key = f"{rel}::{enclosing[-1]}"
+                        ordinal = 2
+                        while key in seam:
+                            key = f"{rel}::{enclosing[-1]}#{ordinal}"
+                            ordinal += 1
+                        seam[key] = spelled
                 for child in ast.iter_child_nodes(node):
                     visit(child)
 
@@ -351,6 +378,9 @@ def bar_faults(
     for fragment, claims in record.items():
         if not any(fragment in line for line in lines):
             faults.append(f"stale: {fragment}")
+            continue
+        if not claims:
+            faults.append(f"claims nothing: {fragment}")
             continue
         if tests_exist:
             faults += [
