@@ -12,9 +12,14 @@ would hide exactly that.
 
 from __future__ import annotations
 
+import logging
 from collections import OrderedDict
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 _A_MILLION = 1_000_000
 
@@ -121,16 +126,25 @@ _OPEN: ContextVar[Spend | None] = ContextVar("internalization_room_spend", defau
 
 
 def open_ledger() -> Spend:
-    """Start counting a turn, and hand back the ledger it will be read from.
+    """Start counting, and hand back the ledger the count will be read from.
 
-    Opening replaces whatever was open rather than nesting. There is no closing counterpart
-    and no `finally`: a turn has exactly one exit and reads its ledger there, and a turn that
-    dies before reaching it leaves a ledger that the next turn's opening throws away — inside
-    a context the request owns and abandons with it.
+    Opening replaces whatever was open rather than nesting: a stretch that opens its own book
+    is a stretch that owns its own total, and there is no case here of one inside another.
     """
     spend = Spend()
     _OPEN.set(spend)
     return spend
+
+
+def close_ledger() -> None:
+    """Stop counting, so that what happens next is not written into a total already read.
+
+    Closing is what makes the promise in `record` true. Starlette runs a background task
+    inside the request's own context rather than a new one, so the bead classifier settling
+    behind an answered turn arrives here with that turn's ledger still in scope — and a
+    ledger left open takes the call into a number that was written to the log two lines ago.
+    """
+    _OPEN.set(None)
 
 
 def record(
@@ -146,8 +160,8 @@ def record(
 ) -> None:
     """Add one answered call to the open ledger, if anything is counting.
 
-    A call with no ledger open — the classifier, running behind the team's turn rather than
-    inside it — still leaves its own line; it is only the total that has nowhere to go.
+    A call with no ledger open still leaves its own line; it is only the total that has
+    nowhere to go.
 
     An unpriced call adds its tokens and no dollars, and says so by the count it raises. A
     total quietly short by one frontier call is worse than a total that admits it is short:
@@ -188,14 +202,79 @@ def forget_sessions() -> None:
     _SESSIONS.clear()
 
 
-def session_total(session_id: str, turn: Spend) -> Spend:
-    """Fold a finished turn into its session's total, and hand back the total.
+@contextmanager
+def counted_for(session_id: str) -> Iterator[None]:
+    """Count what happens in here into a session's running total, and say where it stands.
+
+    For work that happens behind a turn rather than inside one: the beads settle after the
+    reply has already shipped, on a cheaper rung and off the voice path, and it is still the
+    session's money. Marcia's reading of a pilot names the two apart and adds them — US$ 7.07
+    on the frontier for the Guide, the Validator and the judge, US$ 0.90 on the classifier,
+    about US$ 8 — and a total that left the second out would not be the number she read.
+
+    It adds no turn: what happened here is not one, and the turn it trails was counted when
+    it was answered.
+    """
+    spend = open_ledger()
+    try:
+        yield
+    finally:
+        close_ledger()
+        report_session(session_id, spend, a_turn=False)
+
+
+def report_session(session_id: str, spend: Spend, *, a_turn: bool = True) -> None:
+    """Where a session stands after one more stretch of work, so far.
+
+    Written every time rather than once at the end, because there is no end to write at: a
+    session is completed or it is abandoned, and the second is derived from six hours of
+    silence long after the process that answered it. So the session's total is the last line
+    it has, and a session nobody ever came back to still has one.
+    """
+    total = session_total(session_id, spend, a_turn=a_turn)
+    logger.info(
+        "[llm-session] session %s after %s turns, %s calls, US$ %s: "
+        "in=%s cache_read=%s cache_write=%s out=%s%s",
+        session_id,
+        total.turns,
+        total.calls,
+        total.cost_usd,
+        total.input_tokens,
+        total.cache_read_tokens,
+        total.cache_write_tokens,
+        total.output_tokens,
+        " — no turn of this session has read the map from cache" if total.cache_missed else "",
+        extra={
+            "session_id": session_id,
+            "session_turns": total.turns,
+            "session_calls": total.calls,
+            "session_cost_usd": total.cost_usd,
+            "session_unpriced_calls": total.unpriced_calls,
+            "session_input_tokens": total.input_tokens,
+            "session_output_tokens": total.output_tokens,
+            "session_cache_read_tokens": total.cache_read_tokens,
+            "session_cache_write_tokens": total.cache_write_tokens,
+            "session_model_ms": total.model_ms,
+            "session_rung_number": total.rung_number,
+            "session_rung_fell_because": total.rung_fell_because,
+            "cache_missed": total.cache_missed,
+        },
+    )
+
+
+def session_total(session_id: str, turn: Spend, *, a_turn: bool = True) -> Spend:
+    """Fold a finished stretch into its session's total, and hand back the total.
 
     Kept per session and not per process: two teams translate at the same time on the same
     deployment, and a number that mixed them is a number neither of them can be shown.
+
+    `a_turn` is false for the work that trails a turn rather than being one. Its money counts;
+    its existence must not, or a session's turn count would run ahead of the turns the team
+    actually took and the per-turn average would read low.
     """
     total = _SESSIONS.pop(session_id, None) or Spend()
-    total.turns += 1
+    if a_turn:
+        total.turns += 1
     total.calls += turn.calls
     total.cost_usd = round(total.cost_usd + turn.cost_usd, 6)
     total.unpriced_calls += turn.unpriced_calls

@@ -27,6 +27,7 @@ from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import llm, usage
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.llm import call_agent, classifier_ladder
 from app.services.internalization_room.run_turn import run_turn
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -383,3 +384,64 @@ async def test_a_whole_session_leaves_no_word_of_the_passage_behind(spoken_by, c
             f"o registro do que a sessão custou carregava {said!r} junto; um log operacional "
             f"que repete a passagem entrega a tradução inteira a quem só devia ver números"
         )
+
+
+def _one_call() -> None:
+    usage.record(
+        cost_usd=1.0,
+        input_tokens=1,
+        output_tokens=1,
+        cache_read_tokens=1,
+        cache_write_tokens=1,
+        latency_ms=1,
+        rung_number=1,
+        rung_fell_because="",
+    )
+
+
+def test_a_ledger_that_has_been_read_takes_no_more_calls() -> None:
+    """The turn is answered, its total is written, and the request keeps running.
+
+    Starlette runs a `BackgroundTask` inside the request's own context rather than a new one,
+    so the classifier settling the beads behind the reply reaches this code with the finished
+    turn's ledger still in scope. Left open, it takes the call — silently, into a total that
+    was already logged, where the money is neither reported nor lost but written to a dead
+    object.
+    """
+    spend = usage.open_ledger()
+    _one_call()
+    usage.close_ledger()
+
+    _one_call()
+
+    assert (spend.calls, spend.cost_usd) == (1, 1.0), (
+        "uma chamada depois do turno fechado ainda mutava o livro-caixa do turno já "
+        "encerrado, e o contrato escrito no docstring dizia o contrário"
+    )
+
+
+async def test_work_behind_the_turn_is_counted_into_the_session(spoken_by, caplog) -> None:
+    """The beads settle after the reply has shipped, and that is still the session's money.
+
+    Marcia's own reading of a pilot names the two apart and adds them: US$ 7.07 on the
+    frontier for the Guide, the Validator and the judge, US$ 0.90 on the classifier, about
+    US$ 8 in total. A session total that leaves the second out is not the number she read.
+    """
+    spoken_by()
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+        with usage.counted_for("s-ferro"):
+            await call_agent(
+                role="classifier",
+                system_prompt="classifique",
+                user_content="a troca",
+                ladder=classifier_ladder(_settings()),
+                settings=_settings(),
+            )
+
+    last = _session_lines(caplog)[-1]
+    assert (last.session_turns, last.session_calls) == (1, 3), (
+        "o classificador rodava fora de qualquer total: a linha dele existia, e o custo "
+        "dele não estava em nenhum resumo de sessão"
+    )
