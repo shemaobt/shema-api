@@ -96,7 +96,7 @@ def _ensaio_take(
     *,
     scope: str = "passagem-inteira",
     pass_number: int | None = None,
-    chunk_index: int | None = None,
+    ordinal: int | None = None,
     sha256: str = "a" * 64,
     created_at: datetime | None = None,
 ) -> IRTake:
@@ -107,7 +107,7 @@ def _ensaio_take(
         kind=IRTakeKind.ENSAIO,
         scope=scope,
         pass_number=pass_number,
-        chunk_index=chunk_index,
+        ordinal=ordinal,
         storage_key=f"takes/{session_id}/ensaio/{sha256}",
         size_bytes=2048,
         sha256=sha256,
@@ -146,7 +146,7 @@ async def _reported_playback(
 
 
 async def _ready_session(db: AsyncSession, **comprehension_kwargs):
-    session = await create_session(db, pericope=P, bridge_mode="guided_microchecks")
+    session = await create_session(db, pericope=P)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
     db.add(_ensaio_take(session.id))
@@ -193,7 +193,6 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
 
     assert artifact["purpose"] == "first_team_rehearsal"
     assert artifact["readiness"] == "ready_for_refine"
-    assert artifact["bridge_mode"] == "guided_microchecks"
     assert artifact["comprehension"]["outcome"] == "ready_supported"
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
@@ -292,7 +291,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     tablet's outbox drains whenever the link comes back, so the abandoned take can be
     written down after the take that replaced it.
 
-    The whole-passage take `_ready_session` leaves carries neither a chunk nor a pass, and
+    The whole-passage take `_ready_session` leaves carries neither an ordinal nor a pass, and
     it is read here too: it comes first on every engine now that `takes_of` says where a
     NULL belongs, which is the same reading order — the undivided recording before the
     parts, and a take from before the room sent a pass before the ones that carry it.
@@ -303,7 +302,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
             session.id,
             scope="parte-1",
             pass_number=2,
-            chunk_index=1,
+            ordinal=1,
             sha256="c" * 64,
             created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
         )
@@ -313,7 +312,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
             session.id,
             scope="parte-1",
             pass_number=1,
-            chunk_index=1,
+            ordinal=1,
             sha256="b" * 64,
             created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
         )
@@ -323,7 +322,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     artifact = await build_internalization_release(db_session, session)
 
     seen = [
-        (take["chunk_index"], take["pass_number"], take["sha256"])
+        (take["ordinal"], take["pass_number"], take["sha256"])
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
@@ -434,7 +433,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
-    session.bridge_mode = "calibration_pending"
     await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
     await db_session.commit()
@@ -443,7 +441,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
         await build_internalization_release(db_session, session)
 
     assert set(blocked.value.blockers) >= {
-        "bridge_language_never_calibrated",
         "comprehension_needs_more_work",
         "recording_consent_never_given",
         "coverage_floor_not_met",
@@ -599,3 +596,50 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     assert [f["kind"] for f in package["findings"]] == ["missing"]
     assert package["superseded_attempts"][0]["findings"] == []
     assert package["checked"] is False
+
+
+@pytest.mark.asyncio
+async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    await _reported_playback(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_telling_back_is_history_and_counts_nothing(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    state = await _checked_telling_back(db_session, session)
+    state.superseded = [
+        SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
+    ]
+    await _reported_playback(db_session, session, state)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 0
+    assert artifact["back_translation"]["superseded_attempts"][0]["findings"][0]["kind"] == (
+        "missing"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session, carry_one=True)
+    await _reported_playback(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 2

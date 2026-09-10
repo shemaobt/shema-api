@@ -127,7 +127,7 @@ def test_the_chunks_go_to_the_analyst_in_listening_order() -> None:
 
 
 def test_an_empty_telling_back_says_so_rather_than_looking_complete() -> None:
-    assert "ainda não contou" in segments_block([], language_code="pt")
+    assert "ainda não traduziu" in segments_block([], language_code="pt")
 
 
 @pytest.mark.asyncio
@@ -692,11 +692,11 @@ def test_a_garbled_stretch_is_still_not_a_stretch_to_hand_over() -> None:
 
 @pytest.mark.asyncio
 async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> None:
-    """A row saved before the slot existed would swallow the closing without a word.
+    """A speaker prompt missing the closing slot would swallow it without a word.
 
-    `get_prompt_text` prefers the stored row, and `render` drops a value whose placeholder is
-    not in the template — so the turn would go on asking for a spoken answer while the screen
-    waits for a tap, and nothing anywhere would say so.
+    `render` drops a value whose placeholder is not in the template, so a prompt edited before
+    the slot existed — handed in directly here, standing in for one — would go on asking for a
+    spoken answer while the screen waits for a tap, and nothing anywhere would say so.
     """
     patch_speaker("No que você me contou, algo não apareceu.")
     stored_before_this_slot_existed = SPEAKER.replace("{{CLOSING}}", "")
@@ -775,9 +775,7 @@ OPENING_PLACEHOLDER = "(a equipe ainda não falou — abertura da sessão)"
 
 #: What stands there on the verdict path instead. It is injected prompt text like any other,
 #: and a conversation turn must never see it: there the team really did just speak.
-TOLD_BACK_INSTEAD = (
-    "(a equipe não falou nesta conversa; o que ela contou de volta está no bloco abaixo)"
-)
+TOLD_BACK_INSTEAD = "(a equipe não falou nesta conversa; o que ela traduziu está no bloco abaixo)"
 
 #: The heading the team's own words sit under. Asserted together with the words, because the
 #: same sentence is also in the recent-conversation block a line above — an assertion on the
@@ -1056,7 +1054,7 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
     """The guard the Speaker side already had, on the side where its absence cost a session.
 
     `render` drops a value whose placeholder is not in the template without a word, so a
-    Validator row saved before these slots existed would go on judging the verdict blind —
+    Validator prompt edited before these slots existed would go on judging the verdict blind —
     which is exactly how this failed the first time, silently, in front of a team. A loud
     failure here is worth more than a fail-safe line there.
     """

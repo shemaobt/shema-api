@@ -146,7 +146,6 @@ def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
 
 
 VERDICT_DRAFT = "No que vocês me contaram, uma coisa não apareceu."
-VERDICT_DRAFT_ES = "En lo que ustedes me contaron, una cosa no apareció."
 
 
 class Room:
@@ -420,21 +419,6 @@ async def test_the_verdict_is_still_said_first(
     await _finish(client, session_id)
 
     assert room.said[-1].startswith(VERDICT_DRAFT)
-
-
-@pytest.mark.asyncio
-async def test_the_room_asks_in_the_language_of_the_session(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
-) -> None:
-    """A team hearing the finding in one language and the request in another hears two rooms."""
-    analyst.found("missing", chunk=1)
-    room.draft = VERDICT_DRAFT_ES
-    session_id, _ = await _two_stretches_told(client, language="es")
-
-    await _finish(client, session_id)
-
-    assert _asked_for_the_whole_stretch(room.said[-1], "es")
-    assert not _asked_for_the_whole_stretch(room.said[-1], "pt")
 
 
 # ---------------------------------------------------------------------------

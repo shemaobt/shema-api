@@ -458,7 +458,6 @@ async def waiting_room(db_session: AsyncSession, team_a: Team, target_checkpoint
         language="pt",
         pericope=P,
         project_id=team_a.project.id,
-        bridge_mode="guided_microchecks",
     )
     session = await room.append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION

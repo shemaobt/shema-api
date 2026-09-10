@@ -31,7 +31,6 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.internalization_room.back_translation import playback_confirms_rehearsal
-from app.services.internalization_room.calibration import BridgeMode
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -57,8 +56,10 @@ from app.services.internalization_room.takes import takes_of
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
-#: key says ``segments`` because that is what they are.
-SCHEMA_VERSION = "tripod.internalization-release.v0.2"
+#: key says ``segments`` because that is what they are. Bumped again to v0.3 when the
+#: conversation-mode key left the payload with the mode itself: a consumer diffing the two
+#: versions finds one key gone and nothing renamed.
+SCHEMA_VERSION = "tripod.internalization-release.v0.3"
 
 
 class InternalizationReleaseBlocked(ConflictError):
@@ -101,7 +102,7 @@ def _take_view(take: IRTake) -> dict[str, Any]:
         "kind": take.kind.value,
         "scope": take.scope,
         "pass_number": take.pass_number,
-        "chunk_index": take.chunk_index,
+        "ordinal": take.ordinal,
         "sha256": take.sha256,
         "size_bytes": take.size_bytes,
         "content_type": take.content_type,
@@ -215,8 +216,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
 
-    if session.bridge_mode == BridgeMode.CALIBRATION_PENDING.value:
-        blockers.append("bridge_language_never_calibrated")
     if readiness.evaluation.outcome.value == "needs_more_work":
         blockers.append("comprehension_needs_more_work")
     if not comprehension.recording_consent_given:
@@ -274,7 +273,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "pericope": session.pericope,
         "book": load_map(session.pericope).book,
         "canon_vendor_pin": vendor_pin(),
-        "bridge_mode": session.bridge_mode,
         "comprehension": {
             "outcome": readiness.evaluation.outcome.value,
             "supported_unit_ids": readiness.evaluation.supported_unit_ids,
@@ -311,7 +309,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
             for question in questions
         ],
         "open_questions": len(open_points)
-        + sum(1 for question in questions if question.status.value != "resolved"),
+        + sum(1 for question in questions if question.status.value != "resolved")
+        + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
     return artifact

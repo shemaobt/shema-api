@@ -13,8 +13,10 @@ situations they name did not exist when that file was written: H and I. Each car
 English block here as well as its `-pt` one, since there is no authored English to fall back to.
 
 Translated from the authored English, matching the register of the existing `-pt` blocks:
-warm, short sentences, `vocês`, spoken pronoun placement. Reviewed and approved by Marcia
-(2026-08-10), along with the offline notice the app carries as an audio asset.
+warm, short sentences, `vocês`, spoken pronoun placement. Approved orally by Marcia on
+2026-08-10 as relayed by João, along with the offline notice the app carries as an audio
+asset; her written confirmation has been pending since 2026-09-04. The record is beside this
+file, in `_fail_safe_pt_supplement_provenance.md`.
 
 ⚠ One choice here is not mechanical. The English says "your facilitator", meaning the team's
 **human** facilitator (the Guide prompt spells it out: "their human facilitator or
