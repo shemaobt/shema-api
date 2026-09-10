@@ -1,0 +1,140 @@
+# ruff: noqa: RUF001 — the expectations are canon quoted verbatim; the en dash in a
+# verse range is the character the map itself carries.
+import json
+import sys
+from typing import Any
+
+import pytest
+
+from app.core.config import Settings
+from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room._default_prompts import default_prompt
+from app.services.internalization_room.run_turn import run_turn
+
+GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
+VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
+
+#: The two prohibitions the ticket names, quoted from
+#: `canon/vendor/compilation-log/P01-Ruth-1-1-5-COMPILATION-LOG.md`, never read back through
+#: `preservation_rules` — an expectation the parser computes cannot disagree with the parser.
+R6 = (
+    "YHWH is not named as agent of any event in P01. The withholding is structural and "
+    "intentional; it contrasts with the first divine action at 1:6 in P02. Reconstructor "
+    "must not assign divine causation."
+)
+R10 = (
+    "The source text does not pair the wives with their husbands at 1:4. Pairing is "
+    "disclosed at 4:10. The MEANING_COORDINATES preserves the withholding via wife_taken: "
+    "B? in P9 marriage_components. Reconstructor must not infer or state the pairing here."
+)
+
+#: Her heading and framing sentence, quoted from `src/turn/mapText.ts:102-104` in
+#: `Tripod-Internalization`, so the expectation cannot be rebuilt the way the block is.
+PROHIBITIONS = (
+    "## PRESERVATION RULES — do_not_decide (HARD CONSTRAINTS)\n"
+    "These are explicit prohibitions from the Compilation Log. The response must honor "
+    "every one; a draft that violates any of these is ungrounded even if it sounds plausible."
+)
+
+
+ABSENCES = "## SIGNIFICANT ABSENCES (per scene — silences that must be preserved, never filled)"
+
+#: The four silences of P01, quoted from the **Significant Absence** blocks of
+#: `canon/vendor/meaning-map/P01-Ruth-1-1-5.md`, scene by scene.
+P01_ABSENCES = (
+    "- S1 (v.1–2): The narrator never says YHWH sent the famine or drove the family out. "
+    "The book opens with no word of God doing anything.",
+    "- S2 (v.3): The narrator points to no one as the cause of the death. No grief is "
+    "described. No funeral or mourning is mentioned.",
+    "- S3 (v.4): No children are born to either marriage in the ten years they live there. "
+    "The narrator tells us how long it was, but says nothing of any child.",
+    "- S4 (v.5): The narrator tells of no grief, no funeral, no one left to carry on the "
+    "line, and no act of God. The losses are reported, and the line simply stops there.",
+)
+
+
+def _settings() -> Settings:
+    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
+
+
+class FakeAgent:
+    def __init__(self, draft: str = "Vamos ouvir a passagem."):
+        self.draft = draft
+        self.systems: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        self.systems.append(system_prompt)
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return self.draft
+
+
+@pytest.fixture
+def patch_agent(monkeypatch: pytest.MonkeyPatch):
+    module = sys.modules["app.services.internalization_room.run_turn"]
+
+    def _install(agent: FakeAgent) -> FakeAgent:
+        monkeypatch.setattr(module, "call_agent", agent)
+        return agent
+
+    return _install
+
+
+async def _systems(agent: FakeAgent, pericope_num: str = "P01") -> tuple[str, str]:
+    await run_turn(
+        transcript="",
+        coverage_state={},
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=pericope_num,
+        book="Ruth",
+        opening=True,
+        settings=_settings(),
+    )
+    return agent.systems[0], agent.systems[1]
+
+
+async def test_the_withholdings_reach_the_validator_as_constraints_not_only_as_beads(
+    patch_agent,
+) -> None:
+    guide_system, validator_system = await _systems(patch_agent(FakeAgent()))
+
+    assert R6 in validator_system, (
+        "a proibição de agência divina virava conta de cobertura e parava ali; o Validador "
+        "julgava a passagem com o mesmo mapa do Guia, que não a carrega"
+    )
+    assert R10 in validator_system, (
+        "sem a regra do pareamento, um rascunho dizendo que Rute casou com Malom não "
+        "contradizia nada do que o Validador tinha em mãos"
+    )
+    assert PROHIBITIONS in validator_system, (
+        "as regras sem o cabeçalho dela são mais uma seção de prosa; é a frase de "
+        "enquadramento que diz que um rascunho plausível ainda assim é infundado"
+    )
+    assert PROHIBITIONS not in guide_system, (
+        "o mapa do Guia é a fonte da narração, não a lista de proibições — o desenho dela "
+        "separa os dois papéis exatamente aqui"
+    )
+    assert "- [preserved:R6] " in guide_system, (
+        "o Guia já via R6, mas como conta a trabalhar na lista REMAINING, que some quando a "
+        "equipe engaja a conta; era essa a única passagem da regra pelo prompt"
+    )
+
+
+async def test_every_scene_of_the_passage_names_its_silence_under_the_absences_heading(
+    patch_agent,
+) -> None:
+    guide_system, validator_system = await _systems(patch_agent(FakeAgent()))
+
+    assert ABSENCES in validator_system, (
+        "as ausências já estavam no corpo do mapa, em prosa, espalhadas por quatro cenas; "
+        "sem o cabeçalho dela nada dizia que eram silêncios a preservar"
+    )
+    for line in P01_ABSENCES:
+        assert line in validator_system, (
+            f"a cena {line[:6]} perdia o seu silêncio no caminho até o juiz"
+        )
+    assert ABSENCES not in guide_system, (
+        "o Guia lê as ausências como prosa do mapa; a lista rotulada é do juiz"
+    )
