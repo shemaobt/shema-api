@@ -39,7 +39,6 @@ def _view(take: IRTake) -> TakeResponse:
         size_bytes=take.size_bytes,
         verified=take.verified_at is not None,
         ordinal=take.ordinal,
-        chunk_index=take.ordinal,
         pass_number=take.pass_number,
         pericope=take.pericope,
         recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",

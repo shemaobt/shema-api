@@ -9,8 +9,8 @@ telling-back.
 
 The column and the fields that hold that number are called `ordinal`, because that is what
 they hold: the persistent number of a stretch. **Chunk** is the ephemeral position in one
-reading of the analyst, and never was this. The form still accepts `chunk_index`, and the
-takes response still answers with it beside `ordinal`, for the tablets in the field.
+reading of the analyst, and never was this. The form still accepts `chunk_index`, but the
+takes response answers with `ordinal` alone now: ENG-872 takes the alias away.
 """
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ async def test_the_generic_route_keeps_no_number_for_a_retro_take(
 
     listed = await _listed(client, session_id, take_id)
     assert listed["ordinal"] is None
-    assert listed["chunk_index"] is None, "o apelido do tablet lê o mesmo que `ordinal`"
+    assert "chunk_index" not in listed, "o apelido do tablet saiu da resposta"
 
 
 # ---------------------------------------------------------------------------
@@ -211,9 +211,7 @@ async def test_the_generic_route_keeps_a_rehearsal_takes_number(
 
     listed = await _listed(client, session_id, take_id)
     assert listed["ordinal"] == 3
-    assert listed["chunk_index"] == 3, (
-        "o tablet em campo ainda lê `chunk_index`, e lê o mesmo número"
-    )
+    assert "chunk_index" not in listed, "o apelido do tablet saiu da resposta"
 
 
 # ---------------------------------------------------------------------------
