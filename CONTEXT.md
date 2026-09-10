@@ -91,6 +91,10 @@ _Avoid_: missing, pending, Não contado
 The recording of the whole passage in the mother tongue, and the station where it happens. It is where the team returns when something is missing beyond everything already told.
 _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 
+**Part**:
+One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part.
+_Avoid_: clip (Marcia's word for it), chunk, segment, Parte
+
 **Meaning Map**:
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
 _Avoid_: answer key, base text, Mapa de Sentido
@@ -166,7 +170,7 @@ The state in which the passage has been told and one whole reading of the analys
 _Avoid_: complete, done, Conferida
 
 **Heard the rehearsal** (`playback_confirms_rehearsal`):
-The evidence that the team listened to the whole rehearsal, on the current take, before closing.
+The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
 _Avoid_: complete playback, Ouviu o ensaio
 
 **Abandoned**:
