@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import ValidationError
-from app.services.internalization_room.languages import FLOOR, floor, normalize
+from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, floor, normalize
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
@@ -97,7 +97,7 @@ async def test_a_session_opened_naming_a_language_answers_in_it(
 
     turn = next(call for call in spoken if "session_language" in call)
     assert turn["language_code"] == "pt"
-    assert turn["session_language"] == "Portuguese"
+    assert turn["session_language"] == "Brazilian Portuguese"
 
 
 async def test_a_session_that_names_no_language_gets_english(
@@ -240,3 +240,10 @@ def test_a_locale_the_room_does_not_speak_is_not_quietly_narrowed_to_one_it_does
     assert normalize("ja") is None
     assert normalize("fr-CA") is None
     assert normalize(None) is None
+
+
+def test_the_injected_language_name_carries_marcias_grain_and_no_third_entry() -> None:
+    """Spanish is dead (ticket ENG-822, question 10) — a pilot that only speaks pt/en must
+    never find a third name to inject, and the Portuguese one must carry the grain her
+    rebuilt prompts already use, not the bare autonym."""
+    assert LANGUAGE_NAMES == {"en": "English", "pt": "Brazilian Portuguese"}
