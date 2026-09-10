@@ -469,3 +469,64 @@ def test_the_oldest_session_falls_off_and_the_ones_still_running_do_not() -> Non
         "no lugar onde entrou, e a sessão em andamento era a primeira a ser esquecida"
     )
     assert len(usage._SESSIONS) == usage._SESSIONS_KEPT
+
+
+async def test_the_reason_a_rung_fell_is_in_the_line_itself(spoken_by, caplog) -> None:
+    """For the analyst and the correction check this line is the only record there is.
+
+    They run from the back-translation router, outside any ledger, so no turn or session line
+    carries the reason for them — and the warning the step-down writes fires once per process
+    and never again once the settled rung is warm. A session that starts after that has the
+    reason nowhere.
+    """
+    spoken_by(refuses="claude-fable-5-1")
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+
+    assert "the key cannot use claude-fable-5-1" in _usage_lines(caplog)[0].getMessage(), (
+        "a razão da queda só existia nos campos estruturados, e quem lesse a linha via um "
+        "degrau 2 sem nada que dissesse por quê"
+    )
+
+
+async def test_a_total_that_is_short_says_so_in_the_line_itself(spoken_by, caplog) -> None:
+    spoken_by()
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn_on(_settings(tripod_voice_model="claude-not-in-the-table"))
+
+    for line in (_turn_line(caplog), _session_lines(caplog)[-1]):
+        assert "2 unpriced" in line.getMessage(), (
+            "o total saía como um número redondo em dólares sem dizer que estava curto, "
+            "que é a única coisa que impede de compará-lo com uma fatura"
+        )
+
+
+async def test_a_classifier_stepping_down_is_not_the_session_ladder_falling(
+    spoken_by, caplog
+) -> None:
+    """The classifier is allowed to step down; the voice is not.
+
+    Its ladder is a tier below on purpose and off the voice path, so a key that lost the top
+    of it says nothing about the rung the team was answered on. Folding the settle's ledger
+    into the session made the two share one number.
+    """
+    spoken_by(refuses="claude-sonnet-5")
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+        with usage.counted_for("s-ferro"):
+            await call_agent(
+                role="classifier",
+                system_prompt="classifique",
+                user_content="a troca",
+                ladder=classifier_ladder(_settings()),
+                settings=_settings(),
+            )
+
+    last = _session_lines(caplog)[-1]
+    assert (last.session_rung_number, last.session_rung_fell_because) == (1, ""), (
+        "o passo abaixo do classificador chegava ao resumo da sessão como se a escada da "
+        "voz tivesse caído, e a doutrina permite exatamente esse passo lá"
+    )

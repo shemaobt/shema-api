@@ -163,8 +163,8 @@ def record(
     A call with no ledger open still leaves its own line; it is only the total that has
     nowhere to go.
 
-    An unpriced call adds its tokens and no dollars, and says so by the count it raises. A
-    total quietly short by one frontier call is worse than a total that admits it is short:
+    An unpriced call adds its tokens and no dollars, and the totals say so in their own line.
+    A total quietly short by one frontier call is worse than a total that admits it is short:
     the number exists to be compared against a bill, and only the second of those can be.
     """
     spend = _OPEN.get()
@@ -234,7 +234,7 @@ def report_session(session_id: str, spend: Spend, *, a_turn: bool = True) -> Non
     total = session_total(session_id, spend, a_turn=a_turn)
     logger.info(
         "[llm-session] session %s after %s turns, %s calls, US$ %s: "
-        "in=%s cache_read=%s cache_write=%s out=%s%s",
+        "in=%s cache_read=%s cache_write=%s out=%s%s%s",
         session_id,
         total.turns,
         total.calls,
@@ -244,6 +244,9 @@ def report_session(session_id: str, spend: Spend, *, a_turn: bool = True) -> Non
         total.cache_write_tokens,
         total.output_tokens,
         " — no turn of this session has read the map from cache" if total.cache_missed else "",
+        f" — {total.unpriced_calls} unpriced, so the total is short"
+        if total.unpriced_calls
+        else "",
         extra={
             "session_id": session_id,
             "session_turns": total.turns,
@@ -270,7 +273,11 @@ def session_total(session_id: str, turn: Spend, *, a_turn: bool = True) -> Spend
 
     `a_turn` is false for the work that trails a turn rather than being one. Its money counts;
     its existence must not, or a session's turn count would run ahead of the turns the team
-    actually took and the per-turn average would read low.
+    actually took and the per-turn average would read low. Nor does its rung: the bead
+    classifier walks a ladder a tier below the voice's, deliberately, off the voice path — a
+    key that lost the top of that one says nothing about the rung the team was answered on,
+    and letting the two share a number would report the doctrine's own arrangement as a fall.
+    The classifier's own step-down is still in the classifier's own line.
     """
     total = _SESSIONS.pop(session_id, None) or Spend()
     if a_turn:
@@ -283,7 +290,7 @@ def session_total(session_id: str, turn: Spend, *, a_turn: bool = True) -> Spend
     total.cache_read_tokens += turn.cache_read_tokens
     total.cache_write_tokens += turn.cache_write_tokens
     total.model_ms += turn.model_ms
-    if turn.rung_number > total.rung_number:
+    if a_turn and turn.rung_number > total.rung_number:
         total.rung_number = turn.rung_number
         total.rung_fell_because = turn.rung_fell_because
     _SESSIONS[session_id] = total

@@ -190,7 +190,7 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
     elapsed_ms = round((time.monotonic() - started) * 1000)
     shim.logger.info(
         "[llm-turn] session %s answered in %s ms after %s redrafts, %s calls, US$ %s: "
-        "in=%s cache_read=%s cache_write=%s out=%s%s",
+        "in=%s cache_read=%s cache_write=%s out=%s%s%s",
         session_id,
         elapsed_ms,
         outcome.redrafts,
@@ -202,6 +202,9 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
         spend.output_tokens,
         f" — answered on rung {spend.rung_number}, {spend.rung_fell_because}"
         if spend.rung_number > 1
+        else "",
+        f" — {spend.unpriced_calls} unpriced, so the total is short"
+        if spend.unpriced_calls
         else "",
         extra={
             "session_id": session_id,

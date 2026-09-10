@@ -251,14 +251,19 @@ def _report_spend(
     that silently stops matching costs the map's full price on every turn and changes nothing
     else that anyone would notice, so a run where this number is flat at zero is the symptom.
     Carrying the rung beside it is what makes a session's spend legible when the ladder moved
-    partway through it, and a rung below the first says in the same line why it fell — the
-    only thing that steps the room down is a key that may not use the rung above.
+    partway through it, and a rung below the first says in the line itself why it fell — the
+    only thing that steps the room down is a key that may not use the rung above. In the line
+    and not only in its fields, because for the analyst and the correction check this is the
+    only record there is: they run outside any ledger, so no turn or session summary carries
+    the reason for them, and the warning the step-down writes fires once per process and
+    never again once the settled rung is warm.
 
     The team's own words never reach this logger, only counts: `[llm-usage]` is a line an
     operator greps for on a machine where the passage itself must not be readable.
     """
     usage = response.usage
     skipped = rungs[: rung_number - 1]
+    fell_because = _fell_because(skipped)
     cache_read = _counted(usage.cache_read_input_tokens)
     cache_write = _counted(usage.cache_creation_input_tokens)
     cost = cost_of(
@@ -270,7 +275,7 @@ def _report_spend(
     )
     logger.info(
         "[llm-usage] %s answered on %s (rung %s of %s) at %s effort in %s ms, US$ %s: "
-        "in=%s cache_read=%s cache_write=%s out=%s",
+        "in=%s cache_read=%s cache_write=%s out=%s%s",
         role,
         model,
         rung_number,
@@ -282,11 +287,12 @@ def _report_spend(
         cache_read,
         cache_write,
         usage.output_tokens,
+        f" — {fell_because}" if fell_because else "",
         extra={
             "role": role,
             "rung": model,
             "rung_number": rung_number,
-            "rung_fell_because": _fell_because(skipped),
+            "rung_fell_because": fell_because,
             "effort": effort,
             "latency_ms": latency_ms,
             "cost_usd": cost,
@@ -304,7 +310,7 @@ def _report_spend(
         cache_write_tokens=cache_write,
         latency_ms=latency_ms,
         rung_number=rung_number,
-        rung_fell_because=_fell_because(skipped),
+        rung_fell_because=fell_because,
     )
 
 
