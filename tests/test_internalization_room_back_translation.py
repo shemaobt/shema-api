@@ -78,15 +78,14 @@ AFTER_A_FRASE = (
 )
 #: Hers, item 2, merged by ENG-851: a note as short as "as noras" obeys "quote it briefly"
 #: completely, and makes the Speaker's "isso a história não conta" a false sentence about
-#: daughters-in-law who are in the story. ENG-873 owns *told it back* → *translated*, and owns
-#: this constant with it.
-MARCIAS_RELATION_RULE = "the note quotes the WHOLE relation exactly as the team told it back"
+#: daughters-in-law who are in the story. Cut to the fragment that carries the ruling: the
+#: wording around it is still being settled, and a guard that pins the settled part with it
+#: would go red for a rename that leaves the rule untouched.
+MARCIAS_RELATION_RULE = "the note quotes the WHOLE relation"
 #: The other ruling inside her item 2, merged with the relation rule and standing ahead of it
 #: in the file: the P02 case where "porque as noras pediram" additionally erases a
 #: `do_not_decide` rule of the compilation log.
-MARCIAS_DO_NOT_DECIDE = (
-    "Where it collides with a preservation rule (a do_not_decide item), say so in the note."
-)
+MARCIAS_DO_NOT_DECIDE = "(a do_not_decide item), say so in the note"
 #: Her item 3. A note about a filled silence names the silence, never the withheld content —
 #: naming it would hand the team the very claim the passage keeps.
 MARCIAS_MARKED_SILENCE = "your notes must never name the withheld content itself"
@@ -1449,9 +1448,11 @@ def test_marcias_items_keep_the_relation_rule_and_the_marked_silence() -> None:
 
     assert section, "a seção What to check não está no prompt do analista"
     hers = _one_line(section.group(0))
-    assert MARCIAS_RELATION_RULE in hers, "o item 2 perdeu a regra de citar a relação inteira"
-    assert MARCIAS_DO_NOT_DECIDE in hers, "o item 2 perdeu a colisão com do_not_decide"
-    assert MARCIAS_MARKED_SILENCE in hers, (
+    assert hers.count(MARCIAS_RELATION_RULE) == 1, (
+        "o item 2 perdeu a regra de citar a relação inteira"
+    )
+    assert hers.count(MARCIAS_DO_NOT_DECIDE) == 1, "o item 2 perdeu a colisão com do_not_decide"
+    assert hers.count(MARCIAS_MARKED_SILENCE) == 1, (
         "o item 3 perdeu a proibição de nomear o conteúdo guardado"
     )
 
