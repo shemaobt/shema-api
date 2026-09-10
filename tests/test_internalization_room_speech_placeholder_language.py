@@ -47,9 +47,9 @@ _EXPECTED_CLASSIFIER_NO_UTTERANCE = {
 }
 
 _EXPECTED_NOTHING_TOLD_BACK = {
-    "pt": "(a equipe ainda não contou nada de volta)",
-    "en": "(the team has not told anything back yet)",
-    "es": "(el equipo aún no ha contado nada de vuelta)",
+    "pt": "(a equipe ainda não traduziu nada)",
+    "en": "(the team has not translated anything yet)",
+    "es": "(el equipo aún no ha traducido nada)",
 }
 
 

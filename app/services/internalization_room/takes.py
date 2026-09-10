@@ -73,7 +73,7 @@ async def store_take(
     audio: bytes,
     project_id: str | None = None,
     pass_number: int | None = None,
-    chunk_index: int | None = None,
+    ordinal: int | None = None,
     content_type: str = AUDIO_MIME,
     store: TakeStore | None = None,
 ) -> IRTake:
@@ -114,7 +114,7 @@ async def store_take(
         kind=kind,
         scope=scope,
         pass_number=pass_number,
-        chunk_index=chunk_index,
+        ordinal=ordinal,
         storage_key=key,
         size_bytes=len(audio),
         sha256=digest,
@@ -243,8 +243,9 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     the wrong sequence for whoever reviews the session.
 
     Both columns are nullable and the placement is named rather than left to the engine:
-    a take with no chunk is the undivided passage and a take with no pass predates the
-    room sending one, so either is the earliest thing in its own group. Unnamed, SQLite
+    a take with no ordinal belongs to no stretch — the undivided passage, or a recording
+    that captured none — and a take with no pass predates the room sending one, so either
+    is the earliest thing in its own group. Unnamed, SQLite
     read that the same way and PostgreSQL read it upside down, which put the oldest
     recording of a session at the bottom of the packet on the only database that serves
     a real team.
@@ -253,7 +254,7 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
         select(IRTake)
         .where(IRTake.session_id == session_id)
         .order_by(
-            IRTake.chunk_index.asc().nulls_first(),
+            IRTake.ordinal.asc().nulls_first(),
             IRTake.pass_number.asc().nulls_first(),
             IRTake.created_at,
         )

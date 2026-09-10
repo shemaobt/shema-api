@@ -274,7 +274,6 @@ class CreateSessionRequest(BaseModel):
     #: whether to play the panorama again — so naming it for any other session would mark that
     #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
-    bridge_mode: str | None = Field(default=None, max_length=24)
     #: Which language the room should speak to this team, read by the app off the tablet.
     #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
     #: a language the room does not speak is refused rather than quietly answered in another.
@@ -368,8 +367,7 @@ class SessionStateResponse(BaseModel):
     coverage: CoverageView
     done: bool
     back_translation: BackTranslationProgress = Field(default_factory=BackTranslationProgress)
-    bridge_mode: str = "calibration_pending"
-    #: Said back so the app can see which language it actually got, the way `bridge_mode` is.
+    #: Said back so the app can see which language it actually got.
     language: str = "en"
     #: Which kind of halt is standing: `"blocking"`, `"warning"`, or null when none is
     #: (ENG-609). **Null whenever `status` is not `needs_person`** — the tablet halts on one
@@ -405,7 +403,6 @@ class TurnResponse(BaseModel):
     degraded: bool = False
     coverage: CoverageView
     done: bool
-    bridge_mode: str = "calibration_pending"
     #: The session's opening cut at the boundary the Guide drew itself: the whole passage
     #: first, then the scene and its invitation. Empty on every other turn, and empty
     #: whenever the Guide did not mark the boundary exactly where it was asked for.
@@ -739,8 +736,13 @@ class TakeResponse(BaseModel):
     #: indistinguishable `retro` takes: no way to tell stretch three from stretch seven,
     #: and no way to tell a first telling from its correction. The labels are what travels
     #: to Refine.
-    chunk_index: int | None = None
+    ordinal: int | None = None
     pass_number: int | None = None
+    #: The tablet's name for `ordinal`, carrying the same number. The app in the field reads
+    #: this key on resume to find which part a rebuilt rehearsal recording answers for, and
+    #: a key that is not there reads as null, which skips that step without saying so.
+    #: ENG-923 teaches the app to read `ordinal` and takes this away.
+    chunk_index: int | None = None
     pericope: str = ""
     recorded_at: str = ""
 

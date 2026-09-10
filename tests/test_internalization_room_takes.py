@@ -162,11 +162,11 @@ async def test_a_retro_chunk_carries_its_pass_and_position(db_session: AsyncSess
         scope="P03",
         audio=b"trecho contado de volta",
         pass_number=2,
-        chunk_index=3,
+        ordinal=3,
         store=store,
     )
 
-    assert (take.kind, take.pass_number, take.chunk_index) == (IRTakeKind.RETRO, 2, 3)
+    assert (take.kind, take.pass_number, take.ordinal) == (IRTakeKind.RETRO, 2, 3)
     assert "/retro/" in take.storage_key
 
 
@@ -238,7 +238,7 @@ async def test_two_different_stretches_of_identical_audio_become_one_take(
     """
     store = MemoryStore()
 
-    def _stretch(chunk_index: int):
+    def _stretch(ordinal: int):
         return service.store_take(
             db_session,
             session_id="sessao-1",
@@ -247,7 +247,7 @@ async def test_two_different_stretches_of_identical_audio_become_one_take(
             kind=IRTakeKind.RETRO,
             scope="P03",
             audio=b"os mesmos bytes exatos",
-            chunk_index=chunk_index,
+            ordinal=ordinal,
             store=store,
         )
 
@@ -255,5 +255,5 @@ async def test_two_different_stretches_of_identical_audio_become_one_take(
     second = await _stretch(2)
 
     assert second.id == first.id
-    assert second.chunk_index == 1, "o segundo volta com a posição do primeiro, sem avisar"
+    assert second.ordinal == 1, "o segundo volta com a posição do primeiro, sem avisar"
     assert len(store.objects) == 1

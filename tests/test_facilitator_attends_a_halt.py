@@ -201,7 +201,6 @@ async def a_session(db: AsyncSession, *, team_id: str, ready_to_close: bool = Fa
         db,
         pericope=P,
         project_id=team_id,
-        bridge_mode="guided_microchecks" if ready_to_close else None,
     )
 
 
@@ -701,7 +700,6 @@ async def waiting_room(
         language="pt",
         pericope=P,
         project_id=facilitator_a.team_id,
-        bridge_mode="guided_microchecks",
     )
     session = await room.append_exchange(
         db_session, session, team_utterance="", guide_response=FIRST_QUESTION

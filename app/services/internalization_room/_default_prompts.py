@@ -13,7 +13,6 @@ _FILES: dict[IRPromptKey, str] = {
     IRPromptKey.VALIDATOR: "validator_system_prompt.md",
     IRPromptKey.COVERAGE_CLASSIFIER: "classifier_system_prompt.md",
     IRPromptKey.BOOK_PANORAMA: "book_overview_system_prompt.md",
-    IRPromptKey.DRAFT_SELF_CHECK: "draft_check_system_prompt.md",
     IRPromptKey.BT_ANALYST: "backtranslation_analysis_system_prompt.md",
     IRPromptKey.BT_CORRECTION: "backtranslation_correction_system_prompt.md",
     IRPromptKey.BT_VERDICT_SPEAKER: "backtranslation_verdict_system_prompt.md",
@@ -36,10 +35,6 @@ _META: dict[IRPromptKey, tuple[str, str]] = {
     IRPromptKey.BOOK_PANORAMA: (
         "Book Panorama",
         "Panorama do livro antes de entrar na passagem, sem revelar o que ela guarda.",
-    ),
-    IRPromptKey.DRAFT_SELF_CHECK: (
-        "Draft Self-Check",
-        "A conferência do ensaio que o modelo não pode ouvir.",
     ),
     IRPromptKey.BT_ANALYST: (
         "BT Analyst",

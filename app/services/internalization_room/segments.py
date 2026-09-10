@@ -134,7 +134,7 @@ async def capture_segment(
         )
         bridge_take = result.scalar_one_or_none()
         if bridge_take is not None:
-            bridge_take.chunk_index = ordinal
+            bridge_take.ordinal = ordinal
 
     segment_id = str(uuid.uuid4())
     if replaces is not None:
