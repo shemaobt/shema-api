@@ -31,6 +31,11 @@ today. Line E's Portuguese she fixed herself, as *"chamar o facilitador de você
 
 **2026-09-09.** The 10/08 text has not yet been sent to her.
 
+**2026-09-10.** Asked at the UI gate of this change, João confirmed from memory that the
+10/08 *"concordou"* was about the general idea of having these lines in Portuguese, not
+about the text of B, C and E. The header therefore stays as corrected. The text still goes
+to her, as she asked on 2026-09-04.
+
 ## What that means for the file
 
 The approval of 2026-08-10 was **oral, and relayed** — João's account of a conversation, not
