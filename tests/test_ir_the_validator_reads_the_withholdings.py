@@ -9,11 +9,17 @@ import pytest
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
+from app.services.internalization_room.canon.book_material import build_book_material
+from app.services.internalization_room.run_turn import (
+    run_panorama_turn,
+    run_turn,
+    run_verdict_turn,
+)
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 VERDICT_SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
+PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
 
 #: The two prohibitions the ticket names, quoted from
 #: `canon/vendor/compilation-log/P01-Ruth-1-1-5-COMPILATION-LOG.md`, never read back through
@@ -58,6 +64,15 @@ P01_ABSENCES = (
 #: (`prompts/validator_system_prompt.md:127,131`).
 MAP_SLOT = "## The Meaning Map (the only standard of truth)"
 NEXT_SLOT = "## Recent conversation"
+
+
+#: Her operational sentence for the panorama's preservation header, quoted from
+#: `app/lib/liveTurn.ts:191-192` in `Tripod-Internalization`.
+HONOUR = (
+    "The team has not yet lived any passage: every one of these still lies ahead of them. "
+    "The panorama must honor each — never state, pair, name, or attribute what a passage "
+    "withholds until its moment."
+)
 
 
 def _settings() -> Settings:
@@ -211,4 +226,30 @@ async def test_the_verdict_is_judged_against_the_withholdings_its_speaker_never_
     assert R6 not in speaker_system and R10 not in speaker_system, (
         "o Speaker do veredito narra a partir da prosa, e aqui não há lista REMAINING para "
         "lhe mostrar a regra como conta a trabalhar"
+    )
+
+
+async def test_the_panorama_is_told_what_honouring_a_withholding_means(patch_agent) -> None:
+    agent = patch_agent(FakeAgent("Vamos conhecer o livro."))
+
+    await run_panorama_turn(
+        transcript="o que é esse livro?",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        session_language="Portuguese",
+        language_code="pt",
+        settings=_settings(),
+    )
+    speaker_system, validator_system = agent.systems[0], agent.systems[1]
+
+    assert HONOUR in speaker_system, (
+        "o cabeçalho listava as retenções do livro sem dizer o que honrá-las quer dizer, e "
+        "o panorama fala de catorze passagens que a equipe ainda não viveu"
+    )
+    assert HONOUR in validator_system, (
+        "os dois papéis leem o mesmo material do livro; a frase que governa o uso da lista "
+        "não pode chegar só a um deles"
     )
