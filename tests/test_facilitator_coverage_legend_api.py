@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.internalization_room import CoverageLegend
 from app.services.internalization_room.canon import labels
 from app.services.internalization_room.canon.elements import ElementKind
-from app.services.internalization_room.canon.labels import LANGUAGES, ElementLabelsBroken
+from app.services.internalization_room.canon.labels import LANGUAGES
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import grant_facilitator_app_role, make_user
 
@@ -145,6 +145,12 @@ async def test_a_state_nobody_has_named_is_refused_rather_than_served_raw(
     Substituting the enum the loader walks is the only way to reach a value this repository
     does not have yet. What must not happen is the response arriving with three states in it
     and the fourth quietly missing.
+
+    ENG-925 gave `ElementLabelsBroken` a registered handler, so it no longer escapes the ASGI
+    boundary the way an exception with no handler does — Starlette's `ServerErrorMiddleware`
+    re-raises after building a response only when *no* handler claims the exception; once one
+    does, on `ExceptionMiddleware`, the response is the end of it. `pytest.raises` around the
+    request stopped seeing anything to catch; the 500 response itself is what to assert on.
     """
 
     class GrownStatus(enum.StrEnum):
@@ -156,10 +162,10 @@ async def test_a_state_nobody_has_named_is_refused_rather_than_served_raw(
 
     monkeypatch.setattr(labels, "CoverageStatus", GrownStatus)
 
-    with pytest.raises(ElementLabelsBroken) as refused:
-        await client.get(LEGEND_URL, headers=await a_signed_in_caller(db_session))
+    response = await client.get(LEGEND_URL, headers=await a_signed_in_caller(db_session))
 
-    assert "nearly_there" in str(refused.value)
+    assert response.status_code == 500
+    assert "nearly_there" in response.text
 
 
 async def test_a_kind_nobody_has_named_is_refused_rather_than_served_raw(
@@ -177,10 +183,10 @@ async def test_a_kind_nobody_has_named_is_refused_rather_than_served_raw(
 
     monkeypatch.setattr(labels, "ElementKind", GrownKind)
 
-    with pytest.raises(ElementLabelsBroken) as refused:
-        await client.get(LEGEND_URL, headers=await a_signed_in_caller(db_session))
+    response = await client.get(LEGEND_URL, headers=await a_signed_in_caller(db_session))
 
-    assert "gesture" in str(refused.value)
+    assert response.status_code == 500
+    assert "gesture" in response.text
 
 
 async def test_a_state_added_to_the_enum_and_the_catalogue_needs_no_edit_here(
