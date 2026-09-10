@@ -5,7 +5,10 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.prompt_blocks import meaning_map_block
+from app.services.internalization_room.prompt_blocks import (
+    meaning_map_block,
+    validator_map_block,
+)
 from app.services.internalization_room.render import render
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
@@ -81,7 +84,7 @@ async def run_verdict_turn(
             CLOSING=spoken_closing,
         ),
         validator_prompt=validator_prompt,
-        standard_of_truth=map_block,
+        standard_of_truth=validator_map_block(pericope_num, book),
         transcript="",
         messages=messages,
         session_language=session_language,

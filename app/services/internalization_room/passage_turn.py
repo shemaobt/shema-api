@@ -9,6 +9,7 @@ from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import (
     coverage_status_block,
     meaning_map_block,
+    validator_map_block,
 )
 from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import (
@@ -68,7 +69,7 @@ async def run_turn(
             COVERAGE_STATUS=coverage_status,
         ),
         validator_prompt=validator_prompt,
-        standard_of_truth=map_block,
+        standard_of_truth=validator_map_block(pericope_num, book),
         transcript=transcript,
         messages=messages,
         session_language=session_language,
