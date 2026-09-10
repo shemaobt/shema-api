@@ -4,7 +4,8 @@ The room reads canon only from the vendored directory — never over the network
 time, and never writing back. Canon changes through the project's own governed process; this
 script is the one door, and it is deliberate.
 
-`--sync` overwrites the vendored directory wholesale, so nothing of ours may live inside it.
+`--sync` overwrites the vendored directory wholesale — including deleting a locally vendored
+file whose name the upstream listing no longer has — so nothing of ours may live inside it.
 The facilitator-facing element labels are the case that already exists: they sit in
 `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a re-pin cannot delete
 them without a word.
@@ -68,9 +69,14 @@ def sync(pin: str | None = None) -> int:
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
-        for name in _listing(kind, sha):
+        names = _listing(kind, sha)
+        for name in names:
             (target / name).write_bytes(_raw(kind, sha, name))
             print(f"  {kind}/{name}")
+        for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
+            if existing not in names:
+                (target / existing).unlink()
+                print(f"  removed {kind}/{existing}")
     PIN_FILE.write_text(sha + "\n")
     print(f"pinned at {sha}")
     return 0
