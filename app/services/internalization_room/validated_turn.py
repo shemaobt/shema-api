@@ -154,6 +154,7 @@ async def _draft(
     if redraft_note:
         user_content += f"\n\n## Nota de reescrita\n\n{redraft_note}\n"
     draft: str = await shim.call_agent(
+        role="guide",
         system_prompt=guide_prompt,
         user_content=user_content,
         conversation=conversation,
@@ -274,6 +275,7 @@ async def _voiced_after_validation(
                 ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
             )
             raw_verdict = await shim.call_agent(
+                role="validator",
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
                 max_output_tokens=4096,
