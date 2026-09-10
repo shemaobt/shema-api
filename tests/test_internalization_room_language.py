@@ -285,3 +285,35 @@ def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:
     assert (
         VALIDATOR_USER_MESSAGE == "Validate the drafted response now. Return only the JSON object."
     )
+
+
+async def test_the_redraft_note_heading_the_guide_reads_is_english(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_draft` appends the redraft note under its own heading — a section title exactly like
+    the EQUIPE/FACILITADOR labels item 3 targets, just added back the same day (c3ee0e2) it
+    removed those. Never Portuguese, whatever the session speaks (ENG-822, item 3)."""
+    import sys
+
+    from app.services.internalization_room.validated_turn import _draft
+
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    captured: dict[str, str] = {}
+
+    async def agent(*, user_content: str, **kwargs: Any) -> str:
+        captured["user_content"] = user_content
+        return "fala"
+
+    monkeypatch.setattr(module, "call_agent", agent)
+
+    await _draft(
+        guide_prompt="system",
+        conversation=[],
+        utterance="algo",
+        redraft_note="Redo it.",
+        language_code="en",
+        settings=get_settings(),
+    )
+
+    assert "## Rewrite note" in captured["user_content"]
+    assert "## Nota de reescrita" not in captured["user_content"]

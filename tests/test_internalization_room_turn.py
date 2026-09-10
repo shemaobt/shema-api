@@ -426,7 +426,7 @@ async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_ag
     )
 
     first_call, second_call = agent.guide_inputs[0], agent.guide_inputs[1]
-    assert "Nota de reescrita" not in first_call
-    assert "Nota de reescrita" in second_call
+    assert "Rewrite note" not in first_call
+    assert "Rewrite note" in second_call
     assert "imported_knowledge" in second_call
     assert "Rute era moabita" in second_call

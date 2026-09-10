@@ -152,7 +152,7 @@ async def _draft(
         if ask_for_movements:
             user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
     if redraft_note:
-        user_content += f"\n\n## Nota de reescrita\n\n{redraft_note}\n"
+        user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
     draft: str = await shim.call_agent(
         system_prompt=guide_prompt,
         user_content=user_content,
