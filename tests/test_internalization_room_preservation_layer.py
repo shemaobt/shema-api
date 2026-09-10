@@ -14,10 +14,10 @@ the original code by the session being created normally.
 
 **`test_a_passage_that_carries_its_preservation_layer_still_opens`** is the counterweight,
 and is the more important of the two. A guard that overshoots takes the whole book down —
-six passages that are walkable today, and the room with them.
+seven passages that are walkable today, and the room with them.
 
-The canon is read here rather than named: a test that wrote "P07 to P14" would keep passing
-on the day the project writes those eight layers, which is exactly the day it must stop.
+The canon is read here rather than named: a test that wrote "P08 to P14" would keep passing
+on the day the project writes those seven layers, which is exactly the day it must stop.
 """
 
 from __future__ import annotations
@@ -155,7 +155,7 @@ async def test_a_passage_with_no_preservation_layer_does_not_open(
 async def test_a_passage_that_carries_its_preservation_layer_still_opens(
     db_session: AsyncSession,
 ) -> None:
-    """The counterweight: the six that are walkable today go on being walkable, spine intact."""
+    """The counterweight: the seven that are walkable today go on being walkable, spine intact."""
     preserved = [
         element.key for element in elements_for(WITH_LAYER) if element.kind is ElementKind.PRESERVED
     ]
