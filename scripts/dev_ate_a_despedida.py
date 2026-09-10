@@ -57,7 +57,7 @@ async def main() -> None:
 
         print(f"sessao {session.id}")
         print(f"pericope {session.pericope}")
-        print("proxima fala em lingua-ponte: a Sala faz a pergunta fixa de gravacao")
+        print("proxima fala em lingua-ponte: o Guia se despede e manda gravar o ensaio")
 
 
 asyncio.run(main())
