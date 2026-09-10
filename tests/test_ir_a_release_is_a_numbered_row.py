@@ -362,6 +362,59 @@ async def test_a_second_conversation_about_one_passage_shares_the_sequence(clien
     assert again.json()["release_id"] != first.json()["release_id"]
 
 
+async def test_a_packet_stops_naming_its_release_once_the_passage_moved_on(
+    client, db_session, room_app
+):
+    """The read and the approval answer one question, so they cannot answer it differently.
+
+    A second conversation about the same passage takes v2, and the first session's packet is
+    no longer the approved draft of that passage even though nothing in that session changed.
+    Naming its v1 anyway would point Marcia's comments at a draft the passage has left, and it
+    is the exact case where a session-scoped read and a project-scoped approval disagree.
+    """
+    project, credential = await a_claimed_device(db_session)
+    first_session = await _ready_session(db_session, project_id=project.id)
+    second_session = await _ready_session(db_session, project_id=project.id)
+    desk = await _facilitator(db_session, room_app, project)
+
+    await client.post(f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential))
+    named = await client.get(
+        f"{PREFIX}/facilitator/sessions/{first_session.id}/release", headers=desk
+    )
+    await client.post(f"{PREFIX}/sessions/{second_session.id}/release", headers=_team(credential))
+    moved_on = await client.get(
+        f"{PREFIX}/facilitator/sessions/{first_session.id}/release", headers=desk
+    )
+
+    assert named.json()["version"] == 1
+    assert moved_on.json()["release_id"] is None, (
+        "a v1 deixou de ser o rascunho aprovado da passagem quando a v2 pousou"
+    )
+    assert moved_on.json()["version"] is None
+    assert moved_on.json()["package_sha256"] == named.json()["package_sha256"]
+
+
+async def test_a_credentialed_tablet_is_refused_by_name_on_a_session_with_no_project(
+    client, db_session
+):
+    """Criterion 5 is about the session, not about who is holding the tablet.
+
+    A room opened on the shared key names no project, and a claimed tablet asking to approve
+    it has to be told why it cannot be numbered — 404 would say the conversation is not there,
+    which is the one thing that is not true.
+    """
+    _project, credential = await a_claimed_device(db_session)
+    session = await _ready_session(db_session)
+
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
+    )
+
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "RELEASE_WITHOUT_PROJECT"
+    assert await _releases_of(db_session, session.id) == []
+
+
 async def test_no_team_writes_a_release_on_another_teams_passage(client, db_session):
     """There is no team route that reads a release, so writing is the whole of the rule here."""
     project_a, credential_a = await a_claimed_device(db_session, email="a@example.com")

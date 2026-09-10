@@ -323,29 +323,34 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
-    approved = await _release_of(db, session.id, artifact["package_sha256"])
+    approved = await _release_of(db, session, artifact["package_sha256"])
     artifact["release_id"] = approved.id if approved else None
     artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     return artifact
 
 
-async def _release_of(db: AsyncSession, session_id: str, package_sha256: str) -> IRRelease | None:
-    """The newest release of this session that approved exactly this content, if any.
+async def _release_of(
+    db: AsyncSession, session: IRSession, package_sha256: str
+) -> IRRelease | None:
+    """The release this content *is*, if this content is the approved draft of the passage.
 
-    Read by hash rather than by "the last release of this session", so composing after a
-    re-record answers that nothing here was approved instead of naming a version whose
-    packet says something else. It is the same question the approval asks; asking it here
-    is what lets a packet name its own release without the composer deciding a passage is
-    done.
+    Literally the question the approval asks, over the same row: the last release of this
+    pericope and project, kept only when its hash is the fresh one. Scoping it to the session
+    instead would let the composer and the approval disagree — after another conversation
+    about the same passage approved a v2, a read of the first session would still name its
+    v1 while approving it would mint a v3, and the packet would name a draft that is no
+    longer the one the passage is on.
+
+    A session that names no project has no release to be: the number is per project, and a
+    room on the shared key names none.
     """
-    result = await db.execute(
-        select(IRRelease)
-        .where(IRRelease.session_id == session_id, IRRelease.package_sha256 == package_sha256)
-        .order_by(IRRelease.version.desc())
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
+    if session.project_id is None:
+        return None
+    latest = await _latest_release(db, session.project_id, session.pericope)
+    if latest is None or latest.package_sha256 != package_sha256:
+        return None
+    return latest
 
 
 async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
