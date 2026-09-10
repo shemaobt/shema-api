@@ -311,7 +311,8 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
             for question in questions
         ],
         "open_questions": len(open_points)
-        + sum(1 for question in questions if question.status.value != "resolved"),
+        + sum(1 for question in questions if question.status.value != "resolved")
+        + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
     return artifact

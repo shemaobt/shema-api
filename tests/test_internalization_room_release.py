@@ -599,3 +599,50 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     assert [f["kind"] for f in package["findings"]] == ["missing"]
     assert package["superseded_attempts"][0]["findings"] == []
     assert package["checked"] is False
+
+
+@pytest.mark.asyncio
+async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    await _reported_playback(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_telling_back_is_history_and_counts_nothing(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    state = await _checked_telling_back(db_session, session)
+    state.superseded = [
+        SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
+    ]
+    await _reported_playback(db_session, session, state)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 0
+    assert artifact["back_translation"]["superseded_attempts"][0]["findings"][0]["kind"] == (
+        "missing"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session, carry_one=True)
+    await _reported_playback(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 2
