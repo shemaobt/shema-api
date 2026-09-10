@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
-from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
@@ -22,7 +21,6 @@ from app.services.internalization_room.segments import (
     segment_for_session,
     slice_moved,
 )
-from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 
 router = APIRouter()
@@ -116,7 +114,10 @@ async def replace(
     The bytes are stored before anything is asked of them, as on the telling-back route: a
     transcriber that times out must not take the recording with it. And when nothing could be
     made out, **the stretch is not replaced at all** — swapping a good explanation for an empty
-    one over a transcriber hiccup would lose the team's work to somebody else's outage.
+    one over a transcriber hiccup would lose the team's work to somebody else's outage. It is
+    still one more telling of that frase, counted on the row that is standing, because there is
+    no new row to count on: an outage that came free would let a team correcting one stretch
+    tell it forever without the room ever offering them a person.
 
     What is *not* stored first is a request that cannot succeed. A different slice arriving with
     an explanation is refused by `capture_segment` either way, but only after the recording had
@@ -163,9 +164,6 @@ async def replace(
     if len(audio_bytes) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
 
-    state = room.back_translation_of(session)
-    told_again = state.retells + 1
-
     retro = await store_take(
         db,
         session_id=session.id,
@@ -182,21 +180,16 @@ async def replace(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
 
-    state.retells = told_again
-    await room.save_back_translation(db, session, state)
-    spent = told_again >= RETELLS_BEFORE_A_WARNING
-    if spent:
-        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
-
     if not text.strip():
+        await room.count_an_empty_telling(db, segment)
         return SegmentsResponse(
             session_id=session.id,
             segments=await _units(db, session.id),
             captured=False,
-            needs_person=spent,
+            needs_person=await room.note_a_hard_stretch(db, session, segment),
         )
 
-    await room.capture_segment(
+    told = await room.capture_segment(
         db,
         session,
         take_id=rehearsal.id,
@@ -208,5 +201,7 @@ async def replace(
         replaces=segment,
     )
     return SegmentsResponse(
-        session_id=session.id, segments=await _units(db, session.id), needs_person=spent
+        session_id=session.id,
+        segments=await _units(db, session.id),
+        needs_person=await room.note_a_hard_stretch(db, session, told),
     )

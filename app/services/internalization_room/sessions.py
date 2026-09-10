@@ -42,11 +42,11 @@ from app.services.project.facilitated_scope import confined_to, facilitated_proj
 from app.services.project.facilitates_project import facilitates_project
 
 PANORAMA_ALIAS = "OV"
-#: How many second tellings of a stretch before the room asks for a person to come and
-#: watch. A warning, not a cap: nothing is refused at or past this number, the next stretch
-#: is taken like any other, and the next turn that lands clears the mark. Measured in the
-#: field at six against three with the passage checked, and kept that way by decision of
-#: the product owner (ENG-706): a team that keeps missing gets company, not a closed door.
+#: How many tellings of one stretch make it a hard stretch. Three is ours — measured in the
+#: field at six against three with the passage checked — and the signal is Marcia's ruling of
+#: 08/09: "keep it, as you have it: a mark, never a wall". Nothing is refused at or past this
+#: number and the next stretch is taken like any other; what the crossing leaves behind is a
+#: row for the facilitator and for the consultant, cleared by nothing that follows.
 RETELLS_BEFORE_A_WARNING = 3
 
 #: Re-exported so the room's callers go on asking the session service what a panorama is.
@@ -539,10 +539,10 @@ async def begin_back_translation_again(
     counting — nothing takes their place, because the clip they explained was thrown away —
     and only what was never theirs is copied in here.
 
-    The retell count carries across. `BackTranslationState(scope=...)` takes every other
-    default, so it went back to zero — and re-recording is a room-key route the team drives
-    by voice. The count that decides when the room asks for a person was reset by tapping
-    "record again", which is exactly the tap a stuck team makes.
+    The count of tellings is not carried and does not need to be: it lives on the stretch, and
+    every stretch of the session stops counting here. What the team tells next is a new frase
+    on a new recording, counted from one — while the hard stretches already noted stay exactly
+    where they are, in a table this does not touch.
     """
     state = back_translation_of(session)
     told = await final_segments(db, session.id)
@@ -559,6 +559,6 @@ async def begin_back_translation_again(
     await save_back_translation(
         db,
         session,
-        BackTranslationState(scope=state.scope, retells=state.retells, superseded=superseded),
+        BackTranslationState(scope=state.scope, superseded=superseded),
     )
     return back_translation_of(session)

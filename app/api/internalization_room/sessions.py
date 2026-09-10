@@ -23,6 +23,7 @@ from app.models.internalization_room import (
     FacilitatorHaltedDeviceView,
     FacilitatorSessionsResponse,
     FacilitatorSessionView,
+    HardStretchView,
     NeedsPersonResponse,
     PersonArrivedResponse,
     SegmentView,
@@ -208,7 +209,6 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
             )
             for segment in await room.final_segments(db, session.id)
         ],
-        retells=state.retells,
         checked=state.checked,
         finding_segment_id=finding.segment_id if finding else None,
         finding_kind=finding.kind.value if finding else None,
@@ -323,6 +323,7 @@ async def facilitator_sessions(
     scope = await facilitated_project_ids(db, user)
     waiting = await room.sessions_waiting_on_a_person(db, user)
     named = await team_names(db, (s.project_id for s in waiting if s.project_id is not None))
+    marks = await room.hard_stretches_of(db, [session.id for session in waiting])
     return FacilitatorSessionsResponse(
         sessions=[
             FacilitatorSessionView(
@@ -344,6 +345,14 @@ async def facilitator_sessions(
                     if session.person_arrived_at is not None
                     else None
                 ),
+                hard_stretches=[
+                    HardStretchView(
+                        segment_id=mark.segment_id,
+                        tellings=mark.tellings,
+                        crossed_at=as_utc(mark.crossed_at).isoformat(),
+                    )
+                    for mark in marks.get(session.id, [])
+                ],
             )
             for session in waiting
             if (team := session.project_id) is not None

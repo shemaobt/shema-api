@@ -5,7 +5,6 @@ from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UnreadableReply, UpstreamServiceError, ValidationError
-from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
@@ -20,7 +19,6 @@ from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
-from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 from app.services.internalization_room.voice_handles import clip_url
 
@@ -54,11 +52,22 @@ async def add_chunk(
     moments the team re-records: a transcriber that times out raises past the store, and a
     chunk nobody could make out returns before it.
 
-    `retelling` says the team is telling one stretch back a second time after a finding.
-    That is the one cycle they can repeat at will, so it is counted here: at
-    `RETELLS_BEFORE_A_WARNING` the room asks for a person to come and watch. A warning,
-    not a cap — nothing is refused past it, and the chunk is kept either way. Their work
-    is never the thing thrown away.
+    `retelling` says the team is telling one stretch back a second time after a finding, and
+    the address they send is that stretch's own. So a retelling is a **new version of the
+    stretch it retells**, not a frase of its own at the next position: the row it replaces
+    stops counting and hands it the count of tellings that frase has had. At
+    `RETELLS_BEFORE_A_WARNING` the frase is a hard stretch and the room asks for a person to
+    come and watch, once. A warning, not a cap — nothing is refused past it, and the chunk is
+    kept either way. Their work is never the thing thrown away.
+
+    A retelling of a slice no stretch currently covers is a first telling: the untold stretch
+    the room leads the team to arrives with the flag on and nothing to replace.
+
+    **The attempt is counted, not the transcript.** A telling nobody could make out captures no
+    stretch, so it is counted on the row that is standing. Leaving it free meant that during a
+    transcriber outage — when every attempt comes back empty — the team could tell one frase
+    forever without ever reaching three, and the room's only route to a person was unreachable
+    exactly when the room was broken.
 
     That ask is a `WARNING` and not a hard stop (ENG-706): the room wants somebody to come and
     watch, and refuses nothing — the team may go on telling. Naming the kind is what lets the
@@ -79,7 +88,13 @@ async def add_chunk(
 
     state = room.back_translation_of(session)
     told = await room.final_segments(db, session.id)
-    told_again = state.retells + 1 if retelling else state.retells
+    retold = (
+        await room.current_stretch_at(
+            db, session.id, take_id=rehearsal.id, starts_ms=starts_ms, ends_ms=ends_ms
+        )
+        if retelling
+        else None
+    )
     pass_number = 2 if retelling else 1
 
     # The bytes are kept before anything is asked of them. Transcribing first put the one
@@ -103,15 +118,10 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
-        # The attempt is counted, not the transcript. Returning above this meant that
-        # during a transcriber outage — when every attempt comes back empty — the team
-        # could retell forever, `RETELLS_BEFORE_A_WARNING` was never reached, and the
-        # room's only route to a person was unreachable exactly when the room was broken.
-        state.retells = told_again
-        await room.save_back_translation(db, session, state)
-        warned = retelling and told_again >= RETELLS_BEFORE_A_WARNING
-        if warned:
-            await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
+        warned = False
+        if retold is not None:
+            await room.count_an_empty_telling(db, retold)
+            warned = await room.note_a_hard_stretch(db, session, retold)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(told),
@@ -119,7 +129,7 @@ async def add_chunk(
             pass_number=pass_number,
             needs_person=warned,
         )
-    await room.capture_segment(
+    captured = await room.capture_segment(
         db,
         session,
         take_id=rehearsal.id,
@@ -128,17 +138,15 @@ async def add_chunk(
         bridge_take_id=retro.id,
         transcript=text,
         pass_number=pass_number,
+        replaces=retold,
     )
     state.scope = state.scope or session.pericope
-    state.retells = told_again
     await room.save_back_translation(db, session, state)
 
-    warned = retelling and told_again >= RETELLS_BEFORE_A_WARNING
-    if warned:
-        await room.mark_needs_person(db, session, kind=HaltKind.WARNING)
+    warned = await room.note_a_hard_stretch(db, session, captured)
     return BackTranslationChunkResponse(
         session_id=session.id,
-        chunks=len(told) + 1,
+        chunks=len(told) if retold is not None else len(told) + 1,
         captured=True,
         pass_number=pass_number,
         needs_person=warned,
