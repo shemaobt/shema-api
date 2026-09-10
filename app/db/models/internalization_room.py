@@ -83,9 +83,6 @@ class IRSession(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
-    bridge_mode: Mapped[str] = mapped_column(
-        String(24), default="calibration_pending", server_default="calibration_pending"
-    )
     #: Which language the room speaks to this team, chosen by the tablet when the session
     #: opened and never afterwards. A per-request choice would let the room change language
     #: underneath a team because somebody changed a phone setting mid-passage, and half a

@@ -71,9 +71,7 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         staged = _Room(client=c, outcome=TurnOutcome(speech=OPENING, transcript=""))
 
         async def _comprehension_turn(*_: Any, **__: Any) -> ComprehensionTurn:
-            return ComprehensionTurn(
-                outcome=staged.outcome, bridge_mode="adaptive", state=ComprehensionState()
-            )
+            return ComprehensionTurn(outcome=staged.outcome, state=ComprehensionState())
 
         async def _heard(*_: Any, **__: Any) -> HeardSpeech:
             return staged.heard or HeardSpeech(text=staged.outcome.transcript)
@@ -101,9 +99,7 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture()
 async def passage(db_session: AsyncSession) -> str:
     """A passage session with nothing prepared, so every opening here is written on demand."""
-    session = await create_session(
-        db_session, pericope="P01", language="pt", bridge_mode="adaptive"
-    )
+    session = await create_session(db_session, pericope="P01", language="pt")
     return session.id
 
 
