@@ -58,6 +58,37 @@ MARCIAS_UNDER_REPORTING = (
 )
 #: The clean reply, as she wrote it. It is the shape the parser answers with no findings.
 A_CLEAN_REPLY = 'returns `{ "findings": [] }`'
+#: ENG-867, in our output block: *frase* is her word under *What to check* and `chunk` is ours
+#: in the JSON, and no sentence used to equate the two.
+CHUNK_IS_THE_FRASE = (
+    '`"chunk"` is the frase number: the frases are numbered from 1 in the order the team told '
+    'them, and `"chunk"` names one of those numbers.'
+)
+#: Also ENG-867. Her item 1 leaves `chunk` optional and says nothing of `where`; a missing that
+#: gives only one of the two keys lands one stretch early, or nowhere at all — and nowhere sends
+#: the team back to the Rehearsal to record more instead of to the stretch (ADR 0007).
+A_MISSING_CARRIES_BOTH = (
+    'A `missing` finding always carries both `"chunk"` and `"where"`, never one without the other.'
+)
+#: The third: her item 1 offers the frase *after which* the element would sit, and only this
+#: sentence turns that offer into the pair `_segment_pointed_at` reads.
+AFTER_A_FRASE = (
+    'When the missing element sits after a frase, say `"where": "after"` on that frase: after '
+    'frase 3 is `"chunk": 3, "where": "after"`.'
+)
+#: Hers, item 2, merged by ENG-851: a note as short as "as noras" obeys "quote it briefly"
+#: completely, and makes the Speaker's "isso a história não conta" a false sentence about
+#: daughters-in-law who are in the story. Cut to the fragment that carries the ruling: the
+#: wording around it is still being settled, and a guard that pins the settled part with it
+#: would go red for a rename that leaves the rule untouched.
+MARCIAS_RELATION_RULE = "the note quotes the WHOLE relation"
+#: The other ruling inside her item 2, merged with the relation rule and standing ahead of it
+#: in the file: the P02 case where "porque as noras pediram" additionally erases a
+#: `do_not_decide` rule of the compilation log.
+MARCIAS_DO_NOT_DECIDE = "(a do_not_decide item), say so in the note"
+#: Her item 3. A note about a filled silence names the silence, never the withheld content —
+#: naming it would hand the team the very claim the passage keeps.
+MARCIAS_MARKED_SILENCE = "your notes must never name the withheld content itself"
 
 
 def _settings() -> Settings:
@@ -1358,6 +1389,71 @@ def test_the_analyst_does_not_count_a_word_as_a_change() -> None:
     assert calibration, "a âncora de calibração não está no prompt do analista"
     assert any(word in calibration.group(0) for word in ("synonym", "paraphrase", "adjective")), (
         "a calibração não diz que sinônimo/paráfrase/adjetivo não conta"
+    )
+
+
+def _one_line(text: str) -> str:
+    """The text with its wrapping folded away, so a sentence is one sentence to search for.
+
+    Most of the sentences these tests look for are longer than the prompt's own wrapping, so
+    the line breaks fall inside them. Wrapping is not what the prompt says, and a test that
+    reproduced the breaks would go red the next time someone re-wraps a paragraph.
+    """
+    return re.sub(r"\s+", " ", text)
+
+
+def test_our_output_block_equates_chunk_with_the_frase_and_always_places_a_missing() -> None:
+    """ENG-867: her item 1 offers `chunk`, our output block asks for `where`, and between the
+    two a missing element used to arrive half-addressed.
+
+    Her *What to check* says *frase* and leaves `chunk` optional — "if it helps". Our JSON
+    says `chunk` and reads `where` relative to it, and `_segment_pointed_at` lands an absent
+    `where` on the named chunk itself: a missing placed by her sentence, with no `where`,
+    lands one stretch early, and a missing with no `chunk` at all resolves to no address,
+    which sends the team back to the Rehearsal to record more rather than to the stretch.
+    Neither is a parser defect — the `where` table is the product owner's — so the three
+    sentences belong in the block that asks for the pair, and they are asserted here inside
+    that block rather than anywhere in the file, because a rule for our JSON stated up among
+    her items would be an edit to her artifact.
+    """
+    block = re.search(r"## Your output\n.*?(?=\n## )", ANALYST, re.DOTALL)
+
+    assert block, "o bloco de saída não está no prompt do analista"
+    output = _one_line(block.group(0))
+    assert output.count(CHUNK_IS_THE_FRASE) == 1, "o bloco de saída não iguala chunk à frase"
+    assert output.count(A_MISSING_CARRIES_BOTH) == 1, (
+        "o bloco de saída não exige chunk e where juntos num achado missing"
+    )
+    assert output.count(AFTER_A_FRASE) == 1, (
+        "o bloco de saída não diz que depois da frase 3 é chunk 3 com where after"
+    )
+
+
+def test_marcias_items_keep_the_relation_rule_and_the_marked_silence() -> None:
+    """The three sentences of hers that ENG-867 edits around, guarded so they cannot be lost.
+
+    Nothing guarded them before: the prompt-text tests of ENG-851 cover the `where`
+    paragraph, the three kinds and her forbidden-findings line, and her items 1-4 came across
+    verbatim with no test of their own. The relation rule is the whole reason the Speaker's
+    "isso a história não conta" is ever true — a note naming only "as noras" asks a team to
+    take out daughters-in-law who belong — and it was her ruling that it be written rather
+    than hoped for. The marked-silence sentence is the one this ticket must not disturb: a
+    note about a filled silence names the silence, never the content the passage withholds.
+
+    Asserted inside *What to check* rather than anywhere in the prompt, because "kept" means
+    kept where she put it: a rule of hers restated down in our output block would satisfy a
+    search of the whole file while breaking the same boundary the test above defends.
+    """
+    section = re.search(r"## What to check\n.*?(?=\n## )", ANALYST, re.DOTALL)
+
+    assert section, "a seção What to check não está no prompt do analista"
+    hers = _one_line(section.group(0))
+    assert hers.count(MARCIAS_RELATION_RULE) == 1, (
+        "o item 2 perdeu a regra de citar a relação inteira"
+    )
+    assert hers.count(MARCIAS_DO_NOT_DECIDE) == 1, "o item 2 perdeu a colisão com do_not_decide"
+    assert hers.count(MARCIAS_MARKED_SILENCE) == 1, (
+        "o item 3 perdeu a proibição de nomear o conteúdo guardado"
     )
 
 
