@@ -21,9 +21,12 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import urllib.request
 from pathlib import Path
+
+SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 REPO = "MarciaSuzuki/tripod_compiler"
 BOOKS = ("Ruth",)
@@ -122,6 +125,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.pin and not args.sync:
         parser.error("--pin needs --sync")
+    if args.pin and not SHA_RE.fullmatch(args.pin):
+        parser.error("--pin needs a full 40-character sha, not a ref")
     return sync(pin=args.pin) if args.sync else check()
 
 
