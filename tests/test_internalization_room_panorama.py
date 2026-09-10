@@ -62,7 +62,11 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         )
         return entry, False
 
+    async def _no_prepared_opening(*_: Any, **__: Any) -> None:
+        return None
+
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api, "prepare_opening", _no_prepared_opening)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -278,3 +282,45 @@ async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
         body = turn.json()
         assert body["audio_url"].startswith(f"{PREFIX}/voice/")
         assert body["transcript"]
+
+
+async def test_the_third_turn_still_carries_the_sessions_first_exchange(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every call gets the whole conversation — no window drops the session's opening.
+
+    A six-turn window would still hold this session's first exchange by the third turn, so
+    it is asserted directly rather than merely counted: the opening's own line has to be the
+    oldest entry the third call sees, word for word.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    heard = ["pergunta dois", "pergunta três"]
+    seen_messages: list[list[dict[str, Any]]] = []
+
+    async def _panorama(
+        *, transcript: str, messages: list[dict[str, Any]], **_: Any
+    ) -> TurnOutcome:
+        seen_messages.append(messages)
+        return TurnOutcome(speech=f"resposta {len(seen_messages)}.", transcript=transcript)
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(text=heard.pop(0))
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+
+    session_id = await _open_panorama(client)
+    await _speak(client, session_id, "q2.m4a")
+    await _speak(client, session_id, "q3.m4a")
+
+    opening_exchange = {"role": "guide", "text": "resposta 1."}
+    assert seen_messages[0] == [], "a abertura não tem conversa nenhuma atrás dela"
+    assert opening_exchange in seen_messages[2], (
+        "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
+    )
+    assert seen_messages[2] == [
+        opening_exchange,
+        {"role": "team", "text": "pergunta dois"},
+        {"role": "guide", "text": "resposta 2."},
+    ]
