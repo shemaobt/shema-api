@@ -120,6 +120,34 @@ def _ensaio_take(
     return take
 
 
+def _retro_take(
+    session_id: str,
+    *,
+    scope: str = P,
+    pass_number: int | None = None,
+    ordinal: int | None = None,
+    sha256: str = "a" * 64,
+    created_at: datetime | None = None,
+) -> IRTake:
+    take = IRTake(
+        session_id=session_id,
+        device_id="tablet-1",
+        pericope=P,
+        kind=IRTakeKind.RETRO,
+        scope=scope,
+        pass_number=pass_number,
+        ordinal=ordinal,
+        storage_key=f"takes/{session_id}/retro/{sha256}",
+        size_bytes=2048,
+        sha256=sha256,
+        crc32c="AAAAAAA=",
+        content_type="audio/mp4",
+    )
+    if created_at is not None:
+        take.created_at = created_at
+    return take
+
+
 async def _reported_playback(
     db: AsyncSession,
     session: IRSession,
@@ -379,6 +407,42 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
         "sem a passada, quem abrisse a passagem no Refine ouvia o ensaio abandonado como "
         "o primeiro da equipe, e pela chegada a ordem sairia trocada"
     )
+
+
+@pytest.mark.asyncio
+async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    told_last = _retro_take(
+        session.id,
+        pass_number=2,
+        sha256="d" * 64,
+        created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
+    )
+    told_first = _retro_take(
+        session.id,
+        pass_number=1,
+        sha256="e" * 64,
+        created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
+    )
+    told_second = _retro_take(
+        session.id,
+        pass_number=1,
+        sha256="f" * 64,
+        created_at=datetime(2026, 8, 23, 11, 0, tzinfo=UTC),
+    )
+    db_session.add_all([told_last, told_first, told_second])
+    await db_session.commit()
+
+    artifact = await build_internalization_release(db_session, session)
+
+    retro_takes = artifact["back_translation"]["retro_takes"]
+    assert [take["take_id"] for take in retro_takes] == [
+        told_first.id,
+        told_second.id,
+        told_last.id,
+    ], "sem ordinal, o pacote lista pela passada e depois pela chegada"
 
 
 async def _told_back_with_an_open_finding(
