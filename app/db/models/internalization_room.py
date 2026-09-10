@@ -407,3 +407,46 @@ class IRSegment(Base):
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+
+
+class IRRelease(Base):
+    """One approval of a passage, numbered and carrying the packet it approved.
+
+    The packet is composed from the session's current rows, so nothing else could give
+    version 1 back once the team re-records: the whole of it is stored here, beside its hash,
+    and not the hash alone. The snapshot is the contract.
+
+    ``version`` is the number of this release within its pericope and project, from one and
+    never reused. The allocation reads one past the last, which is a race by itself — the one
+    ENG-639 already recorded against stretch positions — so the unique index below is what
+    makes two approvals taking one number impossible rather than unlikely.
+
+    The index carries no predicate, unlike the pair on ``ir_segments`` it is modelled on.
+    Those are partial because a superseded stretch must not collide with the row that
+    replaced it; a release is never superseded, so there is no row for a predicate to
+    exclude, and one that filtered on nothing would only teach the next reader that
+    releases can be retired.
+
+    ``project_id`` is not null: a release is named by project, pericope and version, and a
+    session opened on the shared room key names no project — which is why approving one is
+    refused rather than numbered in a group belonging to nobody.
+
+    No foreign keys, matching every other table of the room: the ids come across an app
+    boundary and have never been constrained.
+    """
+
+    __tablename__ = "ir_releases"
+    __table_args__ = (
+        Index("uq_ir_releases_version", "project_id", "pericope", "version", unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[str] = mapped_column(String(36))
+    pericope: Mapped[str] = mapped_column(String(120))
+    version: Mapped[int] = mapped_column(Integer)
+    package_sha256: Mapped[str] = mapped_column(String(64))
+    packet: Mapped[dict[str, Any]] = mapped_column(JSON)
+    finalized_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )

@@ -4,9 +4,15 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
+from app.api.internalization_room._deps import device_project_dep, room_caller_dep
 from app.core.database import get_db
+from app.models.internalization_room import ReleaseResponse
 from app.services import internalization_room as room
-from app.services.internalization_room.release import build_internalization_release
+from app.services.internalization_room.release import (
+    approve_release,
+    build_internalization_release,
+)
+from app.utils.stored_time import as_utc
 
 router = APIRouter()
 
@@ -38,3 +44,35 @@ async def internalization_release(
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
     return await build_internalization_release(db, session)
+
+
+@router.post(
+    "/sessions/{session_id}/release",
+    response_model=ReleaseResponse,
+    dependencies=[room_caller_dep],
+)
+async def approve_internalization_release(
+    session_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> ReleaseResponse:
+    """The team says this passage is its final draft, and the draft gets a number.
+
+    A team route because the team is who approves; the facilitator route beside it stays a
+    read. It carries no body: the version is the room's to allocate and never the caller's
+    to send, and a number arriving from a tablet that has been offline for a day is a
+    collision waiting for the index to catch it.
+
+    Scoped with `get_session_for_room_caller`, which the other team routes do not use: what
+    this one writes is named by the team, and resolving the session by id alone would let
+    one tablet mint a release on another team's passage.
+    """
+    session = await room.get_session_for_room_caller(db, session_id, project_id)
+    release = await approve_release(db, session)
+    return ReleaseResponse(
+        release_id=release.id,
+        session_id=release.session_id,
+        version=release.version,
+        package_sha256=release.package_sha256,
+        finalized_at=as_utc(release.finalized_at).isoformat(),
+    )

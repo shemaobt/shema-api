@@ -742,6 +742,21 @@ class TakeResponse(BaseModel):
     recorded_at: str = ""
 
 
+class ReleaseResponse(BaseModel):
+    """What the tablet is told when the team's approval landed.
+
+    The packet itself is not here: it is the file Refine reads, and the room has no use for
+    it on the way back. What the tablet shows is the number the passage now carries and the
+    fingerprint of what was approved under it.
+    """
+
+    release_id: str
+    session_id: str
+    version: int
+    package_sha256: str
+    finalized_at: str
+
+
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]

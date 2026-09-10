@@ -16,15 +16,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError
+from app.core.exceptions import ConflictError, ReleaseWithoutProject
 from app.db.models.internalization_room import (
     IRQuestion,
+    IRRelease,
     IRSegment,
     IRSession,
     IRTake,
@@ -317,5 +320,91 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
+    approved = await _release_of(db, session.id, artifact["package_sha256"])
+    artifact["release_id"] = approved.id if approved else None
+    artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     return artifact
+
+
+async def _release_of(db: AsyncSession, session_id: str, package_sha256: str) -> IRRelease | None:
+    """The newest release of this session that approved exactly this content, if any.
+
+    Read by hash rather than by "the last release of this session", so composing after a
+    re-record answers that nothing here was approved instead of naming a version whose
+    packet says something else. It is the same question the approval asks; asking it here
+    is what lets a packet name its own release without the composer deciding a passage is
+    done.
+    """
+    result = await db.execute(
+        select(IRRelease)
+        .where(IRRelease.session_id == session_id, IRRelease.package_sha256 == package_sha256)
+        .order_by(IRRelease.version.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
+    result = await db.execute(
+        select(IRRelease)
+        .where(IRRelease.project_id == project_id, IRRelease.pericope == pericope)
+        .order_by(IRRelease.version.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def approve_release(db: AsyncSession, session: IRSession) -> IRRelease:
+    """The team approves this passage: one numbered row, or the one that already says it.
+
+    Refused before anything is composed when the session names no project, because the
+    number is per project and per pericope and there is nothing to number it under. The
+    blockers the packet already raises are the gate this has: whether a passage *may* be
+    approved is ENG-882, and this only records that it was.
+
+    Unchanged content returns the release that already exists rather than minting a version
+    beside it: a new **Version** starts with zero listeners on Marcia's external check, so
+    one that means nothing changed is worse than none. "Unchanged" is measured against the
+    last release of this pericope and project — a packet that comes back to an earlier
+    version's content is a later draft, not that version again, and giving its number back
+    would put comments on a draft nobody is looking at.
+
+    The number is one past the last, which two approvals arriving together can both read.
+    The unique index is what refuses the second, and the refusal is answered rather than
+    retried: the tablet asks again and the second ask returns the release the first one
+    wrote.
+    """
+    if session.project_id is None:
+        raise ReleaseWithoutProject(
+            "this session names no project, so a release for it cannot be numbered"
+        )
+
+    packet = await build_internalization_release(db, session)
+    latest = await _latest_release(db, session.project_id, session.pericope)
+    if latest is not None and latest.package_sha256 == packet["package_sha256"]:
+        return latest
+
+    release_id = str(uuid.uuid4())
+    version = latest.version + 1 if latest is not None else 1
+    packet["release_id"] = release_id
+    packet["version"] = version
+    release = IRRelease(
+        id=release_id,
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        version=version,
+        package_sha256=packet["package_sha256"],
+        packet=packet,
+    )
+    db.add(release)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ConflictError(
+            "another approval took this version while this one was being written"
+        ) from exc
+    await db.refresh(release)
+    return release

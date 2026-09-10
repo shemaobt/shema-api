@@ -229,6 +229,8 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
     sealed.pop("created_at")
+    sealed.pop("release_id")
+    sealed.pop("version")
     assert len(stamp) == 64
     from app.services.internalization_room.release import _package_sha256
 
