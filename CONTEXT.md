@@ -80,8 +80,8 @@ How many times a stretch has been told: one on the first telling, two when told 
 _Avoid_: attempt, version, Passe
 
 **Telling back**:
-The act of saying, in the bridge language, what a stretch of the mother tongue holds.
-_Avoid_: translating, transcribing, Contar de volta
+The act of saying, in the bridge language, what a stretch of the mother tongue holds. The Portuguese the room writes and speaks for it is *traduzir / tradução*; *contar* belongs to the Conversation with the Guide alone, and *recontar* to the External Check.
+_Avoid_: translating (in English prose), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
 
 **Untold**:
 A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called.
@@ -150,8 +150,8 @@ The retaking of exactly one stretch, at the place the current finding points to,
 _Avoid_: mend (the app's word for the same gesture), fix, retell (the count of tellings, not this gesture), Correção
 
 **Retell**:
-Each new telling of the same stretch after a finding. On the third retell the room asks for a person: a warning, never a cap.
-_Avoid_: attempt, retry, Reconto
+Each new telling of the same stretch after a finding; in the room's Portuguese, *traduzir de novo*. On the third retell the room asks for a person: a warning, never a cap.
+_Avoid_: attempt, retry, Reconto, Recontar
 
 **Superseded**:
 An attempt at telling back that was replaced by a new recording. Its findings become marked history; they never vanish.
