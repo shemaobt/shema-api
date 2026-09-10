@@ -267,7 +267,7 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=NOT_THIS_TURN,
-                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
+                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
                 FINDING=finding or NOT_THIS_TURN,

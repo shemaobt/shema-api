@@ -10,40 +10,24 @@ from app.services.internalization_room.languages import FLOOR
 #: apply. The prompt says so in words; this is the same sentence in the slot itself.
 NOT_THIS_TURN = "(not applicable to this turn)"
 
-#: What the Validator is told when nobody spoke this turn, in the session's own language.
-#: Keyed by language code, in the shape the other per-language tables use — an unclaimed
-#: language falls back to the authored English line. Two cases per language: the opening
-#: turn, where nobody has spoken yet, and the verdict path, where the team has spoken —
-#: outside the conversation, into the telling-back — and the opening line would say the
-#: opposite, which is the sentence the Validator quoted back when it refused the verdict.
-_NO_TEAM_UTTERANCE: dict[str, dict[str, str]] = {
-    "pt": {
-        "opening": "(a equipe ainda não falou — abertura da sessão)",
-        "told_back": (
-            "(a equipe não falou nesta conversa; o que ela traduziu está no bloco abaixo)"
-        ),
-    },
-    "en": {
-        "opening": "(the team has not spoken yet — session opening)",
-        "told_back": (
-            "(the team has not spoken in this conversation; what they translated is in the "
-            "block below)"
-        ),
-    },
-    "es": {
-        "opening": "(el equipo aún no ha hablado — apertura de la sesión)",
-        "told_back": (
-            "(el equipo no ha hablado en esta conversación; lo que tradujeron está "
-            "en el bloque de abajo)"
-        ),
-    },
+#: What the Validator is told when nobody spoke this turn. Composed in English like every
+#: other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language the
+#: team speaks. Two cases: the opening turn, where nobody has spoken yet, and the verdict
+#: path, where the team has spoken — outside the conversation, into the telling-back — and
+#: the opening line would say the opposite, which is the sentence the Validator quoted back
+#: when it refused the verdict.
+_NO_TEAM_UTTERANCE: dict[str, str] = {
+    "opening": "(the team has not spoken yet — session opening)",
+    "told_back": (
+        "(the team has not spoken in this conversation; what they translated is in the "
+        "block below)"
+    ),
 }
 
 
-def _nobody_spoke_this_turn(telling_back: str, language_code: str) -> str:
+def _nobody_spoke_this_turn(telling_back: str) -> str:
     """What stands where the team's utterance would, on a turn that had none."""
-    messages = _NO_TEAM_UTTERANCE.get(language_code, _NO_TEAM_UTTERANCE[FLOOR])
-    return messages["told_back"] if telling_back else messages["opening"]
+    return _NO_TEAM_UTTERANCE["told_back"] if telling_back else _NO_TEAM_UTTERANCE["opening"]
 
 
 #: What is asked of the Speaker on a turn with no team utterance and nothing to open — the
