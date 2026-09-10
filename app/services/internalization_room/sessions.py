@@ -366,8 +366,8 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
 
     ``kind`` is required and has no default, because the two are different walks for whoever
     reads the queue and a default would quietly make one of them the other. The three writers
-    each know their own: the tablet's route and the hard stop cannot go on, and the retell
-    budget refuses nothing.
+    each know their own: the tablet's route and the hard stop cannot go on, and a stretch
+    crossing into a hard stretch refuses nothing.
 
     The kind is written on every halt and cleared by none — see ``halt.last``.
 
@@ -540,7 +540,7 @@ async def begin_back_translation_again(
     and only what was never theirs is copied in here.
 
     The count of tellings is not carried and does not need to be: it lives on the stretch, and
-    every stretch of the session stops counting here. What the team tells next is a new frase
+    every stretch of the session stops counting here. What the team tells next is a new stretch
     on a new recording, counted from one — while the hard stretches already noted stay exactly
     where they are, in a table this does not touch.
     """

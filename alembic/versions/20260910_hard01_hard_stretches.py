@@ -36,7 +36,12 @@ def upgrade() -> None:
         sa.Column("session_id", sa.String(length=36), nullable=False),
         sa.Column("segment_id", sa.String(length=36), nullable=False),
         sa.Column("tellings", sa.Integer(), nullable=False),
-        sa.Column("crossed_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column(
+            "crossed_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
     )
     op.create_index("ix_ir_hard_stretches_session_id", "ir_hard_stretches", ["session_id"])
     op.create_index("ix_ir_hard_stretches_segment_id", "ir_hard_stretches", ["segment_id"])

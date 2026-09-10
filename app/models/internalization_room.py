@@ -618,9 +618,9 @@ class QuestionInboxResponse(BaseModel):
 
 
 class HardStretchView(BaseModel):
-    """One frase this team told three times, as the facilitator's queue carries it.
+    """One stretch this team told three times, as the facilitator's queue carries it.
 
-    `segment_id` names the first row of the stretch's chain of replacements, so a frase told
+    `segment_id` names the first row of the stretch's chain of replacements, so a stretch told
     five times is still one name. `tellings` is the count at the moment it crossed, not the
     count now: what the reader is being told is that it happened, and when.
     """
@@ -664,7 +664,7 @@ class FacilitatorSessionView(BaseModel):
     #: (ENG-792) — a different fact from `attended_at`, which is a facilitator saying it from
     #: the Desk afterwards. Null until the first press, and null again on the next halt.
     person_arrived_at: str | None = None
-    #: The frases this team told three times, oldest crossing first. Unlike the halt and the
+    #: The stretches this team told three times, oldest crossing first. Unlike the halt and the
     #: stamps beside it, these are cleared by nothing: the halt is the room asking now, and
     #: this is the record that it happened at all. The tablet's own read carries none of it —
     #: the team never hears that the room counted (ENG-869).

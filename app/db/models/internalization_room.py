@@ -424,8 +424,8 @@ class IRHardStretch(Base):
 
     No foreign keys, matching the four sibling tables of the room (ADR 0006). ``segment_id``
     names the first row of the stretch's chain of replacements: a correction is a new row, so
-    the current row's id would name the version rather than the frase, and every crossing of
-    one frase has to answer with the same name.
+    the current row's id would name the version rather than the stretch, and every crossing of
+    one stretch has to answer with the same name.
     """
 
     __tablename__ = "ir_hard_stretches"

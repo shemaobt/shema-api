@@ -54,9 +54,9 @@ async def add_chunk(
 
     `retelling` says the team is telling one stretch back a second time after a finding, and
     the address they send is that stretch's own. So a retelling is a **new version of the
-    stretch it retells**, not a frase of its own at the next position: the row it replaces
-    stops counting and hands it the count of tellings that frase has had. At
-    `RETELLS_BEFORE_A_WARNING` the frase is a hard stretch and the room asks for a person to
+    stretch it retells**, not a stretch of its own at the next position: the row it replaces
+    stops counting and hands it the count of tellings that stretch has had. At
+    `RETELLS_BEFORE_A_WARNING` the stretch is a hard stretch and the room asks for a person to
     come and watch, once. A warning, not a cap — nothing is refused past it, and the chunk is
     kept either way. Their work is never the thing thrown away.
 
@@ -65,7 +65,7 @@ async def add_chunk(
 
     **The attempt is counted, not the transcript.** A telling nobody could make out captures no
     stretch, so it is counted on the row that is standing. Leaving it free meant that during a
-    transcriber outage — when every attempt comes back empty — the team could tell one frase
+    transcriber outage — when every attempt comes back empty — the team could tell one stretch
     forever without ever reaching three, and the room's only route to a person was unreachable
     exactly when the room was broken.
 

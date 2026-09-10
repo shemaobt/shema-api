@@ -29,13 +29,13 @@ or the table.
 
 Two alternatives were rejected. The first was the unchained pass-2 row the chunks route wrote
 before this: a retelling appeared beside the stretch it answered, at the next position, so the
-frase the team had just told again was still listed as waiting and there was no chain for a
+stretch the team had just told again was still listed as waiting and there was no chain for a
 count to live on. The second was a list inside the telling-back state, which was rejected
 because starting the telling-back over rewrites that state — and surviving exactly that is what
 the record is for.
 
 The count it replaces was one integer per session. Three tellings spread over three different
-frases raised the same warning as three tellings of one, and every telling from the third
+stretches raised the same warning as three tellings of one, and every telling from the third
 onward raised it again; `mark_needs_person` clears the visit stamps on each call, so each
 repeat deleted the record of the facilitator who had already come. Decided with Henok on
 2026-09-10.

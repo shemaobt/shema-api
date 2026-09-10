@@ -476,8 +476,8 @@ async def take_turn(
 
     A turn can also end in the hard stop — the assessor failed three times running and the
     room said so out loud — and that halt is `BLOCKING`: the room is telling the team it
-    cannot go on, which is a different walk for the facilitator than the retell budget's
-    request for a witness.
+    cannot go on, which is a different walk for the facilitator than a hard stretch's request
+    for a witness.
     """
     session = await room.get_session(db, session_id)
 

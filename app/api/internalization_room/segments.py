@@ -115,7 +115,7 @@ async def replace(
     transcriber that times out must not take the recording with it. And when nothing could be
     made out, **the stretch is not replaced at all** — swapping a good explanation for an empty
     one over a transcriber hiccup would lose the team's work to somebody else's outage. It is
-    still one more telling of that frase, counted on the row that is standing, because there is
+    still one more telling of that stretch, counted on the row that is standing, because there is
     no new row to count on: an outage that came free would let a team correcting one stretch
     tell it forever without the room ever offering them a person.
 
@@ -182,11 +182,12 @@ async def replace(
 
     if not text.strip():
         await room.count_an_empty_telling(db, segment)
+        crossed = await room.note_a_hard_stretch(db, session, segment)
         return SegmentsResponse(
             session_id=session.id,
             segments=await _units(db, session.id),
             captured=False,
-            needs_person=await room.note_a_hard_stretch(db, session, segment),
+            needs_person=crossed,
         )
 
     told = await room.capture_segment(
@@ -200,8 +201,9 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
+    crossed = await room.note_a_hard_stretch(db, session, told)
     return SegmentsResponse(
         session_id=session.id,
         segments=await _units(db, session.id),
-        needs_person=await room.note_a_hard_stretch(db, session, told),
+        needs_person=crossed,
     )

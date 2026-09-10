@@ -73,12 +73,12 @@ async def capture_segment(
     counting and names this one as what took its place, and stays exactly where it is.
 
     **The count of tellings follows the chain, and only a telling adds to it.** A version that
-    arrives with a telling-back is one more telling of that frase; one that arrives without —
+    arrives with a telling-back is one more telling of that stretch; one that arrives without —
     the mother tongue re-recorded, which is answered by telling it again in a second call —
     carries the count across untouched, because nobody told anything into it. Counting the
     supersession instead of the telling would reach three on the team's second telling and ask
     for a person a whole telling early. The pieces of a division keep the count for the reason
-    they keep the pass: born on the default, a frase already told twice would hand the team a
+    they keep the pass: born on the default, a stretch already told twice would hand the team a
     fresh count on each piece.
 
     **A version whose mother-tongue slice moved may not carry a telling-back with it.** The
@@ -422,8 +422,8 @@ async def first_telling_of(db: AsyncSession, segment: IRSegment) -> IRSegment:
     """Walk back up the chain of replacements to the row the team told first.
 
     The chain the rows carry runs forward — a retired row names what took its place — so the
-    walk is a query per hop. Chains are the number of times one frase was told, which is small
-    by the nature of the thing: a frase told enough times to make this walk long is the frase
+    walk is a query per hop. Chains are the number of times one stretch was told, which is small
+    by the nature of the thing: a stretch told enough times to make this walk long is the stretch
     this whole count exists to notice.
     """
     first = segment
@@ -445,11 +445,11 @@ async def current_stretch_at(
 ) -> IRSegment | None:
     """The stretch that counts at exactly this slice, or nothing when none does.
 
-    How the telling-back route knows a chunk is one more telling of a frase already told
-    rather than a frase nobody has told yet: the tablet sends the stretch's own address back.
+    How the telling-back route knows a chunk is one more telling of a stretch already told
+    rather than a stretch nobody has told yet: the tablet sends the stretch's own address back.
 
     Read off the leaves, which is what the room reads. A stretch that was divided is no longer
-    a unit — its audio belongs to its pieces — so a chunk over its old slice is a frase of its
+    a unit — its audio belongs to its pieces — so a chunk over its old slice is a stretch of its
     own, and replacing it is refused anyway.
     """
     return next(
@@ -467,7 +467,7 @@ async def count_an_empty_telling(db: AsyncSession, segment: IRSegment) -> IRSegm
 
     Nothing is captured, so there is no new row to carry the count onto. Not counting it is
     what made the room unreachable exactly when it was broken: during a transcriber outage
-    every attempt comes back empty, and the team could tell one frase forever without the room
+    every attempt comes back empty, and the team could tell one stretch forever without the room
     ever offering them a person.
     """
     segment.tellings += 1

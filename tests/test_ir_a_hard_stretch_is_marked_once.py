@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
     IRHardStretch,
+    IRPromptKey,
     IRSegment,
     IRSession,
     IRSessionStatus,
@@ -556,6 +557,83 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
     assert verdicts[0] == verdicts[1], "a contagem chegou ao Falante"
     assert plain["fixed_line"] == marked["fixed_line"]
     assert plain["checked"] == marked["checked"]
+
+
+async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The acceptance criterion, at the only place it can be settled: what reaches the model.
+
+    The twin above holds the room's own seams still and compares what the route hands them.
+    This one goes a layer down and compares the bytes: the analyst and the correction check
+    both call `call_agent` from the telling-back service, so one recorder catches the two
+    prompts the criterion names beside the Speaker's.
+
+    Told twice against the same two rows, once with the count at one and once at the number
+    that makes a hard stretch. Nothing about the crossing may reach either prompt.
+    """
+    from app.services.internalization_room import back_translation as service
+    from app.services.internalization_room.back_translation import Finding, FindingKind
+    from app.services.internalization_room.prompts import get_prompt_text
+    from app.services.internalization_room.segments import capture_segment
+
+    said: list[tuple[str, str]] = []
+
+    async def _recorder(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        said.append((system_prompt, user_content))
+        return '{"evidence_sufficient": true, "findings": []}'
+
+    monkeypatch.setattr(service, "call_agent", _recorder)
+
+    session = await room.create_session(db_session, pericope=P)
+    earlier = await capture_segment(
+        db_session,
+        session,
+        take_id="ensaio-1",
+        starts_ms=0,
+        ends_ms=9000,
+        bridge_take_id="retro-1",
+        transcript="Noemi voltou para Belém",
+    )
+    corrected = await capture_segment(
+        db_session,
+        session,
+        take_id="ensaio-1",
+        starts_ms=9000,
+        ends_ms=18000,
+        bridge_take_id="retro-2",
+        transcript="e Rute foi com ela",
+    )
+    finding = Finding(kind=FindingKind.MISSING, note="a colheita da cevada", segment_id=earlier.id)
+
+    async def _both_prompts() -> list[tuple[str, str]]:
+        said.clear()
+        await service.analyse_telling_back(
+            segments=[earlier, corrected],
+            scope=P,
+            pericope_num=P,
+            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+        )
+        await service.verify_correction(
+            finding=finding,
+            earlier=earlier,
+            corrected=corrected,
+            scope=P,
+            pericope_num=P,
+            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
+        )
+        return list(said)
+
+    plain = await _both_prompts()
+    assert len(plain) == 2, "o analista e a verificação da correção, um prompt cada"
+
+    earlier.tellings = RETELLS_BEFORE_A_WARNING
+    corrected.tellings = RETELLS_BEFORE_A_WARNING
+    await db_session.commit()
+
+    assert await _both_prompts() == plain, (
+        "a contagem chegou ao modelo: nada sobre um trecho difícil pode mudar o que ele lê"
+    )
 
 
 # ---------------------------------------------------------------------------

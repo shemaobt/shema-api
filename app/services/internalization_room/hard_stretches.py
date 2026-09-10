@@ -34,7 +34,11 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
     already walked over. The stretch crosses once because the count only ever grows by one.
 
     The row names the first telling of the chain rather than the version standing now, so the
-    consultant reads one name per frase however many times it was replaced.
+    consultant reads one name per stretch however many times it was replaced.
+
+    The row and the halt are written in one transaction — `mark_needs_person` is what commits —
+    because they are one fact. Committed apart, a failure between them leaves a stretch marked
+    hard in a room that never asked for anybody.
     """
     if stretch.tellings != RETELLS_BEFORE_A_WARNING:
         return False
@@ -48,7 +52,6 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
             tellings=stretch.tellings,
         )
     )
-    await db.commit()
     await mark_needs_person(db, session, kind=HaltKind.WARNING)
     return True
 
