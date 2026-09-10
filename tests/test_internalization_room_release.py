@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.services.internalization_room import release as release_module
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -200,10 +201,57 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     assert artifact["back_translation"]["played_ranges"] == [[0, 61000]]
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
+    sealed.pop("created_at")
     assert len(stamp) == 64
     from app.services.internalization_room.release import _package_sha256
 
     assert stamp == _package_sha256(sealed)
+
+
+class _FixedClock:
+    """A stand-in for the module's ``datetime``, answering ``now`` from a fixed queue."""
+
+    def __init__(self, instants: list[datetime]) -> None:
+        self._instants = list(instants)
+
+    def now(self, tz=None):
+        return self._instants.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await _ready_session(db_session)
+    first_instant = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    second_instant = datetime(2026, 9, 10, 9, 0, tzinfo=UTC)
+    monkeypatch.setattr(release_module, "datetime", _FixedClock([first_instant, second_instant]))
+
+    first = await build_internalization_release(db_session, session)
+    second = await build_internalization_release(db_session, session)
+
+    assert first["created_at"] == first_instant.isoformat()
+    assert second["created_at"] == second_instant.isoformat()
+    assert first["package_sha256"] == second["package_sha256"], (
+        "duas leituras da mesma sessão não mudaram nada além do relógio de exportação"
+    )
+
+
+@pytest.mark.asyncio
+async def test_one_more_stretch_told_changes_the_packet_hash(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await _ready_session(db_session)
+    frozen = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
+    monkeypatch.setattr(release_module, "datetime", _FixedClock([frozen, frozen]))
+
+    before = await build_internalization_release(db_session, session)
+    await _one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    after = await build_internalization_release(db_session, session)
+
+    assert before["package_sha256"] != after["package_sha256"], (
+        "o mesmo relógio nas duas leituras não pode esconder que o conteúdo mudou"
+    )
 
 
 @pytest.mark.asyncio

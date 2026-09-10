@@ -269,7 +269,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "handoff_type": "internalization_release",
         "purpose": "first_team_rehearsal",
         "readiness": "ready_for_refine",
-        "created_at": datetime.now(UTC).isoformat(),
         "session_id": session.id,
         "pericope": session.pericope,
         "book": load_map(session.pericope).book,
@@ -315,4 +314,5 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
+    artifact["created_at"] = datetime.now(UTC).isoformat()
     return artifact
