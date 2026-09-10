@@ -125,7 +125,7 @@ def _coverage_view(session: IRSession) -> CoverageView:
     )
 
 
-def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening: bool) -> bool:
+def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
     """Whether the turn carries anything the coverage classifier should be reading.
 
     A fail-safe says the Guide could not phrase a reply, which is no evidence that the team
@@ -136,15 +136,15 @@ def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech, *, opening:
     for the session's language back. Neither is an answer the room engaged with, and coverage
     only moves forward and feeds the Guide's next prompt, so neither bead comes back down.
 
-    The opening is the one turn with beads to name and no utterance behind it, and it earns
-    that exception by being an opening the Guide actually wrote. It reaches `surfaced`, which
-    stays below `floor_met`, so settling it neither closes a passage nor stands in for the
-    team retelling it — while a fail-safe opening is the same contentless fixed line as any
-    other, the one `prepare_opening` throws away rather than keep.
+    The opening used to earn an exception here by being an opening the Guide actually wrote,
+    reaching `surfaced` on beads the team had not spoken a word toward. Coverage is
+    `engaged`-only on the team's screen: a sentence the room wrote for itself, however many
+    map elements it names, is not evidence of anything the team heard, so no turn with an
+    empty transcript is worth settling any more, opening or not.
     """
     if outcome.transcript.strip():
         return speech_heard.reliable_bridge_speech
-    return opening and not outcome.used_fail_safe
+    return False
 
 
 def _settle_later(
@@ -154,12 +154,14 @@ def _settle_later(
     team_utterance: str,
     guide_response: str,
 ) -> None:
-    """Hand the exchange to the off-path classifier, from whichever exit voiced it.
+    """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
-    A turn leaves this router by two doors — the opening the panorama wrote ahead, and the
-    line the room writes on demand — and only the second one ever asked. A prepared opening
-    names around ten map elements (ENG-684), so a team whose opening had been pre-warmed lost
-    all of them before saying a word, and nothing said so.
+    Two doors used to reach here — the opening the panorama wrote ahead, and the line the
+    room writes on demand — and `3cfd823` made both call unconditionally (ENG-684) so a
+    pre-warmed opening's roughly ten map elements would not go unclassified. Coverage is
+    `engaged`-only on the team's screen now: a line the room wrote for itself is not
+    evidence of anything the team heard, whichever door it left by, so the prepared door no
+    longer calls here at all, and this is reached only from the door `_worth_settling` guards.
 
     A panorama is still handed nothing: it has no coverage spine to settle against.
     """
@@ -501,7 +503,6 @@ async def take_turn(
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
         session = await room.append_exchange(db, session, team_utterance="", guide_response=speech)
-        _settle_later(background, session, team_utterance="", guide_response=speech)
         return TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
@@ -573,7 +574,7 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
-    if _worth_settling(outcome, speech_heard, opening=opening):
+    if _worth_settling(outcome, speech_heard):
         _settle_later(
             background,
             session,
