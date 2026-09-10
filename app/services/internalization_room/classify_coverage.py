@@ -180,6 +180,7 @@ async def classify_coverage(
 
     try:
         raw = await call_agent(
+            role="classifier",
             system_prompt=system,
             user_content="Classifique esta troca.",
             ladder=classifier_ladder(cfg),

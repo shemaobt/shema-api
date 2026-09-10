@@ -543,6 +543,7 @@ async def analyse_telling_back(
     )
     try:
         raw = await call_agent(
+            role="analyst",
             system_prompt=system,
             user_content="Compare a tradução com o mapa.",
             ladder=analysis_ladder(cfg),
@@ -866,6 +867,7 @@ async def verify_correction(
     )
     try:
         raw = await call_agent(
+            role="correction check",
             system_prompt=system,
             user_content="Verifique a correção contra o achado.",
             ladder=analysis_ladder(cfg),

@@ -10,6 +10,7 @@ from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.sessions import apply_coverage, get_session
+from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)
 
@@ -22,21 +23,28 @@ async def settle_coverage(
     Deliberately off the voice path: the team hears the Guide first and the beads settle
     during their reflection pause. Opens its own database session because the request
     that scheduled this has already been answered and closed.
+
+    It opens its own usage ledger for the same reason. This runs inside the request's own
+    context, so the answered turn's ledger is still in scope and a call made under it would
+    be written into a total already logged. Its own book also puts the classifier's money
+    where it belongs — on the session, which is what pays for it — without adding a turn the
+    team did not take.
     """
     try:
-        async with AsyncSessionLocal() as db:
-            session = await get_session(db, session_id)
-            classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
-            updated = await classify_coverage(
-                coverage_state=session.coverage_state or {},
-                team_utterance=team_utterance,
-                guide_response=guide_response,
-                classifier_prompt=classifier_prompt,
-                pericope_num=pericope_num,
-                session_language=LANGUAGE_NAMES[session.language],
-                language_code=session.language,
-            )
-            await apply_coverage(db, session_id, updated)
+        with counted_for(session_id):
+            async with AsyncSessionLocal() as db:
+                session = await get_session(db, session_id)
+                classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
+                updated = await classify_coverage(
+                    coverage_state=session.coverage_state or {},
+                    team_utterance=team_utterance,
+                    guide_response=guide_response,
+                    classifier_prompt=classifier_prompt,
+                    pericope_num=pericope_num,
+                    session_language=LANGUAGE_NAMES[session.language],
+                    language_code=session.language,
+                )
+                await apply_coverage(db, session_id, updated)
     except Exception:
         logger.exception("Coverage settle failed for session %s", session_id)
 
