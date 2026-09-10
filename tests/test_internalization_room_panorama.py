@@ -415,3 +415,41 @@ async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turn
     assert [turn.json()["done"] for turn in turns] == [False] * 5, (
         "nenhum turno do panorama pode dizer que a sessão terminou, em turno nenhum"
     )
+
+
+async def test_a_direct_question_about_who_ruth_marries_is_answered_from_a_prompt_that_defers(
+    patch_agent,
+) -> None:
+    """Not a test of what a model says — of the prompt and material that make deferring the
+    only honest answer.
+
+    The panorama's own hard rule ("Keep the book's secrets") and the book's withholdings
+    (Ruth's marriage pairing held to 4:10, the famine and the deaths left agentless) are
+    both rendered straight into the system prompt every turn is drafted against. Asserting a
+    recorded model reply here would test a fixture, not the room; this asserts the ingredients
+    a compliant answer has no way around.
+    """
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+
+    await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="com quem Rute vai se casar?",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        settings=_settings(),
+    )
+
+    speaker_system = agent.systems[0]
+    assert "Keep the book's secrets" in speaker_system
+    assert "every withholding is still ahead of them" in speaker_system
+    assert "never with a spoiler" in speaker_system
+    assert "must not infer the pairing here" in speaker_system, (
+        "o par Rute-Malom, só revelado em 4:10, tem de seguir retido no material da fala"
+    )
+    assert "must not assign divine causation" in speaker_system, (
+        "a fome e as mortes não podem ser atribuídas a Deus no material que sustenta a fala"
+    )
