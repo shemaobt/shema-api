@@ -367,7 +367,6 @@ async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothin
         ),
         pericope_num=P,
         session_language="English",
-        language_code="en",
     )
 
     assert captured["TEAM_UTTERANCE"] == "(the team has not spoken yet)"

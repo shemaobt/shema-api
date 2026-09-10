@@ -143,7 +143,6 @@ async def test_the_classifier_sees_the_no_utterance_placeholder_in_english(
         classifier_prompt=CLASSIFIER,
         pericope_num=P,
         session_language=LANGUAGE_NAMES[language_code],
-        language_code=language_code,
         settings=_settings(),
     )
 

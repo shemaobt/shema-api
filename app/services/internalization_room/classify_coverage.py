@@ -154,7 +154,6 @@ async def classify_coverage(
     classifier_prompt: str,
     pericope_num: str,
     session_language: str = LANGUAGE_NAMES[FLOOR],
-    language_code: str = FLOOR,
     settings: Settings | None = None,
 ) -> dict[str, str]:
     """Advance the tracker from one exchange. Never runs on the voice path.
