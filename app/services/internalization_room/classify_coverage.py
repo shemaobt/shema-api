@@ -45,8 +45,8 @@ _DECISIONS: dict[str, Any] = {
 }
 
 #: What the classifier's TEAM_UTTERANCE slot carries when nobody has spoken this turn, in
-#: the session's own language. Keyed by the language code, in the shape `calibration.py`
-#: already uses — an unclaimed language falls back to the authored English line.
+#: the session's own language. Keyed by the language code, in the shape the other
+#: per-language tables use — an unclaimed language falls back to the authored English line.
 _NO_TEAM_UTTERANCE_YET: dict[str, str] = {
     "pt": "(a equipe ainda não falou)",
     "en": "(the team has not spoken yet)",
