@@ -27,6 +27,7 @@ production dump and the warnings that go with it, the Hebrew text data — is in
 ## Where the rest is
 
 - [`AGENTS.md`](AGENTS.md) — how to run and check everything, in one page.
+- [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at a pinned commit of `Tripod-Internalization`. It binds every change to this repository, and her prompts sit beside ours under `prompts/vendor/` so the difference is a `diff`.
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. It is what the words in this repository mean.
 - [`docs/adr/`](docs/adr/) — the decisions, one to a file, each with what was rejected.
 - [`docs/`](docs/) — conventions and runbooks.
