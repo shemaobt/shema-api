@@ -10,7 +10,9 @@ team because somebody opened the phone settings mid-passage, and half a passage 
 language is worse than the whole of it in either.
 """
 
+import json
 import re
+import sys
 from typing import Any
 
 import httpx
@@ -293,8 +295,6 @@ async def test_the_redraft_note_heading_the_guide_reads_is_english(
     """`_draft` appends the redraft note under its own heading — a section title exactly like
     the EQUIPE/FACILITADOR labels item 3 targets, just added back the same day (c3ee0e2) it
     removed those. Never Portuguese, whatever the session speaks (ENG-822, item 3)."""
-    import sys
-
     from app.services.internalization_room.validated_turn import _draft
 
     module = sys.modules["app.services.internalization_room.run_turn"]
@@ -317,3 +317,52 @@ async def test_the_redraft_note_heading_the_guide_reads_is_english(
 
     assert "## Rewrite note" in captured["user_content"]
     assert "## Nota de reescrita" not in captured["user_content"]
+
+
+async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothing_is_left(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """classify_coverage.py builds three backend-composed strings that used to be Portuguese
+    regardless of session language: the no-utterance placeholder, the "nothing pending" block,
+    and its own user message. ENG-822, item 4 — the classifier's version of item 3's treatment.
+    """
+    from app.services.internalization_room.classify_coverage import classify_coverage
+    from app.services.internalization_room.coverage import initial_state, merge
+    from app.services.internalization_room.render import render as real_render
+
+    P = "P01"
+    fully_engaged = merge(
+        initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys())
+    )
+    assert fully_engaged  # a real pericope, or COVERAGE_ELEMENTS below proves nothing
+
+    module = sys.modules["app.services.internalization_room.classify_coverage"]
+    captured: dict[str, str] = {}
+
+    def capturing_render(template: str, **values: str) -> str:
+        captured.update(values)
+        return real_render(template, **values)
+
+    async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        captured["user_content"] = user_content
+        return json.dumps({"decisions": []})
+
+    monkeypatch.setattr(module, "render", capturing_render)
+    monkeypatch.setattr(module, "call_agent", agent)
+
+    await classify_coverage(
+        coverage_state=fully_engaged,
+        team_utterance="",
+        guide_response="the Guide asked",
+        classifier_prompt=(
+            "{{SESSION_LANGUAGE}} {{SCENES}} {{COVERAGE_ELEMENTS}} {{TEAM_UTTERANCE}} "
+            "{{GUIDE_RESPONSE}}"
+        ),
+        pericope_num=P,
+        session_language="English",
+        language_code="en",
+    )
+
+    assert captured["TEAM_UTTERANCE"] == "(the team has not spoken yet)"
+    assert captured["COVERAGE_ELEMENTS"] == "(no elements pending)"
+    assert captured["user_content"] == "Classify this exchange now. Return only the JSON object."

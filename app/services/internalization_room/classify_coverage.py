@@ -44,14 +44,10 @@ _DECISIONS: dict[str, Any] = {
     "additionalProperties": False,
 }
 
-#: What the classifier's TEAM_UTTERANCE slot carries when nobody has spoken this turn, in
-#: the session's own language. Keyed by the language code, in the shape the other
-#: per-language tables use — an unclaimed language falls back to the authored English line.
-_NO_TEAM_UTTERANCE_YET: dict[str, str] = {
-    "pt": "(a equipe ainda não falou)",
-    "en": "(the team has not spoken yet)",
-    "es": "(el equipo aún no ha hablado)",
-}
+#: What the classifier's TEAM_UTTERANCE slot carries when nobody has spoken this turn.
+#: Composed in English like every other backend instruction (ENG-822) — only
+#: {{SESSION_LANGUAGE}} carries what language the team speaks.
+_NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
 
 
 def _element_id(named: str) -> str:
@@ -94,7 +90,7 @@ def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -
 def _unresolved_block(coverage_state: dict[str, str], pericope_num: str) -> str:
     left = remaining(coverage_state, pericope_num)
     if not left:
-        return "(nenhum elemento pendente)"
+        return "(no elements pending)"
     return "\n".join(f"- [{element.key}] {element.label}" for element in left)
 
 
@@ -173,15 +169,14 @@ async def classify_coverage(
         SESSION_LANGUAGE=session_language,
         SCENES=_scenes_block(pericope_num),
         COVERAGE_ELEMENTS=_unresolved_block(coverage_state, pericope_num),
-        TEAM_UTTERANCE=team_utterance
-        or _NO_TEAM_UTTERANCE_YET.get(language_code, _NO_TEAM_UTTERANCE_YET[FLOOR]),
+        TEAM_UTTERANCE=team_utterance or _NO_TEAM_UTTERANCE_YET,
         GUIDE_RESPONSE=guide_response,
     )
 
     try:
         raw = await call_agent(
             system_prompt=system,
-            user_content="Classifique esta troca.",
+            user_content="Classify this exchange now. Return only the JSON object.",
             ladder=classifier_ladder(cfg),
             max_output_tokens=4096,
             thinks=False,
