@@ -36,6 +36,7 @@ async def _voiced(
         )
     return PassageView(
         pericope=pericope_num,
+        kind="passage",
         audio_url=clip_url(voiced.key),
         beads=len(element_keys(pericope_num, book=book)),
         absence_index=absence_index(pericope_num, book=book),

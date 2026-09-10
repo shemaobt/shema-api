@@ -163,6 +163,18 @@ def test_the_region_never_decides_whether_a_passage_can_be_named(tag: str) -> No
     assert line_for("P01", tag)
 
 
+async def test_every_passage_the_wheel_offers_says_its_own_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller reading the wheel needs to tell a passage from a panorama without guessing
+    from its id — kind says which, plainly, for every entry the wheel returns."""
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+
+    answer = await route.passages("Ruth", language="pt")
+
+    assert [view.kind for view in answer.passages] == ["passage"] * len(answer.passages)
+
+
 async def test_the_wheel_offers_no_passage_the_session_would_refuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

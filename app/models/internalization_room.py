@@ -411,6 +411,9 @@ class TurnResponse(BaseModel):
 
 class PassageView(BaseModel):
     pericope: str
+    #: "passage" for a walkable pericope, "panorama" for the book's own entry — the one the
+    #: wheel offers before any passage, and the one entry with no beads of its own.
+    kind: str
     #: Where to fetch the line that names this passage aloud. There is no text field: the
     #: team does not read, so a passage the room cannot say is a passage it cannot offer.
     audio_url: str
