@@ -69,8 +69,12 @@ ignore = ["B008"]
 # doctrine_allowlist.py's entries carry the offending source line verbatim, for a reader
 # comparing an allowlist row against the site it names — wrapping that text would break the
 # match it exists to preserve.
+# The wheel's expected lines are transcribed from the maps, whose verse dash is an en dash
+# through P05 and a hyphen from P06 on. Ruff reads the en dash as a confusable hyphen; the
+# canon's own character is the point, and normalizing it would break the match.
 [tool.ruff.lint.per-file-ignores]
 "scripts/doctrine_allowlist.py" = ["E501"]
+"tests/test_internalization_room_passages.py" = ["RUF001"]
 
 [tool.ruff.format]
 quote-style = "double"

@@ -4,6 +4,7 @@ from functools import cache, lru_cache
 from pathlib import Path
 
 from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
@@ -67,10 +68,18 @@ def fail_safe_utterances() -> str:
     kept separate so the authored one stays byte-identical to the project's own copy. Order
     matters only in that the reader prefers a language-tagged block, and each section has at
     most one per language.
+
+    **Named off the languages the room claims, never globbed.** A glob made being read the
+    default: the Spanish draft sat beside the authored file marked "nothing here has been
+    approved to be spoken to a team" and was spoken anyway, to anyone who asked for the
+    language. Claiming a language is the deliberate act, and this follows it — a draft for a
+    language the room does not offer stays in the repository and reaches no mouth.
     """
     parts = [(_PROMPTS_DIR / "fail_safe_utterances.md").read_text(encoding="utf-8")]
-    for supplement in sorted(_PROMPTS_DIR.glob("_fail_safe_*_supplement.md")):
-        parts.append(supplement.read_text(encoding="utf-8"))
+    for language_code in ROOM_LANGUAGES:
+        supplement = _PROMPTS_DIR / f"_fail_safe_{language_code}_supplement.md"
+        if supplement.exists():
+            parts.append(supplement.read_text(encoding="utf-8"))
     return "\n\n".join(parts)
 
 

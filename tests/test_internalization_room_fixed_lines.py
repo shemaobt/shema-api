@@ -12,6 +12,10 @@ from pathlib import Path
 import pytest
 
 import scripts.render_fixed_voice_lines as render
+from app.services.internalization_room._default_prompts import (
+    _PROMPTS_DIR,
+    fail_safe_utterances,
+)
 from app.services.internalization_room.fail_safe import FailSafe, choose, localized
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 
@@ -86,6 +90,26 @@ def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all
             assert (name in catalogue) == (name in written), (
                 f"{name} em {spoken!r} entrou no pacote sem letra escrita nesse idioma"
             )
+
+
+def test_a_language_the_room_does_not_claim_keeps_its_draft_and_reaches_no_mouth() -> None:
+    """The Spanish supplement stays for the day she offers the language, and only for that.
+
+    Reading it was never a decision anybody took: the loader globbed the directory, so a
+    draft dropped beside the authored file was spoken by whatever asked for its language.
+    """
+    draft = (_PROMPTS_DIR / "_fail_safe_es_supplement.md").read_text(encoding="utf-8")
+    reachable = {kind: localized(kind, "es") for kind in FailSafe if localized(kind, "es")}
+
+    assert "STATUS: DRAFT — awaiting validation." in draft
+    assert reachable == {}, (
+        "o suplemento em espanhol é rascunho e diz de si mesmo que nada ali foi aprovado "
+        f"para ser dito a uma equipe, e mesmo assim a sala o falava: {reachable}"
+    )
+    assert "-es." not in fail_safe_utterances(), (
+        "o texto concatenado ainda carrega blocos em espanhol, então basta alguém pedir a "
+        "língua para a sala falar rascunho"
+    )
 
 
 def test_a_repeated_failure_does_not_repeat_the_same_sentence() -> None:
