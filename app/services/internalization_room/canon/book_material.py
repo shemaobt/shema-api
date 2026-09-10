@@ -123,7 +123,7 @@ def require_walkable(meaning_map: MeaningMap) -> None:
     and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
     passage; running costs Refine a false assurance, which is the more expensive of the two.
 
-    The two signals are read separately on purpose. Ruth's last eight passages happen to
+    The two signals are read separately on purpose. Ruth's passages past the edge happen to
     carry both — no preservation layer *and* a pending survey — but agreement is not either
     one being read, and a layer written before the survey closes would otherwise walk.
     """

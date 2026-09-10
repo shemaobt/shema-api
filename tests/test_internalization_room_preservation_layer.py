@@ -2,9 +2,9 @@
 
 The completion floor the design names is *every concrete element of the map — each scene,
 being, place, object, time, significant absence, **and preserved element** — engaged*. The
-last eight passages of Ruth carry no `do_not_decide` audit entry at all, so their coverage
-spine is built without a single `preserved:` bead and their comprehension pack without a
-single `preserved_element` checkpoint. Nothing refused them: the room walked them, met a
+passages of Ruth past the canon's edge carry no `do_not_decide` audit entry at all, so their
+coverage spine is built without a single `preserved:` bead and their comprehension pack
+without a single `preserved_element` checkpoint. Nothing refused them: the room walked them, met a
 floor that was missing its top row, and handed Refine a package claiming the floor was met.
 
 Two tests carry the slice, in opposite directions.

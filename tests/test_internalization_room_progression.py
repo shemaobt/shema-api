@@ -155,11 +155,11 @@ def test_a_team_that_closed_every_passage_stands_on_none() -> None:
 def test_a_team_that_closed_everything_it_can_walk_is_at_the_end_of_the_book() -> None:
     """The end a team can actually reach, which is earlier than the last vendored passage.
 
-    Ruth's last eight carry no preservation layer, so no session can open on them and their
-    floor can never be met. The resolution walked them anyway and answered the first of them
-    forever: the team closed the sixth passage and was sent, on every touch after that, to a
-    seventh that refuses to open. `None` here is what makes the end-of-book branch reachable
-    at all.
+    The passages past the canon's edge carry no preservation layer, so no session can open
+    on them and their floor can never be met. The resolution walked them anyway and answered
+    the first of them forever: the team closed the last passage that opens and was sent, on
+    every touch after that, to one that refuses to open. `None` here is what makes the
+    end-of-book branch reachable at all.
     """
     assert resolve({pericope: closed(pericope) for pericope in WALKABLE}) is None
 
