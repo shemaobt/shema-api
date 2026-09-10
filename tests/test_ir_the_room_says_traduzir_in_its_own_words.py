@@ -39,19 +39,29 @@ def _string_literals(source: Path) -> list[str]:
     ]
 
 
-def _all_literals() -> list[str]:
+def _literals_of(modules: list[str]) -> list[str]:
     root = Path(__file__).resolve().parents[1]
     literals: list[str] = []
-    for module in _MODULES:
+    for module in modules:
         literals.extend(_string_literals(root / module))
+    return literals
+
+
+def _all_app_literals() -> list[str]:
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+    literals: list[str] = []
+    for source in app_dir.rglob("*.py"):
+        literals.extend(_string_literals(source))
     return literals
 
 
 _FORBIDDEN = (
     r"contad[oa]s? de volta|contou de volta|contar de volta|conta de volta"
-    r"|contaron de vuelta|contado nada de vuelta|told (anything )?back"
+    r"|contaron de vuelta|contado nada de vuelta|contou nada de volta|told (anything )?back"
 )
 
+#: Ten sentences: the six new renderings, where two (1 and 6) are three-language dicts
+#: (pt/en/es) and the other four are single Portuguese strings — 3 + 1 + 1 + 1 + 1 + 3.
 _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
@@ -67,18 +77,31 @@ _EXPECTED_TRADUZIR_WORDS = {
 
 
 def test_no_literal_the_room_writes_says_contar_de_volta() -> None:
+    """Every string literal under `app/`, not just the three named modules.
+
+    The business rule is that *no* server literal says it, so a sixth or seventh place the
+    ticket never named — anywhere in the app, not only in the three modules this slice
+    touches — must be caught too.
+    """
     import re
 
     pattern = re.compile(_FORBIDDEN)
-    offenders = sorted({literal for literal in _all_literals() if pattern.search(literal)})
+    offenders = sorted({literal for literal in _all_app_literals() if pattern.search(literal)})
 
     assert offenders == [], f"literais ainda dizem contar de volta: {offenders}"
 
 
 def test_the_rooms_words_for_the_telling_back_are_exactly_these() -> None:
+    """Scoped to the three modules this slice governs.
+
+    Other app modules (`app/services/internalization_room/_default_prompts.py`, the i18n
+    strings) carry their own unrelated *tradu* literals — Marcia's prompts and app-facing
+    text out of this ticket's scope (ENG-880) — so the exact-set assertion stays narrow to
+    what this slice actually changed.
+    """
     found = {
         literal
-        for literal in _all_literals()
+        for literal in _literals_of(_MODULES)
         if "tradu" in literal.lower() or "translated" in literal.lower()
     }
 
