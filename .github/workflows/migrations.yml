@@ -85,10 +85,21 @@ jobs:
             exit 1
           fi
 
-      - name: Upgrade and downgrade on a clean database
+      - name: Upgrade a clean database to head
+        run: uv run alembic upgrade head
+
+      - name: The models match the migrated schema
         run: |
           set -euo pipefail
-          uv run alembic upgrade head
+          # `alembic check` compares Base.metadata against the database the migrations
+          # just built, so a model changed without a migration fails here. The suite
+          # cannot see it: pytest builds its tables with `create_all`, from the models,
+          # so both sides of the comparison move together and it is always green.
+          uv run alembic check
+
+      - name: Downgrade the newest migrations and upgrade again
+        run: |
+          set -euo pipefail
           # The newest migration has to undo exactly what it did: a downgrade that
           # leaves the schema dirty fails the next upgrade.
           #
