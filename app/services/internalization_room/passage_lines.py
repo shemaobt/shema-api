@@ -7,8 +7,11 @@ from pathlib import Path
 from app.services.internalization_room.languages import FLOOR
 
 _LINES_FILE = Path(__file__).parent / "prompts" / "passage_lines.md"
-_SECTION = re.compile(r"^### ([A-Z]\d+)-([a-z]{2})$", re.M)
+_SECTION = re.compile(r"^### ([A-Za-z][A-Za-z0-9]*)-([a-z]{2})$", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
+
+#: The wheel's own entry, alongside the pericope codes in the same file and section grammar.
+PANORAMA = "panorama"
 
 
 @lru_cache(maxsize=1)
@@ -47,3 +50,14 @@ def line_for(pericope_num: str, language_code: str, *, floor: str = FLOOR) -> st
         if spoken is not None:
             return spoken
     return ""
+
+
+def panorama_line_for(language_code: str) -> str:
+    """How the room names the book's panorama out loud, or "" when this book's panorama
+    has no line in this language yet.
+
+    Unlike ``line_for``, a missing line here never borrows the floor's: the panorama is
+    authored in every language at once or offered in none, so falling back would hand a
+    team an answer in the wrong language instead of leaving the entry off the wheel.
+    """
+    return line_for(PANORAMA, language_code, floor=language_code)

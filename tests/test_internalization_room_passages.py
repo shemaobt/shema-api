@@ -6,6 +6,7 @@ import pytest
 from app.api.internalization_room import passages as route
 from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
+from app.services.internalization_room import passage_lines
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import labelled_elements
@@ -15,7 +16,12 @@ from app.services.internalization_room.canon.parse_map import (
     load_map,
 )
 from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
-from app.services.internalization_room.passage_lines import _sections, line_for
+from app.services.internalization_room.passage_lines import (
+    PANORAMA,
+    _sections,
+    line_for,
+    panorama_line_for,
+)
 
 NAMED_IN_PORTUGUESE: dict[str, str] = {
     "P01": "Rute 1:1–5",
@@ -88,6 +94,25 @@ def test_the_wheel_names_the_passage_and_says_nothing_else_about_it(
         "a roda dizia uma frase autoral por passagem, e algumas contavam a passagem antes "
         f"de a equipe escolher — P07 entregava o nome do resgatador: {said}"
     )
+
+
+def test_the_panorama_has_no_authored_line_yet() -> None:
+    """The wording is Marcia's to rule on and has not shipped, so the wheel must not speak
+    one — this locks today's silence rather than assuming tomorrow's line."""
+    assert panorama_line_for("pt") == ""
+    assert panorama_line_for("en") == ""
+
+
+def test_the_panoramas_line_never_borrows_the_other_languages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A passage falls back to the floor when its own language is unwritten, but the panorama
+    is authored in both languages at once or offered in neither — borrowing the other
+    language's line would hand a Portuguese team an English answer instead of silence."""
+    monkeypatch.setattr(passage_lines, "_sections", lambda: {(PANORAMA, "en"): "Ruth, the book"})
+
+    assert panorama_line_for("en") == "Ruth, the book"
+    assert panorama_line_for("pt") == ""
 
 
 def _the_book_named_in(language: str) -> str:
