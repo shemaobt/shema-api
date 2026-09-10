@@ -23,10 +23,6 @@ from app.services.internalization_room.oral_decision import (
     oral_decision_clauses,
     oral_utterance_is_interrogative,
 )
-from app.services.internalization_room.rehearsal_readiness import (
-    is_exact_rehearsal_consent_question,
-    is_exact_rehearsal_readiness_cue,
-)
 
 
 def _tokens(text: str) -> list[str]:
@@ -418,10 +414,6 @@ def bridge_language_retelling_completes_practice(
     if not reliable_bridge_speech:
         return False
     if not guide_invited_mother_tongue_practice(previous_guide_utterance):
-        return False
-    if is_exact_rehearsal_consent_question(previous_guide_utterance) or (
-        is_exact_rehearsal_readiness_cue(previous_guide_utterance)
-    ):
         return False
     if _echoes_the_line_the_room_just_said(previous_guide_utterance, team_utterance):
         return False

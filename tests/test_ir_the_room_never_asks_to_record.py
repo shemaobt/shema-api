@@ -26,6 +26,7 @@ from app.services.internalization_room.comprehension.checkpoints import scene_id
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
@@ -152,3 +153,20 @@ async def test_the_refine_package_never_waits_on_a_recording_consent(
 
     assert "no_rehearsal_audio" in blocked.value.blockers
     assert "recording_consent_never_given" not in blocked.value.blockers
+
+
+@pytest.mark.parametrize("language", ROOM_LANGUAGES)
+@pytest.mark.asyncio
+async def test_a_finished_passage_is_never_asked_whether_to_record(
+    db_session: AsyncSession, approve_all: None, language: str
+) -> None:
+    """The turn that used to carry the question carries the Guide instead.
+
+    Said in the room the offer was written for — floor met, every scene rehearsed — and in
+    both languages the room speaks, because the question had a translation in each and the
+    deletion has to reach both."""
+    session = await _a_passage_worked_through(db_session, language)
+
+    spoken = [await _say(db_session, session, said) for said in AT_THE_END]
+
+    assert not [line for line in spoken if line in NEVER_SPOKEN], spoken
