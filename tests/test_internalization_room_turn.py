@@ -162,7 +162,9 @@ def test_the_invitation_the_guide_is_shown_is_one_the_room_can_recognise() -> No
     actually reads: the verb, and the phrase for the language the rehearsal is in.
     """
     guide = render(GUIDE, SESSION_LANGUAGE="English", MEANING_MAP="", COVERAGE_STATUS="")
-    rule = guide[guide.index("Open the part, then send them to REHEARSE it") :]
+    rule = guide[
+        guide.index("Open the part, then — once they have it — send them to REHEARSE it") :
+    ]
     rule = rule[: rule.index("\n")]
     example = rule[rule.index('*"') + 2 :]
     example = example[: example.index('"*')]
