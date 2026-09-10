@@ -172,6 +172,26 @@ def test_the_last_passage_still_being_worked_is_where_the_team_is() -> None:
     assert resolve(reached) == LAST
 
 
+def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_book() -> None:
+    """The end of the book moved because the canon moved, and no line of the resolution did.
+
+    The seventh passage's withholdings were written on 31 August and the vendored copy
+    predated them, so `unwalkable` refused it and the step-over swallowed it: a team that
+    finished the field was answered `None` and heard, from every touch after that, that the
+    book had nothing left in it. Both passages are named here by the reference the canon
+    files them under, so this reads the same the day a fifteenth is vendored.
+    """
+    filed_under = {
+        meaning_map.reference: meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)
+    }
+    field, gleaning = filed_under["Ruth 2:8-16"], filed_under["Ruth 2:17-23"]
+    reached = {pericope: closed(pericope) for pericope in CANON[: CANON.index(field) + 1]}
+
+    assert resolve(reached) == gleaning, (
+        "quem fechou 2:8-16 ouvia que o livro tinha acabado, com sete passagens ainda na pasta"
+    )
+
+
 # -------------------------------------------------------------- the fourteen, already resolved
 
 

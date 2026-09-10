@@ -195,3 +195,26 @@ async def test_a_map_whose_survey_is_pending_is_not_consumable_canon(
         await create_session(db_session, pericope=a_passage_whose_survey_is_pending)
 
     assert a_passage_whose_survey_is_pending in str(refusal.value)
+
+
+def test_the_book_opens_as_far_as_ruth_2_17_23_and_no_further() -> None:
+    """Where the boundary actually falls, named by the reference and not by a pericope id.
+
+    The rule test above derives both of its sides from the same canon, so it holds whichever
+    passages carry a layer and says nothing about which ones do. The project wrote the seventh
+    passage's withholdings on 31 August and the vendored copy predated them, so the wheel
+    closed at 2:16: a team that finished the field was told the book had nothing left in it,
+    with seven passages still in the folder.
+    """
+    maps = load_book(ROOM_BOOK)
+    opens = [m.pericope_num for m in maps if not book_material.unwalkable(m)]
+    ends_at = next(m.pericope_num for m in maps if m.reference == "Ruth 2:17-23")
+
+    assert opens == CANON[: CANON.index(ends_at) + 1], (
+        f"o livro que se caminha vai de Rute 1:1 a 2:23, sem buraco no meio — abriram {opens}"
+    )
+
+    refusals = [book_material.unwalkable(m) for m in maps if m.pericope_num not in opens]
+    assert all(reason and "no preservation layer" in reason for reason in refusals), (
+        f"a recusa tem que nomear a camada que falta, e alguma recusou por outra coisa: {refusals}"
+    )
