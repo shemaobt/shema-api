@@ -748,11 +748,14 @@ async def test_the_service_refuses_a_moved_slice_carrying_an_explanation_on_its_
 # facilitator is a voice, a team stuck in that cycle has no way to ask for help.
 
 
-async def _budget(client: httpx.AsyncClient, session_id: str) -> int:
-    """How much of the retell budget the room has marked as spent."""
-    state = await client.get(f"{PREFIX}/sessions/{session_id}", headers={"X-Room-Key": KEY})
-    assert state.status_code == 200, state.text
-    return int(state.json()["back_translation"]["retells"])
+async def _tellings(db: AsyncSession, session_id: str) -> list[int]:
+    """How many times the team has told each stretch that counts, oldest position first.
+
+    Read off the rows rather than off the tablet's state: the count is a property of the
+    stretch, and the tablet is deliberately not told about it.
+    """
+    db.expire_all()
+    return [one.tellings for one in await service.current_segments(db, session_id)]
 
 
 async def _asks_for_a_person(client: httpx.AsyncClient, session_id: str) -> bool:
@@ -788,60 +791,66 @@ async def _correct(
     )
 
 
-async def test_correcting_a_stretch_spends_retell_budget(client: httpx.AsyncClient) -> None:
-    """Case 1. The budget means what it says it means, on the route the team corrects by."""
+async def test_correcting_a_stretch_counts_a_telling_on_it(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Case 1. The count means what it says it means, on the route the team corrects by."""
     session_id, _, stretch = await _one_told_stretch(client)
-    before = await _budget(client, session_id)
+    assert await _tellings(db_session, session_id) == [1]
 
     answered = await _correct(client, session_id, stretch)
 
     assert answered.status_code == 200, answered.text
-    assert await _budget(client, session_id) == before + 1
+    assert await _tellings(db_session, session_id) == [2]
 
 
-async def test_the_budget_runs_out_and_the_room_offers_a_person(client: httpx.AsyncClient) -> None:
-    """Case 2. What the limit is for: the team stops being alone with a cycle it cannot end.
+async def test_the_count_runs_out_on_one_stretch_and_the_room_offers_a_person(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Case 2. What the count is for: the team stops being alone with a cycle it cannot end.
 
-    The correction that spends the last of the budget still answers with the stretches — losing
-    the team's own work to the moment the room asked for help would be worse than the problem.
+    The correction that crosses still answers with the stretches — losing the team's own work
+    to the moment the room asked for help would be worse than the problem.
     """
     session_id, _, _ = await _one_told_stretch(client)
 
-    for _ in range(RETELLS_BEFORE_A_WARNING):
+    for _ in range(RETELLS_BEFORE_A_WARNING - 1):
         standing = (await _units(client, session_id))[0]
         answered = await _correct(client, session_id, standing)
         assert answered.status_code == 200, answered.text
 
-    assert await _budget(client, session_id) >= RETELLS_BEFORE_A_WARNING
+    assert await _tellings(db_session, session_id) == [RETELLS_BEFORE_A_WARNING]
     assert await _asks_for_a_person(client, session_id) is True
     assert answered.json()["segments"], "a resposta daquela correção não se perde no caminho"
 
 
-async def test_the_budget_is_spent_on_the_attempt_not_on_the_result(
-    client: httpx.AsyncClient,
+async def test_the_count_is_spent_on_the_attempt_not_on_the_result(
+    client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Case 3. The same argument the telling-back route already carries in writing.
 
     If only a correction that landed counted, then during a transcriber outage — when every
-    attempt comes back empty — the team could correct forever, the budget would never run out,
+    attempt comes back empty — the team could correct forever, the count would never cross,
     and the room's only route to a person would be unreachable exactly when the room is broken.
     """
     session_id, _, stretch = await _one_told_stretch(client)
-    before = await _budget(client, session_id)
+    assert await _tellings(db_session, session_id) == [1]
 
     answered = await _correct(client, session_id, stretch, saying=None)
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["captured"] is False, "nada pôde ser entendido, então nada foi trocado"
-    assert await _budget(client, session_id) == before + 1
+    assert await _tellings(db_session, session_id) == [2]
 
 
-async def test_telling_a_new_stretch_never_spends_retell_budget(client: httpx.AsyncClient) -> None:
+async def test_telling_a_new_stretch_never_counts_against_another(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
     """Case 4, and the control that matters most here.
 
-    Without it this becomes "every recording sent spends a retell", and a team telling six
-    stretches back for the first time would be handed to a person without having retold
-    anything at all — punishing the path where nothing went wrong.
+    Without it this becomes "every recording sent counts", and a team telling six stretches
+    back for the first time would be handed to a person having repeated nothing at all —
+    punishing the path where nothing went wrong.
     """
     session_id = await _session(client)
     take_id = await _rehearse(client, session_id, b"a equipe ensaiou a passagem inteira")
@@ -853,20 +862,20 @@ async def test_telling_a_new_stretch_never_spends_retell_budget(client: httpx.As
         )
         assert told.status_code == 200, told.text
 
-    assert await _budget(client, session_id) == 0
+    assert await _tellings(db_session, session_id) == [1] * 6
     assert await _asks_for_a_person(client, session_id) is False
 
 
-async def test_the_telling_back_route_still_counts_the_way_it_counted(
-    client: httpx.AsyncClient,
+async def test_the_telling_back_route_counts_on_the_stretch_it_retells(
+    client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Case 5. Control against the change leaking into the neighbour.
 
-    The telling-back route spends the budget only when the team says it is retelling, and that
-    is unchanged: a first telling costs nothing, a marked retelling costs one.
+    The telling-back route counts only when the team says it is telling again, and it counts
+    on the stretch that telling replaces: a first telling is one, a marked retelling is two.
     """
     session_id, take_id, _ = await _one_told_stretch(client)
-    assert await _budget(client, session_id) == 0
+    assert await _tellings(db_session, session_id) == [1]
 
     client.said.append("Noemi mandou Rute voltar, de novo.")  # type: ignore[attr-defined]
     retold = await client.post(
@@ -882,24 +891,40 @@ async def test_the_telling_back_route_still_counts_the_way_it_counted(
     )
 
     assert retold.status_code == 200, retold.text
-    assert await _budget(client, session_id) == 1
+    assert await _tellings(db_session, session_id) == [2]
 
 
-async def test_dividing_a_stretch_is_not_correcting_and_spends_nothing(
-    client: httpx.AsyncClient,
+async def test_dividing_a_stretch_is_not_telling_it_again_and_counts_nothing(
+    client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Dividing is the team hearing two ideas where they told one, not telling one again.
 
     It writes two rows against a recording that was already there — no audio crosses the wire
-    and nothing is retold — so charging it would spend a team's budget on an act of reading.
+    and nothing is told again — so counting it would charge a team for an act of reading.
+
+    The pieces keep the count of the stretch they came from, for the reason they keep its
+    pass: born on the default, a division of something already told twice would hand the team
+    a fresh count on each piece, and the third telling of that stretch would never arrive.
     """
     session_id, _, whole = await _one_told_stretch(client)
+    told_again = await _correct(client, session_id, whole)
+    assert told_again.status_code == 200, told_again.text
+    assert await _tellings(db_session, session_id) == [2]
+    standing = (await _units(client, session_id))[0]
 
-    cut = await _divide(client, session_id, whole["segment_id"], 8000)
+    cut = await _divide(client, session_id, standing["segment_id"], 8000)
 
     assert cut.status_code == 200, cut.text
-    assert await _budget(client, session_id) == 0
-    assert await _asks_for_a_person(client, session_id) is False
+    assert await _asks_for_a_person(client, session_id) is False, (
+        "em dois, um erro de um a menos no portão pediria uma pessoa aqui"
+    )
+    db_session.expire_all()
+    pieces = [
+        one
+        for one in await service.current_segments(db_session, session_id)
+        if one.parent_id is not None
+    ]
+    assert [one.tellings for one in pieces] == [2, 2]
 
 
 async def test_the_room_that_stopped_says_so_in_its_own_state(client: httpx.AsyncClient) -> None:

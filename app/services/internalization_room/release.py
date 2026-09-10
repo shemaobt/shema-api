@@ -292,7 +292,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "back_translation": {
             "scope": telling_back.scope,
             "checked": telling_back.checked,
-            "retells": telling_back.retells,
             "segments": [_segment_view(segment) for segment in told],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
             "played_ranges": telling_back.played_ranges,
