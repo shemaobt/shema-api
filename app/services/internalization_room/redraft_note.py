@@ -27,6 +27,11 @@ _OFF_BRIDGE_LANGUAGE_NOTE: dict[str, str] = {
 
 _LANGUAGE_AUTONYMS: dict[str, str] = {"en": "English", "es": "español", "pt": "português"}
 
+#: What an issue with no "problem" key names itself as, in the session's own language — the
+#: same table the note built around it already uses. Left unkeyed, this defaulted to the
+#: Portuguese word regardless of which language's note it was substituted into.
+_UNNAMED_PROBLEM: dict[str, str] = {"pt": "problema", "en": "problem", "es": "problema"}
+
 _NO_ISSUES_NOTE: dict[str, str] = {
     "pt": "A resposta anterior não passou na conferência. Refaça.",
     "en": "The previous response did not pass review. Redo it.",
@@ -57,8 +62,9 @@ def _redraft_note(issues: list[dict[str, Any]], language_code: str = FLOOR) -> s
         return template.format(language=autonym)
     if not issues:
         return _NO_ISSUES_NOTE.get(language_code, _NO_ISSUES_NOTE[FLOOR])
+    unnamed = _UNNAMED_PROBLEM.get(language_code, _UNNAMED_PROBLEM[FLOOR])
     described = "; ".join(
-        f"{issue.get('problem', 'problema')}: {issue.get('claim', '')}".strip(": ")
+        f"{issue.get('problem', unnamed)}: {issue.get('claim', '')}".strip(": ")
         for issue in issues[:3]
     )
     template = _DESCRIBED_ISSUES_NOTE.get(language_code, _DESCRIBED_ISSUES_NOTE[FLOOR])
