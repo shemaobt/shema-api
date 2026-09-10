@@ -8,9 +8,11 @@ Guide's own prompt every turn after that.
 
 These tests describe absence. The parser they replace exercised nine pattern families and
 three languages of a menu nobody is offered any more; what stands in its place has to hold
-the four places the mechanism could come back — the opening the team hears, the turn after
-it, the wire the tablet talks over, and the label the Validator reads the evidence by. The
-fifth is the doctrine guard, which is the room's own oracle for "nothing stores a mode".
+the three places the mechanism could come back — the opening the team hears, the turn after
+it, and the wire the tablet talks over. The fourth is the doctrine guard, which is the room's
+own oracle for "nothing stores a mode". A fifth watched the label the Validator read the
+app's evidence by, and went with the label: ENG-749 deleted the block it marked, because the
+Validator is handed the map, the team's own words and the draft, and nothing else.
 """
 
 from typing import Any

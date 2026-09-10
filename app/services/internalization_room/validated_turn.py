@@ -126,6 +126,7 @@ async def _draft(
     conversation: list[Turn],
     utterance: str,
     redraft_note: str,
+    language_code: str,
     settings: Settings,
     opening_instruction: str = "",
     ask_for_movements: bool = False,
@@ -136,13 +137,18 @@ async def _draft(
     conversation, not a heading inside the question. The instructions that ride per turn —
     the opening, the two-movement mark, the rewrite note — stay here, in the last message,
     which is where an instruction is read as this turn's and not as something said earlier.
+
+    A turn with neither — the back-translation verdict — asks for its speech in the session's
+    own language rather than sending nothing: the API refuses an empty user message, and that
+    400 would reach the team as a fail-safe line. The fallback sits here and not at the call
+    site, because this is where the message is built.
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
     if utterance:
         user_content = utterance
     else:
-        user_content = opening_instruction
+        user_content = opening_instruction or speak_this_turn(language_code)
         if ask_for_movements:
             user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
     if redraft_note:
@@ -247,8 +253,9 @@ async def _voiced_after_validation(
                     conversation=conversation,
                     utterance="" if opening else transcript,
                     redraft_note=redraft_note,
+                    language_code=language_code,
                     settings=settings,
-                    opening_instruction=opening_instruction or speak_this_turn(language_code),
+                    opening_instruction=opening_instruction,
                     ask_for_movements=ask_for_movements,
                 )
             )
