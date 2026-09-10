@@ -275,7 +275,7 @@ async def _rebuild(
             corrected_ends_ms=version.ends_ms,
         ),
         pass_number=original.pass_number,
-        chunk_index=original.chunk_index,
+        ordinal=original.ordinal,
         content_type=AUDIO_MIME,
     )
 

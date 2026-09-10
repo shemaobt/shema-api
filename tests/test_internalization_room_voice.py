@@ -171,6 +171,38 @@ async def test_retuning_the_voice_does_not_serve_the_old_delivery() -> None:
     assert speech.audio == b"mais-solto"
 
 
+async def test_the_facilitators_voice_never_spells_the_divine_name_in_portuguese() -> None:
+    client = _client()
+
+    await synthesize_facilitator_speech(
+        "O narrador nunca diz que foi YHWH.",
+        language="pt",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
+    )
+
+    spoken = client.post.await_args.kwargs["json"]["text"]
+    assert "YHWH" not in spoken
+    assert "Senhor Jeová" in spoken
+
+
+async def test_the_facilitators_voice_never_spells_the_divine_name_in_english() -> None:
+    client = _client()
+
+    await synthesize_facilitator_speech(
+        "The narrator never says it was YHWH.",
+        language="en",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
+    )
+
+    spoken = client.post.await_args.kwargs["json"]["text"]
+    assert "YHWH" not in spoken
+    assert "the LORD" in spoken
+
+
 async def test_a_different_voice_id_is_honoured() -> None:
     client = _client()
 

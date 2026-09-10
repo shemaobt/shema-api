@@ -38,7 +38,8 @@ def _view(take: IRTake) -> TakeResponse:
         sha256=take.sha256,
         size_bytes=take.size_bytes,
         verified=take.verified_at is not None,
-        chunk_index=take.chunk_index,
+        ordinal=take.ordinal,
+        chunk_index=take.ordinal,
         pass_number=take.pass_number,
         pericope=take.pericope,
         recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",
@@ -72,19 +73,25 @@ async def keep_take(
     The app keeps its local copy until this answers, and re-sends the same bytes after a lost
     connection without checking anything first. That is safe because the key is the hash of
     the audio: a repeat lands on the same object and returns the row that already exists.
+
+    A retro take kept here carries no ordinal, whatever the form says. The number the tablet
+    sends is its own position in its own list, and the ordinal is the stretch's — written
+    where a stretch is captured, which this route never does. A rehearsal take keeps the
+    number it was sent with: that one is a part of the passage, not a telling of a stretch.
     """
     session = await room.get_session(db, session_id)
+    take_kind = _kind(kind)
     take = await store_take(
         db,
         session_id=session.id,
         device_id=device_id,
         project_id=session.project_id,
         pericope=session.pericope,
-        kind=_kind(kind),
+        kind=take_kind,
         scope=scope,
         audio=await file.read(),
         pass_number=pass_number,
-        chunk_index=chunk_index,
+        ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
         content_type=file.content_type or "audio/mp4",
     )
     return _view(take)

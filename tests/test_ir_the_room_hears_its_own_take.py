@@ -124,7 +124,7 @@ async def a_session_that_recorded(db_session, session_id: str, project_id: str |
         scope=session.pericope,
         audio=AUDIO + session_id.encode(),
         pass_number=1,
-        chunk_index=1,
+        ordinal=1,
         store=MemoryStore(),
     )
     return session, take

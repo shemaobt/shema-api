@@ -86,7 +86,6 @@ async def _checked_telling_back(db: AsyncSession, session: IRSession) -> BackTra
     return BackTranslationState(
         scope=P,
         findings=[],
-        evidence_sufficient=True,
         checked=True,
         analysed_segment_ids=[told.id],
     )
@@ -97,7 +96,7 @@ def _ensaio_take(
     *,
     scope: str = "passagem-inteira",
     pass_number: int | None = None,
-    chunk_index: int | None = None,
+    ordinal: int | None = None,
     sha256: str = "a" * 64,
     created_at: datetime | None = None,
 ) -> IRTake:
@@ -108,7 +107,7 @@ def _ensaio_take(
         kind=IRTakeKind.ENSAIO,
         scope=scope,
         pass_number=pass_number,
-        chunk_index=chunk_index,
+        ordinal=ordinal,
         storage_key=f"takes/{session_id}/ensaio/{sha256}",
         size_bytes=2048,
         sha256=sha256,
@@ -259,10 +258,7 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
     session = await _ready_session(db_session)
     state = await _checked_telling_back(db_session, session)
     state.superseded = [
-        SupersededAttempt(
-            findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
-            evidence_sufficient=False,
-        )
+        SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
     ]
     await _reported_playback(db_session, session, state)
     await retire_every_segment(db_session, session.id)
@@ -274,7 +270,7 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
 
     archived = artifact["back_translation"]["superseded_attempts"][0]
     assert archived["findings"][0]["kind"] == "missing"
-    assert archived["evidence_sufficient"] is False
+    assert "evidence_sufficient" not in archived
     replaced = artifact["back_translation"]["superseded_segments"]
     assert abandoned.id in [one["segment_id"] for one in replaced]
     assert "tentativa antiga" in [one["text"] for one in replaced], (
@@ -295,7 +291,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     tablet's outbox drains whenever the link comes back, so the abandoned take can be
     written down after the take that replaced it.
 
-    The whole-passage take `_ready_session` leaves carries neither a chunk nor a pass, and
+    The whole-passage take `_ready_session` leaves carries neither an ordinal nor a pass, and
     it is read here too: it comes first on every engine now that `takes_of` says where a
     NULL belongs, which is the same reading order — the undivided recording before the
     parts, and a take from before the room sent a pass before the ones that carry it.
@@ -306,7 +302,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
             session.id,
             scope="parte-1",
             pass_number=2,
-            chunk_index=1,
+            ordinal=1,
             sha256="c" * 64,
             created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
         )
@@ -316,7 +312,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
             session.id,
             scope="parte-1",
             pass_number=1,
-            chunk_index=1,
+            ordinal=1,
             sha256="b" * 64,
             created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
         )
@@ -326,7 +322,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     artifact = await build_internalization_release(db_session, session)
 
     seen = [
-        (take["chunk_index"], take["pass_number"], take["sha256"])
+        (take["ordinal"], take["pass_number"], take["sha256"])
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
@@ -344,8 +340,8 @@ async def _told_back_with_an_open_finding(
     `analysed_segment_ids` names the stretch because the analyst did read it — that is what
     makes the finding open rather than the verdict unasked.
 
-    `checked` is written as `finding is None and evidence_sufficient`, so an open finding
-    makes it false — which is the whole state this slice is about.
+    `checked` is written as `finding is None`, so an open finding makes it false — which is
+    the whole state this slice is about.
     """
     told = await _one_stretch(db, session)
     return BackTranslationState(
@@ -357,7 +353,6 @@ async def _told_back_with_an_open_finding(
                 segment_id=told.id,
             )
         ],
-        evidence_sufficient=True,
         checked=False,
         analysed_segment_ids=[told.id],
     )
@@ -559,3 +554,92 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
         for attempt in artifact["back_translation"]["superseded_attempts"]
         for f in attempt["findings"]
     ] == ["addition"]
+
+
+@pytest.mark.asyncio
+async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
+    db_session: AsyncSession,
+) -> None:
+    """A row written before the evidence flag went still ships, one finding lighter.
+
+    Nothing migrates the row: the stored key is ignored on the way in, and the thin-evidence
+    finding beside it is no finding at all. What the package carries is what the team still
+    has to answer, and `checked` alone says whether the reading came out clean.
+    """
+    session = await _ready_session(db_session)
+    told = await final_segments(db_session, session.id)
+    stored = dict(session.back_translation)
+    stored["evidence_sufficient"] = False
+    stored["checked"] = False
+    stored["findings"] = [
+        {"kind": "insufficient_evidence", "note": "contaram pouco", "segment_id": None},
+        {"kind": "missing", "note": "Orfa não apareceu", "segment_id": told[0].id},
+    ]
+    stored["superseded"] = [
+        {
+            "findings": [
+                {"kind": "insufficient_evidence", "note": "pouco na primeira", "segment_id": None}
+            ],
+            "evidence_sufficient": False,
+            "played_ranges": [],
+            "clip_duration_ms": None,
+        }
+    ]
+    session.back_translation = stored
+    await db_session.commit()
+
+    artifact = await build_internalization_release(db_session, session)
+
+    package = artifact["back_translation"]
+    assert "evidence_sufficient" not in package
+    assert all("evidence_sufficient" not in attempt for attempt in package["superseded_attempts"])
+    assert [f["kind"] for f in package["findings"]] == ["missing"]
+    assert package["superseded_attempts"][0]["findings"] == []
+    assert package["checked"] is False
+
+
+@pytest.mark.asyncio
+async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    await _reported_playback(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_superseded_telling_back_is_history_and_counts_nothing(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session)
+    state = await _checked_telling_back(db_session, session)
+    state.superseded = [
+        SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
+    ]
+    await _reported_playback(db_session, session, state)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 0
+    assert artifact["back_translation"]["superseded_attempts"][0]["findings"][0]["kind"] == (
+        "missing"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
+    db_session: AsyncSession,
+) -> None:
+    session = await _ready_session(db_session, carry_one=True)
+    await _reported_playback(
+        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    )
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert artifact["open_questions"] == 2

@@ -16,7 +16,6 @@ class IRPromptKey(enum.StrEnum):
     VALIDATOR = "validator"
     COVERAGE_CLASSIFIER = "coverage_classifier"
     BOOK_PANORAMA = "book_panorama"
-    DRAFT_SELF_CHECK = "draft_self_check"
     BT_ANALYST = "bt_analyst"
     BT_CORRECTION = "bt_correction"
     BT_VERDICT_SPEAKER = "bt_verdict_speaker"
@@ -303,7 +302,7 @@ class IRTake(Base):
     kind: Mapped[IRTakeKind] = mapped_column(_TAKE_KIND_TYPE)
     scope: Mapped[str] = mapped_column(String(120))
     pass_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ordinal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     storage_key: Mapped[str] = mapped_column(String(512))
     size_bytes: Mapped[int] = mapped_column(Integer)
     sha256: Mapped[str] = mapped_column(String(64))

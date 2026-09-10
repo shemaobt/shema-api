@@ -273,7 +273,6 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
         BackTranslationState(
             scope=P,
             findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
-            evidence_sufficient=False,
             retells=2,
         ),
     )
@@ -287,7 +286,6 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
     assert len(fresh.superseded) == 1
     archived = fresh.superseded[0]
     assert archived.findings[0].kind is FindingKind.MISSING
-    assert not archived.evidence_sufficient
     retired = await retired_segments(db_session, session.id)
     assert [one.id for one in retired] == [told.id], (
         "o trecho não é copiado para dentro do arquivo: ele fica onde está, "
