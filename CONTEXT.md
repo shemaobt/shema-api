@@ -73,15 +73,15 @@ _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, ch
 
 **Chunk**:
 The numbered position of a stretch in the list the analyst receives in one reading, the frase number of the prompts. It exists only for the length of the call; the server turns the number back into a stretch.
-_Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name)
+_Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name), chunk_index (the takes column is `ordinal`)
 
 **Pass** (`pass_number`):
 How many times a stretch has been told: one on the first telling, two when told again after a finding.
 _Avoid_: attempt, version, Passe
 
 **Telling back**:
-The act of saying, in the bridge language, what a stretch of the mother tongue holds. The Portuguese the room writes and speaks for it is *traduzir / tradução*; *contar* belongs to the Conversation with the Guide alone, and *recontar* to the External Check.
-_Avoid_: translating (in English prose), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
+The act of saying, in the bridge language, what a stretch of the mother tongue holds. The Portuguese the room writes and speaks for it is *traduzir / tradução*, and its English and Spanish room literals say *translated* / *traducido*; *contar* belongs to the Conversation with the Guide alone, and *recontar* to the External Check.
+_Avoid_: translating (in English prose; the room's own English literal does say translated), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
 
 **Untold**:
 A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called.
@@ -150,8 +150,12 @@ The retaking of exactly one stretch, at the place the current finding points to,
 _Avoid_: mend (the app's word for the same gesture), fix, retell (the count of tellings, not this gesture), Correção
 
 **Retell**:
-Each new telling of the same stretch after a finding; in the room's Portuguese, *traduzir de novo*. On the third retell the room asks for a person: a warning, never a cap.
+Each new telling of the same stretch after a finding; in the room's Portuguese, *traduzir de novo*. The third telling of a stretch makes it a hard stretch: a warning, never a cap.
 _Avoid_: attempt, retry, Reconto, Recontar
+
+**Hard stretch**:
+A stretch the team told three times. The room asks for a person once when it happens, and the fact is kept for the consultant, cleared by nothing that follows.
+_Avoid_: warning (the halt it raises), retell budget, notice, Frase difícil
 
 **Superseded**:
 An attempt at telling back that was replaced by a new recording. Its findings become marked history; they never vanish.
@@ -200,8 +204,22 @@ Whether a halt stops the room or only calls somebody over: blocking, or warning.
 _Avoid_: severity, level, status, Tipo de parada
 
 **Refine**:
-The later product stage that receives the back-translation artifact. It does not live on this server.
+The later product stage that receives the packet. It does not live on this server.
 _Avoid_: review, refinement
+
+### Release
+
+**Release** (`ir_releases`):
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet's hash as approved. An approval that changes nothing returns the release that already exists.
+_Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
+
+**Version**:
+The number of a release within its pericope and project, from one, never reused.
+_Avoid_: revision, pass (the count of tellings of a stretch), rebuild (a new passage take), v-number
+
+**Packet**:
+The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content.
+_Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 ### Other subsystems
 
