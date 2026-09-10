@@ -472,9 +472,17 @@ async def test_a_submitted_request_refuses_a_new_file(db_session, client, rrf_ap
 # ——— the note beside the file ————————————————————————————————————————————————————
 
 
-def test_attachment_note_survives_among_the_45_text_keys() -> None:
-    """The file is additive to the note, never a replacement: ``attachment_note`` stays
-    one of the contract's 45 keys — a team that cannot upload still says what it sent —
-    and the 45 do not move."""
+def test_attachment_note_survives_among_the_text_keys() -> None:
+    """The file is additive to the note, never a replacement: ``attachment_note`` stays a
+    key of the contract — a team that cannot upload still says what it sent.
+
+    The count was 45 when this was written and is 48 since 07/sep/2026, and **none of the
+    three that arrived is this issue's**: they are the mesa's ``board_team_note`` and the
+    endorsement pair. The number stays asserted because the first line is the claim and
+    the second is its guard — a key silently swapped for another would keep the count and
+    fail the membership, and a key quietly added would keep the membership and fail here.
+    The single owner of the number is ``test_vocabularies.py``'s checksum; this one moves
+    with it.
+    """
     assert "attachment_note" in v.TEXT_FIELD_KEYS
-    assert len(v.TEXT_FIELD_KEYS) == 45
+    assert len(v.TEXT_FIELD_KEYS) == 48

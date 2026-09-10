@@ -37,11 +37,10 @@ def test_the_emission_says_where_it_came_from():
 @pytest.mark.parametrize(
     ("what", "expected", "actual"),
     [
-        ("text field keys", 45, lambda: len(v.TEXT_FIELD_KEYS)),
+        ("text field keys", 48, lambda: len(v.TEXT_FIELD_KEYS)),
         ("project categories", 9, lambda: len(EMISSION["vocabularies"]["projectCategory"])),
-        ("supported goals", 10, lambda: len(EMISSION["vocabularies"]["supportedGoal"])),
+        ("supported goals", 9, lambda: len(EMISSION["vocabularies"]["supportedGoal"])),
         ("budget categories", 26, lambda: len(v.BUDGET_CATEGORY_KEYS)),
-        ("funds", 1, lambda: len(EMISSION["funds"])),
         ("board columns", 6, lambda: len(v.BOARD_STATUS_IDS)),
         ("decisions", 4, lambda: len(EMISSION["vocabularies"]["decisionStates"])),
         ("request types", 3, lambda: len(v.REQUEST_TYPES)),
@@ -52,12 +51,19 @@ def test_the_emission_says_where_it_came_from():
 def test_the_checksums_of_the_design(what, expected, actual):
     """§9's list, verbatim. A list that comes back a different length fails here.
 
-    ``funds`` was 5 until GATE-01 answered (OBT-447, 26/aug/2026) and is read straight off
-    the emission since BE-10 (OBT-471), which is the whole of that issue's answer to *what
-    becomes of ``FUND_IDS``*: a fund is now a row the Gestor creates, so the emitted list
-    can never be the valid set and a named constant would be a validation list waiting to
-    be misused. Checksummed anyway — the number moving is what makes a stale vendored copy
-    visible, which is the whole job of a checksum over data emitted somewhere else.
+    Two rows carry a date, and one row left.
+
+    ``supported goals`` was 10 until 07/sep/2026, when the client closed the half of
+    GATE-01 that had stayed open since August: *Ready Vessels* leaves the objectives as it
+    left the funds. ``text field keys`` was 45 until the frontend emitted three more —
+    ``board_team_note`` (03/sep) plus the endorsement pair — and the server's copy had not
+    moved since. Both are this check doing its job: the lists moved over there, the
+    vendored copy went stale, and these numbers are what said so.
+
+    **``funds`` was a row here and is not one any more**, because the emission stopped
+    carrying the list (07/sep). FE-26 (OBT-472) made the server the place that knows which
+    funds exist, so the frontend stopped declaring them and the count had nothing to count.
+    That is a checksum genuinely retired, not one quietly dropped to go green.
     """
     assert actual() == expected, what
 
@@ -130,13 +136,19 @@ def test_be_02s_enums_are_the_frontends_lists(enum_cls, emitted):
         assert members == list(emitted())
 
 
-def test_the_45_keys_are_partitioned_by_the_hand_written_map():
+def test_the_48_keys_are_partitioned_by_the_hand_written_map():
     """The cross-check for the one thing here that the emission cannot carry.
 
     Every emitted text key belongs to exactly one place: a Parte A section slot, a Parte
     B section's own `field`, one of the four slots of Parte B that have keys and no
-    field, or the evaluation. A new question on the form arrives as a key belonging to
-    nothing and fails here, instead of being silently unvalidated.
+    field, the evaluation, or the spine. A new question on the form arrives as a key
+    belonging to nothing and fails here, instead of being silently unvalidated.
+
+    **The spine is the third set and it was earned, not invented to go green.** The
+    endorsement pair arrived among the emitted keys on 07/sep/2026 because the paper form
+    has the Líder's signature line; here it is two columns the act writes (BE-16), never
+    a field a payload may carry. The two assertions below are what keep that honest: it
+    is covered, and it is not askable.
     """
     mapped = [key for keys in v.SECTION_TEXT_FIELDS.values() for key in keys]
     from_b_sections = [
@@ -147,10 +159,12 @@ def test_the_45_keys_are_partitioned_by_the_hand_written_map():
     ]
 
     assert len(mapped) == len(set(mapped)), "uma chave em duas seções"
-    covered = set(mapped) | set(from_b_sections) | v.EVALUATION_TEXT_FIELDS
+    covered = set(mapped) | set(from_b_sections) | v.EVALUATION_TEXT_FIELDS | v.SPINE_TEXT_FIELDS
 
     assert covered == v.TEXT_FIELD_KEYS
     assert set(mapped) & v.EVALUATION_TEXT_FIELDS == set()
+    assert set(mapped) & v.SPINE_TEXT_FIELDS == set()
+    assert v.EVALUATION_TEXT_FIELDS.isdisjoint(v.SPINE_TEXT_FIELDS)
 
 
 def test_every_slot_is_owned_by_exactly_one_of_the_two_mechanisms():
@@ -175,7 +189,14 @@ def test_every_slot_is_owned_by_exactly_one_of_the_two_mechanisms():
 
 
 def test_what_each_type_asks_matches_the_contracts_own_counts():
-    """36 / 16 / 15, and their union is the 42 keys that are not the evaluation's."""
+    """36 / 16 / 15, and their union is the 42 keys that are neither Parte C's nor the spine's.
+
+    The three counts did not move when the emission grew from 45 keys to 48 on
+    07/sep/2026, and that is the point of asserting them beside the union: the three new
+    keys are the mesa's note and the endorsement pair, so **nothing new is asked of a
+    team**. Had one of them landed in a section, a count here would have moved and this
+    would be the test saying a question appeared that nobody decided to ask.
+    """
     asked = {t: v.section_field_keys(t) for t in v.REQUEST_TYPES}
 
     assert {t: len(keys) for t, keys in asked.items()} == {
@@ -183,7 +204,10 @@ def test_what_each_type_asks_matches_the_contracts_own_counts():
         "treinamento": 16,
         "equipamentos": 15,
     }
-    assert set().union(*asked.values()) == v.TEXT_FIELD_KEYS - v.EVALUATION_TEXT_FIELDS
+    assert (
+        set().union(*asked.values())
+        == v.TEXT_FIELD_KEYS - v.EVALUATION_TEXT_FIELDS - v.SPINE_TEXT_FIELDS
+    )
 
 
 def test_only_traducao_asks_the_people_and_contact_sections():

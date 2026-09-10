@@ -1,5 +1,5 @@
 {
-  "emitted_from": "067458c5c3f327d612939b55eee161a6d6e2ec44",
+  "emitted_from": "0225b30b89d89d315a01a6395c2b8a2415ae9a1e",
   "vocabularies": {
     "etenListed": [
       {
@@ -37,14 +37,14 @@
     ],
     "allAccessGoal": [
       {
-        "value": "Bíblia completa (+500 mil)",
-        "pt": "Bíblia completa (+500 mil)",
-        "en": "Full Bible (500k+)"
+        "value": "Bíblia completa para línguas vitais (+500 mil)",
+        "pt": "Bíblia completa para línguas vitais (+500 mil)",
+        "en": "Full Bible for vital languages (500k+)"
       },
       {
-        "value": "Novo Testamento ou 260 capítulos (5 mil–500 mil)",
-        "pt": "Novo Testamento ou 260 capítulos (5 mil–500 mil)",
-        "en": "New Testament or 260 chapters (5k–500k)"
+        "value": "Novo Testamento ou porção equivalente (5 mil–500 mil)",
+        "pt": "Novo Testamento ou porção equivalente (5 mil–500 mil)",
+        "en": "New Testament or equivalent portion (5k–500k)"
       },
       {
         "value": "Porção / ~25 capítulos (menos de 5 mil)",
@@ -163,11 +163,6 @@
         "value": "Porções das Escrituras (~25 capítulos)",
         "pt": "Porções das Escrituras (~25 capítulos)",
         "en": "Scripture Portions (~25 chapters)"
-      },
-      {
-        "value": "Ready Vessels",
-        "pt": "Ready Vessels",
-        "en": "Ready Vessels"
       },
       {
         "value": "Tradução oral / áudio",
@@ -509,15 +504,6 @@
       }
     ]
   },
-  "funds": [
-    {
-      "id": "linguas",
-      "name": {
-        "pt": "Shema Línguas",
-        "en": "Shema Línguas"
-      }
-    }
-  ],
   "boardStatuses": [
     {
       "id": "triagem",
@@ -610,7 +596,10 @@
     "tpp_date",
     "leader_name",
     "leader_date",
+    "endorsed_by",
+    "endorsed_at",
     "board_comments",
+    "board_team_note",
     "board_evaluator",
     "board_evaldate"
   ],

@@ -1321,13 +1321,27 @@ Three properties it must have, and they are why the decision is worth writing do
    fund**, 6 board columns, 4 decisions, 3 types, 30 max score. A list that comes back a
    different length fails the check rather than misleading a reader.
 
-   Two of those numbers carry a date. **Funds was 5 until GATE-01 answered** (OBT-447,
-   26/aug/2026): only *Shema Línguas* remains and the other four names are undecided, so the
-   emission carries one. The count is expected to move again — the client floated an editable
-   fund area (BE-10, OBT-471) — and moving it is the check working, not the check being
-   wrong. **Supported goals stays at 10 while the gate's other half is open**: whether *Ready
-   Vessels* survives among them is the one GATE-01 question still unanswered (§10), and it is
-   this number's owner the day it is.
+   Three of those numbers carry a date, and one of them is gone.
+
+   **Funds was 5 until GATE-01 answered** (OBT-447, 26/aug/2026), and **stopped being a
+   checksum on 07/sep/2026**: the emission no longer carries a fund list at all. FE-26
+   (OBT-472) made the server the place that knows which funds exist, so the frontend
+   stopped declaring a list it does not own. The count is retired rather than dropped —
+   there is nothing left over there to compare against.
+
+   **Supported goals was 10 until 07/sep/2026**, when the client closed the half of GATE-01
+   that had stayed open: *Ready Vessels* leaves the objectives as it left the funds. Nine,
+   and the same sentence realigned two `allAccessGoal` labels to the ETEN notice.
+
+   **Text field keys was 45 until the same re-vendoring**, and is 48. The three that arrived
+   are `board_team_note` (BE-06's note to the team, emitted 03/sep) and the endorsement pair
+   `endorsed_by`/`endorsed_at` (BE-16). **The per-type counts did not move** — 36 / 16 / 15 —
+   because none of the three is asked of a team, which is what §9's partition asserts and
+   why the endorsement pair needed a third set beside the evaluation's (`SPINE_TEXT_FIELDS`):
+   here the endorsement is two spine columns the act writes, never a field a payload carries.
+
+   All three moved for the same reason, and it is the one the checksums exist for: the lists
+   moved in the frontend and the vendored copy had not.
 
 ~~**This is not implemented here.**~~ **Implemented by BE-05** (OBT-454, 25/aug/2026), in
 both halves. The frontend's `scripts/emit-vocabularies.mjs` loads `src/contract.ts` through
@@ -1376,7 +1390,17 @@ that owns it and what it blocks.
 
 | Question | Gate | Blocks |
 |---|---|---|
-| **Whether *Ready Vessels* stays among the ten `supportedGoal` options.** Its fund half is answered — it ceased to be a fund (D3) — but the question had two sides and one sentence came back | **GATE-01** (OBT-447) | **BE-02 and BE-05, no longer BE-07**: it stopped being a question about money and became one about a vocabulary. The list stays at ten with `Ready Vessels` among them, and the vendored emission carries it — removing it early would cost the list *plus* a migration of every answer already stored |
+| **Whether a stored answer that has left its vocabulary can still be written.** The client kept the old answers — *"deixem como estão, só não aparece para novas"* — and that holds on the way **out**: nothing validates a read. It does not hold on the way **in**. `RequestDraftIn` carries the vocabulary check and `RequestSubmissionIn` inherits it, so a document holding `Ready Vessels` or a pre-07/sep `allAccessGoal` label takes a **422 on every write**: the draft's own `PATCH`, and `submit`, which re-validates what is already stored | *none — ours* | **BE-05**, and any team reopening a request filled before 07/sep/2026. Either the team must re-answer before it can send, or the check accepts the union — values in force **plus** retired ones — and only the list of choice shrinks. The shape to copy is in this module already: a retired fund stays readable and leaves only the choices (§7, BE-10) |
+
+**Answered by the client on 07/sep/2026**, and no longer open. Recorded rather than deleted,
+because the answer landed here as a re-vendoring and as the row above:
+
+- **Whether *Ready Vessels* stays among the `supportedGoal` options** — **it does not**:
+  *"sai também dos objetivos"*, the half GATE-01 (OBT-447) left open in August. The list is
+  **nine**, §9's checksum moved with it, and the same sentence realigned two `allAccessGoal`
+  labels to the ETEN notice. The cost this row used to predict — *a migration of every answer
+  already stored* — was **not** paid, and deliberately: the client asked for stored answers to
+  stay as they are. What that trades the migration for is the write-path question above.
 
 **Answered by GATE-02 and GATE-03 on 27/aug/2026** (OBT-448, OBT-449), and no longer open.
 Recorded rather than deleted, because each one landed somewhere in this module — and because
