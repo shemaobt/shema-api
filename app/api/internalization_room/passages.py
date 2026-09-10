@@ -12,7 +12,7 @@ from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.canon.parse_map import load_book
 from app.services.internalization_room.languages import floor, normalize
-from app.services.internalization_room.passage_lines import line_for
+from app.services.internalization_room.passage_lines import PANORAMA, line_for, panorama_line_for
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
@@ -41,6 +41,21 @@ async def _voiced(
         beads=len(element_keys(pericope_num, book=book)),
         absence_index=absence_index(pericope_num, book=book),
     )
+
+
+async def _voiced_panorama(
+    line: str, *, language: str, settings: Settings, in_flight: asyncio.Semaphore
+) -> PassageView:
+    """The panorama's own line, synthesized the same way a passage's is.
+
+    No beads and no absence index: the panorama holds no elements of its own, so both stay
+    at the defaults a passage without either already carries.
+    """
+    async with in_flight:
+        voiced, _ = await room.synthesize_facilitator_speech(
+            line, language=language, settings=settings
+        )
+    return PassageView(pericope=PANORAMA, kind="panorama", audio_url=clip_url(voiced.key))
 
 
 @router.get(
@@ -78,6 +93,10 @@ async def passages(
     which a new book or a change to the voice tuning both make it. A few at a time rather
     than all fourteen, because the room's ElevenLabs key carries its own quota and a cold
     book should not spend it in one breath. Story order is the order they come back in.
+
+    The panorama, when it has a line, opens the answer — it is the book's own entry, the
+    one a team can return to for the whole rather than the part, and the app needs it first
+    to offer it as the wheel's front door rather than another spoke among fourteen.
     """
     settings = get_settings()
     spoken = floor(settings) if language is None else normalize(language)
@@ -89,17 +108,17 @@ async def passages(
         for meaning_map in load_book(book)
         if not unwalkable(meaning_map) and (line := line_for(meaning_map.pericope_num, spoken))
     ]
-    said = await asyncio.gather(
-        *(
-            _voiced(
-                pericope_num,
-                line,
-                book=book,
-                language=spoken,
-                settings=settings,
-                in_flight=in_flight,
-            )
-            for pericope_num, line in speakable
+    entries = []
+    panorama_line = panorama_line_for(spoken)
+    if panorama_line:
+        entries.append(
+            _voiced_panorama(panorama_line, language=spoken, settings=settings, in_flight=in_flight)
         )
+    entries.extend(
+        _voiced(
+            pericope_num, line, book=book, language=spoken, settings=settings, in_flight=in_flight
+        )
+        for pericope_num, line in speakable
     )
+    said = await asyncio.gather(*entries)
     return BookPassagesResponse(book=book, passages=list(said))

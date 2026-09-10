@@ -200,6 +200,39 @@ async def test_every_passage_the_wheel_offers_says_its_own_kind(
     assert [view.kind for view in answer.passages] == ["passage"] * len(answer.passages)
 
 
+async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once Marcia's word lands and a line is authored, the panorama has to be the first
+    thing the team hears turning the wheel — it is the front door to the whole book."""
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
+    without_panorama = [
+        view.pericope for view in (await route.passages("Ruth", language="pt")).passages
+    ]
+
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "Rute, o livro")
+    answer = await route.passages("Ruth", language="pt")
+
+    first = answer.passages[0]
+    assert (first.kind, first.pericope) == ("panorama", "panorama")
+    assert first.audio_url
+    assert [view.pericope for view in answer.passages[1:]] == without_panorama
+
+
+async def test_the_panorama_stays_off_the_wheel_with_no_line_to_say_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No line for this language means no spoke, exactly as an unwritten passage is left
+    out — the room must never read the panorama's id aloud as a stand-in for its voice."""
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
+
+    answer = await route.passages("Ruth", language="pt")
+
+    assert all(view.kind != "panorama" for view in answer.passages)
+
+
 async def test_the_wheel_offers_no_passage_the_session_would_refuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
