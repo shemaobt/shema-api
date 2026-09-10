@@ -14,8 +14,10 @@ that happened rather than a computation that can be re-run to another answer.
 
 **The team's own recording is the mechanism.** A passage is closed when the team has a
 session on it that both reached the end of the conversation — `sessions.session_is_done`,
-carried on the row as `ir_sessions.status` — and holds the rehearsal they recorded there.
-Nothing here reads the coverage floor on its own, and nothing here counts beads.
+whose instant is stamped on the row as `ir_sessions.ended_at` — and holds the rehearsal they
+recorded there. Nothing here reads the coverage floor on its own, and nothing here counts
+beads. Why the stamp and not the status they are written together with is on
+`finished_passages`.
 
 **Reaching the rehearsal and finishing the passage are two facts, and this module wants the
 second.** `session_is_done` is the first: it is the signal the room reads to let a team into
