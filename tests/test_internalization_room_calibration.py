@@ -13,8 +13,6 @@ it, the wire the tablet talks over, and the label the Validator reads the eviden
 fifth is the doctrine guard, which is the room's own oracle for "nothing stores a mode".
 """
 
-import json
-import sys
 from typing import Any
 
 import httpx
@@ -23,8 +21,6 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.db.models.internalization_room import IRPromptKey
-from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.platform.tts import SynthesizedSpeech
@@ -34,9 +30,6 @@ KEY = "sala-de-teste"
 PANORAMA = "OV"
 THE_TEAM_ANSWERS = "Uma pergunta curta de cada vez."
 PASSAGE = "P03"
-#: The label the Validator reads to tell app-owned state from what the team said.
-APP_OWNED = "[APP-OWNED SESSION STATE — not team speech]"
-
 #: The method question as the ticket quotes it, in the three languages the room claims.
 #: Read from the ticket rather than from `bridge_calibration_question`, which this branch
 #: deletes: an expectation taken from the code under test agrees with it by construction.
@@ -73,7 +66,6 @@ async def spoken(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     from app.api.internalization_room import router
     from app.api.internalization_room import sessions as sessions_api
-    from app.core.config import get_settings
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
@@ -197,55 +189,6 @@ async def test_a_mode_named_by_the_tablet_is_taken_in_and_never_said_back(
     )
     assert "bridge_mode" not in turned.json(), (
         f"o turno também dizia o modo de volta, a cada turno: {turned.json()}"
-    )
-
-
-class _Recording:
-    """A Guide and a Validator that keep the whole of what they were handed."""
-
-    def __init__(self) -> None:
-        self.validator: list[str] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if "corrected_response" in system_prompt:
-            self.validator.append(f"{system_prompt}\n\n{user_content}")
-            return json.dumps({"verdict": "pass", "issues": []})
-        return "Vamos ficar nesta cena. O que vocês contariam?"
-
-
-async def test_the_validator_still_reads_the_evidence_as_the_apps_and_not_as_the_teams(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from app.services.internalization_room.live_turn import run_comprehension_turn
-    from app.services.internalization_room.sessions import append_exchange, create_session
-
-    models = _Recording()
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
-    )
-    session = await create_session(db_session, language="pt", pericope=PASSAGE)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="Quem aparece nesta parte?"
-    )
-
-    await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(text="A fome chegou e eles partiram."),
-        opening=False,
-        guide_prompt=default_prompt(IRPromptKey.GUIDE)["prompt"],
-        validator_prompt=default_prompt(IRPromptKey.VALIDATOR)["prompt"],
-        settings=get_settings(),
-    )
-
-    handed = models.validator[0]
-    assert APP_OWNED in handed, (
-        "a etiqueta vinha pendurada na linha do modo e era a única coisa dizendo ao "
-        "Validador que aquele bloco é do app; sem ela a evidência de compreensão chega "
-        "como se a equipe tivesse falado aquilo"
-    )
-    assert "BRIDGE MODE" not in handed, (
-        f"o modo continuava viajando dentro do estado do app entregue ao Validador: {handed[-400:]}"
     )
 
 

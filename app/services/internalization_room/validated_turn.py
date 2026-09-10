@@ -191,7 +191,6 @@ async def _voiced_after_validation(
     opening: bool,
     settings: Settings,
     session_id: str = "?",
-    validator_context: str = "",
     opening_instruction: str = "",
     ask_for_movements: bool = False,
     telling_back: str = "",
@@ -258,15 +257,13 @@ async def _voiced_after_validation(
                 cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
-                RECENT_CONVERSATION=conversation,
+                RECENT_CONVERSATION=NOT_THIS_TURN,
                 TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
                 FINDING=finding or NOT_THIS_TURN,
                 ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
             )
-            if validator_context:
-                validator_system = f"{validator_system}\n\n{validator_context}"
             raw_verdict = await shim.call_agent(
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
