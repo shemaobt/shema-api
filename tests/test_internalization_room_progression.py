@@ -6,20 +6,18 @@ mechanism that could move one.
 
 Three of these carry the slice.
 
-**`test_a_floor_met_across_two_sessions_closes_the_passage`** is the only case that can tell
-a real implementation from one reading `ir_sessions.coverage_state`. Every session opens at
-`initial_state`, so a passage worked over two evenings has no single session row that knows
-it is finished. A resolution reading the session tracker passes every other case here and
-fails this one.
+**`test_a_floor_met_across_two_evenings_does_not_close_the_passage`** is the case ENG-803
+turned around. It used to assert the opposite: a floor met across two sessions closed the
+passage and moved the team on. The ledger informs, it never ends the conversation
+(`DOCTRINE.md` §4) — a team that met the floor and closed the tablet in the middle of the
+third scene had not finished anything, and a number carried them off it.
 
 **`test_a_gap_earlier_in_the_book_outranks_a_later_passage_already_closed`** is what makes
 this *canonical* order and not "the furthest passage touched". A team that skipped ahead is
 sent back to what it left open.
 
-**`test_a_bead_the_canon_does_not_serve_cannot_close_a_passage`** pins the direction of the
-bias. Whether a passage is finished is `floor_met`'s to say and nothing here counts beads —
-a count would let a canon that moved close a passage by arithmetic, which is the one error
-that cannot be noticed afterwards: the team is simply gone from a passage they never worked.
+**`test_a_session_the_team_finished_closes_the_passage`** is the other half, and the two are
+only meaningful together: a rule that never closes anything passes the first one alone.
 
 The stuck-team case at the end is the failure mode the issue asks to be designed against.
 It asserts that the condition is *detectable*, which is all this slice owes; being *told*
@@ -33,6 +31,7 @@ import itertools
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.book_material import unwalkable
 from app.services.internalization_room.canon.elements import element_keys
@@ -46,7 +45,13 @@ from app.services.internalization_room.progression import (
     standing,
     team_standing,
 )
-from tests.baker import make_language, make_project
+from tests.baker import (
+    fully_supported_comprehension,
+    having_finished_the_passage,
+    keep_a_take,
+    make_language,
+    make_project,
+)
 
 _codes = itertools.count()
 
@@ -68,20 +73,16 @@ WALKABLE = [
 LAST = WALKABLE[-1]
 
 
-def closed(pericope: str) -> dict[str, str]:
-    """Every bead of a passage at the floor — the least reading that finishes it."""
+def at_the_floor(pericope: str) -> dict[str, str]:
+    """Every bead of a passage at the floor — which no longer finishes anything."""
     return dict.fromkeys(element_keys(pericope), PARTIALLY_ENGAGED)
 
 
 def one_bead_short(pericope: str) -> dict[str, str]:
     """The floor met on every bead but one, which is left where the Guide did the talking."""
-    reached = closed(pericope)
+    reached = at_the_floor(pericope)
     reached[element_keys(pericope)[-1]] = SURFACED
     return reached
-
-
-def the_whole_book() -> dict[str, dict[str, str]]:
-    return {pericope: closed(pericope) for pericope in CANON}
 
 
 # --------------------------------------------------------------- the resolution, as a function
@@ -93,32 +94,11 @@ def test_a_team_with_no_history_stands_on_the_first_passage_of_the_book() -> Non
     P01 is what the canon's first entry happens to be called. This is resolution arriving
     there because nothing is finished, which is why the expectation is read off the book.
     """
-    assert resolve({}) == FIRST
+    assert resolve(set()) == FIRST
 
 
 def test_a_finished_passage_moves_the_team_to_the_next_one() -> None:
-    assert resolve({FIRST: closed(FIRST)}) == SECOND
-
-
-def test_a_passage_one_bead_short_of_the_floor_does_not_move_the_team() -> None:
-    """`done` is the progression mechanism, so the floor is the whole gate.
-
-    One bead left at `surfaced` — the Guide raised it and the team never took it up — and
-    the passage stays open.
-    """
-    assert resolve({FIRST: one_bead_short(FIRST)}) == FIRST
-
-
-def test_the_strong_reading_is_not_required_to_move_on() -> None:
-    """`partially_engaged` meets the floor, which is what ENG-441 landed for.
-
-    Written as its own case because the fixtures above are all built at the floor: if the
-    resolution demanded `engaged` they would fail as a group and read as one broken helper.
-    """
-    every_bead_fully_worked = {FIRST: dict.fromkeys(element_keys(FIRST), ENGAGED)}
-
-    assert resolve(every_bead_fully_worked) == SECOND
-    assert resolve({FIRST: closed(FIRST)}) == SECOND
+    assert resolve({FIRST}) == SECOND
 
 
 def test_a_gap_earlier_in_the_book_outranks_a_later_passage_already_closed() -> None:
@@ -128,28 +108,12 @@ def test_a_gap_earlier_in_the_book_outranks_a_later_passage_already_closed() -> 
     lets them skip, but the data can hold it — a session can be opened naming a passage —
     and the resolution has to answer the book's order rather than their history's.
     """
-    reached = {FIRST: closed(FIRST), THIRD: closed(THIRD)}
-
-    assert resolve(reached) == SECOND
-
-
-def test_a_bead_the_canon_does_not_serve_cannot_close_a_passage() -> None:
-    """Biased against completing hollow, which is `floor_met`'s own rule kept whole.
-
-    A passage whose beads were renamed in the canon leaves the team's events pointing at
-    keys nobody serves any more. Counting them would close the passage and move the team
-    off work they never did — and no one would ever see it happen.
-    """
-    keys = element_keys(FIRST)
-    as_many_beads_but_not_the_right_ones = dict.fromkeys(keys[:-1], PARTIALLY_ENGAGED)
-    as_many_beads_but_not_the_right_ones["being:NOT-IN-THE-CANON"] = PARTIALLY_ENGAGED
-
-    assert resolve({FIRST: as_many_beads_but_not_the_right_ones}) == FIRST
+    assert resolve({FIRST, THIRD}) == SECOND
 
 
 def test_a_team_that_closed_every_passage_stands_on_none() -> None:
     """The end of the book is a defined state and not a wrap-around."""
-    assert resolve(the_whole_book()) is None
+    assert resolve(set(CANON)) is None
 
 
 def test_a_team_that_closed_everything_it_can_walk_is_at_the_end_of_the_book() -> None:
@@ -161,15 +125,12 @@ def test_a_team_that_closed_everything_it_can_walk_is_at_the_end_of_the_book() -
     every touch after that, to one that refuses to open. `None` here is what makes the
     end-of-book branch reachable at all.
     """
-    assert resolve({pericope: closed(pericope) for pericope in WALKABLE}) is None
+    assert resolve(set(WALKABLE)) is None
 
 
 def test_the_last_passage_still_being_worked_is_where_the_team_is() -> None:
     """The boundary beside the case above, so `None` cannot come from an off-by-one."""
-    reached = {pericope: closed(pericope) for pericope in CANON[:-1]}
-    reached[LAST] = one_bead_short(LAST)
-
-    assert resolve(reached) == LAST
+    assert resolve(set(CANON[:-1]) - {LAST}) == LAST
 
 
 def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_book() -> None:
@@ -185,9 +146,8 @@ def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_boo
         meaning_map.reference: meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)
     }
     field, gleaning = filed_under["Ruth 2:8-16"], filed_under["Ruth 2:17-23"]
-    reached = {pericope: closed(pericope) for pericope in CANON[: CANON.index(field) + 1]}
 
-    assert resolve(reached) == gleaning, (
+    assert resolve(set(CANON[: CANON.index(field) + 1])) == gleaning, (
         "quem fechou 2:8-16 ouvia que o livro tinha acabado, com sete passagens ainda na pasta"
     )
 
@@ -196,7 +156,7 @@ def test_a_team_that_closed_ruth_2_8_16_is_sent_on_and_not_to_the_end_of_the_boo
 
 
 def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> None:
-    positions = standing({})
+    positions = standing(set())
 
     assert [entry.pericope for entry in positions] == CANON
     assert positions[0].reference and positions[0].title
@@ -204,7 +164,7 @@ def test_the_standing_names_every_passage_of_the_book_in_the_canons_order() -> N
 
 def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
     """`closed · current · future` resolved here, so no screen decides where a team stands."""
-    positions = {entry.pericope: entry.position for entry in standing({FIRST: closed(FIRST)})}
+    positions = {entry.pericope: entry.position for entry in standing({FIRST})}
 
     assert positions[FIRST] is PericopePosition.CLOSED
     assert positions[SECOND] is PericopePosition.CURRENT
@@ -214,13 +174,10 @@ def test_the_standing_marks_one_current_and_the_rest_closed_or_future() -> None:
 def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlier() -> None:
     """The two facts are different and the standing must not collapse them.
 
-    `closed` is about the passage's floor; `current` is about where the team is. A team on
-    P02 with P03 already finished has both, and exactly one `current`.
+    `closed` is a session the team finished; `current` is where the team is. A team on P02
+    with P03 already finished has both, and exactly one `current`.
     """
-    positions = {
-        entry.pericope: entry.position
-        for entry in standing({FIRST: closed(FIRST), THIRD: closed(THIRD)})
-    }
+    positions = {entry.pericope: entry.position for entry in standing({FIRST, THIRD})}
 
     assert positions[SECOND] is PericopePosition.CURRENT
     assert positions[THIRD] is PericopePosition.CLOSED
@@ -228,7 +185,7 @@ def test_a_passage_closed_out_of_order_reads_closed_while_the_team_stands_earlie
 
 def test_a_finished_team_has_no_current_passage() -> None:
     """ENG-469's criterion: a complete team shows its last passage as closed, not current."""
-    positions = standing(the_whole_book())
+    positions = standing(set(CANON))
 
     assert all(entry.position is PericopePosition.CLOSED for entry in positions)
 
@@ -261,6 +218,17 @@ async def a_session_that_moved(
     return session
 
 
+async def a_session_the_team_finished(db: AsyncSession, *, project_id: str | None, pericope: str):
+    """A conversation this team took to its end — their own recording of the passage.
+
+    Through the room's own two steps rather than by writing `done` on a row, so a fixture
+    cannot agree with a resolution that reads a finished session differently from how one is
+    actually finished.
+    """
+    session = await room.create_session(db, pericope=pericope, project_id=project_id)
+    return await having_finished_the_passage(db, session)
+
+
 @pytest.mark.asyncio
 async def test_a_team_with_nothing_recorded_resolves_to_the_first_passage(
     db_session: AsyncSession,
@@ -284,13 +252,14 @@ async def test_a_tablet_that_never_said_whose_it_was_resolves_to_the_first_passa
 
 
 @pytest.mark.asyncio
-async def test_a_floor_met_across_two_sessions_closes_the_passage(
+async def test_a_floor_met_across_two_evenings_does_not_close_the_passage(
     db_session: AsyncSession,
 ) -> None:
-    """The case that separates the team's necklace from one session's tracker.
+    """The case ENG-803 turned around: this used to send the team on to the second passage.
 
-    `create_session` opens every session at `initial_state`, so a passage worked over two
-    evenings has no session row that knows it is finished. Only the events do.
+    Two evenings of work that between them touched every bead is a floor met and nothing
+    else. The team never reached the end of a conversation on it — no send-off, no
+    recording — so the passage is still theirs, and a number must not carry them off it.
     """
     team = await a_team(db_session, name="Duas noites")
     keys = element_keys(FIRST)
@@ -309,20 +278,96 @@ async def test_a_floor_met_across_two_sessions_closes_the_passage(
         moved=dict.fromkeys(rest, PARTIALLY_ENGAGED),
     )
 
+    assert await active_passage(db_session, project_id=team.id) == FIRST
+
+
+@pytest.mark.asyncio
+async def test_a_session_the_team_finished_closes_the_passage(
+    db_session: AsyncSession,
+) -> None:
+    """The other half, and the two are only meaningful together.
+
+    A rule that closes nothing passes the case above on its own and holds every team on the
+    first passage of the book forever.
+    """
+    team = await a_team(db_session, name="Gravou")
+
+    await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
+
     assert await active_passage(db_session, project_id=team.id) == SECOND
+
+
+@pytest.mark.asyncio
+async def test_a_session_that_reached_the_rehearsal_and_never_recorded_leaves_the_passage_open(
+    db_session: AsyncSession,
+) -> None:
+    """`done` and `closed` are two facts, and this is the case that separates them.
+
+    `session_is_done` is the signal the room reads to send a team to the recording — the
+    floor, the evidence, the practice, the consent. Reaching it is not having recorded, and
+    the passage stays the team's until they do. A rule reading the session's own `done` would
+    close the passage on the invitation.
+    """
+    team = await a_team(db_session, name="Chegou ao ensaio e parou")
+    session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
+
+    settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
+
+    assert settled.status is IRSessionStatus.DONE, "a sessao nem chegou a liberar o ensaio"
+    assert await active_passage(db_session, project_id=team.id) == FIRST
+
+
+@pytest.mark.asyncio
+async def test_a_recording_on_a_session_the_room_never_sent_to_rehearse_closes_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """The other half of the same rule, and the reason both are asked for.
+
+    The route that keeps a take asks nothing about the conversation it belongs to, so a
+    recording can reach a session the room never judged worked. Closing on the recording
+    alone would carry the team off a passage whose beads nobody worked — the floor exists
+    to stop exactly that, and it is still the gate on the invitation to record.
+    """
+    team = await a_team(db_session, name="Gravou sem ter trabalhado")
+    session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+
+    await keep_a_take(db_session, session)
+
+    assert session.status is IRSessionStatus.IN_PROGRESS, "a sessao ja estava fechada"
+    assert await active_passage(db_session, project_id=team.id) == FIRST
+
+
+@pytest.mark.asyncio
+async def test_a_stretch_told_back_is_not_the_rehearsal_and_closes_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """A retro is the team explaining one stretch to the room. The passage is still theirs."""
+    team = await a_team(db_session, name="Contou de volta")
+    session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+    await room.save_comprehension(db_session, session, fully_supported_comprehension(FIRST))
+    settled = await room.apply_coverage(db_session, session.id, at_the_floor(FIRST))
+
+    await keep_a_take(db_session, settled, kind=IRTakeKind.RETRO)
+
+    assert await active_passage(db_session, project_id=team.id) == FIRST
 
 
 @pytest.mark.asyncio
 async def test_two_teams_at_different_points_progress_independently(
     db_session: AsyncSession,
 ) -> None:
-    """The acceptance criterion the old constant could not even be wrong about."""
+    """The acceptance criterion the old constant could not even be wrong about.
+
+    The team behind is at the floor on every bead of the passage, which is as far as a
+    conversation goes without ending: the two teams differ by a recording and nothing else.
+    """
     ahead = await a_team(db_session, name="Adiante")
     behind = await a_team(db_session, name="Atras")
 
-    await a_session_that_moved(db_session, project_id=ahead.id, pericope=FIRST, moved=closed(FIRST))
+    await a_session_the_team_finished(db_session, project_id=ahead.id, pericope=FIRST)
     await a_session_that_moved(
-        db_session, project_id=behind.id, pericope=FIRST, moved=one_bead_short(FIRST)
+        db_session, project_id=behind.id, pericope=FIRST, moved=at_the_floor(FIRST)
     )
 
     resolved = await active_passages(db_session, project_ids=[ahead.id, behind.id])
@@ -332,13 +377,11 @@ async def test_two_teams_at_different_points_progress_independently(
 
 @pytest.mark.asyncio
 async def test_another_teams_work_does_not_move_this_team(db_session: AsyncSession) -> None:
-    """Element keys belong to the canon, not to a team: `being:B3` is Naomi for everyone."""
+    """A finished session belongs to the team that held it, and moves nobody else."""
     mine = await a_team(db_session, name="Minha")
     theirs = await a_team(db_session, name="Deles")
 
-    await a_session_that_moved(
-        db_session, project_id=theirs.id, pericope=FIRST, moved=closed(FIRST)
-    )
+    await a_session_the_team_finished(db_session, project_id=theirs.id, pericope=FIRST)
 
     assert await active_passage(db_session, project_id=mine.id) == FIRST
 
@@ -348,7 +391,7 @@ async def test_a_session_belonging_to_no_team_moves_nobody(db_session: AsyncSess
     """Work with no project is nobody's rather than everybody's."""
     team = await a_team(db_session, name="Ninguem")
 
-    await a_session_that_moved(db_session, project_id=None, pericope=FIRST, moved=closed(FIRST))
+    await a_session_the_team_finished(db_session, project_id=None, pericope=FIRST)
 
     assert await active_passage(db_session, project_id=team.id) == FIRST
 
@@ -366,9 +409,7 @@ async def test_the_whole_roll_is_resolved_without_a_round_trip_per_team(
 
     teams = [await a_team(db_session, name=f"Equipe {index:02d}") for index in range(14)]
     for team in teams:
-        await a_session_that_moved(
-            db_session, project_id=team.id, pericope=FIRST, moved=closed(FIRST)
-        )
+        await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
 
     read: list[str] = []
 
@@ -386,11 +427,11 @@ async def test_the_whole_roll_is_resolved_without_a_round_trip_per_team(
 
 
 @pytest.mark.asyncio
-async def test_the_standing_of_a_real_team_comes_from_its_own_events(
+async def test_the_standing_of_a_real_team_comes_from_its_own_finished_sessions(
     db_session: AsyncSession,
 ) -> None:
     team = await a_team(db_session, name="De pe")
-    await a_session_that_moved(db_session, project_id=team.id, pericope=FIRST, moved=closed(FIRST))
+    await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
 
     positions = {
         entry.pericope: entry.position for entry in await team_standing(db_session, team.id)
@@ -433,29 +474,27 @@ async def test_a_passage_that_never_closes_holds_the_team_and_says_which_bead(
 
 
 @pytest.mark.asyncio
-async def test_a_later_session_merely_mentioning_a_bead_does_not_take_the_team_backwards(
+async def test_a_later_conversation_on_a_finished_passage_does_not_reopen_it(
     db_session: AsyncSession,
 ) -> None:
-    """The reading is the furthest the team ever took a bead, not the last thing said about it.
+    """A team can be given a finished passage by name, and it stays finished.
 
-    Every session opens at `initial_state`, so a bead the team engaged on Tuesday earns a fresh
-    `surfaced` event the moment Wednesday's Guide mentions it — against Wednesday's own tracker
-    it really did move. At team level it moved nowhere. Ordering by recency instead would read
-    that bead back down below the floor, un-close a passage the team had finished, and send
-    them back to work it again — with nothing anywhere recording that they had already done it.
+    The wheel keeps a finished passage enterable, so a team going back into one is ordinary
+    rather than an anomaly. What must not happen is that going back in makes it the team's
+    next passage again and holds them there — nothing in the second conversation un-does the
+    recording the first one ended with.
 
-    Written as its own case because no other scenario here produces it: all the others close a
-    passage and stop, so the two orderings agree and the wrong one goes unnoticed.
+    Written as its own case because every other scenario here finishes a passage and stops,
+    so a rule that closed on the *latest* session would agree with this one everywhere else.
     """
-    team = await a_team(db_session, name="Voltou a mencionar")
-    await a_session_that_moved(db_session, project_id=team.id, pericope=FIRST, moved=closed(FIRST))
+    team = await a_team(db_session, name="Voltou a entrar")
+    await a_session_the_team_finished(db_session, project_id=team.id, pericope=FIRST)
 
-    mentioned_again = element_keys(FIRST)[0]
     await a_session_that_moved(
         db_session,
         project_id=team.id,
         pericope=FIRST,
-        moved={mentioned_again: SURFACED},
+        moved={element_keys(FIRST)[0]: SURFACED},
     )
 
     assert await active_passage(db_session, project_id=team.id) == SECOND

@@ -21,9 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-from app.services.internalization_room.coverage import CoverageStatus
+from app.services.internalization_room.coverage import CoverageStatus, floor_met
+from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompt_blocks import coverage_status_block
-from tests.baker import make_language, make_project
+from tests.baker import (
+    fully_supported_comprehension,
+    keep_a_take,
+    make_language,
+    make_project,
+)
 
 _codes = itertools.count()
 
@@ -31,8 +37,8 @@ NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
 PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
 ENGAGED = CoverageStatus.ENGAGED.value
 
-#: Ruth 1:1-5 as the canon files it, read from the book rather than written here.
-FIRST = load_book(ROOM_BOOK)[0].pericope_num
+#: Ruth 1:1-5 and what follows it, read from the book rather than written here.
+FIRST, SECOND = (meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)[:2])
 
 
 async def a_team(db: AsyncSession, *, name: str):
@@ -97,3 +103,49 @@ async def test_the_guide_is_handed_only_what_the_team_still_has_left(
     block = coverage_status_block(thursday.coverage_state, FIRST)
     assert f"[{keys[-1]}]" in block
     assert [key for key in keys[:-1] if f"[{key}]" in block] == []
+
+
+@pytest.mark.asyncio
+async def test_a_team_that_closed_the_tablet_mid_passage_finishes_it_on_the_second_evening(
+    db_session: AsyncSession,
+) -> None:
+    """The ticket end to end, and where its two halves meet.
+
+    Thursday's session is opened without naming a passage, so the resolution answers it: the
+    passage is still the team's because nothing finished it on Tuesday. It opens on Tuesday's
+    beads, which is what lets one more evening's work reach the floor at all — against a fresh
+    tracker the second evening would only ever have half the passage on it.
+
+    Then the two facts, in the order the room meets them. `session_is_done` goes true and the
+    app opens the way to the rehearsal — and Ruth 1:1-5 is still the passage the team is
+    handed, because reaching the recording is not having recorded. The take lands and only
+    then does the passage stop being theirs.
+    """
+    team = await a_team(db_session, name="Fechou no meio da terceira cena")
+    keys = element_keys(FIRST)
+    half, rest = keys[: len(keys) // 2], keys[len(keys) // 2 :]
+
+    tuesday = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+    await room.apply_coverage(db_session, tuesday.id, dict.fromkeys(half, PARTIALLY_ENGAGED))
+
+    thursday = await room.create_session(db_session, project_id=team.id)
+    assert thursday.pericope == FIRST, "a passagem inacabada deixou de ser a da equipe"
+
+    thursday = await room.save_comprehension(
+        db_session, thursday, fully_supported_comprehension(FIRST)
+    )
+    thursday = await room.apply_coverage(
+        db_session, thursday.id, dict.fromkeys(rest, PARTIALLY_ENGAGED)
+    )
+
+    assert floor_met(thursday.coverage_state, FIRST), (
+        "a segunda noite so tinha metade da passagem no proprio tracker"
+    )
+    assert room.session_is_done(thursday), "a equipe nao chegaria a entrada do ensaio"
+    assert await active_passage(db_session, project_id=team.id) == FIRST, (
+        "a passagem fechou na entrada do ensaio, antes de a equipe gravar"
+    )
+
+    await keep_a_take(db_session, thursday)
+
+    assert await active_passage(db_session, project_id=team.id) == SECOND

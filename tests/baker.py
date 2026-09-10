@@ -1,5 +1,7 @@
+import base64
 from datetime import UTC, datetime, timedelta
 
+from google_crc32c import Checksum
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +13,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -37,14 +39,34 @@ from app.db.models.translation_helper import (
     THChatMessage,
 )
 from app.services.auth.hash_password import hash_password
-from app.services.internalization_room.canon.elements import ElementKind, elements_for
+from app.services.internalization_room.canon.elements import (
+    ElementKind,
+    element_keys,
+    elements_for,
+)
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import initial_state
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.comprehension.checkpoints import (
+    checkpoints_for,
+    scene_ids_for,
+)
+from app.services.internalization_room.comprehension.evidence import (
+    EvidenceMethod,
+    EvidenceObservation,
+    EvidenceResult,
+)
+from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.coverage import CoverageStatus, initial_state
+from app.services.internalization_room.sessions import (
+    apply_coverage,
+    create_session,
+    save_comprehension,
+)
+from app.services.internalization_room.takes import store_take
 from app.services.oral_collector.review_flags import (
     UNCLASSIFIED_GENRE_ID,
     recompute_review_flags,
 )
+from app.services.platform.storage import StoredObject
 
 SAMPLE_MM_DATA: dict = {
     "level_1": {"arc": "God creates the heavens and the earth."},
@@ -910,3 +932,93 @@ async def open_ir_session(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+class _BucketInMemory:
+    """The take store, without a bucket. `store_take` reads back what it wrote, so a fixture
+    that keeps a take has to answer both halves."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    async def get(self, key: str) -> bytes | None:
+        return self.objects.get(key)
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.objects[key] = data
+
+    async def stat(self, key: str) -> StoredObject | None:
+        stored = self.objects.get(key)
+        if stored is None:
+            return None
+        checksum = Checksum()
+        checksum.update(stored)
+        return StoredObject(
+            size=len(stored), crc32c=base64.b64encode(checksum.digest()).decode("ascii")
+        )
+
+
+async def keep_a_take(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    kind: IRTakeKind = IRTakeKind.ENSAIO,
+    audio: bytes = b"a equipe gravou",
+) -> IRTake:
+    """Audio the team recorded, kept the way the room keeps it.
+
+    Through `store_take` and not by inserting the row, because what a take *is* — its key,
+    its checksums, its verification — is that function's answer, and a fixture writing its
+    own would let a reader of takes agree with the fixture while disagreeing with the room.
+    """
+    return await store_take(
+        db,
+        session_id=session.id,
+        device_id="tablet-da-equipe",
+        project_id=session.project_id,
+        pericope=session.pericope,
+        kind=kind,
+        scope=session.pericope,
+        audio=audio,
+        store=_BucketInMemory(),
+    )
+
+
+def fully_supported_comprehension(pericope: str) -> ComprehensionState:
+    """The comprehension gate met: every checkpoint demonstrated, every scene practised."""
+    return ComprehensionState(
+        ledger=[
+            EvidenceObservation(
+                id=f"ev-{index}",
+                unit_id=checkpoint.id,
+                probe_id=f"probe-{index}",
+                method=EvidenceMethod.MICRO_TELLBACK,
+                result=EvidenceResult.DEMONSTRATED,
+            )
+            for index, checkpoint in enumerate(checkpoints_for(pericope))
+        ],
+        practiced_scene_ids=scene_ids_for(pericope),
+        recording_consent_given=True,
+    )
+
+
+async def having_finished_the_passage(db: AsyncSession, session: IRSession) -> IRSession:
+    """Take one conversation to the end of its passage the way the room does.
+
+    Three facts, because the room asks for three and they are not the same fact. The beads
+    worked at least in part and the comprehension gate met are what `session_is_done` reads,
+    and what lets the room send the team to record. The recording kept is what finishes the
+    passage — the ledger informs, it never ends the conversation.
+
+    Written through `apply_coverage`, `save_comprehension` and `store_take` rather than by
+    setting fields, so a fixture cannot agree with a reader that reads a finished passage
+    differently from how one is actually finished.
+    """
+    await save_comprehension(db, session, fully_supported_comprehension(session.pericope))
+    settled = await apply_coverage(
+        db,
+        session.id,
+        dict.fromkeys(element_keys(session.pericope), CoverageStatus.PARTIALLY_ENGAGED.value),
+    )
+    await keep_a_take(db, settled)
+    return settled
