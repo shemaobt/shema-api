@@ -268,23 +268,39 @@ async def test_a_turn_on_an_unpriced_rung_says_the_total_is_short(spoken_by, cap
     )
 
 
-async def test_a_turn_that_lost_the_cache_says_so_and_costs_the_difference(
+async def test_a_session_that_lost_the_cache_says_so_and_costs_the_difference(
     spoken_by, caplog
 ) -> None:
     spoken_by(cached=False)
 
     with caplog.at_level(logging.INFO):
         await _a_turn()
+        await _a_turn("E depois, o que aconteceu?")
 
     turn = _turn_line(caplog)
     assert turn.turn_cache_read_tokens == 0
     assert turn.turn_cost_usd == round(UNCACHED_TURN_COST, 6)
     assert turn.turn_cost_usd > round(GUIDE_COST + VALIDATOR_COST, 6) * 4
-    assert turn.cache_missed is True, (
-        "um turno que pagou o mapa inteiro de novo chegava ao log como mais um turno com um "
-        "zero no meio de oito números, e o cache podia estar desligado a sessão inteira sem "
-        "ninguém ler o zero"
+    assert _session_lines(caplog)[-1].cache_missed is True, (
+        "uma sessão que pagou o mapa inteiro em todo turno chegava ao log como mais uma "
+        "sessão com um zero no meio de oito números, e o cache podia estar desligado a "
+        "sessão inteira sem ninguém ler o zero"
     )
+
+
+async def test_one_turn_is_not_enough_to_call_the_cache_broken(spoken_by, caplog) -> None:
+    """A session's opening turn writes the entry every turn after it reads.
+
+    Its cache-read counter is zero because there was nothing there to read yet. A run of the
+    real room raised the alarm on the first turn of the session and cleared it on the second,
+    which is how an alarm stops being read at all.
+    """
+    spoken_by(cached=False)
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+
+    assert _session_lines(caplog)[-1].cache_missed is False
 
 
 async def test_a_rung_the_key_cannot_use_shows_the_one_below_it_and_why(spoken_by, caplog) -> None:

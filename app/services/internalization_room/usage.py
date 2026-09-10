@@ -96,15 +96,20 @@ class Spend:
 
     @property
     def cache_missed(self) -> bool:
-        """Whether work happened here and none of it was served from cache.
+        """Whether this session has answered more than one turn and read none of the map back.
 
         The one reading a zero among eight numbers does not give anybody. The map is what the
         cache is for, it is pinned in front of every turn of every session, and a prefix that
         silently stops matching costs its full price again on each of them while changing
-        nothing else anyone would notice. So the record says it in a word rather than leaving
+        nothing else anyone would notice — so the record says it in a word rather than leaving
         it to be inferred from a counter nobody was looking at.
+
+        More than one turn, because the first one cannot tell. A session's opening turn writes
+        the entry the rest of it reads, so a zero there is what a working cache looks like on
+        its way up; a real run of the room raised this on the first turn of every session and
+        cleared it on the second, which is how an alarm stops being read.
         """
-        return self.calls > 0 and self.cache_read_tokens == 0
+        return self.turns > 1 and self.cache_read_tokens == 0
 
 
 #: The ledger every call in flight adds itself to, when one is open. A context variable and
