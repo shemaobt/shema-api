@@ -56,7 +56,9 @@ from app.services.internalization_room.takes import takes_of
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
-#: key says ``segments`` because that is what they are.
+#: key says ``segments`` because that is what they are. Bumped again to v0.3 when the
+#: ``bridge_mode`` key left the payload with the mode itself (ENG-800): a consumer diffing
+#: the two versions finds one key gone and nothing renamed.
 SCHEMA_VERSION = "tripod.internalization-release.v0.3"
 
 

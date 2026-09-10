@@ -49,8 +49,8 @@ class AllowlistEntry:
 #: `gemini_*`/`ThinkingLevel.LOW` in llm.py stay for ENG-747. The mode rule has nothing
 #: left to allow: ENG-800 deleted calibration.py, the column, the wire fields and the two
 #: prompt sections, so a `bridge_mode` anywhere the guard reads is now a violation with no
-#: row to hide behind. Sorted by file, then rule, then the line the text came from, purely
-#: for a readable diff.
+#: row to hide behind — 65 down to 8, all probe and memory-window sites. Sorted by file,
+#: then rule, then the line the text came from, purely for a readable diff.
 ALLOWLIST: list[AllowlistEntry] = [
     AllowlistEntry(
         "app/services/internalization_room/comprehension/probe.py",

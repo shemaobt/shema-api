@@ -261,7 +261,7 @@ def playback_confirms_rehearsal(state: BackTranslationState, rehearsal_take_ids:
 
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own
-#: language. Keyed by the language code, in the shape `calibration.py` already uses — an
+#: language. Keyed by the language code, in the shape the other per-language tables use — an
 #: unclaimed language falls back to the authored English line.
 _NOTHING_TOLD_BACK_YET: dict[str, str] = {
     "pt": "(a equipe ainda não contou nada de volta)",

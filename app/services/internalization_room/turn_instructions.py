@@ -11,7 +11,7 @@ from app.services.internalization_room.languages import FLOOR
 NOT_THIS_TURN = "(não se aplica a este turno)"
 
 #: What the Validator is told when nobody spoke this turn, in the session's own language.
-#: Keyed by language code, in the shape `calibration.py` already uses — an unclaimed
+#: Keyed by language code, in the shape the other per-language tables use — an unclaimed
 #: language falls back to the authored English line. Two cases per language: the opening
 #: turn, where nobody has spoken yet, and the verdict path, where the team has spoken —
 #: outside the conversation, into the telling-back — and the opening line would say the
