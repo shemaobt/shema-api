@@ -18,8 +18,10 @@
 > language it claims needs all fourteen lines. A language with none written falls back to the
 > floor rather than emptying the wheel — an empty wheel tells a team the book is finished.
 
-> ⚠️ **STATUS: DRAFT — awaiting validation.** These are each map's own H1 reference.
-> Nothing here has been approved to be spoken to a team.
+> ⚠️ **STATUS: the lines are the maps' own references, and only that is settled.** Her rule of
+> 4 September — nothing about a passage is said outside the map — is what these lines obey, and
+> the form is the one her menu shows. What still awaits her word is whether the wheel should
+> speak a reference aloud at all; until she says, the wheel speaks these and nothing more.
 
 ---
 
