@@ -333,3 +333,37 @@ async def test_two_sessions_at_once_do_not_add_to_each_other(spoken_by, caplog) 
         "duas equipes traduzindo ao mesmo tempo entravam no mesmo total, e nenhuma das duas "
         "sessões tinha um número que pudesse ser levado ao contrato"
     )
+
+
+#: What the team says and what the Guide answers, in words that appear nowhere else — so a
+#: line that leaked either of them is found by looking for the words themselves.
+TEAM_SAID = "a fome levou Elimeleque e Noemi para os campos de Moabe"
+GUIDE_SAID = "Elimeleque morreu e Noemi ficou com os dois filhos em Moabe."
+
+
+def _everything_written(caplog: pytest.LogCaptureFixture) -> str:
+    """Every record of the run, message and structured fields alike.
+
+    The fields as well as the message: a leak that rides in `extra` never appears in the
+    formatted line and is exactly the kind a review would not catch.
+    """
+    written = []
+    for record in caplog.records:
+        written.append(record.getMessage())
+        written.extend(str(value) for value in record.__dict__.values())
+    return "\n".join(written)
+
+
+async def test_a_whole_session_leaves_no_word_of_the_passage_behind(spoken_by, caplog) -> None:
+    spoken_by(draft=GUIDE_SAID)
+
+    with caplog.at_level(logging.DEBUG):
+        await _a_turn(TEAM_SAID)
+        await _a_turn("e depois Noemi voltou sozinha para Belém")
+
+    written = _everything_written(caplog)
+    for said in (TEAM_SAID, GUIDE_SAID, "Noemi", "Elimeleque", "Belém", "Moabe"):
+        assert said not in written, (
+            f"o registro do que a sessão custou carregava {said!r} junto; um log operacional "
+            f"que repete a passagem entrega a tradução inteira a quem só devia ver números"
+        )
