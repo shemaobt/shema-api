@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -73,6 +74,17 @@ GOVERNED = ("ladder", "max_output_tokens", "effort", "thinks")
 #: than credited to a ruling she never made. Moving one is a diff a reviewer cannot miss.
 UNRULED = "unruled"
 
+BAR_FILE = REPO_ROOT / "docs/doctrine/ACCEPTANCE_BAR"
+DOCTRINE = REPO_ROOT / VENDORED["docs/DOCTRINE.md"]
+
+#: The second column of a bar row this repo does not hold today. Counted out loud rather than
+#: left out, because a line missing from the record reads as a line nobody had to think about.
+PENDING = "PENDING"
+
+THE_BAR = (
+    "DOCTRINE.md §4 — what must not regress. Every line of it is claimed by a test that names "
+    "it, or recorded as PENDING. A line nobody claims is a line nobody is holding."
+)
 OWNERSHIP = (
     "DOCTRINE.md §5.1 — prompts/*.md, the model ladder and its parameters are Marcia's "
     "artifacts: any change is a ruling with her word, never an engineering default."
@@ -283,6 +295,72 @@ def unnamed_rulings(record: dict[str, tuple[str, str]], rulings: list[Ruling]) -
     ]
 
 
+def acceptance_bar(doctrine: Path = DOCTRINE) -> list[str]:
+    """§4's lines, read out of the vendored doctrine rather than transcribed beside it.
+
+    Her first bullet is one sentence carrying twelve rules, so the bullet is not the line: the
+    semicolon is. Parsed on every run, because the one thing nobody should have to remember is
+    to re-read §4 after a re-pin.
+    """
+    text = doctrine.read_text(encoding="utf-8")
+    section = text[text.index("## 4. What must not regress") :]
+    section = section[: section.index("\n## ")]
+    lines = []
+    for bullet in re.findall(r"^- (.+?)(?=\n- |\Z)", section, re.S | re.M):
+        lines += [clause.strip() for clause in " ".join(bullet.split()).split(";")]
+    return lines
+
+
+def read_bar_record(bar_file: Path = BAR_FILE) -> dict[str, list[str]]:
+    record: dict[str, list[str]] = {}
+    for line in bar_file.read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        fragment, _, tests = line.partition("  ")
+        record[fragment.strip()] = tests.split()
+    return record
+
+
+def _test_exists(claim: str, root: Path) -> bool:
+    path, _, name = claim.partition("::")
+    source = root / path
+    if not source.exists():
+        return False
+    return any(
+        isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
+    )
+
+
+def bar_faults(
+    lines: list[str],
+    record: dict[str, list[str]],
+    root: Path = REPO_ROOT,
+    tests_exist: bool = True,
+) -> list[str]:
+    """Where §4 and the record disagree: a line unclaimed, a fragment stale, a test gone.
+
+    The fragment is matched against the line rather than compared to it. A guard on her wording
+    would go red for a rename that leaves the ruling untouched, which is the trap the
+    back-translation prose tests were cut back from.
+    """
+    faults = []
+    for line in lines:
+        if not any(fragment in line for fragment in record):
+            faults.append(f"unclaimed: {line}")
+    for fragment, claims in record.items():
+        if not any(fragment in line for line in lines):
+            faults.append(f"stale: {fragment}")
+            continue
+        if tests_exist:
+            faults += [
+                f"no such test: {claim}"
+                for claim in claims
+                if claim != PENDING and not _test_exists(claim, root)
+            ]
+    return faults
+
+
 def sync(source: Path) -> int:
     commit = subprocess.run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
@@ -325,9 +403,20 @@ def check() -> int:
         print(OWNERSHIP, file=sys.stderr)
         return 1
 
+    bar = read_bar_record()
+    lines = acceptance_bar()
+    faults = bar_faults(lines, bar)
+    if faults:
+        for line in faults:
+            print(f"  {line}", file=sys.stderr)
+        print(THE_BAR, file=sys.stderr)
+        return 1
+
     inherited = sum(1 for _value, ruling in record.values() if ruling == UNRULED)
+    pending = sum(1 for claims in bar.values() if claims == [PENDING])
     print(f"the vendored doctrine matches pin {pin.commit[:12]}")
     print(f"the model seam matches its record — {inherited} of {len(record)} rows still unruled")
+    print(f"the acceptance bar is {len(lines)} lines — {pending} still PENDING")
     return 0
 
 
