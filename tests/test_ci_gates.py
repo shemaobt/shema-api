@@ -90,3 +90,27 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
     defined = set(_workflow(filename)["jobs"])
 
     assert jobs <= defined, f"{filename} lost {jobs - defined}"
+
+
+#: ENG-913: `test`'s own green runs on 2026-09-10 took 13-16 minutes; 40 is twice the
+#: slowest of those. A job with no `timeout-minutes` inherits GitHub's 360-minute default,
+#: which is how a hung run stayed "pending" for six hours instead of turning red.
+JOB_TIMEOUT_MINUTES = {
+    ("test.yml", "test"): 40,
+    ("lint.yml", "ruff"): 5,
+    ("lint.yml", "boots"): 5,
+    ("lint.yml", "mypy"): 5,
+    ("lint.yml", "doctrine"): 5,
+}
+
+
+@pytest.mark.parametrize(
+    ("filename", "job", "minutes"),
+    sorted((filename, job, minutes) for (filename, job), minutes in JOB_TIMEOUT_MINUTES.items()),
+)
+def test_a_hung_job_turns_red_instead_of_staying_pending_for_hours(
+    filename: str, job: str, minutes: int
+) -> None:
+    jobs = _workflow(filename)["jobs"]
+    timeout = jobs[job].get("timeout-minutes")
+    assert timeout == minutes, f"{filename}:{job} timeout-minutes is {timeout}, not {minutes}"

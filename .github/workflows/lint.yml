@@ -23,6 +23,9 @@ env:
 jobs:
   ruff:
     runs-on: ubuntu-latest
+    # Recent green runs finish in well under a minute (ENG-913); 5 leaves headroom for a
+    # cold `uv sync` without inheriting GitHub's 360-minute default.
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,6 +60,7 @@ jobs:
       DATABASE_URL: sqlite+aiosqlite:///./boot-check.db
       JWT_SECRET_KEY: test-secret-for-ci-only
       INNGEST_DEV: "1"
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -75,6 +79,7 @@ jobs:
 
   mypy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -100,6 +105,7 @@ jobs:
   # the day that list is empty.
   doctrine:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
