@@ -150,7 +150,7 @@ async def test_an_oversized_take_is_refused_before_anything_is_stored(db_session
 
 
 @pytest.mark.asyncio
-async def test_a_retro_chunk_carries_its_pass_and_position(db_session: AsyncSession):
+async def test_a_retro_take_carries_its_pass_and_its_stretch_position(db_session: AsyncSession):
     store = MemoryStore()
 
     take = await service.store_take(
