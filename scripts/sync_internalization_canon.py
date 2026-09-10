@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -33,7 +34,12 @@ KINDS = {
 
 
 def _get(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=30) as response:
+    headers = {}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"token {token}"
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=30) as response:
         return response.read()
 
 
