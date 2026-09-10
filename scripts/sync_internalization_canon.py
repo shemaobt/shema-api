@@ -10,7 +10,7 @@ The facilitator-facing element labels are the case that already exists: they sit
 `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a re-pin cannot delete
 them without a word.
 
-    uv run python scripts/sync_internalization_canon.py --check              # drift only, exits 1
+    uv run python scripts/sync_internalization_canon.py --check              # drift or a stale extra file, exits 1
     uv run python scripts/sync_internalization_canon.py --sync               # re-pin to current main
     uv run python scripts/sync_internalization_canon.py --sync --pin <sha>   # re-pin to that sha
 """
@@ -89,13 +89,20 @@ def check() -> int:
     sha = PIN_FILE.read_text().strip()
     drifted: list[str] = []
     for kind in KINDS:
-        for name in _listing(kind, sha):
+        names = _listing(kind, sha)
+        for name in names:
             local = VENDOR / kind / name
             upstream = _raw(kind, sha, name)
             if not local.exists():
                 drifted.append(f"missing: {kind}/{name}")
             elif _digest(local.read_bytes()) != _digest(upstream):
                 drifted.append(f"changed: {kind}/{name}")
+
+        target = VENDOR / kind
+        if target.is_dir():
+            for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
+                if existing not in names:
+                    drifted.append(f"extra: {kind}/{existing}")
 
     if drifted:
         print(f"canon drifted from pin {sha}:", file=sys.stderr)
