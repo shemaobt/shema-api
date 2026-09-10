@@ -181,8 +181,7 @@ async def replace(
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
 
     if not text.strip():
-        await room.count_an_empty_telling(db, segment)
-        crossed = await room.note_a_hard_stretch(db, session, segment)
+        crossed = await room.count_an_empty_telling(db, session, segment)
         return SegmentsResponse(
             session_id=session.id,
             segments=await _units(db, session.id),

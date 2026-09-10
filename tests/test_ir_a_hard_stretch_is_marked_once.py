@@ -345,7 +345,7 @@ async def test_the_third_telling_of_one_stretch_asks_for_a_person_once(
 async def test_a_second_hard_stretch_asks_again(
     client: httpx.AsyncClient, db_session: AsyncSession, facilitator: Facilitator
 ) -> None:
-    """Once per stretch, not once per session: a different frase is a different ask."""
+    """Once per stretch, not once per session: a different stretch is a different ask."""
     session_id = await _a_session(db_session, team_id=facilitator.team_id)
     take_id = await _rehearse(client, session_id)
     await _told(client, session_id, take_id, 2)
@@ -636,6 +636,161 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
     )
 
 
+async def test_a_stretch_left_at_the_number_with_no_mark_is_still_marked(
+    db_session: AsyncSession,
+) -> None:
+    """The crossing has to be recoverable, because the count and the mark can come apart.
+
+    The captured path writes the row in one transaction and the mark in the next. A failure
+    between them leaves a stretch standing at the number carrying no mark — and a gate reading
+    exact equality would then never mark it, because the count only ever grows. The gate asks
+    the table instead, so the next telling finds the count past the number, finds no mark, and
+    writes it.
+    """
+    from app.services.internalization_room.hard_stretches import note_a_hard_stretch
+    from app.services.internalization_room.segments import capture_segment
+
+    session = await room.create_session(db_session, pericope=P)
+    session_id = str(session.id)
+    told = await capture_segment(
+        db_session,
+        session,
+        take_id="ensaio-1",
+        starts_ms=0,
+        ends_ms=9000,
+        bridge_take_id="retro-1",
+        transcript="o trecho",
+    )
+
+    told.tellings = RETELLS_BEFORE_A_WARNING
+    await db_session.commit()
+    assert await note_a_hard_stretch(db_session, session, told) is True
+    assert len(await _marks(db_session, session_id)) == 1
+
+    told.tellings = RETELLS_BEFORE_A_WARNING + 1
+    await db_session.commit()
+
+    assert await note_a_hard_stretch(db_session, session, told) is False, (
+        "a marca é o que mantém o pedido em um; a contagem só cresce"
+    )
+    assert len(await _marks(db_session, session_id)) == 1
+
+
+async def test_a_count_left_past_the_number_by_a_lost_mark_is_recovered(
+    db_session: AsyncSession,
+) -> None:
+    """The other half: past the number and never marked at all, the next telling marks."""
+    from app.services.internalization_room.hard_stretches import note_a_hard_stretch
+    from app.services.internalization_room.segments import capture_segment
+
+    session = await room.create_session(db_session, pericope=P)
+    session_id = str(session.id)
+    told = await capture_segment(
+        db_session,
+        session,
+        take_id="ensaio-1",
+        starts_ms=0,
+        ends_ms=9000,
+        bridge_take_id="retro-1",
+        transcript="o trecho",
+    )
+    told.tellings = RETELLS_BEFORE_A_WARNING + 2
+    await db_session.commit()
+
+    assert await note_a_hard_stretch(db_session, session, told) is True
+    marks = await _marks(db_session, session_id)
+    assert [mark.tellings for mark in marks] == [RETELLS_BEFORE_A_WARNING + 2], (
+        "a marca guarda a contagem do momento em que foi escrita"
+    )
+
+
+async def test_an_empty_re_recording_is_refused_on_a_stretch_that_no_longer_counts(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """A retry that lands on a retired row must not spend a telling on it.
+
+    The captured branch is refused by `capture_segment`; counting had no such guard, so an
+    unheard retry counted on a row nothing can ever replace — and could mark it hard.
+    """
+    session_id = await _a_session(db_session)
+    take_id = await _rehearse(client, session_id)
+    await _told(client, session_id, take_id, 1)
+    retired = (await _units(client, session_id))[0]
+    await _tell(client, session_id, take_id, 1, again=True, saying="e de novo")
+
+    client.said.append("")  # type: ignore[attr-defined]
+    refused = await client.post(
+        f"{IR}/sessions/{session_id}/segments/{retired['segment_id']}/replace",
+        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        data={
+            "take_id": retired["take_id"],
+            "starts_ms": str(retired["starts_ms"]),
+            "ends_ms": str(retired["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert refused.status_code == 400, refused.text
+    assert [one.tellings for one in await _current(db_session, session_id)] == [2], (
+        "a tentativa recusada não pode contar na linha que está de pé"
+    )
+    assert await _marks(db_session, session_id) == []
+
+
+async def test_an_empty_re_recording_is_refused_on_a_divided_stretch(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """A divided parent is not a unit, so nothing counts on it and nothing marks it."""
+    session_id = await _a_session(db_session)
+    take_id = await _rehearse(client, session_id)
+    await _told(client, session_id, take_id, 1)
+    parent = (await _units(client, session_id))[0]
+    divided = await client.post(
+        f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/divide",
+        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        json={"at_ms": 4000},
+    )
+    assert divided.status_code == 200, divided.text
+
+    client.said.append("")  # type: ignore[attr-defined]
+    refused = await client.post(
+        f"{IR}/sessions/{session_id}/segments/{parent['segment_id']}/replace",
+        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
+        data={
+            "take_id": parent["take_id"],
+            "starts_ms": str(parent["starts_ms"]),
+            "ends_ms": str(parent["ends_ms"]),
+        },
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert refused.status_code == 400, refused.text
+    db_session.expire_all()
+    stood = await _current(db_session, session_id)
+    assert [one.tellings for one in stood] == [1, 1, 1], "nem o pai nem os pedaços contaram"
+    assert await _marks(db_session, session_id) == []
+
+
+async def test_the_packet_carries_no_count_of_retells(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """The per-session counter left the packet with the field it came from.
+
+    Consultant material does not travel to Refine, and this number never was any: it was the
+    room's own bookkeeping, read by nobody on the other side.
+    """
+    from tests.test_ir_a_take_is_numbered_by_its_stretch import _ready_for_release
+
+    session_id = await _a_session(db_session)
+    take_id = await _rehearse(client, session_id)
+    await _told(client, session_id, take_id, 3)
+
+    packet = await _ready_for_release(db_session, await _row(db_session, session_id))
+
+    assert "retells" not in packet["back_translation"]
+    assert "retells" not in str(packet), "a contagem por sessão saiu do pacote inteiro"
+
+
 # ---------------------------------------------------------------------------
 # 7. Three tellings over three stretches raise nothing
 # ---------------------------------------------------------------------------
@@ -647,7 +802,7 @@ async def test_three_retellings_over_three_stretches_raise_no_warning(
     """The control that says the count is per stretch and not per session.
 
     This is the case the per-session counter got wrong in the other direction: a team working
-    steadily through three different frases was handed to a person having repeated nothing.
+    steadily through three different stretches was handed to a person having repeated nothing.
     """
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)
@@ -672,7 +827,7 @@ async def test_three_retellings_over_three_stretches_raise_no_warning(
 async def test_an_empty_retelling_counts_in_place(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Marcia named this case: "either a hard frase or the recognizer failing".
+    """Marcia named this case: "either a hard stretch or the recognizer failing".
 
     Nothing is captured, so there is no new row to carry a count onto — the count goes onto
     the row that is standing, which is the stretch they were telling.
@@ -737,7 +892,7 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
 ) -> None:
     """The decision of 2026-09-10, and what makes a chain for the count to live on.
 
-    The chunks route wrote an unchained pass-2 row at the next position, so the frase the team
+    The chunks route wrote an unchained pass-2 row at the next position, so the stretch the team
     had just told again appeared beside itself and the stretch it answered stayed waiting.
     """
     session_id = await _a_session(db_session)
@@ -774,7 +929,7 @@ async def test_re_recording_the_mother_tongue_is_not_a_telling(
 ) -> None:
     """A new recording under a stretch carries no words, so it counts nothing.
 
-    The team records the frase again and then tells it back, which is two calls and one
+    The team records the stretch again and then tells it back, which is two calls and one
     telling. Counted on the supersession rather than on the telling, that pair would reach
     three on the team's second telling and ask for a person a whole telling early.
     """
@@ -846,6 +1001,6 @@ async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(
     assert over_the_parent.json()["captured"] is True
     born = [one for one in await _current(db_session, session_id) if one.parent_id is None]
     assert [one.tellings for one in born] == [1, 1], (
-        "nada foi substituído, então a fatia inteira é uma frase que ninguém contou ainda"
+        "nada foi substituído, então a fatia inteira é uma stretch que ninguém contou ainda"
     )
     assert born[-1].ordinal == 2, "e ela toma a posição seguinte, como qualquer primeira contagem"

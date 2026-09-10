@@ -118,10 +118,7 @@ async def add_chunk(
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
-        warned = False
-        if retold is not None:
-            await room.count_an_empty_telling(db, retold)
-            warned = await room.note_a_hard_stretch(db, session, retold)
+        warned = retold is not None and await room.count_an_empty_telling(db, session, retold)
         return BackTranslationChunkResponse(
             session_id=session.id,
             chunks=len(told),

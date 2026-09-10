@@ -1,7 +1,7 @@
 """the count of tellings on a stretch, and the table that keeps a hard stretch
 
 The count was one integer per session inside the telling-back state, so three tellings spread
-over three different frases raised the same warning as three tellings of one — and starting the
+over three different stretches raised the same warning as three tellings of one — and starting the
 telling-back over rewrote the state around it. It becomes a column on the stretch, carried onto
 the row that supersedes it, so it counts what Marcia's ruling counts.
 

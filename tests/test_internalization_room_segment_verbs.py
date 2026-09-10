@@ -904,7 +904,7 @@ async def test_dividing_a_stretch_is_not_telling_it_again_and_counts_nothing(
 
     The pieces keep the count of the stretch they came from, for the reason they keep its
     pass: born on the default, a division of something already told twice would hand the team
-    a fresh count on each piece, and the third telling of that frase would never arrive.
+    a fresh count on each piece, and the third telling of that stretch would never arrive.
     """
     session_id, _, whole = await _one_told_stretch(client)
     told_again = await _correct(client, session_id, whole)
@@ -915,6 +915,9 @@ async def test_dividing_a_stretch_is_not_telling_it_again_and_counts_nothing(
     cut = await _divide(client, session_id, standing["segment_id"], 8000)
 
     assert cut.status_code == 200, cut.text
+    assert await _asks_for_a_person(client, session_id) is False, (
+        "em dois, um erro de um a menos no portão pediria uma pessoa aqui"
+    )
     db_session.expire_all()
     pieces = [
         one

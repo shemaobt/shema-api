@@ -13,6 +13,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.compose import recompose_passage
 from app.services.internalization_room.hard_stretches import (
+    count_an_empty_telling,
     hard_stretches_of,
     note_a_hard_stretch,
 )
@@ -28,7 +29,6 @@ from app.services.internalization_room.run_turn import (
 )
 from app.services.internalization_room.segments import (
     capture_segment,
-    count_an_empty_telling,
     current_segments,
     current_stretch_at,
     divide_segment,

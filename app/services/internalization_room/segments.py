@@ -92,17 +92,9 @@ async def capture_segment(
     explanation in hand and no reason to think twice; a refusal is what makes the forbidden
     state unreachable.
 
-    **A stretch that no longer counts cannot be replaced.** A tablet retrying a replacement it
-    already sent lands on the row it superseded: the successor would take a position another
-    current row already holds, which the index refuses with a 500 nobody in the room can read —
-    and once a telling-back has been started over there is no current row left to collide with,
-    so the same call would quietly bring a stretch back from the recording the team threw away.
-
-    **A stretch that was divided cannot be replaced as a unit.** Its children would go on
-    pointing at the retired row, which the walk in `final_segments` starts too high up to
-    reach, and they would drop out of the reading with nothing saying so. It is refused
-    rather than repaired because the parent stopped being a unit the moment it was divided:
-    what gets re-recorded is a child, one at a time.
+    What may be replaced at all — not a retired row, not one the team divided — is
+    `refuse_a_stretch_that_is_not_a_unit`, which the route that counts an unheard telling asks
+    the same question of.
 
     The retired row is stamped before the successor is inserted, not after. The two share a
     position, and the index that keeps one position to one current stretch is checked per
@@ -121,16 +113,7 @@ async def capture_segment(
         )
 
     if replaces is not None:
-        if replaces.superseded_at is not None:
-            raise ValidationError(
-                "This stretch no longer counts: it was already replaced, or the telling-back "
-                "it belonged to was started over"
-            )
-        if any(row.parent_id == replaces.id for row in await current_segments(db, session.id)):
-            raise ValidationError(
-                "A stretch that was divided is no longer a unit: replace one of the stretches "
-                "it was divided into, not the stretch itself"
-            )
+        await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
         parent_id = replaces.parent_id
         ordinal = replaces.ordinal
         tellings = replaces.tellings + 1 if transcript is not None else replaces.tellings
@@ -462,15 +445,35 @@ async def current_stretch_at(
     )
 
 
-async def count_an_empty_telling(db: AsyncSession, segment: IRSegment) -> IRSegment:
-    """Count a telling nobody could make out, on the row that is standing.
+async def refuse_a_stretch_that_is_not_a_unit(
+    db: AsyncSession, session_id: str, segment: IRSegment
+) -> None:
+    """A stretch that no longer counts, or that was divided, is not a stretch to act on.
 
-    Nothing is captured, so there is no new row to carry the count onto. Not counting it is
-    what made the room unreachable exactly when it was broken: during a transcriber outage
-    every attempt comes back empty, and the team could tell one stretch forever without the room
-    ever offering them a person.
+    **A stretch that no longer counts cannot be replaced.** A tablet retrying a replacement it
+    already sent lands on the row it superseded: the successor would take a position another
+    current row already holds, which the index refuses with a 500 nobody in the room can read —
+    and once a telling-back has been started over there is no current row left to collide with,
+    so the same call would quietly bring a stretch back from the recording the team threw away.
+
+    **A stretch that was divided cannot be replaced as a unit.** Its children would go on
+    pointing at the retired row, which the walk in `final_segments` starts too high up to
+    reach, and they would drop out of the reading with nothing saying so. It is refused rather
+    than repaired because the parent stopped being a unit the moment it was divided: what gets
+    re-recorded is a child, one at a time.
+
+    One expression, because the two callers must answer the same. `capture_segment` asks it
+    before writing a replacement; the correction route asks it before *counting* on a row,
+    where an unguarded retry used to spend a telling on a stretch the room had already retired
+    and could mark a divided parent nothing can ever replace.
     """
-    segment.tellings += 1
-    await db.commit()
-    await db.refresh(segment)
-    return segment
+    if segment.superseded_at is not None:
+        raise ValidationError(
+            "This stretch no longer counts: it was already replaced, or the telling-back "
+            "it belonged to was started over"
+        )
+    if any(row.parent_id == segment.id for row in await current_segments(db, session_id)):
+        raise ValidationError(
+            "A stretch that was divided is no longer a unit: replace one of the stretches "
+            "it was divided into, not the stretch itself"
+        )

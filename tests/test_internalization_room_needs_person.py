@@ -50,7 +50,8 @@ async def test_starting_over_starts_the_count_again_and_leaves_the_mark_standing
 ) -> None:
     """Starting the telling-back over is the team throwing the recording away.
 
-    Every stretch of the session is retired, so the frases they tell next are counted from one.
+    Every stretch of the session is retired, so the stretches they tell next are counted from
+    one.
     What may not go with them is the record that one of them was hard: that fact is the
     consultant's, and starting over is not evidence against it.
     """
