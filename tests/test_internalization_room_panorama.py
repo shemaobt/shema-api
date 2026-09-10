@@ -384,7 +384,7 @@ def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workf
     steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
     deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
 
-    assert "--timeout=300" in deploy_step["run"]
+    assert "--timeout=300" in deploy_step["run"].split()
 
 
 async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turns(
