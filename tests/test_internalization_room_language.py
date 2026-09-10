@@ -366,3 +366,23 @@ async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothin
     assert captured["TEAM_UTTERANCE"] == "(the team has not spoken yet)"
     assert captured["COVERAGE_ELEMENTS"] == "(no elements pending)"
     assert captured["user_content"] == "Classify this exchange now. Return only the JSON object."
+
+
+def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
+    """coverage_status_block feeds the Guide's COVERAGE_STATUS slot directly — a heading and a
+    "nothing left" placeholder, neither threaded through the session's language at all
+    (ENG-822, item 3/4's "same treatment", the run_turn.py successor of the old status block)."""
+    from app.services.internalization_room.coverage import initial_state, merge
+    from app.services.internalization_room.prompt_blocks import coverage_status_block
+
+    P = "P01"
+    fully_engaged = merge(
+        initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys())
+    )
+
+    assert coverage_status_block(fully_engaged, P) == (
+        "REMAINING: (none — every element has been worked by the team)"
+    )
+    assert coverage_status_block(initial_state(P), P).startswith(
+        "REMAINING (not yet worked by the team, in their own words):"
+    )
