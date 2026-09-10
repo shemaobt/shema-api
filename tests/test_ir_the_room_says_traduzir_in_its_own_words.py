@@ -60,8 +60,13 @@ _FORBIDDEN = (
     r"|contaron de vuelta|contado nada de vuelta|contou nada de volta|told (anything )?back"
 )
 
-#: Ten sentences: the six new renderings, where two (1 and 6) are three-language dicts
-#: (pt/en/es) and the other four are single Portuguese strings — 3 + 1 + 1 + 1 + 1 + 3.
+#: Eight sentences: the five new renderings, where one (1) is a three-language dict
+#: (pt/en/es) and the other four are single Portuguese strings — 3 + 1 + 1 + 1 + 1 + 1.
+#: `turn_instructions.py`'s told-back rendering was one of these three-language dicts too
+#: (item 6, pt/en/es) until ENG-822 collapsed it to the single English sentence every
+#: session now reads — the backend composes it in English on every session, and only
+#: {{SESSION_LANGUAGE}} carries what language the team speaks, so its Portuguese and
+#: Spanish siblings no longer exist as literals to find here.
 _EXPECTED_TRADUZIR_WORDS = {
     "(a equipe ainda não traduziu nada)",
     "(the team has not translated anything yet)",
@@ -70,9 +75,7 @@ _EXPECTED_TRADUZIR_WORDS = {
     "a análise da tradução não pôde ser feita agora",
     "(nenhum achado — a tradução está completa)",
     "a leitura final da tradução não pôde ser feita agora",
-    "(a equipe não falou nesta conversa; o que ela traduziu está no bloco abaixo)",
     "(the team has not spoken in this conversation; what they translated is in the block below)",
-    "(el equipo no ha hablado en esta conversación; lo que tradujeron está en el bloque de abajo)",
 }
 
 
