@@ -324,3 +324,45 @@ async def test_the_third_turn_still_carries_the_sessions_first_exchange(
         {"role": "team", "text": "pergunta dois"},
         {"role": "guide", "text": "resposta 2."},
     ]
+
+
+async def test_a_slow_panorama_turn_is_not_cut_short(patch_agent) -> None:
+    """No prazo por chamada: a room speaking to a slow model still gets its answer.
+
+    Nothing in the panorama's call path wraps the Guide or the Validator in a deadline
+    of its own — the doctrine's own numbers (10-56 s, median 27 s per turn) only make
+    sense with none. Each of the two real calls is made to take real time here; a
+    regression that wrapped either in a short `asyncio.wait_for` would cut this turn
+    to a fail-safe well before both had run.
+    """
+    import asyncio
+    import time
+
+    class _SlowAgent(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            await asyncio.sleep(0.3)
+            return await super().__call__(
+                system_prompt=system_prompt, user_content=user_content, **kwargs
+            )
+
+    agent = patch_agent(_SlowAgent({"verdict": "pass", "issues": []}))
+
+    started = time.monotonic()
+    outcome = await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="me contem mais",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        settings=_settings(),
+    )
+    elapsed = time.monotonic() - started
+
+    assert elapsed >= 0.6, (
+        "as duas chamadas (Guia e Validador) têm de esperar de verdade, sem atalho"
+    )
+    assert outcome.used_fail_safe is False
+    assert outcome.speech == agent.draft
