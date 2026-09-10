@@ -101,7 +101,7 @@ def _take_view(take: IRTake) -> dict[str, Any]:
         "kind": take.kind.value,
         "scope": take.scope,
         "pass_number": take.pass_number,
-        "chunk_index": take.chunk_index,
+        "ordinal": take.ordinal,
         "sha256": take.sha256,
         "size_bytes": take.size_bytes,
         "content_type": take.content_type,

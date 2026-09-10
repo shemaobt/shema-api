@@ -250,7 +250,7 @@ async def test_a_failed_capture_claims_no_place_and_the_next_one_takes_the_first
     session_id = await _a_failed_capture_then_two_good_ones(client)
 
     mute = await _retro_take_by_audio(db_session, session_id, b"tentativa muda")
-    assert mute.chunk_index is None, (
+    assert mute.ordinal is None, (
         "a tentativa muda não fica com número nenhum, e a próxima toma o primeiro lugar"
     )
 
@@ -260,7 +260,7 @@ async def test_a_failed_capture_claims_no_place_and_the_next_one_takes_the_first
     for segment in stretches:
         assert segment.bridge_take_id is not None
         bridge_take = await _retro_take_by_id(db_session, segment.bridge_take_id)
-        assert bridge_take.chunk_index == segment.ordinal, (
+        assert bridge_take.ordinal == segment.ordinal, (
             "o índice do take contado é o ordinal do trecho que ele conta"
         )
 
@@ -278,7 +278,7 @@ async def test_the_packet_never_shows_two_takes_at_one_place(
 
     artifact = await _ready_for_release(db_session, session)
 
-    indexes = [take["chunk_index"] for take in artifact["back_translation"]["retro_takes"]]
+    indexes = [take["ordinal"] for take in artifact["back_translation"]["retro_takes"]]
     assert indexes == [None, 1, 2]
     non_null = [index for index in indexes if index is not None]
     assert len(non_null) == len(set(non_null)), (
@@ -316,7 +316,7 @@ async def test_re_recording_a_stretch_keeps_its_number(
     assert replaced.status_code == 200, replaced.text
 
     retro_rows = await _retro_takes(db_session, session_id)
-    assert [row.chunk_index for row in retro_rows] == [1, 1], (
+    assert [row.ordinal for row in retro_rows] == [1, 1], (
         "a correção conta como o mesmo trecho, com o mesmo número"
     )
     assert retro_rows[0].id != retro_rows[1].id
@@ -324,7 +324,7 @@ async def test_re_recording_a_stretch_keeps_its_number(
     session = await room.get_session(db_session, session_id)
     artifact = await _ready_for_release(db_session, session)
     retro_takes = artifact["back_translation"]["retro_takes"]
-    retro_view = [(take["take_id"], take["chunk_index"]) for take in retro_takes]
+    retro_view = [(take["take_id"], take["ordinal"]) for take in retro_takes]
     assert {index for _, index in retro_view} == {1}
     assert len({take_id_ for take_id_, _ in retro_view}) == 2, (
         "os dois takes viajam no pacote, ambos sob o mesmo índice, cada um com o seu id"
