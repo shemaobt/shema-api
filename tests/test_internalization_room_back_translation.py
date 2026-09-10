@@ -127,7 +127,7 @@ def test_the_chunks_go_to_the_analyst_in_listening_order() -> None:
 
 
 def test_an_empty_telling_back_says_so_rather_than_looking_complete() -> None:
-    assert "ainda não contou" in segments_block([], language_code="pt")
+    assert "ainda não traduziu" in segments_block([], language_code="pt")
 
 
 @pytest.mark.asyncio
@@ -775,9 +775,7 @@ OPENING_PLACEHOLDER = "(a equipe ainda não falou — abertura da sessão)"
 
 #: What stands there on the verdict path instead. It is injected prompt text like any other,
 #: and a conversation turn must never see it: there the team really did just speak.
-TOLD_BACK_INSTEAD = (
-    "(a equipe não falou nesta conversa; o que ela contou de volta está no bloco abaixo)"
-)
+TOLD_BACK_INSTEAD = "(a equipe não falou nesta conversa; o que ela traduziu está no bloco abaixo)"
 
 #: The heading the team's own words sit under. Asserted together with the words, because the
 #: same sentence is also in the recent-conversation block a line above — an assertion on the

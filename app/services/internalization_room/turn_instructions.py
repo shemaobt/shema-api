@@ -20,20 +20,20 @@ _NO_TEAM_UTTERANCE: dict[str, dict[str, str]] = {
     "pt": {
         "opening": "(a equipe ainda não falou — abertura da sessão)",
         "told_back": (
-            "(a equipe não falou nesta conversa; o que ela contou de volta está no bloco abaixo)"
+            "(a equipe não falou nesta conversa; o que ela traduziu está no bloco abaixo)"
         ),
     },
     "en": {
         "opening": "(the team has not spoken yet — session opening)",
         "told_back": (
-            "(the team has not spoken in this conversation; what they told back is in the "
+            "(the team has not spoken in this conversation; what they translated is in the "
             "block below)"
         ),
     },
     "es": {
         "opening": "(el equipo aún no ha hablado — apertura de la sesión)",
         "told_back": (
-            "(el equipo no ha hablado en esta conversación; lo que contaron de vuelta está "
+            "(el equipo no ha hablado en esta conversación; lo que tradujeron está "
             "en el bloque de abajo)"
         ),
     },
