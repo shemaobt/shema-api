@@ -1,5 +1,6 @@
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -366,3 +367,21 @@ async def test_a_slow_panorama_turn_is_not_cut_short(patch_agent) -> None:
     )
     assert outcome.used_fail_safe is False
     assert outcome.speech == agent.draft
+
+
+@pytest.mark.parametrize("workflow", ["deploy.yml", "deploy-staging.yml"])
+def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workflow: str) -> None:
+    """The doctrine's 300 s is Cloud Run's, not this app's — pinned where it actually lives.
+
+    Nothing in the turn's own code imposes a deadline (the sibling test above pins that);
+    the route accepts up to what the deployed service is told to accept. That number is
+    `--timeout=300` on the `gcloud run deploy` command each workflow runs, and a change to
+    either is exactly what would move this ceiling without a line of `app/` ever noticing.
+    """
+    import yaml
+
+    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / workflow
+    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
+    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
+
+    assert "--timeout=300" in deploy_step["run"]
