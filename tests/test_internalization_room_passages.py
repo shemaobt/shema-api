@@ -310,3 +310,22 @@ async def test_the_wheel_asked_for_nothing_speaks_the_floor(
 
     assert line_for("P01", FLOOR) in said
     assert line_for("P01", "pt") not in said
+
+
+def test_the_line_for_ruth_2_17_23_names_the_passage_and_not_the_redeemer() -> None:
+    """The one line the wheel speaks about a passage this branch is the reason it can offer.
+
+    Nothing about a passage may be said that is not in its map, and the map withholds the
+    redeemer's name until 4:10 — but the authored line for 2:17-23 says it outright, and the
+    wheel speaks it before the team has chosen where to work. Until now the gate hid the
+    problem: the passage never reached the wheel, so the line was never spoken.
+    """
+    filed_under = {
+        meaning_map.reference: meaning_map.pericope_num for meaning_map in load_book("Ruth")
+    }
+    spoken = [line_for(filed_under["Ruth 2:17-23"], language) for language in ("pt", "en")]
+
+    named = [line for line in spoken if "resgatador" in line.lower() or "redeemer" in line.lower()]
+    assert not named, (
+        f"a roda dizia o nome do resgatador antes de a equipe abrir a passagem: {named}"
+    )
