@@ -57,7 +57,7 @@ The passage is the book's last word and its widest: a ten-name line of descent. 
 Scenes: The generations of Perez.
 
 ## PRESERVATION NOTES — the book's withholdings (HARD CONSTRAINTS, union of all passages)
-The team has not yet lived any passage: every one of these still lies ahead of them. The panorama must honor each — never state, pair, name, or attribute what a passage withholds until its moment.
+The panorama must honor each — never state, pair, name, or attribute what a passage withholds until its moment.
 
 - [P01] R3 (CROSS_OCCURRENCE_INTRA_PERICOPE): REQUIRED keep-image. Both occurrences must render the same residual-survival verb frame so the rhyme is audible. The first occurrence (1:3) establishes the frame; the second (1:5) completes it. Do not vary the rendering between the two.
 - [P01] R5 (CUMULATIVE_LOSS_LISTING_REQUIRED_FORM): REQUIRED keep-image. Single-phrase compression must survive. The reverse-natural-order (children before husband) must be preserved. Do not split into separate sentences if the target language permits the single-phrase form.

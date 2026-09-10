@@ -163,8 +163,7 @@ def build_book_material(book: str) -> str:
         f"{header}\n\n{digests}\n\n"
         "## PRESERVATION NOTES — the book's withholdings "
         "(HARD CONSTRAINTS, union of all passages)\n"
-        "The team has not yet lived any passage: every one of these still lies ahead of "
-        "them. The panorama must honor each — never state, pair, name, or attribute what a "
+        "The panorama must honor each — never state, pair, name, or attribute what a "
         f"passage withholds until its moment.\n\n{notes}\n"
     )
 

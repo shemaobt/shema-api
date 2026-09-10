@@ -67,12 +67,14 @@ NEXT_SLOT = "## Recent conversation"
 
 
 #: Her operational sentence for the panorama's preservation header, quoted from
-#: `app/lib/liveTurn.ts:191-192` in `Tripod-Internalization`.
+#: `app/lib/liveTurn.ts:191-192` in `Tripod-Internalization`. Only the second half is ours
+#: to carry: hers opens by telling the team it has lived no passage, which is true of a
+#: panorama played once per book and false of one played once per passage.
 HONOUR = (
-    "The team has not yet lived any passage: every one of these still lies ahead of them. "
     "The panorama must honor each — never state, pair, name, or attribute what a passage "
     "withholds until its moment."
 )
+LIVED_NOTHING = "The team has not yet lived any passage"
 
 
 #: The story-so-far usage note as the ticket quotes it from `app/lib/liveTurn.ts:108-110`.
@@ -260,6 +262,10 @@ async def test_the_panorama_is_told_what_honouring_a_withholding_means(patch_age
     assert HONOUR in validator_system, (
         "os dois papéis leem o mesmo material do livro; a frase que governa o uso da lista "
         "não pode chegar só a um deles"
+    )
+    assert LIVED_NOTHING not in speaker_system, (
+        "o panorama dela toca uma vez por livro; o nosso toca uma vez por passagem, e uma "
+        "equipe que chega em P05 andou P01-P04 e ouviria que não viveu nada"
     )
 
 
