@@ -1,11 +1,21 @@
+from __future__ import annotations
+
 import logging
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.enums import USER_SETTABLE_CLEANING_STATUSES
+
+if TYPE_CHECKING:
+    # Only for the type checker: `canon/labels.py` reaches back into this module through
+    # `canon/parse_map.py`'s own `from app.core.exceptions import ValidationError`, so a real
+    # top-level import here would be circular. `from __future__ import annotations` above
+    # means this name is never looked up at runtime — `register_exception_handlers` imports
+    # the real class itself, deferred, where it needs the object rather than the type.
+    from app.services.internalization_room.canon.labels import ElementLabelsBroken
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +300,7 @@ async def handle_not_found_error(_request: Request, exc: NotFoundError) -> JSONR
     )
 
 
-async def handle_element_labels_broken(_request: Request, exc: Exception) -> JSONResponse:
+async def handle_element_labels_broken(_request: Request, exc: ElementLabelsBroken) -> JSONResponse:
     """Our own label catalogue is holed — the caller's request was fine.
 
     Still a 500, and still logged as ours: `ElementLabelsBroken`'s own docstring argues why a
@@ -342,10 +352,10 @@ async def handle_http_exception(_request: Request, exc: StarletteHTTPException) 
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    # Imported here, not at module top: `canon/labels.py` reaches `canon/parse_map.py`, which
-    # imports `ValidationError` from this very module — a top-level import of
-    # `ElementLabelsBroken` up here would be a cycle. By the time this function runs, every
-    # router has already imported `canon/labels.py` in full, so the deferred import is safe.
+    # The real class, not just the type: `add_exception_handler` needs the object to match
+    # against. Deferred rather than a top-level import for the same circularity the
+    # `TYPE_CHECKING` block above avoids — by the time this function runs, every router has
+    # already imported `canon/labels.py` in full, so this is safe.
     from app.services.internalization_room.canon.labels import ElementLabelsBroken
 
     app.add_exception_handler(StarletteHTTPException, handle_http_exception)  # type: ignore[arg-type]
