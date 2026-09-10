@@ -12,6 +12,7 @@ would hide exactly that.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from contextvars import ContextVar
 from dataclasses import dataclass
 
@@ -84,6 +85,9 @@ class Spend:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     model_ms: int = 0
+    #: How many turns were folded in. A turn's own ledger leaves it at zero: it counts only
+    #: where totals are added to totals, which is the session.
+    turns: int = 0
     #: The lowest rung anything here answered on, and the reason it was reached — the deepest
     #: of the calls rather than the last, because one call falling through the doctrine's
     #: first rung is the whole finding and the call after it recovering does not undo it.
@@ -149,7 +153,8 @@ def record(
         return
     spend.calls += 1
     spend.cost_usd = round(spend.cost_usd + (cost_usd or 0.0), 6)
-    spend.unpriced_calls += cost_usd is None
+    if cost_usd is None:
+        spend.unpriced_calls += 1
     spend.input_tokens += input_tokens
     spend.output_tokens += output_tokens
     spend.cache_read_tokens += cache_read_tokens
@@ -158,3 +163,46 @@ def record(
     if rung_number > spend.rung_number:
         spend.rung_number = rung_number
         spend.rung_fell_because = rung_fell_because
+
+
+#: What each session has spent so far, oldest first. A running total and not a closing one:
+#: nothing in the backend fires when a session ends — `session_end` derives an end from six
+#: hours of silence — so a summary that waited for one would never be written for a session
+#: that was simply abandoned, which is most of them. Every turn appends the session's total
+#: to date instead, and the last line a session has is its total.
+_SESSIONS: OrderedDict[str, Spend] = OrderedDict()
+
+#: How many sessions are remembered at once. A process that has answered turns for months
+#: must not be holding a row per session it ever saw, and the oldest row is the one nobody is
+#: adding to any more. Losing it costs a session that already has its last line in the log.
+_SESSIONS_KEPT = 512
+
+
+def forget_sessions() -> None:
+    """Drop every running total, as a restart would."""
+    _SESSIONS.clear()
+
+
+def session_total(session_id: str, turn: Spend) -> Spend:
+    """Fold a finished turn into its session's total, and hand back the total.
+
+    Kept per session and not per process: two teams translate at the same time on the same
+    deployment, and a number that mixed them is a number neither of them can be shown.
+    """
+    total = _SESSIONS.pop(session_id, None) or Spend()
+    total.turns += 1
+    total.calls += turn.calls
+    total.cost_usd = round(total.cost_usd + turn.cost_usd, 6)
+    total.unpriced_calls += turn.unpriced_calls
+    total.input_tokens += turn.input_tokens
+    total.output_tokens += turn.output_tokens
+    total.cache_read_tokens += turn.cache_read_tokens
+    total.cache_write_tokens += turn.cache_write_tokens
+    total.model_ms += turn.model_ms
+    if turn.rung_number > total.rung_number:
+        total.rung_number = turn.rung_number
+        total.rung_fell_because = turn.rung_fell_because
+    _SESSIONS[session_id] = total
+    while len(_SESSIONS) > _SESSIONS_KEPT:
+        _SESSIONS.popitem(last=False)
+    return total

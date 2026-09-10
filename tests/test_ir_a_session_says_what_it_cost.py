@@ -24,7 +24,7 @@ import pytest
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey
-from app.services.internalization_room import llm
+from app.services.internalization_room import llm, usage
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.run_turn import run_turn
@@ -138,8 +138,10 @@ class Answers:
 def _forget_which_rung_answered():
     """The settled rung outlives a test, so a step-down here would steer a later file."""
     llm._SETTLED.clear()
+    usage.forget_sessions()
     yield
     llm._SETTLED.clear()
+    usage.forget_sessions()
 
 
 @pytest.fixture
@@ -167,12 +169,16 @@ def spoken_by(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-async def _a_turn(transcript: str = "A fome chegou e eles partiram.") -> None:
-    await _a_turn_on(_settings(), transcript)
+async def _a_turn(
+    transcript: str = "A fome chegou e eles partiram.", session_id: str = "s-ferro"
+) -> None:
+    await _a_turn_on(_settings(), transcript, session_id)
 
 
 async def _a_turn_on(
-    settings: Settings, transcript: str = "A fome chegou e eles partiram."
+    settings: Settings,
+    transcript: str = "A fome chegou e eles partiram.",
+    session_id: str = "s-ferro",
 ) -> None:
     await run_turn(
         session_language="Portuguese",
@@ -184,7 +190,7 @@ async def _a_turn_on(
         validator_prompt=VALIDATOR,
         pericope_num=P,
         settings=settings,
-        session_id="s-ferro",
+        session_id=session_id,
     )
 
 
@@ -194,6 +200,10 @@ def _usage_lines(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
 
 def _turn_line(caplog: pytest.LogCaptureFixture) -> logging.LogRecord:
     return next(r for r in caplog.records if getattr(r, "turn_calls", None) is not None)
+
+
+def _session_lines(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if getattr(r, "session_turns", None) is not None]
 
 
 async def test_every_model_call_leaves_one_line_of_what_it_cost(spoken_by, caplog) -> None:
@@ -292,3 +302,34 @@ async def test_a_rung_the_key_cannot_use_shows_the_one_below_it_and_why(spoken_b
         "do turno não dizia nada; a queda só aparecia numa linha de aviso solta"
     )
     assert turn.turn_rung_fell_because == "the key cannot use claude-fable-5-1"
+
+
+async def test_a_session_carries_its_running_total_from_the_first_turn(spoken_by, caplog) -> None:
+    spoken_by()
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn()
+        await _a_turn("E depois, o que aconteceu?")
+
+    first, second = _session_lines(caplog)
+    assert (first.session_turns, first.session_calls) == (1, 2)
+    assert (second.session_turns, second.session_calls) == (2, 4), (
+        "nada somava a sessão inteira, e o custo de um piloto de cinco sessões só existia "
+        "se alguém somasse 57 turnos à mão"
+    )
+    assert second.session_cost_usd == round(2 * (GUIDE_COST + VALIDATOR_COST), 6)
+    assert second.session_cache_read_tokens == 1_200_000
+
+
+async def test_two_sessions_at_once_do_not_add_to_each_other(spoken_by, caplog) -> None:
+    spoken_by()
+
+    with caplog.at_level(logging.INFO):
+        await _a_turn(session_id="s-uma")
+        await _a_turn(session_id="s-outra")
+
+    lines = {line.session_id: line for line in _session_lines(caplog)}
+    assert [lines["s-uma"].session_turns, lines["s-outra"].session_turns] == [1, 1], (
+        "duas equipes traduzindo ao mesmo tempo entravam no mesmo total, e nenhuma das duas "
+        "sessões tinha um número que pudesse ser levado ao contrato"
+    )

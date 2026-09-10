@@ -39,7 +39,7 @@ from app.services.internalization_room.turn_instructions import (
     speak_this_turn,
     split_opening_movements,
 )
-from app.services.internalization_room.usage import Spend, open_ledger
+from app.services.internalization_room.usage import Spend, open_ledger, session_total
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
 
 
@@ -217,7 +217,47 @@ def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) 
             "turn_rung_fell_because": spend.rung_fell_because,
         },
     )
+    _report_session(session_id, spend, shim)
     return outcome
+
+
+def _report_session(session_id: str, spend: Spend, shim: Any) -> None:
+    """Where the session stands after this turn, so far.
+
+    Written every turn rather than once at the end, because there is no end to write at:
+    a session is completed or it is abandoned, and the second is derived from six hours of
+    silence long after the process that answered it. So the session's total is the last line
+    it has, and a session nobody ever came back to still has one.
+    """
+    total = session_total(session_id, spend)
+    shim.logger.info(
+        "[llm-session] session %s after %s turns, %s calls, US$ %s: "
+        "in=%s cache_read=%s cache_write=%s out=%s%s",
+        session_id,
+        total.turns,
+        total.calls,
+        total.cost_usd,
+        total.input_tokens,
+        total.cache_read_tokens,
+        total.cache_write_tokens,
+        total.output_tokens,
+        " — nothing was served from cache" if total.cache_missed else "",
+        extra={
+            "session_id": session_id,
+            "session_turns": total.turns,
+            "session_calls": total.calls,
+            "session_cost_usd": total.cost_usd,
+            "session_unpriced_calls": total.unpriced_calls,
+            "session_input_tokens": total.input_tokens,
+            "session_output_tokens": total.output_tokens,
+            "session_cache_read_tokens": total.cache_read_tokens,
+            "session_cache_write_tokens": total.cache_write_tokens,
+            "session_model_ms": total.model_ms,
+            "session_rung_number": total.rung_number,
+            "session_rung_fell_because": total.rung_fell_because,
+            "cache_missed": total.cache_missed,
+        },
+    )
 
 
 async def _voiced_after_validation(
