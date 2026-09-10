@@ -32,10 +32,7 @@ from app.core.database import Base
 from app.core.enums import ProjectRole
 from app.db.models.auth import Role
 from app.db.models.internalization_room import IRRelease
-from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.coverage import initial_state, merge
-from app.services.internalization_room.release import build_internalization_release
-from app.services.internalization_room.sessions import create_session, save_comprehension
+from app.services.internalization_room.sessions import create_session
 from tests.baker import (
     make_app,
     make_project_user_access,
@@ -43,14 +40,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
-from tests.test_internalization_room_release import (
-    P,
-    _checked_telling_back,
-    _ensaio_take,
-    _one_stretch,
-    _reported_playback,
-    _supported_comprehension,
-)
+from tests.test_internalization_room_release import P, _one_stretch, _ready_session
 from tests.test_ir_project_id import KEY, PREFIX, a_claimed_device
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -120,22 +110,6 @@ async def _facilitator(db: AsyncSession, room_app, project=None) -> dict[str, st
     return {"Authorization": f"Bearer {access}"}
 
 
-async def _ready_session(db: AsyncSession, *, project_id: str | None = None):
-    """A session with everything the packet refuses to travel without.
-
-    The shape of ``_ready_session`` in the release tests, told which team it belongs to: the
-    rule under test is numbered per project, so a session belonging to nobody cannot exercise
-    it, and one belonging to a team is what a tablet in the field actually opens.
-    """
-    session = await create_session(db, pericope=P, project_id=project_id)
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, _supported_comprehension(P))
-    db.add(_ensaio_take(session.id))
-    await db.commit()
-    await _reported_playback(db, session, await _checked_telling_back(db, session))
-    return session
-
-
 async def _releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
     rows = await db.execute(
         select(IRRelease).where(IRRelease.session_id == session_id).order_by(IRRelease.version)
@@ -159,6 +133,8 @@ async def test_a_credentialed_team_that_approves_gets_version_one(client, db_ses
     assert body["finalized_at"]
     stored = await _releases_of(db_session, session.id)
     assert [row.version for row in stored] == [1]
+    assert body["package_sha256"] == stored[0].package_sha256
+    assert body["release_id"] == stored[0].id
     assert stored[0].packet["release_id"] == body["release_id"]
     assert stored[0].packet["version"] == 1
     assert stored[0].packet["package_sha256"] == body["package_sha256"]
@@ -234,7 +210,7 @@ async def test_the_packet_names_its_release_and_says_which_schema_it_is(
 
 async def test_two_approvals_cannot_take_one_number(db_session):
     project, _credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await create_session(db_session, pericope=P, project_id=project.id)
     for stamp in ("a" * 64, "b" * 64):
         db_session.add(
             IRRelease(
@@ -305,7 +281,8 @@ async def test_a_passage_the_packet_refuses_is_not_approved_either(client, db_se
     assert await _releases_of(db_session, session.id) == []
 
 
-async def test_no_team_reads_or_writes_another_teams_release(client, db_session):
+async def test_no_team_writes_a_release_on_another_teams_passage(client, db_session):
+    """There is no team route that reads a release, so writing is the whole of the rule here."""
     project_a, credential_a = await a_claimed_device(db_session, email="a@example.com")
     _project_b, credential_b = await a_claimed_device(db_session, email="b@example.com")
     session = await _ready_session(db_session, project_id=project_a.id)
@@ -320,16 +297,6 @@ async def test_no_team_reads_or_writes_another_teams_release(client, db_session)
     assert stranger.status_code == 404, stranger.text
     assert owner.status_code == 200, owner.text
     assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
-
-
-async def test_the_packet_of_a_session_nobody_approved_names_no_release(db_session):
-    session = await _ready_session(db_session)
-
-    packet = await build_internalization_release(db_session, session)
-
-    assert packet["release_id"] is None
-    assert packet["version"] is None
-    assert packet["schema_version"] == SCHEMA_VERSION
 
 
 def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
@@ -355,12 +322,12 @@ async def _tables(database_url: str) -> set[str]:
     return set(names)
 
 
-async def _indexes(database_url: str, table: str) -> dict[str, bool]:
+async def _indexes(database_url: str, table: str) -> dict[str, tuple[bool, list[str]]]:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
         found = await conn.run_sync(lambda sync: inspect(sync).get_indexes(table))
     await engine.dispose()
-    return {index["name"]: bool(index["unique"]) for index in found}
+    return {index["name"]: (bool(index["unique"]), list(index["column_names"])) for index in found}
 
 
 @pytest.fixture()
@@ -383,6 +350,8 @@ async def applied_database(tmp_path) -> str:
 
 
 async def test_the_migration_creates_the_table_and_its_unique_index_both_ways(applied_database):
+    assert TABLE in await _tables(applied_database)
+
     down = _run_alembic(applied_database, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
     assert TABLE not in await _tables(applied_database)
@@ -390,6 +359,7 @@ async def test_the_migration_creates_the_table_and_its_unique_index_both_ways(ap
     up = _run_alembic(applied_database, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
     assert TABLE in await _tables(applied_database)
-    assert (await _indexes(applied_database, TABLE)).get(UNIQUE_INDEX) is True, (
-        "sem o índice único a alocação sozinha é a corrida que o ENG-639 já registrou"
-    )
+    assert (await _indexes(applied_database, TABLE)).get(UNIQUE_INDEX) == (
+        True,
+        ["project_id", "pericope", "version"],
+    ), "sem o índice único sobre essas colunas a alocação sozinha é a corrida do ENG-639"

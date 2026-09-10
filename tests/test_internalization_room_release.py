@@ -174,8 +174,16 @@ async def _reported_playback(
     )
 
 
-async def _ready_session(db: AsyncSession, **comprehension_kwargs):
-    session = await create_session(db, pericope=P)
+async def _ready_session(
+    db: AsyncSession, *, project_id: str | None = None, **comprehension_kwargs
+):
+    """A session carrying everything the packet refuses to travel without.
+
+    ``project_id`` is the team whose conversation this is. It stays optional because most of
+    these cases are about the packet and not about whose it is; the release is numbered per
+    project, so the cases about the number name one.
+    """
+    session = await create_session(db, pericope=P, project_id=project_id)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
     db.add(_ensaio_take(session.id))
