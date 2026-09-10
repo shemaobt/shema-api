@@ -15,8 +15,12 @@ rebuilt prompts already rule on:
 | `pt` | Senhor Jeová |
 | `en` | the LORD |
 
-Source: `prompts/validator_system_prompt.md:73` and `prompts/guide_system_prompt.md:163` in
-her repo. A language outside this table — Spanish included — reaches the platform unchanged
+Source, in the prompts this tree ships: `app/services/internalization_room/prompts/guide_system_prompt.md:153`
+("The divine name. The map writes it as YHWH — four letters no one can pronounce…") and
+`app/services/internalization_room/prompts/validator_system_prompt.md:87` ("Faithful rendering
+into the session language… 'Senhor Jeová' / 'o SENHOR' (Portuguese) or 'the LORD' (English)").
+The same two rules sit in her repository, `Tripod-Internalization` on `fia/pilot-2026-09`, at
+`prompts/guide_system_prompt.md:163` and `prompts/validator_system_prompt.md:73`. A language outside this table — Spanish included — reaches the platform unchanged
 rather than guessing at a form the pilot does not speak. This is a record of what was
 implemented, not a request to approve an invented form.
 

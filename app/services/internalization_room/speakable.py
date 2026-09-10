@@ -4,7 +4,8 @@ The maps and the Guide write the divine name as the four consonants "YHWH", whic
 engine reads letter by letter — a name spelled instead of spoken, in the middle of the turn
 the map most depends on. The prompts already instruct the spoken form, but a substitution
 here is the deterministic last line of defence: any "YHWH" that slips through a corrected
-draft or a story-so-far quote is still voiced as a name, never as four letters.
+draft or a story-so-far quote is still voiced as a name, never as four letters. The table and
+its source are recorded in ``docs/divine-name-speakable-form.md``.
 """
 
 from __future__ import annotations
