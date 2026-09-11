@@ -366,7 +366,7 @@ async def finish(
         state.verified_since_whole_reading = False
 
     current = room.current_findings(state)
-    finding = current[0] if current else None
+    finding = room.the_finding_that_leads(state)
     state.checked = finding is None
 
     outcome = await room.run_verdict_turn(

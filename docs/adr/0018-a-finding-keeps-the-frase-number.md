@@ -38,5 +38,11 @@ carries the address.
 Consequence: the **Correction check** is shown both lines and answers one `resolved`, true
 only when the new telling dropped the addition and brought the missing element; a resolved
 check clears both and an unresolved one keeps both, re-addressed to the stretch that now
-counts. The field travels in the packet under the schema version current at merge, and a row
-written before it validates with `chunk` null and never joins anything.
+counts. A row written before the field validates with `chunk` null and never joins anything.
+
+The field travels in the packet under the schema version current at merge, with no bump, and
+that was decided knowing what it costs: the packet's hash covers the findings it dumps, so a
+passage approved before this deploy whose session still has a standing finding no longer
+matches the release that approved it, and the packet reads `release_id` and `version` null
+until the team approves again. A bump would have said the same thing to every consumer at
+once, for every session, approved or not.

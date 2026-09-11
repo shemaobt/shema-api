@@ -458,7 +458,7 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
 def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
     state = BackTranslationState(scope=P, findings=[])
 
-    assert state.current_finding is None
+    assert current_findings(state) == []
 
 
 @pytest.mark.parametrize(

@@ -222,16 +222,6 @@ class BackTranslationState(BaseModel):
             return without
         return {**without, "verdict": None}
 
-    @property
-    def current_finding(self) -> Finding | None:
-        """The finding this turn is about, in the order the analyst answered in.
-
-        What the Speaker is given is `current_findings`, which is this one or the swap it is
-        half of. This one decides *whether* there is a swap to find, and which finding is
-        first is not that rule's to change.
-        """
-        return self.findings[0] if self.findings else None
-
     def already_analysed(self, segments: list[IRSegment]) -> bool:
         return self.analysed_segment_ids is not None and self.analysed_segment_ids == [
             segment.id for segment in segments
@@ -1001,19 +991,24 @@ def _swaps(findings: list[Finding]) -> list[tuple[int, int]]:
     return swaps
 
 
+#: Which finding this turn is about, before any swap is looked for: the analyst's first, in
+#: the order it answered in. The one place that says so — the priority among findings is its
+#: own question, and a second expression of this would be a second thing free to answer it.
+THE_CURRENT_FINDING = 0
+
+
 def _the_current_swap(findings: list[Finding]) -> list[int]:
     """Which of the findings this turn is about: the current one, and its other half.
 
-    The current finding still decides *whether* there is a swap — it is the analyst's first,
-    and which finding is raised first is not this rule's to change. What the rule decides is
-    the other half, and which of the two leads.
+    The current finding decides *whether* there is a swap. What this rule decides is the
+    other half, and which of the two leads.
     """
     if not findings:
         return []
     for addition, missing in _swaps(findings):
-        if 0 in (addition, missing):
+        if THE_CURRENT_FINDING in (addition, missing):
             return [addition, missing]
-    return [0]
+    return [THE_CURRENT_FINDING]
 
 
 def current_findings(state: BackTranslationState) -> list[Finding]:

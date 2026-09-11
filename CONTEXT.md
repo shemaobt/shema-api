@@ -143,7 +143,7 @@ _Avoid_: external missing, missing null, Falta sem endereço
 The field of a missing finding that says whether the absent content sits before, inside or after the chunk it cites.
 _Avoid_: position, offset, Onde
 
-**Swap** (`_swaps`; *relação trocada*, in Marcia's words):
+**Swap** (`current_findings`; *relação trocada*, in Marcia's words):
 An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again, one **Correction check** answering both — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
 _Avoid_: pair (it says there are two things), swapped relation (Marcia's phrase for the mistake, not for what the room carries), troca
 
