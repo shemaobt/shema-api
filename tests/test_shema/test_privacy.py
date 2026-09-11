@@ -473,15 +473,23 @@ async def test_an_endpoint_written_without_knowledge_of_the_rule_still_protects(
     res = await naive_client.get(NAIVE_PROBE, headers=await auth_header(db_session, user))
 
     assert res.status_code == 200
-    assert COUNTRY not in res.text
-    assert BASE not in res.text
-    assert CONTACT not in res.text
-
     by_id = {row["id"]: row for row in res.json()}
+
+    # Read per record and not over the whole body, because both fixtures are built from the
+    # same row and the cleared one is **supposed** to carry ``Egypt`` — that is the second half
+    # of this test. A scan of ``res.text`` cannot tell the leak from the legitimate value when
+    # the two records share a country, and would report the module working as the module
+    # leaking. BE-05 (OBT-394) split the assertion; the rule under test did not change.
+    withheld = json.dumps(by_id[flagged.id], ensure_ascii=False)
+    assert COUNTRY not in withheld
+    assert BASE not in withheld
+    assert CONTACT not in withheld
+
     assert by_id[flagged.id]["locationWithheld"] is True
     assert by_id[flagged.id]["location"] == ShemaRegionKey.AFRICA.value
     assert by_id[cleared.id]["locationWithheld"] is False
     assert by_id[cleared.id]["location"] == COUNTRY
+    assert by_id[cleared.id]["team"] == BASE
 
 
 async def test_the_second_serialization_pass_agrees_with_the_first(
@@ -506,7 +514,11 @@ async def test_the_second_serialization_pass_agrees_with_the_first(
     from_models = await naive_client.get(NAIVE_MODELS_PROBE, headers=headers)
 
     assert from_rows.json() == from_models.json()
-    assert COUNTRY not in from_models.text
+
+    # Per record, for the reason the test above states.
+    by_id = {row["id"]: row for row in from_models.json()}
+    assert COUNTRY not in json.dumps(by_id[flagged.id], ensure_ascii=False)
+    assert by_id[cleared.id]["location"] == COUNTRY
 
 
 async def test_the_record_read_still_carries_the_truth(db_session, shema_app, flagged) -> None:
