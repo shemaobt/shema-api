@@ -221,8 +221,16 @@ async def _a_failed_capture_then_two_good_ones(client: httpx.AsyncClient) -> str
 async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """Everything `build_internalization_release` asks for besides the telling-back itself.
 
-    The telling-back is left exactly as the caller built it: only comprehension, coverage,
-    consent and the playback report are added here, none of which this ticket's rule touches.
+    What the caller told back is left exactly as they told it: only comprehension, coverage,
+    consent and the playback report are added here, and none of them is what these cases are
+    about — they are about which takes the packet lists, and under which numbers.
+
+    The analyst is stood in for rather than run, which is what `analysed_segment_ids` below has
+    always done: these sessions tell back through the room's own routes and never press
+    `terminei`, so nothing here ever asked the analyst anything. `checked` is the other half of
+    that same stand-in and is set for the same reason — the session these cases mean is one
+    that came out clean, and a release refused over a finding nobody ever raised would fail
+    them on a gate they are not watching (ENG-882).
     """
     session.coverage_state = merge(
         initial_state(PASSAGE), pericope_num=PASSAGE, engaged=element_keys(PASSAGE)
@@ -232,6 +240,7 @@ async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, 
     told = await room.final_segments(db, session.id)
     state = room.back_translation_of(session)
     state.analysed_segment_ids = [segment.id for segment in told]
+    state.checked = True
     clip_end = max((segment.ends_ms for segment in told), default=0)
     await room.report_playback(
         db,

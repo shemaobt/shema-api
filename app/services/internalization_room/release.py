@@ -71,6 +71,12 @@ from app.services.internalization_room.takes import takes_of
 #: still there and no longer meaning what they said (ADR 0017).
 SCHEMA_VERSION = "tripod.internalization-release.v0.5"
 
+#: The whole of what a facilitator's code can set aside, and the one place that says so. They
+#: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
+#: two a person can disagree about after looking at them. Every other blocker is missing
+#: material: there is nothing in a rehearsal nobody recorded for anybody to overrule.
+FORCEABLE_BLOCKERS = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
+
 
 class InternalizationReleaseBlocked(ConflictError):
     def __init__(self, blockers: list[str]) -> None:
@@ -121,15 +127,29 @@ def _take_view(take: IRTake) -> dict[str, Any]:
     }
 
 
-async def build_internalization_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+async def build_internalization_release(
+    db: AsyncSession, session: IRSession, *, waived: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     """Build the closed-world release for one session, or refuse with typed blockers.
 
-    A telling-back has to exist; it does not have to have come out clean. ``checked`` says
-    one whole reading returned no finding (ADR 0013), so any question the team chose not to
-    resolve makes it false — and blocking on it denied the one outcome the room is meant to
-    be able to reach, taking the questions to Refine. The rehearsal, the coverage, the ledger
-    and the telling-back stayed on the tablet with no way out, for a team that had done every
-    piece of the work.
+    The gate is Marcia's, whole: "Adote o meu portão inteiro, agora: sem achado em aberto e
+    com a gravação toda ouvida, senão não aprova; só o código do facilitador força."
+
+    ``checked`` says one whole reading returned no finding (ADR 0013), so a question the team
+    chose not to answer makes it false and ``telling_back_not_checked`` refuses the release.
+    This module used to argue the other way at length — that carrying the questions to Refine
+    was the one outcome the room existed to reach — and that argument lost on what a disputed
+    finding is. It is one of three things: the map wrong, which is rare and worth having; the
+    team not understanding; the recogniser erring. Only the first deserves to travel, and a
+    door open to all three sends the other two downstream as a passage the room approved, to
+    be heard as approved at the community's check.
+
+    The team that disagrees has a road, and it is older than this one: the raised hand, active
+    the whole session, answered by a person. If that person agrees with the team, a facilitator
+    forces the release with their own code, and the force is recorded on the row. ``waived`` is
+    how that reaches this function and ``FORCEABLE_BLOCKERS`` is the whole of what it may name;
+    ``panorama_sessions_never_release`` is raised before the list is built and so is out of
+    reach of any of it, because a panorama is not a draft of a passage at all.
 
     ``superseded_segments`` carries the stretches that stopped counting, replaced or
     abandoned, each still naming the recording it was a slice of. They used to be copied into
@@ -143,14 +163,15 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     not the team erring, so what they said the first time is kept rather than the division
     being refused.
 
-    What the package says instead of refusing: ``checked`` false and every open finding in
+    What a forced package says is unchanged: ``checked`` false and every open finding in
     ``findings``. Judging the quality of a telling-back is not this artifact's job — carrying
-    it honestly is.
+    it honestly is, and the decision that it may travel anyway was a person's and is recorded
+    on the release rather than dressed up here.
 
-    That honesty is why an unread telling-back is still refused. A team that captured the
-    stretches and never asked for the verdict leaves no findings at all, which is the same
-    package a clean check produces. Carrying the questions is the point; carrying silence as
-    if it were clean is not.
+    ``telling_back_never_analysed`` keeps its precedence over the open finding, and has to. A
+    team that captured the stretches and never asked for the verdict leaves no findings at
+    all, which is the same package a clean check produces — told the passage is not checked, a
+    facilitator would go looking for a finding that was never raised.
 
     The report of playback is held to the same line, and it is why the gate names the parts of
     the rehearsal rather than only measuring one clip. Silence used to pass it — an absent
@@ -247,13 +268,16 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         blockers.append("no_telling_back")
     elif telling_back.never_analysed:
         blockers.append("telling_back_never_analysed")
+    elif not telling_back.checked:
+        blockers.append("telling_back_not_checked")
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = sorted({segment.take_id for segment in stretches})
     if rehearsed and playback_confirms_rehearsal(telling_back, rehearsed):
         blockers.append("playback_did_not_cover_the_clip")
-    if blockers:
-        raise InternalizationReleaseBlocked(blockers)
+    standing = [code for code in blockers if code not in waived]
+    if standing:
+        raise InternalizationReleaseBlocked(standing)
 
     by_id = {checkpoint.id: checkpoint for checkpoint in checkpoints}
     open_points = []
@@ -377,13 +401,28 @@ async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> I
     return result.scalar_one_or_none()
 
 
-async def approve_release(db: AsyncSession, session: IRSession) -> IRRelease:
+async def approve_release(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    device_id: str | None = None,
+    forced_by: str | None = None,
+) -> IRRelease:
     """The team approves this passage: one numbered row, or the one that already says it.
 
     Refused before anything is composed when the session names no project, because the
     number is per project and per pericope and there is nothing to number it under. The
-    blockers the packet already raises are the gate this has: whether a passage *may* be
-    approved is ENG-882, and this only records that it was.
+    blockers the packet raises are the gate, and ``forced_by`` is the one thing that moves
+    it: named, the two codes of ``FORCEABLE_BLOCKERS`` are waived and the row records who
+    forced it, when, and which findings were open at that moment. Everything else still
+    refuses, under a force exactly as without one.
+
+    ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
+    together: a force comes from the Desk, where there is a person and no device.
+
+    A force with nothing to waive is still a force and is still recorded as one, with an
+    empty list of findings. The act was the facilitator's, and a row that hid that would say
+    the team approved a draft the team did not approve.
 
     Unchanged content returns the release that already exists rather than minting a version
     beside it: a new **Version** starts with zero listeners on Marcia's external check, so
@@ -409,7 +448,9 @@ async def approve_release(db: AsyncSession, session: IRSession) -> IRRelease:
             "this session names no project, so a release for it cannot be numbered"
         )
 
-    packet = await build_internalization_release(db, session)
+    packet = await build_internalization_release(
+        db, session, waived=FORCEABLE_BLOCKERS if forced_by else frozenset()
+    )
     latest = await _latest_release(db, session.project_id, session.pericope)
     if latest is not None and latest.package_sha256 == packet["package_sha256"]:
         return latest
@@ -426,6 +467,10 @@ async def approve_release(db: AsyncSession, session: IRSession) -> IRRelease:
         version=version,
         package_sha256=packet["package_sha256"],
         packet=packet,
+        device_id=device_id,
+        forced_by=forced_by,
+        forced_at=datetime.now(UTC) if forced_by else None,
+        forced_open_findings=packet["back_translation"]["findings"] if forced_by else None,
     )
     db.add(release)
     try:

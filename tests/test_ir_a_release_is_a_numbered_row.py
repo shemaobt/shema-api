@@ -89,8 +89,18 @@ async def room_app(db_session: AsyncSession):
     return app
 
 
+#: The tablet the team approves from. Self-issued and unauthenticated like every other room
+#: write: it says which device did this and never which team, which the credential beside it
+#: is what answers.
+TABLET = "tablet-da-sala"
+
+
 def _team(credential: str) -> dict[str, str]:
-    return {"X-Room-Key": KEY, DEVICE_CREDENTIAL_HEADER: credential}
+    return {
+        "X-Room-Key": KEY,
+        DEVICE_CREDENTIAL_HEADER: credential,
+        "X-Room-Device": TABLET,
+    }
 
 
 async def _facilitator(db: AsyncSession, room_app, project=None) -> dict[str, str]:
@@ -258,7 +268,8 @@ async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
     desk = await _facilitator(db_session, room_app, project)
 
     refused = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers={"X-Room-Key": KEY}
+        f"{PREFIX}/sessions/{session.id}/release",
+        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
     )
     read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
 

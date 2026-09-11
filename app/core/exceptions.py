@@ -37,6 +37,10 @@ ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
 #: it: nothing about the passage is wrong and retrying changes nothing — the room was
 #: opened on the shared key, and only a credentialed device can approve.
 ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
+#: A force asked for without the word that makes it one. Its own code for the reason above:
+#: nothing about the passage is wrong and retrying changes nothing — the Desk arms the force
+#: and asks again, and answering CONFLICT would send it looking for a blocker instead.
+ERROR_CODE_NOTHING_TO_FORCE: Final = "NOTHING_TO_FORCE"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
@@ -108,6 +112,16 @@ class ReleaseWithoutProject(ConflictError):
     promises a version to reload from, and there is none. Refused rather than numbered in
     a group belonging to nobody, because a release is named by project, pericope and
     version, and the shared key names no project.
+    """
+
+
+class NothingToForce(ConflictError):
+    """The force route was called by a body that does not ask for a force.
+
+    Its own exception beside ``ReleaseWithoutProject`` and for the same reason: the generic
+    CONFLICT code promises a blocker or a version to reload from, and there is neither. The
+    session was not even looked at — a route whose only purpose is to overrule the gate has
+    nothing to say about a caller who did not ask it to.
     """
 
 
@@ -271,6 +285,13 @@ async def handle_release_without_project(
     )
 
 
+async def handle_nothing_to_force(_request: Request, exc: NothingToForce) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_NOTHING_TO_FORCE),
+    )
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -399,6 +420,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(SessionLockChanged, handle_session_lock_changed)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
     app.add_exception_handler(ReleaseWithoutProject, handle_release_without_project)  # type: ignore[arg-type]
+    app.add_exception_handler(NothingToForce, handle_nothing_to_force)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
