@@ -8,7 +8,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
@@ -54,9 +54,15 @@ def _without_the_retired_evidence_kind(data: Any) -> Any:
     return {**data, "findings": kept}
 
 
+#: The wire name for a **Filled silence**. Her analyst's contract emits three kinds and marks
+#: one inside the note, so the name is a request in the pending letter rather than something a
+#: reading carries today; until it arrives the effective **Priority** starts one tier down. It
+#: is read here and folded away, and the fact is kept as a flag on the finding.
+_THE_NAME_FOR_A_FILLED_SILENCE = "silence"
+
 _NAMES_READ_AS_ADDITION = frozenset(
     {
-        "silence",
+        _THE_NAME_FOR_A_FILLED_SILENCE,
         "meaning_change",
         "wrong_relation",
         "reordered_event",
@@ -92,11 +98,42 @@ class Finding(BaseModel):
     #: *after* frase N resolves to stretch N+1, so an addition on frase N and that missing
     #: element land on two different stretches while being one swap of one frase.
     chunk: int | None = None
+    #: A **Filled silence**: the telling says something the passage keeps quiet on purpose.
+    #: The top tier of the **Priority**, and the only thing that puts one addition above
+    #: another. It decides the Priority and nothing else — the kind stays `addition` for the
+    #: app, the packet, the golden scripts and the Speaker, and the withheld content is
+    #: never named.
+    fills_silence: bool = False
+    #: Whether a Correction check raised it. What a mend broke is answered on the stretch the
+    #: team just retold rather than behind whatever outranks it elsewhere, so the flag keeps
+    #: the front for as long as the finding is on the list. The front used to be list
+    #: position alone, which the Priority applied at the pick would have read straight past.
+    raised_by_check: bool = False
 
-    @field_validator("kind", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def _a_name_that_reads_as_addition(cls, value: Any) -> Any:
-        return _what_a_name_reads_as(value) if isinstance(value, str) else value
+    def _a_name_that_reads_as_addition(cls, data: Any) -> Any:
+        """The wire name folded to the kind every consumer sees, the silence kept as a flag.
+
+        One fold for a fresh reply and for a stored row, because the two are the same
+        question asked in two places: after the collapse to three kinds a **Filled silence**
+        *is* an addition, and nothing structured in a finding tells it from any other.
+
+        A flag already set is never cleared. The state is a JSON column revalidated on every
+        request, so a row written with it comes back naming `addition`, and a fold that read
+        the name alone would take the silence out of the finding the moment it was stored.
+        """
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("kind")
+        if not isinstance(raw, str):
+            return data
+        return {
+            **data,
+            "kind": _what_a_name_reads_as(raw),
+            "fills_silence": bool(data.get("fills_silence"))
+            or raw == _THE_NAME_FOR_A_FILLED_SILENCE,
+        }
 
 
 class BtAnalysis(BaseModel):
@@ -408,7 +445,8 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
-        kind_raw = _what_a_name_reads_as(str(entry.get("kind", "")))
+        wire_name = str(entry.get("kind", ""))
+        kind_raw = _what_a_name_reads_as(wire_name)
         note = str(entry.get("note", "")).strip()
         if not note:
             _refused("a finding has an empty note", raw, session)
@@ -419,18 +457,20 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             _refused(f"unknown finding kind {kind_raw!r}", raw, session)
             return None
         findings.append(
-            Finding(
-                kind=kind,
-                note=note[:1000],
-                chunk=_chunk_named(entry.get("chunk"), segments),
-                segment_id=_segment_pointed_at(
-                    entry.get("chunk"),
-                    segments,
-                    kind=kind,
-                    where=entry.get("where"),
-                    raw_reply=raw,
-                    session=_session_of(segments),
-                ),
+            Finding.model_validate(
+                {
+                    "kind": wire_name,
+                    "note": note[:1000],
+                    "chunk": _chunk_named(entry.get("chunk"), segments),
+                    "segment_id": _segment_pointed_at(
+                        entry.get("chunk"),
+                        segments,
+                        kind=kind,
+                        where=entry.get("where"),
+                        raw_reply=raw,
+                        session=_session_of(segments),
+                    ),
+                }
             )
         )
 
@@ -775,7 +815,15 @@ def _parse_correction(raw: str, segment_id: str, chunk: int) -> CorrectionCheck 
         if kind not in CORRECTION_KINDS:
             logger.warning("BT correction returned a kind it cannot judge: %s", entry)
             return None
-        findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id, chunk=chunk))
+        findings.append(
+            Finding(
+                kind=kind,
+                note=note[:1000],
+                segment_id=segment_id,
+                chunk=chunk,
+                raised_by_check=True,
+            )
+        )
 
     brought_back = _elements_brought_back(parsed.get("brought_back"))
     if brought_back:
@@ -786,7 +834,11 @@ def _parse_correction(raw: str, segment_id: str, chunk: int) -> CorrectionCheck 
         reported = list(findings)
         findings.extend(
             Finding(
-                kind=FindingKind.MISSING, note=element[:1000], segment_id=segment_id, chunk=chunk
+                kind=FindingKind.MISSING,
+                note=element[:1000],
+                segment_id=segment_id,
+                chunk=chunk,
+                raised_by_check=True,
             )
             for element in lost or []
             if not _already_reported(element, reported)

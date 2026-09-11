@@ -126,6 +126,15 @@ def _missing_on(chunk: int, segment_id: str | None, note: str = "a notícia do p
     return Finding(kind=FindingKind.MISSING, note=note, segment_id=segment_id, chunk=chunk)
 
 
+def _silence_on(
+    chunk: int, segment_id: str | None, note: str = "o que a história guarda"
+) -> Finding:
+    """An addition the analyst named with the wire kind, as a reply would carry it."""
+    return Finding.model_validate(
+        {"kind": "silence", "note": note, "segment_id": segment_id, "chunk": chunk}
+    )
+
+
 @pytest.fixture
 def patch_analyst(monkeypatch: pytest.MonkeyPatch):
     module = sys.modules["app.services.internalization_room.back_translation"]
@@ -813,16 +822,21 @@ def test_a_pair_that_is_not_the_current_finding_still_counts_as_one() -> None:
 
     The count is what the app shows the team about the round ahead of them, and two halves of
     one swap are one stop on it wherever they sit in the list.
+
+    The turn is led away from the pair by a lone addition the analyst listed first: both are
+    additions in the **Priority**, which says nothing between them, so the analyst's own order
+    decides (ENG-876). It used to be led away by an `unclear` listed first, and the Priority
+    put an end to that — an unclear frase is the last thing the room raises.
     """
     state = BackTranslationState(
         findings=[
-            _on_a_stretch(FindingKind.UNCLEAR, "não deu para ouvir"),
+            _addition_on(3, "segmento-3", "outro acréscimo"),
             _addition_on(1, "segmento-1"),
             _missing_on(1, "segmento-1"),
         ]
     )
 
-    assert [finding.note for finding in current_findings(state)] == ["não deu para ouvir"]
+    assert [finding.note for finding in current_findings(state)] == ["outro acréscimo"]
     assert findings_remaining(state.findings) == 2
 
 
@@ -1027,6 +1041,43 @@ async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker)
     assert "the telling in Swahili" in spoken_to
     assert "{session_language}" not in spoken_to
     assert "the telling in Portuguese" not in spoken_to
+
+
+# ---------------------------------------------------------------------------
+# A finding says whether it fills a silence, and whether a check raised it — ENG-876
+# ---------------------------------------------------------------------------
+
+
+def test_a_row_stored_before_the_flags_reads_with_both_of_them_false() -> None:
+    """Every state written before this change validates, and picks by the tier order.
+
+    The state is a JSON column read back through the model on every request, so a row
+    that predates the two fields is the common case for as long as any session is open.
+    """
+    stored = BackTranslationState.model_validate(
+        {"findings": [{"kind": "addition", "note": "x", "segment_id": "segmento-1", "chunk": 1}]}
+    )
+
+    assert [finding.fills_silence for finding in stored.findings] == [False]
+    assert [finding.raised_by_check for finding in stored.findings] == [False]
+
+
+def test_a_silence_wire_kind_is_an_addition_that_fills_one() -> None:
+    """The wire name is read as an addition and kept only as the flag that ranks it.
+
+    Read on arrival and again on every read of the stored row: the flag is what the order
+    is keyed on, so a row that carried it and came back without it would be a filled
+    silence that waits behind every other addition from the second request onward.
+    """
+    fresh = Finding.model_validate(
+        {"kind": "silence", "note": "x", "segment_id": "segmento-1", "chunk": 1}
+    )
+    stored = Finding.model_validate(fresh.model_dump(mode="json"))
+
+    assert fresh.kind is FindingKind.ADDITION
+    assert fresh.fills_silence is True
+    assert stored.kind is FindingKind.ADDITION
+    assert stored.fills_silence is True
 
 
 # ---------------------------------------------------------------------------
