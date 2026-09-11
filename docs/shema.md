@@ -336,8 +336,8 @@ nothing in column 3 imports `fastapi`.
 | **Role** | The four aliases, `require_role(APP_KEY, key)`. | Nothing. |
 | **Region scope** | Declares the dependency; receives a `RegionScope` value. | `_scope.py` computes it from `shema_user_regions` and the granted roles, and **every list query takes it as a parameter**. §6.1. |
 | **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a duplicate slug is a `ConflictError`). |
-| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | `_redaction.py`, called by every service that builds a *leaving* shape. §6.5. |
-| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; `list_prayer_requests` is the only query that applies the gate. §6.5. |
+| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service. `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
+| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; the wall's query (BE-09) is the only one that applies the gate. §6.4. |
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
@@ -523,6 +523,14 @@ call as a short-lived signed GET that nothing persists. Its docstring refuses
 **Verdict:** `app/services/storage/` **not applicable**; `gcs_utils` **reuse**; a
 `shema-private` bucket and a `_media_storage.py` beside it, **new** — BE-04, with BE-02
 owning the `storage_key` column.
+
+**Built (BE-04).** `_media_storage.py` (bucket, expiry, key) and `media_download_url.py` (the
+gate and the minted link). The key is scoped by the media row's uuid rather than by the
+project slug — §6.4 carries that argument — and the route that calls it belongs to the issue
+that first has a screen for media (BE-09, BE-14). **The upload half is not built**: it needs a
+content type and size policy per collection (`ProjectMaterial.kind` is `text | audio | video`)
+and a screen to be wrong in front of, and nothing here freezes it. `upload_gcs_object` with
+`GCS_SHEMA_BUCKET` and `storage_key` is the whole of what that issue has to write.
 
 ### 4.7 Phases — **Not applicable**
 
@@ -766,7 +774,7 @@ next endpoint forgets; a glob is not.
 **The acceptance test the delivery plan already names:** an unauthorized prayer request is
 absent from **all four** output paths — the wall, exports, the ETEN report and notifications.
 
-#### What BE-04 built, and the one place it departs from §3.1
+#### What BE-04 built
 
 **The rule is not in `_redaction.py`. It is in `app/models/shema_privacy.py`, and it is
 inherited rather than called.** Everything else in this section held; this one line did not,
@@ -787,9 +795,9 @@ module from importing `app/services/` — the inversion that closed an import cy
 the rule has to be reachable from the shape for the paragraph above to be true. This is the
 same trade §3.1 already makes for the derivations, arriving one issue earlier: the half that
 both services and response models need lives where the response models may reach it.
-`_redaction.py` keeps the three things a `Select` cannot inherit — `is_withheld`,
-`withheld_note`, `log_reference` and `searchable_text` — and stays the module's sole reader of
-the guarded columns.
+`_redaction.py` keeps what a `Select` cannot inherit — `is_withheld`, `withheld_note`,
+`log_reference` and `searchable_text` — and stays the module's sole reader of the guarded
+columns.
 
 **The fields a leaving shape reduces**, in one list, because the value of one list is that
 there is one: `location`, `location2`, `country` (to the **region key**, never an empty
@@ -818,14 +826,23 @@ and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
 today and BE-06's record read as the one line expected in it. And a vocabulary check, so the
 list of guarded fields and the list of replacements cannot drift apart.
 
-**Three departures, each declared in BE-04's PR rather than absorbed here.** The base name is
+**And the bytes, because a predicate that ends in a public URL decides nothing.** §4.6's
+verdict is built: `app/services/shema/_media_storage.py` holds the `shema-private` bucket and
+the content-addressed key, `app/services/shema/media_download_url.py` applies
+`can_share_media` on the only address the bytes have, and the address is a signed GET that
+expires in fifteen minutes and is persisted nowhere. **One departure from the sibling's key
+shape, and it is this section's own argument arriving in the object store:**
+`resource-requests-private` scopes a key by its `request_id`; this one scopes by the media
+row's uuid, because a Shemá id is `<language>-<place>` and a signed URL travels further than
+the payload it came from — into a history, a referrer, a proxy log, a forwarded message. The
+refusal reads the same sentence whichever of its three reasons fired, for the reason the whole
+section gives: *why* is the fact being protected.
+
+**Two departures, each declared in BE-04's PR rather than absorbed here.** The base name is
 withheld on **every** leaving shape and not only in a file (§9.4 — the gate keeps the console's
-own rendering, which is presentation). The collection read is a leaving shape and only the
-record read is a coordination surface, because the issue names *list* among the output paths
-and FE-44 §8.7 says display is never enforcement. And the media half of §8.3 — a signed or
-expiring URL — is named and not built, because this repository's upload returns a public
-bucket URL (FE-44 §3.1) and the predicate is necessary without being sufficient; it belongs to
-the issue that first serves a file.
+own rendering, which is presentation). And the collection read is a leaving shape, with only
+the record read a coordination surface, because the issue names *list* among the output paths
+and FE-44 §8.7 says display is never enforcement.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 

@@ -19,13 +19,15 @@ inversion here publishes every photo nobody has looked at yet.
 is read through ``_redaction.is_withheld`` rather than off the column, which is the same
 glob saying that the sensitive-country column has one reader too.
 
-**What is deliberately not here.** Signed or expiring URLs. FE-44 §3.1 records that this
-repository's existing upload returns a **public bucket URL**, and a per-item authorization
-that ends in a public URL enforces nothing — so the predicate is necessary and not
-sufficient. The storage half needs an endpoint that applies this predicate per request, or a
-signed URL with an expiry, and it belongs to the issue that first serves media (BE-09/BE-14).
-Building the adapter here, with no caller and no bucket decision, would freeze a guess; the
-PR records it as the one part of §6.4's third row that is named rather than built.
+**A predicate is necessary and not sufficient, so the storage half is built beside it.**
+FE-44 §8.3's *a per-item authorization that ends in a public URL enforces nothing* is a
+statement about this repository: ``app/services/storage/upload.py`` answers an unsigned object
+URL from an open bucket. ``docs/shema.md`` §4.6 corrects both of its sources on the next
+point — the signing capability **does** exist here — and gives BE-04 the verdict:
+``_media_storage.py`` holds the private bucket and the content-addressed key, and
+``media_download_url.py`` is where this predicate is applied, per call, on the only address
+the bytes have. The route that calls it belongs to the issue that first has a screen for
+media (BE-09, BE-14); the rule does not wait for it.
 """
 
 from __future__ import annotations
