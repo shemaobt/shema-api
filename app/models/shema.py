@@ -78,6 +78,7 @@ from app.db.models.shema_enums import (
     ShemaProjectStatus,
     ShemaYesNo,
 )
+from app.models.shema_need import ShemaNeedWrite
 from app.models.shema_record import (
     ShemaBookProgressRow,
     ShemaOtherProgressRow,
@@ -217,6 +218,18 @@ class ShemaProjectUpdate(BaseModel):
 
     needs_notes: str | None = None
     notes: str | None = None
+
+    #: **The needs tab's batch** (BE-08). Needs travel with the project and are saved by this
+    #: ``PATCH`` — there is no needs endpoint in wave 1, and adding one would give
+    #: ``needsItems`` a second owner (``docs/shema.md`` §5.4, FE-44 §9.5).
+    #:
+    #: It is an **upsert batch and not a replacement of the table**: a row with an ``id`` moves
+    #: that need, a row without one is a new need, and a need *absent* from the list is
+    #: untouched. That is this class's own rule — absent means unchanged, all the way down —
+    #: and it is also the aggregate's invariant, because ``dropped`` exists precisely so that a
+    #: request that stopped mattering leaves the open list without being deleted.
+    #: ``app/services/shema/_needs.py`` carries the argument.
+    needs_items: list[ShemaNeedWrite] | None = None
 
     @model_validator(mode="before")
     @classmethod
