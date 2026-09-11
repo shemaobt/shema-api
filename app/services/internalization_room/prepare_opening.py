@@ -36,6 +36,12 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
 
     Failure here is silent on purpose: the prepared line is an optimisation, and the session
     opens perfectly well without one.
+
+    It is written as one movement on purpose, not two: `run_turn` is never asked to split it,
+    so it carries no scene clip to store or hand over. The live opening's two-movement pacing
+    depends on nothing this line's absence would break — a turn with no segments is spoken
+    whole (ENG-775), and matching the split here would cost a second stored audio key and a
+    migration for pacing no team has a way to notice is different.
     """
     try:
         async with AsyncSessionLocal() as db:

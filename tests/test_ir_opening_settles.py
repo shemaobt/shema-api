@@ -110,3 +110,19 @@ async def test_a_session_after_the_panorama_is_still_told_to_introduce_itself(
 
     assert OPENING_INSTRUCTION in captured["user_content"]
     assert "do NOT introduce yourself" not in captured["user_content"]
+
+
+def test_the_prepared_opening_asks_for_one_movement_on_purpose() -> None:
+    """ENG-775 item 4: settled as one movement on purpose, not left collapsed by accident.
+    The app already falls back to a single clip gracefully when a turn carries no segments
+    (`turn_result.dart`: "a turn whose segments are missing is simply spoken in one breath"),
+    so matching the live opening's two movements here would cost a second stored audio key
+    and a migration for pacing no team has a way to notice is different.
+
+    Falsified by hand: added `ask_for_movements=True` to the `run_turn` call in
+    `prepare_opening.py`, watched this test fail, then removed it again — never via git.
+    """
+    from app.services.internalization_room import prepare_opening as prepare_opening_module
+
+    source = inspect.getsource(prepare_opening_module.prepare_opening)
+    assert "ask_for_movements" not in source
