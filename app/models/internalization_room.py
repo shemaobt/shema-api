@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -410,6 +411,9 @@ class TurnResponse(BaseModel):
 
 class PassageView(BaseModel):
     pericope: str
+    #: "panorama" is the book's own entry — the one the wheel offers before any passage, and
+    #: the one entry with no beads of its own.
+    kind: Literal["passage", "panorama"]
     #: Where to fetch the line that names this passage aloud. There is no text field: the
     #: team does not read, so a passage the room cannot say is a passage it cannot offer.
     audio_url: str
