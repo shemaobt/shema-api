@@ -1076,7 +1076,13 @@ def _tiers(findings: list[Finding]) -> list[int]:
 def the_index_that_leads(findings: list[Finding]) -> int | None:
     """Which finding this turn is about, before any swap is looked for.
 
-    The **Priority**, ties in the analyst's own order. It is over the tiers and says
+    A Correction check's finding first, because what a mend broke is about the stretch the
+    team just retold: sent elsewhere in the same breath, they answer a question about a part
+    they are not looking at, and the stretch they are working on stays open behind them.
+    That precedence used to be list position and nothing else, which is why it is a flag now
+    — an order applied over the whole list reads straight past a position.
+
+    Then the **Priority**, ties in the analyst's own order. It is over the tiers and says
     nothing inside one, so reaching for a second key here — the frase, the stretch, the
     length of the note — would be the room inventing a precedence Marcia never ruled.
 
@@ -1092,6 +1098,9 @@ def the_index_that_leads(findings: list[Finding]) -> int | None:
     """
     if not findings:
         return None
+    raised_by_a_check = [at for at, finding in enumerate(findings) if finding.raised_by_check]
+    if raised_by_a_check:
+        return raised_by_a_check[0]
     tier_of = _tiers(findings)
     return min(range(len(findings)), key=lambda at: (tier_of[at], at))
 

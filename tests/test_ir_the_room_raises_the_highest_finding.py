@@ -6,7 +6,11 @@ Speaker is handed every finding and picks; in ours the room picks and hands the 
 exactly one, so the order has to live here.
 
 It is applied at the pick and never at parse or storage: `state.findings` stays the analyst's
-list, which is what the packet, the resume and the correction check all read.
+list, which is what the packet, the resume and the correction check all read. A finding a
+Correction check raised keeps the front for the round that follows it, so a team that has
+just retold one stretch is answered about that stretch rather than sent elsewhere in the
+same breath — the precedence `findings_after_correction` puts there, which the Priority
+applied over the whole list would have erased.
 
 These cases describe what the room does, never how it is stored: none of them names a table
 or a column.
@@ -419,3 +423,71 @@ async def test_a_filled_silence_is_raised_before_a_missing_and_still_reads_as_ad
     assert [finding.kind.value for finding in findings] == ["missing", "addition"]
     assert [finding.fills_silence for finding in findings] == [False, True]
     assert [one["kind"] for one in for_the_packet] == ["missing", "addition"]
+
+
+async def _the_check_raised_an_unclear_on_the_stretch_just_retold(
+    client: httpx.AsyncClient, db: AsyncSession, analyst: ReaderOfTellings
+) -> tuple[str, IRSegment]:
+    """A reading led by an addition on frase 5, mended, and the check raises an unclear there.
+
+    The missing element on frase 2 is left standing on purpose: it outranks an unclear frase
+    in the **Priority**, so what leads the round after is decided by whether a Correction
+    check's finding keeps the front.
+    """
+    session_id, _ = await _the_missing_listed_before_the_addition(client, analyst)
+    standing = await service.final_segments(db, session_id)
+    analyst.raised_by_the_check = [{"kind": "unclear", "note": THE_UNCLEAR}]
+    await _tell_that_stretch_again(client, session_id, standing[4], saying=THE_ADDITION_MENDED)
+    answered = await _finish(client, session_id)
+    assert answered.status_code == 200, answered.text
+    assert analyst.verifications, "a correção tinha de ser verificada, não relida"
+    return session_id, (await service.final_segments(db, session_id))[4]
+
+
+@pytest.mark.asyncio
+async def test_what_a_correction_broke_leads_over_a_higher_finding_elsewhere(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
+) -> None:
+    """The team is answered about the stretch they just retold, not sent elsewhere.
+
+    The check resolved the addition and, doing it, raised an unclear frase on the corrected
+    stretch — the last tier of the **Priority**. A missing element is still standing on frase
+    2, and it outranks an unclear one. The Priority applied over the whole list would send
+    the team there in the same breath as the retelling they just made, which is the
+    precedence `findings_after_correction` was written to hold.
+    """
+    session_id, corrected = await _the_check_raised_an_unclear_on_the_stretch_just_retold(
+        client, db_session, analyst
+    )
+    body = (await _finish(client, session_id)).json()
+
+    assert body["finding_kind"] == "unclear"
+    assert body["finding_segment_id"] == corrected.id
+    assert THE_UNCLEAR in speaker[-1]
+    assert THE_MISSING not in speaker[-1]
+    assert body["findings_remaining"] == 2
+
+
+@pytest.mark.asyncio
+async def test_an_unresolved_correction_keeps_the_front(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
+) -> None:
+    """A check's finding keeps the front until it leaves the list, not for one round.
+
+    The team retells the corrected stretch and the check says it is still not answered. The
+    finding stays, re-addressed to the stretch that now counts, and still leads: half-answered
+    is not answered, and the round that gave up on it would send the team to frase 2 with the
+    stretch they are working on still open behind them.
+    """
+    session_id, corrected = await _the_check_raised_an_unclear_on_the_stretch_just_retold(
+        client, db_session, analyst
+    )
+    analyst.raised_by_the_check = []
+    await _tell_that_stretch_again(client, session_id, corrected, saying="hmm...")
+    body = (await _finish(client, session_id)).json()
+    standing = await service.final_segments(db_session, session_id)
+
+    assert body["finding_kind"] == "unclear"
+    assert body["finding_segment_id"] == standing[4].id
+    assert THE_UNCLEAR in speaker[-1]
+    assert THE_MISSING not in speaker[-1]
