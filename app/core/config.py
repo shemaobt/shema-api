@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     ph_elevenlabs_api_key: str = ""
 
     internalization_room_api_key: str = ""
+    #: What her golden runner presents to drive the room by text instead of by microphone.
+    #: Empty is the production configuration: the text seam then does not exist, and its
+    #: routes answer 404 rather than asking for a credential nobody has been given.
+    internalization_room_runner_key: str = ""
     #: The room bills its own voice. Empty falls back to the shared key.
     internalization_room_elevenlabs_api_key: str = ""
     #: The room's Portuguese voice. One native voice per language it speaks, never one
