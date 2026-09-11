@@ -57,6 +57,11 @@ class TellingBackVerdict:
 
     finding: Finding | None
     current: list[Finding]
+    #: What the model answered *this* round — the whole reading, or what the Correction check
+    #: raised. Distinct from the standing list, which carries findings forward across rounds:
+    #: a measurement of this round's reply read off the standing list counts an earlier round's
+    #: answer again every time.
+    read_this_round: list[Finding]
     said: str
     outcome: TurnOutcome
     checked: bool
@@ -88,6 +93,7 @@ async def check_the_telling_back(
     writing it is the caller's, in the same transaction as whatever else it decides.
     """
     verified: CorrectionCheck | None = None
+    read_this_round: list[Finding] = []
     correction = correction_to_verify(state, told, retired)
     if correction is not None:
         verified = await verify_correction(
@@ -104,6 +110,7 @@ async def check_the_telling_back(
         )
         if verified is None:
             raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
+        read_this_round = verified.findings
         state.findings = findings_after_correction(state.findings, verified, correction.corrected)
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = True
@@ -120,6 +127,7 @@ async def check_the_telling_back(
         )
         if read is None:
             raise UnreadableReply("a resposta do analista não pôde ser lida")
+        read_this_round = read.findings
         state.findings = read.findings
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
@@ -136,6 +144,7 @@ async def check_the_telling_back(
         )
         if closing is None:
             raise UpstreamServiceError("a leitura final da tradução não pôde ser feita agora")
+        read_this_round = closing.findings
         state.findings = closing.findings
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
@@ -168,6 +177,7 @@ async def check_the_telling_back(
     return TellingBackVerdict(
         finding=finding,
         current=current,
+        read_this_round=read_this_round,
         said=said,
         outcome=outcome,
         checked=state.checked,
