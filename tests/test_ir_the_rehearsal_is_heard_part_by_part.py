@@ -470,6 +470,32 @@ async def test_terminei_without_a_report_takes_nothing_away(
 
 
 @pytest.mark.asyncio
+async def test_a_flat_report_does_not_erase_the_parts_a_newer_build_named(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """An older build cannot take the subject away from a report that had one.
+
+    The two builds meet on one session when a team changes tablet mid-passage. The older one
+    sends the flat pair and nothing else — it cannot say what it did not measure, and silence
+    about the parts is not a claim that none of them was played. Overwriting on that press
+    erased a report that named every part and re-blocked a session that was ready to travel.
+    """
+    session, parts = await _rehearsed_in_parts(db_session, 4)
+    per_take = [_covering(part) for part in parts]
+    glued = PART_MS * len(parts)
+    await _finish(client, session.id, report={"played_by_take": per_take})
+
+    await _finish(
+        client,
+        session.id,
+        report={"played_ranges": [[0, glued]], "clip_duration_ms": glued},
+    )
+
+    packet = await _release(db_session, session)
+    assert packet["back_translation"]["played_by_take"] == per_take
+
+
+@pytest.mark.asyncio
 async def test_a_replaced_attempt_archives_the_report_per_take(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:

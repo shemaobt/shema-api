@@ -550,9 +550,16 @@ async def report_playback(
     computed from it here and nothing is thrown away: the app names the recording each span was
     played from, and the room has no better answer than the one the player measured.
 
-    **It replaces, it does not merge.** What arrives is the whole of what the team has heard,
-    never a delta, because the tablet keeps the ledger and the server has no way to tell a part
-    left out of a short report from a part that was never played.
+    **A report with parts replaces, it does not merge.** What arrives is the whole of what the
+    team has heard, never a delta, because the tablet keeps the ledger and the server has no way
+    to tell a part left out of a short report from a part that was never played.
+
+    **A report with no part named takes nothing away.** An older build sends the flat pair and
+    nothing else, and the two builds meet on one session when a team changes tablet mid-passage.
+    Overwriting on that press erased a report that had a subject and re-blocked a session that
+    was ready — the older build cannot say what it did not measure, and silence about the parts
+    is not a claim that none was played. The flat numbers are still stored, as the record of
+    that press.
 
     The flat pair is stored beside it for the record, as the older builds send it, and the
     stamp of which recordings the session was standing on is kept for the reason it was taken:
@@ -563,7 +570,8 @@ async def report_playback(
     `playback_confirms_rehearsal` reads neither.
     """
     told = await final_segments(db, session.id)
-    state.played_by_take = played_by_take
+    if played_by_take:
+        state.played_by_take = played_by_take
     state.played_ranges = played_ranges
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})

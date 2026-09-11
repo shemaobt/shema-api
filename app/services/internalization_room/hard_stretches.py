@@ -52,10 +52,11 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
     swallowed and that writer asks for nobody, which is the same answer the fourth telling of a
     marked stretch gets, and by the same mechanism.
 
-    The insert sits **inside** the savepoint, not before it. `begin_nested` flushes whatever is
-    already dirty on the way in, so a write made earlier in this transaction — the stretch row
-    of this very telling — is emitted outside the savepoint, where a collision would deactivate
-    the whole transaction instead of rolling back to the mark.
+    The insert sits **inside** the savepoint, and everything else is flushed **before** the try.
+    `begin_nested` flushes whatever is still dirty on the way in, and that flush is emitted
+    outside the savepoint: a collision there deactivates the whole transaction rather than
+    rolling back to the mark, and caught here it would read as "already marked" and then die at
+    the commit. Flushing first leaves only this insert under the `except`.
 
     The row names the first telling of the chain rather than the version standing now, so the
     consultant reads one name per stretch however many times it was replaced. A telling-back
@@ -69,6 +70,7 @@ async def note_a_hard_stretch(db: AsyncSession, session: IRSession, stretch: IRS
         return False
 
     first = await first_telling_of(db, stretch)
+    await db.flush()
     try:
         async with db.begin_nested():
             db.add(
