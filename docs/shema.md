@@ -277,6 +277,13 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
 | `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; and `can_export_notes`. §6.4. |
 | `app/utils/shema_derivations.py` | BE-05 | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
+| `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
+| `app/models/shema_record.py` | **BE-06, built** | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key — and every sub-shape the ficha is made of. Separate from `app/models/shema.py`, which is what a client *sends*. |
+| `app/db/models/shema_audit.py` | **BE-06, built** | `shema_record_edits` — the trail: who moved which field, when, from what to what. Append-only, by the same trigger `shema_progress_history` uses. |
+| `app/services/shema/_audit.py` | **BE-06, built** | The trail's writer and its one reader. Names no guarded column and records no guarded **value**. |
+| `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
+| `app/services/shema/save_project.py` | **BE-06, built** | The create, the partial update, and the version guard. The one thing in the module that moves `shema_projects.version`. |
+| `app/services/shema/read_record.py` | **BE-06, built** | The record read, and `build_record` — the assembly the write path answers with. |
 | `app/models/shema.py`, `app/models/shema_*.py` | BE-02 …, per §2.2 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models; separate `Create` / `Update` / `Response`. |
 | `app/db/models/shema.py`, `app/db/models/shema_*.py` | BE-02 authors, each issue grows its own | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — [`docs/resource_requests.md`](resource_requests.md) §8.1. |
 | `alembic/versions/20260NNN_shemaNN_*.py` | BE-02 onward | Migrations. Single head, clean `downgrade -1`. §7.1. |
@@ -621,8 +628,8 @@ behaviour on it.
 
 | # | Aggregate | Tables (working names) | Owner | The invariant |
 |---|---|---|---|---|
-| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | The primary key is the **export slug**, not a minted uuid. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
-| 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day. |
+| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | **The concurrency token is a `version` column and a save must quote it** (BE-06 — `If-Match` required, `ETag` on every read; a stale save is a 409 naming the version, the fields and the person). A save that changed nothing moves nothing. The primary key is the **export slug**, not a minted uuid. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
+| 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day — which the server cannot know, so BE-06 has the client state it in `X-Shema-Local-Date` and bounds it to ±1 day of the server's own, the window every real offset fits in and a backdated ETEN credit does not. **A row is checked against the book that exists** (`app/utils/shema_books.py`): not a book, a scope longer than the book, a count above its own row. The ceiling is **per row and never over the aggregates** — three export records carry `156/25`. |
 | 5.3 | **Health assessment** | `shema_health_assessments` | BE-02, BE-07 | **Its own aggregate.** The flat fields on the record are a *projection of the newest entry*, never a second truth; append and re-project in one step, and carry a pre-history record into the history before appending. The **per-dimension note is the data**; the running note is derived from it at write time. `""` is not `boa`. |
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
 | 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). |
@@ -634,6 +641,33 @@ behaviour on it.
 | 5.11 | **ETEN ledger** | `shema_eten_credits` | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule is **Open · GATE-01** (§9.1). |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
 | 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. The one thing this module owns about identity. Empty means global. |
+
+> **BE-06 ([OBT-395](https://linear.app/shema-obt/issue/OBT-395)) built the record's
+> lifecycle on rows 5.1 and 5.2, and four decisions travel with it.**
+>
+> - **The version is an integer column, not `updated_at`.** The issue named both; this module
+>   has already measured why the timestamp loses. `shema_progress_history`'s own docstring
+>   records that `func.now()` hands every row of one transaction the same microsecond and that
+>   SQLite's `CURRENT_TIMESTAMP` has one-second granularity — and two coordinators saving
+>   inside one second is the case the guard exists for. A counter has no granularity to lose.
+>   `SnSessionState.version` is the repository's precedent and `If-Match`/`ETag` the transport.
+> - **The guard is required, against the precedent it otherwise copies.**
+>   `app/services/sound_necklace/autosave_state.py` makes its `If-Match` optional because its
+>   writer is one tab autosaving its own session. Here the writer is one of several
+>   coordinators, so a skippable guard is last-write-wins one forgotten header away.
+> - **The audit is its own append-only table** (`shema_record_edits`, §3.1) rather than a
+>   column pair, and it is what makes the 409 explainable: keyed by the version a save
+>   produced, it answers *what moved between the version I read and the current one*. The
+>   **values** of a guarded field stay out of it — the key travels, `old`/`new` are NULL —
+>   because a country copied into a second table with different readers has left the boundary
+>   §6.4 holds. `shema_progress_history` gains **no** author column: `ProgressHistoryEntry` is
+>   a shape FE-44 froze, and the trail is where the author of every write lives, progress
+>   included.
+> - **The progress batch is the record's own `PATCH`, not a second endpoint.** FE-44 §9.3
+>   names the only split it will accept and asks in letters that BE-06 *not invent a different
+>   one*. Atomicity is a property of the write path instead: the whole batch is validated
+>   before a row is applied — every bad row named at once, by index — and the roll-up, the
+>   history entry and the trail commit together or not at all.
 
 **Two shapes worth naming because they are easy to get wrong the same way the sibling did.**
 The health assessment (5.3) is the module's counterpart of

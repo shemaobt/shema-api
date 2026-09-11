@@ -88,19 +88,34 @@ OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "media authorization": (MEDIA_COLUMNS, frozenset({"_media_sharing.py"})),
 }
 
-#: Routes under ``/api/shema`` whose response may carry a place unreduced.
+#: Routes under ``/api/shema`` whose response may carry a place unreduced — **by method and
+#: path**, never by path alone.
 #:
-#: **Empty, and the emptiness is the point today** — the same shape
-#: ``test_access.py::UNAUTHENTICATED_PATHS`` has for the module's one deliberate hole.
-#: ``GET /api/shema/session`` is not listed because it needs no exemption: a persona carries
-#: no project data at all.
+#: BE-04 wrote this as a set of paths and expected one line in it. BE-06 found that one path
+#: carries two methods with two answers: ``POST /api/shema/projects`` returns the record it
+#: just created and must be here, while ``GET /api/shema/projects`` is BE-05's collection read
+#: and must **not** be — exempting the path would have switched the audit off for the busiest
+#: leaving shape in the module, silently and in the same line that looked like an exemption for
+#: something else. So the key is the pair, which is also what the failure message already
+#: printed.
 #:
-#: The one line expected here is BE-06's record read, ``GET /api/shema/projects/{id}``. A
-#: project read by somebody allowed to open it is a **coordination** surface and carries the
-#: truth, because hiding the country from its own author is data loss rather than privacy
-#: (FE-44 §8.1 rule 5). Every other read — the collection, the wall, the report, the file —
-#: leaves coordination and goes through the boundary.
-COORDINATION_PATHS: frozenset[str] = frozenset()
+#: ``GET /api/shema/session`` is not listed because it needs no exemption: a persona carries no
+#: project data at all.
+#:
+#: **The three entries are BE-06's record, read and written.** A project read by somebody
+#: allowed to open it is a **coordination** surface and carries the truth, because hiding the
+#: country from its own author is data loss rather than privacy (FE-44 §8.1 rule 5, and §9.0
+#: in one line). The create and the patch answer the same shape for the same reason: FE-44 §9.3
+#: has both return the recomputed record, so a reduced reply to a save would show the author a
+#: withheld version of what they had just typed. Every other read — the collection, the wall,
+#: the report, the file — leaves coordination and goes through the boundary.
+COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", f"{PREFIX}/projects/{{project_id}}"),
+        ("POST", f"{PREFIX}/projects"),
+        ("PATCH", f"{PREFIX}/projects/{{project_id}}"),
+    }
+)
 
 
 def _guarded_reads(source: Path, columns: frozenset[str]) -> set[str]:
@@ -201,7 +216,7 @@ def test_every_route_that_can_name_a_place_leaves_through_the_boundary() -> None
     response model that does not inherit it and can still name a place fails here. So the
     author who has never heard of this rule gets a protected payload; the author who routes
     around it gets a red build; and the author who genuinely needs the truth adds a line to
-    :data:`COORDINATION_PATHS` and explains it once, in a diff.
+    :data:`COORDINATION_ROUTES` and explains it once, in a diff.
 
     Asking the route table rather than the source is what makes an inherited shape count —
     the whole point being that the subclass does not mention the rule.
@@ -211,14 +226,13 @@ def test_every_route_that_can_name_a_place_leaves_through_the_boundary() -> None
     for route in app.routes:
         if not isinstance(route, APIRoute) or not route.path.startswith(PREFIX):
             continue
-        if route.path in COORDINATION_PATHS:
+        methods = sorted(set(route.methods or ()) - {"HEAD", "OPTIONS"})
+        if all((method, route.path) in COORDINATION_ROUTES for method in methods):
             continue
         for model in _models_in(route.response_model):
             place = _names_a_place(model)
             if place and not issubclass(model, LeavingShape):
-                unprotected.append(
-                    f"{sorted(route.methods)} {route.path} -> {model.__name__}{place}"
-                )
+                unprotected.append(f"{methods} {route.path} -> {model.__name__}{place}")
 
     assert unprotected == [], (
         "a response model can name a project's place and does not inherit LeavingShape, so "

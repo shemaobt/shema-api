@@ -14,12 +14,15 @@ only place that decides what is missing, and it names ``languageName``, ``bridge
 proves it — 27 of the 55 export columns are empty on all 127 records. Validating a fifth
 field makes the record uneditable for exactly the field teams whose data is this thin.
 
-**Three keys are refused rather than ignored.** ``regionalCoordinator``, ``obtLabPerson`` and
-``resourceCirclePerson`` have no column at all: the region's three role-holders live in
-``shema_region_teams`` and are read by reference. FE-44 §5.3 asks the server to *reject a
-write that fills them, or drop the columns*, and this module does both — the table dropped
-them, and a payload that carries one is refused by name instead of silently discarded, so a
-client that still believes it owns those fields learns that it does not.
+**Three keys are refused when they are filled and dropped when they are empty.**
+``regionalCoordinator``, ``obtLabPerson`` and ``resourceCirclePerson`` have no column at all:
+the region's three role-holders live in ``shema_region_teams`` and are read by reference.
+FE-44 §5.3 asks the server to *reject a write that fills them, or drop the columns*, and this
+module does both — the table dropped them, and a payload that **fills** one is refused by
+name instead of silently discarded, so a client that still believes it owns those fields
+learns that it does. BE-02 refused the key itself and BE-06 narrowed that to the value, for
+the reason the validator carries: the three are *required* keys of the interface FE-44 §9.3
+has ``POST`` take whole, so refusing the key refuses every create the contract describes.
 
 **The health projection is not writable here, and that is the rule rather than an omission.**
 ``health_emotional`` and its three siblings, ``health_assessment_date``, ``health_assessor``
@@ -40,21 +43,46 @@ nothing. It matters most for the prayer request: FE-44 §8.2 records that an unc
 write of ``""`` on every save deletes an existing request as a side effect of an unrelated
 action, so *not sent* has to be a state this shape can express.
 
-**The wire spelling is not decided here.** These fields are the house's snake_case, which is
-what ``app/models/resource_request.py`` sends and receives, while FE-44's frozen types are
-camelCase. Whoever writes the first endpoint (BE-05 for the read, BE-06 for the write) decides
-whether the mapping is a Pydantic alias generator on this side or INT-02's client on the
-other; naming the choice is this file's job, and making it silently is not.
+**The wire spelling is camelCase, and BE-06 decided it here** — the question this file asked
+and left for whoever wrote the first endpoint. BE-05 answered the read with a *serialisation*
+alias over snake_case attributes (``app/models/shema_projects.py``) and this is the mirror: a
+*validation* alias, so a client patches in the spelling it reads. ``populate_by_name`` keeps
+the house's snake_case accepted for a caller inside this repository — a test, BE-16's seed,
+BE-12's import — which is what stops the decision costing anything on this side. The
+alternative was a translation table in INT-03's client, read on every save of a
+seventy-three-field record. See :data:`_INWARD`.
+
+**And the record's read shape is** ``app/models/shema_record.py``, which is a separate file
+for the reason §2.2 gives: this one is what a client *sends*, and the two have different
+fields, different optionality and different rules. The sub-shapes the two share — the progress
+rows, the phase — live with the read, because the read is the shape that has to be FE-44's
+``Project`` key for key.
 """
 
 from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    AliasGenerator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
+from pydantic.alias_generators import to_camel
 
 from app.db.models.shema_enums import (
+    ShemaPrayerVisibility,
     ShemaProjectStatus,
     ShemaYesNo,
+)
+from app.models.shema_record import (
+    ShemaBookProgressRow,
+    ShemaOtherProgressRow,
+    ShemaProjectPhase,
+    ShemaStoryProgressRow,
 )
 
 #: The only fields a save is refused for, per FE-44 §5.1.1.
@@ -70,6 +98,24 @@ OWNED_BY_THE_ORG_CHART: tuple[str, ...] = (
     "resourceCirclePerson",
 )
 
+#: Both spellings of the base, which is the same column as :attr:`ShemaProjectUpdate.team`.
+THE_BASE: tuple[str, ...] = ("ywam_base", "ywamBase")
+
+#: **The wire is camelCase inward too, and this is where that half is decided** (BE-06).
+#:
+#: The module docstring left the spelling to whoever wrote the first endpoint — BE-05 for the
+#: read, this issue for the write — and BE-05 answered camelCase by a *serialisation* alias.
+#: The write is the mirror: a **validation** alias, so a client posts and patches in exactly
+#: the spelling it reads, and ``populate_by_name`` keeps the house's snake_case working for a
+#: caller inside this repository (a test, a seed, BE-12's import). One shape, two spellings
+#: accepted, one emitted — and no translation table in INT-03's client, which for a
+#: seventy-three-field record is a second place to be wrong on every save.
+_INWARD = ConfigDict(
+    extra="forbid",
+    populate_by_name=True,
+    alias_generator=AliasGenerator(validation_alias=to_camel),
+)
+
 
 class ShemaProjectUpdate(BaseModel):
     """A partial write of a record: every field optional, absent meaning unchanged.
@@ -78,9 +124,16 @@ class ShemaProjectUpdate(BaseModel):
     misspelling, and what stops a client inventing a column. The three org-chart keys get
     their own message anyway, because *extra field not permitted* is true and useless to
     somebody holding a contract that still lists them.
+
+    **A tab is what a partial write is for.** The ficha has ten of them and each saves the
+    fields it owns; a screen that sent the whole record back would have tab 3 writing tab 7's
+    values as they stood when tab 3 was opened — which is the silent overwrite the version
+    guard catches between *people* and could not catch inside one person's own payload. So
+    every field is ``| None`` and absent means unchanged, and ``model_fields_set`` is what the
+    write path reads rather than the values themselves.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = _INWARD
 
     language_name: str | None = None
     language_code: str | None = None
@@ -114,7 +167,11 @@ class ShemaProjectUpdate(BaseModel):
     financial_notes: str | None = None
     financial_other_details: str | None = None
     org_role: str | None = None
-    in_eten: bool | None = None
+    #: ``inETEN`` on the wire, which no camel-caser produces from ``in_eten`` — the one key
+    #: of the seventy-three that has to be spelled out.
+    in_eten: bool | None = Field(
+        default=None, validation_alias=AliasChoices("inETEN", "in_eten", "inEten")
+    )
 
     total_units: int | None = Field(default=None, ge=0)
     total_units_type: str | None = None
@@ -124,10 +181,17 @@ class ShemaProjectUpdate(BaseModel):
     community_checked_units: int | None = Field(default=None, ge=0)
     approved_units: int | None = Field(default=None, ge=0)
 
-    book_progress: list[dict[str, Any]] | None = None
-    story_progress: list[dict[str, Any]] | None = None
-    other_progress: list[dict[str, Any]] | None = None
-    phases: list[dict[str, Any]] | None = None
+    #: **The batch.** A progress tab saves its whole table, and the rows are typed rather
+    #: than free dictionaries so that *every* bad row in a batch is named at once, located by
+    #: index — a book that is not a book, a scope longer than the book, a count above its own
+    #: row's scope. Pydantic collects a list's errors before it raises, so *a partial failure
+    #: applies nothing* is true of the validation half by construction rather than by a loop
+    #: remembering to keep going. ``app/models/shema_record.py`` holds the rules.
+    book_progress: list[ShemaBookProgressRow] | None = None
+    #: The one table the roll-up ignores: a story row has no counts to add (FE-44 §7.2).
+    story_progress: list[ShemaStoryProgressRow] | None = None
+    other_progress: list[ShemaOtherProgressRow] | None = None
+    phases: list[ShemaProjectPhase] | None = None
 
     start_date: date | None = None
     deadline: date | None = None
@@ -139,9 +203,12 @@ class ShemaProjectUpdate(BaseModel):
     stories_translated: str | None = None
     ready_vessels_audio_hours: str | None = None
 
-    #: Guarded by ``app/services/shema/_consent.py`` once it exists. Absent is not ``""``.
+    #: Guarded by ``app/services/shema/_consent.py``. Absent is not ``""``.
     prayer_requests: str | None = None
-    prayer_visibility: str | None = None
+    #: NULL means ``coordenacao`` and an explicit ``null`` is how a request is taken back off
+    #: the wall — which is a state this shape can express only because *absent* is a third
+    #: answer beside it (``model_fields_set``).
+    prayer_visibility: ShemaPrayerVisibility | None = None
     prayer_requests_audio: str | None = None
 
     needs_pastoral_intervention: ShemaYesNo | None = None
@@ -154,13 +221,59 @@ class ShemaProjectUpdate(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _the_org_chart_owns_its_own_names(cls, data: Any) -> Any:
+        """Refuse a write that **fills** a role-holder; accept and drop one that is empty.
+
+        FE-44 §5.3's requirement is worded on the value — *reject a write that fills them, or
+        drop the columns* — and BE-02 did both, refusing the key itself. **BE-06 narrows that
+        to the filled case**, because this is the issue that finds out what it costs: FE-44
+        §9.3 froze ``POST /api/shema/projects`` as taking a whole ``Project``, the three keys
+        are **required** in that interface, and the fixtures assert they are always ``""``. So
+        the stricter reading refuses every create the contract describes — a 422 on the one
+        payload the client is specified to send, over three empty strings.
+
+        Empty is dropped rather than stored: there is no column, and that is still the whole
+        point. A filled one keeps the message that names the chart, because *extra field not
+        permitted* is true and useless to somebody holding a contract that still lists them.
+        """
         if isinstance(data, dict):
-            sent = [key for key in OWNED_BY_THE_ORG_CHART if key in data]
-            if sent:
+            filled = [key for key in OWNED_BY_THE_ORG_CHART if data.get(key)]
+            if filled:
                 raise ValueError(
-                    f"{', '.join(sent)}: the region's role-holders are read from the org "
+                    f"{', '.join(filled)}: the region's role-holders are read from the org "
                     "chart and are not stored on a project"
                 )
+            data = {key: value for key, value in data.items() if key not in OWNED_BY_THE_ORG_CHART}
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _the_base_and_the_team_are_one_input(cls, data: Any) -> Any:
+        """``ywamBase`` writes ``team``, because BE-02 collapsed the two columns into one.
+
+        FE-44 §5.1: JOCUM is the Portuguese for YWAM, all 127 records carry the identical
+        string in both, the record shows **one** input and *"the server writes both from one
+        input"*. With one column that sentence becomes: the key is accepted and folded.
+
+        **Two different values are refused rather than reconciled.** No screen can produce
+        them, so a payload that carries both is a client that believes the columns are two
+        facts — and picking one silently is how the drift BE-02 removed comes back through a
+        door nobody is watching.
+        """
+        if not isinstance(data, dict):
+            return data
+        sent = [key for key in THE_BASE if key in data]
+        if not sent:
+            return data
+        values = {data[key] for key in sent}
+        team = data.get("team")
+        if "team" in data and data["team"] not in values:
+            raise ValueError(
+                "team and ywamBase are one input on one column: send one, or send both equal"
+            )
+        if len(values) > 1:
+            raise ValueError("ywamBase sent twice with two values")
+        data = {key: value for key, value in data.items() if key not in THE_BASE}
+        data["team"] = team if "team" in data else values.pop()
         return data
 
     @field_validator(*REQUIRED_TO_SAVE)
