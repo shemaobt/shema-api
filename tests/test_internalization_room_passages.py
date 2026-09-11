@@ -6,6 +6,7 @@ import pytest
 from app.api.internalization_room import passages as route
 from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
+from app.services.internalization_room import passage_lines
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.labels import labelled_elements
@@ -15,7 +16,12 @@ from app.services.internalization_room.canon.parse_map import (
     load_map,
 )
 from app.services.internalization_room.languages import FLOOR, ROOM_LANGUAGES
-from app.services.internalization_room.passage_lines import _sections, line_for
+from app.services.internalization_room.passage_lines import (
+    PANORAMA,
+    _sections,
+    line_for,
+    panorama_line_for,
+)
 
 NAMED_IN_PORTUGUESE: dict[str, str] = {
     "P01": "Rute 1:1–5",
@@ -90,6 +96,25 @@ def test_the_wheel_names_the_passage_and_says_nothing_else_about_it(
     )
 
 
+def test_the_panorama_has_no_authored_line_yet() -> None:
+    """The wording is Marcia's to rule on and has not shipped, so the wheel must not speak
+    one — this locks today's silence rather than assuming tomorrow's line."""
+    assert panorama_line_for("pt") == ""
+    assert panorama_line_for("en") == ""
+
+
+def test_the_panoramas_line_never_borrows_the_other_languages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A passage falls back to the floor when its own language is unwritten, but the panorama
+    is authored in both languages at once or offered in neither — borrowing the other
+    language's line would hand a Portuguese team an English answer instead of silence."""
+    monkeypatch.setattr(passage_lines, "_sections", lambda: {(PANORAMA, "en"): "Ruth, the book"})
+
+    assert panorama_line_for("en") == "Ruth, the book"
+    assert panorama_line_for("pt") == ""
+
+
 def _the_book_named_in(language: str) -> str:
     """What this book's own catalogue calls the person the book is named after."""
     named = next(element for element in labelled_elements("P01") if element.label_en == "Ruth")
@@ -161,6 +186,60 @@ def test_a_language_nobody_has_written_is_named_in_the_floors_words_not_in_silen
 @pytest.mark.parametrize("tag", ["pt", "pt-BR", "PT-br"])
 def test_the_region_never_decides_whether_a_passage_can_be_named(tag: str) -> None:
     assert line_for("P01", tag)
+
+
+async def test_every_passage_the_wheel_offers_says_its_own_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller reading the wheel needs to tell a passage from a panorama without guessing
+    from its id — kind says which, plainly, for every passage entry the wheel returns.
+
+    Stubs the panorama off explicitly rather than relying on today's file having no
+    section for it — that fact belongs to test_the_panorama_has_no_authored_line_yet,
+    not to this one, which is about the passages' own kind."""
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
+
+    answer = await route.passages("Ruth", language="pt")
+
+    assert [view.kind for view in answer.passages] == ["passage"] * len(answer.passages)
+
+
+async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once Marcia's word lands and a line is authored, the panorama has to be the first
+    thing the team hears turning the wheel — it is the front door to the whole book."""
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
+    without_panorama = [
+        view.pericope for view in (await route.passages("Ruth", language="pt")).passages
+    ]
+
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "Rute, o livro")
+    answer = await route.passages("Ruth", language="pt")
+
+    first = answer.passages[0]
+    assert (first.kind, first.pericope) == ("panorama", "panorama")
+    assert first.audio_url
+    assert (first.beads, first.absence_index) == (0, -1), (
+        "o panorama não tem elementos próprios — beads e absence_index não podem vir de "
+        "uma passagem por engano"
+    )
+    assert [view.pericope for view in answer.passages[1:]] == without_panorama
+
+
+async def test_the_panorama_stays_off_the_wheel_with_no_line_to_say_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No line for this language means no spoke, exactly as an unwritten passage is left
+    out — the room must never read the panorama's id aloud as a stand-in for its voice."""
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
+    monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
+
+    answer = await route.passages("Ruth", language="pt")
+
+    assert all(view.kind != "panorama" for view in answer.passages)
 
 
 async def test_the_wheel_offers_no_passage_the_session_would_refuse(

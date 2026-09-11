@@ -36,6 +36,7 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
+from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
@@ -62,12 +63,16 @@ def resolve_pericope(pericope: str) -> str:
     """`OV` alone is the panorama of whichever book the room serves, so a client can ask
     for it without naming the book — the canon stays entirely on this side.
 
+    `PANORAMA` (`"panorama"`) resolves the same way: it is the id the passage wheel puts
+    on the wire, so a client that opens a session with the id the wheel just handed it
+    reaches the panorama instead of `require_walkable` refusing a pericope nobody vendored.
+
     It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
     belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
     under another name: a book is not a passage, the room serves one, and `elements_for`,
     `labelled_elements` and `run_turn` already take it as a parameter.
     """
-    if pericope == PANORAMA_ALIAS:
+    if pericope in (PANORAMA_ALIAS, PANORAMA):
         return PANORAMA_PREFIX + ROOM_BOOK
     return pericope
 
@@ -181,6 +186,30 @@ async def get_session_for_facilitator(db: AsyncSession, user: User, session_id: 
     """
     session = await get_session(db, session_id)
     if session.project_id is None or not await facilitates_project(db, user, session.project_id):
+        raise NotFoundError(_no_such_session(session_id))
+    return session
+
+
+async def get_session_for_room_caller(
+    db: AsyncSession, session_id: str, project_id: str | None
+) -> IRSession:
+    """The session, if it belongs to the team the tablet says it is.
+
+    The team's own routes have always resolved a session by id alone, which is safe while
+    everything they do is about a session the tablet already holds. Approving is not: a
+    release is the whole of what a team recorded, and a route that writes one has to know
+    whose passage it is naming.
+
+    A session that names no project is reached by whoever asks, credentialed or not, and is
+    refused further in by name — the release cannot be numbered without a project, and that
+    is a different thing to be told than "no such session". Which caller is holding the
+    tablet does not change it: the session is the one that cannot be released.
+
+    Somebody else's session *is* refused as not found, with the message
+    `get_session_for_facilitator` gives, because unowned is nobody's but owned is somebody's.
+    """
+    session = await get_session(db, session_id)
+    if session.project_id is not None and session.project_id != project_id:
         raise NotFoundError(_no_such_session(session_id))
     return session
 

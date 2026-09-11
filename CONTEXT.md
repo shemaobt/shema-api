@@ -131,8 +131,8 @@ _Avoid_: log, history, audit, Evento de cobertura
 The analyst's answer about a told stretch: a kind, a note and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear.
 _Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
 
-**Missing with an address** (`missing` with `where` before or inside):
-An element of the Map that is absent and whose place fits inside an existing chunk. The team records that stretch again and tells it again.
+**Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
+An element of the Map that is absent and whose place fits an existing chunk: before it, inside it, or after it when a later chunk exists. The team records that stretch again and tells it again.
 _Avoid_: internal missing, Falta com endereço
 
 **Missing without an address** (`missing` with `where` after on the last chunk):
@@ -214,7 +214,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet's hash as approved. An approval that changes nothing returns the release that already exists.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. An approval that changes nothing returns the release that already exists.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:
