@@ -6,6 +6,7 @@ these lines travel with the app. The cost of that is a frozen copy, and the guar
 silent freeze is this file.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -66,8 +67,8 @@ def test_every_language_ships_the_same_lines_so_a_turn_in_one_is_a_turn_in_all()
     """O servidor manda `fixed_line` por nome, e o app resolve o nome no pacote do idioma.
 
     Só os nomes que o servidor pode mandar. As falas soltas não chegam por turno — o app as
-    toca sozinho — e o português é o único idioma sem `sem_conexao` e `toque_para_comecar`
-    escritos, porque o áudio dele foi gravado antes deste script e a letra nunca foi anotada.
+    toca sozinho — e o português é o único idioma sem `sem_conexao` escrito, porque o áudio
+    dele foi gravado antes deste script e a letra nunca foi anotada.
     """
     named = re.compile(r"^[A-Z]\d+$")
     shipped = {
@@ -86,10 +87,42 @@ def test_a_standalone_line_is_written_for_a_language_or_not_shipped_in_it_at_all
     for spoken in ROOM_LANGUAGES:
         written = render.STANDALONE.get(spoken, {})
         catalogue = render.catalogue(spoken)
-        for name in ("sem_conexao", "toque_para_comecar", "gravacao_presa", "microfone"):
+        for name in ("sem_conexao", "gravacao_presa", "microfone"):
             assert (name in catalogue) == (name in written), (
                 f"{name} em {spoken!r} entrou no pacote sem letra escrita nesse idioma"
             )
+
+
+def test_the_touch_to_start_invitation_is_gone_from_the_catalogue() -> None:
+    """Marcia (RESPOSTA-MARCIA.md, item 10): 'Convite falado a cada 25 s: tirem.'
+
+    A voz agora abre a sessão quando a passagem abre; um convite repetido vira cobrança, e
+    a linha que pedia o toque para começar não deve mais aparecer no pacote de nenhum idioma.
+    """
+    for spoken in ROOM_LANGUAGES:
+        assert "toque_para_comecar" not in render.catalogue(spoken)
+        assert "toque_para_comecar" not in render.STANDALONE.get(spoken, {})
+
+
+def test_a_leftover_manifest_entry_for_the_gone_invitation_shows_up_as_drift(
+    tmp_path: Path,
+) -> None:
+    """The render manifest still lists a clip that no longer has a line to justify it.
+
+    A room that keeps its old fixed-line renders on disk after the prompt drops one would
+    ship a clip nothing plays and `--check` would never catch it, unless the drift guard
+    itself treats a manifest entry with no matching catalogue entry as the orphan it is.
+    """
+    bundle = tmp_path / "en"
+    bundle.mkdir()
+    (bundle / render.MANIFEST).write_text(json.dumps({"toque_para_comecar": "stale"}))
+
+    complaints = render.drift(tmp_path, "en")
+
+    assert any(
+        "toque_para_comecar" in complaint and "no longer in the prompt" in complaint
+        for complaint in complaints
+    ), f"um manifesto com a linha do convite deveria acusar o órfão, e não acusou: {complaints}"
 
 
 def test_a_language_the_room_does_not_claim_keeps_its_draft_and_reaches_no_mouth() -> None:
