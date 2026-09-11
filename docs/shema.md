@@ -162,8 +162,7 @@ and `platform` are spelled identically under `app/api/` and `app/services/`. She
 product. So both sides are `shema`, the two model files are `shema*.py` on both sides, and
 the module is consistent with six siblings rather than in breach of a rule about entities.
 
-### 2.2 The model files are prefixed and flat, not one file per side — **Decided**, and this
-is the one divergence from the sibling
+### 2.2 The model files are prefixed and flat — **Decided**, and the one divergence from the sibling
 
 `resource_request` keeps nine tables in one `app/db/models/resource_request.py` and one
 `app/models/resource_request.py`. That worked for a module whose schema landed in a single
@@ -822,8 +821,7 @@ This matters here more than it did there, because two of this module's invariant
 database-level: the append-only progress history (5.2) and the audit trail on the org chart
 (5.8).
 
-### 7.3 Native enums: `values_callable` is not optional, and `create_constraint` is off by
-default
+### 7.3 Native enums: `values_callable` is required, `create_constraint` is off by default
 
 `Enum(SomeEnum, name="shema_x_enum", values_callable=lambda c: [m.value for m in c])` —
 without `values_callable` PostgreSQL stores the member *names* and not the lowercase values
