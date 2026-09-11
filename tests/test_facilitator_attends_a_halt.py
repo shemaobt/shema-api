@@ -636,8 +636,11 @@ async def _tell_back_again(
     )
 
 
-async def test_the_retell_budget_running_out_is_a_warning_and_not_a_block(
-    client: httpx.AsyncClient, db_session: AsyncSession, facilitator_a: Facilitator
+async def test_a_hard_stretch_is_a_warning_and_not_a_block(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    facilitator_a: Facilitator,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ENG-706 — the room asks for somebody to come and watch, and refuses nothing.
 
@@ -645,21 +648,27 @@ async def test_the_retell_budget_running_out_is_a_warning_and_not_a_block(
     stopped. The Desk needs to tell "go and see this" from "this cannot continue", because
     they are different walks.
     """
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def _words(*_: Any, **__: Any) -> str:
+        return "a equipe contou o trecho"
+
+    monkeypatch.setattr(bt_api, "heard", _words)
     session = await a_session(db_session, team_id=facilitator_a.team_id)
     take_id = await _a_rehearsal(client, session.id)
 
     for _ in range(RETELLS_BEFORE_A_WARNING - 1):
-        spending = await _tell_back_again(client, session.id, take_id)
-        assert spending.status_code == 200, spending.text[:300]
-        assert spending.json()["needs_person"] is False, (
-            "a sala pediu uma pessoa antes de o orçamento acabar"
+        telling = await _tell_back_again(client, session.id, take_id)
+        assert telling.status_code == 200, telling.text[:300]
+        assert telling.json()["needs_person"] is False, (
+            "a sala pediu uma pessoa antes da terceira contagem do trecho"
         )
 
     spent = await _tell_back_again(client, session.id, take_id)
 
     assert spent.status_code == 200, spent.text[:300]
     assert spent.json()["needs_person"] is True, (
-        "o orçamento de reconto acabou e a sala não pediu ninguém"
+        "o trecho foi contado três vezes e a sala não pediu ninguém"
     )
 
     assert (await tablet_state(client, session.id))["halt"] == WARNING
