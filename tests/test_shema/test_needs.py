@@ -218,6 +218,34 @@ async def test_an_id_that_is_not_this_projects_is_refused_and_nothing_is_written
 # --- acknowledgement ------------------------------------------------------------------
 
 
+async def test_one_need_addressed_twice_in_a_batch_is_refused(
+    client, db_session, shema_app, headers
+) -> None:
+    """A client that sends one need twice believes two different things about it.
+
+    Resolving it last-wins in silence stores the one it did not mean, and puts two rows in the
+    trail for one need — the second describing a change from a state nobody ever saw.
+    """
+    created = await _create(client, headers, needsItems=[need()])
+    item_id = created.json()["needsItems"][0]["id"]
+
+    refused = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={
+            "needsItems": [
+                need(id=item_id, status="in-progress"),
+                need(id=item_id, status="dropped"),
+            ]
+        },
+        headers={**headers, "If-Match": created.headers["ETag"]},
+    )
+    assert refused.status_code == 400
+    assert "twice" in refused.text
+
+    after = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    assert after.json()["needsItems"][0]["status"] == "open"
+
+
 async def test_acknowledging_stamps_the_day_and_the_person_and_the_client_states_neither(
     client, db_session, shema_app, headers, coordinator
 ) -> None:

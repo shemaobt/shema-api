@@ -174,6 +174,12 @@ async def plan_needs(
     not an oracle — the caller already reached this project through the scope — and answering
     *that id is somebody else's* would say that the id exists.
 
+    **The same id twice in one batch is refused rather than resolved last-wins.** A client that
+    sends one need twice believes two different things about it, and picking the second in
+    silence is how the one it did not mean becomes the one that is stored. It would also put
+    two rows in the trail for one need, the second describing a change from a state that never
+    existed for anybody.
+
     **A row that would move nothing does not enter the plan**, so an empty plan means *this
     save changes no need* and ``save_project`` can stop at its own step 4 without bumping the
     version. That is the difference between *the tab sent its table* and *the tab changed
@@ -186,17 +192,20 @@ async def plan_needs(
         ).scalars()
     }
 
-    plan, unknown = NeedPlan(), []
+    plan, problems, seen = NeedPlan(), [], set()
     for index, row in enumerate(rows):
         if row.id is None:
             plan.creates.append(row)
+        elif row.id in seen:
+            problems.append(f"needsItems[{index}]: {row.id} is addressed twice in one batch")
         elif row.id in existing:
+            seen.add(row.id)
             if moves(existing[row.id], row):
                 plan.updates.append((existing[row.id], row))
         else:
-            unknown.append(f"needsItems[{index}]: {row.id} is not a need of this project")
-    if unknown:
-        raise ValidationError("; ".join(unknown))
+            problems.append(f"needsItems[{index}]: {row.id} is not a need of this project")
+    if problems:
+        raise ValidationError("; ".join(problems))
     return plan
 
 
