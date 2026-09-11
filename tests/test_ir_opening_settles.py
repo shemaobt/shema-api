@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import inspect
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,6 +31,8 @@ from app.services.internalization_room.live_turn import run_comprehension_turn
 from app.services.internalization_room.passage_turn import run_turn
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
+from scripts.check_doctrine import RULES
+from scripts.doctrine_allowlist import Rule
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
@@ -40,20 +41,19 @@ P = "P03"
 _ROOM = Path(__file__).resolve().parent.parent / "app" / "services" / "internalization_room"
 _FILES_ENG_775_OWNS = ("run_turn.py", "live_turn.py", "prepare_opening.py")
 
-#: DOCTRINE.md §3, first rule — speech/word ceilings, sentence counts, reject-for-length.
-_FORBIDDEN_LENGTH_SYMBOLS = re.compile(
-    r"MAX_SPOKEN_[A-Z_]*|SpeechBudget|over_speech_budget|_broken_ceiling"
-    r"|OPENING_BUDGET|speech_budget_for"
-)
+#: The actual doctrine rule, not a hand-copied stand-in for it — a pattern edited on one
+#: side and not the other is exactly the drift a guard exists to prevent.
+_CEILING_PATTERN = next(rule.pattern for rule in RULES if rule.id == Rule.CEILING)
 
 
 def test_no_word_or_sentence_budget_survives_the_turn_pipeline() -> None:
     """Guard, not red-green: these three files stayed clean once ENG-793 emptied them. A
     budget symbol reappearing here is exactly the regression DOCTRINE.md's own build-time
-    grep exists to catch — this is the same check, run where the test suite reads it."""
+    grep exists to catch — this is the same check (`scripts.check_doctrine.RULES`'s own
+    `Rule.CEILING` pattern), run where the test suite reads it."""
     for name in _FILES_ENG_775_OWNS:
         text = (_ROOM / name).read_text()
-        assert not _FORBIDDEN_LENGTH_SYMBOLS.search(text), name
+        assert not _CEILING_PATTERN.search(text), name
 
 
 def test_already_met_instruction_is_gone() -> None:
@@ -62,7 +62,7 @@ def test_already_met_instruction_is_gone() -> None:
     is the promotion of that fact into an instruction that had to go."""
     assert not hasattr(turn_instructions, "ALREADY_MET_INSTRUCTION")
     assert "already_met" not in inspect.signature(run_turn).parameters
-    for name in ("turn_instructions.py", "passage_turn.py", *_FILES_ENG_775_OWNS[1:]):
+    for name in ("turn_instructions.py", "passage_turn.py", "live_turn.py", "prepare_opening.py"):
         text = (_ROOM / name).read_text()
         assert "ALREADY_MET_INSTRUCTION" not in text, name
         assert "already_met" not in text, name
