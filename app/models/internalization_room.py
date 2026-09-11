@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -410,6 +411,9 @@ class TurnResponse(BaseModel):
 
 class PassageView(BaseModel):
     pericope: str
+    #: "panorama" is the book's own entry — the one the wheel offers before any passage, and
+    #: the one entry with no beads of its own.
+    kind: Literal["passage", "panorama"]
     #: Where to fetch the line that names this passage aloud. There is no text field: the
     #: team does not read, so a passage the room cannot say is a passage it cannot offer.
     audio_url: str
@@ -767,6 +771,21 @@ class TakeResponse(BaseModel):
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+
+
+class ReleaseResponse(BaseModel):
+    """What the tablet is told when the team's approval landed.
+
+    The packet itself is not here: it is the file Refine reads, and the room has no use for
+    it on the way back. What the tablet shows is the number the passage now carries and the
+    fingerprint of what was approved under it.
+    """
+
+    release_id: str
+    session_id: str
+    version: int
+    package_sha256: str
+    approved_at: str
 
 
 class QuestionAudioResponse(BaseModel):

@@ -9,12 +9,6 @@ from app.services.internalization_room.prompts import get_prompt_text
 
 _APP_ROOT = Path(__file__).resolve().parent.parent / "app"
 
-#: Already dead when this guard was written, not this ticket's to remove (ENG-736 names only
-#: `DRAFT_SELF_CHECK`). Its last caller left in 0b345bf ("the Guide checks the retelling
-#: itself, and the probe machinery is gone", 2026-09-08), a day after the sweep that found
-#: `DRAFT_SELF_CHECK`. ENG-924 owns removing the key; delete this line in the same commit.
-_ALREADY_DEAD_BEFORE_THIS_GUARD = frozenset({IRPromptKey.COMPREHENSION_ASSESSOR})
-
 
 def _ir_prompt_key_call_args(source: str) -> set[str]:
     """Every `IRPromptKey.NAME` passed into a `get_prompt_text(...)` call, read from the AST.
@@ -58,11 +52,7 @@ def test_a_prompt_key_nothing_in_app_asks_for_is_dead_not_reserved() -> None:
         for name in _ir_prompt_key_call_args(path.read_text(encoding="utf-8"))
     }
 
-    missing = [
-        key.name
-        for key in IRPromptKey
-        if key.name not in called and key not in _ALREADY_DEAD_BEFORE_THIS_GUARD
-    ]
+    missing = [key.name for key in IRPromptKey if key.name not in called]
 
     assert not missing, f"IRPromptKey members with no get_prompt_text caller in app/: {missing}"
 
