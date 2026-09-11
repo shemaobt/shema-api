@@ -42,10 +42,10 @@ class HaltKind(enum.StrEnum):
     """Whether a halt stops the room or only calls somebody over.
 
     Both were written as ``NEEDS_PERSON`` and no reader could tell them apart. A hard stop
-    means the room cannot go on — nothing further lands until a person comes. The retell
-    budget running out (ENG-706) refuses nothing: the team may go on telling, and the room
-    is asking for a witness. They are different walks for the facilitator, and the Desk had
-    one word for both.
+    means the room cannot go on — nothing further lands until a person comes. A stretch told
+    three times (ENG-706) refuses nothing: the team may go on telling, and the room is asking
+    for a witness. They are different walks for the facilitator, and the Desk had one word
+    for both.
 
     A ``String(16)`` on the row and not a Postgres enum, for the reason ``bridge_mode`` is
     one: a database type is a second place the vocabulary lives and a migration on both

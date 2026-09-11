@@ -15,7 +15,7 @@ from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
 
@@ -195,25 +195,51 @@ async def test_finishing_without_telling_anything_back_is_not_checking(
     )
 
 
-async def test_a_transcriber_outage_still_counts_the_retell(
-    client: httpx.AsyncClient,
+async def test_a_transcriber_outage_still_counts_the_telling(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Every attempt comes back empty during an outage, and every one used to be free.
 
     `RETELLS_BEFORE_A_WARNING` was never reached, so the room's only route to a person was
-    unreachable exactly when the room was broken.
+    unreachable exactly when the room was broken. The count lives on the stretch now, and an
+    attempt nobody could make out captures no stretch — so it is counted on the row that is
+    standing, which is the one the team was telling.
     """
+    from app.api.internalization_room import back_translation as bt_api
+
     session_id, take_id = await _rehearsed(client)
 
-    last = None
-    for _ in range(4):
-        last = await _tell_back(client, session_id, take_id, retelling="true")
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a equipe contou o trecho"
 
-    assert last is not None
-    assert last.json()["needs_person"] is True
+    monkeypatch.setattr(bt_api, "heard", _heard)
+    told = await _tell_back(client, session_id, take_id)
+    assert told.status_code == 200, told.text
+
+    async def _silence(*_: Any, **__: Any) -> str:
+        return ""
+
+    monkeypatch.setattr(bt_api, "heard", _silence)
+    outage = await _tell_back(client, session_id, take_id, retelling="true")
+
+    assert outage.status_code == 200, outage.text
+    assert outage.json()["captured"] is False
+    db_session.expire_all()
+    standing = list(
+        (
+            await db_session.execute(
+                select(IRSegment).where(
+                    IRSegment.session_id == session_id, IRSegment.superseded_at.is_(None)
+                )
+            )
+        ).scalars()
+    )
+    assert [one.tellings for one in standing] == [2], (
+        "durante uma queda toda tentativa volta vazia, e nenhuma delas contava"
+    )
 
 
-async def test_reaching_the_number_warns_and_still_takes_the_next_retell(
+async def test_reaching_the_number_warns_and_still_takes_the_next_telling(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The count is a warning, not a cap: nothing is refused past it.
@@ -241,8 +267,11 @@ async def test_reaching_the_number_warns_and_still_takes_the_next_retell(
 
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["captured"] is True
-    assert accepted.json()["chunks"] == RETELLS_BEFORE_A_WARNING + 1, (
-        "o trecho entra na conta como qualquer outro; a marca é um pedido de companhia"
+    assert accepted.json()["needs_person"] is False, (
+        "o pedido é uma vez por trecho; passado dele nada é recusado"
+    )
+    assert accepted.json()["chunks"] == 1, (
+        "contar o mesmo trecho de novo o substitui: a passagem continua com um trecho"
     )
 
 

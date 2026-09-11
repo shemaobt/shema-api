@@ -116,6 +116,16 @@ jobs:
       - name: Run the doctrine guard
         run: uv run python scripts/check_doctrine.py
 
+      # The other half of the same job. `check_doctrine.py` says no banned mechanism came back
+      # into the code; this says no artifact of hers moved without her word — a vendored prompt
+      # edited instead of re-synced, a model id or token budget off the record in
+      # `docs/doctrine/MODEL_SEAM`, or a line of the §4 acceptance bar no test claims. It
+      # compares recorded sha256s and reads the tree, so it needs no token for a private
+      # repository, and the re-pin is deliberately not here: `--sync` is run by hand, against a
+      # checkout, when she has ruled.
+      - name: Nothing of Marcia's moved without her word
+        run: uv run python scripts/sync_doctrine.py --check
+
   # `--check` costs two API calls to `MarciaSuzuki/tripod_compiler` and one raw fetch per
   # vendored file, and nothing invoked it (ENG-926): a vendored map edited by hand, or one
   # that simply drifted upstream, passed this far green. `GITHUB_TOKEN` raises the runner's
