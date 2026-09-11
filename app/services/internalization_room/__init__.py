@@ -12,6 +12,11 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.compose import recompose_passage
+from app.services.internalization_room.hard_stretches import (
+    count_an_empty_telling,
+    hard_stretches_of,
+    note_a_hard_stretch,
+)
 from app.services.internalization_room.live_turn import (
     ComprehensionTurn,
     run_comprehension_turn,
@@ -25,9 +30,11 @@ from app.services.internalization_room.run_turn import (
 from app.services.internalization_room.segments import (
     capture_segment,
     current_segments,
+    current_stretch_at,
     divide_segment,
     divided_segments,
     final_segments,
+    first_telling_of,
     first_untold,
     parent_of,
     retired_segments,
@@ -45,6 +52,7 @@ from app.services.internalization_room.sessions import (
     create_session,
     get_session,
     get_session_for_facilitator,
+    get_session_for_room_caller,
     mark_needs_person,
     person_arrived,
     report_playback,
@@ -74,17 +82,23 @@ __all__ = [
     "closing_block",
     "comprehension_of",
     "correction_to_verify",
+    "count_an_empty_telling",
     "create_session",
     "current_segments",
+    "current_stretch_at",
     "divide_segment",
     "divided_segments",
     "final_segments",
     "findings_after_correction",
     "findings_block",
+    "first_telling_of",
     "first_untold",
     "get_session",
     "get_session_for_facilitator",
+    "get_session_for_room_caller",
+    "hard_stretches_of",
     "mark_needs_person",
+    "note_a_hard_stretch",
     "parent_of",
     "person_arrived",
     "recompose_passage",

@@ -25,6 +25,7 @@ from app.db.models.device import Device
 from app.db.models.internalization_room import (
     IRCoverageEvent,
     IRQuestion,
+    IRRelease,
     IRSession,
     IRTake,
 )
@@ -94,6 +95,7 @@ __all__ = [
     "GranularityLevel",
     "IRCoverageEvent",
     "IRQuestion",
+    "IRRelease",
     "IRSession",
     "IRTake",
     "Language",
