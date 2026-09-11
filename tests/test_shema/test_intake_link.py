@@ -69,12 +69,23 @@ async def headers(db_session, coordinator):
 
 @pytest.fixture()
 async def project(db_session):
-    return await make_shema_project(
+    """One record in South America, **with a location that derives to that region**.
+
+    The location is not decoration and leaving it empty is the trap this comment exists for.
+    ``save_project`` re-derives ``region_key`` from ``location`` on every write (BE-06), so a
+    fixture that sets the region directly and leaves the location blank has a record that
+    silently moves to ``other`` the first time anything writes it — and the coordinator who
+    could reach it a moment ago gets a 404 on the second call. A real record has both.
+    """
+    record = await make_shema_project(
         db_session,
         project_id="guarani-mbya",
         region_key=ShemaRegionKey.SOUTH_AMERICA,
         language_name="Guarani Mbyá",
     )
+    record.location = "Brazil"
+    await db_session.commit()
+    return record
 
 
 async def mint(client, headers, project_id: str = "guarani-mbya", **body):
