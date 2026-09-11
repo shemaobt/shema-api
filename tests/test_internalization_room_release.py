@@ -487,6 +487,7 @@ async def _told_back_with_an_open_finding(
                 kind=FindingKind.ADDITION,
                 note="a equipe disse que Noemi voltou alegre",
                 segment_id=told.id,
+                chunk=1,
             )
         ],
         checked=False,
@@ -560,6 +561,7 @@ async def test_the_finding_travels_in_the_package_it_unblocked(
     assert [finding["kind"] for finding in carried] == ["addition"]
     assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
     assert carried[0]["segment_id"] is not None
+    assert carried[0]["chunk"] == 1
 
 
 @pytest.mark.asyncio
