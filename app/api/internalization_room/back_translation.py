@@ -292,7 +292,7 @@ async def finish(
         )
 
     if state.already_analysed(told) and state.verdict is not None:
-        finding = state.current_finding
+        finding = room.the_finding_that_leads(state)
         return BackTranslationVerdictResponse(
             session_id=session.id,
             audio_url=clip_url(state.verdict.clip_key) if state.verdict.clip_key else "",
@@ -300,17 +300,17 @@ async def finish(
             checked=state.checked,
             finding_kind=finding.kind if finding else None,
             finding_segment_id=finding.segment_id if finding else None,
-            findings_remaining=len(state.findings),
+            findings_remaining=room.findings_remaining(state.findings),
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
     correction = room.correction_to_verify(state, told, await room.retired_segments(db, session.id))
     if correction is not None:
-        answered, earlier, corrected = correction
         verified = await room.verify_correction(
-            finding=answered,
-            earlier=earlier,
-            corrected=corrected,
+            findings=correction.findings,
+            earlier=correction.earlier,
+            corrected=correction.corrected,
+            chunk=correction.chunk,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
             correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
@@ -323,7 +323,9 @@ async def finish(
             # happened must not read as one that passed. Dropping the finding here would take
             # it off the list for good, and the team would never be asked about it again.
             raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
-        state.findings = room.findings_after_correction(state.findings, verified, corrected)
+        state.findings = room.findings_after_correction(
+            state.findings, verified, correction.corrected
+        )
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = True
     elif not state.already_analysed(told):
@@ -347,7 +349,7 @@ async def finish(
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
-    if state.current_finding is None and state.verified_since_whole_reading:
+    if not state.findings and state.verified_since_whole_reading:
         closing = await room.analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
@@ -363,11 +365,12 @@ async def finish(
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = False
 
-    finding = state.current_finding
+    current = room.current_findings(state)
+    finding = current[0] if current else None
     state.checked = finding is None
 
     outcome = await room.run_verdict_turn(
-        findings_text=room.findings_block(finding),
+        findings_text=room.findings_block(current),
         closing=room.closing_block(finding, checked=state.checked),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
@@ -407,7 +410,7 @@ async def finish(
         checked=state.checked,
         finding_kind=finding.kind if finding else None,
         finding_segment_id=finding.segment_id if finding else None,
-        findings_remaining=len(state.findings),
+        findings_remaining=room.findings_remaining(state.findings),
         used_fail_safe=outcome.used_fail_safe,
     )
 

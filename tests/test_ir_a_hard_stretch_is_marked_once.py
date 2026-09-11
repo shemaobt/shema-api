@@ -615,9 +615,10 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
             analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
         )
         await service.verify_correction(
-            finding=finding,
+            findings=[finding],
             earlier=earlier,
             corrected=corrected,
+            chunk=1,
             scope=P,
             pericope_num=P,
             correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),

@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import unicodedata
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -84,6 +85,13 @@ class Finding(BaseModel):
     #: as a position in the list that call was given and resolved to an address here, where
     #: it is already being validated.
     segment_id: str | None = None
+    #: The frase number the analyst gave, kept beside the stretch it resolved to. `None` when
+    #: the reply named no readable position, and on every row written before the field existed.
+    #:
+    #: The stretch alone cannot say which frase a finding is about: a missing element placed
+    #: *after* frase N resolves to stretch N+1, so an addition on frase N and that missing
+    #: element land on two different stretches while being one swap of one frase.
+    chunk: int | None = None
 
     @field_validator("kind", mode="before")
     @classmethod
@@ -216,7 +224,12 @@ class BackTranslationState(BaseModel):
 
     @property
     def current_finding(self) -> Finding | None:
-        """The one finding the Speaker is allowed to voice this turn."""
+        """The finding this turn is about, in the order the analyst answered in.
+
+        What the Speaker is given is `current_findings`, which is this one or the swap it is
+        half of. This one decides *whether* there is a swap to find, and which finding is
+        first is not that rule's to change.
+        """
         return self.findings[0] if self.findings else None
 
     def already_analysed(self, segments: list[IRSegment]) -> bool:
@@ -419,6 +432,7 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
             Finding(
                 kind=kind,
                 note=note[:1000],
+                chunk=_chunk_named(entry.get("chunk"), segments),
                 segment_id=_segment_pointed_at(
                     entry.get("chunk"),
                     segments,
@@ -466,6 +480,23 @@ def _log_accepted_reading(
 _VALID_WHERE = frozenset({"before", "inside", "after"})
 
 
+def _chunk_named(raw: Any, segments: list[IRSegment]) -> int | None:
+    """The frase the analyst named, as a position in the reading it was given, or None.
+
+    The validation `_segment_pointed_at` makes before it resolves an address, asked on its
+    own because the two answers are not the same one: a missing element placed after frase N
+    names frase N and resolves to the stretch after it, and one placed after the last frase
+    names that frase and resolves to no stretch at all.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, int | str):
+        return None
+    try:
+        position = int(raw)
+    except ValueError:
+        return None
+    return position if 1 <= position <= len(segments) else None
+
+
 def _segment_pointed_at(
     raw: Any,
     segments: list[IRSegment],
@@ -496,13 +527,8 @@ def _segment_pointed_at(
     `where` is read only when `kind` is `missing`: every other kind is a statement about the
     chunk itself, so a `where` alongside one is ignored without comment.
     """
-    if isinstance(raw, bool) or not isinstance(raw, int | str):
-        return None
-    try:
-        position = int(raw)
-    except ValueError:
-        return None
-    if position < 1 or position > len(segments):
+    position = _chunk_named(raw, segments)
+    if position is None:
         return None
 
     if kind is FindingKind.MISSING and where is not None:
@@ -694,7 +720,7 @@ def _already_reported(element: str, reported: list[Finding]) -> bool:
     )
 
 
-def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
+def _parse_correction(raw: str, segment_id: str, chunk: int) -> CorrectionCheck | None:
     """The verification's reply, or None when it cannot be trusted at all.
 
     None is never "the correction was fine": a verification that did not happen must not be
@@ -702,9 +728,12 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
     the team is never asked about again. Read atomically for the same reason `_parse_analysis`
     is — one malformed entry among good ones would otherwise silently shrink the report.
 
-    Every finding is stamped with the corrected stretch's own address: the verification looked
-    at exactly one stretch, so there is nowhere else its findings could land, and a finding the
-    team cannot locate sends them back to the whole recording for no reason.
+    Every finding is stamped with the corrected stretch's own address, and with the frase that
+    stretch now holds: the verification looked at exactly one stretch, so there is nowhere else
+    its findings could land, and a finding the team cannot locate sends them back to the whole
+    recording for no reason. The frase is what lets a swap the mend itself introduced — a
+    clause dropped and an outside detail brought in, on the stretch just retold — reach the
+    team as one thing, the same as one the analyst raised.
 
     A loss is derived from the count rather than waited for. `carried` is the reader's
     enumeration of what the earlier telling of this stretch stated, entry by entry, and an
@@ -756,7 +785,7 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
         if kind not in CORRECTION_KINDS:
             logger.warning("BT correction returned a kind it cannot judge: %s", entry)
             return None
-        findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id))
+        findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id, chunk=chunk))
 
     brought_back = _elements_brought_back(parsed.get("brought_back"))
     if brought_back:
@@ -766,7 +795,9 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
         lost = _elements_the_count_lost(parsed["carried"])
         reported = list(findings)
         findings.extend(
-            Finding(kind=FindingKind.MISSING, note=element[:1000], segment_id=segment_id)
+            Finding(
+                kind=FindingKind.MISSING, note=element[:1000], segment_id=segment_id, chunk=chunk
+            )
             for element in lost or []
             if not _already_reported(element, reported)
         )
@@ -774,12 +805,27 @@ def _parse_correction(raw: str, segment_id: str) -> CorrectionCheck | None:
     return CorrectionCheck(resolved=bool(parsed["resolved"]), findings=findings)
 
 
+@dataclass(frozen=True)
+class CorrectionToVerify:
+    """One retelling to check: what it answers, what it replaced, and where it now sits.
+
+    `findings` is everything this turn is about, which is one finding or the two halves of one
+    swap; `chunk` is the frase the corrected stretch holds in the reading as it stands, so a
+    finding the check raises on it can be half of a swap in its turn.
+    """
+
+    findings: list[Finding]
+    earlier: IRSegment
+    corrected: IRSegment
+    chunk: int
+
+
 def correction_to_verify(
     state: BackTranslationState,
     told: list[IRSegment],
     retired: list[IRSegment],
-) -> tuple[Finding, IRSegment, IRSegment] | None:
-    """The finding, the stretch it was raised on, and the stretch that replaced it.
+) -> CorrectionToVerify | None:
+    """What the retelling answers, the stretch it was raised on, and the stretch replacing it.
 
     One shape counts as a correction: the reading's own list of stretches, with exactly one
     position now held by a different row, and that position is the one the current finding
@@ -793,7 +839,8 @@ def correction_to_verify(
     has no earlier list at all; and a mother-tongue re-recording leaves a stretch with nothing
     told back, so the chain from the finding's stretch does not reach what stands there now.
     """
-    finding = state.current_finding
+    answered = current_findings(state)
+    finding = answered[0] if answered else None
     before = state.analysed_segment_ids
     if finding is None or finding.segment_id is None or before is None:
         return None
@@ -815,7 +862,7 @@ def correction_to_verify(
     corrected = told[position]
     if not (earlier.transcript or "").strip() or not (corrected.transcript or "").strip():
         return None
-    return finding, earlier, corrected
+    return CorrectionToVerify(answered, earlier, corrected, position + 1)
 
 
 def findings_after_correction(
@@ -831,20 +878,30 @@ def findings_after_correction(
     at the row it was raised on, it would send the team to a version that no longer exists, and
     the screen that shows them where the error lives would have nothing to show.
 
+    A swap leaves and stays whole. One retelling was asked for and one answer came back about
+    it, so clearing the addition and leaving the missing element behind would raise that half
+    again next round and cost the team a second recording of the same scene — which is the
+    defect the pair exists to spare them.
+
     What the correction broke is not added on top of a finding that still stands. Asking the
     team for two things about one stretch in one turn is how a room stops being followable, and
     the next round raises it again if it is still true.
     """
+    answered = _the_current_swap(findings)
     if not check.resolved:
-        return [findings[0].model_copy(update={"segment_id": corrected.id}), *findings[1:]]
-    return [*check.findings, *findings[1:]]
+        return [
+            finding.model_copy(update={"segment_id": corrected.id}) if at in answered else finding
+            for at, finding in enumerate(findings)
+        ]
+    return [*check.findings, *(one for at, one in enumerate(findings) if at not in answered)]
 
 
 async def verify_correction(
     *,
-    finding: Finding,
+    findings: list[Finding],
     earlier: IRSegment,
     corrected: IRSegment,
+    chunk: int,
     scope: str,
     pericope_num: str,
     correction_prompt: str,
@@ -852,7 +909,12 @@ async def verify_correction(
     settings: Settings | None = None,
     session_id: str = "",
 ) -> CorrectionCheck | None:
-    """Ask whether one retold stretch answers the finding raised on it. Never voiced.
+    """Ask whether one retold stretch answers what was raised on it. Never voiced.
+
+    A swap goes in as the two lines it is, and one answer comes back for both: the retelling
+    mends it only when the addition is gone from it *and* the missing element is in it. Shown
+    only the addition, the check would pass a retelling that dropped the cause the team put in
+    and still never told what the story tells in its place.
 
     Only this stretch is shown. The analyst's reading stays whole because its own definition of
     a missing element is *one that appears in no chunk* — a statement about the set, which a
@@ -868,7 +930,7 @@ async def verify_correction(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=load_map(pericope_num).body,
-        FINDING=findings_block(finding),
+        FINDING=findings_block(findings),
         EARLIER_TELLING=earlier.transcript or "",
         NEW_TELLING=corrected.transcript or "",
     )
@@ -883,7 +945,7 @@ async def verify_correction(
     except Exception:
         logger.exception("BT correction check failed for %s", pericope_num)
         return None
-    check = _parse_correction(raw, corrected.id)
+    check = _parse_correction(raw, corrected.id, chunk)
     if check is not None:
         _log_accepted_reading(
             session_id=session_id,
@@ -896,11 +958,106 @@ async def verify_correction(
     return check
 
 
-def findings_block(finding: Finding | None) -> str:
-    """Exactly one finding reaches the Speaker; the rest wait for the next round."""
-    if finding is None:
+def _lands_on_a_frase(finding: Finding) -> bool:
+    """Whether a finding can be half of a swap: it names a frase and a stretch to record.
+
+    A missing element placed after everything told names the last frase and no stretch of its
+    own (ADR 0007): the team records what is still missing and goes back to the rehearsal,
+    erasing nothing. Joined to an addition on that frase, the turn would promise the two
+    microphones of a stretch that is not there, and ask for one fix for two different walks.
+    """
+    return finding.chunk is not None and points_at_a_stretch(finding)
+
+
+def _swaps(findings: list[Finding]) -> list[tuple[int, int]]:
+    """Where an addition and a missing element on one frase sit, the addition first.
+
+    Keyed on the frase the analyst numbered and not on the stretch each half resolved to: a
+    missing element placed *after* frase N sits at the start of stretch N+1, so the two
+    halves of one swap land on two different stretches while being one thing the team did.
+
+    Each half is spoken for once. Two additions on a frase that carries one missing element
+    are one swap and one addition left over, never two swaps over the same absence.
+    """
+    spoken_for: set[int] = set()
+    swaps: list[tuple[int, int]] = []
+    for at, finding in enumerate(findings):
+        if finding.kind is not FindingKind.ADDITION or not _lands_on_a_frase(finding):
+            continue
+        other = next(
+            (
+                index
+                for index, candidate in enumerate(findings)
+                if index not in spoken_for
+                and candidate.kind is FindingKind.MISSING
+                and _lands_on_a_frase(candidate)
+                and candidate.chunk == finding.chunk
+            ),
+            None,
+        )
+        if other is not None:
+            spoken_for.add(other)
+            swaps.append((at, other))
+    return swaps
+
+
+def _the_current_swap(findings: list[Finding]) -> list[int]:
+    """Which of the findings this turn is about: the current one, and its other half.
+
+    The current finding still decides *whether* there is a swap — it is the analyst's first,
+    and which finding is raised first is not this rule's to change. What the rule decides is
+    the other half, and which of the two leads.
+    """
+    if not findings:
+        return []
+    for addition, missing in _swaps(findings):
+        if 0 in (addition, missing):
+            return [addition, missing]
+    return [0]
+
+
+def current_findings(state: BackTranslationState) -> list[Finding]:
+    """What the Speaker is allowed to voice this turn: one finding, or one swap of one frase.
+
+    An addition and a missing element on the same frase are one thing for the team — the
+    telling put something in and dropped what the story tells in its place — so they are one
+    thing to say, one fix to ask for and one retelling to check. Raised one at a time, the
+    team records that part again for the addition and, the round after, records the same part
+    again for the missing element.
+
+    The addition leads, whichever of the two the analyst listed first: it is the half that
+    names the stretch where the swap happened, so the closing, the request for the whole
+    stretch and the stretch the screen puts up all name the same one. Led by a missing
+    element placed after that frase, they would name the stretch after the swap instead.
+    """
+    return [state.findings[at] for at in _the_current_swap(state.findings)]
+
+
+def the_finding_that_leads(state: BackTranslationState) -> Finding | None:
+    """The half of this turn that carries its address, or None when there is nothing to say.
+
+    The one finding, or the addition of a swap. It is what the closing, the request for the
+    whole stretch and the stretch the screen puts up are all decided by, so that the three of
+    them name the same one.
+    """
+    leading = current_findings(state)
+    return leading[0] if leading else None
+
+
+def findings_remaining(findings: list[Finding]) -> int:
+    """How many things the team still has to act on, counted over the whole list.
+
+    A swap is one of them wherever its two halves sit: the count is what tells the team how
+    much of the round is still ahead of them, and a swap costs them one stop, not two.
+    """
+    return len(findings) - len(_swaps(findings))
+
+
+def findings_block(findings: list[Finding]) -> str:
+    """What reaches the Speaker this turn; the rest wait for the next round."""
+    if not findings:
         return "(nenhum achado — a tradução está completa)"
-    return f"- {finding.kind}: {finding.note}"
+    return "\n".join(f"- {finding.kind}: {finding.note}" for finding in findings)
 
 
 #: What every closing below promises except `CLOSING_CHECKED`: the process goes on. It used
