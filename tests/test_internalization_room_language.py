@@ -31,11 +31,13 @@ from app.services.platform.tts import SynthesizedSpeech
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 
-#: A letter no English sentence in this codebase has ever needed. Every one of the backend's
-#: own Portuguese literals — the bug this guard exists for — carries at least one, so a plain
-#: character class catches a reintroduced literal without having to name it in advance. It
-#: does not, and must not, run against `prompts/*.md`: those carry Portuguese on purpose,
-#: reviewed by Marcia, not by a grep (ENG-822, item 7).
+#: A letter no English sentence in this codebase has ever needed. Most of the original
+#: Portuguese literals this branch removed carried at least one, so this catches a
+#: reintroduced literal without having to name it in advance — but not all of them did
+#: ("Julgue a resposta rascunhada.", "Fale este turno.", "Classifique esta troca." have none),
+#: so the exact-value tests below carry those three; this class is one layer, not the whole
+#: guard. It does not, and must not, run against `prompts/*.md`: those carry Portuguese on
+#: purpose, reviewed by Marcia, not by a grep (ENG-822, item 7).
 _PORTUGUESE_MARKER = re.compile(r"[áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]")
 
 
@@ -282,13 +284,13 @@ def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
 
 
 def test_speak_this_turn_is_english_on_every_session() -> None:
-    """speak_this_turn is the filler user message a verdict turn sends when it has neither an
+    """SPEAK_THIS_TURN is the filler user message a verdict turn sends when it has neither an
     opening nor a team utterance to answer — a backend-composed instruction exactly like
     OPENING_INSTRUCTION above, just missed by the sweep that translated its siblings in this
     same file. A `pt` session must not see "Fale este turno."."""
-    from app.services.internalization_room.turn_instructions import speak_this_turn
+    from app.services.internalization_room.turn_instructions import SPEAK_THIS_TURN
 
-    assert speak_this_turn() == "Speak this turn."
+    assert SPEAK_THIS_TURN == "Speak this turn."
 
 
 def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:

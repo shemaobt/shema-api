@@ -34,9 +34,9 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import (
     NOT_THIS_TURN,
     OPENING_MOVEMENT_INSTRUCTION,
+    SPEAK_THIS_TURN,
     VALIDATOR_USER_MESSAGE,
     _nobody_spoke_this_turn,
-    speak_this_turn,
     split_opening_movements,
 )
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
@@ -147,7 +147,7 @@ async def _draft(
     if utterance:
         user_content = utterance
     else:
-        user_content = opening_instruction or speak_this_turn()
+        user_content = opening_instruction or SPEAK_THIS_TURN
         if ask_for_movements:
             user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
     if redraft_note:

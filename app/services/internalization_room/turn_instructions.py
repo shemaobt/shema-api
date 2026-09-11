@@ -34,11 +34,7 @@ def _nobody_spoke_this_turn(telling_back: str) -> str:
 #: own last speech, and the API refuses that as an assistant prefill. Composed in English like
 #: every other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language
 #: the team speaks.
-_SPEAK_THIS_TURN = "Speak this turn."
-
-
-def speak_this_turn() -> str:
-    return _SPEAK_THIS_TURN
+SPEAK_THIS_TURN = "Speak this turn."
 
 
 OPENING_MOVEMENT_MARK = "[[CENA]]"
