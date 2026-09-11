@@ -124,15 +124,28 @@ def request_for(turn: ScriptTurn, script: Script, session_id: str) -> dict[str, 
     return body
 
 
-async def play(
-    script: Script, client: httpx.AsyncClient, *, turns: int | None = None
-) -> tuple[str, list[Played]]:
+async def open_session(script: Script, client: httpx.AsyncClient) -> str:
     opened = await client.post(
         "session", json={"pericopeId": script.pericopeId, "language": script.language}
     )
     opened.raise_for_status()
-    session_id = str(opened.json()["sessionId"])
-    played: list[Played] = []
+    return str(opened.json()["sessionId"])
+
+
+async def play(
+    script: Script,
+    client: httpx.AsyncClient,
+    *,
+    session_id: str,
+    played: list[Played],
+    turns: int | None = None,
+) -> None:
+    """Play the script's turns, appending each one to `played` as it lands.
+
+    Appended as it lands and not returned at the end, so a turn that fails still leaves the
+    turns before it in the caller's hands — and what they cost — instead of taking the whole
+    run's transcript down with the error.
+    """
     for idx, turn in enumerate(script.turns[:turns]):
         body = request_for(turn, script, session_id)
         started = time.monotonic()
@@ -154,7 +167,6 @@ async def play(
         )
         line = played[-1]
         print(f"  [{idx}] {line.outcome:<9} {line.turnMs} ms  {line.guide[:90]}…")
-    return session_id, played
 
 
 def judge_transcript(played: list[Played]) -> str:
@@ -202,20 +214,24 @@ async def run(args: argparse.Namespace) -> int:
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"X-Access-Code": args.access_code} if args.access_code else {}
     print(f"▶ {script.name} ({script.pericopeId}, {script.language}) → {base_url}")
+    played: list[Played] = []
     async with httpx.AsyncClient(base_url=base_url, headers=headers, timeout=600) as client:
-        session_id, played = await play(script, client, turns=args.turns)
-    stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
-    report, transcript = export(
-        script,
-        session_id=session_id,
-        base_url=base_url,
-        played=played,
-        out=Path(args.out),
-        stamp=stamp,
-    )
-    fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
-    print(f"  {len(played)} turns · {fail_safes} fail-safe · session {session_id}")
-    print(f"  {report}\n  {transcript}")
+        session_id = await open_session(script, client)
+        try:
+            await play(script, client, session_id=session_id, played=played, turns=args.turns)
+        finally:
+            stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+            report, transcript = export(
+                script,
+                session_id=session_id,
+                base_url=base_url,
+                played=played,
+                out=Path(args.out),
+                stamp=stamp,
+            )
+            fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
+            print(f"  {len(played)} turns · {fail_safes} fail-safe · session {session_id}")
+            print(f"  {report}\n  {transcript}")
     return 0
 
 

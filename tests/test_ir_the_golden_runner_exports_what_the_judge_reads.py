@@ -20,7 +20,7 @@ from app.api.internalization_room import router, text_seam
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
-from scripts.golden_runner import export, load_script, play
+from scripts.golden_runner import Played, export, load_script, open_session, play
 from tests.test_ir_the_text_seam_enters_the_real_turn import (
     GUIDE_LINE,
     RUNNER_KEY,
@@ -95,7 +95,9 @@ def _her_script(tmp_path: Path) -> Path:
 async def test_the_export_is_the_transcript_block_her_judge_is_handed(seam, tmp_path) -> None:
     script = load_script(_her_script(tmp_path))
 
-    session_id, played = await play(script, seam)
+    session_id = await open_session(script, seam)
+    played: list[Played] = []
+    await play(script, seam, session_id=session_id, played=played)
     report, transcript = export(
         script,
         session_id=session_id,
@@ -117,3 +119,31 @@ async def test_the_export_is_the_transcript_block_her_judge_is_handed(seam, tmp_
         (2, MOTHER_TONGUE_NOTE, OFF_BRIDGE_LINE, "fail_safe"),
     ]
     assert report.name == "P01-three-turns.2026-09-11T03-00-00.json"
+
+
+async def test_a_turn_that_fails_leaves_the_turns_already_played_in_hand(
+    seam, tmp_path, monkeypatch
+) -> None:
+    from app.services import internalization_room as room
+
+    real_turn = room.run_comprehension_turn
+    answered = 0
+
+    async def _dies_on_the_second(db: Any, session: Any, **kwargs: Any) -> Any:
+        nonlocal answered
+        answered += 1
+        if answered == 2:
+            raise RuntimeError("a API caiu no meio da sessão")
+        return await real_turn(db, session, **kwargs)
+
+    monkeypatch.setattr(room, "run_comprehension_turn", _dies_on_the_second)
+    seam._transport.raise_app_exceptions = False
+    script = load_script(_her_script(tmp_path))
+    played: list[Played] = []
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await play(script, seam, session_id=await open_session(script, seam), played=played)
+
+    assert [(t.idx, t.guide, t.outcome) for t in played] == [(0, GUIDE_LINE, "pass")], (
+        "um 500 no último turno jogava fora todos os turnos já pagos, sem nem o id da sessão"
+    )
