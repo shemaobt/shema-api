@@ -189,7 +189,7 @@ async def replace(
             needs_person=crossed,
         )
 
-    told = await room.capture_segment(
+    crossed = await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=rehearsal.id,
@@ -200,7 +200,6 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
-    crossed = await room.note_a_hard_stretch(db, session, told)
     return SegmentsResponse(
         session_id=session.id,
         segments=await _units(db, session.id),

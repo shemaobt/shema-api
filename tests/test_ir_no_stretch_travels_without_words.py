@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -121,6 +122,10 @@ async def _the_analyst_has_read(
             checked=True,
             analysed_segment_ids=[stretch.id for stretch in stretches],
         ),
+        played_by_take=[
+            PlayedTake(take_id=take_id, played_ranges=[[0, CLIP_MS]], clip_duration_ms=CLIP_MS)
+            for take_id in sorted({stretch.take_id for stretch in stretches})
+        ],
         played_ranges=[[0, CLIP_MS]],
         clip_duration_ms=CLIP_MS,
     )

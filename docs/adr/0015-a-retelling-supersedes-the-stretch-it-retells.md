@@ -39,3 +39,13 @@ stretches raised the same warning as three tellings of one, and every telling fr
 onward raised it again; `mark_needs_person` clears the visit stamps on each call, so each
 repeat deleted the record of the facilitator who had already come. Decided with Henok on
 2026-09-10.
+
+ENG-886 closed the two doors that left open, on 2026-09-11. **One mark per stretch is a unique
+index** on `(session_id, segment_id)`, not a read before the write: two tellings of one stretch
+landing together both found no mark and both wrote one, and the second halt cleared the visit
+the first had already been answered by. The second writer's conflict is swallowed inside a
+savepoint and it asks for nobody — the same answer the fourth telling of a marked stretch gets,
+and now by the same mechanism. **And a captured telling is one transaction**: the stretch row,
+the telling-back state and the mark commit together, so the count and the mark cannot come
+apart. The `>=` gate stays, for the stretches the builds that could left standing at the number
+with no mark.

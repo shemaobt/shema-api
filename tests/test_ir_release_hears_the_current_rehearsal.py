@@ -171,6 +171,29 @@ async def _rehearsed_and_told_back(db: AsyncSession) -> IRSession:
     return session
 
 
+async def _played_through(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    played_ranges: list[list[int]] | None = None,
+    clip_duration_ms: int = CLIP_MS,
+) -> dict[str, Any]:
+    """What the tablet reports about every part the session is standing on right now.
+
+    One entry per recording the current stretches are slices of, in that recording's own
+    milliseconds. These sessions rehearse in one part, so the numbers are the ones each case
+    already meant; what the entry adds is the subject they never had.
+    """
+    told = await final_segments(db, session.id)
+    spans = [[0, CLIP_MS]] if played_ranges is None else played_ranges
+    return {
+        "played_by_take": [
+            {"take_id": take_id, "played_ranges": spans, "clip_duration_ms": clip_duration_ms}
+            for take_id in sorted({stretch.take_id for stretch in told})
+        ]
+    }
+
+
 async def _finish(
     client: httpx.AsyncClient, session_id: str, *, report: dict[str, Any] | None = None
 ) -> None:
@@ -225,9 +248,7 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     played it. The package would otherwise travel on a report about audio nobody will hear.
     """
     session = await _rehearsed_and_told_back(db_session)
-    await _finish(
-        client, session.id, report={"played_ranges": [[0, CLIP_MS]], "clip_duration_ms": CLIP_MS}
-    )
+    await _finish(client, session.id, report=await _played_through(db_session, session))
 
     again = await _re_record_the_rehearsal(db_session, session)
     await begin_back_translation_again(db_session, session)
@@ -254,9 +275,7 @@ async def test_a_report_does_not_survive_the_audio_under_it_being_replaced(
     report is the only thing standing in its way.
     """
     session = await _rehearsed_and_told_back(db_session)
-    await _finish(
-        client, session.id, report={"played_ranges": [[0, CLIP_MS]], "clip_duration_ms": CLIP_MS}
-    )
+    await _finish(client, session.id, report=await _played_through(db_session, session))
 
     again = await _re_record_the_rehearsal(db_session, session)
     standing = (await final_segments(db_session, session.id))[0]
@@ -289,9 +308,7 @@ async def test_an_honest_report_on_the_current_rehearsal_releases(
     """Case 3. Control: the team played their own clip through, and the package travels."""
     session = await _rehearsed_and_told_back(db_session)
 
-    await _finish(
-        client, session.id, report={"played_ranges": [[0, CLIP_MS]], "clip_duration_ms": CLIP_MS}
-    )
+    await _finish(client, session.id, report=await _played_through(db_session, session))
 
     artifact = await _release(db_session, session)
     assert artifact["readiness"] == "ready_for_refine"
@@ -304,16 +321,12 @@ async def test_a_fresh_report_after_a_re_record_releases(
     """Case 3 after a detour. Control: re-recording is the team working, not the team erring,
     and playing the new clip through has to be enough to release it."""
     session = await _rehearsed_and_told_back(db_session)
-    await _finish(
-        client, session.id, report={"played_ranges": [[0, CLIP_MS]], "clip_duration_ms": CLIP_MS}
-    )
+    await _finish(client, session.id, report=await _played_through(db_session, session))
 
     again = await _re_record_the_rehearsal(db_session, session)
     await begin_back_translation_again(db_session, session)
     await _tell_back_about(db_session, session, again)
-    await _finish(
-        client, session.id, report={"played_ranges": [[0, CLIP_MS]], "clip_duration_ms": CLIP_MS}
-    )
+    await _finish(client, session.id, report=await _played_through(db_session, session))
 
     artifact = await _release(db_session, session)
     assert artifact["readiness"] == "ready_for_refine"
@@ -327,7 +340,9 @@ async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
     session = await _rehearsed_and_told_back(db_session)
 
     await _finish(
-        client, session.id, report={"played_ranges": [[0, 20000]], "clip_duration_ms": CLIP_MS}
+        client,
+        session.id,
+        report=await _played_through(db_session, session, played_ranges=[[0, 20000]]),
     )
 
     assert await _blockers(db_session, session) == [PLAYBACK_BLOCKER]
@@ -337,15 +352,17 @@ async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
 async def test_a_report_with_no_clip_to_measure_against_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Stretches played, but no clip length to compare them to, so nothing can be checked.
+    """Stretches played, but no length to compare them to, so nothing can be checked.
 
-    The request model lets either number arrive alone. Neither alone is proof: this half
-    cannot be measured, and the other half — a length with nothing played — is a report that
-    the team played nothing at all.
+    An entry carries both numbers, and neither alone is proof: spans with no length cannot be
+    measured, and the other half — a length with nothing played — is a report that the team
+    played nothing at all. A part whose length is zero is the first of those on the wire.
     """
     session = await _rehearsed_and_told_back(db_session)
 
-    await _finish(client, session.id, report={"played_ranges": [[0, CLIP_MS]]})
+    await _finish(
+        client, session.id, report=await _played_through(db_session, session, clip_duration_ms=0)
+    )
 
     assert await _blockers(db_session, session) == [PLAYBACK_BLOCKER]
 
