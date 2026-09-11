@@ -392,12 +392,19 @@ async def _tell_that_stretch_again(
 async def _finish(
     client: httpx.AsyncClient, session_id: str, *, units: list[dict[str, Any]]
 ) -> None:
-    """`terminei`, with a report of having played the passage the session now stands on."""
-    whole = max(one["ends_ms"] for one in units)
+    """`terminei`, with a report of having played every part the session now stands on."""
+    parts: dict[str, int] = {}
+    for one in units:
+        parts[one["take_id"]] = max(parts.get(one["take_id"], 0), one["ends_ms"])
     answered = await client.post(
         f"{PREFIX}/sessions/{session_id}/back-translation/finish",
         headers={"X-Room-Key": KEY},
-        json={"played_ranges": [[0, whole]], "clip_duration_ms": whole},
+        json={
+            "played_by_take": [
+                {"take_id": take_id, "played_ranges": [[0, whole]], "clip_duration_ms": whole}
+                for take_id, whole in sorted(parts.items())
+            ]
+        },
     )
     assert answered.status_code == 200, answered.text
 

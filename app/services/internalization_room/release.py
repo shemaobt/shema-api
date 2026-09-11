@@ -62,8 +62,11 @@ from app.services.internalization_room.takes import takes_of
 #: key says ``segments`` because that is what they are. Bumped again to v0.3 when the
 #: conversation-mode key left the payload with the mode itself: a consumer diffing the two
 #: versions finds one key gone and nothing renamed. And to v0.4 with ``release_id`` and
-#: ``version``: the packet says which approved draft it is, or says it is none.
-SCHEMA_VERSION = "tripod.internalization-release.v0.4"
+#: ``version``: the packet says which approved draft it is, or says it is none. And to v0.5
+#: with ``played_by_take`` in place of ``played_ranges`` and ``clip_duration_ms``: the report of
+#: listening names the part it was played from, and the two it replaces are gone rather than
+#: still there and no longer meaning what they said (ADR 0017).
+SCHEMA_VERSION = "tripod.internalization-release.v0.5"
 
 
 class InternalizationReleaseBlocked(ConflictError):
@@ -146,21 +149,25 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     package a clean check produces. Carrying the questions is the point; carrying silence as
     if it were clean is not.
 
-    The report of playback is held to the same line, and it is why the gate names a rehearsal
-    rather than only measuring one. Silence used to pass it — an absent report satisfied the
-    coverage arithmetic the way an unread telling-back satisfied ``checked`` — and so did a
-    report the team had since made untrue by recording the passage again. Both said the team
-    heard themselves when nobody knows whether they did. The package is refused unless the
-    report names the recording this package ships and reaches the end of it.
+    The report of playback is held to the same line, and it is why the gate names the parts of
+    the rehearsal rather than only measuring one clip. Silence used to pass it — an absent
+    report satisfied the coverage arithmetic the way an unread telling-back satisfied
+    ``checked`` — and so did a report the team had since made untrue by recording the passage
+    again. Both said the team heard themselves when nobody knows whether they did. The package
+    is refused unless every part the stretches name was played through, each in its own
+    milliseconds.
+
+    Only whether anything is unheard is read here. Which parts they are is the same answer, and
+    it is what the room says to the team when it sends them back; this decides one thing.
 
     What the report has to name is asked of the stretches, which say which recording each is a
     slice of and were checked on the way in. Not of the takes table: ``created_at`` there is
     when the upload landed, the tablet's outbox drains whenever the link comes back, and the
     newest-arriving rehearsal is sometimes the one the team abandoned.
 
-    Sessions already in flight when this shipped carry a report with no such name, and are
+    Sessions already in flight when this shipped carry a report with no part named, and are
     refused until the team plays their rehearsal through again. That is the correct reading of
-    them: a report we cannot tie to a recording is not evidence about any recording.
+    them: a report we cannot tie to a recording is not evidence about any recording (ADR 0017).
 
     A session with nothing told back is not asked. ``no_telling_back`` already says what is
     wrong there, and a second blocker about playback would only repeat it in other words.
@@ -242,7 +249,7 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = sorted({segment.take_id for segment in stretches})
-    if rehearsed and not playback_confirms_rehearsal(telling_back, rehearsed):
+    if rehearsed and playback_confirms_rehearsal(telling_back, rehearsed):
         blockers.append("playback_did_not_cover_the_clip")
     if blockers:
         raise InternalizationReleaseBlocked(blockers)
@@ -300,8 +307,9 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
             "checked": telling_back.checked,
             "segments": [_segment_view(segment) for segment in told],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
-            "played_ranges": telling_back.played_ranges,
-            "clip_duration_ms": telling_back.clip_duration_ms,
+            "played_by_take": [
+                entry.model_dump(mode="json") for entry in telling_back.played_by_take
+            ],
             "superseded_attempts": [
                 attempt.model_dump(mode="json") for attempt in telling_back.superseded
             ],

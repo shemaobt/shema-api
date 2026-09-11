@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.models.internalization_room import PlayedTake
 from app.services import internalization_room as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
@@ -233,7 +234,15 @@ async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, 
     state.analysed_segment_ids = [segment.id for segment in told]
     clip_end = max((segment.ends_ms for segment in told), default=0)
     await room.report_playback(
-        db, session, state, played_ranges=[[0, clip_end]], clip_duration_ms=clip_end
+        db,
+        session,
+        state,
+        played_by_take=[
+            PlayedTake(take_id=take_id, played_ranges=[[0, clip_end]], clip_duration_ms=clip_end)
+            for take_id in sorted({segment.take_id for segment in told})
+        ],
+        played_ranges=[[0, clip_end]],
+        clip_duration_ms=clip_end,
     )
 
     return await build_internalization_release(db, session)

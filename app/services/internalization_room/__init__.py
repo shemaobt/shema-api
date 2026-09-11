@@ -13,6 +13,7 @@ from app.services.internalization_room.back_translation import (
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.compose import recompose_passage
 from app.services.internalization_room.hard_stretches import (
+    capture_and_note_a_hard_stretch,
     count_an_empty_telling,
     hard_stretches_of,
     note_a_hard_stretch,
@@ -77,6 +78,7 @@ __all__ = [
     "attend",
     "back_translation_of",
     "begin_back_translation_again",
+    "capture_and_note_a_hard_stretch",
     "capture_segment",
     "classify_coverage",
     "closing_block",

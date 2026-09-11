@@ -639,13 +639,14 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
 async def test_a_stretch_left_at_the_number_with_no_mark_is_still_marked(
     db_session: AsyncSession,
 ) -> None:
-    """The crossing has to be recoverable, because the count and the mark can come apart.
+    """The crossing has to be recoverable, because the count and the mark have come apart.
 
-    The captured path writes the row in one transaction and the mark in the next. A failure
-    between them leaves a stretch standing at the number carrying no mark — and a gate reading
-    exact equality would then never mark it, because the count only ever grows. The gate asks
-    the table instead, so the next telling finds the count past the number, finds no mark, and
-    writes it.
+    The captured path wrote the row in one transaction and the mark in the next, so a failure
+    between them left a stretch standing at the number carrying no mark. ENG-886 closed that
+    door — the row, the state and the mark are one transaction now — and it does not reopen the
+    stretches it already left behind. A gate reading exact equality would never mark those,
+    because the count only ever grows. The gate asks the table instead, so the next telling
+    finds the count past the number, finds no mark, and writes it.
     """
     from app.services.internalization_room.hard_stretches import note_a_hard_stretch
     from app.services.internalization_room.segments import capture_segment

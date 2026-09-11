@@ -699,11 +699,15 @@ async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_s
 
 @pytest.mark.asyncio
 async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speaker) -> None:
-    """Scenario 2. The one law, which the new closing may not loosen along with the rest."""
+    """Scenario 2. The one law, which the new closing may not loosen along with the rest.
+
+    The name keeps the scenario's English: *telling back* is the glossary's term for the act.
+    What the law is worded in is Marcia's Portuguese, and since ENG-873 that is *traduziram*.
+    """
     spoken_to = await _verdict_for(_on_a_stretch(FindingKind.ADDITION), patch_speaker)
 
     assert "never know what their recording says" in spoken_to
-    assert "o que você me contou" in spoken_to
+    assert "o que vocês me traduziram" in spoken_to
     assert "Never mention the map, findings, analysis" in spoken_to
 
 

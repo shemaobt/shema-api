@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import release as release_module
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -162,14 +163,25 @@ async def _reported_playback(
     binds a report to the rehearsal it is about at the moment it arrives. A report assembled
     here would name no recording, which is a state the release is entitled to refuse.
 
-    The defaults describe a clip played through; a case about a report that falls short says
+    One entry per part the session's stretches name, each carrying the numbers this call was
+    given. These sessions rehearse in one part, so the numbers that used to describe the whole
+    passage are the numbers that part is measured by, and every case here keeps the verdict it
+    had. The flat pair travels beside it, as a tablet still in the field sends it.
+
+    The defaults describe a part played through; a case about a report that falls short says
     so by naming the numbers it means.
     """
+    spans = [[0, 61000]] if played_ranges is None else played_ranges
+    told = await final_segments(db, session.id)
     await report_playback(
         db,
         session,
         state,
-        played_ranges=[[0, 61000]] if played_ranges is None else played_ranges,
+        played_by_take=[
+            PlayedTake(take_id=take_id, played_ranges=spans, clip_duration_ms=clip_duration_ms or 0)
+            for take_id in sorted({stretch.take_id for stretch in told})
+        ],
+        played_ranges=spans,
         clip_duration_ms=clip_duration_ms,
     )
 
@@ -233,7 +245,9 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     assert artifact["comprehension"]["outcome"] == "ready_supported"
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
-    assert artifact["back_translation"]["played_ranges"] == [[0, 61000]]
+    assert [entry["played_ranges"] for entry in artifact["back_translation"]["played_by_take"]] == [
+        [[0, 61000]]
+    ]
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
     sealed.pop("created_at")
