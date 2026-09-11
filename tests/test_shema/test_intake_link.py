@@ -489,7 +489,7 @@ async def test_a_submission_through_the_link_does_not_move_the_record(
                 "period": "2026-09",
                 "bookProgress": [
                     {
-                        "id": "MRK",
+                        "id": "mrk",
                         "name": "Marcos",
                         "chapters": 16,
                         "translated": 9,
