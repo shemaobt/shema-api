@@ -39,7 +39,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, UnknownReferenceError
+from app.core.exceptions import AuthorizationError, UnknownReferenceError, ValidationError
 from app.db.models.auth import User
 from app.db.models.shema_enums import ShemaRegionKey
 from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
@@ -85,6 +85,15 @@ async def save_region_team(
     ``scope`` is positional and has no default, which is ``list_projects``' rule and holds
     for its reason: a keyword with a permissive default is how a scope stops being applied,
     because the call that omits it still compiles and still passes review.
+
+    **An unassigned seat gets no row**, so a chart nobody has filled stays an empty table and
+    the twenty-one seats keep coming from the two vocabularies. Saving three empty names is a
+    no-op rather than three rows that say nothing, which is the same reason there is no seed:
+    a row is what it means for somebody to hold an office.
+
+    **An account for a seat with nobody in it is refused**, before anything is written. The
+    reference answers *which account is this person* and there is no person; storing it would
+    leave a link waiting to attach itself to whoever is typed into the seat next.
     """
     if not reaches(scope, region_key):
         logger.warning(
@@ -101,9 +110,15 @@ async def save_region_team(
 
     accounts = payload.accounts
     for seat in SEAT_ORDER:
-        wanted = getattr(accounts, FIELD_FOR_SEAT[seat]) if accounts is not None else None
-        if wanted is not None:
-            await _account_or_refuse(db, wanted)
+        field = FIELD_FOR_SEAT[seat]
+        wanted = getattr(accounts, field) if accounts is not None else None
+        if wanted is None:
+            continue
+        if not (getattr(payload.team, field) or "").strip():
+            raise ValidationError(
+                f"The '{seat.value}' seat has nobody in it, so there is no account to link."
+            )
+        await _account_or_refuse(db, wanted)
 
     stored = {
         row.role: row
@@ -127,6 +142,8 @@ async def save_region_team(
         from_name = row.holder_name if row is not None else ""
 
         if row is None:
+            if not to_name:
+                continue
             row = ShemaRegionTeam(region_key=region_key, role=seat, holder_name=to_name)
             db.add(row)
         else:

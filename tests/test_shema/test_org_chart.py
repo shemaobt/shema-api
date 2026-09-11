@@ -442,3 +442,57 @@ async def test_a_platform_admin_passes_the_narrow_routes(db_session, client, she
     headers = await auth_header(db_session, admin)
 
     assert (await client.get(ROLE_CHANGES, headers=headers)).status_code == 200
+
+
+async def test_an_account_for_a_seat_with_nobody_in_it_is_refused(
+    db_session, client, shema_app
+) -> None:
+    """The reference answers *which account is this person*, and there is no person.
+
+    Stored, it would be a link waiting to attach itself to whoever is typed into the seat
+    next — which is the same failure ``holder_user_id`` is cleared on a rename to avoid,
+    reached from the empty side.
+    """
+    _user, headers = await _coordinator(
+        db_session, shema_app, email="orphan@shema.test", regions=[ShemaRegionKey.ASIA]
+    )
+    holder = await make_user(db_session, email="nobody@shema.test")
+
+    res = await client.put(
+        ASIA_TEAM,
+        headers=headers,
+        json={
+            "team": {"coordinator": "", "obtLab": "", "resourceCircle": ""},
+            "accounts": {"coordinator": holder.id},
+        },
+    )
+
+    assert res.status_code == 400
+    assert "coordinator" in res.json()["detail"]
+
+
+async def test_saving_three_empty_names_writes_no_rows_at_all(
+    db_session, client, shema_app
+) -> None:
+    """A row is what it means for somebody to hold an office.
+
+    Asked of the table rather than of the chart, because the chart answers twenty-one seats
+    either way — which is exactly what would hide three rows that say nothing.
+    """
+    from sqlalchemy import func, select
+
+    from app.db.models.shema_org_chart import ShemaRegionTeam
+
+    _user, headers = await _coordinator(
+        db_session, shema_app, email="empty@shema.test", regions=[ShemaRegionKey.ASIA]
+    )
+
+    res = await client.put(
+        ASIA_TEAM,
+        headers=headers,
+        json={"team": {"coordinator": "", "obtLab": "", "resourceCircle": ""}},
+    )
+
+    assert res.json()["outcome"] == {"changed": 0, "filled": 0, "cleared": 0}
+    rows = await db_session.execute(select(func.count()).select_from(ShemaRegionTeam))
+    assert rows.scalar_one() == 0

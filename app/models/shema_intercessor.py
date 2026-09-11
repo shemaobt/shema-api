@@ -36,20 +36,28 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.utils.shema_contacts import contact_channel
 from app.utils.shema_countries import is_country_code
 
 
-def _clean_country(value: str) -> str:
+def _clean_country(value: str | None) -> str | None:
     """Uppercase, then check membership — the generosity and the rule, in that order.
 
     ``docs/shema.md`` §5.7 gives the service the uppercasing and the database the length; the
     two meet here, which is the layer §3.3 puts payload validation in. ``br`` is a typo worth
     accepting and ``Brasil`` is not: the whole point of a code is that the network cannot
     fragment into three spellings of one country.
+
+    **``None`` passes through here and is refused one step later**, by
+    :meth:`IntercessorUpdate._absent_and_null_are_not_the_same`. These three validators are
+    shared between the create and the partial edit and only the edit can carry a ``None`` at
+    all; field validators run before model validators, so crashing on it here would answer a
+    bad payload with a 500 before the rule that actually refuses it ever ran.
     """
+    if value is None:
+        return None
     code = value.strip().upper()
     if not is_country_code(code):
         raise ValueError(
@@ -58,20 +66,27 @@ def _clean_country(value: str) -> str:
     return code
 
 
-def _clean_contact(value: str) -> str:
+def _clean_contact(value: str | None) -> str | None:
     """Refuse a contact nobody can be reached at, naming the field.
 
     FE-44 §9.6 asks that the error say **which** field is missing, because the screen names
     it; a Pydantic failure carries the field's location, which is what the console's form
-    already reads for the other two.
+    already reads for the other two. ``None`` passes through and is refused one step later —
+    see :func:`_clean_country`.
     """
+    if value is None:
+        return None
     contact = value.strip()
     if contact_channel(contact) is None:
         raise ValueError("contact must be an e-mail address or a phone number of at least 8 digits")
     return contact
 
 
-def _clean_name(value: str) -> str:
+def _clean_name(value: str | None) -> str | None:
+    """Refuse a blank name. ``None`` passes through and is refused later — see
+    :func:`_clean_country`."""
+    if value is None:
+        return None
     name = value.strip()
     if not name:
         raise ValueError("name is required")
@@ -125,6 +140,25 @@ class IntercessorUpdate(BaseModel):
     _check_name = field_validator("name")(_clean_name)
     _check_country = field_validator("country")(_clean_country)
     _check_contact = field_validator("contact")(_clean_contact)
+
+    @model_validator(mode="after")
+    def _absent_and_null_are_not_the_same(self) -> IntercessorUpdate:
+        """A field sent as ``null`` is refused; a field not sent is unchanged.
+
+        ``| None`` here spells *this may be omitted*, not *this may be emptied*. Every column
+        behind these four is ``NOT NULL``, so without this a ``{"name": null}`` reaches the
+        database and comes back as a 500 for a payload the server should have refused by
+        naming the field — a bad request answered as a server fault.
+
+        Written once over ``model_fields_set`` rather than four times, so a field added to this
+        shape later inherits the rule instead of inheriting the bug. It is the same distinction
+        ``exclude_unset`` keeps on the way out: FE-44 §8.2's *an unconditional write of* ``""``
+        *deletes what it did not mean to*, met one layer up.
+        """
+        nulls = sorted(name for name in self.model_fields_set if getattr(self, name) is None)
+        if nulls:
+            raise ValueError(f"omit a field to leave it unchanged; null is not a value: {nulls}")
+        return self
 
 
 class ConsentGrant(BaseModel):

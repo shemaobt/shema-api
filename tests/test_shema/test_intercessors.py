@@ -359,3 +359,21 @@ async def test_an_account_with_no_shema_grant_reaches_nothing_of_the_network(
     res = await client.get(PEOPLE, headers=await auth_header(db_session, outsider))
 
     assert res.status_code == 403
+
+
+async def test_a_null_in_a_partial_edit_is_a_refusal_and_not_a_server_fault(
+    db_session, client, shema_app
+) -> None:
+    """A bad request must not be answered as a server fault.
+
+    ``country``, ``contact`` and ``name`` share their validators between the create and the
+    partial edit, and only the edit can carry a ``null``. Without the guard the value reaches
+    ``.strip()`` on ``None`` and the caller gets a 500 for a payload the server should have
+    refused by naming the field.
+    """
+    _user, headers = await _circle(db_session, shema_app)
+    person = await make_intercessor(client, headers)
+
+    for field in ("name", "country", "contact"):
+        res = await client.patch(f"{PEOPLE}/{person['id']}", headers=headers, json={field: None})
+        assert res.status_code == 422, field
