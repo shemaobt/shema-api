@@ -547,8 +547,13 @@ async def test_a_regional_scope_reaches_the_counts_and_not_only_the_results(
     assert set(ids(page)) == {"coptic-delta", "hausa-north"}
     assert page["total"] == 2
     assert page["counts"]["groups"]["continent"] == {"africa": 2}
-    assert set(page["counts"]["groups"]["team"]) == {"YWAM Egypt", "YWAM Khartoum"}
     assert page["counts"]["groupAll"]["status"] == 2
+
+    # One base and not two, because ``coptic-delta``'s is *YWAM Egypt* and a base that names
+    # the place has been withheld to ``""`` in the payload — which the facet then skips. The
+    # two rules meeting is the point: a count is built from the card, so it cannot name a
+    # place the card beside it does not.
+    assert set(page["counts"]["groups"]["team"]) == {"YWAM Khartoum"}
 
     asked_for_another_region = await fetch(
         client, db_session, coordinator, continent="south-america"
