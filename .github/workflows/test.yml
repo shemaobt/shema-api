@@ -20,6 +20,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Twice the slowest green run on 8 September (13-20 minutes, ENG-913). Without this the
+    # job inherits GitHub's 360-minute default, which is how one hung run stayed "pending"
+    # for six hours instead of turning red.
+    timeout-minutes: 40
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

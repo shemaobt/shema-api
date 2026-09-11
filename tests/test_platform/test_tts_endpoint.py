@@ -152,3 +152,28 @@ async def test_text_that_is_too_long_is_422(db_session, client) -> None:
     )
 
     assert res.status_code == 422
+
+
+async def test_text_reaches_the_synthesizer_unsubstituted_because_the_room_never_calls_this(
+    db_session, client
+) -> None:
+    """ENG-929 — this route is the platform's, sized for the Sound Necklace, not the room's.
+
+    `speakable_text` (YHWH -> "Senhor Jeová" / "the LORD") lives in
+    `synthesize_facilitator_speech`, the room's own chokepoint into TTS — see the route's
+    docstring for why this one is left outside it. Pinned here so a future edit that starts
+    substituting text on this route does so on purpose, having noticed it also moves the
+    cache key for every platform caller.
+    """
+    user = await make_user(db_session)
+    headers = await auth_header(db_session, user)
+    synth = _synth()
+
+    with patch("app.api.platform.tts.synthesize_speech", synth):
+        await client.post(
+            "/api/platform/tts/speak",
+            json={"text": "Foi YHWH quem falou.", "language": "pt-BR"},
+            headers=headers,
+        )
+
+    assert synth.await_args.args[0] == "Foi YHWH quem falou."

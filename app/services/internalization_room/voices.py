@@ -33,6 +33,13 @@ def voice_for(language: str, *, settings: Settings) -> str:
     stance ``platform/voices.py`` takes and for the same reason: a voice keeps its accent in
     any language it speaks, so a borrowed one does not make the room speak that language — it
     makes it speak that language wrongly, to a team that cannot tell us so.
+
+    Does **not** refuse ``es``, on purpose, even though it left ``ROOM_LANGUAGES`` in
+    shema-api#362: a session row persisted before that still carries ``language="es"``, and
+    refusing it here would 500 that row instead of floor it. The floor is
+    ``synthesize_facilitator_speech``'s job, applied before this is ever called — this
+    function only ever meets a language the room still claims, or one somebody handed it
+    directly without going through the floor, which is theirs to answer for.
     """
     voice = room_voices(settings).get(language)
     if not voice:

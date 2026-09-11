@@ -11,9 +11,13 @@ hangs comments off a numbered draft ("v1, v2"), and a new version starts with ze
 so the number has to exist and has to mean that something changed.
 
 Decided: the team's approval writes a **Release** row, numbered per pericope per project one
-past the last, under a partial unique index rather than a counter alone (the race ENG-639
-recorded on stretch positions applies here too). Approving again returns the existing release
-when the packet's hash is unchanged, and mints the next **Version** only when it differs. For
+past the last, under a unique index rather than a counter alone (the race ENG-639 recorded on
+stretch positions applies here too). The index carries no predicate, unlike ADR 0006's pair:
+those exclude superseded rows and a release is never superseded. Approving again returns the
+existing release when the packet's hash is unchanged **against the last release of that
+pericope and project**, and mints the next **Version** only when it differs — a packet that
+comes back to an earlier version's content is a later draft, not that version again, and
+handing its number back would put new comments on a draft nobody is reading. For
 that to hold, the export clock leaves the hashed content first: the hash fingerprints the
 release, not the read. A session without a project cannot be released, because a release is
 named by project, pericope and version and the shared room key names no project.

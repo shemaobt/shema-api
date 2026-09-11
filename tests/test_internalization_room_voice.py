@@ -13,8 +13,11 @@ import pytest
 
 from app.core.config import Settings
 from app.services.internalization_room import synthesize_facilitator_speech
+from app.services.internalization_room.voices import voice_for
 
 ROOM_VOICE_ID = "83Nae6GFQiNslSbuzmE7"
+ROOM_VOICE_ID_EN = "x52Gqgso2pdbdr7KngsJ"
+ROOM_VOICE_ID_ES = "fYypSok4m8xKqKsDwS7O"
 ROOM_MODEL = "eleven_turbo_v2_5"
 
 
@@ -62,6 +65,30 @@ async def test_the_rooms_configured_voice_is_the_one_that_speaks() -> None:
     assert speech.audio == b"audio"
     assert cached is False
     assert ROOM_VOICE_ID in client.post.await_args.args[0]
+
+
+async def test_a_legacy_es_session_is_floored_before_the_voice_is_chosen() -> None:
+    """`es` left `ROOM_LANGUAGES` in shema-api#362, but a session row persisted before that
+    still carries `language="es"` and still calls this with it. Marcia's ruling stands:
+    Spanish is off the air until she offers it, so this must land on the floor's own voice
+    and language code, never on `voice_for("es", ...)`, which still answers — it is kept on
+    purpose so a legacy row does not 500 — and would otherwise speak the Portuguese or
+    English fail-safe text in the Spanish voice.
+    """
+    client = _client()
+
+    await synthesize_facilitator_speech(
+        "Bem-vindos de volta.",
+        language="es",
+        client=client,
+        store=MemoryStore(),
+        settings=_settings(),
+    )
+
+    body = client.post.await_args.kwargs["json"]
+    assert body["language_code"] == "en"
+    assert ROOM_VOICE_ID_EN in client.post.await_args.args[0]
+    assert ROOM_VOICE_ID_ES not in client.post.await_args.args[0]
 
 
 async def test_the_language_is_stated_rather_than_guessed() -> None:
@@ -215,3 +242,14 @@ async def test_a_different_voice_id_is_honoured() -> None:
     )
 
     assert "OtherVoiceId123" in client.post.await_args.args[0]
+
+
+def test_voice_for_still_answers_es_directly_because_the_floor_is_the_caller_s_job() -> None:
+    """Pins the boundary shema-api#362 chose: `voice_for` never refuses `es`.
+
+    Refusing it here would 500 a session row already persisted with `language="es"`; the
+    floor that keeps it off the air lives in `synthesize_facilitator_speech`, applied before
+    this is ever reached. If this function ever refused `es` on its own, a legacy row would
+    fail differently but still fail, and the fix belongs one layer up, not here.
+    """
+    assert voice_for("es", settings=_settings()) == ROOM_VOICE_ID_ES

@@ -254,3 +254,62 @@ async def test_an_answer_left_in_another_language_hands_over_nothing(
         "a fala que ficou em outra língua era creditada sem tradução, num turno em que "
         "a sala pediu para repetir na língua da sessão"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_with_no_team_utterance_promises_no_classification(
+    room: _Room, passage: str
+) -> None:
+    """The app waits on what the response says is running, so a turn nobody will classify
+    has to say so, or the tablet sits out a wait for a bead that was never going to move."""
+    room.outcome = TurnOutcome(speech=OPENING, transcript="")
+
+    opened = await _the_room_opens(room, passage)
+
+    assert opened.json()["classification_pending"] is False, (
+        "a resposta não dizia se um classificador estava correndo, e o app esperava "
+        "trinta segundos por uma abertura que nunca chega ao classificador"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_answer_the_classifier_will_read_is_promised_under_the_turn_it_settles(
+    room: _Room, passage: str
+) -> None:
+    """The response names the turn, and the classifier is handed that same name, so the
+    frame the channel carries later can be matched to the turn the app is waiting on."""
+    room.outcome = TurnOutcome(speech=OPENING, transcript=TEAM)
+
+    answered = await _the_team_answers(room, passage)
+
+    assert answered.json()["classification_pending"] is True, (
+        "a fala da equipe ia ao classificador sem que a resposta dissesse que ele corria"
+    )
+    assert answered.json()["turn_id"] == room.settled[0]["turn_id"] != "", (
+        "a resposta e o classificador não partilhavam um nome de turno, e o app não "
+        "tinha como saber de qual turno era a cobertura que chegava"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_panorama_answer_is_heard_but_promises_no_classification(
+    room: _Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A panorama has no coverage spine, so the gate lets the team's words through and the
+    settle hands them to nobody — and the response has to say that, not the gate's yes."""
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _panorama_turn(*_: Any, **__: Any) -> TurnOutcome:
+        return room.outcome
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama_turn)
+    panorama = await create_session(db_session, pericope="OV-Ruth", language="pt")
+    room.outcome = TurnOutcome(speech=OPENING, transcript=TEAM)
+
+    answered = await _the_team_answers(room, panorama.id)
+
+    assert room.settled == []
+    assert answered.json()["classification_pending"] is False, (
+        "o portão dizia sim à fala da equipe e o panorama descartava o settle em silêncio, "
+        "então a resposta prometia uma cobertura que nunca viria"
+    )
