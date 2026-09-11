@@ -21,3 +21,20 @@ class TextSessionResponse(BaseModel):
     sessionId: str
     pericopeId: str
     language: str
+
+
+class TextTurnRequest(BaseModel):
+    sessionId: str = Field(max_length=36)
+    #: What the team said, in the place the transcriber's words would have gone.
+    text: str | None = None
+    #: The session has just opened and the Guide speaks first. Only ever on a fresh session.
+    kickoff: bool = False
+
+
+class TextTurnResponse(BaseModel):
+    sessionId: str
+    transcript: str
+    guideText: str
+    #: What the judge is defined against: the Guide's own words (`pass`), the Validator's
+    #: mended version of them (`corrected`), or a pre-approved line (`fail_safe`).
+    outcome: str

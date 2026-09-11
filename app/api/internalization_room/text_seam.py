@@ -20,13 +20,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import AuthenticationError, NotFoundError, ValidationError
+from app.core.exceptions import (
+    AuthenticationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
+from app.db.models.internalization_room import IRPromptKey
 from app.models.internalization_room_text_seam import (
     OpenTextSessionRequest,
     TextSessionResponse,
+    TextTurnRequest,
+    TextTurnResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES, normalize
+from app.services.internalization_room.prompts import get_prompt_text
 
 router = APIRouter()
 
@@ -55,6 +65,20 @@ async def require_runner(
 runner_dep = Depends(require_runner)
 
 
+def _outcome_tag(outcome: room.TurnOutcome) -> str:
+    """The tag the judge is defined against, read off what the turn already records.
+
+    A turn that fell to a pre-approved line says so. A voiced turn carrying the Validator's
+    issues is one the Validator mended: its contract lists no issues on a `pass`, and the only
+    other verdict that voices anything is `correct`, which lists every problem it repaired.
+    """
+    if outcome.used_fail_safe:
+        return "fail_safe"
+    if outcome.issues:
+        return "corrected"
+    return "pass"
+
+
 def _language_code(named: str) -> str:
     """The room's code for a language named either way her scripts and our app name it."""
     code = normalize(named)
@@ -76,4 +100,44 @@ async def open_text_session(
     )
     return TextSessionResponse(
         sessionId=session.id, pericopeId=session.pericope, language=session.language
+    )
+
+
+@router.post("/text-seam/turn", response_model=TextTurnResponse, dependencies=[runner_dep])
+async def take_text_turn(
+    payload: TextTurnRequest, db: AsyncSession = Depends(get_db)
+) -> TextTurnResponse:
+    """One turn of the room with the team's words already in hand.
+
+    The same turn `take_turn` runs, minus the two things that sit outside it: nothing is
+    transcribed, because the words arrived as text, and nothing is synthesized, because the
+    words leave as text. A kickoff is the opening — the session's very first line, which
+    belongs to the Guide — and a kickoff on a session that has already spoken is refused the
+    way her app refuses it, rather than read as a returning team.
+    """
+    session = await room.get_session(db, payload.sessionId)
+    if payload.kickoff and session.messages:
+        raise ConflictError("session already open")
+    if not payload.kickoff and payload.text is None:
+        raise ValidationError("no text or kickoff")
+
+    turn = await room.run_comprehension_turn(
+        db,
+        session,
+        speech=HeardSpeech(text=payload.text or "", bridge_language=session.language),
+        opening=payload.kickoff,
+        guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
+        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+        settings=get_settings(),
+    )
+    outcome = turn.outcome
+    session = await room.save_comprehension(db, session, turn.state)
+    session = await room.append_exchange(
+        db, session, team_utterance=outcome.transcript, guide_response=outcome.speech
+    )
+    return TextTurnResponse(
+        sessionId=session.id,
+        transcript=outcome.transcript,
+        guideText=outcome.speech,
+        outcome=_outcome_tag(outcome),
     )

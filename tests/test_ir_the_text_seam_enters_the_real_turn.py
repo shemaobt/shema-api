@@ -23,11 +23,14 @@ from app.api.internalization_room import router
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
+from app.services import internalization_room as room
 
 SEAM = "/api/internalization-room/text-seam"
 RUNNER_KEY = "runner-de-teste"
 GUIDE_LINE = "Olá, eu sou o Facilitador Digital. Vamos começar pelo todo."
 TEAM_LINE = "Bom dia. Somos a equipe Terena. Pode continuar."
+CORRECTED_LINE = "Vamos ficar com o que a passagem conta."
+UNREPAIRABLE_LINE = "Quero que a gente fique perto da passagem. Vamos voltar juntos a esta cena."
 
 
 class _Agent:
@@ -64,6 +67,11 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
     )
     _the_models_answer(monkeypatch)
+
+    async def _never_voiced(text: str, **_: Any) -> None:
+        raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")
+
+    monkeypatch.setattr(room, "synthesize_facilitator_speech", _never_voiced)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix="/api/internalization-room")
@@ -130,3 +138,100 @@ async def test_a_runner_with_the_wrong_key_is_refused(client) -> None:
     )
 
     assert created.status_code == 401, created.text
+
+
+async def test_a_kickoff_is_the_guides_opening_and_no_clip_is_asked_for(client, db_session) -> None:
+    session_id = await _a_session(client)
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["guideText"] == GUIDE_LINE
+    assert body["transcript"] == ""
+    assert body["outcome"] == "pass"
+    session = await room.get_session(db_session, session_id)
+    assert session.messages == [{"role": "guide", "text": GUIDE_LINE}], (
+        "a abertura era dita e não ficava na conversa, então o turno seguinte abria de novo"
+    )
+
+
+async def test_a_second_kickoff_on_an_open_session_is_a_conflict(client) -> None:
+    session_id = await _a_session(client)
+    await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+
+    again = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+
+    assert again.status_code == 409, again.text
+
+
+async def test_the_teams_words_enter_where_the_transcriber_would_have_put_them(
+    client, monkeypatch
+) -> None:
+    agent = _the_models_answer(monkeypatch)
+    session_id = await _a_session(client)
+    await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+
+    assert answered.status_code == 200, answered.text
+    body = answered.json()
+    assert body["transcript"] == TEAM_LINE
+    assert body["guideText"] == GUIDE_LINE
+    assert body["outcome"] == "pass"
+    assert TEAM_LINE in agent.guide_inputs[-1], (
+        "as palavras chegavam à costura e o Guia respondia a um turno vazio"
+    )
+
+
+async def test_a_turn_with_neither_words_nor_kickoff_is_refused(client) -> None:
+    session_id = await _a_session(client)
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id})
+
+    assert answered.status_code == 400, answered.text
+
+
+async def _an_open_session(client: httpx.AsyncClient) -> str:
+    session_id = await _a_session(client)
+    kicked = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+    assert kicked.status_code == 200, kicked.text
+    return session_id
+
+
+async def test_a_turn_the_validator_mended_is_tagged_corrected(client, monkeypatch) -> None:
+    session_id = await _an_open_session(client)
+    _the_models_answer(
+        monkeypatch,
+        "Eles tinha dez filhos.",
+        json.dumps(
+            {
+                "verdict": "correct",
+                "issues": [{"problem": "invented_detail", "claim": "tinha dez filhos"}],
+                "corrected_response": CORRECTED_LINE,
+            }
+        ),
+    )
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+
+    body = answered.json()
+    assert body["guideText"] == CORRECTED_LINE
+    assert body["outcome"] == "corrected", (
+        "o juiz é definido contra pass/corrected/fail_safe e a costura dizia pass para a "
+        "versão emendada pelo Validador"
+    )
+
+
+async def test_a_turn_that_fell_to_a_canned_line_is_tagged_fail_safe(client, monkeypatch) -> None:
+    session_id = await _an_open_session(client)
+    regenerate = json.dumps(
+        {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}
+    )
+    _the_models_answer(monkeypatch, None, regenerate, None, regenerate, None, regenerate)
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+
+    body = answered.json()
+    assert body["guideText"] == UNREPAIRABLE_LINE
+    assert body["outcome"] == "fail_safe"
