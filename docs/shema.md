@@ -596,12 +596,27 @@ Appendix A is explicit: **the backend serves keys and data, never rendered label
 
 ## 5. Aggregate ownership
 
-Eleven aggregates, from FE-44 §5. Table names are **Provisional** — an `shema_` prefix and a
+Eleven aggregates, from FE-44 §5. Table names were **Provisional** — an `shema_` prefix and a
 plural, chosen so the rest of this document has something to point at; BE-02 confirms or
 renames them in one place. **Every table is created by BE-02**, which §3 gives
 `app/db/models/` and the first `alembic/versions/` file; the owner column names two issues
 wherever there is a table, because BE-02 authors the schema and the second issue builds the
 behaviour on it.
+
+> **BE-02 ([OBT-391](https://linear.app/shema-obt/issue/OBT-391)) confirmed every working
+> name below, renamed none, and built sixteen tables in `20260911_shema01`.** Three
+> departures from this section, each argued in the model file that carries it:
+>
+> - **`shema_user_regions` is created here too**, against row 5.13's owner column and on
+>   this preamble's own reading — BE-03 runs in the wave above and would otherwise open a
+>   migration against this head for one small table. Nothing else of the aggregate moved:
+>   the scope service, the session endpoint and the granting path are still BE-03's.
+> - **`shema_meeting_definitions` was not built**, as row 5.9 already makes conditional on
+>   GATE-02. **`shema_submissions` has no `kind` column**: only the Pulse is archivable, and
+>   a column with one value invites a second.
+> - **The health rating is three enum members and NULL**, not four with `""`. That is FE-44's
+>   own `HealthLevel`, and NULL is the `""` — §7.3's rule survives untouched, because NULL is
+>   not `boa` and nothing can default it to one.
 
 | # | Aggregate | Tables (working names) | Owner | The invariant |
 |---|---|---|---|---|
@@ -939,13 +954,13 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 
 | # | Question | Owner |
 |---|---|---|
-| 1 | Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each. Either way, **one input writes both and one of each pair is authoritative** — two columns that can drift is the defect. | **BE-02** (FE-44 §12.3) |
-| 2 | Whether `region_key` is stored as a maintained derived column on `shema_projects` (§6.1) or computed per query. This document recommends stored-and-derived, one owner. | **BE-02** |
+| 1 | ~~Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each.~~ **Answered by BE-02, in opposite directions, because the pairs are not the same shape.** `team` and `ywamBase` are **one column**: they are one concept in two languages, identical on all 127 records, and collapsing removes the drift instead of policing it. `sensitivity` and `sensitive_country` **stay two**, with the boolean authoritative: the text is a free-text export column that agrees with the flag by accident of the data, so collapsing would delete evidence. | ~~BE-02~~ **closed** |
+| 2 | ~~Whether `region_key` is stored as a maintained derived column or computed per query.~~ **Answered by BE-02: stored, maintained, indexed — and deliberately not a generated column,** because the derivation is a lookup over 25 country strings kept in Python and expressing it in DDL would be a second copy of a map whose whole value is that there is one. | ~~BE-02~~ **closed** |
 | 3 | The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry. Read it off the deployment (§2.3). | **BE-03** |
 | 4 | Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3). | **BE-03** |
 | 5 | Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3). | **BE-09 / BE-13**, settled by §11's issue edit |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
-| 7 | Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1). | **BE-16**, with BE-11 needing the answer |
+| 7 | Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1). **All three answers are now free of a migration**: BE-02 gave `shema_projects` an `approved_units_unverified` column, which is the only one of the three that needed schema. | **BE-16**, with BE-11 needing the answer |
 | 8 | The three privacy questions the intercessor network cannot ship without: what consent was given and how it is evidenced; how someone outside the platform asks to be removed when they cannot log in; what happens to a contact nobody has used in a year. **Shipping the storage before answering them is how silent retention starts.** | **BE-09**, and they are not engineering questions |
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
