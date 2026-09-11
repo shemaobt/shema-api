@@ -160,10 +160,12 @@ async def record_consent(
     person and their first consent arrive together or not at all. The rule is
     ``create_notification``'s and holds here: whoever passes ``False`` owns the commit.
 
-    The subject is read before anything is written, so a consent for somebody who does not
-    exist is a 404 rather than an orphan row: the suite runs on SQLite, where foreign keys are
-    off unless a pragma turns them on, so the reference cannot be left to the database to
-    defend in the only place a test can watch it.
+    The subject is read before anything is written, so a consent recorded for somebody who
+    does not exist is a 404 naming the thing that is missing. The foreign key would refuse it
+    either way — the suite turns SQLite's enforcement on — but it refuses inside a flush,
+    which escapes as a 500 for the caller's own bad id. That is the same failure
+    :class:`~app.core.exceptions.UnknownReferenceError` exists to prevent, met from the other
+    side.
     """
     await _person(db, intercessor_id)
     await db.execute(
