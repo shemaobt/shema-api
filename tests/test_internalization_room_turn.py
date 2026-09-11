@@ -225,7 +225,16 @@ def test_a_finished_map_says_nothing_remains() -> None:
 
 def test_peer_cue_is_read_off_the_reply() -> None:
     assert detects_peer_cue("Agora ensaiem essa parte entre vocês, na língua de vocês.")
+    assert detects_peer_cue("Conversem entre vocês sobre o que ouviram.")
+    assert detects_peer_cue("Discutam essa parte antes de me contar.")
+    assert detects_peer_cue("Contem a cena um com o outro, com calma.")
+    assert detects_peer_cue("Now discuss this part before you tell me.")
+    assert detects_peer_cue("Tell the scene to each other, slowly.")
+    assert detects_peer_cue("Now rehearse this scene together in your own language.")
     assert not detects_peer_cue("Me contem o que aconteceu com a família.")
+    assert not detects_peer_cue(
+        "Ensayen juntos esta escena en su propia lengua, entre ustedes."
+    )
 
 
 @pytest.mark.asyncio
