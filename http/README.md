@@ -15,6 +15,7 @@ Use these with VS Code [REST Client](https://marketplace.visualstudio.com/items?
 - **projects.http** – List, create, get by id, update location, grant user/org access. Set `@accessToken` after login; replace `LANGUAGE_ID`, `PROJECT_ID`, `ORGANIZATION_ID`, `USER_ID` with real IDs.
 - **rag.http** – Upload `.md` document, query, list documents, delete document. Set `@accessToken` after login; replace `DOC_ID` with real id from upload/list response.
 - **errors.http** – Examples that trigger 401, 409, etc.
+- **shema_record.http** – Shemá: the ficha — the record read, the create, and the partial save per tab with its `If-Match` version guard, the progress batch and the 409 a stale save gets. Belongs beside `shema_projects.http` (BE-05's collection read) and sits here only so two branches in one stack do not add the same line to the same place. Run `scripts/seed_apps_roles.py`, grant a `shema` role and give the account a region.
 
 ## Base URL
 

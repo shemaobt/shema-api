@@ -1,5 +1,8 @@
 # Shemá — the project record: read, create, partial update (BE-06 · OBT-395)
 #
+# `shema_projects.http` beside this one is BE-05's collection read, and the split is the
+# screens': that file is Projetos, this one is the ficha.
+#
 # The ficha's ten tabs read one shape and save it a tab at a time. Two things are worth
 # running by hand before believing either half:
 #

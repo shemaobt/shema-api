@@ -37,11 +37,16 @@ from app.db.models.shema_org_chart import ShemaRoleChange
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.db.types import UtcDateTime
 
-_REVISION = (
-    Path(__file__).resolve().parents[2]
-    / "alembic"
-    / "versions"
-    / "20260911_shema01_shema_module.py"
+#: Every revision that builds a piece of this module's schema, oldest first.
+#:
+#: **A glob and not a filename**, which is BE-06's change to BE-02's test. The module's schema
+#: arrives in waves — BE-02 built sixteen tables, this issue added the edit trail, and BE-07
+#: onward will add their own — so a check pinned to one file goes red on the next issue for
+#: the one reason it should never go red: the schema grew correctly. What the check is *for*
+#: is a model added without a revision, and that is a question about the graph, not about a
+#: file.
+_REVISIONS = sorted(
+    (Path(__file__).resolve().parents[2] / "alembic" / "versions").glob("*_shema*.py")
 )
 
 #: The keys the Notion export has. They have an empty state and never an absent one, so the
@@ -334,20 +339,29 @@ def test_every_moment_this_module_stores_reads_back_knowing_its_clock() -> None:
 def test_every_shema_table_is_in_the_migration_both_ways() -> None:
     """The defect this catches is adding a model and forgetting the revision.
 
-    Read off the revision's source rather than by running it: no migration in this
+    Read off the revisions' source rather than by running them: no migration in this
     repository can run under SQLite, so the suite cannot walk the graph at all.
+
+    Across **every** shema revision rather than one, because a table's revision is whichever
+    one created it — see :data:`_REVISIONS`.
     """
-    source = _REVISION.read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    bodies = {
-        node.name: ast.get_source_segment(source, node) or ""
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-    }
+    upgrades, downgrades = "", ""
+    for revision in _REVISIONS:
+        source = revision.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            body = ast.get_source_segment(source, node) or ""
+            if node.name == "upgrade":
+                upgrades += body
+            elif node.name == "downgrade":
+                downgrades += body
+
     tables = sorted(name for name in Base.metadata.tables if name.startswith("shema"))
     assert tables, "the metadata knows of no shema table"
-    assert [t for t in tables if f'"{t}"' not in bodies["upgrade"]] == []
-    assert [t for t in tables if f'"{t}"' not in bodies["downgrade"]] == []
+    assert [t for t in tables if f'"{t}"' not in upgrades] == []
+    assert [t for t in tables if f'"{t}"' not in downgrades] == []
 
 
 def test_the_scoped_collection_read_has_an_index_and_region_key_has_no_second_one() -> None:
@@ -385,9 +399,19 @@ def test_the_append_only_guard_is_written_for_the_dialect_in_hand() -> None:
 
 
 async def test_the_schema_the_suite_builds_carries_every_table(db_session: AsyncSession) -> None:
+    """Every table the models declare is a table the suite's own database actually has.
+
+    Counted against the metadata rather than against a literal (BE-06's change to BE-02's
+    test): a hard-coded sixteen is a number every later issue has to remember to bump, and the
+    one failure it would then report is *the module grew a table*, which is not a defect. What
+    this is watching for is a model that never reaches ``create_all`` — a file nobody imported
+    in ``app/db/models/__init__.py`` — and that is a comparison of two sets.
+    """
     bind = db_session.get_bind()
     names = await db_session.run_sync(lambda session: inspect(session.get_bind()).get_table_names())
-    assert len([n for n in names if n.startswith("shema")]) == 16
+    declared = {name for name in Base.metadata.tables if name.startswith("shema")}
+    assert declared - {n for n in names if n.startswith("shema")} == set()
+    assert len(declared) >= 16
     assert bind is not None
 
 
