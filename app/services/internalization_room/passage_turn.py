@@ -12,10 +12,7 @@ from app.services.internalization_room.prompt_blocks import (
     validator_map_block,
 )
 from app.services.internalization_room.render import render
-from app.services.internalization_room.turn_instructions import (
-    ALREADY_MET_INSTRUCTION,
-    OPENING_INSTRUCTION,
-)
+from app.services.internalization_room.turn_instructions import OPENING_INSTRUCTION
 from app.services.internalization_room.validated_turn import TurnOutcome, _voiced_after_validation
 
 
@@ -31,7 +28,6 @@ async def run_turn(
     session_language: str = LANGUAGE_NAMES[FLOOR],
     language_code: str = FLOOR,
     opening: bool = False,
-    already_met: bool = False,
     settings: Settings | None = None,
     session_id: str = "?",
     app_context: str = "",
@@ -74,7 +70,7 @@ async def run_turn(
         session_language=session_language,
         language_code=language_code,
         opening=opening,
-        opening_instruction=(ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION),
+        opening_instruction=OPENING_INSTRUCTION,
         settings=cfg,
         session_id=session_id,
         ask_for_movements=ask_for_movements,

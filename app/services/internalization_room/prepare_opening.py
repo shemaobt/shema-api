@@ -54,7 +54,6 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
                 pericope_num=pericope,
                 opening=True,
-                already_met=True,
                 session_language=LANGUAGE_NAMES[spoken],
                 language_code=spoken,
                 settings=get_settings(),

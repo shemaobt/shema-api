@@ -220,7 +220,6 @@ async def run_comprehension_turn(
             pericope_num=pericope,
             book=book,
             opening=opening,
-            already_met=session.after_panorama,
             settings=settings,
             session_id=session.id,
             app_context=app_context,
