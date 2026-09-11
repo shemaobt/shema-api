@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.internalization_room import CoverageFrame, CoverageView
 from app.services.internalization_room.coverage_channel import _subscribers, publish
+from app.services.internalization_room.sessions import create_session
 
 IR = "/api/internalization-room"
 ROOM_KEY = "sala-de-teste"
@@ -56,6 +57,12 @@ def channel_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> Fa
 
     test_app.dependency_overrides[get_db] = _get_db
     return test_app
+
+
+@pytest.fixture()
+async def passage(db_session: AsyncSession) -> str:
+    session = await create_session(db_session, pericope="P01", language="pt")
+    return session.id
 
 
 @asynccontextmanager
@@ -99,14 +106,14 @@ async def _listening(app: FastAPI, session_id: str) -> AsyncIterator[_Listening]
 
 
 async def test_a_published_frame_reaches_the_open_channel_as_one_coverage_event(
-    channel_app: FastAPI,
+    channel_app: FastAPI, passage: str
 ) -> None:
-    async with _listening(channel_app, "sessao-1") as tablet:
+    async with _listening(channel_app, passage) as tablet:
         assert tablet.status == 200
         assert tablet.headers["content-type"].startswith("text/event-stream")
 
         publish(
-            "sessao-1",
+            passage,
             CoverageFrame(
                 turn_id="turn-9",
                 status="settled",
@@ -129,13 +136,13 @@ async def test_a_published_frame_reaches_the_open_channel_as_one_coverage_event(
 
 
 async def test_a_quiet_channel_still_says_it_is_alive(
-    channel_app: FastAPI, monkeypatch: pytest.MonkeyPatch
+    channel_app: FastAPI, passage: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from app.api.internalization_room import coverage_channel as channel_api
 
     monkeypatch.setattr(channel_api, "KEEP_ALIVE_SECONDS", 0.01)
 
-    async with _listening(channel_app, "sessao-2") as tablet:
+    async with _listening(channel_app, passage) as tablet:
         heard = await tablet.next_chunk()
 
     assert heard == b": keep-alive\n\n", (
@@ -144,11 +151,24 @@ async def test_a_quiet_channel_still_says_it_is_alive(
     )
 
 
-async def test_a_tablet_that_hangs_up_is_no_longer_a_subscriber(channel_app: FastAPI) -> None:
-    async with _listening(channel_app, "sessao-3"):
-        assert "sessao-3" in _subscribers
+async def test_a_tablet_that_hangs_up_is_no_longer_a_subscriber(
+    channel_app: FastAPI, passage: str
+) -> None:
+    async with _listening(channel_app, passage):
+        assert passage in _subscribers
 
-    assert "sessao-3" not in _subscribers, (
+    assert passage not in _subscribers, (
         "a fila de um tablet que desligou ficava na lista e recebia cada cobertura "
         "até o processo morrer"
     )
+
+
+async def test_a_session_the_room_does_not_know_is_refused_not_listened_for(
+    channel_app: FastAPI,
+) -> None:
+    async with _listening(channel_app, "sessao-que-nao-existe") as tablet:
+        assert tablet.status == 404, (
+            "o canal abria um stream sem fim para qualquer id, e a auditoria que percorre "
+            "toda rota da sala com um id de mentira ficou pendurada nele"
+        )
+        assert "sessao-que-nao-existe" not in _subscribers
