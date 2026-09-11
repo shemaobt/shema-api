@@ -6,7 +6,7 @@ the Conversation with the Guide alone (`CONTEXT.md`, **Telling back**). Her `che
 header rules that the guard scans code and never the prompts, because the prompts are her
 artifacts and she reviews them; the ENG-881 sweep follows that and reads Python literals
 only. So this file is the whole guard over the two back-translation prompts, over the H and
-I lines the room speaks, and over the two prompt-key descriptions.
+I lines the room speaks, and over the text of every prompt the room hands a model.
 
 The English *told back* stays where it is hers — the analyst prompt's own output rule is
 phrased about the telling-back — because it is the glossary's English term for the act, not
@@ -408,8 +408,19 @@ def test_the_h_and_i_lines_say_traduzir_in_portuguese_and_spanish(
 
 
 @pytest.mark.parametrize("key", list(IRPromptKey))
-def test_no_prompt_key_description_says_retrotraducao(key: IRPromptKey) -> None:
-    """The word the room retired does not survive in what names the prompt to a reader."""
-    assert "retrotradução" not in default_prompt(key)["description"], (
-        f"a descrição de {key} ainda chama a tradução de retrotradução"
+def test_no_prompt_text_says_retrotraducao(key: IRPromptKey) -> None:
+    """The word the room retired does not survive in anything a model is handed.
+
+    It guarded the `description` slot until ENG-876, and that slot has had no runtime reader
+    since ADR 0016 put the prompt text in the files: a word can only reach a team through
+    what a model reads, so the guard moved onto the text itself, where every key is swept.
+
+    The slot is asserted gone in the same case, because a description left in place is a
+    second copy of a prompt's name free to drift from the one the room uses.
+    """
+    served = default_prompt(key)
+
+    assert set(served) == {"name", "prompt"}, f"{key} ainda serve uma descrição sem leitor"
+    assert "retrotradução" not in served["prompt"], (
+        f"o prompt de {key} ainda chama a tradução de retrotradução"
     )
