@@ -60,9 +60,13 @@ def _the_round_findings(current: list[Finding], all_of_them: list[Finding]) -> l
     what the Speaker voices would let the seam swallow a finding and read to her judge as a
     round the room found nothing wrong with — which is the failure her negative checks exist
     to catch.
+
+    By identity, and it has to be: a finding is a pydantic model, so `in` compares values and
+    two byte-identical findings — one kind, one note, one frase — would collapse into one and
+    leave the second out of the list her checks sweep.
     """
-    voiced = {at for at, one in enumerate(all_of_them) if one in current}
-    return [*current, *(one for at, one in enumerate(all_of_them) if at not in voiced)]
+    voiced = {id(finding) for finding in current}
+    return [*current, *(one for one in all_of_them if id(one) not in voiced)]
 
 
 @router.post(

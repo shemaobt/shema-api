@@ -222,6 +222,12 @@ def export(
 
 
 async def run(args: argparse.Namespace) -> int:
+    """Play her script through one room and answer with what a CI should do about it.
+
+    The one catch in this file, and it is the boundary: the room refusing is not her bar
+    failing, and the rounds already paid for in model calls have to reach the report before
+    that becomes an exit code.
+    """
     script = load_script(Path(args.script))
     base_url = args.base_url.rstrip("/") + "/"
     headers = {"X-Access-Code": args.access_code} if args.access_code else {}
@@ -233,8 +239,6 @@ async def run(args: argparse.Namespace) -> int:
         try:
             await play(script, client, session_id=session_id, played=played)
         except httpx.HTTPStatusError as stopped:
-            # The only catch in this file, and it is the boundary: the room refused, and the
-            # rounds already paid for have to reach the report before that becomes an exit code.
             refused = stopped
         finally:
             stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")

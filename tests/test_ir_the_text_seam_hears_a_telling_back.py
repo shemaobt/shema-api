@@ -435,7 +435,7 @@ async def test_a_supersedes_on_a_slice_where_nothing_stands_is_refused(client) -
     )
 
     assert refused.status_code == 400, refused.text
-    assert "1" in refused.json()["detail"], (
+    assert "frase 1" in refused.json()["detail"], (
         "o runner dela lê a recusa sem o roteiro na mão: ela tem de nomear a frase que não "
         "encontrou nada para superar"
     )

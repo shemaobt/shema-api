@@ -10,12 +10,17 @@ Her regexes carry JavaScript's `u` flag, which Python's `re` is always in, and h
 Unicode-aware in Python 3, so `\bvocê\b` does not match inside `vocês`, which is the whole
 reason she could not use plain `\b` in JavaScript.
 
-The two are not identical, and the difference was measured rather than assumed. Python's `\b`
-counts digits and `_` as word characters, and her bare `\bo mapa\b` counts accented letters as
-non-word. Every input that separates them:
+The two are not identical, and the difference was measured rather than assumed. JavaScript's
+`\b` is ASCII-only, so an accented letter is a non-word character to it and a word character
+to us; Python's counts digits and `_` as word characters where her `\p{L}` guards do not.
+Every input that separates them, and which way:
 
     você2, 3você, _você, contou1   she fails the turn, we pass
-    sertão mapa                     she passes, we say "says 'o mapa'"
+    sertão mapa                    she says "says 'o mapa'", we pass: her `\b` breaks
+                                   between "ã" and "o", ours does not
+    frase 1º, frase 1ª             her `frase\s+1\b` is satisfied, ours is not: the ordinal
+                                   indicator is a non-word character to her and a word
+                                   character to us, so we report a frase she counts as named
 
 None of them is a sentence a Portuguese Speaker turn produces, and everything that is comes
 out the same on both sides.

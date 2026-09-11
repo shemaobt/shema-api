@@ -221,6 +221,11 @@ async def test_a_clean_run_exits_zero(over_the_seam, tmp_path) -> None:
     code = await bt_golden_runner.run(_args(script, tmp_path / "reports"))
 
     assert code == 0
+    exported = list((tmp_path / "reports").glob("P02-causa-a-mais.*.json"))
+    assert len(json.loads(exported[0].read_text(encoding="utf-8"))["rounds"]) == 2, (
+        "sair zero não é o mesmo que ter jogado o roteiro: as duas rodadas dela têm de estar "
+        "no relatório"
+    )
 
 
 async def test_an_http_error_exits_two_and_still_exports(over_the_seam, tmp_path) -> None:
