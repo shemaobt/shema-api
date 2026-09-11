@@ -72,7 +72,7 @@ The persistent, addressable object of one told slice of the passage: a slice of 
 _Avoid_: segment (in prose; it is the wire and table name), Segmento, trecho, chunk (the ephemeral position in one reading, not this object)
 
 **Chunk**:
-The numbered position of a stretch in the list the analyst receives in one reading, the frase number of the prompts. It exists only for the length of the call; the server turns the number back into a stretch.
+The numbered position of a stretch in the list the analyst receives in one reading, the frase number of the prompts. The server turns the number back into a stretch, and a **Finding** keeps the number it was given beside the stretch it resolved to. The two are not one answer: a **Missing with an address** placed *after* frase N resolves to stretch N+1, so an addition and a missing element are one swap of one frase when they share the number and not when they share the stretch.
 _Avoid_: stretch (the persistent object a chunk points to), segment (that object's wire and table name), chunk_index (the takes column is `ordinal`)
 
 **Pass** (`pass_number`):
@@ -128,7 +128,7 @@ _Avoid_: log, history, audit, Evento de cobertura
 ### Findings
 
 **Finding**:
-The analyst's answer about a told stretch: a kind, a note and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear.
+The analyst's answer about a told stretch: a kind, a note, the **Chunk** it named and, when there is one, a stretch. The kinds, in Marcia's words: missing, addition, unclear.
 _Avoid_: error, problem, Achado, the retired kinds meaning change, wrong relation, reordered event and preservation violation (all read as addition), insufficient evidence (retired; it is no finding)
 
 **Missing with an address** (`missing` with `where` before, inside, or after on any chunk but the last):
@@ -142,6 +142,10 @@ _Avoid_: external missing, missing null, Falta sem endereço
 **Where**:
 The field of a missing finding that says whether the absent content sits before, inside or after the chunk it cites.
 _Avoid_: position, offset, Onde
+
+**Swap** (`current_findings`; *relação trocada*, in Marcia's words):
+An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again, one **Correction check** answering both — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
+_Avoid_: pair (it says there are two things), swapped relation (Marcia's phrase for the mistake, not for what the room carries), troca
 
 **Points at a stretch** (`points_at_a_stretch`):
 The property of a finding that puts one specific stretch on screen with the two microphones. It decides the closing of the verdict.

@@ -33,7 +33,10 @@ from app.db.models.internalization_room import (
     IRTake,
     IRTakeKind,
 )
-from app.services.internalization_room.back_translation import playback_confirms_rehearsal
+from app.services.internalization_room.back_translation import (
+    findings_remaining,
+    playback_confirms_rehearsal,
+)
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -327,7 +330,7 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         ],
         "open_questions": len(open_points)
         + sum(1 for question in questions if question.status.value != "resolved")
-        + len(telling_back.findings),
+        + findings_remaining(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
     approved = await _release_of(db, session, artifact["package_sha256"])

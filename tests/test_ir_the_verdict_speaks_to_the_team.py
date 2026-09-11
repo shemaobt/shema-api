@@ -75,6 +75,23 @@ THE_ONE_LAW = "no que vocês me traduziram"
 #: Speaker quotes the note, so the note has to be in the words the Speaker may speak.
 AS_THE_TEAM_TRANSLATED_IT = "as the team translated it"
 
+#: Her sub-bullet for the swapped relation, from the verdict prompt she merged on 2026-09-08
+#: (`shemaobt/Tripod-Internalization`, `prompts/backtranslation_verdict_system_prompt.md`).
+#: Pinned from her file and not from ours: the prompt is her artifact (ADR 0012), so the
+#: oracle for it is her wording, read from her repository, and never the copy under test.
+THE_SAME_FRASE_RULE = """\
+  - **An addition and a missing element on the SAME frase** (the telling swapped one relation for
+    another): treat them as ONE thing — quote what they translated, say what the story tells in
+    its place (never anything the story keeps quiet), and ask for ONE fix: translate that frase
+    again if it only entered in the translation, or record that part again, once, with the
+    story's version. Never send the team to record the same part twice for one swap."""
+#: The title of each sub-bullet of *How to speak the verdict*, in the order they are written.
+#: The rule above has to be the one right under *Addition*: read anywhere else, it is a rule
+#: about a pair the Speaker was never told it is holding.
+_SUB_BULLET_TITLE = re.compile(r"^  - \*\*(.+?)\*\*", re.M)
+THE_ADDITION_BULLET = "Addition:"
+THE_SAME_FRASE_TITLE = "An addition and a missing element on the SAME frase"
+
 #: Ours, not hers, and the reason nothing else of her verdict file comes across here: the
 #: closing is the server's, filled per finding, and the Speaker is only given the slot.
 CLOSING_SLOT = "{{CLOSING}}"
@@ -197,6 +214,30 @@ def test_the_verdict_carries_marcias_frame() -> None:
 
     assert counted == dict.fromkeys(adopted, 1), (
         f"as passagens dela não estão nos prompts exatamente uma vez: {counted}"
+    )
+
+
+def test_the_verdict_prompt_carries_marcias_same_frase_rule() -> None:
+    """Her rule for the swapped relation, verbatim and where it can be read.
+
+    Once, for the reason the frame above is counted once: a paragraph pasted twice is a prompt
+    that says the rule and then says it again, and the model reads both.
+
+    Under *Addition* rather than merely present. The rule is written as a case of an addition
+    — it opens on what the team translated and ends on the one fix to ask for — so read under
+    *Missing* or *Unclear* it would be an instruction about a pair the Speaker is not holding.
+    Asserted as the sub-bullet that follows *Addition*, so a paste at the end of the section
+    fails here while a plain `in` would pass.
+    """
+    titles = _SUB_BULLET_TITLE.findall(SPEAKER)
+
+    assert THE_ADDITION_BULLET in titles, "o veredito não tem mais o item da Addition"
+    assert titles[-1] != THE_ADDITION_BULLET, "a Addition é o último item: nada foi escrito sob ela"
+    assert SPEAKER.count(THE_SAME_FRASE_RULE) == 1, (
+        "a regra da mesma frase não está no veredito exatamente uma vez, palavra por palavra"
+    )
+    assert titles[titles.index(THE_ADDITION_BULLET) + 1] == THE_SAME_FRASE_TITLE, (
+        f"a regra da mesma frase não é o item logo abaixo da Addition: {titles}"
     )
 
 
