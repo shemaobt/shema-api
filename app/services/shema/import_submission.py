@@ -42,7 +42,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, SubmissionImport
-from app.services.shema._form_definitions import current_definition, definition_at
+from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
 from app.services.shema._progress import ProgressSource
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
@@ -60,15 +60,18 @@ async def _resolve_definition(db: AsyncSession, version: int | None) -> ShemaFor
     typing an answer today is answering today's form. A version that was named and never
     published is still refused; what is absent is not guessed at, it is the current one, and
     whichever it was is what the row records.
+
+    **Publishing here as well as at the link, because this is the other authenticated write.**
+    ``_form_definitions.py``'s rule is that the spec is published on an authenticated write and
+    never on the public read; minting a link is one such write and this is the other. Without
+    it a coordinator filing an answer that arrived on paper would be refused until somebody
+    had minted a link for a leader who never used one — a dependency between two unrelated
+    acts, and the kind that is discovered in the field. Publishing is by content, so this cuts
+    no version when one already stands.
     """
     if version is not None:
         return await definition_at(db, PULSE_KIND, version)
-    definition = await current_definition(db, PULSE_KIND)
-    if definition is None:
-        raise NotFoundError(
-            f"No version of the {PULSE_KIND} form is published yet. Mint an intake link first."
-        )
-    return definition
+    return await publish_definition(db, PULSE_KIND)
 
 
 async def _apply(

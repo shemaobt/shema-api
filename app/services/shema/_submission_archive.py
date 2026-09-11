@@ -54,7 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ValidationError
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
-from app.services.shema._form_validation import validated_answers
+from app.services.shema._form_validation import validate_submission
 from app.services.shema._submission_notices import notify_submission
 from app.utils.shema_forms import SUBMITTED_BY_FIELD, carries_prayer_request
 
@@ -135,7 +135,7 @@ async def archive_submission(
     if standing is not None:
         return standing, False
 
-    validated_answers(definition, answers)
+    validate_submission(definition, answers)
 
     submission = ShemaSubmission(
         project_id=project.id,

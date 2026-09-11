@@ -253,6 +253,9 @@ async def test_a_progress_row_longer_than_its_book_is_refused_by_the_same_path(
 
     assert response.status_code == 400
     assert "book_progress.0" in response.json()["detail"]
+    # Nothing archived and nothing announced: the record's refusal is checked before the write,
+    # so a row no coordinator could ever apply does not land in the inbox looking applicable.
+    assert (await db_session.execute(select(ShemaSubmission))).first() is None
     assert (await db_session.execute(select(ShemaProgressEntry))).first() is None
 
 
@@ -529,7 +532,12 @@ async def test_a_coordinator_can_file_and_apply_an_answer_that_arrived_some_othe
 ) -> None:
     """The Pulse's whole point is that the person with the information is often offline, so the
     answer arrives on paper or read out over a bad line. Same validation, same archive, same
-    idempotency — and an actor the audit trail can name."""
+    idempotency — and an actor the audit trail can name.
+
+    **No link is minted anywhere in this test, and that is part of what it asserts.** The spec
+    is published on this write as it is on the link's, so filing an answer for a leader who
+    never used a link is not gated on somebody having minted one for them.
+    """
     response = await client.post(
         SUBMISSIONS,
         json={"projectId": "guarani-mbya", "answers": answers(bookProgress=[book(16, 4)])},
@@ -577,6 +585,49 @@ async def test_an_empty_prayer_answer_does_not_delete_what_is_already_there(
     assert response.status_code == 201
     await db_session.refresh(project)
     assert project.prayer_requests == "Orem pela travessia do rio."
+
+
+async def test_the_submission_detail_serves_only_what_the_record_does_not(
+    client, db_session, shema_app, headers, project
+) -> None:
+    """**The read answers what maps to no column, and it closes a hole while doing it.**
+
+    An answer the import applies is readable on the record, behind the record's own surface;
+    an answer that maps to nothing is readable nowhere else and is what this read is for. The
+    hole the rule closes is real: this route admits **any** member in the caller's region —
+    an OBT Lab mentor reads a Pulse as legitimately as a coordinator, and ``require_role``
+    cannot say *or* — so without it a ``resourceCircle`` account, which is the prayer wall's
+    own audience, could read an archived prayer request for a team that consented to
+    ``coordenacao`` and nothing more.
+    """
+    link = await a_link(client, headers)
+    await answer(
+        client,
+        link["token"],
+        voice="A colheita foi boa.",
+        blockers="O gerador queimou.",
+        prayerRequest="Orem pela travessia do rio.",
+        prayerVisibility="coordenacao",
+        bookProgress=[book(16, 9)],
+    )
+    row = (await db_session.execute(select(ShemaSubmission))).scalar_one()
+
+    circle = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="circulo@shema.test",
+        role_key="resourceCircle",
+        regions=[ShemaRegionKey.SOUTH_AMERICA],
+    )
+    response = await client.get(
+        f"{SUBMISSIONS}/{row.id}", headers=await auth_header(db_session, circle)
+    )
+
+    assert response.status_code == 200
+    served = response.json()["answers"]
+    assert set(served) == {"submittedBy", "period", "voice", "blockers"}
+    assert "Orem pela travessia do rio." not in response.text
+    assert "coordenacao" not in response.text
 
 
 # --- scope ----------------------------------------------------------------------------

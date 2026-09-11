@@ -22,6 +22,15 @@ Pydantic names every bad row by index before raising. A second reading of *what 
 is* would drift from that one, and the drift would show as a Pulse the console can save and
 the import cannot.
 
+**But it is checked before anything is archived, not when the record is written.**
+:func:`validate_submission` runs both halves, and the order is what makes *rejected whole*
+true of a row the record refuses: the definition says ``bookProgress`` is a list and a row
+claiming thirty chapters of a sixteen-chapter book *is* a list, so the form-level check passes
+it. If the record's refusal waited until the write, that submission would already be archived
+and already announced — a Pulse in the inbox that no coordinator can ever apply, which is the
+uninterpretable leftover the issue's *never store unvalidated payloads to clean later* is
+about, arriving by a door one layer down.
+
 **The empty answer is not an answer, and that is a rule rather than a convenience.** A field
 whose answer is absent or empty contributes nothing to the record write. FE-44 §8.2 states the
 sharp case: a save that writes ``prayerRequests: ""`` unconditionally **deletes an existing
@@ -169,3 +178,14 @@ def record_update(definition: ShemaFormDefinition, answers: dict[str, Any]) -> S
             f"{definition.kind} v{definition.version}: the submission does not match the "
             f"record, so none of it was applied — {faults}"
         ) from None
+
+
+def validate_submission(definition: ShemaFormDefinition, answers: dict[str, Any]) -> None:
+    """Both checks, in the order that leaves nothing behind — the whole of *rejected whole*.
+
+    One function so that the two callers cannot drift into running one and not the other, and
+    so that the archive has a single thing to ask before it writes. It answers nothing: what it
+    is for is the exception it does not raise.
+    """
+    validated_answers(definition, answers)
+    record_update(definition, answers)

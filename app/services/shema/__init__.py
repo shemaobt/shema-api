@@ -69,7 +69,11 @@ from app.services.shema._form_definitions import (
     definition_at,
     publish_definition,
 )
-from app.services.shema._form_validation import record_update, validated_answers
+from app.services.shema._form_validation import (
+    record_update,
+    validate_submission,
+    validated_answers,
+)
 from app.services.shema._intake_tokens import (
     DEFAULT_LINK_DAYS,
     MAX_LINK_DAYS,
@@ -183,6 +187,7 @@ __all__ = [
     "set_region_scope",
     "shared_prayer_audio",
     "shared_prayer_text",
+    "validate_submission",
     "validated_answers",
     "verify_intake_token",
     "visible_projects",
