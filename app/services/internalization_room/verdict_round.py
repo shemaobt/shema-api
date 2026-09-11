@@ -23,7 +23,6 @@ from app.core.exceptions import UnreadableReply, UpstreamServiceError
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
-    CorrectionCheck,
     Finding,
     VoicedVerdict,
     analyse_telling_back,
@@ -66,7 +65,6 @@ class TellingBackVerdict:
     outcome: TurnOutcome
     checked: bool
     findings_remaining: int
-    verified: CorrectionCheck | None
 
 
 async def check_the_telling_back(
@@ -92,7 +90,6 @@ async def check_the_telling_back(
     `state` is mutated in place — the findings, the addresses already read and `checked` — and
     writing it is the caller's, in the same transaction as whatever else it decides.
     """
-    verified: CorrectionCheck | None = None
     read_this_round: list[Finding] = []
     correction = correction_to_verify(state, told, retired)
     if correction is not None:
@@ -182,7 +179,6 @@ async def check_the_telling_back(
         outcome=outcome,
         checked=state.checked,
         findings_remaining=findings_remaining(state.findings),
-        verified=verified,
     )
 
 
