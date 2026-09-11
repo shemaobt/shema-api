@@ -36,7 +36,7 @@ from __future__ import annotations
 import logging
 from typing import Any, NamedTuple
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, false, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -165,12 +165,14 @@ def within_scope(scope: RegionScope) -> Any:
     the branch from being rewritten slightly differently by the next reader.
 
     An empty, non-global scope gets a literal false: the fail-closed floor written as SQL,
-    so a query cannot leak by forgetting to check the set was empty first.
+    so a query cannot leak by forgetting to check the set was empty first. ``false()`` and
+    not a predicate over a column — a column comparison is a filter somebody can optimise
+    away on the grounds that a primary key is never null, and this one must survive that.
     """
     if scope.global_:
-        return ShemaProject.id.is_not(None)
+        return true()
     if not scope.regions:
-        return ShemaProject.id.is_(None)
+        return false()
     return ShemaProject.region_key.in_(sorted(scope.regions))
 
 
