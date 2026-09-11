@@ -36,17 +36,18 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
+from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
 PANORAMA_ALIAS = "OV"
-#: How many second tellings of a stretch before the room asks for a person to come and
-#: watch. A warning, not a cap: nothing is refused at or past this number, the next stretch
-#: is taken like any other, and the next turn that lands clears the mark. Measured in the
-#: field at six against three with the passage checked, and kept that way by decision of
-#: the product owner (ENG-706): a team that keeps missing gets company, not a closed door.
+#: How many tellings of one stretch make it a hard stretch. Three is ours — measured in the
+#: field at six against three with the passage checked — and the signal is Marcia's ruling of
+#: 08/09: "keep it, as you have it: a mark, never a wall". Nothing is refused at or past this
+#: number and the next stretch is taken like any other; what the crossing leaves behind is a
+#: row for the facilitator and for the consultant, cleared by nothing that follows.
 RETELLS_BEFORE_A_WARNING = 3
 
 #: Re-exported so the room's callers go on asking the session service what a panorama is.
@@ -62,12 +63,16 @@ def resolve_pericope(pericope: str) -> str:
     """`OV` alone is the panorama of whichever book the room serves, so a client can ask
     for it without naming the book — the canon stays entirely on this side.
 
+    `PANORAMA` (`"panorama"`) resolves the same way: it is the id the passage wheel puts
+    on the wire, so a client that opens a session with the id the wheel just handed it
+    reaches the panorama instead of `require_walkable` refusing a pericope nobody vendored.
+
     It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
     belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
     under another name: a book is not a passage, the room serves one, and `elements_for`,
     `labelled_elements` and `run_turn` already take it as a parameter.
     """
-    if pericope == PANORAMA_ALIAS:
+    if pericope in (PANORAMA_ALIAS, PANORAMA):
         return PANORAMA_PREFIX + ROOM_BOOK
     return pericope
 
@@ -181,6 +186,30 @@ async def get_session_for_facilitator(db: AsyncSession, user: User, session_id: 
     """
     session = await get_session(db, session_id)
     if session.project_id is None or not await facilitates_project(db, user, session.project_id):
+        raise NotFoundError(_no_such_session(session_id))
+    return session
+
+
+async def get_session_for_room_caller(
+    db: AsyncSession, session_id: str, project_id: str | None
+) -> IRSession:
+    """The session, if it belongs to the team the tablet says it is.
+
+    The team's own routes have always resolved a session by id alone, which is safe while
+    everything they do is about a session the tablet already holds. Approving is not: a
+    release is the whole of what a team recorded, and a route that writes one has to know
+    whose passage it is naming.
+
+    A session that names no project is reached by whoever asks, credentialed or not, and is
+    refused further in by name — the release cannot be numbered without a project, and that
+    is a different thing to be told than "no such session". Which caller is holding the
+    tablet does not change it: the session is the one that cannot be released.
+
+    Somebody else's session *is* refused as not found, with the message
+    `get_session_for_facilitator` gives, because unowned is nobody's but owned is somebody's.
+    """
+    session = await get_session(db, session_id)
+    if session.project_id is not None and session.project_id != project_id:
         raise NotFoundError(_no_such_session(session_id))
     return session
 
@@ -367,8 +396,8 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
 
     ``kind`` is required and has no default, because the two are different walks for whoever
     reads the queue and a default would quietly make one of them the other. The three writers
-    each know their own: the tablet's route and the hard stop cannot go on, and the retell
-    budget refuses nothing.
+    each know their own: the tablet's route and the hard stop cannot go on, and a stretch
+    crossing into a hard stretch refuses nothing.
 
     The kind is written on every halt and cleared by none — see ``halt.last``.
 
@@ -540,10 +569,10 @@ async def begin_back_translation_again(
     counting — nothing takes their place, because the clip they explained was thrown away —
     and only what was never theirs is copied in here.
 
-    The retell count carries across. `BackTranslationState(scope=...)` takes every other
-    default, so it went back to zero — and re-recording is a room-key route the team drives
-    by voice. The count that decides when the room asks for a person was reset by tapping
-    "record again", which is exactly the tap a stuck team makes.
+    The count of tellings is not carried and does not need to be: it lives on the stretch, and
+    every stretch of the session stops counting here. What the team tells next is a new stretch
+    on a new recording, counted from one — while the hard stretches already noted stay exactly
+    where they are, in a table this does not touch.
     """
     state = back_translation_of(session)
     told = await final_segments(db, session.id)
@@ -560,6 +589,6 @@ async def begin_back_translation_again(
     await save_back_translation(
         db,
         session,
-        BackTranslationState(scope=state.scope, retells=state.retells, superseded=superseded),
+        BackTranslationState(scope=state.scope, superseded=superseded),
     )
     return back_translation_of(session)

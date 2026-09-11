@@ -23,6 +23,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.hard_stretches import note_a_hard_stretch
 from app.services.internalization_room.segments import (
     capture_segment,
     final_segments,
@@ -33,7 +34,6 @@ from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     append_exchange,
     apply_coverage,
-    back_translation_of,
     begin_back_translation_again,
     comprehension_of,
     create_session,
@@ -244,37 +244,36 @@ async def test_a_fresh_recording_throws_the_whole_telling_back_away(
     db_session: AsyncSession,
 ) -> None:
     session = await create_session(db_session, pericope=P)
-    await save_back_translation(db_session, session, BackTranslationState(scope=P, retells=2))
+    await save_back_translation(db_session, session, BackTranslationState(scope=P))
     await _tell(db_session, session, "velho")
 
-    state = await begin_back_translation_again(db_session, session)
+    await begin_back_translation_again(db_session, session)
 
     assert await final_segments(db_session, session.id) == []
-    assert state.retells == 2, (
-        "o contado de volta é jogado fora; a contagem de recontos não é parte dele. "
-        "Zerá-la punha nas mãos da equipe — por um toque em 'gravar de novo' — o contador "
-        "que decide quando a sala pede uma pessoa"
-    )
     assert session.status is IRSessionStatus.IN_PROGRESS
 
 
 @pytest.mark.asyncio
-async def test_the_retells_are_counted_and_reach_the_warning(db_session: AsyncSession) -> None:
+async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: AsyncSession) -> None:
+    """The count is the stretch's, so the service decides on the stretch and not on the state.
+
+    Written as arithmetic the test did itself, this case asserted nothing about the room: it
+    called `mark_needs_person` and then checked that the room was marked.
+    """
     session = await create_session(db_session, pericope=P)
-    await save_back_translation(
-        db_session, session, BackTranslationState(scope=P, retells=RETELLS_BEFORE_A_WARNING - 1)
-    )
+    told = await _tell(db_session, session, "o trecho")
+    told.tellings = RETELLS_BEFORE_A_WARNING - 1
+    await db_session.commit()
 
-    state = back_translation_of(session)
-    state.retells += 1
-    await save_back_translation(db_session, session, state)
-    if state.retells >= RETELLS_BEFORE_A_WARNING:
-        await mark_needs_person(db_session, session, kind=HaltKind.WARNING)
+    assert await note_a_hard_stretch(db_session, session, told) is False
+    assert session.status is not IRSessionStatus.NEEDS_PERSON
 
-    assert session.status is IRSessionStatus.NEEDS_PERSON, (
-        "contar o mesmo trecho de novo era um ciclo que ninguém contava, e o "
-        "aviso que existia estava numa rota que o app nunca chamava"
-    )
+    told.tellings = RETELLS_BEFORE_A_WARNING
+    await db_session.commit()
+
+    assert await note_a_hard_stretch(db_session, session, told) is True
+    assert session.status is IRSessionStatus.NEEDS_PERSON
+    assert session.halt_kind == HaltKind.WARNING.value
 
 
 @pytest.mark.asyncio
@@ -286,7 +285,6 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
         BackTranslationState(
             scope=P,
             findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
-            retells=2,
         ),
     )
     told = await _tell(db_session, session, "Noemi mandou Rute voltar")
@@ -295,7 +293,6 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
 
     assert await final_segments(db_session, session.id) == []
     assert fresh.findings == []
-    assert fresh.retells == 2
     assert len(fresh.superseded) == 1
     archived = fresh.superseded[0]
     assert archived.findings[0].kind is FindingKind.MISSING

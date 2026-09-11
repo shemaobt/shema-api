@@ -1,6 +1,8 @@
 import json
 import logging
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -8,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRPromptKey, IRSessionStatus
+from app.models.internalization_room import CoverageFrame, CoverageView
+from app.services.internalization_room import background
 from app.services.internalization_room import sessions as service
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import element_keys
@@ -27,6 +31,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus, initial_state
+from app.services.internalization_room.coverage_channel import subscribe
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     build_internalization_release,
@@ -433,3 +438,73 @@ async def test_an_element_the_passage_does_not_hold_is_named_in_the_log(
         "respondendo só em ids que a espinha não tem ficava idêntico a um que nada achou — "
         "foi por essa fresta que a mesma falha passou três vezes"
     )
+
+
+@asynccontextmanager
+async def _handed(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
+    yield db_session
+
+
+async def _settle(session_id: str, turn_id: str) -> None:
+    await background.settle_coverage(
+        session_id=session_id,
+        turn_id=turn_id,
+        team_utterance="a equipe contou a cena",
+        guide_response="o Guia devolveu a pergunta",
+        pericope_num=P,
+    )
+
+
+async def test_a_settled_turn_reaches_every_subscriber_of_its_session_and_no_other(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keys = element_keys(P)
+    one_bead = initial_state(P)
+    one_bead[keys[0]] = CoverageStatus.ENGAGED.value
+
+    async def _classified(**_: Any) -> dict[str, str]:
+        return one_bead
+
+    monkeypatch.setattr(background, "classify_coverage", _classified)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await service.create_session(db_session, pericope=P)
+    other = await service.create_session(db_session, pericope=P)
+
+    async with (
+        subscribe(session.id) as first,
+        subscribe(session.id) as second,
+        subscribe(other.id) as elsewhere,
+    ):
+        await _settle(session.id, "turn-7")
+
+        announced = CoverageFrame(
+            turn_id="turn-7",
+            status="settled",
+            coverage=CoverageView(engaged=1, surfaced=1, total=20, absence_index=6),
+        )
+        assert first.get_nowait() == second.get_nowait() == announced, (
+            "o settle gravava a cobertura e ficava calado, e o app só a via "
+            "adivinhando trinta segundos e perguntando uma vez"
+        )
+        assert elsewhere.empty(), "a cobertura de uma sessão chegava ao assinante de outra"
+
+
+async def test_a_classifier_that_raises_announces_the_failure_instead_of_leaving_the_wait(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _broken(**_: Any) -> dict[str, str]:
+        raise RuntimeError("o modelo caiu")
+
+    monkeypatch.setattr(background, "classify_coverage", _broken)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await service.create_session(db_session, pericope=P)
+
+    async with subscribe(session.id) as waiting:
+        await _settle(session.id, "turn-8")
+
+        assert waiting.get_nowait() == CoverageFrame(
+            turn_id="turn-8", status="failed", coverage=None
+        ), (
+            "o except engolia a falha com um log, e o app esperava o timeout inteiro "
+            "por um turno que nunca ia assentar"
+        )

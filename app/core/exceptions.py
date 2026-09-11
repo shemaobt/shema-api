@@ -1,11 +1,21 @@
+from __future__ import annotations
+
 import logging
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.enums import USER_SETTABLE_CLEANING_STATUSES
+
+if TYPE_CHECKING:
+    # Only for the type checker: `canon/labels.py` reaches back into this module through
+    # `canon/parse_map.py`'s own `from app.core.exceptions import ValidationError`, so a real
+    # top-level import here would be circular. `from __future__ import annotations` above
+    # means this name is never looked up at runtime — `register_exception_handlers` imports
+    # the real class itself, deferred, where it needs the object rather than the type.
+    from app.services.internalization_room.canon.labels import ElementLabelsBroken
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +32,11 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 # longer exists. Just try again.
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
+#: An approval that cannot be numbered, because a release is named by project, pericope
+#: and version and this session names no project. Its own code because the tablet acts on
+#: it: nothing about the passage is wrong and retrying changes nothing — the room was
+#: opened on the shared key, and only a credentialed device can approve.
+ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
@@ -83,6 +98,16 @@ class ProjectGranularityLocked(ConflictError):
     code promises a version to reload from, and there is none. Nothing the client can do
     makes this write succeed — re-cutting a project at a new granularity re-derives every
     manifest_id it has exported, which is a migration, not a retry.
+    """
+
+
+class ReleaseWithoutProject(ConflictError):
+    """A session opened on the shared room key was asked to approve its passage.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
+    promises a version to reload from, and there is none. Refused rather than numbered in
+    a group belonging to nobody, because a release is named by project, pericope and
+    version, and the shared key names no project.
     """
 
 
@@ -237,6 +262,15 @@ async def handle_project_granularity_locked(
     )
 
 
+async def handle_release_without_project(
+    _request: Request, exc: ReleaseWithoutProject
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_RELEASE_WITHOUT_PROJECT),
+    )
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -290,6 +324,28 @@ async def handle_not_found_error(_request: Request, exc: NotFoundError) -> JSONR
     )
 
 
+async def handle_element_labels_broken(_request: Request, exc: ElementLabelsBroken) -> JSONResponse:
+    """Our own label catalogue is holed — the caller's request was fine.
+
+    Still a 500, and still logged as ours: `ElementLabelsBroken`'s own docstring argues why a
+    hole in a file we ship is never the caller's mistake. What changes is that the body names
+    the pericope, the key and the language `str(exc)` already carries, instead of the generic
+    catch-all's "please try again later" — the difference between a blank Desk screen and one
+    that says which bead is missing.
+
+    `logger.exception`, not `logger.error`: a specific handler stays on `ExceptionMiddleware`,
+    which does not re-raise once it has built a response, unlike `ServerErrorMiddleware` for
+    the bare-`Exception` fallback this used to reach — so `handle_unexpected`'s own
+    `logger.exception` never runs for this one, and this is the only place left to keep the
+    stack trace.
+    """
+    logger.exception("Label catalogue is broken: %s", exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=_error_body(str(exc), ERROR_CODE_INTERNAL),
+    )
+
+
 async def handle_unexpected(_request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled exception")
     return JSONResponse(
@@ -326,6 +382,12 @@ async def handle_http_exception(_request: Request, exc: StarletteHTTPException) 
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    # The real class, not just the type: `add_exception_handler` needs the object to match
+    # against. Deferred rather than a top-level import for the same circularity the
+    # `TYPE_CHECKING` block above avoids — by the time this function runs, every router has
+    # already imported `canon/labels.py` in full, so this is safe.
+    from app.services.internalization_room.canon.labels import ElementLabelsBroken
+
     app.add_exception_handler(StarletteHTTPException, handle_http_exception)  # type: ignore[arg-type]
     app.add_exception_handler(AuthenticationError, handle_authentication_error)  # type: ignore[arg-type]
     app.add_exception_handler(AuthorizationError, handle_authorization_error)  # type: ignore[arg-type]
@@ -336,6 +398,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     # above regardless of the order these are registered in.
     app.add_exception_handler(SessionLockChanged, handle_session_lock_changed)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
+    app.add_exception_handler(ReleaseWithoutProject, handle_release_without_project)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
@@ -343,4 +406,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
+    app.add_exception_handler(ElementLabelsBroken, handle_element_labels_broken)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)

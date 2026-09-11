@@ -16,15 +16,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError
+from app.core.exceptions import ConflictError, ReleaseWithoutProject
 from app.db.models.internalization_room import (
     IRQuestion,
+    IRRelease,
     IRSegment,
     IRSession,
     IRTake,
@@ -58,8 +61,9 @@ from app.services.internalization_room.takes import takes_of
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
 #: key says ``segments`` because that is what they are. Bumped again to v0.3 when the
 #: conversation-mode key left the payload with the mode itself: a consumer diffing the two
-#: versions finds one key gone and nothing renamed.
-SCHEMA_VERSION = "tripod.internalization-release.v0.3"
+#: versions finds one key gone and nothing renamed. And to v0.4 with ``release_id`` and
+#: ``version``: the packet says which approved draft it is, or says it is none.
+SCHEMA_VERSION = "tripod.internalization-release.v0.4"
 
 
 class InternalizationReleaseBlocked(ConflictError):
@@ -193,10 +197,12 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     restated, so what counts as words stays one sentence in one place: the analyst is numbered
     off that same list, and the two must not drift.
 
-    ``package_sha256`` is taken before ``created_at`` is written into the returned dict:
-    ``created_at`` records when this read happened, not what the session holds, and two reads
-    of an unchanged session must carry one hash. Stamping the clock first fingerprinted it
-    along with the content.
+    ``package_sha256`` is taken before ``created_at``, ``release_id`` and ``version`` are
+    written into the returned dict, so the hash covers none of the three. ``created_at``
+    records when this read happened and not what the session holds; the other two say which
+    approval this content became. All three would move without the content moving, and two
+    reads of an unchanged session must carry one hash. A consumer verifying the fingerprint
+    drops those three keys and hashes the rest.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -290,7 +296,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "back_translation": {
             "scope": telling_back.scope,
             "checked": telling_back.checked,
-            "retells": telling_back.retells,
             "segments": [_segment_view(segment) for segment in told],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
             "played_ranges": telling_back.played_ranges,
@@ -315,5 +320,109 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         + len(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
+    approved = await _release_of(db, session, artifact["package_sha256"])
+    artifact["release_id"] = approved.id if approved else None
+    artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     return artifact
+
+
+async def _release_of(
+    db: AsyncSession, session: IRSession, package_sha256: str
+) -> IRRelease | None:
+    """The release this content *is*, if this content is the approved draft of the passage.
+
+    Literally the question the approval asks, over the same row: the last release of this
+    pericope and project, kept only when its hash is the fresh one. Scoping it to the session
+    instead would let the composer and the approval disagree — after another conversation
+    about the same passage approved a v2, a read of the first session would still name its
+    v1 while approving it would mint a v3, and the packet would name a draft that is no
+    longer the one the passage is on.
+
+    A session that names no project has no release to be: the number is per project, and a
+    room on the shared key names none.
+    """
+    if session.project_id is None:
+        return None
+    latest = await _latest_release(db, session.project_id, session.pericope)
+    if latest is None or latest.package_sha256 != package_sha256:
+        return None
+    return latest
+
+
+async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
+    """The last release of this passage for this team, whichever session wrote it.
+
+    Scoped to the project and the pericope and not to the session, because that is what the
+    number is per: two conversations about one passage share the sequence, and numbering each
+    session on its own would hand Marcia two drafts both called v1.
+    """
+    result = await db.execute(
+        select(IRRelease)
+        .where(IRRelease.project_id == project_id, IRRelease.pericope == pericope)
+        .order_by(IRRelease.version.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def approve_release(db: AsyncSession, session: IRSession) -> IRRelease:
+    """The team approves this passage: one numbered row, or the one that already says it.
+
+    Refused before anything is composed when the session names no project, because the
+    number is per project and per pericope and there is nothing to number it under. The
+    blockers the packet already raises are the gate this has: whether a passage *may* be
+    approved is ENG-882, and this only records that it was.
+
+    Unchanged content returns the release that already exists rather than minting a version
+    beside it: a new **Version** starts with zero listeners on Marcia's external check, so
+    one that means nothing changed is worse than none. "Unchanged" is measured against the
+    last release of this pericope and project — a packet that comes back to an earlier
+    version's content is a later draft, not that version again, and giving its number back
+    would put comments on a draft nobody is looking at.
+
+    The number is one past the last, which two approvals arriving together can both read.
+    The unique index is what refuses the second, and the refusal is answered rather than
+    retried: the tablet asks again and the second ask returns the release the first one
+    wrote, because by then the winner is what ``_latest_release`` reads.
+
+    The house loop for this shape retries the allocation instead — ``tier_a_service`` and
+    ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
+    winner. Rejected here on purpose: those allocate a number nobody is waiting on, while a
+    second approval of an unchanged packet must come back with the *same* release, and a loop
+    that re-allocates after losing the race would mint the version the idempotency check
+    exists to prevent. Answering the caller keeps the decision in one place.
+    """
+    if session.project_id is None:
+        raise ReleaseWithoutProject(
+            "this session names no project, so a release for it cannot be numbered"
+        )
+
+    packet = await build_internalization_release(db, session)
+    latest = await _latest_release(db, session.project_id, session.pericope)
+    if latest is not None and latest.package_sha256 == packet["package_sha256"]:
+        return latest
+
+    release_id = str(uuid.uuid4())
+    version = latest.version + 1 if latest is not None else 1
+    packet["release_id"] = release_id
+    packet["version"] = version
+    release = IRRelease(
+        id=release_id,
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        version=version,
+        package_sha256=packet["package_sha256"],
+        packet=packet,
+    )
+    db.add(release)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ConflictError(
+            "another approval took this version while this one was being written"
+        ) from exc
+    await db.refresh(release)
+    return release
