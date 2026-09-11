@@ -233,6 +233,48 @@ async def test_a_p02_telling_with_the_swapped_cause_is_refused_by_name(client, d
     assert await _releases_of(db_session, session.id) == []
 
 
+async def test_the_facilitator_forces_past_a_rehearsal_only_half_heard(
+    client, db_session, room_app
+):
+    """The other half of her gate, and the other half of what a code sets aside.
+
+    Everything about this session is clean except that the tablet reports playing twenty of
+    the sixty-one seconds: the team closed on a recording they did not hear through, which the
+    release refuses. It is a dispute about what happened in the room and not missing material,
+    so it is forceable — and without a case here, dropping `playback_did_not_cover_the_clip`
+    from `FORCEABLE_BLOCKERS` would leave the whole suite green.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    state = back_translation_of(session)
+    state.checked = True
+    state.findings = []
+    await report_playback(
+        db_session,
+        session,
+        state,
+        played_by_take=[
+            PlayedTake(take_id="ensaio-1", played_ranges=[[0, 20000]], clip_duration_ms=CLIP_MS)
+        ],
+        played_ranges=[[0, 20000]],
+        clip_duration_ms=CLIP_MS,
+    )
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    refused = await client.post(_team_release(session.id), headers=_team(credential))
+    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+
+    assert refused.status_code == 409, refused.text
+    assert "playback_did_not_cover_the_clip" in refused.json()["detail"]
+    assert forced.status_code == 200, forced.text
+    assert forced.json()["version"] == 1
+    (row,) = await _releases_of(db_session, session.id)
+    assert row.forced_at is not None
+    assert row.forced_open_findings == [], (
+        "nada estava em aberto: o que foi forçado foi a escuta, e o registro diz isso"
+    )
+
+
 async def test_the_facilitator_forces_the_release_and_the_row_says_so(client, db_session, room_app):
     """The other half of the gate: the road out, and the record it leaves behind.
 
@@ -595,5 +637,9 @@ async def test_the_migration_adds_the_four_columns_both_ways(applied_database):
             {"id": SEEDED_RELEASE},
         )
         is None
-    ), "a linha que já existia sobrevive à volta, o que só é possível com as colunas anuláveis"
+    ), (
+        "a coluna volta vazia e não preenchida: quem prova que ela é anulável é o próprio "
+        "upgrade acima, que numa tabela com linhas falharia se fosse NOT NULL — esta linha "
+        "recusa um server_default que inventasse um facilitador para quem nunca forçou nada"
+    )
     assert await scalar(applied_database, f"SELECT count(*) FROM {TABLE}", {}) == 1

@@ -13,7 +13,6 @@ the rows were carrying go with the column, and the restored column holds the sam
 """
 
 import uuid
-from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -22,8 +21,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from tests.alembic_harness import columns_of, run_alembic, scalar
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 REVISION = "20260909_mode01"
 PREVIOUS_REVISION = "20260908_arr02"

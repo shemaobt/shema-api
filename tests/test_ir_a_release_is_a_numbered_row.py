@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import uuid
-from pathlib import Path
 
 import httpx
 import pytest
@@ -41,8 +40,6 @@ from tests.baker import (
 )
 from tests.test_internalization_room_release import P, _one_stretch, _ready_session
 from tests.test_ir_project_id import KEY, PREFIX, a_claimed_device
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 APP_KEY = "internalization-room"
 

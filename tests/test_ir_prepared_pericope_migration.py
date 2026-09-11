@@ -11,7 +11,6 @@ itself would notice.
 """
 
 import uuid
-from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -20,8 +19,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from tests.alembic_harness import columns_of, run_alembic
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 REVISION = "20260820_0004"
 PREVIOUS_REVISION = "20260820_0002"

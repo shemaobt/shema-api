@@ -14,7 +14,6 @@ session tables it never created scratched would be found here and nowhere else.
 
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -23,8 +22,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from tests.alembic_harness import run_alembic, tables_of
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
 
 REVISION = "20260828_seg01"
 PREVIOUS_REVISION = "20260823_join4"
