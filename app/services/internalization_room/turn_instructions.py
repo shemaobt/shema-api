@@ -69,15 +69,6 @@ OPENING_INSTRUCTION = (
     "waits until they show they have the part."
 )
 
-ALREADY_MET_INSTRUCTION = (
-    "This passage's session is starting now and the team has not spoken yet. "
-    "You just walked the book's panorama together, so the team already knows "
-    "you: do NOT introduce yourself again or say your name. Go straight into "
-    "the passage: give the team the whole before the parts, and stay with the "
-    "team on understanding — the invitation to rehearse waits until they show "
-    "they have the part."
-)
-
 OPENING_MOVEMENT_INSTRUCTION = (
     "Write this opening in two movements, separated by a line containing only "
     f"{OPENING_MOVEMENT_MARK} and nothing else. Before the line: the whole of the "
