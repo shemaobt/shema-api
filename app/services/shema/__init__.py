@@ -46,6 +46,16 @@ anything is written anywhere; and ``import_submission.py`` writes the record thr
 around — an imported progress change and a typed one are one path, which is what makes them
 indistinguishable afterwards.
 
+**BE-07 landed the health assessment**, and it is four files for the reasons above rather than
+for a new one. ``append_assessment.py`` is the **only** writer of
+``shema_health_assessments`` and the only thing that moves the record's seven flat health
+fields, so *the projection is the newest entry* cannot be made false by a second writer;
+``_health_audience.py`` is the sole owner of *who may read a reading of a team*, which is a
+narrower question than who may open the record, and it answers it once for the read gate and
+for the recipient list so the two cannot drift; ``_health_notice.py`` owns what a notice about a
+struggling team may say, which is the part of that feature that actually needed deciding; and
+``list_assessments.py`` is the history behind the narrower gate.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
@@ -70,6 +80,13 @@ from app.services.shema._form_definitions import (
     publish_definition,
 )
 from app.services.shema._form_validation import record_update, validated_answers
+from app.services.shema._health_audience import (
+    HEALTH_AUDIENCE,
+    reads_assessments,
+    recipients,
+    require_reads_assessments,
+)
+from app.services.shema._health_notice import entered_critical, notice_body, notify_critical
 from app.services.shema._intake_tokens import (
     DEFAULT_LINK_DAYS,
     MAX_LINK_DAYS,
@@ -107,12 +124,14 @@ from app.services.shema._scope import (
 )
 from app.services.shema._submission_archive import MAX_PAYLOAD_BYTES, archived_answers
 from app.services.shema._submission_notices import notify_submission
+from app.services.shema.append_assessment import append_assessment
 from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
 from app.services.shema.get_project import get_project
 from app.services.shema.get_session import get_session
 from app.services.shema.import_submission import apply_submission, import_submission
+from app.services.shema.list_assessments import list_assessments
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_projects import list_projects
 from app.services.shema.read_intake_form import form_fields, read_intake_form
@@ -125,6 +144,7 @@ from app.services.shema.set_region_scope import set_region_scope
 
 __all__ = [
     "DEFAULT_LINK_DAYS",
+    "HEALTH_AUDIENCE",
     "MAX_LINK_DAYS",
     "MAX_PAYLOAD_BYTES",
     "Aggregates",
@@ -132,6 +152,7 @@ __all__ = [
     "ProgressSource",
     "RecordVersionConflict",
     "RegionScope",
+    "append_assessment",
     "apply_submission",
     "archived_answers",
     "as_received",
@@ -148,6 +169,7 @@ __all__ = [
     "current_definition",
     "definition_at",
     "derive_region",
+    "entered_critical",
     "expires_on",
     "field_changes",
     "form_fields",
@@ -157,11 +179,14 @@ __all__ = [
     "is_authorized",
     "is_withheld",
     "link_status",
+    "list_assessments",
     "list_intake_links",
     "list_projects",
     "list_submissions",
     "log_reference",
     "mint_token",
+    "notice_body",
+    "notify_critical",
     "notify_submission",
     "prayer_visibility",
     "publish_definition",
@@ -171,11 +196,14 @@ __all__ = [
     "read_intake_form",
     "read_record",
     "read_submission",
+    "reads_assessments",
     "receive_submission",
+    "recipients",
     "record_progress",
     "record_update",
     "recorded_decision",
     "region_scope",
+    "require_reads_assessments",
     "revoke_intake_link",
     "roll_up",
     "save_project",
