@@ -22,11 +22,8 @@ from app.models.internalization_room import PericopePosition
 from app.models.team import ActivePassageView, FacilitatorTeamDetail
 from app.services.internalization_room.canon.elements import scene_key, scene_of
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
-from app.services.internalization_room.coverage_events import (
-    furthest_by_passage,
-    necklace_with_touches,
-)
-from app.services.internalization_room.progression import resolve, standing
+from app.services.internalization_room.coverage_events import necklace_with_touches
+from app.services.internalization_room.progression import finished_passages, resolve, standing
 from app.services.project.list_facilitator_teams import _facilitated_projects, team_cards
 from app.services.project.team_state import team_state
 
@@ -40,23 +37,15 @@ async def read_facilitator_team(
     and one that is not the caller's are indistinguishable from here, which is what lets the
     route answer them with one refusal. Telling them apart is the enumeration ENG-443 closed.
 
-    Three statements and none of them grows: the team's row, the whole of its coverage history
-    for the book, and the necklace of the passage it is standing on. The second serves both the
-    active passage and ``closed_total`` from one read rather than asking twice.
+    Three statements and none of them grows: the team's row, the passages it has finished, and
+    the necklace of the passage it is standing on. The second serves both the active passage
+    and ``closed_total`` from one read rather than asking twice.
 
-    Measured on a throwaway Postgres 17 with 210,000 events over 200 teams, ``ANALYZE``d, and
-    not against an empty table — both reads take a **Bitmap Index Scan** on
-    ``ix_ir_coverage_events_element_touched``:
-
-    ==========================  =======  =========  ======
-    read                        buffers  time       rows
-    ==========================  =======  =========  ======
-    the book, for one team           31  1.86 ms       350
-    the necklace of one passage       5  0.065 ms       25
-    ==========================  =======  =========  ======
-
-    Neither is a sequential scan, and the number that matters is that the cost is the size of
-    the **answer** rather than the size of the installation.
+    The necklace read was measured on a throwaway Postgres 17 with 210,000 events over 200
+    teams, ``ANALYZE``d and not against an empty table: a **Bitmap Index Scan** on
+    ``ix_ir_coverage_events_element_touched``, 5 buffers and 0.065 ms for 25 rows. What that
+    number says is that the cost is the size of the **answer** rather than the size of the
+    installation, which is the property this route is built on.
     """
     moment = now or datetime.now(UTC)
     scope = _facilitated_projects(user)
@@ -64,9 +53,9 @@ async def read_facilitator_team(
     if row is None:
         return None
 
-    reached = (await furthest_by_passage(db, project_ids=[team_id])).get(team_id, {})
-    here = resolve(reached)
-    closed = sum(1 for entry in standing(reached) if entry.position is PericopePosition.CLOSED)
+    finished = (await finished_passages(db, project_ids=[team_id])).get(team_id, set())
+    here = resolve(finished)
+    closed = sum(1 for entry in standing(finished) if entry.position is PericopePosition.CLOSED)
 
     return FacilitatorTeamDetail(
         team_id=row.id,

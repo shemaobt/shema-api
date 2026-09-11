@@ -38,6 +38,7 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.sessions import apply_coverage, create_session
 from tests.baker import (
     grant_facilitator_app_role,
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -137,17 +138,14 @@ async def a_session(
 async def having_closed(db: AsyncSession, team, *passages: str) -> None:
     """Walk this team through these passages the way the room does.
 
-    The coverage events — what these routes actually read — are still written by
+    The coverage events — what the necklace and the element list read — are still written by
     `apply_coverage`, so the fixture cannot agree with a route that reads them differently
-    from how the room writes them. `open_ir_session` says what it inserts and when.
+    from how the room writes them. `open_ir_session` says what it inserts and when. Closing
+    is the second half and a different fact: the team recorded their rehearsal of it.
     """
     for passage in passages:
         session = await open_ir_session(db, pericope=passage, project_id=team.id)
-        await apply_coverage(
-            db,
-            session.id,
-            dict.fromkeys(element_keys(passage), CoverageStatus.PARTIALLY_ENGAGED.value),
-        )
+        await having_finished_the_passage(db, session)
 
 
 async def having_closed_the_book(db: AsyncSession, team) -> None:
@@ -158,19 +156,12 @@ async def having_closed_the_book(db: AsyncSession, team) -> None:
     passages because "complete" now means the book, not a session — and since ENG-589 eight of
     them are no longer passages the room will open, which is what `open_ir_session` covers.
     """
-    from app.services.internalization_room import sessions as room
-    from app.services.internalization_room.canon.elements import element_keys
     from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-    from app.services.internalization_room.coverage import CoverageStatus
 
     for meaning_map in load_book(ROOM_BOOK):
         passage = meaning_map.pericope_num
         session = await open_ir_session(db, pericope=passage, project_id=team.id)
-        await room.apply_coverage(
-            db,
-            session.id,
-            dict.fromkeys(element_keys(passage), CoverageStatus.PARTIALLY_ENGAGED.value),
-        )
+        await having_finished_the_passage(db, session)
 
 
 async def a_raised_hand(
@@ -373,6 +364,7 @@ async def test_closing_one_passage_moves_the_team_on_rather_than_finishing_it(cl
         session.id,
         dict.fromkeys(element_keys("P01"), CoverageStatus.PARTIALLY_ENGAGED.value),
     )
+    await having_finished_the_passage(db_session, session)
     _user, headers = await a_facilitator(db_session, team)
 
     card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]

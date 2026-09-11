@@ -68,23 +68,27 @@ async def necklace_with_touches(
 ) -> dict[str, BeadHistory]:
     """Where a team's whole necklace stands, and who moved each bead last. One statement.
 
-    This is the only honest reading of a *team's* coverage. ``ir_sessions.coverage_state`` is
-    one session's tracker and nothing more: ``create_session`` opens every session at
-    ``initial_state``, so a bead engaged on Tuesday reads ``not_encountered`` on Wednesday's
-    session. Laying the team's events over the spine is what makes the necklace outlive the
-    conversations that strung it.
+    This is the reading a *team's* coverage comes from, and since ENG-803 it is also what a
+    session opens on: ``create_session`` seeds ``coverage_state`` from this, so Wednesday's
+    tracker starts where Tuesday left the beads instead of at ``initial_state``. Laying the
+    team's events over the spine is what makes the necklace outlive the conversations that
+    strung it, and it is answered here rather than read off a row because the row is one
+    session's and this is the team's.
 
     One window function over one pass picks the row that answers both halves: the events of a
     bead are ordered by how far each took it, ties broken by which came first, and the winner
     carries its own status *and* its own session. Thirty-four beads would otherwise be
     thirty-four round trips for the same rows.
 
-    Ordering by rank rather than by recency is the whole point, and it is not an edge case.
-    Every session opens at ``initial_state``, so a bead the team engaged on Tuesday earns a
-    fresh ``surfaced`` event the moment Wednesday's Guide mentions it again — against
-    Wednesday's own tracker it really did move. At team level it moved nowhere. Taking the
-    most recent event instead would answer ``engaged`` beside Wednesday's session, and tell a
-    facilitator that a conversation which only surfaced the bead is where it was worked.
+    Ordering by rank rather than by recency is the whole point, and it answers the rows that
+    are already written. Before ENG-803 every session opened at ``initial_state``, so a bead
+    the team engaged on Tuesday earned a fresh ``surfaced`` event the moment Wednesday's Guide
+    mentioned it again — against Wednesday's own tracker it really did move, and at team level
+    it moved nowhere. Taking the most recent event instead would answer ``engaged`` beside
+    Wednesday's session, and tell a facilitator that a conversation which only surfaced the
+    bead is where it was worked. Seeding stops those rows being written from here on, because
+    the mention is now compared against ``engaged`` and is no transition at all; every such
+    row already in the table is still read correctly by this ordering, which is why it stays.
 
     The tie is broken towards the *earliest* of the events that reached the standing status.
     Once a bead is engaged it has nowhere further to go, so a later session reaching ``engaged``
@@ -216,9 +220,10 @@ async def furthest_by_passage(
 async def necklace_of(db: AsyncSession, session: IRSession) -> dict[str, str]:
     """Where every bead of a session's spine stood when that session ended.
 
-    For a session still running, read ``coverage_state`` instead: it is the same answer
-    without the query, and keeping it the fast read is what keeps this table history
-    rather than the source of truth.
+    A session's own spine, which since ENG-803 is not what ``coverage_state`` holds: that
+    column is seeded from the team's whole history at the open, so for a session that returned
+    to a passage the two differ by exactly the beads it was handed. Read the column for what
+    the room is working against; read this for what this conversation itself did.
 
     One statement. The furthest status per element is taken by the database — the scale lives
     in ``coverage.ranks()`` and is handed to SQL as the case that orders it, because a status
@@ -242,20 +247,22 @@ async def necklaces_of(
     """The necklace as it stood at the end of each of these sessions.
 
     **A different question from ``necklace_of`` above, not a better answer to the same one.**
-    That one answers a *session's* spine and answers it correctly: ``create_session`` opens
-    every session at ``initial_state``, so a session's own steps really are its own state at
-    the end. This answers the *team's* passage. RF-06 asks a card for the portrait at that
-    moment and the acceptance criterion is that it match what the necklace showed then — and
-    the necklace is the team's, folded across every conversation that strung it. A card drawn
+    That one answers a *session's* spine — its own steps laid over the canon's, which is what
+    that conversation itself did, and no longer what ``coverage_state`` holds now that a
+    session is seeded from the team's history. This answers the *team's* passage. RF-06 asks a
+    card for the portrait at that moment and the acceptance criterion is that it match what the
+    necklace showed then — and the necklace is the team's, folded across every conversation
+    that strung it. A card drawn
     from one session's steps would sit under a panel showing everything the team has done and
     disagree with it, which is the one thing the issue says must not happen. The two are near
     enough to be mistaken for one another, which is why this paragraph is here.
 
     The fold is ``necklace_with_touches``'s, deliberately: furthest rank per bead, never most
-    recent. Every session opens at ``initial_state``, so a bead engaged on Tuesday earns a
-    fresh ``surfaced`` step the moment Wednesday's Guide mentions it — against Wednesday's own
-    tracker it moved, and at team level it moved nowhere. Taking the latest step instead would
-    walk a bead backwards on the newer card.
+    recent. Before ENG-803 every session opened at ``initial_state``, so a bead engaged on
+    Tuesday earned a fresh ``surfaced`` step the moment Wednesday's Guide mentioned it — against
+    Wednesday's own tracker it moved, and at team level it moved nowhere. Taking the latest step
+    instead would walk a bead backwards on the newer card. Seeding stops such a step being
+    written from here on; the ones already in the table are read correctly by this ordering.
 
     Scoped by project **and** passage, for the reason an element key is the canon's: two teams
     working Ruth both carry ``being:B3``. Both scopes come free here — the caller hands over
