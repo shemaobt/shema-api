@@ -239,8 +239,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
 
     if readiness.evaluation.outcome.value == "needs_more_work":
         blockers.append("comprehension_needs_more_work")
-    if not comprehension.recording_consent_given:
-        blockers.append("recording_consent_never_given")
     if not floor_met(session.coverage_state or {}, session.pericope):
         blockers.append("coverage_floor_not_met")
     if not ensaio_takes:

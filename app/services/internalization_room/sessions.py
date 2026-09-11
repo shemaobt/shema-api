@@ -334,14 +334,15 @@ def semantics_ready(session: IRSession) -> bool:
 
 
 def session_is_done(session: IRSession) -> bool:
-    """The full advance gate: coverage floor, semantic readiness with practice, and the
-    team's explicit recording consent. Coverage bookkeeping alone can no longer end the
-    interview — that is what let bridge-limited teams be judged on Portuguese output."""
-    return (
-        floor_met(session.coverage_state or {}, session.pericope)
-        and semantics_ready(session)
-        and comprehension_of(session).recording_consent_given
-    )
+    """The advance gate, with the third term removed rather than replaced.
+
+    It used to end on the team's answer to the app's own yes/no recording question. The room
+    has no such question any more, so nothing could ever write that flag again and the gate
+    would have held every session open for good. What closes a passage instead is ENG-803's
+    to say — the Guide's send-off and a rehearsal take that was kept — and until it lands the
+    floor and the practice reading close the session between them.
+    """
+    return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(session)
 
 
 async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:

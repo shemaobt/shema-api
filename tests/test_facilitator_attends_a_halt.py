@@ -790,7 +790,6 @@ def _ready_comprehension() -> ComprehensionState:
             for index, checkpoint in enumerate(checkpoints_for(P))
         ],
         practiced_scene_ids=scene_ids_for(P),
-        recording_consent_given=True,
     )
 
 

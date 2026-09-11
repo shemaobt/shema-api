@@ -59,7 +59,6 @@ def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
     return ComprehensionState(
         ledger=ledger,
         practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
     )
 
 
