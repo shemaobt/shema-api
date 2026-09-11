@@ -292,6 +292,24 @@ async def test_a_patch_whose_if_match_is_not_a_version_is_refused(client, header
     assert response.status_code == 400
 
 
+async def test_the_version_bump_matches_nothing_once_the_row_has_moved(db_session) -> None:
+    """The **race** guard on its own, which the client guard above cannot stand in for.
+
+    Two requests that both read version 7 both pass the check against the row they loaded;
+    what separates them is the conditional ``UPDATE``, which the second one finds matching no
+    rows. Exercised directly because the two-connection race it exists for cannot be measured
+    where this suite runs — SQLite serialises writers, so a test that *looked* like a race
+    would pass without the predicate being there at all. This asserts the predicate.
+    """
+    from app.services.shema.save_project import _bump_version
+
+    project = await make_shema_project(
+        db_session, project_id="mixteco-penasco", region_key=ShemaRegionKey.NORTH_AMERICA
+    )
+    assert await _bump_version(db_session, project, 1) == 2
+    assert await _bump_version(db_session, project, 1) is None
+
+
 async def test_a_stale_save_is_refused_with_what_moved_and_who_moved_it(
     client, db_session, headers, coordinator
 ) -> None:
