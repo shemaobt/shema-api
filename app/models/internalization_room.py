@@ -452,8 +452,31 @@ class BackTranslationChunkResponse(BaseModel):
     needs_person: bool = False
 
 
+class PlayedTake(BaseModel):
+    """What the tablet played of one rehearsal part, in that part's own milliseconds.
+
+    The part is named, and that is the whole of it. A report over the glued passage said a clip
+    had been played through without saying which clip, so it went on reading as proof after the
+    team recorded one part again — and it threw away their listening to every other part with
+    it. Named, the rule the room applies is per part: what the team heard of one part is judged
+    against that part alone.
+
+    The tablet keeps the ledger and sends all of it every time, because what is stored is what
+    was sent: a report listing one part is a report that one part was played and the others
+    were not.
+
+    A length of zero is the honest default for an entry that arrives without one, rather than a
+    refusal. Nothing can be measured against it, so it costs the release — and `terminei` still
+    answers, which is the line `FinishBackTranslationRequest` draws below.
+    """
+
+    take_id: str
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int = Field(default=0, ge=0)
+
+
 class FinishBackTranslationRequest(BaseModel):
-    """What the tablet actually played of the team's own recording, in milliseconds.
+    """What the tablet actually played of the team's own recording, part by part.
 
     Optional end to end, and the room still answers `terminei` without it: the analysis
     already happens only after the client let the clip run to its end, so an app that sends
@@ -461,11 +484,17 @@ class FinishBackTranslationRequest(BaseModel):
 
     What it loses is the release. The report is the only evidence the room has that the team
     heard their own recording before the telling-back was blessed, so a session that never
-    sends one is refused at the handoff rather than travelling on silence. Which rehearsal the
-    report is about is not asked of the tablet — the server stamps it, so no app in the field
-    has to be updated to release.
+    sends one is refused at the handoff rather than travelling on silence.
+
+    The two flat fields are the shape the tablets in the field still send, and they are still
+    accepted and still stored, because they are the record of what that build reported. They
+    are evidence of nothing: they carry no subject, so nothing can tell whether they are about
+    the recordings this session is standing on. `played_by_take` is what the gate reads, and an
+    app that sends only the flat pair cannot release until it plays the rehearsal through on a
+    build that names the parts (ADR 0017).
     """
 
+    played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = Field(default=None, ge=0)
 
