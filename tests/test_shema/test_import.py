@@ -234,7 +234,7 @@ class TestTheFlagIsTheClientsAnswer:
         assert only_record(built).flag.sensitive is True
 
     def test_the_export_may_raise_the_flag_over_a_cleared_country(self) -> None:
-        """``zapoteco-de-santiago-lachirigi`` is Confidential in a country seven others are not."""
+        """The real case: one Confidential record in a country seven others are cleared in."""
         built = plan(
             [export_row(location="Mexico", sensitivity="Confidential", sensitiveCountry=True)],
             cleared("Mexico"),

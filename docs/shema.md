@@ -980,8 +980,10 @@ every country the export names for exactly that reason.
 
 **Two one-way rules the gate does not get to override**, both of them BE-16's and both argued
 in that script's docstring. The export may **raise** the flag and may never lower it —
-`zapoteco-de-santiago-lachirigi` is `Confidential` in **Mexico**, where seven other records are
-`Unrestricted`, so a list keyed by country cannot express what that record already states. And
+**one of the two records the export marks** `Confidential` **is in Mexico**, where seven other
+records are `Unrestricted`, so a list keyed by country cannot express what that record already
+states — and which record it is belongs in the import's report, which lives outside the
+repository, not in a design document. And
 clearing a flag needs `--allow-lowering` on top of `--apply`: raising protects and lowering
 exposes, so only one of the two directions is allowed to happen by momentum.
 

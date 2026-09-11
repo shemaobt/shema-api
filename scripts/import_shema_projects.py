@@ -35,14 +35,18 @@ list flags all 127. :class:`SensitiveCountries` is the whole of the rule and
 :func:`_is_sensitive` is the whole of its application.
 
 **Two — the export may raise that flag and may never lower it.** Two records carry
-``sensitiveCountry: true`` and ``sensitivity: "Confidential"``, and one of them —
-``zapoteco-de-santiago-lachirigi`` — is in **Mexico**, where seven other records are
-``Unrestricted``. A list keyed by country cannot express that, and the day the client
-confirms Mexico is a day this import would otherwise quietly unflag a record somebody
-marked confidential. So the two compose, most restrictive wins, and the composition only
-ever goes one way: a country verdict cannot clear a record the export marked. Rule one is
-not weakened by this — nothing here *derives* the flag from the export, and the export is
-never read as permission.
+``sensitiveCountry: true`` and ``sensitivity: "Confidential"``, and **one of the two is in
+Mexico, where seven other records are** ``Unrestricted``. A list keyed by country cannot
+express that, and the day the client confirms Mexico is a day this import would otherwise
+quietly unflag a record somebody marked confidential. So the two compose, most restrictive
+wins, and the composition only ever goes one way: a country verdict cannot clear a record
+the export marked. Rule one is not weakened by this — nothing here *derives* the flag from
+the export, and the export is never read as permission.
+
+Which record that is stays out of this repository, and so does every other flagged id.
+:func:`render_report` names them, which is the reason it is written outside the working tree:
+narrowing *one of eight Mexican records* down to a slug is the disclosure this file exists to
+prevent, and a docstring is a worse place to keep it than a report a reviewer opens once.
 
 **Three — the only operation that can remove protection asks for itself by name.** Lowering
 a flag needs ``--allow-lowering`` on top of ``--apply``. The normal second run — the one
@@ -416,8 +420,8 @@ def _is_sensitive(
 
     Then the export's own marker, which may raise and may never lower: ``sensitiveCountry``
     already true, or a ``sensitivity`` that is not one of the strings asserting *no
-    restriction*. That is the ``zapoteco-de-santiago-lachirigi`` case in the module
-    docstring — a confidential record in a country whose other seven records are not.
+    restriction*. That is rule two of the module docstring — a confidential record in a
+    country whose other seven records are not.
 
     ``location`` is passed in rather than read from ``row`` because a re-run asks about the
     record as it stands today: if a coordinator has corrected the country since the import,
