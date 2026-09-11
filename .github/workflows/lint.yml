@@ -23,6 +23,9 @@ env:
 jobs:
   ruff:
     runs-on: ubuntu-latest
+    # Recent green runs finish in well under a minute (ENG-913); 5 leaves headroom for a
+    # cold `uv sync` without inheriting GitHub's 360-minute default.
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,6 +60,7 @@ jobs:
       DATABASE_URL: sqlite+aiosqlite:///./boot-check.db
       JWT_SECRET_KEY: test-secret-for-ci-only
       INNGEST_DEV: "1"
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -75,6 +79,7 @@ jobs:
 
   mypy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -100,6 +105,7 @@ jobs:
   # the day that list is empty.
   doctrine:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -125,3 +131,28 @@ jobs:
       # checkout, when she has ruled.
       - name: Nothing of Marcia's moved without her word
         run: uv run python scripts/sync_doctrine.py --check
+
+  # `--check` costs two API calls to `MarciaSuzuki/tripod_compiler` and one raw fetch per
+  # vendored file, and nothing invoked it (ENG-926): a vendored map edited by hand, or one
+  # that simply drifted upstream, passed this far green. `GITHUB_TOKEN` raises the runner's
+  # shared, unauthenticated GitHub API rate limit (60 requests/hour per egress IP) to the
+  # per-repository authenticated one — the two API calls are what that ceiling governs.
+  canon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run the canon drift check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/sync_internalization_canon.py --check
