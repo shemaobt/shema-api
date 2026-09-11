@@ -6,10 +6,13 @@ the Conversation with the Guide alone (`CONTEXT.md`, **Telling back**). Her `che
 header rules that the guard scans code and never the prompts, because the prompts are her
 artifacts and she reviews them; the ENG-881 sweep follows that and reads Python literals
 only. So this file is the whole guard over the two back-translation prompts, over the H and
-I lines the room speaks in Portuguese and Spanish, and over the two prompt-key descriptions.
+I lines the room speaks, and over the text of every prompt the room hands a model.
 
-The English *told back* stays: it is the glossary's English term for the act, not the
-retired Portuguese, and a sweep that took it would be a sweep of the wrong language.
+The English *told back* stays where it is hers — the analyst prompt's own output rule is
+phrased about the telling-back — because it is the glossary's English term for the act, not
+the retired Portuguese, and a sweep that took it would be a sweep of the wrong language.
+Our own sentences in the verdict prompt are another matter: ENG-876 reverted those to her
+*translated*, so the file says one thing about the act rather than one of each.
 """
 
 import re
@@ -246,11 +249,130 @@ def test_the_closing_slot_and_the_english_term_stay() -> None:
 
     Her file has no `{{CLOSING}}`: the closings are ours, and a paste of her sections that
     took the slot with it would leave the Speaker to invent the end of every turn.
+
+    The glossary's English is guarded on the analyst prompt, where it is hers. ENG-876
+    reverted the verdict's own sentences to her *translated* and left none of it there: the
+    verdict describes what the room speaks about, and *told back* is the term for the act,
+    not the word the room speaks. The guard is for the sweep that takes the Portuguese,
+    which must not take the English with it wherever it is still hers.
     """
     assert SPEAKER.count(CLOSING_SLOT) == 1, "o veredito perdeu a vaga do fechamento"
-    assert THE_GLOSSARYS_ENGLISH in SPEAKER, (
+    assert THE_GLOSSARYS_ENGLISH in ANALYST, (
         "o termo inglês do glossário saiu junto com o português aposentado"
     )
+
+
+#: Ours, not hers: the four sentences of the verdict prompt that described the room's own
+#: work in the retired words, and the one that gave the turn a length. Marcia's lines beside
+#: them already say *translated*, so the file said both and the Speaker read both.
+OUR_OWN_LINES_IN_HER_WORDS = (
+    "translated for you, in {{SESSION_LANGUAGE}}, what it says",
+    "An internal comparison of that translation against the passage",
+    "in what they translated, no clear difference appeared",
+    "this part is translated and checked",
+    "only ever quote what THEY translated",
+    "just ask them to tap that frase and translate it again",
+)
+#: What each of them said before, folded the same way. Asserted absent as well as present
+#: because a sentence rewritten around neither wording would satisfy one half alone.
+WHAT_OUR_LINES_USED_TO_SAY = (
+    "told you back",
+    "telling-back against",
+    "told back, no clear",
+    "told back and checked",
+    "THEY told back",
+    "tell that piece again",
+)
+#: Hers, and not this ticket's to revert: the law is *translated for you* already, and the
+#: analyst's output rule is phrased about the telling-back in her own hand.
+THE_LAW_IN_HER_WORDS = "only what they translated for you"
+THE_ANALYSTS_OWN_TELLING_BACK = "phrased about the telling-back"
+#: Her line for the turn's shape. *Short* was ours, and both files say there is no length
+#: limit a few lines below — so the prompt asked for a short turn and then said not to.
+ONE_WARM_TURN = "one warm turn"
+A_SHORT_WARM_TURN = "one short, warm turn"
+
+#: The four English lines of the spoken families. Their Portuguese counterparts were put in
+#: the room's own word by ENG-873 and these were left behind, so the room asked a team for a
+#: *translation* in Portuguese and for a *telling* in English, about the same act.
+THE_ENGLISH_STEM = "translat"
+#: The English blocks carry no language tag — H and I are written here because the authored
+#: file has no English to fall back to — so they are cut by the bare family heading.
+_ENGLISH_HEADING = "^### {family}\\..*?(?=^##|\\Z)"
+#: What an English spoken line may no longer say. Bounded, because *translate* carries no
+#: *tell* and a bare `tell` would match nothing here while `told` would match the heading.
+RETIRED_IN_AN_ENGLISH_LINE = re.compile(r"\btell me\b|\btold me\b", re.IGNORECASE)
+
+
+def _english_block(text: str, family: FailSafe) -> str:
+    found = re.search(_ENGLISH_HEADING.format(family=family), text, re.M | re.S)
+    assert found, f"o bloco {family} em inglês não está no suplemento"
+    return found.group(0)
+
+
+def test_the_verdict_prompt_asks_for_one_warm_turn() -> None:
+    """The turn has her shape and no length of ours on top of it.
+
+    *Short* is the July ceiling by another name: the sentence four lines from the bottom
+    says there is no length limit, so the prompt asked for both and the Speaker was free to
+    read either. What keeps a verdict from sprawling is one finding per turn, not a word.
+    """
+    assert ONE_WARM_TURN in SPEAKER, "o veredito não pede mais um turno caloroso"
+    assert A_SHORT_WARM_TURN not in SPEAKER, "o veredito ainda pede um turno curto, palavra nossa"
+    assert NO_LENGTH_LIMIT in SPEAKER
+
+
+def test_our_own_lines_in_the_verdict_say_translated() -> None:
+    """The prompt says *translated* in her sentences and in ours, never one of each.
+
+    The Speaker is told what the team did six times in this file. Four of them were hers and
+    already said *translated*; the rest were ours and said *told back*, which is the English
+    the glossary keeps for the act and not the word the room speaks about it. A file that
+    says both leaves the model to choose, and it chose.
+
+    Gathered before the assertion rather than asserted one by one: a case that stops at the
+    first sentence that never arrived reports it as the whole truth and leaves the other five
+    unwatched.
+    """
+    folded = _one_line(SPEAKER)
+    missing = [line for line in OUR_OWN_LINES_IN_HER_WORDS if line not in folded]
+    still_said = [line for line in WHAT_OUR_LINES_USED_TO_SAY if line in folded]
+
+    assert missing == [], f"as frases nossas não foram revertidas para as dela: {missing}"
+    assert still_said == [], f"o veredito ainda diz o que era nosso: {still_said}"
+    assert THE_LAW_IN_HER_WORDS in folded, "a lei dela saiu junto com as frases nossas"
+    assert THE_ANALYSTS_OWN_TELLING_BACK in _one_line(ANALYST), (
+        "a regra de saída do analista, que é dela, saiu junto"
+    )
+
+
+def test_the_english_h_and_i_lines_ask_for_a_translation() -> None:
+    """The lines the room speaks in English ask for the same act as the Portuguese ones.
+
+    Their `-pt` counterparts were put in the room's own word and these were not, so the same
+    gate spoke of a *translation* in one language and of a *telling* in the other. The header
+    of each family carries the authorization for the wording, by name and date.
+
+    Said and not merely not-said, for the reason the Portuguese case is: a line rewritten
+    around neither verb would satisfy the absence while asking for something the room has no
+    word for.
+    """
+    supplement = _supplement("pt")
+    spoken = [
+        line
+        for family in SPOKEN_FAMILIES
+        for line in _BULLET.findall(_english_block(supplement, family))
+    ]
+    retired = [line for line in spoken if RETIRED_IN_AN_ENGLISH_LINE.search(line)]
+    silent = [line for line in spoken if THE_ENGLISH_STEM not in line.lower()]
+
+    written = sum(SPOKEN_FAMILIES.values())
+
+    assert len(spoken) == written, (
+        f"as famílias faladas em inglês não têm mais {written} fala(s): {spoken}"
+    )
+    assert retired == [], f"uma fala inglesa ainda pede que a equipe conte: {retired}"
+    assert silent == [], f"uma fala inglesa não pede tradução: {silent}"
 
 
 @pytest.mark.parametrize("family", SPOKEN_FAMILIES)
@@ -286,8 +408,19 @@ def test_the_h_and_i_lines_say_traduzir_in_portuguese_and_spanish(
 
 
 @pytest.mark.parametrize("key", list(IRPromptKey))
-def test_no_prompt_key_description_says_retrotraducao(key: IRPromptKey) -> None:
-    """The word the room retired does not survive in what names the prompt to a reader."""
-    assert "retrotradução" not in default_prompt(key)["description"], (
-        f"a descrição de {key} ainda chama a tradução de retrotradução"
+def test_no_prompt_text_says_retrotraducao(key: IRPromptKey) -> None:
+    """The word the room retired does not survive in anything a model is handed.
+
+    It guarded the `description` slot until ENG-876, and that slot has had no runtime reader
+    since ADR 0016 put the prompt text in the files: a word can only reach a team through
+    what a model reads, so the guard moved onto the text itself, where every key is swept.
+
+    The slot is asserted gone in the same case, because a description left in place is a
+    second copy of a prompt's name free to drift from the one the room uses.
+    """
+    served = default_prompt(key)
+
+    assert set(served) == {"name", "prompt"}, f"{key} ainda serve uma descrição sem leitor"
+    assert "retrotradução" not in served["prompt"], (
+        f"o prompt de {key} ainda chama a tradução de retrotradução"
     )

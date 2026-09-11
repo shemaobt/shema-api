@@ -11,19 +11,15 @@ old name **with the values still in it**, and coming back up puts them under the
 again. A rename that quietly drops a column would pass a test that only counted columns.
 """
 
-import subprocess
-import sys
 import uuid
-from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from tests.alembic_harness import columns_of, indexes_of, run_alembic, scalar
 
 #: This migration and the revision it sits on. The parent is the merge revision that
 #: joins the room and device lines: stepping back from a merge revision is ambiguous, so
@@ -33,23 +29,6 @@ REVISION = "20260820_0001"
 PREVIOUS_REVISION = "20260820_merge"
 
 CARRYING_TABLES = ("ir_sessions", "ir_questions", "ir_takes")
-
-
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    import os
-
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
 
 
 async def _build_and_seed(database_url: str) -> dict[str, str]:
@@ -101,30 +80,6 @@ async def _build_and_seed(database_url: str) -> dict[str, str]:
     return {"project_id": project_id, **ids}
 
 
-async def _indexes(database_url: str, table: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        indexes = await conn.run_sync(lambda sync: inspect(sync).get_indexes(table))
-    await engine.dispose()
-    return {i["name"] for i in indexes}
-
-
-async def _columns(database_url: str, table: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        columns = await conn.run_sync(lambda sync: inspect(sync).get_columns(table))
-    await engine.dispose()
-    return {c["name"] for c in columns}
-
-
-async def _scalar(database_url: str, sql: str, params: dict) -> object:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        value = (await conn.execute(text(sql), params)).scalar_one_or_none()
-    await engine.dispose()
-    return value
-
-
 async def _schema_outside_the_carrying_tables(database_url: str) -> set[tuple[str, str, str]]:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
@@ -144,7 +99,7 @@ async def applied_database(tmp_path) -> dict[str, str]:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'ir_migration.db'}"
     seeded = await _build_and_seed(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
 
     return {"url": database_url, **seeded}
@@ -157,27 +112,27 @@ async def test_downgrade_restores_team_id_with_its_values_and_upgrade_puts_them_
     take_id = applied_database["ir_takes"]
     project_id = applied_database["project_id"]
 
-    assert "project_id" in await _columns(url, "ir_takes")
+    assert "project_id" in await columns_of(url, "ir_takes")
 
-    down = _run_alembic(url, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
 
-    after_down = await _columns(url, "ir_takes")
+    after_down = await columns_of(url, "ir_takes")
     assert "team_id" in after_down
     assert "project_id" not in after_down
     assert (
-        await _scalar(url, "SELECT team_id FROM ir_takes WHERE id = :id", {"id": take_id})
+        await scalar(url, "SELECT team_id FROM ir_takes WHERE id = :id", {"id": take_id})
         == project_id
     ), "the rename lost the values on the way down"
 
-    up = _run_alembic(url, "upgrade", REVISION)
+    up = run_alembic(url, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
 
-    after_up = await _columns(url, "ir_takes")
+    after_up = await columns_of(url, "ir_takes")
     assert "project_id" in after_up
     assert "team_id" not in after_up
     assert (
-        await _scalar(url, "SELECT project_id FROM ir_takes WHERE id = :id", {"id": take_id})
+        await scalar(url, "SELECT project_id FROM ir_takes WHERE id = :id", {"id": take_id})
         == project_id
     ), "the rename lost the values on the way back up"
 
@@ -188,23 +143,23 @@ async def test_the_added_columns_go_away_on_downgrade_and_come_back_on_upgrade(
 ):
     url = applied_database["url"]
 
-    assert "project_id" in await _columns(url, table)
+    assert "project_id" in await columns_of(url, table)
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert "project_id" not in await _columns(url, table)
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert "project_id" not in await columns_of(url, table)
 
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
-    assert "project_id" in await _columns(url, table)
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert "project_id" in await columns_of(url, table)
 
 
 async def test_the_round_trip_keeps_the_rows_in_the_carrying_tables(applied_database):
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     for table in CARRYING_TABLES:
-        surviving = await _scalar(url, f"SELECT count(*) FROM {table}", {})
+        surviving = await scalar(url, f"SELECT count(*) FROM {table}", {})
         assert surviving == 1, f"{table} lost its row across the round trip"
 
 
@@ -212,10 +167,10 @@ async def test_nothing_outside_the_carrying_tables_changes(applied_database):
     url = applied_database["url"]
     before = await _schema_outside_the_carrying_tables(url)
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
     after_down = await _schema_outside_the_carrying_tables(url)
 
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
     after_up = await _schema_outside_the_carrying_tables(url)
 
     assert after_down == before
@@ -234,10 +189,10 @@ async def test_the_migration_creates_the_index_the_query_plan_needs(applied_data
     url = applied_database["url"]
     expected = f"ix_{table}_project_id"
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert expected not in await _indexes(url, table)
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert expected not in await indexes_of(url, table)
 
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
-    assert expected in await _indexes(url, table), (
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert expected in await indexes_of(url, table), (
         f"{table} came back without {expected}; a query by project would scan the table"
     )

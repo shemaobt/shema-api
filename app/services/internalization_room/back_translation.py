@@ -8,7 +8,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
@@ -54,9 +54,15 @@ def _without_the_retired_evidence_kind(data: Any) -> Any:
     return {**data, "findings": kept}
 
 
+#: The wire name for a **Filled silence**. Her analyst's contract emits three kinds and marks
+#: one inside the note, so the name is a request in the pending letter rather than something a
+#: reading carries today; until it arrives the effective **Priority** starts one tier down. It
+#: is read here and folded away, and the fact is kept as a flag on the finding.
+_THE_NAME_FOR_A_FILLED_SILENCE = "silence"
+
 _NAMES_READ_AS_ADDITION = frozenset(
     {
-        "silence",
+        _THE_NAME_FOR_A_FILLED_SILENCE,
         "meaning_change",
         "wrong_relation",
         "reordered_event",
@@ -92,11 +98,42 @@ class Finding(BaseModel):
     #: *after* frase N resolves to stretch N+1, so an addition on frase N and that missing
     #: element land on two different stretches while being one swap of one frase.
     chunk: int | None = None
+    #: A **Filled silence**: the telling says something the passage keeps quiet on purpose.
+    #: The top tier of the **Priority**, and the only thing that puts one addition above
+    #: another. It decides the Priority and nothing else — the kind stays `addition` for the
+    #: app, the packet, the golden scripts and the Speaker, and the withheld content is
+    #: never named.
+    fills_silence: bool = False
+    #: Whether a Correction check raised it. What a mend broke is answered on the stretch the
+    #: team just retold rather than behind whatever outranks it elsewhere, so the flag keeps
+    #: the front for as long as the finding is on the list. The front used to be list
+    #: position alone, which the Priority applied at the pick would have read straight past.
+    raised_by_check: bool = False
 
-    @field_validator("kind", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def _a_name_that_reads_as_addition(cls, value: Any) -> Any:
-        return _what_a_name_reads_as(value) if isinstance(value, str) else value
+    def _a_name_that_reads_as_addition(cls, data: Any) -> Any:
+        """The wire name folded to the kind every consumer sees, the silence kept as a flag.
+
+        One fold for a fresh reply and for a stored row, because the two are the same
+        question asked in two places: after the collapse to three kinds a **Filled silence**
+        *is* an addition, and nothing structured in a finding tells it from any other.
+
+        A flag already set is never cleared. The state is a JSON column revalidated on every
+        request, so a row written with it comes back naming `addition`, and a fold that read
+        the name alone would take the silence out of the finding the moment it was stored.
+        """
+        if not isinstance(data, dict):
+            return data
+        raw = data.get("kind")
+        if not isinstance(raw, str):
+            return data
+        return {
+            **data,
+            "kind": _what_a_name_reads_as(raw),
+            "fills_silence": bool(data.get("fills_silence"))
+            or raw == _THE_NAME_FOR_A_FILLED_SILENCE,
+        }
 
 
 class BtAnalysis(BaseModel):
@@ -424,7 +461,8 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         if not isinstance(entry, dict):
             _refused("an entry in findings is not an object", raw, session)
             return None
-        kind_raw = _what_a_name_reads_as(str(entry.get("kind", "")))
+        wire_name = str(entry.get("kind", ""))
+        kind_raw = _what_a_name_reads_as(wire_name)
         note = str(entry.get("note", "")).strip()
         if not note:
             _refused("a finding has an empty note", raw, session)
@@ -445,7 +483,16 @@ def _parse_analysis(raw: str, segments: list[IRSegment]) -> BtAnalysis | None:
         )
         if kind is FindingKind.MISSING and chunk is None:
             _landed_without_a_frase(raw, session)
-        findings.append(Finding(kind=kind, note=note[:1000], chunk=chunk, segment_id=lands_on))
+        findings.append(
+            Finding.model_validate(
+                {
+                    "kind": wire_name,
+                    "note": note[:1000],
+                    "chunk": chunk,
+                    "segment_id": lands_on,
+                }
+            )
+        )
 
     _dropped(reported, raw, f"session {session}")
     return BtAnalysis(findings=findings)
@@ -779,16 +826,26 @@ def _parse_correction(raw: str, segment_id: str, chunk: int) -> CorrectionCheck 
         note = str(entry.get("note", "")).strip()
         if not note:
             return None
-        kind_raw = _what_a_name_reads_as(str(entry.get("kind", "")))
+        wire_name = str(entry.get("kind", ""))
         try:
-            kind = FindingKind(kind_raw)
+            kind = FindingKind(_what_a_name_reads_as(wire_name))
         except ValueError:
             logger.warning("BT correction returned an unknown finding kind: %s", entry)
             return None
         if kind not in CORRECTION_KINDS:
             logger.warning("BT correction returned a kind it cannot judge: %s", entry)
             return None
-        findings.append(Finding(kind=kind, note=note[:1000], segment_id=segment_id, chunk=chunk))
+        findings.append(
+            Finding.model_validate(
+                {
+                    "kind": wire_name,
+                    "note": note[:1000],
+                    "segment_id": segment_id,
+                    "chunk": chunk,
+                    "raised_by_check": True,
+                }
+            )
+        )
 
     brought_back = _elements_brought_back(parsed.get("brought_back"))
     if brought_back:
@@ -799,7 +856,11 @@ def _parse_correction(raw: str, segment_id: str, chunk: int) -> CorrectionCheck 
         reported = list(findings)
         findings.extend(
             Finding(
-                kind=FindingKind.MISSING, note=element[:1000], segment_id=segment_id, chunk=chunk
+                kind=FindingKind.MISSING,
+                note=element[:1000],
+                segment_id=segment_id,
+                chunk=chunk,
+                raised_by_check=True,
             )
             for element in lost or []
             if not _already_reported(element, reported)
@@ -831,7 +892,7 @@ def correction_to_verify(
     """What the retelling answers, the stretch it was raised on, and the stretch replacing it.
 
     One shape counts as a correction: the reading's own list of stretches, with exactly one
-    position now held by a different row, and that position is the one the current finding
+    position now held by a different row, and that position is the one the finding that leads
     names, and the row that stood there was superseded by the row standing there now.
 
     Everything else falls through to the full reading, which is the answer that is never wrong
@@ -1004,24 +1065,87 @@ def _swaps(findings: list[Finding]) -> list[tuple[int, int]]:
     return swaps
 
 
-#: Which finding this turn is about, before any swap is looked for: the analyst's first, in
-#: the order it answered in. The one place that says so — the priority among findings is its
-#: own question, and a second expression of this would be a second thing free to answer it.
-THE_CURRENT_FINDING = 0
+#: The **Priority**, as Marcia wrote it correcting the P02 example: *silêncio preenchido >
+#: outro acréscimo > falta > pouco claro*. A **Filled silence** is an addition whose flag is
+#: set, so the top tier is not a kind and cannot be keyed off this table alone.
+_PRIORITY = {FindingKind.ADDITION: 1, FindingKind.MISSING: 2, FindingKind.UNCLEAR: 3}
+_A_FILLED_SILENCE = 0
+
+
+def _tiers(findings: list[Finding]) -> list[int]:
+    """Where each finding sits in the **Priority**, each swap taking its addition's tier.
+
+    A swap is one thing the team did, and the addition is the half that names the stretch.
+    Read as two findings, a swap would sink below every lone addition and the team would be
+    sent elsewhere in the middle of one mistake.
+
+    The top tier asks the kind as well as the flag. A **Filled silence** is an addition and
+    nothing else, and the flag reaches this from a stored row: read off the flag alone, a
+    row that somehow carried it on a missing element would put a missing element above
+    every addition there is, which is a tier the Priority does not have.
+    """
+    tier_of = [
+        _A_FILLED_SILENCE
+        if finding.kind is FindingKind.ADDITION and finding.fills_silence
+        else _PRIORITY[finding.kind]
+        for finding in findings
+    ]
+    for addition, missing in _swaps(findings):
+        tier_of[missing] = tier_of[addition]
+    return tier_of
+
+
+def the_index_that_leads(findings: list[Finding]) -> int | None:
+    """Which finding this turn is about, before any swap is looked for.
+
+    A Correction check's findings first, because what a mend broke is about the stretch the
+    team just retold: sent elsewhere in the same breath, they answer a question about a part
+    they are not looking at, and the stretch they are working on stays open behind them.
+    That precedence used to be list position and nothing else, which is why it is a flag now
+    — the Priority applied over the whole list reads straight past a position.
+
+    The flag decides *who competes*, never who wins. One check answers about one stretch and
+    can still come back with more than one thing — it reports what it saw, and the room
+    derives a loss from the count on top of that — so the Priority rules inside its own reply
+    as it does anywhere else. It is suspended against findings the check did not raise, and
+    against nothing else.
+
+    Then the **Priority**, ties in the analyst's own order. It is over the tiers and says
+    nothing inside one, so reaching for a second key here — the frase, the stretch, the
+    length of the note — would be the room inventing a precedence Marcia never ruled.
+
+    At the pick and never at parse or storage. `state.findings` is what the packet, the
+    resume and the correction check all read, and a list reordered on the way in would carry
+    the Priority into every one of them and take a check's finding away from the front. Pure
+    over the list for the same reason: the fresh verdict, the stored-verdict replay and the
+    resume payload each recompute the pick, and three answers that could differ is a team
+    hearing about one frase while the screen rebuilds on another.
+
+    The one place that says which finding leads — a second expression of this would be a
+    second thing free to answer it.
+    """
+    if not findings:
+        return None
+    competing = [at for at, finding in enumerate(findings) if finding.raised_by_check] or range(
+        len(findings)
+    )
+    tier_of = _tiers(findings)
+    return min(competing, key=lambda at: (tier_of[at], at))
 
 
 def _the_current_swap(findings: list[Finding]) -> list[int]:
-    """Which of the findings this turn is about: the current one, and its other half.
+    """Which of the findings this turn is about: the one that leads, and its other half.
 
-    The current finding decides *whether* there is a swap. What this rule decides is the
-    other half, and which of the two leads.
+    The pick decides *whether* there is a swap. What this rule decides is the other half,
+    and which of the two leads.
     """
-    if not findings:
+    leads = the_index_that_leads(findings)
+    if leads is None:
         return []
     for addition, missing in _swaps(findings):
-        if THE_CURRENT_FINDING in (addition, missing):
+        if leads in (addition, missing):
             return [addition, missing]
-    return [THE_CURRENT_FINDING]
+    return [leads]
 
 
 def current_findings(state: BackTranslationState) -> list[Finding]:
