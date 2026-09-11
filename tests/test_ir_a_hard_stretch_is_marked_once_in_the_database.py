@@ -32,6 +32,7 @@ from app.core.database import Base
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRHardStretch, IRSegment
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING, create_session
+from tests.alembic_harness import indexes_of, run_alembic
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -58,7 +59,6 @@ from tests.test_ir_a_hard_stretch_is_marked_once import (
     _told,
     _voice,
 )
-from tests.test_ir_a_release_is_a_numbered_row import _indexes, _run_alembic
 
 REVISION = "20260911_hard02"
 PREVIOUS_REVISION = "20260910_seg02"
@@ -179,20 +179,20 @@ async def applied_database(tmp_path) -> str:
         )
     await engine.dispose()
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
     return database_url
 
 
 @pytest.mark.asyncio
 async def test_the_migration_creates_the_unique_index_both_ways(applied_database: str) -> None:
-    down = _run_alembic(applied_database, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(applied_database, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert UNIQUE_INDEX not in await _indexes(applied_database, TABLE)
+    assert UNIQUE_INDEX not in await indexes_of(applied_database, TABLE)
 
-    up = _run_alembic(applied_database, "upgrade", REVISION)
+    up = run_alembic(applied_database, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
-    assert (await _indexes(applied_database, TABLE)).get(UNIQUE_INDEX) == (
+    assert (await indexes_of(applied_database, TABLE)).get(UNIQUE_INDEX) == (
         True,
         ["session_id", "segment_id"],
     ), (

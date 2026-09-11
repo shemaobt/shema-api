@@ -458,6 +458,19 @@ class IRRelease(Base):
     approved_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
+    #: The tablet the team approved from, as ``X-Room-Device`` spells it — this was the one
+    #: team write leaving no attribution at all. Null on a release no tablet wrote: the ones
+    #: from before this column, and every forced one, which is the Desk's act and not a room's.
+    device_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: The facilitator who minted this past an open finding or an unheard part, by user id the
+    #: way ``IRSession.attended_by`` keeps one. Null on a release nobody forced, which is what
+    #: separates the two and what the Desk reads to say that this draft was forced.
+    forced_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    forced_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    #: The findings open at the moment of the force, as the packet dumps them. Kept whole
+    #: rather than counted or pointed at: the session goes on changing afterwards, and nothing
+    #: else could answer later what this facilitator actually overruled.
+    forced_open_findings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
 
 
 class IRHardStretch(Base):
