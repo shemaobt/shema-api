@@ -105,8 +105,7 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
     The rejected text is the Guide's draft on a `pass` verdict, or the Validator's own
     ``corrected_response`` on a `correct` one — either way ``detail`` may never be that text
     itself, because both can echo the team's own turn back at them, which is exactly what
-    `test_a_failed_call_is_logged_without_repeating_what_the_team_said` forbids on this
-    logger.
+    `test_a_failed_turn_logs_its_cause_and_never_what_the_team_said` forbids of the log.
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
@@ -222,20 +221,13 @@ async def _voiced_after_validation(
     Validator returns a correction instead, the boundary the Guide drew no longer describes the
     speech, and one clip is the honest answer.
 
-    This is the boundary with the model, so it is where a model or transport failure stops:
-    a timeout, a quota, a dead socket, or a reply shaped in a way no reader here expected
-    comes out as the same fail-safe turn an exhausted redraft already produces. Letting it
-    rise instead reaches the endpoint as a 500, and a tablet reads a 500 as the room itself
-    being broken — which stops a session over an outage that lasted seconds.
-
-    The ``try`` holds only the two calls and the reading of their replies. Everything the
-    room decides for itself afterwards — the bridge-language check, the peer cue, the
-    redraft note — sits outside it on purpose: a defect in one of those is ours,
-    and answering it with an outage line would spend the team's turn hiding it in a log
-    instead of surfacing it. ``Exception`` and not ``BaseException`` for the same kind of
-    reason: a cancelled or interrupted turn has no team left to answer, and dressing
-    shutdown up as an outage would keep the turn running past the point the runtime asked
-    it to stop.
+    A model or provider failure — a timeout, a rejected key, credits run out, a 5xx —
+    rises out of here as the `UpstreamServiceError` that `call_agent` raises it as, and
+    the route answers it with a 502 that names the cause. It used to be caught and spoken
+    as the family-A fail-safe: the next tap failed the same way, and the team heard the
+    same canned line over and over with nothing to say a person was needed. The only
+    fail-safe this engine still speaks is the designed one — a Validator that will not
+    settle after `MAX_REDRAFTS`.
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
@@ -245,61 +237,54 @@ async def _voiced_after_validation(
     issues: list[dict[str, Any]] = []
 
     for attempt in range(shim.MAX_REDRAFTS + 1):
-        try:
-            draft, movements = split_opening_movements(
-                await _draft(
-                    guide_prompt=speaker_system,
-                    conversation=conversation,
-                    utterance="" if opening else transcript,
-                    redraft_note=redraft_note,
-                    language_code=language_code,
-                    settings=settings,
-                    opening_instruction=opening_instruction,
-                    ask_for_movements=ask_for_movements,
-                )
-            )
-            if not ask_for_movements:
-                movements = []
-
-            validator_system = render(
-                cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
-                SESSION_LANGUAGE=session_language,
-                MEANING_MAP=standard_of_truth,
-                RECENT_CONVERSATION=NOT_THIS_TURN,
-                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
-                DRAFTED_RESPONSE=draft,
-                TELLING_BACK=telling_back or NOT_THIS_TURN,
-                FINDING=finding or NOT_THIS_TURN,
-                ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
-            )
-            raw_verdict = await shim.call_agent(
-                system_prompt=validator_system,
-                user_content=VALIDATOR_USER_MESSAGE,
-                max_output_tokens=4096,
+        draft, movements = split_opening_movements(
+            await _draft(
+                guide_prompt=speaker_system,
+                conversation=conversation,
+                utterance="" if opening else transcript,
+                redraft_note=redraft_note,
+                language_code=language_code,
                 settings=settings,
+                opening_instruction=opening_instruction,
+                ask_for_movements=ask_for_movements,
             )
-            verdict, refusal = _parse_verdict(raw_verdict)
-            issues = _issues_as_dicts(verdict.get("issues"))
+        )
+        if not ask_for_movements:
+            movements = []
 
-            speech = ""
-            if refusal is None:
-                if verdict.get("verdict") == "pass":
-                    speech = draft
-                elif verdict.get("verdict") == "correct":
-                    speech = (verdict.get("corrected_response") or "").strip()
-                    movements = []
-                    if not speech:
-                        refusal = "correct verdict has an empty corrected_response"
-                else:
-                    refusal = f"verdict is {verdict.get('verdict')!r}"
-            if refusal is not None:
-                _refused(refusal, raw_verdict, session_id, attempt + 1)
-        except Exception:
-            shim.logger.exception(
-                "Guide or Validator call failed; the turn degrades to a fail-safe",
-                extra={"session_id": session_id, "attempt": attempt + 1},
-            )
-            break
+        validator_system = render(
+            cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
+            SESSION_LANGUAGE=session_language,
+            MEANING_MAP=standard_of_truth,
+            RECENT_CONVERSATION=NOT_THIS_TURN,
+            TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
+            DRAFTED_RESPONSE=draft,
+            TELLING_BACK=telling_back or NOT_THIS_TURN,
+            FINDING=finding or NOT_THIS_TURN,
+            ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
+        )
+        raw_verdict = await shim.call_agent(
+            system_prompt=validator_system,
+            user_content=VALIDATOR_USER_MESSAGE,
+            max_output_tokens=4096,
+            settings=settings,
+        )
+        verdict, refusal = _parse_verdict(raw_verdict)
+        issues = _issues_as_dicts(verdict.get("issues"))
+
+        speech = ""
+        if refusal is None:
+            if verdict.get("verdict") == "pass":
+                speech = draft
+            elif verdict.get("verdict") == "correct":
+                speech = (verdict.get("corrected_response") or "").strip()
+                movements = []
+                if not speech:
+                    refusal = "correct verdict has an empty corrected_response"
+            else:
+                refusal = f"verdict is {verdict.get('verdict')!r}"
+        if refusal is not None:
+            _refused(refusal, raw_verdict, session_id, attempt + 1)
 
         if speech and shim.strays_from(speech, language_code):
             issues = [*issues, {"problem": "off_bridge_language"}]
