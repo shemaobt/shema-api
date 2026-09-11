@@ -137,25 +137,34 @@ def test_the_two_prompts_speak_to_a_team_and_never_of_contar() -> None:
     about what the team *told back* is spoken as what they *traduziram*, and the two words
     cannot both be the room's.
 
-    *Who you are talking to* is cut out first. Her rule forbids the retired address by
-    quoting it — *never "você", "teu", "tua", "me conta", "escuta"* — so the words have to
-    stand there, and a sweep of the whole file could never pass while the section it also
-    requires was present. The cut is not a hiding place: the test below requires the section
-    verbatim and exactly once, so a sentence appended under its heading to escape this sweep
-    is a sentence that turns that test red.
+    *Who you are talking to* is cut out of the verdict first. Her rule forbids the retired
+    address by quoting it — *never "você", "teu", "tua", "me conta", "escuta"* — so the words
+    have to stand there, and a sweep of the whole file could never pass while the section it
+    also requires was present. The cut is not a hiding place: the test below requires that
+    what is cut be her section verbatim, so a sentence appended under its heading to escape
+    this sweep is a sentence that turns that test red.
+
+    The analyst is swept whole, and the heading is asserted absent from it. Only the
+    verdict's cut region is pinned, so cutting by heading wherever one appeared would make
+    the analyst prompt the hiding place instead: a section pasted there under that heading
+    would be carried off before this sweep ever read it, and nothing would pin what it said.
 
     Every match is gathered before the assertion rather than asserted where it is found. An
     assertion inside the loop stops at the verdict's first match and reports it as the whole
     truth, so the analyst's own word would never be seen to fail and its guard would have
     been taken on faith.
     """
+    swept = (("verdict", THE_RULE_THAT_NAMES_THEM.sub("", SPEAKER)), ("analyst", ANALYST))
     still_said = [
         (name, retired)
-        for name, prompt in (("verdict", SPEAKER), ("analyst", ANALYST))
+        for name, prompt in swept
         for retired in RETIRED
-        if re.search(retired, _one_line(THE_RULE_THAT_NAMES_THEM.sub("", prompt)))
+        if re.search(retired, _one_line(prompt))
     ]
 
+    assert WHO_YOU_ARE_TALKING_TO not in ANALYST, (
+        "o prompt do analista carrega a seção que a varredura recorta, e só a do veredito é fixada"
+    )
     assert still_said == [], f"os prompts ainda dizem o que este ticket aposentou: {still_said}"
 
 
@@ -236,7 +245,7 @@ def test_the_h_and_i_lines_say_traduzir_in_portuguese_and_spanish(
 
 
 @pytest.mark.parametrize("key", list(IRPromptKey))
-def test_no_prompt_key_description_says_retrotradução(key: IRPromptKey) -> None:
+def test_no_prompt_key_description_says_retrotraducao(key: IRPromptKey) -> None:
     """The word the room retired does not survive in what names the prompt to a reader."""
     assert "retrotradução" not in default_prompt(key)["description"], (
         f"a descrição de {key} ainda chama a tradução de retrotradução"
