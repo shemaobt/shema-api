@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import secrets
 import time
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -225,6 +226,7 @@ async def take_text_turn(
         if _worth_settling(outcome, heard):
             await settle_coverage(
                 session_id=session.id,
+                turn_id=str(uuid.uuid4()),
                 team_utterance=outcome.transcript,
                 guide_response=outcome.speech,
                 pericope_num=session.pericope,
