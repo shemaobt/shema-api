@@ -17,7 +17,7 @@ fetched from GCP Secret Manager at startup; nothing sensitive is committed here.
 ```sh
 gcloud auth login && gcloud auth application-default login
 SECRETS_PROJECT_ID=shemaobt-secrets docker compose up --build backend
-JWT_SECRET_KEY=test-secret-for-pytest-only DATABASE_URL=sqlite+aiosqlite:///./test.db uv run pytest tests/ -v
+JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -v
 ```
 
 The database comes up seeded and migrated. The full procedure — access, seeding from a
