@@ -265,6 +265,12 @@ class CoverageView(BaseModel):
     absence_index: int
 
 
+class CoverageFrame(BaseModel):
+    turn_id: str
+    status: Literal["settled", "failed"]
+    coverage: CoverageView | None
+
+
 class CreateSessionRequest(BaseModel):
     pericope: str | None = Field(default=None, max_length=120)
     after_panorama: bool = False
@@ -403,6 +409,8 @@ class TurnResponse(BaseModel):
     degraded: bool = False
     coverage: CoverageView
     done: bool
+    turn_id: str = ""
+    classification_pending: bool = False
     #: The session's opening cut at the boundary the Guide drew itself: the whole passage
     #: first, then the scene and its invitation. Empty on every other turn, and empty
     #: whenever the Guide did not mark the boundary exactly where it was asked for.

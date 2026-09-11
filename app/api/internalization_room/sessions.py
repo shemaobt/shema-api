@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +19,6 @@ from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
     BackTranslationProgress,
-    CoverageView,
     CreateSessionRequest,
     FacilitatorHaltedDeviceView,
     FacilitatorSessionsResponse,
@@ -36,8 +36,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
-from app.services.internalization_room.canon.elements import absence_index
-from app.services.internalization_room.coverage import counts
+from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prepare_opening import (
@@ -109,16 +108,6 @@ async def _voice_the_turn(
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def _coverage_view(session: IRSession) -> CoverageView:
-    numbers = counts(session.coverage_state or {})
-    return CoverageView(
-        engaged=numbers["engaged"],
-        surfaced=numbers["surfaced"],
-        total=numbers["total"],
-        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
-    )
-
-
 def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
     """Whether the turn carries anything the coverage classifier should be reading.
 
@@ -145,9 +134,10 @@ def _settle_later(
     background: BackgroundTasks,
     session: IRSession,
     *,
+    turn_id: str,
     team_utterance: str,
     guide_response: str,
-) -> None:
+) -> bool:
     """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
     Two doors used to reach here — the opening the panorama wrote ahead, and the line the
@@ -161,14 +151,16 @@ def _settle_later(
     A panorama is still handed nothing: it has no coverage spine to settle against.
     """
     if is_panorama(session.pericope):
-        return
+        return False
     background.add_task(
         settle_coverage,
         session_id=session.id,
+        turn_id=turn_id,
         team_utterance=team_utterance,
         guide_response=guide_response,
         pericope_num=session.pericope,
     )
+    return True
 
 
 async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
@@ -176,7 +168,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         session_id=session.id,
         pericope=session.pericope,
         status=str(session.status),
-        coverage=_coverage_view(session),
+        coverage=coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
         back_translation=await _progress(db, session),
         language=session.language,
@@ -442,7 +434,7 @@ async def _say_it_again(session: IRSession) -> TurnResponse:
         audio_url=clip_url(voiced.key) if voiced else "",
         transcript="",
         peer_cue=detects_peer_cue(last),
-        coverage=_coverage_view(session),
+        coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
     )
 
@@ -508,8 +500,9 @@ async def take_turn(
             audio_url=clip_url(audio_key),
             transcript="",
             peer_cue=outcome.peer_cue,
-            coverage=_coverage_view(session),
+            coverage=coverage_view(session),
             done=False,
+            turn_id=str(uuid.uuid4()),
         )
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
@@ -553,10 +546,13 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
+    turn_id = str(uuid.uuid4())
+    pending = False
     if _worth_settling(outcome, speech_heard):
-        _settle_later(
+        pending = _settle_later(
             background,
             session,
+            turn_id=turn_id,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
         )
@@ -569,7 +565,9 @@ async def take_turn(
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         degraded=outcome.degraded,
-        coverage=_coverage_view(session),
+        coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         segments=segments,
+        turn_id=turn_id,
+        classification_pending=pending,
     )
