@@ -35,6 +35,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from pydantic import ValidationError as PydanticValidationError
+
 from app.core.exceptions import ValidationError
 from app.db.models.shema_form import ShemaFormDefinition
 from app.models.shema import ShemaProjectUpdate
@@ -139,9 +141,13 @@ def record_update(definition: ShemaFormDefinition, answers: dict[str, Any]) -> S
     record being edited through the weakest credential in the system.
 
     Validation of what survives is ``ShemaProjectUpdate``'s, which is BE-06's and is the same
-    validation the ficha's own ``PATCH`` meets. A ``pydantic.ValidationError`` from here is the
-    progress rows being refused row by row, and the caller lets it become the 422 FastAPI
-    already gives a body it could parse and could not accept.
+    validation the ficha's own ``PATCH`` meets. **Its refusal is translated rather than
+    allowed to escape**: on the ficha's ``PATCH`` that model is the request body and FastAPI
+    turns a bad row into a 422, but here it is built inside a service, where an uncaught
+    ``pydantic.ValidationError`` reaches the global handler as a 500 — *rejected whole* said
+    with the status code for *the server broke*. So it is caught and re-raised as this
+    repository's own ``ValidationError``, with every bad row still named by index, which is the
+    property Pydantic's own collection gives and this translation must not lose.
     """
     update: dict[str, Any] = {}
     for field in definition.fields:
@@ -152,4 +158,14 @@ def record_update(definition: ShemaFormDefinition, answers: dict[str, Any]) -> S
         if _is_empty(answer):
             continue
         update[column] = answer
-    return ShemaProjectUpdate.model_validate(update)
+    try:
+        return ShemaProjectUpdate.model_validate(update)
+    except PydanticValidationError as refused:
+        faults = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in refused.errors()
+        )
+        raise ValidationError(
+            f"{definition.kind} v{definition.version}: the submission does not match the "
+            f"record, so none of it was applied — {faults}"
+        ) from None

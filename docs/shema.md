@@ -895,6 +895,41 @@ this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
   `refresh_tokens`, `password_reset_tokens` and `access_invites` all store a `String(64)`
   `token_hash` and let the raw value leave only once.
 
+> **BE-12 ([OBT-401](https://linear.app/shema-obt/issue/OBT-401)) built this seam, and four
+> decisions travel with it.** All three rules above held; what follows is what they did not
+> cover, because the section was written about the guard and these are about what the guard
+> lets through.
+>
+> - **`POST /api/shema/intake/{token}` does not write `shema_projects`.** It archives, notifies
+>   and answers `202`; a coordinator applies it through
+>   `POST /api/shema/forms/submissions/{id}/import`. FE-44 §9.9 already spells the split —
+>   `202` on this route and a `ReceivedSubmission` on the other — and the machinery agrees:
+>   `save_project` takes an actor that `shema_record_edits` names and a version somebody read,
+>   and a link has neither. Writing one would mean a nullable author in the trail or a
+>   synthetic account, and `PULSE_LOOP`'s `import` step is the coordinator's in the console's
+>   own constants. So the weakest credential in the system cannot move the numbers the ETEN
+>   report is reconstructed from without a person who can be asked about it.
+> - **The link pins the definition version it was minted with.** A leader opens the form,
+>   drives out to where the team is and answers days later; a definition edited in that window
+>   would otherwise reject an answer nobody gave wrongly. The client's `definitionVersion` is
+>   checked *against the link* rather than used to select a form.
+> - **Write-mostly is enforced by the `SELECT` list, not by the response model.**
+>   `read_intake_form` reads one column — `shema_projects.language_name` — so there is nothing
+>   else in memory for a later edit to reach for. The shape inherits `LeavingShape` anyway and
+>   declares no place field, which is a choice rather than a requirement: the day somebody adds
+>   `location` so the leader can confirm the project, the boundary is already underneath it.
+> - **The definitions are stored and versioned, and the spec is authored in
+>   `app/utils/shema_forms.py`.** A version is cut by content hash and never edited, because a
+>   definition changed in place rewrites the meaning of every answer already given to it. The
+>   spec lives in `app/utils/` for §3.1's stated reason and for one of its own: it holds the
+>   mapping from a form field to a record column, three of which the consent gate guards, so
+>   the ingest services name no guarded column at all and `test_privacy_owners.py` needs no
+>   allowlist entry for this issue.
+>
+> **Not built, and it is GATE-03's:** `POST /api/shema/forms/pulse/{projectId}`, the generated
+> artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
+> and withdrawal from an already-distributed file — is untouched by anything above.
+
 ---
 
 ## 7. Traps in this repository, for this module

@@ -24,6 +24,25 @@ cannot be probed from one — and the numbers are chosen by what a leader on a b
 does (open the form, fill it, tap send, tap send again because nothing seemed to happen),
 which is small, not by what the arithmetic prefers.
 
+**No** ``from __future__ import annotations`` **in this file, and that is a requirement rather
+than an oversight.** ``@limiter.limit`` wraps the handler, and FastAPI resolves a string
+annotation against ``call.__globals__`` — which, for a wrapped function, is *slowapi's* module
+and not this one. ``Db`` does not resolve there, the parameter stops being a dependency and
+becomes a required query parameter, and every call to a limited route answers 422 before the
+handler runs. The three routers in this repository that already carry a limit
+(``app/api/platform/stt.py``, ``app/api/project_health/interviews.py``,
+``app/api/facilitator/devices.py``) all omit the import for the same reason, and
+``tests/test_shema/test_forms.py::test_the_limited_routes_resolve_their_dependencies`` reads
+the built route table so the trap cannot come back as a mystery 422.
+
+**The two header readers come from** ``app/api/shema/projects.py`` **rather than from a copy
+here**, underscores and all. ``_expected_version`` is the ``If-Match`` grammar — including the
+refusal of ``*``, which is the spelling of *I do not know what I am overwriting* — and
+``_local_day`` is the ±1-day bound that keeps a client-supplied date from being a backdating
+tool. An import is a write of the record, so it meets the same two rules the ficha's own
+``PATCH`` meets; two spellings of one rule is exactly what this module is built not to have,
+and the second copy is the one that would quietly lose the bound.
+
 **Everything else on this router is a signed-in coordinator**, and ``PULSE_LOOP`` in the
 console's own ``src/constants/forms.ts`` is why it is that role rather than any member:
 generate, send and import are the coordinator's three steps of the five, and issuing a bearer
@@ -36,8 +55,6 @@ already-distributed file (``docs/shema.md`` §9.3). The prototype emits one thin
 another and that pairing has never been confirmed with the client. What is *not* open is built:
 the definitions, the validation, the archive, the idempotency and the link.
 """
-
-from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime

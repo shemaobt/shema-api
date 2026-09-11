@@ -12,6 +12,17 @@ all three are the same event, and *a double import is a no-op* means no second a
 second notice and no second progress entry. FE-44 §9.9 makes the reason concrete: it must not
 double a chapter count.
 
+**Two requests racing on the same bytes is the one case this does not answer with a 202, and
+the honest description is worth more than a clever fix.** The standing-row lookup and the
+insert are not one atomic step, so two simultaneous arrivals of an identical submission can
+both miss the lookup; the unique index on ``(project_id, content_hash)`` then refuses the
+second, which reaches the caller as a 500 and succeeds as a no-op on the retry. **What cannot
+happen is the thing the rule is about** — two archives, two notices, or a chapter count
+counted twice — because the index is what decides, not the lookup. Closing it would mean a
+savepoint around the insert, and the trade is against a window measured in milliseconds for a
+form filled once a month; it is named here so the next person weighs it rather than discovers
+it.
+
 **Transactional, and the transaction is the caller's.** Nothing here commits. The archive and
 its notices are staged together and land together, which is the property that makes *submitted
 and never seen* impossible: there is no ordering in which a submission exists and its notice
@@ -22,6 +33,13 @@ request body as it arrived — not a re-serialisation of the parsed answers, whi
 server's rendering of what the leader said rather than what they said. They are written only
 after ``_form_validation.py`` has passed the whole submission, because a store of unvalidated
 payloads to clean later is a store nobody ever cleans.
+
+**The standing row is found before the validation runs, and the order is the rule rather than
+an optimisation.** A second arrival of bytes this server already accepted is a no-op, and a
+no-op cannot be a 400: if the spec has moved since — a field dropped, a vocabulary narrowed —
+re-checking the same bytes against today's definition would refuse a submission that is already
+archived, which is the opposite of idempotent. It was validated when it arrived; it is not
+asked again.
 """
 
 from __future__ import annotations
@@ -90,9 +108,11 @@ async def archive_submission(
     """Check, keep and announce one submission; answer it and whether it was new.
 
     Returns the standing row untouched when the same bytes have already been archived for this
-    project — no second notice, and the caller applies nothing. ``False`` is how the two doors
-    stay honest about it: the wire answers the same submission either way, which is what an
-    idempotent endpoint means, and neither door has to know how the other spells *again*.
+    project — no second notice, and nothing re-validated. ``False`` is how the two doors stay
+    honest about it: the wire answers the same submission either way, which is what an
+    idempotent endpoint means, and neither door has to know how the other spells *again*. A
+    caller that then wants to apply it must read the version off **that** row rather than off
+    the definition it resolved, because the two can differ by a spec change in between.
 
     The answers are validated here rather than by either caller, so *rejected whole* is a
     property of the path and not of two call sites that have to stay in step.
@@ -102,7 +122,6 @@ async def archive_submission(
             f"The submission is {len(payload)} bytes and this form accepts "
             f"{MAX_PAYLOAD_BYTES}. Nothing was kept."
         )
-    validated_answers(definition, answers)
 
     digest = content_hash(payload)
     standing = (
@@ -115,6 +134,8 @@ async def archive_submission(
     ).scalar_one_or_none()
     if standing is not None:
         return standing, False
+
+    validated_answers(definition, answers)
 
     submission = ShemaSubmission(
         project_id=project.id,

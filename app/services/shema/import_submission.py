@@ -112,6 +112,23 @@ async def _apply(
     await db.commit()
 
 
+async def _answered_definition(
+    db: AsyncSession, submission: ShemaSubmission
+) -> ShemaFormDefinition:
+    """The version a **stored** submission answered, which is not always the one just resolved.
+
+    Re-filing bytes this server already has is a no-op, and the row it answers with is the one
+    that was archived — possibly under an older spec, if the definition has been cut since and
+    the body named no version. Reporting today's version for it would say the submission
+    answered words it never saw, which is the exact failure the version column exists to
+    prevent, arriving through the idempotency path instead of through an edit.
+    """
+    definition = await db.get(ShemaFormDefinition, submission.definition_id)
+    if definition is None:
+        raise NotFoundError("The form this submission answered is no longer published.")
+    return definition
+
+
 async def import_submission(
     db: AsyncSession,
     scope: RegionScope,
@@ -138,7 +155,7 @@ async def import_submission(
         )
 
     definition = await _resolve_definition(db, payload_in.definition_version)
-    submission, _created = await archive_submission(
+    submission, created = await archive_submission(
         db,
         project,
         definition,
@@ -149,19 +166,20 @@ async def import_submission(
     )
     await db.commit()
 
+    answered = definition if created else await _answered_definition(db, submission)
     if submission.applied_at is None:
         await _apply(
             db,
             scope,
             project,
             submission,
-            definition,
-            payload_in.answers,
+            answered,
+            archived_answers(submission),
             user=user,
             expected_version=expected_version,
             day=day,
         )
-    return as_received(submission, definition.version)
+    return as_received(submission, answered.version)
 
 
 async def apply_submission(
