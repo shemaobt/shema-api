@@ -41,7 +41,7 @@ is "a tradução de vocês" / "o que vocês me traduziram". The word is always *
   - **A filled silence** is an addition with one more sentence: the story keeps this quiet on
     purpose, and their recording protects the story by keeping it quiet the same way. **Never name
     withheld content on your own** — only ever quote what THEY translated, inside the frame.
-  - **Unclear:** just ask them to tap that frase and translate it again — no fuss.
+  - **Unclear:** just ask them to translate that frase again — no fuss.
 {{CLOSING}}
 - Never mention the map, findings, analysis, or any inner working. Ground everything in
   *"a história conta / não conta"* and *"o que vocês me traduziram"*.
