@@ -12,18 +12,16 @@ the rows were carrying go with the column, and the restored column holds the sam
 ``calibration_pending`` every row started life with.
 """
 
-import os
-import subprocess
-import sys
 import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
+from tests.alembic_harness import columns_of, run_alembic, scalar
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -33,21 +31,6 @@ PREVIOUS_REVISION = "20260908_arr02"
 TABLE = "ir_sessions"
 COLUMN = "bridge_mode"
 OPENED = "2026-09-09 09:00:00"
-
-
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
 
 
 async def _build_and_seed(database_url: str) -> str:
@@ -69,35 +52,19 @@ async def _build_and_seed(database_url: str) -> str:
     return session_id
 
 
-async def _columns(database_url: str, table: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        columns = await conn.run_sync(lambda sync: inspect(sync).get_columns(table))
-    await engine.dispose()
-    return {c["name"] for c in columns}
-
-
-async def _scalar(database_url: str, sql: str, params: dict) -> object:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        value = (await conn.execute(text(sql), params)).scalar_one_or_none()
-    await engine.dispose()
-    return value
-
-
 @pytest.fixture()
 async def applied_database(tmp_path) -> dict[str, str]:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'bridge_mode_migration.db'}"
     session_id = await _build_and_seed(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
 
     return {"url": database_url, "session": session_id}
 
 
 async def test_no_session_row_has_a_mode_on_it_any_more(applied_database):
-    assert COLUMN not in await _columns(applied_database["url"], TABLE)
+    assert COLUMN not in await columns_of(applied_database["url"], TABLE)
 
 
 async def test_a_downgrade_puts_the_column_back_holding_the_pending_it_started_with(
@@ -105,11 +72,11 @@ async def test_a_downgrade_puts_the_column_back_holding_the_pending_it_started_w
 ):
     url = applied_database["url"]
 
-    down = _run_alembic(url, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert COLUMN in await _columns(url, TABLE)
+    assert COLUMN in await columns_of(url, TABLE)
 
-    stored = await _scalar(
+    stored = await scalar(
         url,
         f"SELECT {COLUMN} FROM {TABLE} WHERE id = :id",
         {"id": applied_database["session"]},
@@ -119,15 +86,15 @@ async def test_a_downgrade_puts_the_column_back_holding_the_pending_it_started_w
         f"coluna; devolve o piso que toda linha começou carregando, e veio {stored!r}"
     )
 
-    up = _run_alembic(url, "upgrade", REVISION)
+    up = run_alembic(url, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
-    assert COLUMN not in await _columns(url, TABLE)
+    assert COLUMN not in await columns_of(url, TABLE)
 
 
 async def test_the_round_trip_keeps_every_session(applied_database):
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
-    assert await _scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
+    assert await scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1

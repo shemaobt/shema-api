@@ -15,17 +15,16 @@ it would put a transition in the history that no one can point at.
 """
 
 import json
-import subprocess
-import sys
 import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
+from tests.alembic_harness import indexes_of, run_alembic, tables_of
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -36,23 +35,6 @@ PREVIOUS_REVISION = "20260820_0001"
 
 TABLE = "ir_coverage_events"
 WHEN = "2026-08-20 00:00:00"
-
-
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    import os
-
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
 
 
 WORKED = {"being:B3": "engaged", "place:the-road": "surfaced", "scene:1": "not_encountered"}
@@ -111,22 +93,6 @@ async def _rows(database_url: str, sql: str, params: dict | None = None) -> list
     return [tuple(row) for row in rows]
 
 
-async def _tables(database_url: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        names = await conn.run_sync(lambda sync: set(inspect(sync).get_table_names()))
-    await engine.dispose()
-    return names
-
-
-async def _indexes(database_url: str, table: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        indexes = await conn.run_sync(lambda sync: inspect(sync).get_indexes(table))
-    await engine.dispose()
-    return {index["name"] for index in indexes}
-
-
 async def _schema_outside_the_events_table(database_url: str) -> set[tuple[str, str, str]]:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
@@ -146,7 +112,7 @@ async def applied_database(tmp_path) -> dict[str, str]:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'ir_coverage_events.db'}"
     seeded = await _build_and_seed(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
 
     return {"url": database_url, **seeded}
@@ -155,23 +121,23 @@ async def applied_database(tmp_path) -> dict[str, str]:
 async def test_the_table_goes_away_on_downgrade_and_comes_back_on_upgrade(applied_database):
     """Behaviour 7."""
     url = applied_database["url"]
-    assert TABLE in await _tables(url)
+    assert TABLE in await tables_of(url)
 
-    down = _run_alembic(url, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert TABLE not in await _tables(url)
+    assert TABLE not in await tables_of(url)
 
-    up = _run_alembic(url, "upgrade", REVISION)
+    up = run_alembic(url, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
-    assert TABLE in await _tables(url)
+    assert TABLE in await tables_of(url)
 
 
 async def test_the_round_trip_leaves_the_sessions_alone(applied_database):
     """Behaviour 7 — the rows the events describe survive the trip."""
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     assert await _rows(url, "SELECT count(*) FROM ir_sessions") == [(2,)]
 
@@ -180,10 +146,10 @@ async def test_nothing_outside_the_events_table_changes(applied_database):
     url = applied_database["url"]
     before = await _schema_outside_the_events_table(url)
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
     after_down = await _schema_outside_the_events_table(url)
 
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
     after_up = await _schema_outside_the_events_table(url)
 
     assert after_down == before
@@ -194,8 +160,8 @@ async def test_the_backfill_derives_the_beads_that_are_derivable(applied_databas
     """Behaviour 6 — what the state proves, the history gets."""
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     derived = await _rows(
         url,
@@ -214,8 +180,8 @@ async def test_the_backfill_does_not_invent_the_steps_it_cannot_see(applied_data
     """
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     assert await _rows(
         url,
@@ -227,8 +193,8 @@ async def test_the_backfill_leaves_untouched_beads_out(applied_database):
     """Behaviour 6 — `not_encountered` is the absence of a transition, not one."""
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     assert await _rows(url, f"SELECT count(*) FROM {TABLE} WHERE status = 'not_encountered'") == [
         (0,)
@@ -244,8 +210,8 @@ async def test_the_backfill_carries_the_project_and_the_passage(applied_database
     """Behaviour 6 — an event that cannot say whose bead it was cannot answer Behaviour 5."""
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     assert await _rows(
         url,
@@ -265,10 +231,10 @@ async def test_the_migration_creates_the_indexes_the_query_plans_need(applied_da
     """
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
-    assert await _indexes(url, TABLE) >= {
+    assert set(await indexes_of(url, TABLE)) >= {
         "ix_ir_coverage_events_step",
         "ix_ir_coverage_events_element_touched",
     }

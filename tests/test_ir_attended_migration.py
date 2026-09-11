@@ -13,18 +13,16 @@ still-halted row with no kind, which is the conservative reading and belongs the
 in a write that would make it indistinguishable from a kind somebody recorded.
 """
 
-import os
-import subprocess
-import sys
 import uuid
 from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
+from tests.alembic_harness import columns_of, run_alembic, scalar
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -48,21 +46,6 @@ ARRIVED_PREVIOUS_REVISION = "20260908_arr01"
 ARRIVED_COLUMN = "person_arrived_at"
 
 
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
-
-
 async def _build_and_seed(database_url: str) -> str:
     engine = create_async_engine(database_url)
     async with engine.begin() as conn:
@@ -82,27 +65,11 @@ async def _build_and_seed(database_url: str) -> str:
     return session_id
 
 
-async def _columns(database_url: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        columns = await conn.run_sync(lambda sync: inspect(sync).get_columns(TABLE))
-    await engine.dispose()
-    return {c["name"] for c in columns}
-
-
-async def _scalar(database_url: str, sql: str, params: dict) -> object:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        value = (await conn.execute(text(sql), params)).scalar_one_or_none()
-    await engine.dispose()
-    return value
-
-
 async def _applied_at(tmp_path, revision: str, filename: str) -> dict[str, str]:
     database_url = f"sqlite+aiosqlite:///{tmp_path / filename}"
     session_id = await _build_and_seed(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", revision)
+    stamped = run_alembic(database_url, "stamp", revision)
     assert stamped.returncode == 0, stamped.stderr
 
     return {"url": database_url, "session": session_id}
@@ -121,17 +88,17 @@ async def arrived_database(tmp_path) -> dict[str, str]:
 async def test_the_columns_go_away_on_downgrade_and_come_back_on_upgrade(applied_database):
     url = applied_database["url"]
 
-    assert await _columns(url) >= NEW_COLUMNS
+    assert await columns_of(url, TABLE) >= NEW_COLUMNS
 
-    down = _run_alembic(url, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert NEW_COLUMNS.isdisjoint(await _columns(url)), (
+    assert NEW_COLUMNS.isdisjoint(await columns_of(url, TABLE)), (
         "o downgrade deixou colunas para trás, e um upgrade seguinte falha ao recriá-las"
     )
 
-    up = _run_alembic(url, "upgrade", REVISION)
+    up = run_alembic(url, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
-    assert await _columns(url) >= NEW_COLUMNS
+    assert await columns_of(url, TABLE) >= NEW_COLUMNS
 
 
 async def test_a_room_halted_before_the_migration_keeps_its_halt_and_gains_no_visit(
@@ -140,24 +107,24 @@ async def test_a_room_halted_before_the_migration_keeps_its_halt_and_gains_no_vi
     """Nenhuma linha antiga ganha uma visita que não houve, nem perde a parada que tem."""
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     where = {"id": applied_database["session"]}
-    assert await _scalar(url, "SELECT status FROM ir_sessions WHERE id = :id", where) == (
+    assert await scalar(url, "SELECT status FROM ir_sessions WHERE id = :id", where) == (
         "needs_person"
     )
     for column in sorted(NEW_COLUMNS):
-        assert await _scalar(url, f"SELECT {column} FROM ir_sessions WHERE id = :id", where) is None
+        assert await scalar(url, f"SELECT {column} FROM ir_sessions WHERE id = :id", where) is None
 
 
 async def test_the_round_trip_keeps_every_session(applied_database):
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
-    assert await _scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
+    assert await scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
 
 
 async def test_the_arrival_column_goes_away_on_downgrade_and_comes_back_on_upgrade(
@@ -171,31 +138,31 @@ async def test_the_arrival_column_goes_away_on_downgrade_and_comes_back_on_upgra
     """
     url = arrived_database["url"]
 
-    assert ARRIVED_COLUMN in await _columns(url)
+    assert ARRIVED_COLUMN in await columns_of(url, TABLE)
 
-    down = _run_alembic(url, "downgrade", ARRIVED_PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", ARRIVED_PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert ARRIVED_COLUMN not in await _columns(url), (
+    assert ARRIVED_COLUMN not in await columns_of(url, TABLE), (
         "o downgrade deixou a coluna para trás, e o upgrade seguinte falha ao recriá-la"
     )
 
-    up = _run_alembic(url, "upgrade", ARRIVED_REVISION)
+    up = run_alembic(url, "upgrade", ARRIVED_REVISION)
     assert up.returncode == 0, up.stderr
-    assert ARRIVED_COLUMN in await _columns(url)
+    assert ARRIVED_COLUMN in await columns_of(url, TABLE)
 
 
 async def test_a_room_halted_before_the_arrival_migration_gains_no_arrival(arrived_database):
     """Nenhuma parada antiga ganha uma chegada que não houve, nem perde a parada que tem."""
     url = arrived_database["url"]
 
-    assert _run_alembic(url, "downgrade", ARRIVED_PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", ARRIVED_REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", ARRIVED_PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", ARRIVED_REVISION).returncode == 0
 
     where = {"id": arrived_database["session"]}
-    assert await _scalar(url, "SELECT status FROM ir_sessions WHERE id = :id", where) == (
+    assert await scalar(url, "SELECT status FROM ir_sessions WHERE id = :id", where) == (
         "needs_person"
     )
     assert (
-        await _scalar(url, f"SELECT {ARRIVED_COLUMN} FROM ir_sessions WHERE id = :id", where)
+        await scalar(url, f"SELECT {ARRIVED_COLUMN} FROM ir_sessions WHERE id = :id", where)
     ) is None
-    assert await _scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1
+    assert await scalar(url, f"SELECT count(*) FROM {TABLE}", {}) == 1

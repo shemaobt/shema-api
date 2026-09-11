@@ -13,16 +13,13 @@ than unlikely, which is the race ENG-639 already recorded against stretch positi
 from __future__ import annotations
 
 import json
-import os
-import subprocess
-import sys
 import uuid
 from pathlib import Path
 
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy import inspect, select, text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -34,6 +31,7 @@ from app.db.models.auth import Role
 from app.db.models.internalization_room import IRRelease
 from app.services.internalization_room import release as release_module
 from app.services.internalization_room.sessions import create_session
+from tests.alembic_harness import indexes_of, run_alembic, scalar, tables_of
 from tests.baker import (
     make_app,
     make_project_user_access,
@@ -433,45 +431,6 @@ async def test_no_team_writes_a_release_on_another_teams_passage(client, db_sess
     assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
 
 
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
-
-
-async def _tables(database_url: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        names = await conn.run_sync(lambda sync: inspect(sync).get_table_names())
-    await engine.dispose()
-    return set(names)
-
-
-async def _scalar(database_url: str, sql: str, params: dict) -> object:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        value = (await conn.execute(text(sql), params)).scalar_one_or_none()
-    await engine.dispose()
-    return value
-
-
-async def _indexes(database_url: str, table: str) -> dict[str, tuple[bool, list[str]]]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        found = await conn.run_sync(lambda sync: inspect(sync).get_indexes(table))
-    await engine.dispose()
-    return {index["name"]: (bool(index["unique"]), list(index["column_names"])) for index in found}
-
-
 @pytest.fixture()
 async def applied_database(tmp_path) -> str:
     """The post-migration schema with rows in it, stamped as applied, ready to be walked.
@@ -498,25 +457,25 @@ async def applied_database(tmp_path) -> str:
         )
     await engine.dispose()
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
     return database_url
 
 
 async def test_the_migration_creates_the_table_and_its_unique_index_both_ways(applied_database):
-    down = _run_alembic(applied_database, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(applied_database, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert TABLE not in await _tables(applied_database)
+    assert TABLE not in await tables_of(applied_database)
 
-    up = _run_alembic(applied_database, "upgrade", REVISION)
+    up = run_alembic(applied_database, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
-    assert TABLE in await _tables(applied_database)
-    assert (await _indexes(applied_database, TABLE)).get(UNIQUE_INDEX) == (
+    assert TABLE in await tables_of(applied_database)
+    assert (await indexes_of(applied_database, TABLE)).get(UNIQUE_INDEX) == (
         True,
         ["project_id", "pericope", "version"],
     ), "sem o índice único sobre essas colunas a alocação sozinha é a corrida do ENG-639"
     assert (
-        await _scalar(
+        await scalar(
             applied_database,
             "SELECT pericope FROM ir_sessions WHERE id = :id",
             {"id": SEEDED_SESSION},
