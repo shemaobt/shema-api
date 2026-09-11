@@ -221,9 +221,9 @@ async def _a_failed_capture_then_two_good_ones(client: httpx.AsyncClient) -> str
 async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """Everything `build_internalization_release` asks for besides the telling-back itself.
 
-    What the caller told back is left exactly as they told it: only comprehension, coverage,
-    consent and the playback report are added here, and none of them is what these cases are
-    about — they are about which takes the packet lists, and under which numbers.
+    What the caller told back is left exactly as they told it: only comprehension, coverage
+    and the playback report are added here, and none of them is what these cases are about —
+    they are about which takes the packet lists, and under which numbers.
 
     The analyst is stood in for rather than run, which is what `analysed_segment_ids` below has
     always done: these sessions tell back through the room's own routes and never press

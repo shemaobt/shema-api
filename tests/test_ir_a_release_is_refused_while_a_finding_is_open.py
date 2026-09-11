@@ -158,10 +158,10 @@ def _desk_release(session_id: str) -> str:
 async def _a_p02_telling_with_the_swapped_cause(db: AsyncSession, project) -> IRSession:
     """A P02 session ready in every way but one: frase 1 swapped who caused the return.
 
-    Everything the gate asks for is here — comprehension supported, consent given, the floor
-    met, a rehearsal recorded, one stretch told back and read by the analyst, the whole part
-    played through. The only thing between this session and Refine is the finding the team
-    stopped answering, which is the case the whole slice is about.
+    Everything the gate asks for is here — comprehension supported, the floor met, a
+    rehearsal recorded, one stretch told back and read by the analyst, the whole part played
+    through. The only thing between this session and Refine is the finding the team stopped
+    answering, which is the case the whole slice is about.
     """
     session = await create_session(db, pericope=P02, project_id=project.id)
     session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
@@ -310,7 +310,7 @@ async def _comprehension_in_conflict(db: AsyncSession, session: IRSession) -> No
 
     Emptying the ledger does not say it: with every scene engaged, the coverage stands in for
     the practice report and a unit nobody evidenced blocks nothing. A conflict on a critical
-    unit is the state, and it leaves consent, the floor and the rehearsal where they were.
+    unit is the state, and it leaves the floor and the rehearsal exactly where they were.
     """
     state = _supported_comprehension(P02)
     critical = next(checkpoint for checkpoint in checkpoints_for(P02) if checkpoint.critical)
@@ -324,12 +324,6 @@ async def _comprehension_in_conflict(db: AsyncSession, session: IRSession) -> No
             result=EvidenceResult.CONFLICT,
         ),
     ]
-    await save_comprehension(db, session, state)
-
-
-async def _consent_never_given(db: AsyncSession, session: IRSession) -> None:
-    state = _supported_comprehension(P02)
-    state.recording_consent_given = False
     await save_comprehension(db, session, state)
 
 
@@ -368,7 +362,6 @@ async def _a_wordless_stretch(db: AsyncSession, session: IRSession) -> None:
     ("blocker", "break_it"),
     [
         ("comprehension_needs_more_work", _comprehension_in_conflict),
-        ("recording_consent_never_given", _consent_never_given),
         ("coverage_floor_not_met", _the_floor_not_met),
         ("no_rehearsal_audio", _no_rehearsal_audio),
         ("no_telling_back", _nothing_told_back),
@@ -382,9 +375,9 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
     """A dispute is forceable; missing material is not.
 
     The open finding and the unheard part are the two things a person can disagree about
-    after looking at them. Consent nobody gave, a rehearsal nobody recorded, a stretch nobody
-    told back: there is nothing there to overrule, and a code that waived them would let the
-    Desk mint a packet out of a session that never happened.
+    after looking at them. A coverage floor nobody reached, a rehearsal nobody recorded, a
+    stretch nobody told back: there is nothing there to overrule, and a code that waived them
+    would let the Desk mint a packet out of a session that never happened.
     """
     project, _credential = await a_claimed_device(db_session)
     session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
