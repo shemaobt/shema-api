@@ -34,9 +34,9 @@ it; the product has no third answer, so nothing here offers one.
 from __future__ import annotations
 
 import logging
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
-from sqlalchemy import Select, false, select, true
+from sqlalchemy import ColumnElement, Select, false, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -147,6 +147,11 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: set[str]) -> R
     both start at the same three-table join. Without this entry point it ran twice per
     request — the defect the sibling's ``Reach`` was written to close (PR #281, review),
     arriving here by a different door because the second read is in another file.
+
+    The admin check below repeats :func:`region_scope`'s, which is deliberate rather than
+    redundant: this is a second public entry point, and one that answered a regional scope
+    for an administrator because its caller happened not to check first would be a guard
+    with a way around it.
     """
     if user.is_platform_admin or GLOBAL_ROLE in granted:
         return RegionScope(global_=True, regions=frozenset())
@@ -157,7 +162,7 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: set[str]) -> R
     return RegionScope(global_=False, regions=frozenset(key.value for key in rows.scalars()))
 
 
-def within_scope(scope: RegionScope) -> Any:
+def within_scope(scope: RegionScope) -> ColumnElement[bool]:
     """The ``WHERE`` clause of the region axis, as one expression every reader shares.
 
     A global caller gets a literal true rather than an absent predicate, so a caller can
