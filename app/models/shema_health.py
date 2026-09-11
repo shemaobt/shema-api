@@ -105,9 +105,9 @@ def compile_notes(dimension_notes: dict[str, str] | None) -> str:
     if not dimension_notes:
         return ""
     written = [
-        text.strip()
-        for text in (dimension_notes.get(dimension.value, "") or "" for dimension in DIMENSIONS)
-        if text.strip()
+        note.strip()
+        for note in (dimension_notes.get(dimension.value, "") or "" for dimension in DIMENSIONS)
+        if note.strip()
     ]
     return "\n\n".join(written)
 

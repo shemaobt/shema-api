@@ -148,6 +148,11 @@ def _carried_entry(project: ShemaProject, *, at: datetime) -> ShemaHealthAssessm
 
     The date is the one the record holds; with none, the entry has no honest day of its own and
     the flat fields are treated as the assessment this submission is the first of.
+
+    **The question set and the author are NULL and neither is invented.** These ratings answered a
+    Notion column rather than a questionnaire, so stamping a version would manufacture provenance;
+    and nobody knows who filed them, so ``created_by_name`` is ``""`` — which is the same honest
+    empty ``shema_projects.updated_by_name`` takes for a record whose saver is unknown.
     """
     if project.health_assessment_date is None:
         return None
@@ -162,7 +167,6 @@ def _carried_entry(project: ShemaProject, *, at: datetime) -> ShemaHealthAssessm
         spiritual=project.health_spiritual,
         physical=project.health_physical,
         notes=project.health_notes,
-        #: Neither is knowable and neither is invented — see the module docstring.
         question_set_version=None,
         created_by=None,
         created_by_name="",
@@ -171,6 +175,12 @@ def _carried_entry(project: ShemaProject, *, at: datetime) -> ShemaHealthAssessm
 
 
 async def _has_history(db: AsyncSession, project_id: str) -> bool:
+    """Whether anything has ever been appended — which is what makes the carry happen once.
+
+    Asked before the new rows are staged, and ``LIMIT 1`` because the answer is a yes or a no: a
+    count over a project's whole history to decide one branch is a read that grows with the data
+    for no reason.
+    """
     stmt = (
         select(ShemaHealthAssessment.id)
         .where(ShemaHealthAssessment.project_id == project_id)
@@ -206,6 +216,13 @@ async def append_assessment(
     ``app_key`` is a parameter because the app key is named in ``app/api/shema/_deps.py`` and
     nowhere else in the module, and a service that reached for it would be the second place to be
     wrong about it.
+
+    **One moment for the whole write, and the carried entry a microsecond ahead of the new one.**
+    Both rows land under one commit, so the transaction's clock would give them the same value and
+    the history would come back in an order nobody chose — which would make *the projection is the
+    last entry the client sees* false on the one case that needs it to be true. The carried entry
+    **is** the older reading and has to read as one even when it shares a day with the new, so the
+    offset is stated rather than left to a clock's resolution.
     """
     project = (
         await db.execute(visible_projects(scope).where(ShemaProject.id == project_id))
@@ -220,10 +237,6 @@ async def append_assessment(
     before = _overall(project)
     snapshot = _audit.snapshot(project)
 
-    #: One moment for the whole write, and the carried entry a microsecond ahead of the new one.
-    #: Both rows are written under one commit, so the transaction's clock gives them the same
-    #: value and the history would come back in an order nobody chose; the carried entry *is*
-    #: the older reading and has to read as one even when it shares a day with the new.
     at = datetime.now(UTC)
 
     entries: list[ShemaHealthAssessment] = []

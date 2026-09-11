@@ -1,0 +1,195 @@
+# Shemá — a avaliação de saúde: submissão, histórico e as perguntas-guia (BE-07 · OBT-396)
+#
+# `shema_record.http` beside this one is the ficha; this is the one tab of it whose data is an
+# aggregate of its own. Four things are worth running by hand before believing the rest:
+#
+#   1. an assessment is a NEW ROW, never an edit. File two and read the history: both are there,
+#      with their own dates and their own authors.
+#   2. a BACKDATED reading does not overwrite a newer one. File today's, then file one dated
+#      three months ago: the history grows and the record's flat fields do not move.
+#   3. READ ACCESS IS NARROWER THAN THE RECORD'S. A `resourceCircle` account opens the ficha and
+#      is refused the assessment — 200 on one path, 403 on the other, same account.
+#   4. A DROP TO CRITICAL notifies the region's coordination and OBT Lab. Read it at
+#      `GET /api/notifications` as the recipient and look at what it says: the team, the day,
+#      the state, and where to go. No dimension, no note, no prayer request, no place.
+#
+# There is no `If-Match` here and that is deliberate: appending is not replacing, so there is
+# nothing to be stale against. The new version comes back in the `ETag` all the same, because
+# the record's flat health fields did move.
+#
+# Before running: seed the app and its roles, then grant two accounts so that 3 and 4 are real.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py mentoria.local@test.com shema obtLab
+#   uv run python scripts/grant_app_role.py coordenacao.local@test.com shema coordinator
+#   uv run python scripts/grant_app_role.py recursos.local@test.com shema resourceCircle
+#   # the region scope is this module's own table; set it through the service or by SQL:
+#   #   INSERT INTO shema_user_regions (user_id, region_key) VALUES ('<id>', 'south-america');
+
+@baseUrl = http://localhost:8000
+@slug = guarani-mbya
+
+### Log in as the mentor — the OBT Lab holder who files the reading
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "mentoria.local@test.com",
+  "password": "password123"
+}
+
+###
+@token = {{login.response.body.access_token}}
+
+### The guiding questions — what the wizard asks, and what every past set asked
+# Provenance and not a rendering source: the console renders from its own constant, and this is
+# how an entry stamped `questionSetVersion: 1` stays readable after the console ships set 2.
+GET {{baseUrl}}/api/shema/health-questions
+Authorization: Bearer {{token}}
+
+### 1 — file a reading. Four dimensions, a note per dimension, the set it answered.
+# `notes` is NOT sent: the server derives the running blob from `dimensionNotes`, in the
+# dimensions' own order. The reply is the recomputed record, and its ETag is the new version.
+POST {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+X-Shema-Local-Date: 2026-09-11
+
+{
+  "date": "2026-09-11",
+  "assessor": "Marina Alves",
+  "emotional": "boa",
+  "relational": "atencao",
+  "spiritual": "boa",
+  "physical": "boa",
+  "dimensionNotes": {
+    "emotional": "Eles estão firmes.",
+    "relational": "Dois tradutores discutiram na semana passada."
+  },
+  "questionSetVersion": 1
+}
+
+### The history — oldest first. The last entry is what the record's flat fields project.
+# Each entry carries `overall` (the worst of its own four, computed here), `questionSetVersion`
+# and `author`. The `overall` of the last one is the record's `derived.health`.
+GET {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+
+### 2 — a backdated reading. It lands in the history and moves nothing on the record.
+# Read the history after this: two entries, `2026-06-01` first. Then read the record: the flat
+# fields still say what the 11/sep reading said, because the team has been read since.
+POST {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2026-06-01",
+  "assessor": "Marina Alves",
+  "emotional": "critica",
+  "relational": "critica",
+  "spiritual": "atencao",
+  "physical": "boa"
+}
+
+### 4 — the drop to critical. File this, then read the coordinator's notifications.
+POST {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2026-09-12",
+  "assessor": "Marina Alves",
+  "emotional": "critica",
+  "relational": "atencao",
+  "spiritual": "boa",
+  "physical": "boa",
+  "dimensionNotes": {
+    "emotional": "Uma família está em crise e a equipe parou."
+  },
+  "needsPastoralIntervention": "sim",
+  "pastoralInterventionName": "Marina Alves",
+  "pastoralInterventionWhen": "now"
+}
+
+### Filing the same critical reading again announces nothing — the second telling is noise.
+POST {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2026-09-13",
+  "emotional": "critica",
+  "relational": "atencao",
+  "spiritual": "boa",
+  "physical": "boa"
+}
+
+### What the coordinator received. Log in as them first.
+# @name coordLogin
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coordenacao.local@test.com",
+  "password": "password123"
+}
+
+###
+@coordToken = {{coordLogin.response.body.access_token}}
+
+### The notice — read what it says, and what it does not.
+GET {{baseUrl}}/api/notifications
+Authorization: Bearer {{coordToken}}
+
+### 3 — the Resource Circle opens the ficha…
+# @name rcLogin
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "recursos.local@test.com",
+  "password": "password123"
+}
+
+###
+@rcToken = {{rcLogin.response.body.access_token}}
+
+### …200 here — they hold a Shemá role and the project's region.
+GET {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{rcToken}}
+
+### …and 403 here. Who may read a reading of a team is one key narrower (FE-44 §5.8).
+GET {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{rcToken}}
+
+### Refused: a submission that rates nothing. A date with no rating reports a team as heard.
+POST {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2026-09-14",
+  "notes": "conversamos bastante"
+}
+
+### Refused: a question set this server never published.
+POST {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2026-09-14",
+  "emotional": "boa",
+  "questionSetVersion": 99
+}
+
+### Refused: writing the flat projection directly. `recordAssessment` is its only writer.
+POST {{baseUrl}}/api/shema/projects/{{slug}}/health-assessments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2026-09-14",
+  "emotional": "boa",
+  "healthAssessor": "alguém"
+}
