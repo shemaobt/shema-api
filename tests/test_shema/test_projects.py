@@ -20,7 +20,6 @@ file obeys it.
 
 from __future__ import annotations
 
-import time
 from datetime import date, timedelta
 from typing import Any
 
@@ -794,15 +793,13 @@ def test_the_published_parameters_are_the_screens_own_url_parameters() -> None:
     }
 
 
-async def test_the_screens_real_query_load_is_one_pass_over_the_scope(
-    client, db_session, shema_app
-) -> None:
-    """**The DoD's last line**, against the collection's real size and shape.
+async def seed_the_whole_export(db_session) -> int:
+    """The 127 real records, plus a need and a progress entry each.
 
-    The 127 records of the export, each with a need and a progress entry, requested the way the
-    screen requests them — unfiltered first, then a composed filter, then a page. The bound is
-    deliberately loose: what it is guarding is not a millisecond budget but the shape of the
-    work, and the failure it would catch is a per-record query appearing under the pass.
+    The columns the screen reads, from the export's own values — **not** BE-16's importer,
+    which owns the interpretation (the ``DD/MM/YYYY`` dates, the free-text ``sensitivity``,
+    ``[0, 0]`` as *no coordinate*). What this needs from the export is its **shape**: 127 rows
+    with real teams, real country strings and a realistic spread of statuses.
     """
     import json
     from pathlib import Path
@@ -840,22 +837,82 @@ async def test_the_screens_real_query_load_is_one_pass_over_the_scope(
             )
         )
     await db_session.commit()
+    return len(export)
 
-    user = await make_scoped_user(
-        db_session, shema_app, email="load@shema.test", role_key="globalStrategist"
-    )
-    started = time.perf_counter()
-    whole = await fetch(client, db_session, user)
-    filtered = await fetch(
-        client, db_session, user, status="em-andamento", stale="atencao", q="a", sort="health"
-    )
-    paged = await fetch(client, db_session, user, limit=24, offset=24)
-    elapsed = time.perf_counter() - started
 
-    assert whole["total"] == 127 and len(whole["items"]) == 127
-    assert filtered["total"] == 127 and filtered["matched"] < 127
-    assert len(paged["items"]) == 24
-    assert elapsed < 5.0, f"three requests over 127 records took {elapsed:.2f}s"
+async def test_the_screens_real_query_load_does_not_grow_with_the_collection(
+    client, db_session, test_engine, collection, reader
+) -> None:
+    """**The DoD's last line**, guarded by the shape of the work rather than by a stopwatch.
+
+    The same request is timed twice for **statements, not milliseconds** — once over the nine
+    records of the fixture and once with the export's 127 added to them — and the assertion is
+    that the two numbers are the same. That is the failure worth catching here: a per-record
+    query appearing under the pass. A wall-clock bound reports it only once the table is large
+    enough and the machine quiet enough for it to show, which on a shared runner is neither
+    reliably true nor reliably false.
+
+    No magic constant, deliberately. What the number *is* depends on how many statements the
+    authentication chain makes before the handler runs, which is the platform's and not this
+    module's; what matters is that it does not move with the size of the collection.
+
+    **One warm-up request before anything is measured**, and it is not a formality:
+    ``require_app_access`` memoises an account's roles for ``AUTH_CACHE_TTL_SECONDS``, so the
+    first request of a test pays two statements every later one does not. Measured cold, the
+    numbers fall from eight to six between the two sizes — which reads as the collection
+    getting *cheaper* as it grows, and would have hidden a real regression just as easily.
+
+    The three requests are the ones the screen actually makes: the unfiltered collection, a
+    composed filter, and a page. The page is in the list because a window taken before the pass
+    would change the shape of the work as well as the answer.
+    """
+    from sqlalchemy import event
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany) -> None:
+        statements.append(statement)
+
+    async def count(**params: Any) -> tuple[int, dict[str, Any]]:
+        statements.clear()
+        event.listen(test_engine.sync_engine, "before_cursor_execute", record)
+        try:
+            page = await fetch(client, db_session, reader, **params)
+        finally:
+            event.remove(test_engine.sync_engine, "before_cursor_execute", record)
+        return len(statements), page
+
+    requests: dict[str, dict[str, Any]] = {
+        "unfiltered": {},
+        "filtered": {"status": "em-andamento", "stale": "atencao", "q": "a", "sort": "health"},
+        "paged": {"limit": 24, "offset": 24},
+    }
+    await fetch(client, db_session, reader)  # warm the role cache; see the docstring
+    small = {name: await count(**params) for name, params in requests.items()}
+    assert small["unfiltered"][1]["total"] == 9
+
+    seeded = await seed_the_whole_export(db_session)
+    await fetch(client, db_session, reader)
+    large = {name: await count(**params) for name, params in requests.items()}
+
+    assert large["unfiltered"][1]["total"] == 9 + seeded == 136
+    assert len(large["unfiltered"][1]["items"]) == 136
+    assert 0 < large["filtered"][1]["matched"] < 136
+    assert len(large["paged"][1]["items"]) == 24
+
+    grew = {
+        name: (small[name][0], large[name][0])
+        for name in requests
+        if small[name][0] != large[name][0]
+    }
+    assert grew == {}, (
+        "the statement count moved between 9 records and 136, which is a query per record "
+        f"appearing under the pass: {grew}"
+    )
+    assert all(count <= 10 for count, _page in large.values()), (
+        "constant, but no longer small: this module's four reads plus the platform's "
+        f"authentication chain, and nothing else — {[c for c, _ in large.values()]}"
+    )
 
 
 def _region_of(location: str) -> str:
