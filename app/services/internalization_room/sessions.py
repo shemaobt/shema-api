@@ -386,7 +386,9 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     return list(result.scalars())
 
 
-async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltKind) -> IRSession:
+async def mark_needs_person(
+    db: AsyncSession, session: IRSession, *, kind: HaltKind, commit: bool = True
+) -> IRSession:
     """Halt the room, saying which kind of halt this is.
 
     ``kind`` is required and has no default, because the two are different walks for whoever
@@ -395,6 +397,11 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
     crossing into a hard stretch refuses nothing.
 
     The kind is written on every halt and cleared by none — see ``halt.last``.
+
+    ``commit=False`` leaves the transaction open so a caller can write more in it. The mark of a
+    hard stretch is the one that needs it: the row that records the crossing and the halt that
+    asks for somebody are one fact, and committed apart a failure between them leaves a stretch
+    marked hard in a room that never asked for anybody.
 
     **A new ask is an unattended ask**, so the visit that answered the *previous* halt is
     cleared here. The stamps are what a facilitator reads to skip a row a colleague already
@@ -409,8 +416,11 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
     session.attended_by = None
     session.lifted_halt = None
     session.person_arrived_at = None
-    await db.commit()
-    await db.refresh(session)
+    if commit:
+        await db.commit()
+        await db.refresh(session)
+    else:
+        await db.flush()
     return session
 
 
@@ -509,11 +519,19 @@ def back_translation_of(session: IRSession) -> BackTranslationState:
 
 
 async def save_back_translation(
-    db: AsyncSession, session: IRSession, state: BackTranslationState
+    db: AsyncSession, session: IRSession, state: BackTranslationState, *, commit: bool = True
 ) -> IRSession:
+    """Write the telling-back state whole, which is how it is always read and rewritten.
+
+    ``commit=False`` leaves the transaction open for a caller composing several writes into one
+    — the captured telling, where the stretch row, this state and the mark are one fact.
+    """
     session.back_translation = state.model_dump(mode="json")
-    await db.commit()
-    await db.refresh(session)
+    if commit:
+        await db.commit()
+        await db.refresh(session)
+    else:
+        await db.flush()
     return session
 
 

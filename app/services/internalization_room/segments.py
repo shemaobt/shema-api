@@ -65,6 +65,7 @@ async def capture_segment(
     pass_number: int = 1,
     parent: IRSegment | None = None,
     replaces: IRSegment | None = None,
+    commit: bool = True,
 ) -> IRSegment:
     """Write one stretch: the slice of a recording, and what the team told back about it.
 
@@ -99,6 +100,11 @@ async def capture_segment(
     The retired row is stamped before the successor is inserted, not after. The two share a
     position, and the index that keeps one position to one current stretch is checked per
     statement — inserting first would put both of them under it at once.
+
+    ``commit=False`` leaves the transaction open so a caller can write more in it. The telling
+    that crosses into a hard stretch is what needs it: the row, the telling-back state and the
+    mark are one fact, and this row committed on its own leaves a stretch standing at the
+    number with no mark when the halt after it fails.
     """
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
 
@@ -155,8 +161,11 @@ async def capture_segment(
         transcript=transcript,
     )
     db.add(segment)
-    await db.commit()
-    await db.refresh(segment)
+    if commit:
+        await db.commit()
+        await db.refresh(segment)
+    else:
+        await db.flush()
     return segment
 
 

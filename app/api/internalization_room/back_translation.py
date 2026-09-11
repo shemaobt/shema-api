@@ -126,7 +126,8 @@ async def add_chunk(
             pass_number=pass_number,
             needs_person=warned,
         )
-    captured = await room.capture_segment(
+    state.scope = state.scope or session.pericope
+    warned = await room.capture_and_note_a_hard_stretch(
         db,
         session,
         take_id=rehearsal.id,
@@ -136,11 +137,8 @@ async def add_chunk(
         transcript=text,
         pass_number=pass_number,
         replaces=retold,
+        state=state,
     )
-    state.scope = state.scope or session.pericope
-    await room.save_back_translation(db, session, state)
-
-    warned = await room.note_a_hard_stretch(db, session, captured)
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) if retold is not None else len(told) + 1,
