@@ -1,6 +1,6 @@
 """the health assessment says which questions it answered and who entered it
 
-Revision ID: 20260911_shema03
+Revision ID: 20260911_shema04
 Revises: 20260911_shema02
 Create Date: 2026-09-11
 
@@ -11,6 +11,15 @@ revision against the same head, so the graph forks the moment the second one rea
 whoever the user merges second re-points their `down_revision` at the first. The declared merge
 order is 07, 08, 12 — this is the first, so it re-parents nobody. The pull request body carries
 the revision id so the other two can read it there rather than guess.
+
+BE-15 renumbers this file's own revision id from `20260911_shema03` to `20260911_shema04`
+before merging it beside BE-08's and BE-12's: all three were authored against the same
+head and minted the identical literal id, which is not the ordinary multi-head fork this
+docstring describes but a collision `alembic` cannot resolve with `merge heads` until the
+ids differ. `down_revision` is untouched — it still names `20260911_shema02` — so the three
+remain siblings and BE-15's own merge revision is what joins them, rather than a linear
+re-pointing. The PR body carries the renumbering so whoever merges this branch's PR into
+`dev` knows the id changed here.
 
 Written by hand, like every other revision here: `alembic/env.py` imports only
 `app.core.database`, so its metadata is empty and `--autogenerate` would emit a migration
@@ -40,7 +49,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "20260911_shema03"
+revision = "20260911_shema04"
 down_revision = "20260911_shema02"
 branch_labels = None
 depends_on = None

@@ -1,6 +1,6 @@
 """needs: an acknowledgement stamp, an amount that carries its currency, and the third index
 
-Revision ID: 20260911_shema03
+Revision ID: 20260911_shema05
 Revises: 20260911_shema02
 Create Date: 2026-09-11
 
@@ -11,6 +11,13 @@ author their own revisions against the same head, and the declared merge order i
 12, so whoever the user merges second re-points. The pull request body says so;
 `docs/resource_requests.md` §8.3 is why that sentence is written down rather than
 remembered.
+
+BE-15 renumbers this file's own revision id from `20260911_shema03` to `20260911_shema05`
+before merging it beside BE-07's and BE-12's: all three were authored against the same head
+and minted the identical literal id, a collision `alembic` cannot resolve with `merge
+heads` until the ids differ. `down_revision` is untouched — still `20260911_shema02` — so
+the three remain siblings and BE-15's own merge revision joins them. The PR body carries
+the renumbering.
 
 Written by hand, like every other revision here: `alembic/env.py` imports only
 `app.core.database`, so its metadata is empty and `--autogenerate` would emit a migration
@@ -45,7 +52,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "20260911_shema03"
+revision = "20260911_shema05"
 down_revision = "20260911_shema02"
 branch_labels = None
 depends_on = None
