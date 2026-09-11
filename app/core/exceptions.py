@@ -1,11 +1,21 @@
+from __future__ import annotations
+
 import logging
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.enums import USER_SETTABLE_CLEANING_STATUSES
+
+if TYPE_CHECKING:
+    # Only for the type checker: `canon/labels.py` reaches back into this module through
+    # `canon/parse_map.py`'s own `from app.core.exceptions import ValidationError`, so a real
+    # top-level import here would be circular. `from __future__ import annotations` above
+    # means this name is never looked up at runtime — `register_exception_handlers` imports
+    # the real class itself, deferred, where it needs the object rather than the type.
+    from app.services.internalization_room.canon.labels import ElementLabelsBroken
 
 logger = logging.getLogger(__name__)
 
@@ -314,6 +324,28 @@ async def handle_not_found_error(_request: Request, exc: NotFoundError) -> JSONR
     )
 
 
+async def handle_element_labels_broken(_request: Request, exc: ElementLabelsBroken) -> JSONResponse:
+    """Our own label catalogue is holed — the caller's request was fine.
+
+    Still a 500, and still logged as ours: `ElementLabelsBroken`'s own docstring argues why a
+    hole in a file we ship is never the caller's mistake. What changes is that the body names
+    the pericope, the key and the language `str(exc)` already carries, instead of the generic
+    catch-all's "please try again later" — the difference between a blank Desk screen and one
+    that says which bead is missing.
+
+    `logger.exception`, not `logger.error`: a specific handler stays on `ExceptionMiddleware`,
+    which does not re-raise once it has built a response, unlike `ServerErrorMiddleware` for
+    the bare-`Exception` fallback this used to reach — so `handle_unexpected`'s own
+    `logger.exception` never runs for this one, and this is the only place left to keep the
+    stack trace.
+    """
+    logger.exception("Label catalogue is broken: %s", exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content=_error_body(str(exc), ERROR_CODE_INTERNAL),
+    )
+
+
 async def handle_unexpected(_request: Request, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled exception")
     return JSONResponse(
@@ -350,6 +382,12 @@ async def handle_http_exception(_request: Request, exc: StarletteHTTPException) 
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    # The real class, not just the type: `add_exception_handler` needs the object to match
+    # against. Deferred rather than a top-level import for the same circularity the
+    # `TYPE_CHECKING` block above avoids — by the time this function runs, every router has
+    # already imported `canon/labels.py` in full, so this is safe.
+    from app.services.internalization_room.canon.labels import ElementLabelsBroken
+
     app.add_exception_handler(StarletteHTTPException, handle_http_exception)  # type: ignore[arg-type]
     app.add_exception_handler(AuthenticationError, handle_authentication_error)  # type: ignore[arg-type]
     app.add_exception_handler(AuthorizationError, handle_authorization_error)  # type: ignore[arg-type]
@@ -368,4 +406,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
+    app.add_exception_handler(ElementLabelsBroken, handle_element_labels_broken)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)

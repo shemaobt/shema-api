@@ -36,6 +36,7 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.coverage_events import record_transitions
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
+from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
@@ -62,12 +63,16 @@ def resolve_pericope(pericope: str) -> str:
     """`OV` alone is the panorama of whichever book the room serves, so a client can ask
     for it without naming the book — the canon stays entirely on this side.
 
+    `PANORAMA` (`"panorama"`) resolves the same way: it is the id the passage wheel puts
+    on the wire, so a client that opens a session with the id the wheel just handed it
+    reaches the panorama instead of `require_walkable` refusing a pericope nobody vendored.
+
     It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
     belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
     under another name: a book is not a passage, the room serves one, and `elements_for`,
     `labelled_elements` and `run_turn` already take it as a parameter.
     """
-    if pericope == PANORAMA_ALIAS:
+    if pericope in (PANORAMA_ALIAS, PANORAMA):
         return PANORAMA_PREFIX + ROOM_BOOK
     return pericope
 

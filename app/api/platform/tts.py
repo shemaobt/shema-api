@@ -31,6 +31,15 @@ async def speak_endpoint(
     Base64 inflates a ~100 KB body by 33% and forces a JSON parse to reach bytes. Worse, on
     the SPA side a JSON envelope would require a new DTO in `contracts/`, which is a frozen
     layer there with mandatory human review. Raw bytes keep the consumer simple.
+
+    **The room does not call this.** `payload.text` reaches `synthesize_speech` verbatim —
+    no `speakable_text` substitution (YHWH -> "Senhor Jeová" / "the LORD"), which lives in
+    `synthesize_facilitator_speech`, the room's own chokepoint into TTS. This is the
+    platform's generic route, sized for the Sound Necklace (`app/models/platform.py`), and
+    ENG-929 decided to leave it that way rather than push the substitution down into
+    `platform_speech`: that would change the cache key for every platform caller, not only
+    the room's, and re-key every clip already bought. If a room caller is ever added here,
+    it must go through `speakable_text` first, the same way every other room caller does.
     """
     speech = await synthesize_speech(payload.text, language=payload.language)
     return Response(

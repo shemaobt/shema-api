@@ -11,6 +11,7 @@ from app.api.internalization_room import (
     segments,
     sessions,
     takes,
+    text_seam,
     voice,
 )
 
@@ -28,6 +29,7 @@ for _sub in (
     release,
     devices,
     attended,
+    text_seam,
 ):
     for route in _sub.router.routes:
         router.routes.append(route)
