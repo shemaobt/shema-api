@@ -1,9 +1,11 @@
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+import app.services.internalization_room as internalization_room
 from app.core.config import Settings
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey
@@ -232,9 +234,7 @@ def test_peer_cue_is_read_off_the_reply() -> None:
     assert detects_peer_cue("Tell the scene to each other, slowly.")
     assert detects_peer_cue("Now rehearse this scene together in your own language.")
     assert not detects_peer_cue("Me contem o que aconteceu com a família.")
-    assert not detects_peer_cue(
-        "Ensayen juntos esta escena en su propia lengua, entre ustedes."
-    )
+    assert not detects_peer_cue("Ensayen juntos esta escena en su propia lengua, entre ustedes.")
 
 
 @pytest.mark.asyncio
@@ -383,6 +383,17 @@ async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_
     assert outcome.fixed_line.startswith("A")
     assert outcome.used_fail_safe is True
     assert outcome.degraded is True
+
+
+def test_the_g_line_is_chosen_only_from_the_teams_own_speech_never_the_guides_draft() -> None:
+    """Category G is what the team hears, so only the team-detection branch may reach for it."""
+    package_dir = Path(internalization_room.__file__).resolve().parent
+    callers = sorted(
+        path.name
+        for path in package_dir.glob("*.py")
+        if "FailSafe.OFF_BRIDGE_LANGUAGE" in path.read_text()
+    )
+    assert callers == ["live_turn.py"]
 
 
 @pytest.mark.asyncio
