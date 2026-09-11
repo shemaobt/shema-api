@@ -40,7 +40,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Final, Protocol
+from typing import Final, Protocol
 
 from app.db.models.shema_enums import ShemaHealthLevel, ShemaProjectStatus, ShemaRegionKey
 
@@ -207,7 +207,11 @@ class Derivable(Assessable, Protocol):
 
 
 class Sortable(Derivable, Protocol):
-    """The two text columns the Projetos screen orders by, on top of what it derives."""
+    """The two text columns the Projetos screen orders by, on top of what it derives.
+
+    The orders themselves are ``app/utils/shema_facets.py``'s, with the progress bands: they
+    are the screen's, not FE-44 §7's, and this file is the nine.
+    """
 
     language_name: str
     team: str
@@ -489,36 +493,3 @@ def derive(record: Derivable, now: date, *, region: ShemaRegionKey) -> Derivatio
         last_progress_update=last_progress_update(record),
         region=region,
     )
-
-
-def sort_key(record: Sortable, derived: Derivations, key: str) -> tuple[int, Any]:
-    """The Projetos screen's five orders, as a key the caller sorts ascending by.
-
-    ``src/components/pages/projetos/sorting.ts`` is the reference, and the half worth keeping
-    is ``blanksLast``: a record with no deadline, no language name or no base sorts **after**
-    every record that has one, in every direction. Sorting blanks first puts the thinnest
-    records at the top of the busiest screen, which is where nobody is looking for them.
-
-    ``progress`` and ``health`` descend over there; the leading ``0``/``1`` here is the blank
-    flag, and the value is negated so one ascending sort serves all five.
-    """
-    if key == "progress":
-        return (0, -derived.progress)
-    if key == "health":
-        return (0, -derived.health_score)
-    if key == "deadline":
-        return (1, date.max) if record.deadline is None else (0, record.deadline)
-    if key == "team":
-        return (1, "") if not record.team else (0, record.team)
-    return (1, "") if not record.language_name else (0, record.language_name)
-
-
-def in_progress_range(derived: Derivations, low: int, high: int) -> bool:
-    """Whether a record's progress falls inside a sidebar band, **both ends inclusive**.
-
-    Inclusive at both ends is the frontend's own reading and is why the bands overlap: a
-    record at exactly 50% counts under ``25-50`` *and* ``50-75``. It is a sidebar affordance,
-    not a partition, and making it one here would make the four counts sum to something the
-    list cannot reproduce.
-    """
-    return low <= derived.progress <= high

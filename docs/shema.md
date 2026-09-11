@@ -260,7 +260,7 @@ bucket, which is the precedent, not a trespass).
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
 | `app/api/shema/_deps.py` | BE-03 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.2's region-scope dependency. The app key is named here and nowhere else in the module. |
-| `app/api/shema/projects.py` | BE-05, BE-06 | The collection read, the record read, `POST`, `PATCH`. |
+| `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | BE-07 | `POST`/`GET /projects/{id}/health-assessments`. |
 | `app/api/shema/prayer.py` | BE-09 | The wall and the intercessor network. |
 | `app/api/shema/meetings.py` | BE-10 | Definitions and the log. |
@@ -276,7 +276,8 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_redaction.py` | **BE-04, built** | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
 | `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
 | `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; and `can_export_notes`. §6.4. |
-| `app/utils/shema_derivations.py` | BE-05 | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
+| `app/utils/shema_derivations.py` | **BE-05, built** | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
+| `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
 | `app/models/shema.py`, `app/models/shema_*.py` | BE-02 …, per §2.2 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models; separate `Create` / `Update` / `Response`. |
 | `app/db/models/shema.py`, `app/db/models/shema_*.py` | BE-02 authors, each issue grows its own | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — [`docs/resource_requests.md`](resource_requests.md) §8.1. |
 | `alembic/versions/20260NNN_shemaNN_*.py` | BE-02 onward | Migrations. Single head, clean `downgrade -1`. §7.1. |
@@ -847,6 +848,47 @@ not different.**
   and on 31 December in the next *year*. `app/utils/stored_time.py` already exists in this
   repository and BE-05 reads it before writing a second clock helper.
 
+#### What BE-05 built, and the two places it departs from this document
+
+**One — the collection read takes the filter and the counts together, so its response is an
+envelope and not `Project[]`.** §9.1 of the frozen contract froze `GET /api/shema/projects` as
+the whole scoped collection with no pagination, no filter parameters and no facet counts, and
+BE-01's note on OBT-394 read that as *serve the scoped collection and do not build a second
+facet engine*. BE-05 read it the other way, and the argument is §9.1's own escape clause:
+
+> past roughly 2,000 projects, or when a role's scope stops being expressible as "these
+> regions" […] the server takes the filter **and** the counts together, in one endpoint, never
+> the filter alone — a filtered list with client-computed counts is the defect this note exists
+> to prevent.
+
+The defect §9.1 guards against is a **second owner** of the counting rule. Refusing the DoD
+does not avoid it: the DoD's third line already makes the server the owner of status, health
+and staleness, and §6.5 already demands those match exactly. With the derivations on both
+sides, the counting rule is the half that remains, and *one endpoint that answers both* is the
+shape §9.1 itself blesses for that case. So it is built now rather than at the two-thousandth
+project, with the property held by the return type: `counts` is not optional, no parameter
+suppresses it, and a request with no parameters still answers the whole scoped collection —
+§9.1's default, kept as the default. **What the contract owes in return is one edit: §9.1's
+`-> Project[]` becomes `-> {items, counts, matched, total, limit, offset, sort,
+locationsWithheld}`.** INT-02 reads `items` where it read the array.
+
+**Two — the facet pass is a second file in `app/utils/`, not part of `shema_derivations.py`.**
+§3.1 names one file. The nine derivations are FE-44 §7; the facet pass is §7.6, and it
+*consumes* them. They have different lifetimes: `shema_facets.py` is the file the ~2,000-project
+trigger replaces, and the derivations do not move when it does. Splitting them keeps that
+replacement a single file with one import direction.
+
+**And one thing that is not a departure, recorded because it looks like one.** The list item
+inherits `LeavingShape`, so a card in a sensitive country carries its region where its country
+would be — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
+inherited**: `app/models/shema_privacy.py` names *the collection read* among the shapes that go
+through the boundary, and `COORDINATION_PATHS` is empty with a comment saying the one line
+expected in it is BE-06's record read. Following §9.1 here would mean adding this route to that
+list, which is a line somebody has to justify — and the justification does not exist, because
+the console draws cards and markers from the region anyway (`getLocationDisplay`,
+`getMapPlacement`). The facets read the card rather than the row, so a count cannot name a place
+the payload beside it withholds.
+
 ### 6.6 Seam E — the unauthenticated intake — **Decided**
 
 `GET /api/shema/intake/{token}` and `POST /api/shema/intake/{token}` are the only routes in
@@ -1063,3 +1105,6 @@ changes rather than reminders:
   default would erase.
 - **BE-03** inherits §6.1's `shema_user_regions` instead of an `organizations` mapping, and
   §6.3's session endpoint.
+- **BE-05** inherits §6.5's parity requirement and the vendoring that proves it, and returns an
+  envelope rather than `Project[]` — the one edit this module owes the frozen contract. §6.5's
+  *What BE-05 built* carries the argument.
