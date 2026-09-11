@@ -505,7 +505,7 @@ async def test_a_session_carrying_an_open_finding_is_refused(
     It was that taking the questions to Refine is an outcome the room is meant to have, and
     that refusing it left a team who had done every piece of the work with no way out. What
     it did not weigh is what a disputed finding actually is: the map wrong, which is rare and
-    worth having; the team not understanding; or the analyst erring. Only the first deserves
+    worth having; the team not understanding; the recogniser erring. Only the first deserves
     to travel, and a door open to all three sends the other two downstream as a passage the
     room approved — heard as approved at the community's check.
 
