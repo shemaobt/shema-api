@@ -47,6 +47,7 @@ them. That is the same trade the whole module makes: the rule is inherited, not 
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -66,6 +67,8 @@ from app.services.notifications import create_notification, get_shema_app_id
 from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.shema import _audit
 from app.services.shema._scope import COORDINATOR_ROLE, OBT_LAB_ROLE, holders_reaching
+
+logger = logging.getLogger(__name__)
 
 #: What ``notifications.event_type`` carries for this notice. Dotted and namespaced by the
 #: module, so a panel that lists eight applications' rows can tell whose it is without joining
@@ -398,6 +401,15 @@ async def notify_urgent(
     holders = await authorization_service.list_role_holders(db, SHEMA_APP_KEY, URGENT_NEED_ROLES)
     recipients = await holders_reaching(db, holders, project.region_key, SHEMA_APP_KEY)
     if not recipients:
+        logger.warning(
+            "shema urgent need raised and reached nobody",
+            extra={
+                "shema_operation": "notify_urgent",
+                "shema_project_id": project.id,
+                "shema_region": project.region_key.value,
+                "shema_need_count": len(needs),
+            },
+        )
         return 0
 
     app_id = await get_shema_app_id(db)
