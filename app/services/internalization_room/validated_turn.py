@@ -308,10 +308,7 @@ async def _voiced_after_validation(
             )
 
         redraft_note = _redraft_note(issues, language_code)
-    else:
-        shim.logger.warning(
-            "Fail-safe fired after %s redrafts: issues=%s", shim.MAX_REDRAFTS, issues
-        )
+    shim.logger.warning("Fail-safe fired after %s redrafts: issues=%s", shim.MAX_REDRAFTS, issues)
 
     speech, line = choose(FailSafe.UNREPAIRABLE, language_code, turn=len(messages))
     return _timed(

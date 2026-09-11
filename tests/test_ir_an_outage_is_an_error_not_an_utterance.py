@@ -250,10 +250,14 @@ async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx
     )
 
 
+@pytest.mark.parametrize(
+    "script", [[OUTAGE], [GUIDE_LINE, OUTAGE]], ids=["the Guide", "the Validator"]
+)
 async def test_a_turn_the_provider_refused_is_a_502_with_the_cause_and_speaks_nothing(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, spoken: list[str]
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, spoken: list[str], script: list
 ) -> None:
-    _the_models_answer(monkeypatch, OUTAGE)
+    """Two call sites, one turn: covering the Guide and leaving the Validator is half a fix."""
+    _the_models_answer(monkeypatch, *script)
     session_id = await _a_room_opening_a_passage(client)
 
     answered = await _the_room_takes_a_turn(client, session_id)
