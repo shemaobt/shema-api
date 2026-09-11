@@ -36,6 +36,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.shema._deps import APP_KEY
+from app.api.shema.health_assessments import router as health_assessments_router
 from app.api.shema.projects import router as projects_router
 from app.api.shema.session import router as session_router
 from app.core.access_control import require_app_access
@@ -49,6 +50,7 @@ authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
 
 authenticated.include_router(session_router)  # BE-03
 authenticated.include_router(projects_router)  # BE-05
+authenticated.include_router(health_assessments_router)  # BE-07
 
 # Keep this the last statement in the file. ``include_router`` copies routes at call time,
 # so a line added below it is included into a router the application never sees: the route
