@@ -376,3 +376,15 @@ async def test_the_beads_settle_before_the_answer_so_the_next_turn_reads_them(
         "o classificador rodava atrás da resposta e o turno seguinte lia as contas de antes, "
         "então o bloco de cobertura do Guia não era o que o app mostraria"
     )
+
+
+def test_the_seam_is_not_published_in_the_openapi_schema() -> None:
+    from app.main import app
+
+    published = [path for path in app.openapi()["paths"] if "text-seam" in path]
+
+    assert published == [], (
+        "o /openapi.json e o /docs de produção não têm autenticação, então a costura "
+        "anunciava os seus caminhos, os corpos e o cabeçalho da chave exatamente onde o "
+        "404 existe para não anunciar nada"
+    )

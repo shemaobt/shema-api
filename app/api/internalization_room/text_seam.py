@@ -158,7 +158,12 @@ def _language_code(named: str) -> str:
     raise ValidationError(f"The room does not speak {named!r}")
 
 
-@router.post("/text-seam/session", response_model=TextSessionResponse, dependencies=[runner_dep])
+@router.post(
+    "/text-seam/session",
+    response_model=TextSessionResponse,
+    dependencies=[runner_dep],
+    include_in_schema=False,
+)
 async def open_text_session(
     payload: OpenTextSessionRequest, db: AsyncSession = Depends(get_db)
 ) -> TextSessionResponse:
@@ -170,7 +175,12 @@ async def open_text_session(
     )
 
 
-@router.post("/text-seam/turn", response_model=TextTurnResponse, dependencies=[runner_dep])
+@router.post(
+    "/text-seam/turn",
+    response_model=TextTurnResponse,
+    dependencies=[runner_dep],
+    include_in_schema=False,
+)
 async def take_text_turn(
     payload: TextTurnRequest, db: AsyncSession = Depends(get_db)
 ) -> TextTurnResponse:
