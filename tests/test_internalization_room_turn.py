@@ -235,6 +235,7 @@ def test_peer_cue_is_read_off_the_reply() -> None:
     assert detects_peer_cue("Now rehearse this scene together in your own language.")
     assert not detects_peer_cue("Me contem o que aconteceu com a família.")
     assert not detects_peer_cue("Ensayen juntos esta escena en su propia lengua, entre ustedes.")
+    assert not detects_peer_cue("Essa discussão fica para depois, vamos seguir juntos.")
 
 
 @pytest.mark.asyncio
