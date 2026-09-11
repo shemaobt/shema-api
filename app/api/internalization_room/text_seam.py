@@ -79,6 +79,20 @@ def _outcome_tag(outcome: room.TurnOutcome) -> str:
     return "pass"
 
 
+def _heard(payload: TextTurnRequest, *, language: str) -> HeardSpeech:
+    """The team's words as the transcriber would have handed them over.
+
+    A mother-tongue turn carries the one fact the recognizer reports about such a take — a
+    confident detection of a language that is not the session's — and nothing invented about
+    which language it was. `und` is the code the room's own tests give an undetermined
+    language; the room reads only that it is not the bridge.
+    """
+    heard = HeardSpeech(text=payload.text or "", bridge_language=language)
+    if payload.motherTongue is None:
+        return heard
+    return heard.model_copy(update={"language_code": "und", "language_probability": 1.0})
+
+
 def _language_code(named: str) -> str:
     """The room's code for a language named either way her scripts and our app name it."""
     code = normalize(named)
@@ -124,7 +138,7 @@ async def take_text_turn(
     turn = await room.run_comprehension_turn(
         db,
         session,
-        speech=HeardSpeech(text=payload.text or "", bridge_language=session.language),
+        speech=_heard(payload, language=session.language),
         opening=payload.kickoff,
         guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
         validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),

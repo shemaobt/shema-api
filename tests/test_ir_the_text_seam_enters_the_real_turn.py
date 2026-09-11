@@ -235,3 +235,61 @@ async def test_a_turn_that_fell_to_a_canned_line_is_tagged_fail_safe(client, mon
     body = answered.json()
     assert body["guideText"] == UNREPAIRABLE_LINE
     assert body["outcome"] == "fail_safe"
+
+
+MOTHER_TONGUE_NOTE = "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição]"
+OFF_BRIDGE_LINE = (
+    "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas "
+    "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
+)
+
+
+async def test_mother_tongue_enters_where_the_recognizer_would_have_flagged_it(
+    client, monkeypatch
+) -> None:
+    session_id = await _an_open_session(client)
+    agent = _the_models_answer(monkeypatch)
+
+    answered = await client.post(
+        f"{SEAM}/turn",
+        json={"sessionId": session_id, "text": MOTHER_TONGUE_NOTE, "motherTongue": 40},
+    )
+
+    body = answered.json()
+    assert body["guideText"] == OFF_BRIDGE_LINE, (
+        "a nota chegava como palavras da equipe e o Guia respondia a ela em vez de a sala "
+        "tomar o caminho que já tem para uma fala fora da língua-ponte"
+    )
+    assert body["outcome"] == "fail_safe"
+    assert agent.guide_inputs == [], "nenhum modelo é chamado numa fala em língua materna"
+
+
+async def test_the_fourth_turn_is_run_over_every_earlier_exchange_not_a_window(
+    client, monkeypatch
+) -> None:
+    seen: list[list[dict[str, str]]] = []
+    real_turn = room.run_comprehension_turn
+
+    async def _watching(db: Any, session: Any, **kwargs: Any) -> Any:
+        seen.append(list(session.messages or []))
+        return await real_turn(db, session, **kwargs)
+
+    monkeypatch.setattr(room, "run_comprehension_turn", _watching)
+    session_id = await _an_open_session(client)
+    said = ["Primeira fala.", "Segunda fala.", "Terceira fala.", "Quarta fala."]
+    for words in said:
+        answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": words})
+        assert answered.status_code == 200, answered.text
+
+    assert seen[-1] == [
+        {"role": "guide", "text": GUIDE_LINE},
+        {"role": "team", "text": "Primeira fala."},
+        {"role": "guide", "text": GUIDE_LINE},
+        {"role": "team", "text": "Segunda fala."},
+        {"role": "guide", "text": GUIDE_LINE},
+        {"role": "team", "text": "Terceira fala."},
+        {"role": "guide", "text": GUIDE_LINE},
+    ], (
+        "a costura entregava ao turno só uma janela da conversa, e o juiz aprovaria pelo "
+        "motivo errado"
+    )
