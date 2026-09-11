@@ -67,6 +67,13 @@ THE_ADDITION = "o pedido das noras para voltar"
 THE_MISSING = "a notícia do pão em Belém"
 THE_UNCLEAR = "não deu para ouvir o que foi dito sobre Belém"
 THE_SILENCE = "o pedido das noras, que a história guarda"
+#: What the corrected stretch used to state and no longer does. The count is where a loss
+#: comes from: the reader confirms what is present far better than it notices what is absent,
+#: so the room derives the loss from the enumeration rather than waiting to be told.
+THE_ELEMENT_THE_COUNT_LOST = "Orfa se despediu e voltou para o povo dela"
+#: A second thing the same check raises, so the two of them are one reply of two tiers.
+THE_CHECKS_UNCLEAR = "ficou baixo demais no comecinho"
+THE_CHECKS_ADDITION = "Jerusalém, que a história não conta"
 
 #: The retelling that answers an addition on frase 5: what the team put in is gone from it.
 THE_ADDITION_MENDED = "As duas seguiram o caminho até Belém, e Noemi soube da notícia."
@@ -118,6 +125,7 @@ class ReaderOfTellings:
         self.verifications: list[str] = []
         self.answer = '{"findings": []}'
         self.raised_by_the_check: list[dict[str, Any]] = []
+        self.counted: list[dict[str, Any]] | None = None
 
     async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
         if CORRECTION_MARK in system_prompt:
@@ -131,10 +139,13 @@ class ReaderOfTellings:
         answered = [
             _answers(kind, note, now) for kind, note in re.findall(r"^- (\w+): (.+)$", asked, re.M)
         ]
-        return {
+        verdict: dict[str, Any] = {
             "resolved": bool(answered) and all(answered),
             "findings": list(self.raised_by_the_check),
         }
+        if self.counted is not None:
+            verdict["carried"] = list(self.counted)
+        return verdict
 
 
 class MemoryStore:
@@ -491,3 +502,71 @@ async def test_an_unresolved_correction_keeps_the_front(
     assert body["finding_segment_id"] == standing[4].id
     assert THE_UNCLEAR in speaker[-1]
     assert THE_MISSING not in speaker[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_loss_the_count_found_leads_over_an_unclear_the_same_check_raised(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
+) -> None:
+    """The Priority rules inside one check's own reply too, not only against the rest.
+
+    A check answers about one stretch and can come back with more than one thing: it reports
+    what it saw, and the room derives a loss from the count on top of that. Here it reports an
+    unclear frase and the count finds an element the retelling dropped — the last tier of the
+    Priority and the third, in one reply.
+
+    Both are the check's, so both keep the front; which of the two the team hears about is the
+    Priority's to decide, and the loss outranks the unclear frase. Picked by list position, the
+    room would ask about the sound of a frase while a piece of the story it used to carry is
+    the thing that went missing in the same retelling.
+    """
+    session_id, _ = await _the_missing_listed_before_the_addition(client, analyst)
+    standing = await service.final_segments(db_session, session_id)
+    analyst.raised_by_the_check = [{"kind": "unclear", "note": THE_CHECKS_UNCLEAR}]
+    analyst.counted = [{"element": THE_ELEMENT_THE_COUNT_LOST, "still_told": False}]
+
+    await _tell_that_stretch_again(client, session_id, standing[4], saying=THE_ADDITION_MENDED)
+    body = (await _finish(client, session_id)).json()
+    corrected = (await service.final_segments(db_session, session_id))[4]
+    findings = await _findings_now(db_session, session_id)
+
+    assert [finding.kind.value for finding in findings] == ["unclear", "missing", "missing"], (
+        f"a verificação tinha de render o pouco claro e a falta da contagem: {findings}"
+    )
+    assert body["finding_kind"] == "missing"
+    assert body["finding_segment_id"] == corrected.id
+    assert THE_ELEMENT_THE_COUNT_LOST in speaker[-1]
+    assert THE_CHECKS_UNCLEAR not in speaker[-1]
+
+
+@pytest.mark.asyncio
+async def test_a_silence_a_check_raised_leads_over_an_addition_it_also_raised(
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
+) -> None:
+    """One fold for both readings: a check's `silence` is a **Filled silence** like any other.
+
+    The check is the analyst in its other mode and reads the same wire. Folded without the
+    flag there, a filled silence the mend itself introduced would arrive as a plain addition
+    and wait behind whatever the check listed before it — the top tier of the Priority lost at
+    the one seam where nobody would look for it, because the kind that reaches the app is
+    right either way.
+
+    Listed second on purpose: first, and list position alone would pass this.
+    """
+    session_id, _ = await _the_missing_listed_before_the_addition(client, analyst)
+    standing = await service.final_segments(db_session, session_id)
+    analyst.raised_by_the_check = [
+        {"kind": "addition", "note": THE_CHECKS_ADDITION},
+        {"kind": "silence", "note": THE_SILENCE},
+    ]
+
+    await _tell_that_stretch_again(client, session_id, standing[4], saying=THE_ADDITION_MENDED)
+    body = (await _finish(client, session_id)).json()
+    findings = await _findings_now(db_session, session_id)
+    raised_by_the_check = [finding for finding in findings if finding.raised_by_check]
+
+    assert [finding.kind.value for finding in raised_by_the_check] == ["addition", "addition"]
+    assert [finding.fills_silence for finding in raised_by_the_check] == [False, True]
+    assert body["finding_kind"] == "addition"
+    assert THE_SILENCE in speaker[-1]
+    assert THE_CHECKS_ADDITION not in speaker[-1]
