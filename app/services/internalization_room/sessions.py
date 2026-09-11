@@ -11,6 +11,7 @@ from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     SupersededAttempt,
@@ -521,27 +522,30 @@ async def report_playback(
     session: IRSession,
     state: BackTranslationState,
     *,
+    played_by_take: list[PlayedTake],
     played_ranges: list[list[int]],
     clip_duration_ms: int | None,
 ) -> BackTranslationState:
-    """Store what the tablet played, stamped with the rehearsal audio it was played from.
+    """Store what the tablet played of each rehearsal part, as it was sent.
 
-    The subject is the recordings the stretches standing right now are slices of — a stretch
-    names its recording, and that was checked when the stretch was captured. Taken here and
-    not read back at release time, because by then the team may have started the telling-back
-    over on a clip they recorded again, and the answer would be about audio this report was
-    never about.
+    The per-part report is stored exactly as the tablet sent it, subject and all. Nothing is
+    computed from it here and nothing is thrown away: the app names the recording each span was
+    played from, and the room has no better answer than the one the player measured.
 
-    Deliberately not "the newest rehearsal take". `created_at` is stamped when the upload
-    lands rather than when the passage was recorded, and the tablet's outbox drains whenever
-    the link comes back — so an abandoned rehearsal can be written down after the one that
-    replaced it, and newest-by-arrival would name the wrong file. The stretches carry the
-    answer already and carry it in order-independent form.
+    **It replaces, it does not merge.** What arrives is the whole of what the team has heard,
+    never a delta, because the tablet keeps the ledger and the server has no way to tell a part
+    left out of a short report from a part that was never played.
 
-    With nothing told back yet there is nothing to bind to and the stamp stays empty. That
-    report can never confirm anything, which is the honest reading of it.
+    The flat pair is stored beside it for the record, as the older builds send it, and the
+    stamp of which recordings the session was standing on is kept for the reason it was taken:
+    a stretch names the recording it is a slice of, checked when it was captured, and that
+    answer does not move, while "the newest take" does — `created_at` is stamped when the
+    upload lands and the tablet's outbox drains whenever the link comes back, so an abandoned
+    rehearsal can be written down after the one that replaced it. Neither is evidence, and
+    `playback_confirms_rehearsal` reads neither.
     """
     told = await final_segments(db, session.id)
+    state.played_by_take = played_by_take
     state.played_ranges = played_ranges
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})
@@ -575,6 +579,7 @@ async def begin_back_translation_again(
         superseded.append(
             SupersededAttempt(
                 findings=state.findings,
+                played_by_take=state.played_by_take,
                 played_ranges=state.played_ranges,
                 clip_duration_ms=state.clip_duration_ms,
             )

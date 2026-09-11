@@ -243,11 +243,14 @@ async def finish(
     state = room.back_translation_of(session)
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
-    if payload is not None and (payload.played_ranges or payload.clip_duration_ms):
+    if payload is not None and (
+        payload.played_by_take or payload.played_ranges or payload.clip_duration_ms
+    ):
         state = await room.report_playback(
             db,
             session,
             state,
+            played_by_take=payload.played_by_take,
             played_ranges=payload.played_ranges,
             clip_duration_ms=payload.clip_duration_ms,
         )
