@@ -7,7 +7,8 @@ from app.core.exceptions import TranscriptionDefect
 from app.db.models.internalization_room import IRPromptKey
 from app.models.internalization_room import CoverageFrame
 from app.services.internalization_room.classify_coverage import classify_coverage
-from app.services.internalization_room.coverage_channel import publish, settled_view
+from app.services.internalization_room.coverage import coverage_view
+from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
@@ -46,7 +47,7 @@ async def settle_coverage(
             settled = await apply_coverage(db, session_id, updated)
         publish(
             session_id,
-            CoverageFrame(turn_id=turn_id, status="settled", coverage=settled_view(settled)),
+            CoverageFrame(turn_id=turn_id, status="settled", coverage=coverage_view(settled)),
         )
     except Exception:
         logger.exception("Coverage settle failed for session %s", session_id)

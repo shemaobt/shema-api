@@ -12,6 +12,13 @@ dependency — `StreamingResponse` is already what the Translation Helper stream
 through — and nothing to teach the proxies in front of Cloud Run about upgrades, pings or
 close frames. The keep-alive comments below are what keeps an idle stream from being cut
 by an intermediary that has not seen a byte in a while.
+
+The subscriber registry is in-process memory, and nothing pins the service to one process:
+Cloud Run runs it with no `--max-instances` and no session affinity, so the GET holding a
+channel and the POST whose background task publishes can land on different instances, and
+that turn's frame reaches nobody. The tablet's thirty-second fallback — one `fetchState`
+and stop — is therefore part of the contract, not a safety net, until the announcement
+travels through something every instance can see.
 """
 
 from __future__ import annotations

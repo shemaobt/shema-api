@@ -19,7 +19,6 @@ from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
     BackTranslationProgress,
-    CoverageView,
     CreateSessionRequest,
     FacilitatorHaltedDeviceView,
     FacilitatorSessionsResponse,
@@ -37,8 +36,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
-from app.services.internalization_room.canon.elements import absence_index
-from app.services.internalization_room.coverage import counts
+from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prepare_opening import (
@@ -110,16 +108,6 @@ async def _voice_the_turn(
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def _coverage_view(session: IRSession) -> CoverageView:
-    numbers = counts(session.coverage_state or {})
-    return CoverageView(
-        engaged=numbers["engaged"],
-        surfaced=numbers["surfaced"],
-        total=numbers["total"],
-        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
-    )
-
-
 def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
     """Whether the turn carries anything the coverage classifier should be reading.
 
@@ -180,7 +168,7 @@ async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
         session_id=session.id,
         pericope=session.pericope,
         status=str(session.status),
-        coverage=_coverage_view(session),
+        coverage=coverage_view(session),
         done=session.status is IRSessionStatus.DONE,
         back_translation=await _progress(db, session),
         language=session.language,
@@ -446,7 +434,7 @@ async def _say_it_again(session: IRSession) -> TurnResponse:
         audio_url=clip_url(voiced.key) if voiced else "",
         transcript="",
         peer_cue=detects_peer_cue(last),
-        coverage=_coverage_view(session),
+        coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
     )
 
@@ -512,7 +500,7 @@ async def take_turn(
             audio_url=clip_url(audio_key),
             transcript="",
             peer_cue=outcome.peer_cue,
-            coverage=_coverage_view(session),
+            coverage=coverage_view(session),
             done=False,
             turn_id=str(uuid.uuid4()),
         )
@@ -577,7 +565,7 @@ async def take_turn(
         peer_cue=outcome.peer_cue,
         used_fail_safe=outcome.used_fail_safe,
         degraded=outcome.degraded,
-        coverage=_coverage_view(session),
+        coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         segments=segments,
         turn_id=turn_id,
