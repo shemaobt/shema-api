@@ -38,7 +38,7 @@ _META: dict[IRPromptKey, tuple[str, str]] = {
     ),
     IRPromptKey.BT_ANALYST: (
         "BT Analyst",
-        "Achados da retrotradução: missing, addition, unclear. Nunca é falado.",
+        "Achados da tradução: missing, addition, unclear. Nunca é falado.",
     ),
     IRPromptKey.BT_CORRECTION: (
         "BT Correction",
@@ -46,7 +46,7 @@ _META: dict[IRPromptKey, tuple[str, str]] = {
     ),
     IRPromptKey.BT_VERDICT_SPEAKER: (
         "BT Verdict Speaker",
-        "Voz do veredito da retrotradução: um achado por turno, e para.",
+        "Voz do veredito da tradução: um achado por turno, e para.",
     ),
     IRPromptKey.COMPREHENSION_ASSESSOR: (
         "Comprehension Evidence Assessor",

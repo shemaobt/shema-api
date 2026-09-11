@@ -5,8 +5,8 @@ team and never one person, and *traduzir / tradução* for what they did — *co
 the Conversation with the Guide alone (`CONTEXT.md`, **Telling back**). Her `check-doctrine`
 header rules that the guard scans code and never the prompts, because the prompts are her
 artifacts and she reviews them; the ENG-881 sweep follows that and reads Python literals
-only. So this file is the whole guard over the two back-translation prompts and over the H
-and I lines the room speaks in Portuguese and Spanish.
+only. So this file is the whole guard over the two back-translation prompts, over the H and
+I lines the room speaks in Portuguese and Spanish, and over the two prompt-key descriptions.
 
 The English *told back* stays: it is the glossary's English term for the act, not the
 retired Portuguese, and a sweep that took it would be a sweep of the wrong language.
@@ -232,4 +232,12 @@ def test_the_h_and_i_lines_say_traduzir_in_portuguese_and_spanish(
     assert len(spoken) == SPOKEN_FAMILIES[family], (
         f"a família {family} em {language} não tem mais "
         f"{SPOKEN_FAMILIES[family]} fala(s) escrita(s)"
+    )
+
+
+@pytest.mark.parametrize("key", list(IRPromptKey))
+def test_no_prompt_key_description_says_retrotradução(key: IRPromptKey) -> None:
+    """The word the room retired does not survive in what names the prompt to a reader."""
+    assert "retrotradução" not in default_prompt(key)["description"], (
+        f"a descrição de {key} ainda chama a tradução de retrotradução"
     )
