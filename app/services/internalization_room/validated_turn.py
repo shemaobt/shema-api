@@ -34,9 +34,9 @@ from app.services.internalization_room.render import render
 from app.services.internalization_room.turn_instructions import (
     NOT_THIS_TURN,
     OPENING_MOVEMENT_INSTRUCTION,
+    SPEAK_THIS_TURN,
     VALIDATOR_USER_MESSAGE,
     _nobody_spoke_this_turn,
-    speak_this_turn,
     split_opening_movements,
 )
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
@@ -126,7 +126,6 @@ async def _draft(
     conversation: list[Turn],
     utterance: str,
     redraft_note: str,
-    language_code: str,
     settings: Settings,
     opening_instruction: str = "",
     ask_for_movements: bool = False,
@@ -148,11 +147,11 @@ async def _draft(
     if utterance:
         user_content = utterance
     else:
-        user_content = opening_instruction or speak_this_turn(language_code)
+        user_content = opening_instruction or SPEAK_THIS_TURN
         if ask_for_movements:
             user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
     if redraft_note:
-        user_content += f"\n\n## Nota de reescrita\n\n{redraft_note}\n"
+        user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
     draft: str = await shim.call_agent(
         system_prompt=guide_prompt,
         user_content=user_content,
@@ -253,7 +252,6 @@ async def _voiced_after_validation(
                     conversation=conversation,
                     utterance="" if opening else transcript,
                     redraft_note=redraft_note,
-                    language_code=language_code,
                     settings=settings,
                     opening_instruction=opening_instruction,
                     ask_for_movements=ask_for_movements,
@@ -267,7 +265,7 @@ async def _voiced_after_validation(
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
                 RECENT_CONVERSATION=NOT_THIS_TURN,
-                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
+                TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
                 FINDING=finding or NOT_THIS_TURN,

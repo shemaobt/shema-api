@@ -10,6 +10,9 @@ team because somebody opened the phone settings mid-passage, and half a passage 
 language is worse than the whole of it in either.
 """
 
+import json
+import re
+import sys
 from typing import Any
 
 import httpx
@@ -20,13 +23,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import ValidationError
-from app.services.internalization_room.languages import FLOOR, floor, normalize
+from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES, floor, normalize
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
+
+#: A letter no English sentence in this codebase has ever needed. Most of the original
+#: Portuguese literals this branch removed carried at least one, so this catches a
+#: reintroduced literal without having to name it in advance — but not all of them did
+#: ("Julgue a resposta rascunhada.", "Fale este turno.", "Classifique esta troca." have none),
+#: so the exact-value tests below carry those three; this class is one layer, not the whole
+#: guard. It does not, and must not, run against `prompts/*.md`: those carry Portuguese on
+#: purpose, reviewed by Marcia, not by a grep (ENG-822, item 7).
+_PORTUGUESE_MARKER = re.compile(r"[áàâãéêíóôõúçÁÀÂÃÉÊÍÓÔÕÚÇ]")
 
 
 @pytest.fixture()
@@ -97,7 +109,7 @@ async def test_a_session_opened_naming_a_language_answers_in_it(
 
     turn = next(call for call in spoken if "session_language" in call)
     assert turn["language_code"] == "pt"
-    assert turn["session_language"] == "Portuguese"
+    assert turn["session_language"] == "Brazilian Portuguese"
 
 
 async def test_a_session_that_names_no_language_gets_english(
@@ -240,3 +252,143 @@ def test_a_locale_the_room_does_not_speak_is_not_quietly_narrowed_to_one_it_does
     assert normalize("ja") is None
     assert normalize("fr-CA") is None
     assert normalize(None) is None
+
+
+def test_the_injected_language_name_carries_marcias_grain_and_no_third_entry() -> None:
+    """Spanish is dead (ticket ENG-822, question 10) — a pilot that only speaks pt/en must
+    never find a third name to inject, and the Portuguese one must carry the grain her
+    rebuilt prompts already use, not the bare autonym."""
+    assert LANGUAGE_NAMES == {"en": "English", "pt": "Brazilian Portuguese"}
+
+
+def test_no_portuguese_reaches_the_opening_and_validator_instructions() -> None:
+    """These four are sent to the model on every session, in every language — unlike the
+    prompt files, nothing here is templated per {{SESSION_LANGUAGE}}, so a Portuguese literal
+    in any of them is Portuguese an English session hears too (ENG-822, item 3)."""
+    from app.services.internalization_room.turn_instructions import (
+        ALREADY_MET_INSTRUCTION,
+        NOT_THIS_TURN,
+        OPENING_INSTRUCTION,
+        OPENING_MOVEMENT_INSTRUCTION,
+        VALIDATOR_USER_MESSAGE,
+    )
+
+    for value in (
+        OPENING_INSTRUCTION,
+        ALREADY_MET_INSTRUCTION,
+        OPENING_MOVEMENT_INSTRUCTION,
+        NOT_THIS_TURN,
+        VALIDATOR_USER_MESSAGE,
+    ):
+        assert not _PORTUGUESE_MARKER.search(value), value
+
+
+def test_speak_this_turn_is_english_on_every_session() -> None:
+    """SPEAK_THIS_TURN is the filler user message a verdict turn sends when it has neither an
+    opening nor a team utterance to answer — a backend-composed instruction exactly like
+    OPENING_INSTRUCTION above, just missed by the sweep that translated its siblings in this
+    same file. A `pt` session must not see "Fale este turno."."""
+    from app.services.internalization_room.turn_instructions import SPEAK_THIS_TURN
+
+    assert SPEAK_THIS_TURN == "Speak this turn."
+
+
+def test_the_validator_user_message_matches_the_model_marcia_authored() -> None:
+    from app.services.internalization_room.turn_instructions import VALIDATOR_USER_MESSAGE
+
+    assert (
+        VALIDATOR_USER_MESSAGE == "Validate the drafted response now. Return only the JSON object."
+    )
+
+
+async def test_the_redraft_note_heading_the_guide_reads_is_english(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_draft` appends the redraft note under its own heading — a section title exactly like
+    the EQUIPE/FACILITADOR labels item 3 targets, just added back the same day (c3ee0e2) it
+    removed those. Never Portuguese, whatever the session speaks (ENG-822, item 3)."""
+    from app.services.internalization_room.validated_turn import _draft
+
+    module = sys.modules["app.services.internalization_room.run_turn"]
+    captured: dict[str, str] = {}
+
+    async def agent(*, user_content: str, **kwargs: Any) -> str:
+        captured["user_content"] = user_content
+        return "fala"
+
+    monkeypatch.setattr(module, "call_agent", agent)
+
+    await _draft(
+        guide_prompt="system",
+        conversation=[],
+        utterance="algo",
+        redraft_note="Redo it.",
+        settings=get_settings(),
+    )
+
+    assert "## Rewrite note" in captured["user_content"]
+    assert "## Nota de reescrita" not in captured["user_content"]
+
+
+async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothing_is_left(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """classify_coverage.py builds three backend-composed strings that used to be Portuguese
+    regardless of session language: the no-utterance placeholder, the "nothing pending" block,
+    and its own user message. ENG-822, item 4 — the classifier's version of item 3's treatment.
+    """
+    from app.services.internalization_room.classify_coverage import classify_coverage
+    from app.services.internalization_room.coverage import initial_state, merge
+    from app.services.internalization_room.render import render as real_render
+
+    P = "P01"
+    fully_engaged = merge(initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys()))
+    assert fully_engaged  # a real pericope, or COVERAGE_ELEMENTS below proves nothing
+
+    module = sys.modules["app.services.internalization_room.classify_coverage"]
+    captured: dict[str, str] = {}
+
+    def capturing_render(template: str, **values: str) -> str:
+        captured.update(values)
+        return real_render(template, **values)
+
+    async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        captured["user_content"] = user_content
+        return json.dumps({"decisions": []})
+
+    monkeypatch.setattr(module, "render", capturing_render)
+    monkeypatch.setattr(module, "call_agent", agent)
+
+    await classify_coverage(
+        coverage_state=fully_engaged,
+        team_utterance="",
+        guide_response="the Guide asked",
+        classifier_prompt=(
+            "{{SESSION_LANGUAGE}} {{SCENES}} {{COVERAGE_ELEMENTS}} {{TEAM_UTTERANCE}} "
+            "{{GUIDE_RESPONSE}}"
+        ),
+        pericope_num=P,
+        session_language="English",
+    )
+
+    assert captured["TEAM_UTTERANCE"] == "(the team has not spoken yet)"
+    assert captured["COVERAGE_ELEMENTS"] == "(no elements pending)"
+    assert captured["user_content"] == "Classify this exchange now. Return only the JSON object."
+
+
+def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
+    """coverage_status_block feeds the Guide's COVERAGE_STATUS slot directly — a heading and a
+    "nothing left" placeholder, neither threaded through the session's language at all
+    (ENG-822, item 3/4's "same treatment", the run_turn.py successor of the old status block)."""
+    from app.services.internalization_room.coverage import initial_state, merge
+    from app.services.internalization_room.prompt_blocks import coverage_status_block
+
+    P = "P01"
+    fully_engaged = merge(initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys()))
+
+    assert coverage_status_block(fully_engaged, P) == (
+        "REMAINING: (none — every element has been worked by the team)"
+    )
+    assert coverage_status_block(initial_state(P), P).startswith(
+        "REMAINING (not yet worked by the team, in their own words):"
+    )

@@ -11,8 +11,8 @@ from app.services.internalization_room.coverage import remaining
 def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> str:
     left = remaining(coverage_state, pericope_num)
     if not left:
-        return "REMAINING: (nada — todos os elementos foram trabalhados pela equipe)"
-    lines = ["REMAINING (ainda não trabalhados pela equipe, nas palavras deles):"]
+        return "REMAINING: (none — every element has been worked by the team)"
+    lines = ["REMAINING (not yet worked by the team, in their own words):"]
     lines.extend(f"- [{element.key}] {element.label}" for element in left)
     return "\n".join(lines)
 
