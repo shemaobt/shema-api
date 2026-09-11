@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.internalization_room import (
     attended,
     back_translation,
+    coverage_channel,
     devices,
     passages,
     questions,
@@ -18,6 +19,7 @@ router = APIRouter()
 for _sub in (
     voice,
     sessions,
+    coverage_channel,
     passages,
     back_translation,
     segments,
