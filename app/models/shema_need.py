@@ -166,16 +166,15 @@ class ShemaNeedWrite(BaseModel):
         it is a typo. The sibling left negatives to its own validation rule because a fund
         movement legitimately has two directions; an ask has one.
 
-        ``NaN`` and ``Infinity`` are refused before anything is compared against them, because
-        :class:`~decimal.Decimal` parses both from a string and every comparison with a ``NaN``
-        is false — so the two checks below would pass it through to a column that cannot store
-        it. That is the shape of a guard that reads as thorough and admits the one value it
-        was written for.
+        ``NaN`` and ``Infinity`` never reach here: Pydantic refuses a non-finite
+        :class:`~decimal.Decimal` before a field validator runs, with *input should be a finite
+        number*. Worth the sentence because the trap is real and the guard is not — every
+        comparison with a ``NaN`` is false, so the checks below would have waved it through,
+        and a guard written here would have been unreachable code that reads as thorough.
+        ``tests/test_shema/test_needs.py`` pins the refusal where it actually happens.
         """
         if value is None:
             return value
-        if not value.is_finite():
-            raise ValueError(f"{value} is not an amount")
         if value < 0:
             raise ValueError("an amount asked for is not negative")
         exponent = value.as_tuple().exponent
@@ -252,6 +251,43 @@ class ShemaNeedLine(LeavingShape):
     deadline: date | None = None
     submitted_at: date | None = None
     acknowledged_at: date | None = None
+
+    def as_notice(self) -> tuple[str, str]:
+        """The title and the body of the notice this need sends, when it is urgent.
+
+        **The wording lives on the shape rather than in the service that sends it, and the
+        reason is the glob.** ``tests/test_shema/test_privacy_owners.py`` fails when a file in
+        ``app/services/shema/`` or ``app/api/shema/`` reads a guarded column by name, and the
+        one thing a notice has to say is *who, and roughly where*. Writing
+        ``line.location`` in the notifier would be that read — even though the value there is
+        already the region key, because the check reads the tree and not the type, and it is
+        right to: a rule that trusted the author to know which ``.location`` is safe is the
+        rule the next author gets wrong. ``app/models/`` is outside those globs precisely
+        because it is where the shapes and their rules live, so the sentence is composed here,
+        where the withholding has already happened and there is nothing left to leak.
+
+        The description is deliberately absent: it is free text a team wrote about their own
+        situation, and a notice is not the surface to forward it on. The amount is present when
+        there is one, because for an urgent need it is the fact the recipient acts on — and it
+        carries its currency, because in this module a number never travels without one.
+
+        **The copy is English**, which is a pendency rather than a decision: every notification
+        title in this repository is English, and the product's bilingual client-facing copy is
+        still open. Inventing Portuguese here would put unapproved wording in front of a field
+        team on nobody's authority — the sibling's ``_notices.py`` says the same, for the same
+        reason.
+        """
+        where = f" ({self.location})" if self.location else ""
+        money = (
+            ""
+            if self.estimated_amount is None
+            else f" Estimated at {self.estimated_amount} {self.estimated_currency}."
+        )
+        who = self.language_name or self.project_id
+        return (
+            f"Urgent need: {self.category}",
+            f"{who}{where} raised an urgent {self.category} need.{money}",
+        )
 
     @classmethod
     def of(cls, need: Any, project: Any) -> ShemaNeedLine:

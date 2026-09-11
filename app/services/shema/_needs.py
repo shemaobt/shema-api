@@ -49,7 +49,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, NamedTuple
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,8 +83,9 @@ NEEDS_FIELD_KEY = "needsItems"
 #: the one notice this module sends rather than in a table, because there is one notice.
 URGENT_NEED_ROLES = (COORDINATOR_ROLE, OBT_LAB_ROLE)
 
-#: The columns a batch row may move. ``id`` addresses, ``acknowledged`` is a gesture the server
-#: turns into three columns, and everything else is a value copied across.
+#: The columns a batch row copies across as sent. ``id`` addresses, ``acknowledged`` is a
+#: gesture the server turns into three columns, and ``submitted_at`` is the one field that can
+#: be set and not cleared — :func:`raise_day_moves` says why.
 _WRITTEN_COLUMNS = (
     "category",
     "urgency",
@@ -100,7 +101,6 @@ _WRITTEN_COLUMNS = (
     "fulfilled_date",
     "dropped_date",
     "submitted_by",
-    "submitted_at",
 )
 
 #: What the trail records about a need that moved. The lifecycle and nothing else: the
@@ -110,47 +110,25 @@ _WRITTEN_COLUMNS = (
 _TRAIL_COLUMNS = ("category", "urgency", "status", "acknowledged_at")
 
 
-class Notice(NamedTuple):
-    """One notification's two strings, rendered before anything is written.
+def raise_day_moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
+    """Whether ``row`` states a different day from the one this need was raised on.
 
-    A shape rather than a tuple of two strings, so the caller cannot swap them: a title in a
-    body renders, and nothing fails.
+    ``submitted_at`` is the one field a payload can **set and cannot clear**, which is why it
+    is not among :data:`_WRITTEN_COLUMNS`. Two things depend on it being answerable: the sweep
+    measures a need's age from it, and FE-44 §5.8 keys a derived notification on
+    ``need:{project}:{category}:{submittedAt}``. So this module stamps it at creation when the
+    client sent none, and from then on a payload that carries a day moves it while a payload
+    that carries ``None`` leaves it standing. *Never cleared* is not *never changed*: a
+    coordinator fixing a wrong date is ordinary, and it lands.
+
+    **Without that rule every re-save of an untouched tab is an edit.** The console sends whole
+    ``NeedItem`` rows, and a field the *server* filled that the client never had would differ
+    from the row on every single save: the version would bump, the trail would grow a row, and
+    every other coordinator in the meeting would be refused — over a save that moved nothing.
+    The record's own diff already refuses to read a re-sent value as a change; this is the same
+    rule for a value the client was never given to re-send.
     """
-
-    title: str
-    body: str
-
-
-def urgent_need_notice(line: ShemaNeedLine) -> Notice:
-    """What an urgent need says to the people it reaches.
-
-    **Built from the leaving shape and from nothing else**, which is what makes it safe
-    without anybody here knowing the privacy rule: ``line.location`` is already the region key
-    for a flagged project, and there is no ``project.location`` in this function to leak. The
-    description is deliberately absent — it is free text a team wrote about their own
-    situation, and a notice is not the surface to forward it on.
-
-    The amount is in the body when there is one, because for an urgent need it is the fact the
-    recipient acts on, and it carries its currency because in this module a number never
-    travels without one.
-
-    **The copy is English**, which is a pendency rather than a decision: every notification
-    title in this repository is English, and the product's bilingual client-facing copy is
-    still open. Writing invented Portuguese here would put unapproved wording in front of a
-    field team on nobody's authority — the sibling's ``_notices.py`` says the same and for the
-    same reason.
-    """
-    who = line.language_name or line.project_id
-    where = f" ({line.location})" if line.location else ""
-    money = (
-        ""
-        if line.estimated_amount is None
-        else f" Estimated at {line.estimated_amount} {line.estimated_currency}."
-    )
-    return Notice(
-        title=f"Urgent need: {line.category}",
-        body=f"{who}{where} raised an urgent {line.category} need.{money}",
-    )
+    return row.submitted_at is not None and row.submitted_at != need.submitted_at
 
 
 def _lifecycle(need: ShemaNeed) -> str:
@@ -195,6 +173,11 @@ async def plan_needs(
     An id that belongs to **another** project is refused exactly as an unknown one is. It is
     not an oracle — the caller already reached this project through the scope — and answering
     *that id is somebody else's* would say that the id exists.
+
+    **A row that would move nothing does not enter the plan**, so an empty plan means *this
+    save changes no need* and ``save_project`` can stop at its own step 4 without bumping the
+    version. That is the difference between *the tab sent its table* and *the tab changed
+    something*, and only the second may refuse the other coordinators in the meeting.
     """
     existing = {
         row.id: row
@@ -208,7 +191,8 @@ async def plan_needs(
         if row.id is None:
             plan.creates.append(row)
         elif row.id in existing:
-            plan.updates.append((existing[row.id], row))
+            if moves(existing[row.id], row):
+                plan.updates.append((existing[row.id], row))
         else:
             unknown.append(f"needsItems[{index}]: {row.id} is not a need of this project")
     if unknown:
@@ -231,40 +215,47 @@ def _acknowledge(need: ShemaNeed, *, user: User | None, day: date) -> None:
     need.acknowledged_by_name = _audit.author_name(user)
 
 
-def _apply(need: ShemaNeed, row: ShemaNeedWrite, *, user: User | None, day: date) -> bool:
-    """Move one row onto one need; answer whether anything actually changed.
+def moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
+    """Whether this row would actually change this need.
 
-    Equality and not identity, for ``_audit.py``'s reason: a tab re-sending a need it did not
-    touch is not an edit, and a version bump on it would refuse every other coordinator in the
-    meeting over a save that moved nothing.
+    **Asked while planning and not while writing**, which is what keeps a version bump honest:
+    the record's own diff decides whether a save moved anything *before* the conditional
+    ``UPDATE`` runs, and a needs batch that re-sent what it read has to reach that decision the
+    same way. A tab re-sending its whole table on every save is what the progress tab already
+    does, and bumping the version for it would refuse every other coordinator in the meeting
+    over a save that moved nothing.
+
+    Equality and not identity, for ``_audit.py``'s reason.
     """
-    moved = False
+    if any(getattr(need, column) != getattr(row, column) for column in _WRITTEN_COLUMNS):
+        return True
+    if raise_day_moves(need, row):
+        return True
+    return row.acknowledged and need.acknowledged_at is None
+
+
+def _apply(need: ShemaNeed, row: ShemaNeedWrite, *, user: User | None, day: date) -> None:
+    """Move one row onto one need. :func:`moves` already said it would."""
     for column in _WRITTEN_COLUMNS:
-        value = getattr(row, column)
-        if getattr(need, column) != value:
-            setattr(need, column, value)
-            moved = True
-    if row.acknowledged and need.acknowledged_at is None:
+        setattr(need, column, getattr(row, column))
+    if row.submitted_at is not None:
+        need.submitted_at = row.submitted_at
+    if row.acknowledged:
         _acknowledge(need, user=user, day=day)
-        moved = True
-    return moved
 
 
 def _new_need(project_id: str, row: ShemaNeedWrite, *, user: User | None, day: date) -> ShemaNeed:
     """One need, as the batch asked for it.
 
-    ``submitted_at`` falls back to the day it was raised rather than staying NULL, and that is
-    the one value this path supplies that the payload did not. Two things depend on the column
-    being answerable: the sweep measures a need's age from it, and FE-44 §5.8 keys a derived
-    notification on ``need:{project}:{category}:{submittedAt}`` — an id with a hole in it is
-    not stable, and a need with no date is a need no threshold can be past.
+    ``submitted_at`` falls back to the day the need arrived rather than staying NULL, and it is
+    the one value this path supplies that the payload did not — :func:`raise_day_moves` carries
+    the reason and the other half of the rule.
     """
     need = ShemaNeed(
         project_id=project_id,
         **{column: getattr(row, column) for column in _WRITTEN_COLUMNS},
     )
-    if need.submitted_at is None:
-        need.submitted_at = day
+    need.submitted_at = row.submitted_at or day
     if row.acknowledged:
         _acknowledge(need, user=user, day=day)
     return need
@@ -308,8 +299,7 @@ async def apply_needs(
     for need, row in plan.updates:
         was_urgent = _is_urgent_and_open(need)
         before = _lifecycle(need)
-        if not _apply(need, row, user=user, day=day):
-            continue
+        _apply(need, row, user=user, day=day)
         changes.append(_audit.FieldChange(NEEDS_FIELD_KEY, before, _lifecycle(need)))
         if _is_urgent_and_open(need) and not was_urgent:
             became_urgent.append(need)
@@ -333,36 +323,45 @@ async def notify_urgent(
     :data:`URGENT_NEED_ROLES` whose scope reaches this project's region, and a holder of a role
     in another region is not a recipient rather than a recipient who is filtered out later.
 
+    **The person who raised it is not told about their own act**, which is the sibling's
+    ``board_watchers(exclude=...)`` and its reason: a coordinator who just typed the need does
+    not need a notice saying they typed it, and the panel somebody actually reads is the one
+    holding only what other people did.
+
     Staged inside the caller's transaction with ``commit=False``. The flag exists for exactly
     this (``create_notification``'s own docstring): a need that landed always carries its
     notice, and one that rolled back leaves none.
 
-    **The body is built from a leaving shape**, so it cannot name the place even though the
-    people it reaches could read it on the record. The notice is the payload that travels
-    furthest with the least supervision — it is listed, it is counted, it is the thing a panel
-    renders next to seven others — and a rule that had to be remembered here is the rule
-    ``docs/shema.md`` §6.4 spends a section saying nobody remembers.
+    **The body is written by the leaving shape itself**
+    (:meth:`~app.models.shema_need.ShemaNeedLine.as_notice`), so it cannot name the place even
+    though the people it reaches could read it on the record.
+    A notice is the payload that travels furthest with the least supervision — it is listed, it
+    is counted, it is rendered next to seven others — and a rule that had to be remembered here
+    is the rule ``docs/shema.md`` §6.4 spends a section saying nobody remembers. It is also why
+    the sentence is composed there and not here: this package is globbed for guarded names, and
+    ``line.location`` written in this file would be a read the check cannot tell from a leak.
     """
     if not needs:
         return 0
 
     holders = await authorization_service.list_role_holders(db, SHEMA_APP_KEY, URGENT_NEED_ROLES)
-    recipients = await holders_reaching(db, holders, project.region_key, SHEMA_APP_KEY)
+    reaching = await holders_reaching(db, holders, project.region_key, SHEMA_APP_KEY)
+    recipients = [person for person in reaching if actor is None or person.id != actor.id]
     if not recipients:
         return 0
 
     app_id = await get_shema_app_id(db)
     written = 0
     for need in needs:
-        notice = urgent_need_notice(ShemaNeedLine.of(need, project))
-        for user in recipients:
+        title, body = ShemaNeedLine.of(need, project).as_notice()
+        for person in recipients:
             await create_notification(
                 db,
-                user_id=user.id,
+                user_id=person.id,
                 app_id=app_id,
                 event_type=URGENT_NEED_EVENT,
-                title=notice.title,
-                body=notice.body,
+                title=title,
+                body=body,
                 actor_id=None if actor is None else actor.id,
                 commit=False,
             )

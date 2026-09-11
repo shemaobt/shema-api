@@ -29,6 +29,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.shema._deps import Db, Scope
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
+from app.models.shema_need import ShemaNeedLine
 from app.models.shema_privacy import (
     REGION_CENTROIDS,
     UNKNOWN_REGION,
@@ -332,10 +333,23 @@ def test_the_withholding_is_visible_and_says_nothing_about_what(flagged) -> None
 # --------------------------------------------------------------------------------------
 
 
+#: BE-08's financial line is in this list and is the one shape here that is **real** rather
+#: than a stand-in. The DoD's *financial fields covered by the sensitive-country export tests*
+#: is this line: an amount against a named project in a named country is exactly the
+#: combination the rule exists for, and it is the field most likely to end up in a spreadsheet
+#: somebody forwards to a donor. The file itself is BE-14's and is out of the wave, so the
+#: proof is taken at the boundary — which is the level the rule lives at anyway.
 @pytest.mark.parametrize(
     "shape",
-    [NaiveExportRow, NaivePrayerEntry, NaiveNotification, NaiveEtenSnapshot, NaivePulseEntry],
-    ids=["export", "prayer wall", "notification", "eten report", "pulse"],
+    [
+        NaiveExportRow,
+        NaivePrayerEntry,
+        NaiveNotification,
+        NaiveEtenSnapshot,
+        NaivePulseEntry,
+        ShemaNeedLine,
+    ],
+    ids=["export", "prayer wall", "notification", "eten report", "pulse", "needs and money"],
 )
 def test_every_shape_that_leaves_coordination_withholds_the_place(shape, flagged) -> None:
     """**The DoD's second line, for the four paths that do not exist yet.**
@@ -343,6 +357,10 @@ def test_every_shape_that_leaves_coordination_withholds_the_place(shape, flagged
     Each of these is the shape FE-44's contract already froze for an issue later in the wave.
     None of them calls anything; each inherits. That is the claim, and this is where it is
     either true or not.
+
+    **The sixth arrived with BE-08 and is not a stand-in**:
+    :class:`~app.models.shema_need.ShemaNeedLine` is the shipped shape a need leaves in, and it
+    proves the same claim about the one payload that carries money.
     """
     payload = {
         "project_id": flagged.id,
@@ -355,13 +373,21 @@ def test_every_shape_that_leaves_coordination_withholds_the_place(shape, flagged
         "id": flagged.id,
         "language_name": flagged.language_name,
         "location": flagged.location,
+        "category": "financial",
+        "estimated_amount": "5000.00",
+        "estimated_currency": "USD",
     }
-    out = shape.model_validate(payload).model_dump(by_alias=True)
+    out = shape.model_validate(payload).model_dump(by_alias=True, mode="json")
     body = json.dumps(out)
 
     assert out["locationWithheld"] is True
     assert COUNTRY not in body
     assert BASE not in body
+    if "estimatedAmount" in out:
+        assert (out["estimatedAmount"], out["estimatedCurrency"]) == ("5000.00", "USD"), (
+            "the money is not what a sensitive project is protected from — withholding the "
+            "amount would make the protection cost the thing it is for"
+        )
 
 
 def test_the_search_haystack_of_a_withheld_project_holds_no_place(flagged, cleared) -> None:
