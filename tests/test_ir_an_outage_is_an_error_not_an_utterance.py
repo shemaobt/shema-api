@@ -109,6 +109,37 @@ async def test_a_provider_that_will_not_answer_rises_as_an_upstream_error_naming
     )
 
 
+async def test_a_call_that_failed_leaves_a_usage_line_with_its_status_and_cause(
+    the_provider_fails, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The line an answered call writes, for the call that was refused.
+
+    A credit or quota failure is diagnosed from the session log, not from the team's
+    report: the answered calls already say which rung and how many tokens, and the one
+    that failed said nothing at all.
+    """
+    the_provider_fails(
+        anthropic.AuthenticationError("invalid x-api-key", response=_status(401), body=None)
+    )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="app.services.internalization_room.llm"),
+        pytest.raises(UpstreamServiceError),
+    ):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    failed = [
+        record
+        for record in caplog.records
+        if record.name == "app.services.internalization_room.llm" and hasattr(record, "status")
+    ]
+    assert len(failed) == 1, "uma chamada que falhou não deixava linha de uso nenhuma"
+    assert failed[0].rung == MODEL
+    assert failed[0].status == 401
+    assert "[llm-usage]" in failed[0].getMessage(), "a linha que o operador filtra"
+    assert "invalid x-api-key" in failed[0].getMessage()
+
+
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
 P = "P03"

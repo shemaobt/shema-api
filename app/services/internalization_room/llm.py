@@ -182,6 +182,22 @@ async def call_agent(
 
 
 def _unavailable(model: str, failure: anthropic.APIError) -> UpstreamServiceError:
+    """The usage line for a call that was refused, and the error the turn rises with.
+
+    The same logger as `_report_spend`, so a session's calls read as one ledger: which rung
+    each one asked, and for the one that failed, the status and the provider's own reason.
+    A credit or quota failure is diagnosed from here, not from the team's report of a room
+    that kept saying the same sentence. No token counts, because none were spent — which is
+    also what keeps this line out of the text seam's per-call tally.
+    """
+    status = getattr(failure, "status_code", None)
+    logger.warning(
+        "[llm-usage] failed on %s: status=%s %s",
+        model,
+        status,
+        failure,
+        extra={"rung": model, "status": status, "cause": type(failure).__name__},
+    )
     return UpstreamServiceError(f"o modelo não respondeu em {model}: {failure}")
 
 
