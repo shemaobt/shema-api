@@ -465,7 +465,14 @@ class Plan:
     records: list[PlannedRecord] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
     refusals: list[Refusal] = field(default_factory=list)
+    #: Columns whose every value is ``""``, ``[]`` or ``{}``. FE-44 §6 counts 27 of these and
+    #: the count is kept separate from the two below on purpose: *nothing was written here* is
+    #: a different statement from *the answer is no* or *the answer is none*, and folding
+    #: ``inETEN`` and ``communityCheckedUnits`` in with them would overstate how thin the file
+    #: is by two columns that are perfectly well answered.
     columns_empty_everywhere: tuple[str, ...] = ()
+    columns_false_everywhere: tuple[str, ...] = ()
+    columns_zero_everywhere: tuple[str, ...] = ()
     countries_named_by_the_export: tuple[str, ...] = ()
 
 
@@ -603,8 +610,16 @@ def _read_row(row: dict[str, Any], countries: SensitiveCountries) -> PlannedReco
     return PlannedRecord(project_id=project_id, values=values, source=row, flag=flag)
 
 
-def _findings_for(row: dict[str, Any], record: PlannedRecord) -> list[Finding]:
-    """Everything about one row a person should look at, with the rule that handled it."""
+def _findings_for(
+    row: dict[str, Any], record: PlannedRecord, countries: SensitiveCountries
+) -> list[Finding]:
+    """Everything about one row a person should look at, with the rule that handled it.
+
+    A fact that holds for **every** record is not a finding and does not belong here: while
+    the client's list is pending every record's flag disagrees with the export's, and 127
+    identical lines would bury the twenty-odd rows a reviewer actually has to judge. The
+    report says that once, in its own section, and this function stays per-record.
+    """
     project_id = record.project_id
     found: list[Finding] = []
 
@@ -673,15 +688,6 @@ def _findings_for(row: dict[str, Any], record: PlannedRecord) -> list[Finding]:
             )
         )
 
-    if not row["bridgeLanguage"]:
-        found.append(
-            Finding(
-                "bridgeLanguage is empty",
-                project_id,
-                "imported empty; required to save and empty on all 127 records",
-            )
-        )
-
     if row["approvedUnits"] == row["translatedUnits"] and row["approvedUnits"] > 0:
         found.append(
             Finding(
@@ -712,7 +718,7 @@ def _findings_for(row: dict[str, Any], record: PlannedRecord) -> list[Finding]:
             )
         )
 
-    if bool(row["sensitiveCountry"]) != record.flag.sensitive:
+    if not countries.is_pending and bool(row["sensitiveCountry"]) != record.flag.sensitive:
         found.append(
             Finding(
                 "the flag disagrees with the export",
@@ -766,11 +772,21 @@ def plan(rows: list[dict[str, Any]], countries: SensitiveCountries) -> Plan:
             built.refusals.extend(read)
             continue
         built.records.append(read)
-        built.findings.extend(_findings_for(row, read))
+        built.findings.extend(_findings_for(row, read, countries))
 
     if rows:
         built.columns_empty_everywhere = tuple(
-            sorted(key for key in EXPORT_KEYS if all(not row.get(key) for row in rows))
+            sorted(key for key in EXPORT_KEYS if all(row.get(key) in ("", [], {}) for row in rows))
+        )
+        built.columns_false_everywhere = tuple(
+            sorted(key for key in EXPORT_KEYS if all(row.get(key) is False for row in rows))
+        )
+        built.columns_zero_everywhere = tuple(
+            sorted(
+                key
+                for key in EXPORT_KEYS
+                if all(row.get(key) == 0 and row.get(key) is not False for row in rows)
+            )
         )
         built.countries_named_by_the_export = tuple(
             sorted(
@@ -1027,6 +1043,26 @@ def render_report(
     add("")
     for key in built.columns_empty_everywhere:
         add(f"- `{key}`")
+    add("")
+    if built.columns_false_everywhere or built.columns_zero_everywhere:
+        add(
+            "Two more are answered on every record and answered the same way, which is a "
+            "different statement from being empty and is listed apart from it:"
+        )
+        add("")
+        for key in built.columns_false_everywhere:
+            add(f"- `{key}` — `false` on every record")
+        for key in built.columns_zero_everywhere:
+            add(f"- `{key}` — `0` on every record")
+        add("")
+    add(
+        "**Four fields are required to save, and the export fills two of them.** "
+        "`languageName` and `team` are on every record; `bridgeLanguage` is empty on all of "
+        "them and `objective` on some (listed below). Those records are imported and cannot "
+        "be saved through the API until somebody fills the gap — which is why the schema "
+        "carries no constraint for the four: a `CHECK` would have refused this import on its "
+        "first row."
+    )
     add("")
 
     add("## 4. What was ambiguous, and what was decided about it")

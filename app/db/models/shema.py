@@ -67,9 +67,17 @@ line in the shape that leaves and no rule for anybody to forget. Nothing is lost
 authoritative**. They are not one fact in two spellings — the boolean is the safety flag the
 redaction reads and the text is a free-text export column with nine values, which agrees with
 the flag today by accident of the data rather than by construction. The text is provenance:
-no screen edits it, nothing reads it for a safety decision, and BE-16 derives the flag from it
-on import. Collapsing here would delete evidence; keeping the flag the only reader is what
-stops them drifting.
+no screen edits it, nothing reads it for a safety decision. Collapsing here would delete
+evidence; keeping the flag the only reader is what stops them drifting.
+
+**The flag is not derived from that text, and BE-16 amended this paragraph to say so**
+(``docs/shema.md`` §9.5, §10 item 1). This issue expected the import to read the boolean off
+``sensitivity``; OBT-405's own requirement is the opposite — *do not infer them from the CSV,
+from country names, or from anything in the prototype* — so the flag comes from the client's
+written list of countries, and the export's text and boolean may only **raise** it, never
+clear it. ``zapoteco-de-santiago-lachirigi`` is why: ``Confidential`` in **Mexico**, where
+seven other records are ``Unrestricted``, which a list keyed by country cannot express. The
+columns below are unchanged; what changed is that nothing reads the export as permission.
 
 **The three prayer columns are guarded, not private.** ``prayer_requests``,
 ``prayer_visibility`` and ``prayer_requests_audio`` have exactly one reader —

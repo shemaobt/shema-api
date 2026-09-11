@@ -354,7 +354,8 @@ class TestNothingIsCleanedInSilence:
         assert "objective is empty" in kinds
 
     def test_a_disagreement_with_the_exports_own_flag_is_reported(self) -> None:
-        built = plan([export_row()], SensitiveCountries.pending())
+        """Once the client has answered, a record whose flag moves is a row to check."""
+        built = plan([export_row(location="Sudan")], cleared("South Africa"))
         kinds = {finding.kind for finding in built.findings}
         assert "the flag disagrees with the export" in kinds
 
@@ -362,6 +363,24 @@ class TestNothingIsCleanedInSilence:
         built = plan([export_row(), export_row(id="second")], SensitiveCountries.pending())
         assert "bridgeLanguage" in built.columns_empty_everywhere
         assert "languageName" not in built.columns_empty_everywhere
+
+    def test_answered_no_and_answered_none_are_not_counted_as_empty(self) -> None:
+        """``inETEN`` false and ``communityCheckedUnits`` zero are answers, not absences."""
+        built = plan([export_row(), export_row(id="second")], SensitiveCountries.pending())
+        assert "inETEN" not in built.columns_empty_everywhere
+        assert "communityCheckedUnits" not in built.columns_empty_everywhere
+        assert built.columns_false_everywhere == ("inETEN", "sensitiveCountry")
+        assert built.columns_zero_everywhere == (
+            "approvedUnits",
+            "communityCheckedUnits",
+            "translatedUnits",
+        )
+
+    def test_the_pending_list_does_not_report_the_disagreement_on_every_record(self) -> None:
+        """127 identical lines would bury the rows a reviewer has to judge; §1 says it once."""
+        pending = plan([export_row()], SensitiveCountries.pending())
+        kinds = {finding.kind for finding in pending.findings}
+        assert "the flag disagrees with the export" not in kinds
 
 
 class TestNothingIsNormalised:
