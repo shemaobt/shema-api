@@ -272,9 +272,10 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/session.py` | BE-03 | `GET /api/shema/session` — §6.4. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/shema/_scope.py` | BE-03 | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. |
-| `app/services/shema/_redaction.py` | BE-04 | The sensitive-country owners: the location display and the map placement. §6.5. |
-| `app/services/shema/_consent.py` | BE-04 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.5. |
-| `app/services/shema/_media_sharing.py` | BE-04 | `can_share_media` — authorization × audience × the sensitive flag. §6.5. |
+| `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
+| `app/services/shema/_redaction.py` | **BE-04, built** | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
+| `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
+| `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; and `can_export_notes`. §6.4. |
 | `app/utils/shema_derivations.py` | BE-05 | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
 | `app/models/shema.py`, `app/models/shema_*.py` | BE-02 …, per §2.2 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models; separate `Create` / `Update` / `Response`. |
 | `app/db/models/shema.py`, `app/db/models/shema_*.py` | BE-02 authors, each issue grows its own | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — [`docs/resource_requests.md`](resource_requests.md) §8.1. |
@@ -730,7 +731,7 @@ region). FE-44 §12.2 leaves `GLOBAL_STRATEGIST_NAME` as the frontend's one rema
 hardcoded name. **Open · BE-03:** whether `name` for that role falls back to
 `users.display_name`. Either answer is cheap; picking silently is what is not.
 
-### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 builds**
+### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 built**
 
 FE-44 §8 is written as server requirements and `CLAUDE.md` §6.1/§6.2 as invariants. The
 scheduling is already right: BE-04 lands **before anything that emits data**. What this
@@ -764,6 +765,67 @@ next endpoint forgets; a glob is not.
 
 **The acceptance test the delivery plan already names:** an unauthorized prayer request is
 absent from **all four** output paths — the wall, exports, the ETEN report and notifications.
+
+#### What BE-04 built, and the one place it departs from §3.1
+
+**The rule is not in `_redaction.py`. It is in `app/models/shema_privacy.py`, and it is
+inherited rather than called.** Everything else in this section held; this one line did not,
+and it is worth the paragraph because the reason generalises.
+
+The DoD asks that *adding a new endpoint without knowledge of the rule still yields protected
+output*. A service function cannot deliver that — it has to be **called**, and a call is what
+the next endpoint forgets, which is the very sentence this section opens with. So the rule
+lives in `LeavingShape`, a Pydantic base class that every shape leaving coordination inherits,
+and it is applied in a `model_validator(mode="after")`: an author who writes
+`class PrayerRequestOut(LeavingShape)` with a `location` field gets the redaction **by
+declaring the field**, which is the one act they cannot skip. That is the serialization
+boundary the issue asks for, spelled in the only place FastAPI gives one.
+
+It could not live in `app/services/shema/_redaction.py` because
+`tests/test_app_boots.py::test_no_dto_module_reaches_up_into_the_service_layer` forbids a DTO
+module from importing `app/services/` — the inversion that closed an import cycle once — and
+the rule has to be reachable from the shape for the paragraph above to be true. This is the
+same trade §3.1 already makes for the derivations, arriving one issue earlier: the half that
+both services and response models need lives where the response models may reach it.
+`_redaction.py` keeps the three things a `Select` cannot inherit — `is_withheld`,
+`withheld_note`, `log_reference` and `searchable_text` — and stays the module's sole reader of
+the guarded columns.
+
+**The fields a leaving shape reduces**, in one list, because the value of one list is that
+there is one: `location`, `location2`, `country` (to the **region key**, never an empty
+string), `latitude` / `longitude` / `coords` (to the region centroid, so the marker moves
+rather than disappears), `team` / `base` and the three personal contacts (to `""`). The record
+read reduces none of them.
+
+**Fail closed, and the closed state is the default.** A shape built from something that cannot
+answer whether the record is sensitive — a hand-assembled dict, a partial row, a join that did
+not select the column — withholds. The cost is a coordinator clicking through to the record;
+the alternative costs somebody their safety, and fails silently.
+
+**The withholding is visible and says nothing about what.** `locationWithheld` is in every
+leaving shape's output, always. For a collection or a file, `withheld_note` answers *how many*
+rows were reduced — and answers `None` rather than `0`, because *"0 locations withheld"* on a
+file with no sensitive projects is a sentence about the absence of sensitive projects, said on
+every file, and interesting exactly when it should not be said.
+
+**Three nets, not one**, and `tests/test_shema/test_privacy_owners.py` is all three. The glob
+this section already asked for, over both `shema` packages and now for three column sets
+(sensitive country, consent, media authorization), each with a one-entry allowlist a later
+issue extends by writing a line it has to justify. **A route audit** that reads the built
+application's route table and fails when a response model under `/api/shema` can name a place
+and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
+`test_access.py`, applied to the payload instead of the guard, with `COORDINATION_PATHS` empty
+today and BE-06's record read as the one line expected in it. And a vocabulary check, so the
+list of guarded fields and the list of replacements cannot drift apart.
+
+**Three departures, each declared in BE-04's PR rather than absorbed here.** The base name is
+withheld on **every** leaving shape and not only in a file (§9.4 — the gate keeps the console's
+own rendering, which is presentation). The collection read is a leaving shape and only the
+record read is a coordination surface, because the issue names *list* among the output paths
+and FE-44 §8.7 says display is never enforcement. And the media half of §8.3 — a signed or
+expiring URL — is named and not built, because this repository's upload returns a public
+bucket URL (FE-44 §3.1) and the predicate is necessary without being sufficient; it belongs to
+the issue that first serves a file.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
@@ -940,11 +1002,22 @@ byte-identically, and only the Pulse is archivable. Those are DoD lines, not for
 
 ### 9.4 The fourth gate, which has no issue: what *devida cautela* means per output
 
-`CLAUDE.md` §6.1 marks it. One concrete question is already open and named in §6.4: **the base
+`CLAUDE.md` §6.1 marks it. One concrete question was open and named in §6.4: **the base
 name**. The export empties it for a withheld record; the console still renders it verbatim in
 cards, tooltips and the prayer wall, and both flagged records carry a base that names a place.
 Redacting it everywhere is a **second rule** and it belongs to this gate — **do not invent it
 surface by surface.**
+
+**BE-04 answered the server half of it, once, and that is the opposite of surface by surface.**
+Every shape that leaves coordination withholds the base, because the rule is applied in one
+validator that every such shape inherits — so there is no surface holding a pen. The reasoning
+is the issue's own: withholding `Egypt` while printing `YWAM Egypt` one column over redacts
+nothing, so a file that carries the base carries the country, and when the rule cannot be
+decided the fail-closed answer is the one to take. **What is still the gate's** is the
+console's own rendering of its coordination surfaces — cards, tooltips, the record — which is
+presentation, and which the server neither sees nor should decide. If the client answers that
+the base may travel, the change is one line in `BASE_FIELDS` rather than a sweep of consumers,
+which is the property that made deciding now cheap enough to do.
 
 ---
 
