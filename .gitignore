@@ -20,3 +20,6 @@ gcs-signing-key.json
 .local-dump/*
 !.local-dump/.gitkeep
 *.db-journal
+
+# What a golden run writes; the scripts themselves live in her repository
+golden/reports/
