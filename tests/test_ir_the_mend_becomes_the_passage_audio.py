@@ -361,7 +361,6 @@ async def _releasable_session(client: httpx.AsyncClient, db: AsyncSession) -> st
                 for index, checkpoint in enumerate(checkpoints_for(PASSAGE))
             ],
             practiced_scene_ids=scene_ids_for(PASSAGE),
-            recording_consent_given=True,
         ),
     )
     return session_id

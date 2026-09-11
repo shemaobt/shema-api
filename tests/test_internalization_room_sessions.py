@@ -99,12 +99,25 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="ENG-803 redefines done as the Guide's send-off plus a rehearsal take that was "
+    "kept; until it lands the floor closes the session on its own",
+)
 @pytest.mark.asyncio
 async def test_the_coverage_floor_alone_no_longer_closes_the_session(
     db_session: AsyncSession,
 ) -> None:
     """Coverage bookkeeping is participation, not comprehension — the very confusion the
-    bridge-language calibration exists to undo."""
+    bridge-language calibration exists to undo.
+
+    What held this shut was the recording-consent flag, and only by accident: the room's own
+    question was the flag's one writer, so a session that had never been asked could not
+    close. ENG-777 took the question away, and the premise is left with nothing implementing
+    it — the ledger the calibration was written around went with the Assessor (ENG-831), and
+    a fully engaged scene already reads as a rehearsed one. It is ENG-803 that puts the
+    premise back on its feet, in the terms Marcia gave it.
+    """
     session = await create_session(db_session, pericope=P)
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
@@ -127,12 +140,11 @@ def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
     return ComprehensionState(
         ledger=list(ledger),
         practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
     )
 
 
 @pytest.mark.asyncio
-async def test_floor_plus_evidence_practice_and_consent_closes_the_session(
+async def test_the_floor_with_evidence_and_practice_closes_the_session(
     db_session: AsyncSession,
 ) -> None:
     session = await create_session(db_session, pericope=P)
@@ -156,10 +168,11 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
 
-    The scenario carries calibration, evidence, practice and consent because the floor alone
-    stopped closing anything: ``session_is_done`` folds those in, deliberately, so that
-    bridge-limited teams are not judged on Portuguese output. What is asserted here is
-    unchanged — that the close is *stamped* — only what it takes to reach a close moved.
+    The scenario carries calibration, evidence and practice, and none of them is what
+    holds it up today: with every bead engaged, the practice reading is met on the beads
+    alone, which is what the strict xfail above this says out loud. They are kept because
+    ENG-803 is about to make them load-bearing again. What is asserted here is unchanged
+    either way — that the close is *stamped*, not what it takes to reach one.
     """
     session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
@@ -349,6 +362,8 @@ async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
         },
         "practiced_scene_ids": ["S1"],
         "recording_consent_given": True,
+        "recording_handoff_paused": True,
+        "recording_handoff_paused_turns": 2,
     }
     await db_session.commit()
 
@@ -356,4 +371,3 @@ async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
 
     assert state.active_probe is None
     assert state.practiced_scene_ids == ["S1"]
-    assert state.recording_consent_given

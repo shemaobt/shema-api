@@ -23,10 +23,6 @@ from app.services.internalization_room.oral_decision import (
     oral_decision_clauses,
     oral_utterance_is_interrogative,
 )
-from app.services.internalization_room.rehearsal_readiness import (
-    is_exact_rehearsal_consent_question,
-    is_exact_rehearsal_readiness_cue,
-)
 
 
 def _tokens(text: str) -> list[str]:
@@ -395,33 +391,20 @@ def bridge_language_retelling_completes_practice(
     the telling is worth against the map: the probe authorizes no semantic evidence, and
     reading a retelling here does not change that.
 
-    The room's own recording speech is refused before any of that. Both the consent
-    question and the readiness cue speak of the first rehearsal in the team's own
-    language, so both read as invitations, and neither is one: agreeing to record is not a
-    rehearsal of the scene the pointer happens to be on. Reading the standing probe does
-    not catch it — accepting the recording clears the planned probe, so the cue arrives
-    with nothing behind it — which is why the line itself is what is checked. The fixed
-    practice prompt is left alone: it is a real invitation, and the telling that answers it
-    is a real telling.
-
-    An announced plan is refused with them. It is the likeliest reply of all to an
+    An announced plan is refused. It is the likeliest reply of all to an
     invitation the Guide has just given — the team saying it is about to obey — and it is
     fluent, substantial and holds no question, hedge or denial, so it would otherwise read
     as the telling itself and mark a rehearsal that had not started. The same patterns
     that refuse it on the reported-rehearsal path refuse it here.
 
-    What is refused, besides the question, the hedge and the denial, is the room hearing
-    its own voice: the invitation echoed whole, or the head or tail of it a speaker can
+    What is refused, besides the announced plan, the hedge and the denial, is the room
+    hearing its own voice: the invitation echoed whole, or the head or tail of it a speaker can
     feed back. A fragment from the middle of the line is not caught here — it would cost
     the ordinary retelling that reuses the words the Guide just used.
     """
     if not reliable_bridge_speech:
         return False
     if not guide_invited_mother_tongue_practice(previous_guide_utterance):
-        return False
-    if is_exact_rehearsal_consent_question(previous_guide_utterance) or (
-        is_exact_rehearsal_readiness_cue(previous_guide_utterance)
-    ):
         return False
     if _echoes_the_line_the_room_just_said(previous_guide_utterance, team_utterance):
         return False

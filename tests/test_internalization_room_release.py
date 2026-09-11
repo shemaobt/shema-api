@@ -67,7 +67,6 @@ def _supported_comprehension(pericope: str, *, carry_one: bool = False) -> Compr
     return ComprehensionState(
         ledger=list(ledger),
         practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
     )
 
 
@@ -215,7 +214,6 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
 
     assert set(blocked.value.blockers) >= {
         "comprehension_needs_more_work",
-        "recording_consent_never_given",
         "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
@@ -487,6 +485,7 @@ async def _told_back_with_an_open_finding(
                 kind=FindingKind.ADDITION,
                 note="a equipe disse que Noemi voltou alegre",
                 segment_id=told.id,
+                chunk=1,
             )
         ],
         checked=False,
@@ -560,6 +559,7 @@ async def test_the_finding_travels_in_the_package_it_unblocked(
     assert [finding["kind"] for finding in carried] == ["addition"]
     assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
     assert carried[0]["segment_id"] is not None
+    assert carried[0]["chunk"] == 1
 
 
 @pytest.mark.asyncio
@@ -578,7 +578,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
 
     assert set(blocked.value.blockers) >= {
         "comprehension_needs_more_work",
-        "recording_consent_never_given",
         "coverage_floor_not_met",
     }
 
@@ -745,6 +744,38 @@ async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
 
     artifact = await build_internalization_release(db_session, session)
 
+    assert artifact["open_questions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_standing_swap_is_one_open_question_in_the_headline(
+    db_session: AsyncSession,
+) -> None:
+    """The packet counts what the team was told is left, not how many rows hold it.
+
+    A swap is two findings and one thing to do. Counted by rows, the packet tells Refine two
+    questions are open on a passage the room told the team has one thing left — and Refine
+    reads that headline to decide how much of the draft still needs a person.
+    """
+    session = await _ready_session(db_session)
+    state = await _told_back_with_an_open_finding(db_session, session)
+    state.findings = [
+        *state.findings,
+        Finding(
+            kind=FindingKind.MISSING,
+            note="a notícia do pão não apareceu",
+            segment_id=state.findings[0].segment_id,
+            chunk=state.findings[0].chunk,
+        ),
+    ]
+    await _reported_playback(db_session, session, state)
+
+    artifact = await build_internalization_release(db_session, session)
+
+    assert [finding["kind"] for finding in artifact["back_translation"]["findings"]] == [
+        "addition",
+        "missing",
+    ]
     assert artifact["open_questions"] == 1
 
 
