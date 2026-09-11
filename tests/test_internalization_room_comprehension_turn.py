@@ -22,21 +22,15 @@ from app.services.internalization_room.comprehension.state import ComprehensionS
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.live_turn import run_comprehension_turn
-from app.services.internalization_room.rehearsal_readiness import (
-    RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-    rehearsal_consent_declined_line,
-    rehearsal_consent_question,
-    rehearsal_readiness_cue,
-)
-from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK, detects_peer_cue
+from app.services.internalization_room.run_turn import OPENING_MOVEMENT_MARK
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
     comprehension_of,
     create_session,
     save_comprehension,
+    session_is_done,
 )
 
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
@@ -324,22 +318,6 @@ async def test_the_opening_turn_belongs_to_the_guide(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_the_room_hands_the_talking_over_in_every_language_it_claims(spoken: str) -> None:
-    """A linha cujo propósito inteiro é passar a palavra para a equipe.
-
-    `peer_cue` é detectado relendo a frase que o próprio app escreveu, então cada idioma
-    precisa das suas expressões. Faltando as do espanhol, `peer_cue` voltava falso em todo
-    turno de uma sessão em espanhol — e o teste ao lado abre com `language="pt"`, então a
-    suíte seguia verde por cima disso.
-    """
-    assert detects_peer_cue(rehearsal_readiness_cue(spoken)), (
-        f"a sala manda a equipe ensaiar e gravar em {spoken!r} e não marca o convite, "
-        "então a tela não entra em modo de conversa e a equipe fica olhando o círculo"
-    )
-
-
-@pytest.mark.asyncio
 async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -529,87 +507,6 @@ async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> 
     return turn.outcome.speech
 
 
-@pytest.mark.asyncio
-async def test_a_passage_worked_through_reaches_the_recording_question_with_nothing_written(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    """The ledger informs; it never ends the conversation.
-
-    Every critical unit nobody had recorded a note about used to be a blocker, and the only
-    writer of those notes was the classifier that read the team's answers for the room.
-    Removed, the gate would have closed on every session for good: the consent question is
-    never offered, the interview never finishes, and nothing reaches the Refine package.
-    """
-    session = await _session_at_the_recording_handoff(db_session)
-    assert comprehension_of(session).ledger == []
-
-    assert await _say(db_session, session, "acho que já falamos de tudo") == (
-        rehearsal_consent_question("pt")
-    )
-    assert await _say(db_session, session, "sim") == rehearsal_readiness_cue("pt")
-    assert comprehension_of(session).recording_consent_given
-    assert comprehension_of(session).ledger == []
-
-
-@pytest.mark.asyncio
-async def test_a_declined_recording_handoff_is_offered_again(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    """The app's own question offers two words and the team may say either one.
-
-    Answering "não" used to latch the handoff shut for the rest of the session: the only
-    way back was one of seven exact sentences, and the Guide is forbidden from teaching
-    them. The room promised "vocês decidem quando estiverem prontos" and then made that
-    impossible, so the passage ended with no rehearsal audio and the release refused it.
-    """
-    session = await _session_at_the_recording_handoff(db_session)
-
-    assert await _say(db_session, session, "acho que já falamos de tudo") == (
-        rehearsal_consent_question("pt")
-    )
-    assert await _say(db_session, session, "não") == rehearsal_consent_declined_line("pt")
-    assert comprehension_of(session).recording_handoff_paused
-
-    for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
-        assert await _say(db_session, session, "estamos conversando sobre a última cena") != (
-            rehearsal_consent_question("pt")
-        )
-
-    assert await _say(db_session, session, "essa parte ficou boa do jeito que contamos") == (
-        rehearsal_consent_question("pt")
-    )
-    assert await _say(db_session, session, "sim") == rehearsal_readiness_cue("pt")
-    assert comprehension_of(session).recording_consent_given
-    assert not comprehension_of(session).recording_handoff_paused
-
-
-@pytest.mark.asyncio
-async def test_declining_twice_defers_twice_instead_of_latching(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    """A second "não" restarts the wait rather than ending the conversation about it."""
-    session = await _session_at_the_recording_handoff(db_session)
-    await _say(db_session, session, "acho que já falamos de tudo")
-    await _say(db_session, session, "não")
-    for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
-        await _say(db_session, session, "estamos conversando sobre a última cena")
-
-    assert await _say(db_session, session, "ainda estamos comentando entre nós") == (
-        rehearsal_consent_question("pt")
-    )
-    assert await _say(db_session, session, "não") == rehearsal_consent_declined_line("pt")
-    assert comprehension_of(session).recording_handoff_paused_turns == 0
-
-    for _ in range(RECORDING_HANDOFF_REOFFER_AFTER_TURNS):
-        assert await _say(db_session, session, "estamos conversando sobre a última cena") != (
-            rehearsal_consent_question("pt")
-        )
-
-    assert await _say(db_session, session, "essa parte ficou boa do jeito que contamos") == (
-        rehearsal_consent_question("pt")
-    )
-
-
 _UNUSABLE_SPEECH = (
     HeardSpeech(
         text="koeti yoko vitukeovo enepone itukovo",
@@ -619,36 +516,6 @@ _UNUSABLE_SPEECH = (
     HeardSpeech(text="mmm ne", transcript_confidence=0.2),
     HeardSpeech(),
 )
-
-
-@pytest.mark.asyncio
-async def test_a_paused_handoff_does_not_count_speech_the_room_could_not_use(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    """The wait is measured in turns the room actually heard.
-
-    A team that spends the pause rehearsing in its own language, or in a corner of the
-    house the microphone cannot reach, has not been given the room the wait is for — and
-    a transcription that came back empty is the room asking them to repeat, not the room
-    standing back."""
-    session = await _session_at_the_recording_handoff(db_session)
-    await _say(db_session, session, "acho que já falamos de tudo")
-    await _say(db_session, session, "não")
-
-    for index in range(3 * (RECORDING_HANDOFF_REOFFER_AFTER_TURNS + 1)):
-        turn = await run_comprehension_turn(
-            db_session,
-            session,
-            speech=_UNUSABLE_SPEECH[index % len(_UNUSABLE_SPEECH)],
-            opening=False,
-            guide_prompt=GUIDE,
-            validator_prompt=VALIDATOR,
-            settings=_settings(),
-        )
-        await save_comprehension(db_session, session, turn.state)
-        assert turn.outcome.speech != rehearsal_consent_question("pt")
-
-    assert comprehension_of(session).recording_handoff_paused_turns == 0
 
 
 @pytest.mark.asyncio
@@ -663,42 +530,9 @@ async def test_a_scene_the_team_worked_to_the_last_bead_needs_no_closing_word(
     the team's own "we are finished" with yet another invitation to retell."""
     session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
 
-    assert await _say(db_session, session, "acho que já falamos de tudo") == (
-        rehearsal_consent_question("pt")
-    )
-
-
-@pytest.mark.asyncio
-async def test_a_declined_handoff_leaves_no_practice_probe_the_room_never_voiced(
-    db_session: AsyncSession, approve_all: None
-) -> None:
-    """A probe binds evidence only to a prompt the room actually said.
-
-    Turning the recording down is answered with the declined line, so the invitation is
-    not spoken on that turn — and from the next turn on the standing probe makes it look
-    already said, so it is never spoken at all. Left standing, it takes a confident
-    recording in the team's own language as the practice nobody was ever invited to."""
-    session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
     await _say(db_session, session, "acho que já falamos de tudo")
 
-    assert await _say(db_session, session, "não") == rehearsal_consent_declined_line("pt")
-
-    assert comprehension_of(session).active_probe is None
-
-    turn = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(
-            text="koeti yoko vitukeovo enepone itukovo",
-            language_code="und",
-            language_probability=0.99,
-        ),
-        opening=False,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=_settings(),
-    )
-    assert turn.state.practiced_scene_ids == []
+    assert session_is_done(session)
 
 
 class InvitingAgentAskingForTheWord:

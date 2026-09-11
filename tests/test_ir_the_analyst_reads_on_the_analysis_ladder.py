@@ -107,9 +107,10 @@ async def test_the_correction_check_reads_on_the_analysis_ladder(recording_clien
     messages = recording_client(json.dumps({"resolved": True, "findings": []}))
 
     await verify_correction(
-        finding=Finding(kind=FindingKind.MISSING, note="a fome nao foi contada"),
+        findings=[Finding(kind=FindingKind.MISSING, note="a fome nao foi contada")],
         earlier=_segment(1, "Eles partiram."),
         corrected=_segment(2, "A fome chegou e eles partiram."),
+        chunk=1,
         scope="1-5",
         pericope_num=P,
         correction_prompt=CORRECTION,
@@ -167,9 +168,10 @@ async def test_the_correction_checks_ceiling_holds_the_thinking_too(recording_cl
     messages = recording_client(json.dumps({"resolved": True, "findings": []}))
 
     await verify_correction(
-        finding=Finding(kind=FindingKind.MISSING, note="a fome nao foi contada"),
+        findings=[Finding(kind=FindingKind.MISSING, note="a fome nao foi contada")],
         earlier=_segment(1, "Eles partiram."),
         corrected=_segment(2, "A fome chegou e eles partiram."),
+        chunk=1,
         scope="1-5",
         pericope_num=P,
         correction_prompt=CORRECTION,

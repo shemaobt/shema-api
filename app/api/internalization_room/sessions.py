@@ -187,7 +187,7 @@ async def _progress(db: AsyncSession, session: IRSession) -> BackTranslationProg
     resumes is the same reading the analyst gets.
     """
     state = room.back_translation_of(session)
-    finding = state.current_finding
+    finding = room.the_finding_that_leads(state)
     return BackTranslationProgress(
         scope=state.scope,
         segments=[
