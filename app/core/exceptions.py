@@ -22,6 +22,11 @@ ERROR_CODE_SESSION_LOCKED: Final = "SESSION_LOCKED"
 # longer exists. Just try again.
 ERROR_CODE_SESSION_LOCK_CHANGED: Final = "SESSION_LOCK_CHANGED"
 ERROR_CODE_PROJECT_GRANULARITY_LOCKED: Final = "PROJECT_GRANULARITY_LOCKED"
+#: An approval that cannot be numbered, because a release is named by project, pericope
+#: and version and this session names no project. Its own code because the tablet acts on
+#: it: nothing about the passage is wrong and retrying changes nothing — the room was
+#: opened on the shared key, and only a credentialed device can approve.
+ERROR_CODE_RELEASE_WITHOUT_PROJECT: Final = "RELEASE_WITHOUT_PROJECT"
 ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 # Distinct from BAD_REQUEST: the payload parsed and every field is well formed, it just
 # names a row that is not there. The client fixes it by picking a different id, not by
@@ -83,6 +88,16 @@ class ProjectGranularityLocked(ConflictError):
     code promises a version to reload from, and there is none. Nothing the client can do
     makes this write succeed — re-cutting a project at a new granularity re-derives every
     manifest_id it has exported, which is a migration, not a retry.
+    """
+
+
+class ReleaseWithoutProject(ConflictError):
+    """A session opened on the shared room key was asked to approve its passage.
+
+    Its own exception for the reason SessionLockChanged is: the generic CONFLICT code
+    promises a version to reload from, and there is none. Refused rather than numbered in
+    a group belonging to nobody, because a release is named by project, pericope and
+    version, and the shared key names no project.
     """
 
 
@@ -237,6 +252,15 @@ async def handle_project_granularity_locked(
     )
 
 
+async def handle_release_without_project(
+    _request: Request, exc: ReleaseWithoutProject
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=_error_body(str(exc), ERROR_CODE_RELEASE_WITHOUT_PROJECT),
+    )
+
+
 async def handle_role_error(_request: Request, exc: RoleError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -336,6 +360,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     # above regardless of the order these are registered in.
     app.add_exception_handler(SessionLockChanged, handle_session_lock_changed)  # type: ignore[arg-type]
     app.add_exception_handler(ProjectGranularityLocked, handle_project_granularity_locked)  # type: ignore[arg-type]
+    app.add_exception_handler(ReleaseWithoutProject, handle_release_without_project)  # type: ignore[arg-type]
     app.add_exception_handler(RoleError, handle_role_error)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]

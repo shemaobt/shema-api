@@ -185,6 +185,30 @@ async def get_session_for_facilitator(db: AsyncSession, user: User, session_id: 
     return session
 
 
+async def get_session_for_room_caller(
+    db: AsyncSession, session_id: str, project_id: str | None
+) -> IRSession:
+    """The session, if it belongs to the team the tablet says it is.
+
+    The team's own routes have always resolved a session by id alone, which is safe while
+    everything they do is about a session the tablet already holds. Approving is not: a
+    release is the whole of what a team recorded, and a route that writes one has to know
+    whose passage it is naming.
+
+    A session that names no project is reached by whoever asks, credentialed or not, and is
+    refused further in by name — the release cannot be numbered without a project, and that
+    is a different thing to be told than "no such session". Which caller is holding the
+    tablet does not change it: the session is the one that cannot be released.
+
+    Somebody else's session *is* refused as not found, with the message
+    `get_session_for_facilitator` gives, because unowned is nobody's but owned is somebody's.
+    """
+    session = await get_session(db, session_id)
+    if session.project_id is not None and session.project_id != project_id:
+        raise NotFoundError(_no_such_session(session_id))
+    return session
+
+
 async def append_exchange(
     db: AsyncSession,
     session: IRSession,
