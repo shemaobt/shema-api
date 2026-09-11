@@ -191,7 +191,7 @@ async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_w
         outcome = await _a_turn("sessao-5")
 
     assert outcome.used_fail_safe is True
-    assert outcome.speech in utterances(FailSafe.OFF_BRIDGE_LANGUAGE, "pt")
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
 
     refusals = _refusal_records(caplog)
     assert len(refusals) == 3

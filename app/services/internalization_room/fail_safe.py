@@ -15,6 +15,10 @@ class FailSafe(enum.StrEnum):
     INAUDIBLE = "D"
     HARD_STOP = "E"
     INSTANT_ACK = "F"
+    #: Only from `live_turn.py`'s own detection over the team's audio, at 0.98 confidence
+    #: over substantial speech. A Guide draft that strays from the bridge language is a
+    #: draft failure and takes `UNREPAIRABLE` instead — telling the team they rehearsed in
+    #: their own tongue when the model, not them, left the session's language.
     OFF_BRIDGE_LANGUAGE = "G"
     UNTOLD_STRETCH = "H"
     STRETCH_TO_CORRECT = "I"

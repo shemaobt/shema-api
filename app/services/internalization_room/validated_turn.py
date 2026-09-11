@@ -244,7 +244,6 @@ async def _voiced_after_validation(
     redraft_note = ""
     issues: list[dict[str, Any]] = []
 
-    model_failed = False
     for attempt in range(shim.MAX_REDRAFTS + 1):
         try:
             draft, movements = split_opening_movements(
@@ -300,7 +299,6 @@ async def _voiced_after_validation(
                 "Guide or Validator call failed; the turn degrades to a fail-safe",
                 extra={"session_id": session_id, "attempt": attempt + 1},
             )
-            model_failed = True
             break
 
         if speech and shim.strays_from(speech, language_code):
@@ -330,14 +328,7 @@ async def _voiced_after_validation(
             "Fail-safe fired after %s redrafts: issues=%s", shim.MAX_REDRAFTS, issues
         )
 
-    off_language = not model_failed and any(
-        issue.get("problem") == "off_bridge_language" for issue in issues
-    )
-    speech, line = choose(
-        FailSafe.OFF_BRIDGE_LANGUAGE if off_language else FailSafe.UNREPAIRABLE,
-        language_code,
-        turn=len(messages),
-    )
+    speech, line = choose(FailSafe.UNREPAIRABLE, language_code, turn=len(messages))
     return _timed(
         TurnOutcome(
             speech=speech,

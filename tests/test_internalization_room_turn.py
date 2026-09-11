@@ -1,9 +1,11 @@
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+import app.services.internalization_room as internalization_room
 from app.core.config import Settings
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRPromptKey
@@ -225,7 +227,15 @@ def test_a_finished_map_says_nothing_remains() -> None:
 
 def test_peer_cue_is_read_off_the_reply() -> None:
     assert detects_peer_cue("Agora ensaiem essa parte entre vocês, na língua de vocês.")
+    assert detects_peer_cue("Conversem entre vocês sobre o que ouviram.")
+    assert detects_peer_cue("Discutam essa parte antes de me contar.")
+    assert detects_peer_cue("Contem a cena um com o outro, com calma.")
+    assert detects_peer_cue("Now discuss this part before you tell me.")
+    assert detects_peer_cue("Tell the scene to each other, slowly.")
+    assert detects_peer_cue("Now rehearse this scene together in your own language.")
     assert not detects_peer_cue("Me contem o que aconteceu com a família.")
+    assert not detects_peer_cue("Ensayen juntos esta escena en su propia lengua, entre ustedes.")
+    assert not detects_peer_cue("Essa discussão fica para depois, vamos seguir juntos.")
 
 
 @pytest.mark.asyncio
@@ -341,15 +351,15 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearing_the_g_line(
+async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_not_the_g_line(
     patch_agent,
 ) -> None:
-    """The same pre-approved line answers two opposite situations, and only the branch knows.
+    """A team that rehearsed in its own language never sat in this exchange at all.
 
-    Category G affirms a team that rehearsed in its own language. Here nobody rehearsed:
-    the Guide itself could not stay in the room's language across three drafts, and the
-    room reaches for G because it is the closest thing it holds. Reading the failure off
-    the line name would file this one as healthy."""
+    Only the Guide's draft strayed, three times running, and the team never spoke. Category
+    G is reserved for a team detected in another language; a draft that cannot hold the
+    bridge language is an ordinary unrepairable draft, the same exit any other exhausted
+    redraft takes."""
     patch_agent(
         FakeAgent(
             verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
@@ -370,9 +380,21 @@ async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearin
         settings=_settings(),
     )
 
-    assert outcome.speech in utterances(FailSafe.OFF_BRIDGE_LANGUAGE, "pt")
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    assert outcome.fixed_line.startswith("A")
     assert outcome.used_fail_safe is True
     assert outcome.degraded is True
+
+
+def test_the_g_line_is_chosen_only_from_the_teams_own_speech_never_the_guides_draft() -> None:
+    """Category G is what the team hears, so only the team-detection branch may reach for it."""
+    package_dir = Path(internalization_room.__file__).resolve().parent
+    callers = sorted(
+        path.name
+        for path in package_dir.glob("*.py")
+        if "FailSafe.OFF_BRIDGE_LANGUAGE" in path.read_text()
+    )
+    assert callers == ["live_turn.py"]
 
 
 @pytest.mark.asyncio
