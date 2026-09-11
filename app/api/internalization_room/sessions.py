@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -145,9 +146,10 @@ def _settle_later(
     background: BackgroundTasks,
     session: IRSession,
     *,
+    turn_id: str,
     team_utterance: str,
     guide_response: str,
-) -> None:
+) -> bool:
     """Schedule the coverage classifier for a turn `_worth_settling` already cleared.
 
     Two doors used to reach here — the opening the panorama wrote ahead, and the line the
@@ -161,14 +163,16 @@ def _settle_later(
     A panorama is still handed nothing: it has no coverage spine to settle against.
     """
     if is_panorama(session.pericope):
-        return
+        return False
     background.add_task(
         settle_coverage,
         session_id=session.id,
+        turn_id=turn_id,
         team_utterance=team_utterance,
         guide_response=guide_response,
         pericope_num=session.pericope,
     )
+    return True
 
 
 async def _state(db: AsyncSession, session: IRSession) -> SessionStateResponse:
@@ -510,6 +514,7 @@ async def take_turn(
             peer_cue=outcome.peer_cue,
             coverage=_coverage_view(session),
             done=False,
+            turn_id=str(uuid.uuid4()),
         )
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
@@ -553,10 +558,13 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
+    turn_id = str(uuid.uuid4())
+    pending = False
     if _worth_settling(outcome, speech_heard):
-        _settle_later(
+        pending = _settle_later(
             background,
             session,
+            turn_id=turn_id,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
         )
@@ -572,4 +580,6 @@ async def take_turn(
         coverage=_coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         segments=segments,
+        turn_id=turn_id,
+        classification_pending=pending,
     )

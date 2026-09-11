@@ -5,7 +5,9 @@ import logging
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import TranscriptionDefect
 from app.db.models.internalization_room import IRPromptKey
+from app.models.internalization_room import CoverageFrame
 from app.services.internalization_room.classify_coverage import classify_coverage
+from app.services.internalization_room.coverage_channel import publish, settled_view
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
@@ -15,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 async def settle_coverage(
-    *, session_id: str, team_utterance: str, guide_response: str, pericope_num: str
+    *,
+    session_id: str,
+    turn_id: str,
+    team_utterance: str,
+    guide_response: str,
+    pericope_num: str,
 ) -> None:
     """Advance the tracker after the reply has already shipped.
 
@@ -36,9 +43,14 @@ async def settle_coverage(
                 session_language=LANGUAGE_NAMES[session.language],
                 language_code=session.language,
             )
-            await apply_coverage(db, session_id, updated)
+            settled = await apply_coverage(db, session_id, updated)
+        publish(
+            session_id,
+            CoverageFrame(turn_id=turn_id, status="settled", coverage=settled_view(settled)),
+        )
     except Exception:
         logger.exception("Coverage settle failed for session %s", session_id)
+        publish(session_id, CoverageFrame(turn_id=turn_id, status="failed", coverage=None))
 
 
 async def transcribe_question(*, question_id: str, audio: bytes) -> None:
