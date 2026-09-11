@@ -12,40 +12,20 @@ down and up again on a database with rows in it is the other — a downgrade tha
 session tables it never created scratched would be found here and nowhere else.
 """
 
-import os
-import subprocess
-import sys
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from tests.alembic_harness import run_alembic, tables_of
 
 REVISION = "20260828_seg01"
 PREVIOUS_REVISION = "20260823_join4"
 TABLE = "ir_segments"
-
-
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
 
 
 async def _build_and_seed(database_url: str) -> dict[str, str]:
@@ -91,14 +71,6 @@ async def _build_and_seed(database_url: str) -> dict[str, str]:
     return {"session_id": session_id, "replaced": replaced_id, "current": current_id}
 
 
-async def _tables(database_url: str) -> set[str]:
-    engine = create_async_engine(database_url)
-    async with engine.connect() as conn:
-        names = await conn.run_sync(lambda sync: inspect(sync).get_table_names())
-    await engine.dispose()
-    return set(names)
-
-
 async def _rows(database_url: str, sql: str, params: dict) -> list:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:
@@ -112,7 +84,7 @@ async def applied_database(tmp_path) -> dict[str, str]:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'segments_migration.db'}"
     seeded = await _build_and_seed(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
 
     return {"url": database_url, **seeded}
@@ -123,15 +95,15 @@ async def test_the_table_goes_away_on_downgrade_and_comes_back_on_upgrade(
 ) -> None:
     url = applied_database["url"]
 
-    assert TABLE in await _tables(url)
+    assert TABLE in await tables_of(url)
 
-    down = _run_alembic(url, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert TABLE not in await _tables(url)
+    assert TABLE not in await tables_of(url)
 
-    up = _run_alembic(url, "upgrade", REVISION)
+    up = run_alembic(url, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
-    assert TABLE in await _tables(url)
+    assert TABLE in await tables_of(url)
 
 
 async def test_the_session_rows_are_untouched_by_the_round_trip(applied_database) -> None:
@@ -139,8 +111,8 @@ async def test_the_session_rows_are_untouched_by_the_round_trip(applied_database
     not the place to find that out later."""
     url = applied_database["url"]
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     kept = await _rows(
         url,

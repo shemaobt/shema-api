@@ -825,6 +825,29 @@ class ReleaseResponse(BaseModel):
     approved_at: str
 
 
+class ForceReleaseRequest(BaseModel):
+    """The facilitator saying, in so many words, to mint this past the gate.
+
+    Defaulted rather than required, so a body without it meets the route's own conflict
+    instead of the body parser: "you did not ask for a force" is something the Desk can act
+    on, and a 422 naming a missing field is not.
+    """
+
+    force: bool = False
+
+
+class ForcedReleaseResponse(ReleaseResponse):
+    """What the Desk is told after a force: what the tablet is told, and when it was forced.
+
+    ``forced_at`` is null when the release that came back was not forced. An unchanged packet
+    returns the release that already exists (ADR 0014), and that row may be the one the team
+    minted themselves — the Desk reads this field to show *forçada às HH:MM*, so the honest
+    answer there is nothing rather than the clock of an approval nobody had to force.
+    """
+
+    forced_at: str | None
+
+
 class QuestionAudioResponse(BaseModel):
     """Where a facilitator's browser can fetch a question's recording, and for how long.
 
