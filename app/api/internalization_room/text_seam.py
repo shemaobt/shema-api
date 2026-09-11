@@ -13,11 +13,17 @@ which production never sets, and nothing on a tablet knows its paths.
 
 from __future__ import annotations
 
+import logging
 import secrets
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room.sessions import _worth_settling
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import (
@@ -28,12 +34,14 @@ from app.core.exceptions import (
 )
 from app.db.models.internalization_room import IRPromptKey
 from app.models.internalization_room_text_seam import (
+    ModelCall,
     OpenTextSessionRequest,
     TextSessionResponse,
     TextTurnRequest,
     TextTurnResponse,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES, normalize
 from app.services.internalization_room.prompts import get_prompt_text
@@ -63,6 +71,51 @@ async def require_runner(
 
 
 runner_dep = Depends(require_runner)
+
+#: The calls the turn in flight has made, when a turn is collecting them. A context variable
+#: because the record is written by `call_agent` deep inside the turn, on the same task, and
+#: two runners driving two sessions at once must not read each other's calls.
+_COLLECTING: ContextVar[list[ModelCall] | None] = ContextVar(
+    "internalization_room_text_seam_calls", default=None
+)
+
+
+class _ModelCalls(logging.Handler):
+    """Reads each answered call off the usage line `call_agent` already writes.
+
+    Not a second ledger: the room reports what a call cost in exactly one place, and this is
+    that line read back for the runner instead of only for the operator's grep. A record that
+    names a rung without token counts is the ladder stepping down, not a call answered.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        calls = _COLLECTING.get()
+        written = record.__dict__
+        if calls is None or "input_tokens" not in written:
+            return
+        calls.append(
+            ModelCall(
+                rung=written["rung"],
+                input_tokens=written["input_tokens"],
+                output_tokens=written["output_tokens"],
+                cache_read_tokens=written["cache_read_tokens"],
+                cache_write_tokens=written["cache_write_tokens"],
+                latency_ms=written.get("latency_ms"),
+            )
+        )
+
+
+logging.getLogger("app.services.internalization_room.llm").addHandler(_ModelCalls())
+
+
+@contextmanager
+def _collecting_model_calls() -> Iterator[list[ModelCall]]:
+    calls: list[ModelCall] = []
+    token = _COLLECTING.set(calls)
+    try:
+        yield calls
+    finally:
+        _COLLECTING.reset(token)
 
 
 def _outcome_tag(outcome: room.TurnOutcome) -> str:
@@ -128,6 +181,13 @@ async def take_text_turn(
     words leave as text. A kickoff is the opening — the session's very first line, which
     belongs to the Guide — and a kickoff on a session that has already spoken is refused the
     way her app refuses it, rather than read as a returning team.
+
+    The beads settle before the answer goes back rather than behind it. On a tablet the
+    classifier runs during the team's reflection pause and the next turn arrives seconds
+    later, so the Guide's coverage block is what the app would show; a runner's next turn
+    arrives the instant this one returns, and a classifier still running would leave the
+    Guide reading the beads of the turn before. Her runner runs it inline for the same reason.
+    Its calls are counted with the turn's — the same money, as her cost line adds them.
     """
     session = await room.get_session(db, payload.sessionId)
     if payload.kickoff and session.messages:
@@ -135,23 +195,35 @@ async def take_text_turn(
     if not payload.kickoff and payload.text is None:
         raise ValidationError("no text or kickoff")
 
-    turn = await room.run_comprehension_turn(
-        db,
-        session,
-        speech=_heard(payload, language=session.language),
-        opening=payload.kickoff,
-        guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
-        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
-        settings=get_settings(),
-    )
-    outcome = turn.outcome
-    session = await room.save_comprehension(db, session, turn.state)
-    session = await room.append_exchange(
-        db, session, team_utterance=outcome.transcript, guide_response=outcome.speech
-    )
+    heard = _heard(payload, language=session.language)
+    started = time.monotonic()
+    with _collecting_model_calls() as calls:
+        turn = await room.run_comprehension_turn(
+            db,
+            session,
+            speech=heard,
+            opening=payload.kickoff,
+            guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
+            validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
+            settings=get_settings(),
+        )
+        outcome = turn.outcome
+        session = await room.save_comprehension(db, session, turn.state)
+        session = await room.append_exchange(
+            db, session, team_utterance=outcome.transcript, guide_response=outcome.speech
+        )
+        if _worth_settling(outcome, heard):
+            await settle_coverage(
+                session_id=session.id,
+                team_utterance=outcome.transcript,
+                guide_response=outcome.speech,
+                pericope_num=session.pericope,
+            )
     return TextTurnResponse(
         sessionId=session.id,
         transcript=outcome.transcript,
         guideText=outcome.speech,
         outcome=_outcome_tag(outcome),
+        usage=calls,
+        turnMs=round((time.monotonic() - started) * 1000),
     )

@@ -11,7 +11,9 @@ tablet.
 from __future__ import annotations
 
 import json
+import logging
 import sys
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -24,6 +26,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
 from app.services import internalization_room as room
+from app.services.internalization_room import llm
 
 SEAM = "/api/internalization-room/text-seam"
 RUNNER_KEY = "runner-de-teste"
@@ -292,4 +295,84 @@ async def test_the_fourth_turn_is_run_over_every_earlier_exchange_not_a_window(
     ], (
         "a costura entregava ao turno só uma janela da conversa, e o juiz aprovaria pelo "
         "motivo errado"
+    )
+
+
+class _Wire:
+    """The provider answering the real `call_agent`, one scripted reply per call."""
+
+    def __init__(self, replies: list[str]) -> None:
+        self._replies = list(replies)
+        self.messages = self
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        text = self._replies.pop(0)
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=text)],
+            stop_reason="end_turn",
+            model="claude-fable-5-1",
+            usage=SimpleNamespace(
+                input_tokens=1200,
+                output_tokens=len(text),
+                cache_read_input_tokens=896000,
+                cache_creation_input_tokens=0,
+            ),
+        )
+
+
+async def test_every_model_call_of_the_turn_comes_back_with_its_rung_and_tokens(
+    client, monkeypatch, caplog
+) -> None:
+    session_id = await _an_open_session(client)
+    run_turn = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(run_turn, "call_agent", llm.call_agent)
+    wire = _Wire([GUIDE_LINE, json.dumps({"verdict": "pass", "issues": []})])
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: wire)
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")
+    caplog.set_level(logging.INFO, logger="app.services.internalization_room.llm")
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+
+    body = answered.json()
+    assert body["usage"] == [
+        {
+            "rung": "claude-fable-5-1",
+            "input_tokens": 1200,
+            "output_tokens": len(GUIDE_LINE),
+            "cache_read_tokens": 896000,
+            "cache_write_tokens": 0,
+            "latency_ms": None,
+        },
+        {
+            "rung": "claude-fable-5-1",
+            "input_tokens": 1200,
+            "output_tokens": len('{"verdict": "pass", "issues": []}'),
+            "cache_read_tokens": 896000,
+            "cache_write_tokens": 0,
+            "latency_ms": None,
+        },
+    ], "o custo de um turno ficava só no log do servidor, longe do runner que compara com o dela"
+    assert body["turnMs"] >= 0
+
+
+async def test_the_beads_settle_before_the_answer_so_the_next_turn_reads_them(
+    client, monkeypatch
+) -> None:
+    from app.api.internalization_room import text_seam
+
+    settled: list[tuple[str, str]] = []
+
+    async def _settle(*, session_id: str, team_utterance: str, guide_response: str, **_: Any):
+        settled.append((team_utterance, guide_response))
+
+    monkeypatch.setattr(text_seam, "settle_coverage", _settle)
+    session_id = await _an_open_session(client)
+    assert settled == [], "a abertura é uma frase que a sala escreveu para si; não move conta"
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+
+    assert answered.status_code == 200, answered.text
+    assert settled == [(TEAM_LINE, GUIDE_LINE)], (
+        "o classificador rodava atrás da resposta e o turno seguinte lia as contas de antes, "
+        "então o bloco de cobertura do Guia não era o que o app mostraria"
     )

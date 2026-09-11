@@ -35,6 +35,18 @@ class TextTurnRequest(BaseModel):
     motherTongue: int | None = None
 
 
+class ModelCall(BaseModel):
+    """One answered model call, in the names the room's own usage line already uses."""
+
+    rung: str
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int | None
+    cache_write_tokens: int | None
+    #: Filled once the room's usage line carries it; the whole turn's wall clock is `turnMs`.
+    latency_ms: int | None
+
+
 class TextTurnResponse(BaseModel):
     sessionId: str
     transcript: str
@@ -42,3 +54,6 @@ class TextTurnResponse(BaseModel):
     #: What the judge is defined against: the Guide's own words (`pass`), the Validator's
     #: mended version of them (`corrected`), or a pre-approved line (`fail_safe`).
     outcome: str
+    #: Every model call the turn made, in order, so a run's cost and rung sit beside hers.
+    usage: list[ModelCall]
+    turnMs: int
