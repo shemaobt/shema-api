@@ -331,9 +331,15 @@ def _read(path: Path) -> dict:
 
     `json.loads` answers `Any`, so without this the shape is never established and the first
     symptom of a malformed file is an `AttributeError` raised somewhere far from it.
+
+    Named by `path.name`, never the full `path`: ENG-925 gave this exception's message a
+    registered handler that puts `str(exc)` straight in the caller's response body, and
+    `LABELS_DIR` is built from `__file__`, so the full path is this deploy's own filesystem
+    layout on the wire to an authenticated facilitator — a smaller leak than the message being
+    silent, but not one this refusal needs to carry.
     """
     if not path.exists():
-        raise ElementLabelsBroken(f"no label catalogue at {path}")
+        raise ElementLabelsBroken(f"no label catalogue at {path.name}")
     written = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(written, dict):
         raise ElementLabelsBroken(f"{path.name} is not a catalogue of labels")

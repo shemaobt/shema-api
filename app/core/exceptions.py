@@ -308,8 +308,14 @@ async def handle_element_labels_broken(_request: Request, exc: ElementLabelsBrok
     the pericope, the key and the language `str(exc)` already carries, instead of the generic
     catch-all's "please try again later" — the difference between a blank Desk screen and one
     that says which bead is missing.
+
+    `logger.exception`, not `logger.error`: a specific handler stays on `ExceptionMiddleware`,
+    which does not re-raise once it has built a response, unlike `ServerErrorMiddleware` for
+    the bare-`Exception` fallback this used to reach — so `handle_unexpected`'s own
+    `logger.exception` never runs for this one, and this is the only place left to keep the
+    stack trace.
     """
-    logger.error("Label catalogue is broken: %s", exc)
+    logger.exception("Label catalogue is broken: %s", exc)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content=_error_body(str(exc), ERROR_CODE_INTERNAL),

@@ -22,6 +22,7 @@ on the day the project writes those seven layers, which is exactly the day it mu
 
 from __future__ import annotations
 
+import json
 import textwrap
 from collections.abc import Iterator
 from pathlib import Path
@@ -33,7 +34,7 @@ from app.core.exceptions import ValidationError
 from app.core.room_enums import ElementKind
 from app.services.internalization_room.canon import book_material, parse_map
 from app.services.internalization_room.canon.elements import elements_for
-from app.services.internalization_room.canon.labels import labelled_elements
+from app.services.internalization_room.canon.labels import LABELS_DIR
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.sessions import create_session
 
@@ -261,17 +262,24 @@ def test_every_preserved_bead_of_a_walkable_passage_has_a_label(pericope_num: st
 
     `orphans` (`canon/labels.py`) catches a label the canon no longer serves; nothing caught
     the other direction until now. The re-vendor that almost shipped in ENG-787 added seven
-    `preserved:*` beads to P07 with no matching catalogue entry, and the only reason it never
-    reached a facilitator is that the agent ran the suite before pushing — `labelled_elements`
-    already refuses per bead (`_text` raises when a key is not in the catalogue), so the gap
-    was never in the service, only in the suite. This closes it: a re-vendor that grows the
-    preservation layer without writing its labels fails here before it reaches a screen.
+    `preserved:*` beads to P07 with no matching catalogue entry.
+
+    Reads the shipped `ruth.json` directly rather than going through `labelled_elements`:
+    that loader builds its returned key set from the same `elements_for` call this test
+    filters, so `preserved <= {e.key for e in labelled_elements(...)}` can never be false —
+    it is either true, or the call raises first (`_text` refuses a missing key) and the
+    comparison is never reached at all. Comparing against the catalogue's own keys instead
+    also catches the shape that leaves `labelled_elements` silent: a walkable passage with
+    *no* catalogue entry at all takes the canon fallback (`labels.py:103`) and answers every
+    bead, preserved ones included, with `label_pt=None, label_es=None` — a real gap the
+    exception-based version could not see, caught on the PR's bot review.
     """
     preserved = {
         element.key
         for element in elements_for(pericope_num)
         if element.kind is ElementKind.PRESERVED
     }
-    named = {element.key for element in labelled_elements(pericope_num)}
+    catalogue = json.loads((LABELS_DIR / "ruth.json").read_text(encoding="utf-8"))
+    named = set(catalogue.get(pericope_num, {}))
 
     assert preserved <= named
