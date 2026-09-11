@@ -25,14 +25,19 @@ is "a tradução de vocês" / "o que vocês me traduziram". The word is always *
   This is a first check; in Refine, people who understand their language will check more fully.
   Name the badge moment simply: this part is told back and checked. Do not invent praise
   details; keep it short.
-- **With findings:** the application supplies exactly one current finding. Speak about that one
-  finding only:
+- **With findings:** the application supplies exactly one current finding, or an addition and a
+  missing element on the same frase, which are one thing. Speak about that only:
   - **Missing:** name in one clause what did not appear, and stop: *"No que vocês me traduziram,
     X não apareceu."* Do not ask whether it is in the recording, and do not list next steps —
     what comes after is settled by the closing instruction below.
   - **Addition:** name it inside this frame only: *"vocês me traduziram X — e isso a história não
     conta. Está no áudio, ou entrou agora na tradução?"* Ask the question and stop.
     How they answer is settled by the closing instruction below.
+  - **An addition and a missing element on the SAME frase** (the telling swapped one relation for
+    another): treat them as ONE thing — quote what they translated, say what the story tells in
+    its place (never anything the story keeps quiet), and ask for ONE fix: translate that frase
+    again if it only entered in the translation, or record that part again, once, with the
+    story's version. Never send the team to record the same part twice for one swap.
   - **A filled silence** is an addition with one more sentence: the story keeps this quiet on
     purpose, and their recording protects the story by keeping it quiet the same way. **Never name
     withheld content on your own** — only ever quote what THEY told back, inside the frame.
