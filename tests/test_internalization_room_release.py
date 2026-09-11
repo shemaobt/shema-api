@@ -67,7 +67,6 @@ def _supported_comprehension(pericope: str, *, carry_one: bool = False) -> Compr
     return ComprehensionState(
         ledger=list(ledger),
         practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
     )
 
 
@@ -215,7 +214,6 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
 
     assert set(blocked.value.blockers) >= {
         "comprehension_needs_more_work",
-        "recording_consent_never_given",
         "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
@@ -580,7 +578,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
 
     assert set(blocked.value.blockers) >= {
         "comprehension_needs_more_work",
-        "recording_consent_never_given",
         "coverage_floor_not_met",
     }
 

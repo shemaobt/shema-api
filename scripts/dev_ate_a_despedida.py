@@ -51,14 +51,13 @@ async def main() -> None:
         session.comprehension = ComprehensionState(
             ledger=list(ledger),
             practiced_scene_ids=scene_ids_for(session.pericope),
-            recording_consent_given=False,
         ).model_dump(mode="json")
         session.status = IRSessionStatus.IN_PROGRESS
         await db.commit()
 
         print(f"sessao {session.id}")
         print(f"pericope {session.pericope}")
-        print("proxima fala em lingua-ponte: a Sala faz a pergunta fixa de gravacao")
+        print("proxima fala em lingua-ponte: o Guia se despede e manda gravar o ensaio")
 
 
 asyncio.run(main())
