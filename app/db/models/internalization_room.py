@@ -472,9 +472,18 @@ class IRHardStretch(Base):
     names the first row of the stretch's chain of replacements: a correction is a new row, so
     the current row's id would name the version rather than the stretch, and every crossing of
     one stretch has to answer with the same name.
+
+    One mark per stretch is the database's promise, not a read before the write. Two tellings of
+    one stretch landing together both found no mark and both wrote one, and each halt clears the
+    stamps that record a facilitator already walked to the room. The index carries no predicate,
+    for the reason ``uq_ir_releases_version`` gives: a mark is never superseded, so there is no
+    row for one to exclude.
     """
 
     __tablename__ = "ir_hard_stretches"
+    __table_args__ = (
+        Index("uq_ir_hard_stretches_session_segment", "session_id", "segment_id", unique=True),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     session_id: Mapped[str] = mapped_column(String(36), index=True)

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSegment
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
@@ -106,6 +107,7 @@ class SupersededAttempt(BaseModel):
     """
 
     findings: list[Finding] = Field(default_factory=list)
+    played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
 
@@ -141,22 +143,22 @@ class BackTranslationState(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     checked: bool = False
     superseded: list[SupersededAttempt] = Field(default_factory=list)
+    #: What the team listened to, one entry per rehearsal part, each in that part's own
+    #: milliseconds. This is the report, and the only one the gate reads: a part carries its own
+    #: subject, so recording one part again loses the listening to that part and to nothing else.
+    played_by_take: list[PlayedTake] = Field(default_factory=list)
+    #: The shape the tablets in the field still send: one span list and one total over the parts
+    #: glued together. Kept because it is the record of what that build reported, and read by
+    #: nothing. Numbers with no subject say a clip was played through without saying which clip,
+    #: so they went on reading as proof after the team threw that recording away and started the
+    #: telling-back over on a new one (ADR 0017).
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
-    #: Which rehearsal recordings the report above is about: the ones the telling-back stood
-    #: on when the report was stored, stamped by the server. The two fields beside it are
-    #: numbers with no subject — they say a clip was played through without saying which clip,
-    #: so they went on reading as proof after the team threw that recording away and started
-    #: the telling-back over on a new one.
-    #:
-    #: The subject is taken from the stretches rather than from the takes table because a
-    #: stretch names the recording it is a slice of, checked when it was captured, and that
-    #: answer does not move. Which take is "the newest" does: `created_at` is stamped when the
-    #: upload lands, and the tablet's outbox drains whenever the link comes back, so a rehearsal
-    #: the team abandoned can be written down after the one that replaced it.
-    #:
-    #: The server stamps it because the tablet cannot be asked to. Naming the recording in the
-    #: `finish` payload would mean every app already in the field stops being able to release.
+    #: Which rehearsal recordings the flat report above was stored against, stamped by the
+    #: server from the stretches. It was the subject that report could not carry for itself,
+    #: and it is not evidence either: it says which recordings existed when the report arrived,
+    #: never that any of them was played. The gate does not consult it, and neither does
+    #: anything else: it is kept because a row written before the parts were named carries it.
     played_take_ids: list[str] = Field(default_factory=list)
     #: How many times the first-round gate has already turned the team back. It is what
     #: rotates the waiting line, and it cannot be read off the conversation: the gate answers
@@ -267,27 +269,39 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
 
 
-def playback_confirms_rehearsal(state: BackTranslationState, rehearsal_take_ids: list[str]) -> bool:
-    """Whether the team has evidence of hearing the rehearsal they told back about, whole.
+def playback_confirms_rehearsal(
+    state: BackTranslationState, rehearsal_take_ids: list[str]
+) -> list[str]:
+    """Which parts of the rehearsal the team has no evidence of having heard, sorted.
 
-    Three things have to hold together, and each one alone was a way through. The report has
-    to exist: no report is silence, and silence used to read as consent because empty ranges
-    over an empty duration satisfied the coverage arithmetic — which is what a `finish` with
-    no body produces, and what the shipped app sends whenever the clip did not run to its end.
-    It has to be about the recordings the telling-back is still standing on: once the team
-    starts over on a clip they recorded again, a report made against the old one describes
-    audio nobody will hear. And it has to reach the end of that clip, which is the check that
-    was already here.
+    Empty is heard. The question is asked once per part and answered per part, because that is
+    how the team listens: a part is its own recording, and recording one again says nothing
+    about the others. Asked of the whole passage instead, one retake threw away the listening
+    to every part at once, and the answer could never say which part to send the team back to.
 
-    Both numbers are required rather than either. A duration with no ranges is a report that
-    nothing was played, and ranges with no duration cannot be checked against anything —
-    taking either as proof reopens the same hole through a smaller door.
+    A part is heard when an entry names it and that entry reaches the end of *that part's* own
+    length. Both numbers are required rather than either: a length with nothing played is a
+    report that the team played nothing at all, and spans with no length cannot be checked
+    against anything. The arithmetic itself answers True to both of those — an absent report is
+    not a short one, which is not its question — so the two are asked here, where they are.
+
+    Entries naming recordings the stretches no longer name are ignored rather than refused.
+    They are the residue of a part the team recorded again, about audio no stretch is a slice
+    of any more; refusing on them would refuse a rehearsal that was in fact heard whole.
+
+    The flat report beside this one is never consulted, and neither is the server-stamped
+    subject. A report we cannot tie to a recording is not evidence about any recording, so a
+    row written before the parts were named names every part and the team plays it through
+    again (ADR 0017).
     """
-    if not state.played_take_ids or sorted(state.played_take_ids) != sorted(rehearsal_take_ids):
-        return False
-    if not state.played_ranges or not state.clip_duration_ms:
-        return False
-    return played_ranges_cover_clip(state.played_ranges, state.clip_duration_ms)
+    heard = {
+        entry.take_id
+        for entry in state.played_by_take
+        if entry.played_ranges
+        and entry.clip_duration_ms
+        and played_ranges_cover_clip(entry.played_ranges, entry.clip_duration_ms)
+    }
+    return sorted(set(rehearsal_take_ids) - heard)
 
 
 #: What `segments_block` carries when nothing has been told back yet, in the session's own

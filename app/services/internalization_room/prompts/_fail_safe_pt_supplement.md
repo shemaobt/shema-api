@@ -41,7 +41,8 @@ drop the term entirely: "a pessoa que acompanha vocês".
 
 ## H. A stretch is still waiting to be told back
 
-**Not authored by the project. Approved by Henok as written, 2026-08-29.**
+**Not authored by the project. Approved by Henok as written, 2026-08-29; the *traduzir*
+wording approved by Henok, 2026-09-10.**
 
 **This one is spoken, not shipped.** Every other family here is played from audio inside the
 app, because a fail-safe has to work when nothing else does — no network, no model. H is not a
@@ -78,14 +79,15 @@ already told, rather than telling what was not).
 
 ### H-pt. (Português brasileiro)
 
-- "Ainda falta parte da passagem para vocês me contarem. Vamos terminar isso primeiro, e depois eu confiro tudo junto."
-- "Ainda tem pedaço que vocês não me contaram. Me contem, e aí eu olho a passagem inteira."
-- "Ainda falta contar um pouco. Quando vocês terminarem, eu confiro tudo de uma vez."
+- "Ainda falta parte da passagem para vocês me traduzirem. Vamos terminar isso primeiro, e depois eu confiro tudo junto."
+- "Ainda tem pedaço que vocês não me traduziram. Me traduzam, e aí eu olho a passagem inteira."
+- "Ainda falta traduzir um pouco. Quando vocês terminarem, eu confiro tudo de uma vez."
 
 ## I. A stretch was pointed at, and correcting it replaces it
 
 **Not authored by the project. Written for ENG-693 with the product owner's authorization,
-2026-09-01, and given as fixed: the wording is not the implementer's to adjust.**
+2026-09-01, and given as fixed: the wording is not the implementer's to adjust; the
+*traduzir* wording approved by Henok, 2026-09-10.**
 
 ⚠ Neither the English nor the Spanish here has been read by a native speaker. ENG-683 records
 that this is true of every English and Spanish line the room speaks, not just this one.
@@ -129,4 +131,4 @@ warn about.
 
 ### I-pt. (Português brasileiro)
 
-- "Preciso que vocês me contem esta parte inteira de novo — o que já tinham contado, e também o que faltou."
+- "Preciso que vocês me traduzam esta parte inteira de novo — o que já tinham traduzido, e também o que faltou."

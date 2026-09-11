@@ -8,14 +8,14 @@ the Facilitator Desk, the Sound Necklace, the Oral Collector and the Annotation 
 Package manager is `uv`, on Python 3.11: `uv python install 3.11`, then `uv sync --frozen --group dev`.
 
 ```sh
-JWT_SECRET_KEY=test-secret-for-pytest-only DATABASE_URL=sqlite+aiosqlite:///./test.db uv run pytest tests/ -v
+JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -v
 uv run mypy app/
 uv run ruff check . && uv run ruff format --check .
 DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python -c "import app.main"
 PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no duplicate ids
 ```
 
-The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon.
+The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon. The test database is a file per pytest run, in the system temporary directory and named by the process, so two runs in one checkout do not corrupt each other; `DATABASE_URL` is honoured when set, and the run then uses that file and leaves it behind.
 
 ## Rules
 
