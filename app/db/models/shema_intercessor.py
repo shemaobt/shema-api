@@ -17,12 +17,23 @@ Three questions this table cannot ship without, and they are not engineering que
 evidenced; how someone outside the platform asks to be removed when they cannot log in; and
 what happens to a contact nobody has used in a year. The schema is here so BE-09 has
 something to build against, and the answers are still owed before it stores a real person.
+
+**BE-13 owns the network, and answered the first of the three.** ``docs/shema.md`` §10 item 5
+left the aggregate with two owners; the settlement and its evidence are in BE-13's pull
+request, and the short form is that INT-10 — *Integrar Equipe e Intercessores* — is blocked
+by this issue and not by BE-09. The consent that was owed is
+``app/db/models/shema_consent.py``, a row per person per context, and it is not a column here
+on purpose: ``add_intercessor`` will not create a row in this table without one, which is the
+rule written where it can be seen rather than in a service somebody has to remember.
+
+The other two are still owed and neither is a schema question. Named again here, because this
+is the file the next person opens.
 """
 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, String
+from sqlalchemy import Boolean, CheckConstraint, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -46,6 +57,15 @@ class ShemaIntercessor(Base):
     refused. The full rule — an e-mail, or eight digits or more — is ``contactChannel``'s and
     belongs to the service, because it is a judgement about a string; what the database holds
     is the floor under it, and it costs nothing since nothing seeds this table.
+
+    ``sensitive_country`` is BE-13's, and it is the project flag's shape rather than a second
+    idea of danger. ``CLAUDE.md`` §6.1 asks that the rule be treated as a cross-cutting
+    invariant that every new output surface goes through, and FE-44 §8.1 rule 5 already
+    extends it from ``location`` to the record's three personal contacts. A person in the
+    network is the same kind of subject with none of the project around them, so the flag
+    travels on their own row. **Entered, never derived**: the project's is entered too, and
+    the only way to derive one here would be to map 249 alpha-2 codes onto the export's
+    free-text country spellings — the normalisation ``docs/shema.md`` §4.9 forbids by name.
     """
 
     __tablename__ = "shema_intercessors"
@@ -58,6 +78,12 @@ class ShemaIntercessor(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     country: Mapped[str] = mapped_column(String(2), nullable=False)
     contact: Mapped[str] = mapped_column(String(300), nullable=False)
+    #: Withheld in every shape that leaves coordination, never on the read the Resource
+    #: Circle works from. ``app/services/shema/_directory.py`` is the one owner of both
+    #: halves of that split.
+    sensitive_country: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     added_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )

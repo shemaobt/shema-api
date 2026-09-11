@@ -75,6 +75,7 @@ from app.db.models.resource_request import (
     RRStage,
 )
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
 from app.db.models.shema_enums import (
     ShemaEtenCreditSource,
     ShemaHealthLevel,
@@ -188,12 +189,14 @@ __all__ = [
     "RolePermission",
     "SessionStatus",
     "SessionStep",
+    "ShemaConsentContext",
     "ShemaEtenCredit",
     "ShemaEtenCreditSource",
     "ShemaHealthAssessment",
     "ShemaHealthLevel",
     "ShemaIntakeLink",
     "ShemaIntercessor",
+    "ShemaIntercessorConsent",
     "ShemaMaterial",
     "ShemaMaterialKind",
     "ShemaMediaItem",
