@@ -1,15 +1,13 @@
-"""What the room says when the Guide or the Validator cannot be reached.
+"""What the room says when a model answered and the room itself could not go on with it.
 
-Read from the endpoint, because the failure being described is an HTTP one: a model or
-transport error used to leave `take_turn` as a 500, which the tablet shows as a broken
-room and which stops a session over an outage that lasted seconds. The fail-safe line the
-policy already promises is the answer, and the endpoint names it in `fixed_line` — those
-lines ship as audio inside the app, so a failing network costs no synthesis.
+Read from the endpoint, because the failure being described is an HTTP one. A model or
+transport error is no longer answered here at all — it rises as a 502 with its cause, see
+`test_ir_an_outage_is_an_error_not_an_utterance.py` — so what is left to this file is the
+line between a canned answer the policy promises and a defect of ours that must stay a 500.
 """
 
 import asyncio
 import json
-import logging
 import sys
 from typing import Any
 
@@ -18,7 +16,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.fail_safe import FailSafe
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
 
@@ -28,14 +26,6 @@ P = "P03"
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
 CORRECTED_LINE = "Fiquem nesta cena. O que vocês contariam?"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
-
-
-def _unrepairable_lines() -> set[str]:
-    """The names the app plays for a turn nothing could repair, straight from the policy."""
-    return {
-        f"{FailSafe.UNREPAIRABLE}{index}"
-        for index in range(len(utterances(FailSafe.UNREPAIRABLE, "pt")))
-    }
 
 
 class _Agent:
@@ -145,24 +135,6 @@ async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx
     )
 
 
-async def test_a_guide_that_cannot_be_reached_answers_the_room_not_the_tablet(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A timeout on the Guide is a bad minute, not a broken room.
-
-    The tablet reads a 500 as the room itself failing and the session stops for a person,
-    over an outage that was over before anyone reached the door.
-    """
-    _the_models_answer(monkeypatch, RuntimeError("the model is unreachable"))
-    session_id = await _a_room_opening_a_passage(client)
-
-    answered = await _the_room_takes_a_turn(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    assert answered.json()["fixed_line"] in _unrepairable_lines()
-    assert answered.json()["degraded"] is True
-
-
 async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -194,19 +166,6 @@ async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
     assert body["fixed_line"].startswith(FailSafe.OFF_BRIDGE_LANGUAGE)
     assert body["used_fail_safe"] is True
     assert body["degraded"] is False
-
-
-async def test_a_validator_that_cannot_be_reached_degrades_the_same_turn(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Two call sites, one turn: covering the Guide and leaving the Validator is half a fix."""
-    _the_models_answer(monkeypatch, GUIDE_LINE, RuntimeError("the validator is unreachable"))
-    session_id = await _a_room_opening_a_passage(client)
-
-    answered = await _the_room_takes_a_turn(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    assert answered.json()["fixed_line"] in _unrepairable_lines()
 
 
 async def test_a_validator_listing_its_issues_as_plain_strings_still_gets_a_second_draft(
@@ -256,34 +215,6 @@ async def test_a_turn_the_models_answer_is_spoken_as_the_guide_wrote_it(
     assert not body["used_fail_safe"]
     assert body["fixed_line"] == ""
     assert spoken == [GUIDE_LINE]
-
-
-async def test_a_failed_call_is_logged_without_repeating_what_the_team_said(
-    client: httpx.AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """An outage the operation cannot see is the one it cannot fix.
-
-    The team's words are not part of what it needs to see: the room degrading is an
-    infrastructure fact, and a transcript in an operations log is the team's speech kept
-    somewhere nobody agreed to.
-    """
-    _the_models_answer(monkeypatch, GUIDE_LINE, _passes(), RuntimeError("the model is gone"))
-    session_id = await _a_room_opening_a_passage(client)
-    await _the_room_takes_a_turn(client, session_id)
-
-    with caplog.at_level(logging.ERROR, logger="app.services.internalization_room.run_turn"):
-        answered = await _the_team_answers(client, session_id)
-
-    assert answered.status_code == 200, answered.text[:300]
-    failures = [
-        record
-        for record in caplog.records
-        if record.name == "app.services.internalization_room.run_turn" and record.exc_info
-    ]
-    assert failures, "uma falha do modelo tem de deixar rastro com o traceback"
-    assert TEAM_ANSWER not in caplog.text
 
 
 async def test_a_bug_in_the_rooms_own_checks_is_not_dressed_up_as_an_outage(

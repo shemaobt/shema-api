@@ -192,10 +192,16 @@ async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached
 
 
 class _BrokenModels:
-    """Every model call this room places goes nowhere."""
+    """A Validator that refuses every draft, so every turn falls to the canned line.
 
-    async def __call__(self, **kwargs: Any) -> str:
-        raise RuntimeError("the model transport is down")
+    The designed fail-safe and not a transport that is down: an outage rises out of the turn
+    as an error now, and what must never be counted toward a person is the line itself.
+    """
+
+    async def __call__(self, *, system_prompt: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "regenerate", "issues": ["fora do mapa"]})
+        return "Vamos ficar nesta cena."
 
 
 @pytest.mark.asyncio

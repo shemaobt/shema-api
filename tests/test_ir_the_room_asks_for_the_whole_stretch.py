@@ -513,10 +513,12 @@ async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     """
     turn_module = importlib.import_module("app.services.internalization_room.run_turn")
 
-    async def refuses_to_draft(**_: Any) -> str:
-        raise RuntimeError("o modelo caiu no meio do veredito")
+    async def refuses_every_draft(*, system_prompt: str, **_: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "regenerate", "issues": ["fora do mapa"]})
+        return "Vamos ficar nesta cena."
 
-    monkeypatch.setattr(turn_module, "call_agent", refuses_to_draft)
+    monkeypatch.setattr(turn_module, "call_agent", refuses_every_draft)
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
