@@ -1,0 +1,30 @@
+# DOCTRINE.md §4 — what must not regress — as the tests that hold it.
+#
+# The lines are not listed here: they are parsed out of the vendored DOCTRINE.md on every run,
+# because a line she adds on the next re-pin has to arrive as a red build and not as a line
+# nobody transcribed. Each row is a fragment of one §4 line, two spaces, then the tests that
+# hold it — or PENDING, which says out loud that this repo does not hold it today.
+#
+# A fragment is matched against the line, never compared to it: a guard on her wording would go
+# red for a rename that leaves the ruling untouched. A fragment that matches nothing at all is
+# reported as stale, because that is a rule of hers that moved and a human has to read the move.
+#
+# Read by `scripts/sync_doctrine.py --check`.
+
+Facilitador Digital persona  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_guide_introduces_itself_as_the_facilitador_digital
+peer-mediated  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_team_rehearses_to_each_other_and_the_guide_hands_the_talking_back
+frame-before-elicit  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_a_part_is_opened_before_the_team_is_asked_about_it
+a request to understand is always answered from the map  tests/test_ir_a_request_to_understand_is_answered_from_the_map.py::test_a_request_to_understand_is_answered_from_the_map_never_redirected
+an omission in a retelling never passes  tests/test_internalization_room_back_translation.py::test_marcias_items_keep_the_relation_rule_and_the_marked_silence tests/test_internalization_room_back_translation.py::test_a_retired_kind_reads_as_addition
+the send-off is always  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_send_off_names_the_ensaio_and_the_teams_own_language
+the first rehearsal is the first oral draft  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_first_rehearsal_is_the_first_oral_draft_never_the_final_translation
+no blessings  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_guide_ends_plainly_with_no_blessing_of_its_own
+never "o mapa"  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_team_never_hears_the_words_o_mapa
+ALFE 8th-grade register  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_register_is_eighth_grade_and_the_proclisis_is_the_spoken_one
+spoken-BR proclisis  tests/test_ir_the_guide_keeps_the_acceptance_bar.py::test_the_register_is_eighth_grade_and_the_proclisis_is_the_spoken_one
+YHWH  tests/test_internalization_room_speakable.py::test_a_bare_yhwh_becomes_senhor_jeova_whatever_sits_beside_it
+The two languages never confused  tests/test_internalization_room_turn.py::test_inviting_the_rehearsal_is_not_claiming_to_have_understood_it
+the circle is alive at `done`  PENDING
+The voice opens the session  tests/test_internalization_room_api.py::test_the_opening_turn_carries_no_body_at_all
+the team is never left in front of a silent circle  tests/test_internalization_room_api.py::test_the_opening_turn_carries_no_body_at_all
+P01 (Ruth 1:1–5) completes  tests/test_ir_the_validator_reads_the_withholdings.py::test_the_withholdings_reach_the_validator_as_constraints_not_only_as_beads tests/test_ir_the_validator_reads_the_withholdings.py::test_every_scene_of_the_passage_names_its_silence_under_the_absences_heading

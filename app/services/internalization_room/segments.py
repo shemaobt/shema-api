@@ -72,6 +72,15 @@ async def capture_segment(
     final unit. ``replaces`` makes it a new version of one position: the earlier row stops
     counting and names this one as what took its place, and stays exactly where it is.
 
+    **The count of tellings follows the chain, and only a telling adds to it.** A version that
+    arrives with a telling-back is one more telling of that stretch; one that arrives without —
+    the mother tongue re-recorded, which is answered by telling it again in a second call —
+    carries the count across untouched, because nobody told anything into it. Counting the
+    supersession instead of the telling would reach three on the team's second telling and ask
+    for a person a whole telling early. The pieces of a division keep the count for the reason
+    they keep the pass: born on the default, a stretch already told twice would hand the team a
+    fresh count on each piece.
+
     **A version whose mother-tongue slice moved may not carry a telling-back with it.** The
     product has two corrections and not three: redoing only the explanation, which leaves the
     native audio exactly where it is, and re-recording the native, which always means the
@@ -83,17 +92,9 @@ async def capture_segment(
     explanation in hand and no reason to think twice; a refusal is what makes the forbidden
     state unreachable.
 
-    **A stretch that no longer counts cannot be replaced.** A tablet retrying a replacement it
-    already sent lands on the row it superseded: the successor would take a position another
-    current row already holds, which the index refuses with a 500 nobody in the room can read —
-    and once a telling-back has been started over there is no current row left to collide with,
-    so the same call would quietly bring a stretch back from the recording the team threw away.
-
-    **A stretch that was divided cannot be replaced as a unit.** Its children would go on
-    pointing at the retired row, which the walk in `final_segments` starts too high up to
-    reach, and they would drop out of the reading with nothing saying so. It is refused
-    rather than repaired because the parent stopped being a unit the moment it was divided:
-    what gets re-recorded is a child, one at a time.
+    What may be replaced at all — not a retired row, not one the team divided — is
+    `refuse_a_stretch_that_is_not_a_unit`, which the route that counts an unheard telling asks
+    the same question of.
 
     The retired row is stamped before the successor is inserted, not after. The two share a
     position, and the index that keeps one position to one current stretch is checked per
@@ -112,21 +113,18 @@ async def capture_segment(
         )
 
     if replaces is not None:
-        if replaces.superseded_at is not None:
-            raise ValidationError(
-                "This stretch no longer counts: it was already replaced, or the telling-back "
-                "it belonged to was started over"
-            )
-        if any(row.parent_id == replaces.id for row in await current_segments(db, session.id)):
-            raise ValidationError(
-                "A stretch that was divided is no longer a unit: replace one of the stretches "
-                "it was divided into, not the stretch itself"
-            )
+        await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
         parent_id = replaces.parent_id
         ordinal = replaces.ordinal
-    else:
-        parent_id = parent.id if parent is not None else None
+        tellings = replaces.tellings + 1 if transcript is not None else replaces.tellings
+    elif parent is not None:
+        parent_id = parent.id
         ordinal = await _next_ordinal(db, session.id, parent_id)
+        tellings = parent.tellings
+    else:
+        parent_id = None
+        ordinal = await _next_ordinal(db, session.id, parent_id)
+        tellings = 1
 
     if bridge_take_id is not None:
         result = await db.execute(
@@ -152,6 +150,7 @@ async def capture_segment(
         starts_ms=starts_ms,
         ends_ms=ends_ms,
         pass_number=pass_number,
+        tellings=tellings,
         bridge_take_id=bridge_take_id,
         transcript=transcript,
     )
@@ -400,3 +399,81 @@ async def _next_ordinal(db: AsyncSession, session_id: str, parent_id: str | None
     """
     siblings = [row for row in await current_segments(db, session_id) if row.parent_id == parent_id]
     return max((row.ordinal for row in siblings), default=0) + 1
+
+
+async def first_telling_of(db: AsyncSession, segment: IRSegment) -> IRSegment:
+    """Walk back up the chain of replacements to the row the team told first.
+
+    The chain the rows carry runs forward — a retired row names what took its place — so the
+    walk is a query per hop. Chains are the number of times one stretch was told, which is small
+    by the nature of the thing: a stretch told enough times to make this walk long is the stretch
+    this whole count exists to notice.
+    """
+    first = segment
+    while True:
+        result = await db.execute(
+            select(IRSegment).where(
+                IRSegment.session_id == segment.session_id,
+                IRSegment.superseded_by_id == first.id,
+            )
+        )
+        earlier = result.scalar_one_or_none()
+        if earlier is None:
+            return first
+        first = earlier
+
+
+async def current_stretch_at(
+    db: AsyncSession, session_id: str, *, take_id: str, starts_ms: int, ends_ms: int
+) -> IRSegment | None:
+    """The stretch that counts at exactly this slice, or nothing when none does.
+
+    How the telling-back route knows a chunk is one more telling of a stretch already told
+    rather than a stretch nobody has told yet: the tablet sends the stretch's own address back.
+
+    Read off the leaves, which is what the room reads. A stretch that was divided is no longer
+    a unit — its audio belongs to its pieces — so a chunk over its old slice is a stretch of its
+    own, and replacing it is refused anyway.
+    """
+    return next(
+        (
+            segment
+            for segment in await final_segments(db, session_id)
+            if not slice_moved(segment, take_id, starts_ms, ends_ms)
+        ),
+        None,
+    )
+
+
+async def refuse_a_stretch_that_is_not_a_unit(
+    db: AsyncSession, session_id: str, segment: IRSegment
+) -> None:
+    """A stretch that no longer counts, or that was divided, is not a stretch to act on.
+
+    **A stretch that no longer counts cannot be replaced.** A tablet retrying a replacement it
+    already sent lands on the row it superseded: the successor would take a position another
+    current row already holds, which the index refuses with a 500 nobody in the room can read —
+    and once a telling-back has been started over there is no current row left to collide with,
+    so the same call would quietly bring a stretch back from the recording the team threw away.
+
+    **A stretch that was divided cannot be replaced as a unit.** Its children would go on
+    pointing at the retired row, which the walk in `final_segments` starts too high up to
+    reach, and they would drop out of the reading with nothing saying so. It is refused rather
+    than repaired because the parent stopped being a unit the moment it was divided: what gets
+    re-recorded is a child, one at a time.
+
+    One expression, because the two callers must answer the same. `capture_segment` asks it
+    before writing a replacement; the correction route asks it before *counting* on a row,
+    where an unguarded retry used to spend a telling on a stretch the room had already retired
+    and could mark a divided parent nothing can ever replace.
+    """
+    if segment.superseded_at is not None:
+        raise ValidationError(
+            "This stretch no longer counts: it was already replaced, or the telling-back "
+            "it belonged to was started over"
+        )
+    if any(row.parent_id == segment.id for row in await current_segments(db, session_id)):
+        raise ValidationError(
+            "A stretch that was divided is no longer a unit: replace one of the stretches "
+            "it was divided into, not the stretch itself"
+        )

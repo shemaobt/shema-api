@@ -30,6 +30,7 @@ class BCDStatus(enum.StrEnum):
 class BookContextDocument(Base):
     __tablename__ = "book_context_documents"
     __table_args__ = (
+        Index("ix_bcd_book_active", "book_id", "is_active"),
         UniqueConstraint(
             "book_id",
             "section_range_start",

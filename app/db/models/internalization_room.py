@@ -397,6 +397,11 @@ class IRSegment(Base):
     #: of the telling rather than a second pass, but that is F7's argument to have, not a
     #: contract to change in the same diff that redefines the address.
     pass_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    #: How many times the team has told this stretch, counting every version of it: the row a
+    #: telling supersedes hands its count on, and a telling nobody could make out is counted
+    #: here in place, because it captured no row of its own. At `RETELLS_BEFORE_A_WARNING` the
+    #: stretch is a hard stretch and `ir_hard_stretches` keeps the fact.
+    tellings: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     bridge_take_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     superseded_at: Mapped[datetime | None] = mapped_column(
@@ -404,5 +409,79 @@ class IRSegment(Base):
     )
     superseded_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+
+
+class IRRelease(Base):
+    """One approval of a passage, numbered and carrying the packet it approved.
+
+    The packet is composed from the session's current rows, so nothing else could give
+    version 1 back once the team re-records: the whole of it is stored here, beside its hash,
+    and not the hash alone. The snapshot is the contract.
+
+    ``version`` is the number of this release within its pericope and project, from one and
+    never reused. The allocation reads one past the last, which is a race by itself — the one
+    ENG-639 already recorded against stretch positions — so the unique index below is what
+    makes two approvals taking one number impossible rather than unlikely.
+
+    The index carries no predicate, unlike the pair on ``ir_segments`` it is modelled on.
+    Those are partial because a superseded stretch must not collide with the row that
+    replaced it; a release is never superseded, so there is no row for a predicate to
+    exclude, and one that filtered on nothing would only teach the next reader that
+    releases can be retired.
+
+    ``project_id`` is not null: a release is named by project, pericope and version, and a
+    session opened on the shared room key names no project — which is why approving one is
+    refused rather than numbered in a group belonging to nobody.
+
+    ``package_sha256`` keeps the packet's own key rather than the glossary's word, which is
+    *packet* and avoids *package*: the fingerprint travels to Refine under that name, and one
+    number with two spellings is worse than one spelling the glossary would rather retire.
+
+    No foreign keys, matching every other table of the room: the ids come across an app
+    boundary and have never been constrained.
+    """
+
+    __tablename__ = "ir_releases"
+    __table_args__ = (
+        Index("uq_ir_releases_version", "project_id", "pericope", "version", unique=True),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    project_id: Mapped[str] = mapped_column(String(36))
+    pericope: Mapped[str] = mapped_column(String(120))
+    version: Mapped[int] = mapped_column(Integer)
+    package_sha256: Mapped[str] = mapped_column(String(64))
+    packet: Mapped[dict[str, Any]] = mapped_column(JSON)
+    approved_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+
+
+class IRHardStretch(Base):
+    """A stretch the team told three times, kept for the consultant and cleared by nothing.
+
+    Its own table rather than a list inside the telling-back state, because starting the
+    telling-back over rewrites that state — and the whole point of the row is that nothing the
+    team does afterwards takes it away. The halt it raises is transient and may be lifted by
+    the next turn that lands; this is the fact underneath it.
+
+    No foreign keys, matching the four sibling tables of the room (ADR 0006). ``segment_id``
+    names the first row of the stretch's chain of replacements: a correction is a new row, so
+    the current row's id would name the version rather than the stretch, and every crossing of
+    one stretch has to answer with the same name.
+    """
+
+    __tablename__ = "ir_hard_stretches"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    segment_id: Mapped[str] = mapped_column(String(36), index=True)
+    #: How many tellings the stretch carried when it crossed. Stored rather than derived: the
+    #: chain goes on growing afterwards, and what the consultant reads is the moment.
+    tellings: Mapped[int] = mapped_column(Integer)
+    crossed_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )
