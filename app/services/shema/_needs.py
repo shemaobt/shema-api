@@ -49,6 +49,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 from typing import Any, NamedTuple
 
 from sqlalchemy import select
@@ -150,6 +151,47 @@ def urgent_need_notice(line: ShemaNeedLine) -> Notice:
     return Notice(
         title=f"Urgent need: {line.category}",
         body=f"{who}{where} raised an urgent {line.category} need.{money}",
+    )
+
+
+def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
+    """What **one save's** urgent needs say to the people they reach, in one notice.
+
+    **A batch is one notice per recipient, never one per need per recipient.** A save that
+    imports twenty rows and turns five of them urgent is one event a coordinator can act on,
+    not five interruptions telling the same story — BE-15's own line in ``docs/shema.md``'s
+    delivery plan is that an import which floods a panel trains its reader to stop opening it,
+    which is a worse failure than the notice never having existed. :func:`urgent_need_notice`
+    still answers the single-need case, unchanged, because most saves raise one.
+
+    Amounts are summed **per currency, never across one**, for the reason this module never
+    sums a need: a rupiah total beside a real total invents a number nobody asked for. A
+    currency with no amount for every need in the batch is left out rather than shown as zero.
+    """
+    if len(lines) == 1:
+        return urgent_need_notice(lines[0])
+
+    who = lines[0].language_name or lines[0].project_id
+    where = f" ({lines[0].location})" if lines[0].location else ""
+    categories = ", ".join(sorted({line.category for line in lines}))
+
+    totals: dict[str, Decimal] = {}
+    for line in lines:
+        if line.estimated_amount is not None and line.estimated_currency:
+            totals[line.estimated_currency] = (
+                totals.get(line.estimated_currency, Decimal(0)) + line.estimated_amount
+            )
+    money = (
+        ""
+        if not totals
+        else " Estimated at "
+        + ", ".join(f"{amount} {currency}" for currency, amount in sorted(totals.items()))
+        + "."
+    )
+
+    return Notice(
+        title=f"{len(lines)} urgent needs raised",
+        body=f"{who}{where} raised {len(lines)} urgent needs: {categories}.{money}",
     )
 
 
@@ -326,12 +368,19 @@ async def notify_urgent(
     *,
     actor: User | None,
 ) -> int:
-    """Stage one notice per recipient per urgent need; answer how many were written.
+    """Stage **one notice per recipient for the whole batch**; answer how many were written.
 
     **Routed by role and then by region, before anything is capped** (FE-44 §5.10's rule for
     the panel, applied at the source): the recipients are the holders of
     :data:`URGENT_NEED_ROLES` whose scope reaches this project's region, and a holder of a role
     in another region is not a recipient rather than a recipient who is filtered out later.
+
+    **One notice per recipient, not one per need.** A save that imports twenty needs and turns
+    five of them urgent is one event, and a coordinator who received five separate notices for
+    one save would learn to stop opening them — the exact failure a flood is named for in
+    ``docs/shema.md``'s delivery plan. :func:`urgent_needs_notice` folds the batch into one
+    ``Notice`` before anything is staged, so the recipient loop below runs once regardless of
+    how many needs raised it.
 
     Staged inside the caller's transaction with ``commit=False``. The flag exists for exactly
     this (``create_notification``'s own docstring): a need that landed always carries its
@@ -352,21 +401,20 @@ async def notify_urgent(
         return 0
 
     app_id = await get_shema_app_id(db)
+    notice = urgent_needs_notice([ShemaNeedLine.of(need, project) for need in needs])
     written = 0
-    for need in needs:
-        notice = urgent_need_notice(ShemaNeedLine.of(need, project))
-        for user in recipients:
-            await create_notification(
-                db,
-                user_id=user.id,
-                app_id=app_id,
-                event_type=URGENT_NEED_EVENT,
-                title=notice.title,
-                body=notice.body,
-                actor_id=None if actor is None else actor.id,
-                commit=False,
-            )
-            written += 1
+    for user in recipients:
+        await create_notification(
+            db,
+            user_id=user.id,
+            app_id=app_id,
+            event_type=URGENT_NEED_EVENT,
+            title=notice.title,
+            body=notice.body,
+            actor_id=None if actor is None else actor.id,
+            commit=False,
+        )
+        written += 1
     return written
 
 
