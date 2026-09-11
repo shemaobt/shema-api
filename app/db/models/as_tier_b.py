@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -32,6 +32,7 @@ class AsTierBRecording(Base):
     __tablename__ = "as_tier_b_recordings"
     __table_args__ = (
         UniqueConstraint("pair_id", "side", "rep_index", name="uq_as_tier_b_recording"),
+        Index("ix_as_tier_b_recordings_pair_status", "pair_id", "upload_status"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))

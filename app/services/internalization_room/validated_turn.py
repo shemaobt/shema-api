@@ -1,7 +1,7 @@
 """The draft-gate-voice engine every session type funnels through.
 
 `call_agent`, `strays_from`, `MAX_REDRAFTS` and the logger are read off `run_turn` at call
-time instead of being imported here. Twenty-seven sites across thirteen test files install
+time instead of being imported here. Thirty-four sites across twenty-three test files install
 their fake model by writing over `run_turn.call_agent`, one writes over `run_turn.strays_from`,
 and `tests/test_internalization_room_model_failure.py` asserts on records whose `record.name`
 is exactly `app.services.internalization_room.run_turn`. A monkeypatch reaches a function only

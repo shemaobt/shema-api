@@ -7,6 +7,7 @@ where the catalogue lives, on the shape of the file behind it, or on how the joi
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 
@@ -187,6 +188,19 @@ def test_a_catalogue_that_is_not_a_catalogue_at_all_is_refused(tmp_path):
     assert "ruth.json" in str(refused.value)
 
 
+def test_a_missing_catalogue_file_names_itself_not_the_full_deploy_path(tmp_path):
+    """ENG-925's handler puts `str(exc)` in the caller's response body — an absolute path
+    built from `LABELS_DIR` (which is `__file__`-relative) would be this deploy's own
+    filesystem layout on the wire. `path.name` is enough to say which file is missing.
+    """
+    with pytest.raises(ElementLabelsBroken) as refused:
+        labelled_elements("P01", catalogue_dir=tmp_path)
+
+    said = str(refused.value)
+    assert "ruth.json" in said
+    assert str(tmp_path) not in said
+
+
 @pytest.mark.parametrize("pericope_num", PILOT)
 def test_two_beads_on_one_screen_never_read_the_same(pericope_num):
     """A necklace is read across, so a repeated label is two beads a facilitator cannot tell apart.
@@ -260,10 +274,59 @@ def test_the_two_refusals_do_not_answer_the_same_thing_on_the_wire(tmp_path, hol
 
     broken = client.get("/ours-is-broken")
     assert broken.status_code == 500
-    assert "scene:1" not in broken.text
+    assert "scene:1" in broken.text
 
     asked = client.get("/they-asked-for-a-passage-that-is-not-one")
     assert asked.status_code == 400
+
+
+def test_a_bead_with_no_label_is_a_named_failure_not_a_blank_page(holed_catalogue):
+    """ENG-925 — `ElementLabelsBroken` carried no handler and fell to the generic 500.
+
+    Measured before this: the Desk's three screens (coverage, sessions, question inbox) all
+    answered `{"detail": "An unexpected error occurred...", "code": "INTERNAL_ERROR"}` for a
+    bead with no label — the same body an unrelated crash would produce, with nothing in it
+    to say a catalogue was holed or which bead was missing. A registered handler for the
+    specific exception is what tells the two apart on the wire.
+    """
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/ours-is-broken")
+    def ours_is_broken():
+        return labelled_elements("P01", catalogue_dir=holed_catalogue)
+
+    client = TestClient(app, raise_server_exceptions=False)
+
+    broken = client.get("/ours-is-broken")
+
+    assert broken.status_code == 500
+    body = broken.json()
+    assert "P01" in body["detail"] and "scene:1" in body["detail"]
+    assert body["detail"] != "An unexpected error occurred. Please try again later."
+
+
+def test_the_handler_keeps_the_traceback_now_that_nothing_else_logs_it(holed_catalogue, caplog):
+    """`handle_unexpected` used to be where this landed, logging with `logger.exception` —
+    full stack included. Once a specific handler claims the exception it stays on
+    `ExceptionMiddleware`, which does not re-raise, so `handle_unexpected` never runs and
+    this handler is the only place left to keep the trace.
+    """
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/ours-is-broken")
+    def ours_is_broken():
+        return labelled_elements("P01", catalogue_dir=holed_catalogue)
+
+    client = TestClient(app, raise_server_exceptions=False)
+
+    with caplog.at_level(logging.ERROR):
+        client.get("/ours-is-broken")
+
+    logged = [r for r in caplog.records if "Label catalogue is broken" in r.message]
+    assert logged, "the handler did not log at all"
+    assert logged[0].exc_info is not None, "logger.error drops the traceback; use logger.exception"
 
 
 def test_our_own_catalogue_being_broken_does_not_read_as_the_caller_s_mistake(tmp_path):
