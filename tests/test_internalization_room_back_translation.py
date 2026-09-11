@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 import re
@@ -27,6 +28,7 @@ from app.services.internalization_room.back_translation import (
     played_ranges_cover_clip,
     points_at_a_stretch,
     segments_block,
+    the_finding_that_leads,
     verify_correction,
     with_the_whole_stretch_asked_for,
 )
@@ -133,6 +135,10 @@ def _silence_on(
     return Finding.model_validate(
         {"kind": "silence", "note": note, "segment_id": segment_id, "chunk": chunk}
     )
+
+
+def _unclear_on(chunk: int, note: str = "não deu para ouvir") -> Finding:
+    return Finding(kind=FindingKind.UNCLEAR, note=note, segment_id=None, chunk=chunk)
 
 
 @pytest.fixture
@@ -1044,8 +1050,126 @@ async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker)
 
 
 # ---------------------------------------------------------------------------
-# A finding says whether it fills a silence, and whether a check raised it — ENG-876
+# The room raises the highest finding in the Priority — ENG-876
 # ---------------------------------------------------------------------------
+
+
+def test_every_permutation_of_the_four_tiers_picks_the_same_finding() -> None:
+    """The **Priority** decides the turn, whatever order the analyst answered in.
+
+    One finding per tier, each on its own frase so nothing pairs, in all twenty-four
+    orders. The pick has to be the same one every time: today it is index zero, so
+    twenty-three of these are the team hearing about whichever finding the model
+    happened to write first.
+
+    Peeled tier by tier rather than asserted only at the top, because an order that got
+    the first tier right by luck — a rule that only knows about a **Filled silence** —
+    would pass a case that never took the silence away.
+    """
+    silence = _silence_on(4, "segmento-4", "o silêncio preenchido")
+    addition = _addition_on(3, "segmento-3", "outro acréscimo")
+    missing = _missing_on(2, "segmento-2", "a falta")
+    unclear = _unclear_on(1, "pouco claro")
+
+    for tiers, expected in (
+        ([silence, addition, missing, unclear], "o silêncio preenchido"),
+        ([addition, missing, unclear], "outro acréscimo"),
+        ([missing, unclear], "a falta"),
+        ([unclear], "pouco claro"),
+    ):
+        led = {
+            the_finding_that_leads(BackTranslationState(findings=list(order))).note
+            for order in itertools.permutations(tiers)
+        }
+        assert led == {expected}, f"a ordem do analista decidiu o turno: {led}"
+
+
+def test_two_findings_of_one_tier_keep_the_analysts_order() -> None:
+    """Within one tier there is nothing to rank by, so the analyst's order stands.
+
+    The **Priority** is over the tiers and says nothing inside one. Reaching for a second
+    key here — the frase number, the stretch, the length of the note — would be the room
+    inventing a precedence Marcia never ruled.
+    """
+    additions = BackTranslationState(
+        findings=[
+            _addition_on(3, "segmento-3", "primeiro"),
+            _addition_on(1, "segmento-1", "segundo"),
+        ]
+    )
+    missings = BackTranslationState(
+        findings=[
+            _missing_on(3, "segmento-3", "primeiro"),
+            _missing_on(1, "segmento-1", "segundo"),
+        ]
+    )
+
+    assert the_finding_that_leads(additions).note == "primeiro"
+    assert the_finding_that_leads(missings).note == "primeiro"
+
+
+def test_a_swap_ranks_by_its_addition() -> None:
+    """A swap is one thing, and what it ranks as is what its addition ranks as.
+
+    Its missing element is not a finding of its own to rank: the two halves are one
+    thing the team did, and the addition is the half that names the stretch. Ranked by
+    the missing element instead, a swap would sink below every lone addition and the
+    team would be sent elsewhere in the middle of one mistake.
+
+    The third case is where that costs a round. The analyst listed the swap's missing half
+    first and a lone addition after it: both are additions in the **Priority**, so the
+    analyst's own order decides, and the swap leads. Read as two findings, the swap's missing
+    element would fall a tier and the lone addition would take the turn.
+    """
+    outranked = BackTranslationState(
+        findings=[
+            _addition_on(1, "segmento-1"),
+            _missing_on(1, "segmento-1"),
+            _silence_on(3, "segmento-3", "o silêncio preenchido"),
+        ]
+    )
+    leading = BackTranslationState(
+        findings=[
+            _silence_on(1, "segmento-1", "o silêncio preenchido"),
+            _missing_on(1, "segmento-1"),
+            _addition_on(3, "segmento-3", "outro acréscimo"),
+        ]
+    )
+
+    listed_by_its_missing_half = BackTranslationState(
+        findings=[
+            _missing_on(1, "segmento-1"),
+            _addition_on(5, "segmento-5", "outro acréscimo"),
+            _addition_on(1, "segmento-1"),
+        ]
+    )
+
+    assert [finding.note for finding in current_findings(outranked)] == ["o silêncio preenchido"]
+    assert [finding.note for finding in current_findings(leading)] == [
+        "o silêncio preenchido",
+        "a notícia do pão",
+    ]
+    assert [finding.note for finding in current_findings(listed_by_its_missing_half)] == [
+        "o pedido das noras",
+        "a notícia do pão",
+    ]
+
+
+def test_state_keeps_the_analysts_order() -> None:
+    """The order is applied at the pick, and the stored list is untouched by it.
+
+    Reordering the list instead would put the **Priority** where the packet, the resume and
+    the correction check all read from, and a finding a check put at the front would be taken
+    away from it — which is the precedence `findings_after_correction` exists to hold.
+    """
+    state = BackTranslationState(
+        findings=[_unclear_on(1, "pouco claro"), _addition_on(3, "segmento-3", "outro acréscimo")]
+    )
+
+    led = the_finding_that_leads(state)
+
+    assert led.note == "outro acréscimo"
+    assert [finding.note for finding in state.findings] == ["pouco claro", "outro acréscimo"]
 
 
 def test_a_row_stored_before_the_flags_reads_with_both_of_them_false() -> None:

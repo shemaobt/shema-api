@@ -870,7 +870,7 @@ def correction_to_verify(
     """What the retelling answers, the stretch it was raised on, and the stretch replacing it.
 
     One shape counts as a correction: the reading's own list of stretches, with exactly one
-    position now held by a different row, and that position is the one the current finding
+    position now held by a different row, and that position is the one the finding that leads
     names, and the row that stood there was superseded by the row standing there now.
 
     Everything else falls through to the full reading, which is the answer that is never wrong
@@ -1043,24 +1043,72 @@ def _swaps(findings: list[Finding]) -> list[tuple[int, int]]:
     return swaps
 
 
-#: Which finding this turn is about, before any swap is looked for: the analyst's first, in
-#: the order it answered in. The one place that says so — the priority among findings is its
-#: own question, and a second expression of this would be a second thing free to answer it.
-THE_CURRENT_FINDING = 0
+#: The **Priority**, as Marcia wrote it correcting the P02 example: *silêncio preenchido >
+#: outro acréscimo > falta > pouco claro*. A **Filled silence** is an addition whose flag is
+#: set, so the top tier is not a kind and cannot be keyed off this table alone.
+_PRIORITY = {FindingKind.ADDITION: 1, FindingKind.MISSING: 2, FindingKind.UNCLEAR: 3}
+_A_FILLED_SILENCE = 0
+
+
+def _tiers(findings: list[Finding]) -> list[int]:
+    """Where each finding sits in the **Priority**, each swap taking its addition's tier.
+
+    A swap is one thing the team did, and the addition is the half that names the stretch.
+    Read as two findings, a swap would sink below every lone addition and the team would be
+    sent elsewhere in the middle of one mistake.
+
+    The top tier asks the kind as well as the flag. A **Filled silence** is an addition and
+    nothing else, and the flag reaches this from a stored row: read off the flag alone, a
+    row that somehow carried it on a missing element would put a missing element above
+    every addition there is, which is a tier the Priority does not have.
+    """
+    tier_of = [
+        _A_FILLED_SILENCE
+        if finding.kind is FindingKind.ADDITION and finding.fills_silence
+        else _PRIORITY[finding.kind]
+        for finding in findings
+    ]
+    for addition, missing in _swaps(findings):
+        tier_of[missing] = tier_of[addition]
+    return tier_of
+
+
+def the_index_that_leads(findings: list[Finding]) -> int | None:
+    """Which finding this turn is about, before any swap is looked for.
+
+    The **Priority**, ties in the analyst's own order. It is over the tiers and says
+    nothing inside one, so reaching for a second key here — the frase, the stretch, the
+    length of the note — would be the room inventing a precedence Marcia never ruled.
+
+    At the pick and never at parse or storage. `state.findings` is what the packet, the
+    resume and the correction check all read, and a list reordered on the way in would carry
+    the Priority into every one of them and take a check's finding away from the front. Pure
+    over the list for the same reason: the fresh verdict, the stored-verdict replay and the
+    resume payload each recompute the pick, and three answers that could differ is a team
+    hearing about one frase while the screen rebuilds on another.
+
+    The one place that says which finding leads — a second expression of this would be a
+    second thing free to answer it.
+    """
+    if not findings:
+        return None
+    tier_of = _tiers(findings)
+    return min(range(len(findings)), key=lambda at: (tier_of[at], at))
 
 
 def _the_current_swap(findings: list[Finding]) -> list[int]:
-    """Which of the findings this turn is about: the current one, and its other half.
+    """Which of the findings this turn is about: the one that leads, and its other half.
 
-    The current finding decides *whether* there is a swap. What this rule decides is the
-    other half, and which of the two leads.
+    The pick decides *whether* there is a swap. What this rule decides is the other half,
+    and which of the two leads.
     """
-    if not findings:
+    leads = the_index_that_leads(findings)
+    if leads is None:
         return []
     for addition, missing in _swaps(findings):
-        if THE_CURRENT_FINDING in (addition, missing):
+        if leads in (addition, missing):
             return [addition, missing]
-    return [THE_CURRENT_FINDING]
+    return [leads]
 
 
 def current_findings(state: BackTranslationState) -> list[Finding]:
