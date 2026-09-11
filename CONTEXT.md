@@ -247,6 +247,17 @@ _Avoid_: override, bypass, forced approval, Aprovação forçada
 A door that takes as text what the team would have spoken and runs the real Guide, Analyst, Speaker and Validator, so that Marcia's golden scripts judge the room by measurement. It exists only where the runner key is set, answers 404 without it, and never reaches a tablet.
 _Avoid_: test mode, mock, stub, simulator, Entrada de texto
 
+**Golden script**:
+One of Marcia's JSON scripts under her `golden/`: a declared draft of clips and the rounds of
+frases told back over it, with what each round is expected to produce. A runner plays one
+against a stack and judges it with her own checks. Read verbatim, never forked.
+_Avoid_: fixture, scenario, test case, roteiro
+
+**Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
+The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
+every door behind it.
+_Avoid_: api key (the room's own is a different door), token, password, Chave do runner
+
 ### Other subsystems
 
 **Sound Necklace**:
