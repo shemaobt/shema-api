@@ -350,15 +350,15 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearing_the_g_line(
+async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_not_the_g_line(
     patch_agent,
 ) -> None:
-    """The same pre-approved line answers two opposite situations, and only the branch knows.
+    """A team that rehearsed in its own language never sat in this exchange at all.
 
-    Category G affirms a team that rehearsed in its own language. Here nobody rehearsed:
-    the Guide itself could not stay in the room's language across three drafts, and the
-    room reaches for G because it is the closest thing it holds. Reading the failure off
-    the line name would file this one as healthy."""
+    Only the Guide's draft strayed, three times running, and the team never spoke. Category
+    G is reserved for a team detected in another language; a draft that cannot hold the
+    bridge language is an ordinary unrepairable draft, the same exit any other exhausted
+    redraft takes."""
     patch_agent(
         FakeAgent(
             verdicts=[{"verdict": "pass", "issues": []}] * (MAX_REDRAFTS + 1),
@@ -379,7 +379,8 @@ async def test_the_guide_straying_out_of_the_bridge_language_is_a_failure_wearin
         settings=_settings(),
     )
 
-    assert outcome.speech in utterances(FailSafe.OFF_BRIDGE_LANGUAGE, "pt")
+    assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
+    assert outcome.fixed_line.startswith("A")
     assert outcome.used_fail_safe is True
     assert outcome.degraded is True
 
