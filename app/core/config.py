@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_minutes: int = 60 * 24 * 7
 
-    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com,https://translationhelper.shemaywam.com,https://annotationstudio.shemaywam.com,https://soundnecklace.shemaywam.com"
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com,https://translationhelper.shemaywam.com,https://annotationstudio.shemaywam.com,https://soundnecklace.shemaywam.com,https://shema.shemaywam.com"
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
