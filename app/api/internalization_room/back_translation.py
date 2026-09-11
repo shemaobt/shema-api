@@ -190,15 +190,6 @@ async def finish(
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
 
-    A verdict that lands on one stretch carries the I family after it, on the same clip: the
-    screen is about to offer a microphone on that stretch — two for most findings, one for a
-    missing element — and tapping it replaces everything the team had told there.
-    `with_the_whole_stretch_asked_for` is where that is decided.
-
-    A verdict that degraded to a fail-safe carries nothing after it, which the same function
-    decides: those are played from inside the app by name, so a sentence appended to one would
-    reach the transcript and never the room.
-
     Pressed again over the same stretches, the room serves the verdict it already reached and
     consults nothing. The press is the same question, and answering it afresh cost a validator
     and a spoken synthesis every time and wrote the room into the conversation as having spoken
