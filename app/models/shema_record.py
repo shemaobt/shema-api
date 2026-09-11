@@ -7,7 +7,7 @@ that deliberately does *not* inherit
 rule 5 gives the reason, which is that hiding the country from the record's own author is data
 loss rather than privacy. The scope is what decides who may open it (``_scope.py``), and
 ``tests/test_shema/test_privacy_owners.py`` carries the three routes of this file in
-``COORDINATION_PATHS`` so the exemption is a line somebody wrote rather than a shape that
+``COORDINATION_ROUTES`` so the exemption is a line somebody wrote rather than a shape that
 slipped past.
 
 **The shape is FE-44's ``Project``, key for key: 55 required and 18 optional.**
@@ -44,7 +44,7 @@ cannot disagree.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import (
     AliasGenerator,
@@ -53,6 +53,7 @@ from pydantic import (
     Field,
     computed_field,
     field_serializer,
+    field_validator,
     model_validator,
 )
 from pydantic.alias_generators import to_camel
@@ -406,6 +407,10 @@ class ShemaProjectRecord(BaseModel):
     ``app/services/shema/read_record.py`` and default to empty, so a record built from a row
     alone is honest rather than wrong.
 
+    The fields run in the contract's own order: the 55 the export has first, then the 18 the
+    product added — where **absent means absent and never an empty default**, which is what
+    every ``| None = None`` below the aggregates is for — and then the six collections.
+
     **It is not a** :class:`~app.models.shema_privacy.LeavingShape`, deliberately and by
     exemption — the module docstring carries the argument and
     ``tests/test_shema/test_privacy_owners.py`` carries the three routes.
@@ -478,7 +483,6 @@ class ShemaProjectRecord(BaseModel):
     in_eten: bool = Field(default=False, serialization_alias="inETEN")
     last_updated: date | None = None
 
-    # --- the eighteen the product added; absent means absent, never an empty default -----
     health_physical: ShemaHealthLevel | None = None
     prayer_visibility: ShemaPrayerVisibility | None = None
     prayer_requests_audio: str | None = None
@@ -495,7 +499,6 @@ class ShemaProjectRecord(BaseModel):
     stories_translated: str | None = None
     ready_vessels_audio_hours: str | None = None
 
-    # --- joined in by the service; a row alone answers none of them ---------------------
     needs_items: list[ShemaNeedItem] = Field(default_factory=list)
     materials: list[ShemaProjectMaterial] = Field(default_factory=list)
     progress_history: list[ShemaProgressHistoryEntry] = Field(default_factory=list)
@@ -523,6 +526,26 @@ class ShemaProjectRecord(BaseModel):
     #: FE-44 §7's nine, computed by the server for the day of the request — BE-05's shape,
     #: reused rather than restated, so the ficha's badge and the card's badge are one answer.
     derived: ShemaProjectDerived | None = None
+
+    @field_validator(
+        "objective",
+        "translation_type",
+        "financial_resources",
+        "phases",
+        "book_progress",
+        "story_progress",
+        mode="before",
+    )
+    @classmethod
+    def _tolerate_a_null_array(cls, value: Any) -> Any:
+        """A JSON array column written NULL reads as the empty list.
+
+        ``JSON(none_as_null=True)`` lets a row hold SQL NULL where the schema means ``[]``, and
+        the record read is not the place to discover it: BE-05's card carries the same
+        tolerance for the same reason, and here the cost of not having it is a 500 on the
+        ficha for one badly written row rather than on a list.
+        """
+        return [] if value is None else value
 
     @computed_field(alias="coords")  # type: ignore[prop-decorator]
     @property

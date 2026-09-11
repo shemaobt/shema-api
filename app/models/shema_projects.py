@@ -26,9 +26,11 @@ the org-chart names, which no project row holds at all (``docs/shema.md`` §5.8)
 
 **It is a leaving shape, and that is BE-04's decision inherited rather than this issue's.**
 ``app/models/shema_privacy.py`` names *the collection read* among the shapes that inherit
-:class:`~app.models.shema_privacy.LeavingShape`, and ``COORDINATION_PATHS`` in
-``tests/test_shema/test_privacy_owners.py`` is empty with a comment saying the one line
-expected in it is BE-06's record read. So a card in a sensitive country carries its region
+:class:`~app.models.shema_privacy.LeavingShape`, and ``COORDINATION_ROUTES`` in
+``tests/test_shema/test_privacy_owners.py`` names BE-06's three record routes and
+**not this one** — which is why that list is keyed by method and path rather than by path
+alone: exempting ``/api/shema/projects`` would have switched the audit off for this shape
+in the same line that exempted the create. So a card in a sensitive country carries its region
 where its country would be, and the facets built from these cards say the same thing the cards
 do — which is how the DoD's fourth line becomes true of the counts and not only of the results.
 

@@ -848,7 +848,7 @@ this section already asked for, over both `shema` packages and now for three col
 issue extends by writing a line it has to justify. **A route audit** that reads the built
 application's route table and fails when a response model under `/api/shema` can name a place
 and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
-`test_access.py`, applied to the payload instead of the guard, with `COORDINATION_PATHS` empty
+`test_access.py`, applied to the payload instead of the guard, with `COORDINATION_ROUTES` empty
 today and BE-06's record read as the one line expected in it. And a vocabulary check, so the
 list of guarded fields and the list of replacements cannot drift apart.
 

@@ -189,8 +189,12 @@ async def test_the_same_slug_twice_is_a_conflict_and_not_an_overwrite(
 
 
 async def test_a_record_filed_outside_the_callers_regions_is_refused(client, headers) -> None:
-    """403 and not 404: the caller chose the id and wrote the location, so nothing is hidden."""
-    response = await _create(client, headers, id="lao-theung", location="Laos")
+    """403 and not 404: the caller chose the id and wrote the location, so nothing is hidden.
+
+    A coordinator scoped to South America may not file a project in Asia, and the check has to
+    wait for the payload — the region is a consequence of the ``location`` it carries.
+    """
+    response = await _create(client, headers, id="kurukh-jharkhand", location="India")
     assert response.status_code == 403
 
 
@@ -289,7 +293,7 @@ async def test_a_patch_whose_if_match_is_not_a_version_is_refused(client, header
 
 
 async def test_a_stale_save_is_refused_with_what_moved_and_who_moved_it(
-    client, db_session, headers
+    client, db_session, headers, coordinator
 ) -> None:
     """**The DoD's second line.** The 409 is what lets the screen explain itself."""
     created = await _create(client, headers)
@@ -314,7 +318,7 @@ async def test_a_stale_save_is_refused_with_what_moved_and_who_moved_it(
     assert body["expectedVersion"] == 1
     assert body["currentVersion"] == 2
     assert set(body["changedFields"]) == {"statusComments", "statusGoal"}
-    assert body["changedBy"] == "coordenacao@shema.test"
+    assert body["changedBy"] == coordinator.display_name
     assert body["changedAt"] is not None
     assert second.headers["ETag"] == '"2"'
 
@@ -507,7 +511,7 @@ async def test_every_write_is_recorded_with_its_author_and_its_moment(
     assert latest[0].old_value == ""
     assert latest[0].new_value == "gravação começou"
     assert latest[0].changed_by == coordinator.id
-    assert latest[0].changed_by_name == "coordenacao@shema.test"
+    assert latest[0].changed_by_name == coordinator.display_name
     assert latest[0].changed_at is not None
 
 
@@ -554,7 +558,8 @@ async def test_the_trail_cannot_be_edited(client, db_session, headers) -> None:
     await db_session.rollback()
 
 
-async def test_the_record_names_who_saved_it_last(client, db_session, headers) -> None:
+async def test_the_record_names_who_saved_it_last(client, db_session, headers, coordinator) -> None:
+    """The name is a snapshot, so the record can say *saved by Maria* without a join."""
     created = await _create(client, headers)
     await client.patch(
         f"{PROJECTS}/guarani-mbya",
@@ -565,8 +570,25 @@ async def test_the_record_names_who_saved_it_last(client, db_session, headers) -
         await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
     ).scalar_one()
     await db_session.refresh(stored)
-    assert stored.updated_by_name == "coordenacao@shema.test"
+    assert stored.updated_by_name == coordinator.display_name
+    assert stored.updated_by == coordinator.id
     assert stored.updated_at is not None
+
+
+def test_an_account_with_no_display_name_is_stamped_by_its_address() -> None:
+    """The snapshot has to be readable on its own years later, and ``display_name`` is nullable.
+
+    The address is the one identifier every account in this platform has, which is why it is
+    the fallback rather than the id — a trail row naming a uuid answers *who* with a second
+    lookup that a deleted account makes impossible.
+    """
+    from app.db.models.auth import User
+    from app.services.shema import author_name
+
+    assert author_name(User(email="sem.nome@shema.test", display_name=None)) == (
+        "sem.nome@shema.test"
+    )
+    assert author_name(None) == "unknown"
 
 
 # --- scope on the write ---------------------------------------------------------------

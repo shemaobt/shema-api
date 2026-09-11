@@ -318,9 +318,15 @@ async def create_project(
     wrote the location, so the only fact in the answer is one they supplied. Saying *not found*
     about a record they are in the middle of creating would be a worse message for no privacy.
 
-    The trail's first rows are written here too, and they are the whole record: a create is
-    seventy-three fields moving from nothing, and a trail that started only at the first edit
-    could not say who filed the record.
+    **The row is added and flushed before the payload is read**, which is not an ordering
+    accident: a Python-side ``default=`` is applied by the flush, so a merged view built off an
+    unflushed object would write NULL into the 55 columns whose word for *nothing* is ``""``.
+    It is also what makes the trail record the fields the creator actually typed rather than
+    seventy-three rows of ``"" -> ""``. The ``INSERT`` is inside the caller's transaction and a
+    refusal below leaves nothing behind.
+
+    The trail's first rows are written here too: a create is a record arriving from nothing,
+    and a trail that started only at the first edit could not say who filed it.
     """
     existing = (
         await db.execute(select(ShemaProject.id).where(ShemaProject.id == payload.id))
@@ -328,12 +334,6 @@ async def create_project(
     if existing is not None:
         raise ConflictError(f"{payload.id}: a project already exists at this slug")
 
-    #: Added and flushed **before** the payload is read, so that every column stands at its own
-    #: default rather than at ``None``: a Python-side ``default=`` is applied by the flush, and
-    #: a merged view built off an unflushed object would write NULL into the 55 columns whose
-    #: word for *nothing* is ``""``. It is also what makes the trail below record the fields the
-    #: creator actually typed instead of seventy-three rows of ``"" -> ""``. The INSERT is
-    #: inside the caller's transaction and a refusal below leaves nothing behind.
     project = ShemaProject(id=payload.id, version=1)
     db.add(project)
     await db.flush()

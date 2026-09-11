@@ -188,7 +188,7 @@ async def read_project(
     it is a coordination surface* — and §8.1 rule 5 gives the reason, which is that hiding the
     country from the record's own author is data loss rather than privacy. The shape therefore
     does not inherit ``LeavingShape``, and ``tests/test_shema/test_privacy_owners.py`` carries
-    this route in ``COORDINATION_PATHS`` so the exemption is a line somebody wrote.
+    this route in ``COORDINATION_ROUTES`` so the exemption is a line somebody wrote.
 
     A project outside the caller's region is refused exactly as one that does not exist is —
     the two are indistinguishable on the wire on purpose (``app/services/shema/_scope.py``),
