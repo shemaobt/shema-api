@@ -44,6 +44,7 @@ cannot disagree.
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Any, Self
 
 from pydantic import (
@@ -357,7 +358,19 @@ class ShemaNeedItem(BaseModel):
     ``id`` is the row's and is emitted, which is a small departure from the frozen shape where
     a ``NeedItem`` carries none: ``docs/shema.md`` §10 item 6 hands the question to BE-08, the
     column exists either way, and a record whose items cannot be addressed cannot have one
-    edited. It costs a key the console may ignore.
+    edited. It costs a key the console may ignore. **BE-08 confirmed it and made it the write's
+    address** — ``app/models/shema_need.py``'s :class:`~app.models.shema_need.ShemaNeedWrite`
+    carries that answer and its reasons.
+
+    **Four more keys than FE-44 froze, and BE-08 owns all four.** ``acknowledgedAt`` and
+    ``acknowledgedBy`` are the second axis — *somebody has seen this*, which is not a state in
+    the four-member vocabulary and must not become one — and ``estimatedAmount`` /
+    ``estimatedCurrency`` are the money, stored as money beside the free text the contract
+    already had. A record screen that cannot read them cannot edit them, so the departure is
+    the read's half of the same decision.
+
+    This is the **record**, which is a coordination surface: it carries what is there.
+    :class:`~app.models.shema_need.ShemaNeedLine` is the same need on its way out.
     """
 
     model_config = _OUTWARD
@@ -368,6 +381,10 @@ class ShemaNeedItem(BaseModel):
     status: ShemaNeedStatus = ShemaNeedStatus.OPEN
     description: str = ""
     estimated_value: str | None = None
+    #: The parsed pair, beside the typed string rather than instead of it — every amount
+    #: carries the currency it is in, and nothing in this module converts one.
+    estimated_amount: Decimal | None = None
+    estimated_currency: str | None = None
     deadline: date | None = None
     prayer_shared: bool = False
     prayer_answered: bool = False
@@ -376,6 +393,12 @@ class ShemaNeedItem(BaseModel):
     dropped_date: date | None = None
     submitted_by: str | None = None
     submitted_at: date | None = None
+    #: NULL is *nobody has said they saw this*, which is the state the sweep looks for. It is
+    #: never defaulted and never backfilled (``docs/shema.md`` §7.4's rule, third instance).
+    acknowledged_at: date | None = None
+    #: The name as it stood when the person acknowledged it — a snapshot beside
+    #: ``fulfilled_by``, which is also a name, and never the account id.
+    acknowledged_by: str = Field(default="", validation_alias="acknowledged_by_name")
 
 
 class ShemaHealthAssessmentEntry(BaseModel):
