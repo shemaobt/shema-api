@@ -7,10 +7,11 @@ session, every thirty seconds, while the person stood there.
 """
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.room_enums import HaltKind
-from app.db.models.internalization_room import IRSessionStatus
+from app.db.models.internalization_room import IRHardStretch, IRSessionStatus
 from app.services.internalization_room import sessions as service
 
 
@@ -44,23 +45,48 @@ async def test_a_finished_passage_does_not_reopen_itself(db_session: AsyncSessio
     )
 
 
-async def test_re_recording_does_not_hand_the_team_a_fresh_retell_count(
+async def test_starting_over_starts_the_count_again_and_leaves_the_mark_standing(
     db_session: AsyncSession,
 ) -> None:
-    """The counter decides when the room asks for a person, and the team could reset it.
+    """Starting the telling-back over is the team throwing the recording away.
 
-    Re-recording is a room-key route the team drives by voice — the very tap a stuck team
-    makes when the finding will not go away.
+    Every stretch of the session is retired, so the stretches they tell next are counted from
+    one.
+    What may not go with them is the record that one of them was hard: that fact is the
+    consultant's, and starting over is not evidence against it.
     """
+    from app.services.internalization_room.hard_stretches import note_a_hard_stretch
+    from app.services.internalization_room.segments import capture_segment
+
     session = await service.create_session(db_session, pericope="P01")
-    state = service.back_translation_of(session)
-    state.scope = "P01"
-    state.retells = 2
-    await service.save_back_translation(db_session, session, state)
+    told = await capture_segment(
+        db_session,
+        session,
+        take_id="ensaio-1",
+        starts_ms=0,
+        ends_ms=9000,
+        bridge_take_id="retro-1",
+        transcript="o trecho",
+    )
+    told.tellings = service.RETELLS_BEFORE_A_WARNING
+    await db_session.commit()
+    assert await note_a_hard_stretch(db_session, session, told) is True
 
-    fresh = await service.begin_back_translation_again(db_session, session)
+    await service.begin_back_translation_again(db_session, session)
 
-    assert fresh.retells == 2, "toda outra propriedade voltava ao padrão, e a contagem junto"
+    told_id = told.id
+    marks = list(
+        (
+            await db_session.execute(
+                select(IRHardStretch)
+                .where(IRHardStretch.session_id == session.id)
+                .execution_options(populate_existing=True)
+            )
+        ).scalars()
+    )
+    assert [mark.segment_id for mark in marks] == [told_id], (
+        "o contado de volta é jogado fora; o que a sala já registrou sobre ele, não"
+    )
 
 
 async def test_the_session_says_where_the_telling_back_stopped(
@@ -76,9 +102,7 @@ async def test_the_session_says_where_the_telling_back_stopped(
     from app.services.internalization_room.segments import capture_segment
 
     session = await service.create_session(db_session, pericope="P01")
-    await service.save_back_translation(
-        db_session, session, BackTranslationState(scope="P01", retells=1)
-    )
+    await service.save_back_translation(db_session, session, BackTranslationState(scope="P01"))
     for position, (text, pass_number, starts, ends) in enumerate(
         [("um", 1, 0, 9000), ("dois", 2, 9000, 21000)], start=1
     ):
@@ -101,4 +125,3 @@ async def test_the_session_says_where_the_telling_back_stopped(
         "cada trecho nomeia o arquivo de onde saiu, e não só onde parou de tocar"
     )
     assert told.scope == "P01"
-    assert told.retells == 1

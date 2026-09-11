@@ -325,10 +325,10 @@ class SegmentsResponse(BaseModel):
     #: exactly as it was — replacing a good explanation with an empty one over a transcriber
     #: outage would lose the team's work to somebody else's failure.
     captured: bool = True
-    #: True when the retells ran out on this correction. The room stops instead of buying
-    #: another round, and it is said here as well as on the telling-back route: a team that
-    #: spends the last of the budget still gets the stretches back, and would otherwise have no
-    #: sign that the room had stopped.
+    #: True on the one correction that made this stretch a hard stretch. The room asks for a
+    #: person rather than refusing anything, and it is said here as well as on the telling-back
+    #: route: a team that crosses still gets the stretches back, and would otherwise have no
+    #: sign that the room had asked at all.
     needs_person: bool = False
     #: The recording of the passage that was rebuilt around a stretch re-recorded in the mother
     #: tongue. Every stretch above that was a slice of the recording it replaced is now a slice
@@ -354,7 +354,6 @@ class BackTranslationProgress(BaseModel):
     #: stretch only by lining up by position, and lined up with nothing once a stretch could
     #: be replaced.
     segments: list[SegmentView] = Field(default_factory=list)
-    retells: int = 0
     checked: bool = False
     finding_segment_id: str | None = None
     finding_kind: str | None = None
@@ -429,15 +428,19 @@ class BookPassagesResponse(BaseModel):
 
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
+    #: How many stretches the passage has after this call, not how many recordings the team
+    #: sent. A retelling replaces the stretch it retells, so it adds none — the number moves
+    #: only when the team tells a stretch nobody had told yet.
     chunks: int
     captured: bool
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
     #: no business deciding which one a chunk is.
     pass_number: int = 1
-    #: True when the retells reached `RETELLS_BEFORE_A_WARNING`: the room asks for a person
-    #: to come and watch. A warning the app voices, not a stop — this chunk was taken, the
-    #: next one will be too, and the next turn that lands clears the mark.
+    #: True on the one call that made this stretch a hard stretch: the room asks for a person
+    #: to come and watch. A warning the app voices, not a stop — this chunk was taken and the
+    #: next one will be too. False on every telling after it, because the ask is once per
+    #: stretch and repeating it would erase the visit it already got.
     needs_person: bool = False
 
 
@@ -621,6 +624,20 @@ class QuestionInboxResponse(BaseModel):
     next_cursor: str | None
 
 
+class HardStretchView(BaseModel):
+    """One stretch this team told three times, as the facilitator's queue carries it.
+
+    `segment_id` names the first row of the stretch's chain of replacements, so a stretch told
+    five times is still one name. `tellings` is the count at the moment it crossed, not the
+    count now: what the reader is being told is that it happened, and when.
+    """
+
+    segment_id: str
+    tellings: int
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    crossed_at: str
+
+
 class FacilitatorSessionView(BaseModel):
     """One room on the queue a facilitator drains.
 
@@ -654,6 +671,11 @@ class FacilitatorSessionView(BaseModel):
     #: (ENG-792) — a different fact from `attended_at`, which is a facilitator saying it from
     #: the Desk afterwards. Null until the first press, and null again on the next halt.
     person_arrived_at: str | None = None
+    #: The stretches this team told three times, oldest crossing first. Unlike the halt and the
+    #: stamps beside it, these are cleared by nothing: the halt is the room asking now, and
+    #: this is the record that it happened at all. The tablet's own read carries none of it —
+    #: the team never hears that the room counted (ENG-869).
+    hard_stretches: list[HardStretchView] = Field(default_factory=list)
 
 
 class AttendedResponse(BaseModel):
@@ -749,6 +771,21 @@ class TakeResponse(BaseModel):
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+
+
+class ReleaseResponse(BaseModel):
+    """What the tablet is told when the team's approval landed.
+
+    The packet itself is not here: it is the file Refine reads, and the room has no use for
+    it on the way back. What the tablet shows is the number the passage now carries and the
+    fingerprint of what was approved under it.
+    """
+
+    release_id: str
+    session_id: str
+    version: int
+    package_sha256: str
+    approved_at: str
 
 
 class QuestionAudioResponse(BaseModel):
