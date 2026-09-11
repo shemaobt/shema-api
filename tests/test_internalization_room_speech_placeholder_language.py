@@ -102,9 +102,7 @@ async def test_the_validator_opens_the_session_in_its_own_language(
     monkeypatch: pytest.MonkeyPatch, language_code: str
 ) -> None:
     """The negative check names the other two languages' exact sentences, not the substring
-    "ainda não": with `messages=[]` the Validator also renders `recent_conversation_block`'s
-    own Portuguese fallback ("(início da sessão — ainda não houve troca)"), which is a
-    separate, out-of-scope placeholder (run_turn.py:190) this ticket does not touch.
+    "ainda não", which more than one of them share.
     """
     captured = _patch_validator_capture(monkeypatch)
 

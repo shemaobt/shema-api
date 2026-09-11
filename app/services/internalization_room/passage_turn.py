@@ -35,15 +35,14 @@ async def run_turn(
     settings: Settings | None = None,
     session_id: str = "?",
     app_context: str = "",
-    validator_context: str = "",
     ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
     `opening` is the session's first turn, where the Guide speaks before the team has.
-    `app_context` rides inside the Guide's COVERAGE_STATUS slot and `validator_context`
-    is appended to the Validator's system — both are app-owned state (bridge mode,
-    comprehension evidence, the active probe contract), never team speech.
+    `app_context` rides inside the Guide's COVERAGE_STATUS slot: it is app-owned state,
+    never team speech. The Validator is handed none of it — it judges the draft against
+    the map and the team's own words, and nothing else.
     """
     cfg = settings or get_settings()
 
@@ -78,6 +77,5 @@ async def run_turn(
         opening_instruction=(ALREADY_MET_INSTRUCTION if already_met else OPENING_INSTRUCTION),
         settings=cfg,
         session_id=session_id,
-        validator_context=validator_context,
         ask_for_movements=ask_for_movements,
     )

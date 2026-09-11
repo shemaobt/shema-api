@@ -27,7 +27,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.services.internalization_room.fail_safe import FailSafe, choose
-from app.services.internalization_room.llm import cache_break_before
+from app.services.internalization_room.llm import Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
 from app.services.internalization_room.render import render
@@ -36,11 +36,10 @@ from app.services.internalization_room.turn_instructions import (
     OPENING_MOVEMENT_INSTRUCTION,
     VALIDATOR_USER_MESSAGE,
     _nobody_spoke_this_turn,
+    speak_this_turn,
     split_opening_movements,
 )
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
-
-_RECENT_TURNS = 6
 
 
 @dataclass
@@ -62,14 +61,20 @@ class TurnOutcome:
     needs_person: bool = False
 
 
-def recent_conversation_block(messages: list[dict[str, Any]]) -> str:
-    if not messages:
-        return "(início da sessão — ainda não houve troca)"
-    lines = []
-    for message in messages[-_RECENT_TURNS:]:
-        who = "EQUIPE" if message.get("role") == "team" else "FACILITADOR"
-        lines.append(f"{who}: {message.get('text', '')}")
-    return "\n".join(lines)
+def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
+    """The session as the two speakers a model knows, oldest first and all of it.
+
+    The room stores its own two: the team and the Guide. Which of them is the assistant is
+    the only thing being decided here, and nothing is left out — a session grows for as long
+    as it runs, and what pays for the length is the cache, not a window.
+    """
+    return [
+        Turn(
+            role="user" if message.get("role") == "team" else "assistant",
+            text=str(message.get("text", "")),
+        )
+        for message in messages
+    ]
 
 
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
@@ -118,37 +123,40 @@ def _draft_rejected(condition: str, session_id: str, attempt: int, detail: str) 
 async def _draft(
     *,
     guide_prompt: str,
-    conversation: str,
+    conversation: list[Turn],
     utterance: str,
     redraft_note: str,
+    language_code: str,
     settings: Settings,
     opening_instruction: str = "",
     ask_for_movements: bool = False,
 ) -> str:
-    """Assemble the Speaker's user turn.
+    """Assemble the Speaker's last user turn, behind everything already said.
 
-    An empty `opening_instruction` is a turn that opens nothing: the verdict Speaker has no
-    team utterance to answer and no session to open either, so it is told neither.
+    What the team just said is that turn, on its own: the exchange it answers is the
+    conversation, not a heading inside the question. The instructions that ride per turn —
+    the opening, the two-movement mark, the rewrite note — stay here, in the last message,
+    which is where an instruction is read as this turn's and not as something said earlier.
+
+    A turn with neither — the back-translation verdict — asks for its speech in the session's
+    own language rather than sending nothing: the API refuses an empty user message, and that
+    400 would reach the team as a fail-safe line. The fallback sits here and not at the call
+    site, because this is where the message is built.
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
     if utterance:
-        user_content = (
-            f"## A conversa até aqui\n\n{conversation}\n\n"
-            f"## O que a equipe acabou de dizer\n\n{utterance}\n"
-        )
-    elif opening_instruction:
-        opening = opening_instruction
-        if ask_for_movements:
-            opening = f"{opening} {OPENING_MOVEMENT_INSTRUCTION}"
-        user_content = f"## A conversa até aqui\n\n{conversation}\n\n{opening}\n"
+        user_content = utterance
     else:
-        user_content = f"## A conversa até aqui\n\n{conversation}\n"
+        user_content = opening_instruction or speak_this_turn(language_code)
+        if ask_for_movements:
+            user_content = f"{user_content} {OPENING_MOVEMENT_INSTRUCTION}"
     if redraft_note:
-        user_content += f"\n## Nota de reescrita\n\n{redraft_note}\n"
+        user_content += f"\n\n## Nota de reescrita\n\n{redraft_note}\n"
     draft: str = await shim.call_agent(
         system_prompt=guide_prompt,
         user_content=user_content,
+        conversation=conversation,
         max_output_tokens=4096,
         settings=settings,
     )
@@ -191,7 +199,6 @@ async def _voiced_after_validation(
     opening: bool,
     settings: Settings,
     session_id: str = "?",
-    validator_context: str = "",
     opening_instruction: str = "",
     ask_for_movements: bool = False,
     telling_back: str = "",
@@ -233,7 +240,7 @@ async def _voiced_after_validation(
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
     started = time.monotonic()
-    conversation = recent_conversation_block(messages)
+    conversation = _conversation_turns(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
 
@@ -246,6 +253,7 @@ async def _voiced_after_validation(
                     conversation=conversation,
                     utterance="" if opening else transcript,
                     redraft_note=redraft_note,
+                    language_code=language_code,
                     settings=settings,
                     opening_instruction=opening_instruction,
                     ask_for_movements=ask_for_movements,
@@ -258,15 +266,13 @@ async def _voiced_after_validation(
                 cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
-                RECENT_CONVERSATION=conversation,
+                RECENT_CONVERSATION=NOT_THIS_TURN,
                 TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
                 FINDING=finding or NOT_THIS_TURN,
                 ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
             )
-            if validator_context:
-                validator_system = f"{validator_system}\n\n{validator_context}"
             raw_verdict = await shim.call_agent(
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,

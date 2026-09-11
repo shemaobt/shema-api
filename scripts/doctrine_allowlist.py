@@ -49,8 +49,10 @@ class AllowlistEntry:
 #: `gemini_*`/`ThinkingLevel.LOW` in llm.py stay for ENG-747. The mode rule has nothing
 #: left to allow: ENG-800 deleted calibration.py, the column, the wire fields and the two
 #: prompt sections, so a `bridge_mode` anywhere the guard reads is now a violation with no
-#: row to hide behind — 65 down to 8, all probe and memory-window sites. Sorted by file,
-#: then rule, then the line the text came from, purely for a readable diff.
+#: row to hide behind. ENG-749 then deleted the memory window itself — the whole conversation
+#: reaches the Guide every turn — and its two rows went with it: 65 down to 6, every one of
+#: them a probe site. Sorted by file, then rule, then the line the text came from, purely for
+#: a readable diff.
 ALLOWLIST: list[AllowlistEntry] = [
     AllowlistEntry(
         "app/services/internalization_room/comprehension/probe.py",
@@ -61,15 +63,5 @@ ALLOWLIST: list[AllowlistEntry] = [
         "app/services/internalization_room/comprehension/probe.py",
         Rule.PROBE,
         "purpose: ProbePurpose",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/validated_turn.py",
-        Rule.MEMORY_WINDOW,
-        "_RECENT_TURNS = 6",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/validated_turn.py",
-        Rule.MEMORY_WINDOW,
-        "for message in messages[-_RECENT_TURNS:]:",
     ),
 ]
