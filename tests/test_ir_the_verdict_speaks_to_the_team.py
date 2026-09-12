@@ -265,16 +265,28 @@ def test_the_closing_slot_and_the_english_term_stay() -> None:
 #: Ours, not hers: the four sentences of the verdict prompt that described the room's own
 #: work in the retired words, and the one that gave the turn a length. Marcia's lines beside
 #: them already say *translated*, so the file said both and the Speaker read both.
+#:
+#: The Unclear bullet takes her verb and not her gesture, on Henok's word of 2026-09-11. Hers
+#: asks the team to *tap that frase and translate it again*, and an unclear frase is the one
+#: finding that never points at a stretch (`EVIDENCE_LIMIT_KINDS`), so `closing_block` hands
+#: the Speaker `CLOSING_SPOKEN` on that same turn — the closing that says there is no stretch
+#: on screen and no two voices to choose between. The prompt would be promising a tap while
+#: the closing said there was nothing to tap, and the Validator refuses a gesture the closing
+#: did not offer. The Definer takes her Unclear path to her.
 OUR_OWN_LINES_IN_HER_WORDS = (
     "translated for you, in {{SESSION_LANGUAGE}}, what it says",
     "An internal comparison of that translation against the passage",
     "in what they translated, no clear difference appeared",
     "this part is translated and checked",
     "only ever quote what THEY translated",
-    "just ask them to tap that frase and translate it again",
+    "just ask them to translate that frase again",
 )
 #: What each of them said before, folded the same way. Asserted absent as well as present
 #: because a sentence rewritten around neither wording would satisfy one half alone.
+#:
+#: *tap that frase* is in here although it was never ours: it is the half of her line the
+#: room leaves out on purpose, and without a guard the next reader restores it as a
+#: correction — the prompt is hers everywhere else, so the departure is what needs holding.
 WHAT_OUR_LINES_USED_TO_SAY = (
     "told you back",
     "telling-back against",
@@ -282,6 +294,7 @@ WHAT_OUR_LINES_USED_TO_SAY = (
     "told back and checked",
     "THEY told back",
     "tell that piece again",
+    "tap that frase",
 )
 #: Hers, and not this ticket's to revert: the law is *translated for you* already, and the
 #: analyst's output rule is phrased about the telling-back in her own hand.
