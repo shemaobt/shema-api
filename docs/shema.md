@@ -599,12 +599,27 @@ Appendix A is explicit: **the backend serves keys and data, never rendered label
 
 ## 5. Aggregate ownership
 
-Eleven aggregates, from FE-44 §5. Table names are **Provisional** — an `shema_` prefix and a
+Eleven aggregates, from FE-44 §5. Table names were **Provisional** — an `shema_` prefix and a
 plural, chosen so the rest of this document has something to point at; BE-02 confirms or
 renames them in one place. **Every table is created by BE-02**, which §3 gives
 `app/db/models/` and the first `alembic/versions/` file; the owner column names two issues
 wherever there is a table, because BE-02 authors the schema and the second issue builds the
 behaviour on it.
+
+> **BE-02 ([OBT-391](https://linear.app/shema-obt/issue/OBT-391)) confirmed every working
+> name below, renamed none, and built sixteen tables in `20260911_shema01`.** Three
+> departures from this section, each argued in the model file that carries it:
+>
+> - **`shema_user_regions` is created here too**, against row 5.13's owner column and on
+>   this preamble's own reading — BE-03 runs in the wave above and would otherwise open a
+>   migration against this head for one small table. Nothing else of the aggregate moved:
+>   the scope service, the session endpoint and the granting path are still BE-03's.
+> - **`shema_meeting_definitions` was not built**, as row 5.9 already makes conditional on
+>   GATE-02. **`shema_submissions` has no `kind` column**: only the Pulse is archivable, and
+>   a column with one value invites a second.
+> - **The health rating is three enum members and NULL**, not four with `""`. That is FE-44's
+>   own `HealthLevel`, and NULL is the `""` — §7.3's rule survives untouched, because NULL is
+>   not `boa` and nothing can default it to one.
 
 | # | Aggregate | Tables (working names) | Owner | The invariant |
 |---|---|---|---|---|
@@ -730,7 +745,7 @@ file.
 | File | Owns | The rule |
 |---|---|---|
 | `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. |
-| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` | **The only reader of those three columns**, and one query applies the gate. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
+| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` — **and `source["prayerRequests"]`, which is a fourth copy of the same text** | **The only reader of those three columns**, and one query applies the gate. `prayerRequests` is one of the export's 55 keys, so `shema_projects.source`, which keeps the export row verbatim, carries that key too under the export's own camelCase spelling — empty in today's export, and where the next one's text lands; `prayerVisibility` and `prayerRequestsAudio` are two of the 18 the product added and are not in it. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
 | `app/services/shema/_media_sharing.py` | `authorization` on media and materials | Composes, most restrictive wins: an authorized item reaches `coordenacao`; the same item on a sensitive project **never** reaches `publico`. |
 
 **The split that keeps this from over-redacting.** A project **read** by someone allowed to
@@ -749,6 +764,11 @@ globs a directory and fails on a literal. `tests/test_shema/test_privacy_owners.
 `app/services/shema/*.py` and `app/api/shema/*.py` and fails when a file that is not the
 named owner references one of the guarded columns. A rule applied per endpoint is a rule the
 next endpoint forgets; a glob is not.
+
+**The literals that test looks for are four, not three.** `prayer_requests`,
+`prayer_visibility` and `prayer_requests_audio` are the columns, and `prayerRequests` is the
+same field again inside `source` — the export row kept verbatim (§5.1). A guard written on the
+three snake_case names reads that copy and does not see it.
 
 **The acceptance test the delivery plan already names:** an unauthorized prayer request is
 absent from **all four** output paths — the wall, exports, the ETEN report and notifications.
@@ -942,13 +962,13 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 
 | # | Question | Owner |
 |---|---|---|
-| 1 | Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each. Either way, **one input writes both and one of each pair is authoritative** — two columns that can drift is the defect. | **BE-02** (FE-44 §12.3) |
-| 2 | Whether `region_key` is stored as a maintained derived column on `shema_projects` (§6.1) or computed per query. This document recommends stored-and-derived, one owner. | **BE-02** |
+| 1 | ~~Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each.~~ **Answered by BE-02, in opposite directions, because the pairs are not the same shape.** `team` and `ywamBase` are **one column**: they are one concept in two languages, identical on all 127 records, and collapsing removes the drift instead of policing it. `sensitivity` and `sensitive_country` **stay two**, with the boolean authoritative: the text is a free-text export column that agrees with the flag by accident of the data, so collapsing would delete evidence. | ~~BE-02~~ **closed** |
+| 2 | ~~Whether `region_key` is stored as a maintained derived column or computed per query.~~ **Answered by BE-02: stored, maintained, indexed — and deliberately not a generated column,** because the derivation is a lookup over 25 country strings kept in Python and expressing it in DDL would be a second copy of a map whose whole value is that there is one. | ~~BE-02~~ **closed** |
 | 3 | The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry. Read it off the deployment (§2.3). | **BE-03** |
 | 4 | Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3). | **BE-03** |
 | 5 | Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3). | **BE-09 / BE-13** — §11 puts it on both; they settle it before either writes the table |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
-| 7 | Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1). | **BE-16**, with BE-11 needing the answer |
+| 7 | Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1). **All three answers are now free of a migration**: BE-02 gave `shema_projects` an `approved_units_unverified` column, which is the only one of the three that needed schema. | **BE-16**, with BE-11 needing the answer |
 | 8 | The three privacy questions the intercessor network cannot ship without: what consent was given and how it is evidenced; how someone outside the platform asks to be removed when they cannot log in; what happens to a contact nobody has used in a year. **Shipping the storage before answering them is how silent retention starts.** | **BE-09**, or whoever item 5's boundary gives the network to — and they are not engineering questions |
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
