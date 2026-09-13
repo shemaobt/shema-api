@@ -77,9 +77,9 @@ async def _scope(user: CurrentUser, db: Db) -> RegionScope:
     **The router receives this value and does nothing with it but pass it on.**
     ``docs/shema.md`` §6.2 refuses two temptations by name, and the first is a scope the
     router applies: ``app/api/shema/`` may declare this dependency and hand the value to a
-    service; it may not ``WHERE`` anything, because zero database access in ``app/api/`` is
-    [ADR 0009](../../../docs/adr/0009-routers-never-touch-the-database.md) and a filter
-    applied in a handler is a filter the next handler writes slightly differently.
+    service; it may not ``WHERE`` anything. Zero database access in ``app/api/`` is ADR 0009,
+    and a filter applied in a handler is a filter the next handler writes slightly
+    differently.
     """
     return await region_scope(db, user, APP_KEY)
 

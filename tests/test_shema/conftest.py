@@ -86,11 +86,18 @@ async def shema_app(db_session):
 async def client(db_session):
     """An ASGI client running the module's real router plus the probes.
 
-    The module router is mounted at the prefix the application mounts it at, so
-    ``/api/shema/session`` is exercised through the real dependency chain. The probes are
-    included into ``authenticated`` — the same router every later sub-router will be
-    included into — which is what makes the unguarded one a test of the module's wiring
-    rather than of a dependency written here.
+    ``authenticated`` is mounted at the prefix the application mounts the module at, so
+    ``/api/shema/session`` is exercised through the real dependency chain, and the probes
+    are included into that same object — the one every later sub-router will be included
+    into — which is what makes the unguarded probe a test of the module's wiring rather
+    than of a dependency written here.
+
+    ``router`` itself is deliberately **not** mounted beside it. Everything it carries today
+    it carries *through* ``authenticated``, so mounting both would register
+    ``/api/shema/session`` twice. The day BE-12 adds the two intake routes to ``router``
+    directly, they get their own unauthenticated client rather than sharing this one — and
+    ``test_every_shema_route_is_guarded`` reads the real application's route table, which is
+    where a route added anywhere in the module is seen whether a fixture mounts it or not.
 
     The real exception handlers are registered, so ``AuthorizationError`` reaches the wire
     as the 403 a client would receive and ``NotFoundError`` as the 404.
@@ -106,7 +113,6 @@ async def client(db_session):
 
     from app.api.auth import router as auth_router
     from app.api.shema import authenticated
-    from app.api.shema import router as module_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
@@ -144,7 +150,6 @@ async def client(db_session):
     try:
         authenticated.include_router(probe)
         test_app = FastAPI()
-        test_app.include_router(module_router, prefix=PREFIX)
         test_app.include_router(authenticated, prefix=PREFIX)
         test_app.include_router(auth_router, prefix="/api/auth")
         register_exception_handlers(test_app)
