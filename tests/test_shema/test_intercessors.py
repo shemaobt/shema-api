@@ -47,7 +47,10 @@ async def test_a_basis_of_whitespace_is_a_bad_payload_and_not_a_server_fault(
 ) -> None:
     """``min_length`` counts characters and does not strip: ``"   "`` used to pass the
     validator, be stripped by the service and meet the CHECK constraint inside the flush —
-    a 500 for the caller's own bad payload. Both places a basis enters are asserted."""
+    a 500 for the caller's own bad payload. Both places a basis enters are asserted, and each
+    refusal is re-read rather than taken on the status code: the directory still withholds the
+    person, which is how this file spells *no* ``directory`` *consent stands*. The create
+    response would say so whatever the ``PUT`` wrote, so it is not what is asked."""
     _user, headers = await _circle(db_session, shema_app)
 
     res = await client.post(
@@ -68,7 +71,9 @@ async def test_a_basis_of_whitespace_is_a_bad_payload_and_not_a_server_fault(
         f"{PEOPLE}/{person['id']}/consents/directory", headers=headers, json={"basis": " \t "}
     )
     assert res.status_code == 422
-    assert [row["context"] for row in person["consents"]] == ["network"]
+    listing = (await client.get(PEOPLE, headers=headers)).json()
+    assert listing["people"] == []
+    assert listing["withheldCount"] == 1
 
 
 async def test_the_create_grants_the_floor_consent_and_not_the_other_two(
