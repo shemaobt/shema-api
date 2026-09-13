@@ -223,8 +223,9 @@ async def naive_client(db_session):
     Both are included into ``authenticated``, the router every later sub-router is included
     into, so they reach the application exactly as a real endpoint would. The pair differs
     only in what the handler hands back — an ORM row, or a model it built itself — because
-    those are the two shapes a handler can return and FastAPI serialises them by different
-    routes (``_prepare_response_content`` dumps the second and validates it again).
+    those are the two shapes a handler can return, and what FastAPI does with the second one
+    is a function of which Pydantic it is running on (``serialize_response`` dumps it first
+    on the v1 branch and passes the instance straight through on v2).
 
     The dependency aliases are imported at module level for the reason
     ``conftest.client`` states: with ``from __future__ import annotations`` FastAPI resolves
@@ -530,12 +531,15 @@ async def test_an_endpoint_written_without_knowledge_of_the_rule_still_protects(
 async def test_the_second_serialization_pass_agrees_with_the_first(
     db_session, shema_app, naive_client, flagged, cleared
 ) -> None:
-    """The seam ``app/models/shema_privacy.py``'s docstring names, pinned.
+    """The seam ``app/models/shema_privacy.py``'s docstring names, read off the wire.
 
-    FastAPI dumps a returned model and validates the dict back into the response model, which
-    drops the excluded inputs — so a handler that builds its own models runs the rule against
-    a payload that can no longer read the flag. The two probes must answer identically, or a
-    cleared record comes back withheld depending on how a handler happened to be written.
+    An ORM row and a model the handler built itself are the two shapes a handler can return,
+    and they must answer identically, or what a payload discloses depends on how somebody
+    happened to write the endpoint. On Pydantic v2 they do because ``serialize_response``
+    hands the returned model straight to ``ModelField.validate``, which passes an instance of
+    the response model through untouched; the v1 branch dumps it first and validates the dict
+    back, and ``test_a_payload_rebuilt_from_its_own_dump_is_the_payload_it_was`` is the half
+    of the seam that covers that round trip whoever takes it.
     """
     user = await make_scoped_user(
         db_session,
@@ -554,6 +558,28 @@ async def test_the_second_serialization_pass_agrees_with_the_first(
     by_id = {row["id"]: row for row in from_models.json()}
     assert COUNTRY not in json.dumps(by_id[flagged.id], ensure_ascii=False)
     assert by_id[cleared.id]["location"] == OPEN_COUNTRY
+
+
+def test_a_payload_rebuilt_from_its_own_dump_is_the_payload_it_was(flagged, cleared) -> None:
+    """The other half of the seam, and the half no framework version can take away.
+
+    ``sensitive_country`` and ``region_key`` are both ``exclude=True``, so a payload rebuilt
+    from a dump of itself can answer neither *was this withheld* nor *which region*. It is
+    taken at its word rather than reduced again — reducing it again would rewrite the region
+    the first pass named to ``other`` and plot every withheld project on one centroid, which
+    is the opposite of what ``REGION_CENTROIDS`` is for.
+    """
+    withheld = NaiveProjectOut.model_validate(flagged).model_dump(by_alias=True)
+    rebuilt = NaiveProjectOut.model_validate(withheld).model_dump(by_alias=True)
+
+    assert rebuilt == withheld
+    assert rebuilt["locationWithheld"] is True
+    assert rebuilt["location"] == ShemaRegionKey.AFRICA.value
+    assert (rebuilt["longitude"], rebuilt["latitude"]) == REGION_CENTROIDS[ShemaRegionKey.AFRICA]
+    assert COUNTRY not in json.dumps(rebuilt)
+
+    whole = NaiveProjectOut.model_validate(cleared).model_dump(by_alias=True)
+    assert NaiveProjectOut.model_validate(whole).model_dump(by_alias=True) == whole
 
 
 async def test_the_record_read_still_carries_the_truth(db_session, shema_app, flagged) -> None:
