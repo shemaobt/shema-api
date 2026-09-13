@@ -129,3 +129,29 @@ def test_a_visibility_the_vocabulary_does_not_have_is_refused_by_the_shape() -> 
     assert ShemaProjectUpdate(prayer_visibility="rede").prayer_visibility is (
         ShemaPrayerVisibility.REDE
     )
+
+
+@pytest.mark.parametrize("key", ["ywamBase", "ywam_base"])
+def test_the_base_is_folded_into_the_column_it_shares_with_the_team(key: str) -> None:
+    """BE-02 collapsed the two columns; FE-44 §5.1's *one input* is the key being folded."""
+    patch = ShemaProjectUpdate(**{key: "YWAM Sydney"})
+    assert patch.team == "YWAM Sydney"
+    assert patch.model_fields_set == {"team"}
+
+
+def test_the_base_and_the_team_disagreeing_is_refused_and_not_reconciled() -> None:
+    """Picking one silently is how the drift BE-02 removed comes back."""
+    with pytest.raises(ValidationError):
+        ShemaProjectUpdate(ywamBase="YWAM Sydney", team="YWAM Porto Velho")
+
+
+@pytest.mark.parametrize("wrong", [[], {}, 7], ids=["list", "dict", "number"])
+def test_a_base_of_the_wrong_type_is_a_validation_error_and_not_a_crash(wrong: object) -> None:
+    """A ``before`` validator is handed the raw body, and only ``ValueError`` becomes a 422.
+
+    Comparing the two values is what keeps that true: gathering them into a set raises
+    ``TypeError`` on anything unhashable, which Pydantic does not translate — so
+    ``{"ywamBase": []}`` was answered with a 500 instead of the ``team`` type error it earns.
+    """
+    with pytest.raises(ValidationError):
+        ShemaProjectUpdate(ywamBase=wrong)

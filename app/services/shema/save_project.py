@@ -129,6 +129,17 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     ``coords`` expands into the two columns the database has, because ``[0, 0]`` is *no
     coordinate* and that is a fact about the pair — the record keeps the number the export gave
     and nothing here decides what it means.
+
+    **The roll runs on every save and not only on one that sent a table**, which is what keeps
+    the four aggregates and the three tables one truth instead of two. The payload that can
+    break that is a ``PATCH`` carrying ``translatedUnits`` and no table: FE-44 §7.2's *the
+    tables win over what the client typed* has to hold for that body too, and it holds only
+    because the roll is read off the **merged** record, stored tables included. The cost a
+    reader expects from that — an unrelated save moving a count, and ``record_progress``
+    stamping an entry for it — needs a record whose stored aggregates disagree with its own
+    rows, and this function is what makes one unreachable: every save writes the roll of the
+    rows it leaves behind, so the next roll finds the same four numbers already there and they
+    never reach ``changed``.
     """
     sent = {name: getattr(payload, name) for name in payload.model_fields_set}
     merged = {column: getattr(project, column) for column in _audit.AUDITED_COLUMNS}
