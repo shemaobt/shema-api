@@ -64,6 +64,7 @@ from app.services.shema._scope import (
     visible_projects,
     within_scope,
 )
+from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.get_project import get_project
 from app.services.shema.get_session import get_session
@@ -80,6 +81,7 @@ __all__ = [
     "GCS_SHEMA_BUCKET",
     "MediaLink",
     "RegionScope",
+    "browse_projects",
     "can_export_notes",
     "can_share_media",
     "count_projects",

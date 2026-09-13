@@ -508,11 +508,19 @@ async def test_an_endpoint_written_without_knowledge_of_the_rule_still_protects(
     res = await naive_client.get(NAIVE_PROBE, headers=await auth_header(db_session, user))
 
     assert res.status_code == 200
-    assert COUNTRY not in res.text
-    assert BASE not in res.text
-    assert CONTACT not in res.text
-
     by_id = {row["id"]: row for row in res.json()}
+
+    # Read per record and not over the whole body: the cleared record is **supposed** to leave
+    # whole, and that is the second half of this test. BE-05 (OBT-394) split the assertion for
+    # a fixture pair that shared a country, where a scan of ``res.text`` could not tell the
+    # leak from the legitimate value; BE-04 then gave the cleared record its own country
+    # (``OPEN_COUNTRY``), so the two halves now name different values. Per record either way —
+    # the split is what keeps the test honest if the fixtures ever share a country again.
+    withheld = json.dumps(by_id[flagged.id], ensure_ascii=False)
+    assert COUNTRY not in withheld
+    assert BASE not in withheld
+    assert CONTACT not in withheld
+
     assert by_id[flagged.id]["locationWithheld"] is True
     assert by_id[flagged.id]["location"] == ShemaRegionKey.AFRICA.value
     assert by_id[cleared.id]["locationWithheld"] is False
@@ -545,7 +553,11 @@ async def test_the_second_serialization_pass_agrees_with_the_first(
     from_models = await naive_client.get(NAIVE_MODELS_PROBE, headers=headers)
 
     assert from_rows.json() == from_models.json()
-    assert COUNTRY not in from_models.text
+
+    # Per record, for the reason the test above states.
+    by_id = {row["id"]: row for row in from_models.json()}
+    assert COUNTRY not in json.dumps(by_id[flagged.id], ensure_ascii=False)
+    assert by_id[cleared.id]["location"] == OPEN_COUNTRY
 
 
 def test_a_payload_rebuilt_from_its_own_dump_is_the_payload_it_was(flagged, cleared) -> None:
