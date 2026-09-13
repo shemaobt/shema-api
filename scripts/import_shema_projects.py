@@ -73,6 +73,17 @@ the client's list is the authority and arrives after the first run, and ``region
 which is a function of ``location`` and is re-derived only while ``location`` still holds
 what was imported. A record whose ``source`` is NULL was born in the product and is not this
 program's business at all.
+
+**Neither of the two is re-applied over a person, and lowering asks first.** The region is
+re-derived only while ``location`` still holds what was imported; the flag is *lowered* only
+while ``sensitivity`` — the free text beside it, which ``ShemaProjectUpdate`` lets a
+coordinator write — still holds what was imported. It is the same question in both places,
+asked of lowering because lowering is the direction that exposes. What the question cannot
+reach is ``sensitive_country`` itself: the column keeps no provenance, so a flag a
+coordinator raised by hand is the same ``true`` as the one this import writes fail-closed.
+That residue is ``docs/shema.md`` §10's question 12, it belongs to the write path rather
+than to a migration script, and until it is answered the mitigation is that every lowering
+is named in the report and the dry-run before it is not optional.
 """
 
 import argparse
@@ -820,9 +831,34 @@ class Outcome:
     flags_raised: list[Change] = field(default_factory=list)
     flags_lowered: list[Change] = field(default_factory=list)
     flags_lowering_withheld: list[Change] = field(default_factory=list)
+    flags_lowering_refused: list[Change] = field(default_factory=list)
     regions_corrected: list[Change] = field(default_factory=list)
     left_alone: list[Change] = field(default_factory=list)
     unchanged: int = 0
+
+
+def _typed_over_the_export(current: ShemaProject) -> str | None:
+    """The sensitivity a person wrote over the imported one, or ``None`` if nobody has.
+
+    The region is only re-derived while ``location`` still holds what was imported, because
+    once somebody has corrected the country the derivation is theirs. Lowering the flag asks
+    the same question, and it has to ask it of a different column: ``sensitive_country`` is
+    a boolean with no provenance — the ``true`` this import writes fail-closed and the
+    ``true`` a coordinator ticks are the same value — while ``sensitivity`` beside it keeps
+    the export's own words in ``source`` to compare against. So *the text has been edited
+    since the import* is the one answer the schema can give to *did a person put this here*,
+    and while it is yes the flag stays on whatever ``--allow-lowering`` says.
+
+    Both directions of that edit hold the flag: a coordinator who typed ``Confidential`` is
+    saying the record is exposed, and one who cleared the text has still been in the field
+    the flag rests beside. Raising is untouched by any of this — it needs no permission.
+
+    A coordinator who only ticks the boolean and edits nothing else is invisible here, and
+    to anything else the schema offers. That is ``docs/shema.md`` §10's question 12, and it
+    is owned by the write path that would have to record who raised a flag.
+    """
+    imported = str((current.source or {}).get("sensitivity", ""))
+    return None if current.sensitivity == imported else current.sensitivity
 
 
 async def apply_plan(
@@ -840,6 +876,9 @@ async def apply_plan(
     only ``sensitive_country``, from the client's list, and ``region_key``, and the latter
     only while ``location`` still holds what was imported: once somebody has corrected the
     country, the region belongs to the service that wrote the correction.
+
+    **Lowering the flag asks that same question**, of the column next to the flag rather
+    than of the one under the region: see :func:`_typed_over_the_export`.
 
     A record whose ``source`` is NULL was born in the product and is left entirely alone,
     even when its id collides with an export slug. Nothing in this file writes over a record
@@ -898,7 +937,17 @@ async def apply_plan(
                 current.sensitive_country = True
             reported = True
         elif not wanted.sensitive and current.sensitive_country:
-            if allow_lowering:
+            typed = _typed_over_the_export(current)
+            if typed is not None:
+                outcome.flags_lowering_refused.append(
+                    Change(
+                        record.project_id,
+                        f"every country it names is confirmed clear, and the record's own "
+                        f"sensitivity has been edited to {typed!r} since the import; the flag "
+                        "beside it is left to the person who wrote that",
+                    )
+                )
+            elif allow_lowering:
                 outcome.flags_lowered.append(
                     Change(record.project_id, "every country this record names is confirmed clear")
                 )
@@ -1095,6 +1144,10 @@ def render_report(
     add(
         f"- Flags that would have been lowered and were not: {len(outcome.flags_lowering_withheld)}"
     )
+    add(
+        "- Flags left to the person who edited the sensitivity beside them: "
+        f"{len(outcome.flags_lowering_refused)}"
+    )
     add(f"- Regions corrected: {len(outcome.regions_corrected)}")
     add(f"- Left alone: {len(outcome.left_alone)}")
     add(f"- Already correct, nothing to do: {outcome.unchanged}")
@@ -1106,6 +1159,10 @@ def render_report(
         (
             "Flags withheld from lowering (`--allow-lowering` not given)",
             outcome.flags_lowering_withheld,
+        ),
+        (
+            "Flags left to a person (the sensitivity beside them has been edited)",
+            outcome.flags_lowering_refused,
         ),
         ("Regions corrected", outcome.regions_corrected),
         ("Left alone", outcome.left_alone),
@@ -1223,12 +1280,19 @@ async def run(
         f"{len(outcome.inserted)} inserted, {len(outcome.flags_raised)} flags raised, "
         f"{len(outcome.flags_lowered)} lowered, "
         f"{len(outcome.flags_lowering_withheld)} lowerings withheld, "
+        f"{len(outcome.flags_lowering_refused)} left to a person, "
         f"{len(outcome.regions_corrected)} regions corrected, {outcome.unchanged} unchanged"
     )
     if outcome.flags_lowering_withheld:
         print(
             f"{len(outcome.flags_lowering_withheld)} record(s) would lose the sensitive flag. "
             "Read the report, then re-run with --allow-lowering if the client's list is right."
+        )
+    if outcome.flags_lowering_refused:
+        print(
+            f"{len(outcome.flags_lowering_refused)} record(s) keep the flag because somebody "
+            "edited the sensitivity beside it. --allow-lowering does not clear those; a person "
+            "does, in the product."
         )
     print(f"Report: {report}")
     return 0

@@ -987,6 +987,14 @@ repository, not in a design document. And
 clearing a flag needs `--allow-lowering` on top of `--apply`: raising protects and lowering
 exposes, so only one of the two directions is allowed to happen by momentum.
 
+**And a third rule, which is about people rather than about the gate.** The reconcile
+re-derives `region_key` only while `location` still holds what was imported, and it lowers a
+flag only while `sensitivity` — the free text beside the flag, writable on
+`ShemaProjectUpdate` — still holds what was imported. Same question in both places: *has a
+person been in the column this value is read from?* What the question cannot reach is
+`sensitive_country` itself, because a boolean keeps no provenance and a coordinator's `true`
+is the import's `true`; that is §10's question 12, and it belongs to the write path.
+
 ---
 
 ## 10. Open questions, each with the issue that owns it
@@ -1006,6 +1014,7 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |
+| 12 | Whether `sensitive_country` records **who** raised it. Today it does not, and the import cannot tell a flag a coordinator ticked from the `true` it wrote itself fail-closed — so a hand-raised flag is cleared by the next `--apply --allow-lowering`. BE-16 gates the lowering on the one column that can answer (`sensitivity`, compared against `source`) and names every lowering in its report, which narrows the hole without closing it. Closing it is a write-path decision — an audit column, a `sensitive_country_source`, or a rule that the import never lowers what it did not insert — and it is not a migration script's to take, least of all on a model and a migration ten sibling branches already build on. | **BE-03** (§4.2's write path), with **BE-02** if it costs a column |
 
 ---
 
