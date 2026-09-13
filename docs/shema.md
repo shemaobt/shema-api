@@ -1005,7 +1005,7 @@ this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
   `refresh_tokens`, `password_reset_tokens` and `access_invites` all store a `String(64)`
   `token_hash` and let the raw value leave only once.
 
-> **BE-12 ([OBT-401](https://linear.app/shema-obt/issue/OBT-401)) built this seam, and four
+> **BE-12 ([OBT-401](https://linear.app/shema-obt/issue/OBT-401)) built this seam, and five
 > decisions travel with it.** All three rules above held; what follows is what they did not
 > cover, because the section was written about the guard and these are about what the guard
 > lets through.
@@ -1035,6 +1035,19 @@ this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
 >   mapping from a form field to a record column, three of which the consent gate guards, so
 >   the ingest services name no guarded column at all and `test_privacy_owners.py` needs no
 >   allowlist entry for this issue.
+> - **`GET /api/shema/forms/submissions/{id}` serves an applied answer from the record and a
+>   pending one from the archive.** An answer the import applies is readable on the record, under
+>   the rules that surface enforces, so this read does not serve it — and that is only true once
+>   the import has run. Between the `202` and the import an answer that maps to a column is on
+>   **no** surface, which left a coordinator clicking *import* applying chapter counts and a
+>   `prayerVisibility` they had never been shown, on the one route that decides whether a request
+>   leaves coordination. The mapped answers are therefore served in exactly that gap and only to
+>   the caller who closes it — `coordinator`, read as a value by `app/api/shema/_deps.py` from the
+>   key the import route is guarded on — and the read goes narrow again once `appliedAt` is set.
+>   Both edges matter: the archive is a second store of the guarded columns that §6.4's gate does
+>   not reach into, so a `resourceCircle` account (the prayer wall's own audience) never reads a
+>   request out of it, and a withdrawn prayer request does not stay readable one route over after
+>   the record has erased it.
 >
 > **Not built, and it is GATE-03's:** `POST /api/shema/forms/pulse/{projectId}`, the generated
 > artifact. §9.3's own list — the format, which of two is authoritative, the distribution model

@@ -159,6 +159,80 @@ async def test_an_edited_spec_cuts_a_new_version_and_leaves_the_old_one_standing
     assert "rainfall" in {f["key"] for f in now_v2.json()["fields"]}
 
 
+async def test_a_spec_that_goes_back_is_the_version_that_already_published_it(
+    client, db_session, shema_app, headers, project, monkeypatch
+) -> None:
+    """**A revert is the ordinary edit, and it used to take the module down.**
+
+    A label key changes and then changes back — what reverting a pull request looks like from
+    this file's side. The content is now exactly what version 1 published, and
+    ``uq_shema_form_definitions_kind_content`` says so: a third row holding that content cannot
+    exist. Publishing by *newest row* cut one anyway and the index refused it at the ``flush``,
+    so every ``POST /intake-links`` — and every ``POST /forms/submissions`` that names no
+    version — answered 500 from the revert until somebody edited the spec again.
+
+    What it answers instead is version 1 — the row that published these words — and the leader
+    holding the new link is answering the same form as the leader holding the first one.
+    """
+    import app.services.shema._form_definitions as definitions
+    from app.utils.shema_forms import PULSE_FIELDS, field_specs
+
+    original = await a_link(client, headers)
+    assert original["definitionVersion"] == 1
+
+    renamed = tuple(
+        field._replace(label_key="forms_q_who_sent_it") if field.key == "submittedBy" else field
+        for field in PULSE_FIELDS
+    )
+    monkeypatch.setattr(
+        definitions, "field_specs", lambda kind: [f.as_spec() for f in renamed] if kind else []
+    )
+    assert (await a_link(client, headers))["definitionVersion"] == 2
+
+    monkeypatch.setattr(definitions, "field_specs", field_specs)
+    reverted = await a_link(client, headers)
+
+    assert reverted["definitionVersion"] == 1
+    rows = (await db_session.execute(select(ShemaFormDefinition))).scalars().all()
+    assert sorted(row.version for row in rows) == [1, 2]
+    # And the form behind the reverted link is answerable, which is the half a 500 hid.
+    assert (await answer(client, reverted["token"])).status_code == 202
+
+
+async def test_an_import_after_a_revert_is_not_a_500(
+    client, db_session, shema_app, headers, project, monkeypatch
+) -> None:
+    """The other door publishes too, so the same crash reached the coordinator's own write.
+
+    ``POST /forms/submissions`` with no ``definitionVersion`` publishes the standing spec
+    before it archives anything — so a reverted spec broke the path that has nothing to do
+    with links at all.
+    """
+    import app.services.shema._form_definitions as definitions
+    from app.utils.shema_forms import PULSE_FIELDS, field_specs
+
+    await a_link(client, headers)  # version 1
+
+    renamed = tuple(
+        field._replace(label_key="forms_q_who_sent_it") if field.key == "submittedBy" else field
+        for field in PULSE_FIELDS
+    )
+    monkeypatch.setattr(
+        definitions, "field_specs", lambda kind: [f.as_spec() for f in renamed] if kind else []
+    )
+    await a_link(client, headers)  # version 2
+    monkeypatch.setattr(definitions, "field_specs", field_specs)
+
+    filed = await client.post(
+        SUBMISSIONS,
+        json={"projectId": "guarani-mbya", "answers": answers()},
+        headers={**headers, "If-Match": '"1"'},
+    )
+
+    assert filed.status_code == 201, filed.text
+    assert filed.json()["definitionVersion"] == 1
+
+
 async def test_a_submission_records_the_version_it_answered(
     client, db_session, shema_app, headers, project
 ) -> None:
@@ -598,18 +672,17 @@ async def test_an_empty_prayer_answer_does_not_delete_what_is_already_there(
     assert project.prayer_requests == "Orem pela travessia do rio."
 
 
-async def test_the_submission_detail_serves_only_what_the_record_does_not(
+async def test_the_prayer_walls_own_audience_reads_nothing_the_import_would_apply(
     client, db_session, shema_app, headers, project
 ) -> None:
-    """**The read answers what maps to no column, and it closes a hole while doing it.**
+    """**The hole the rule closes, at the account that would fall through it.**
 
-    An answer the import applies is readable on the record, behind the record's own surface;
-    an answer that maps to nothing is readable nowhere else and is what this read is for. The
-    hole the rule closes is real: this route admits **any** member in the caller's region —
-    an OBT Lab mentor reads a Pulse as legitimately as a coordinator, and ``require_role``
-    cannot say *or* — so without it a ``resourceCircle`` account, which is the prayer wall's
-    own audience, could read an archived prayer request for a team that consented to
-    ``coordenacao`` and nothing more.
+    This route admits **any** member in the caller's region — an OBT Lab mentor reads a Pulse
+    as legitimately as a coordinator, and ``require_role`` cannot say *or* — and a
+    ``resourceCircle`` account is the prayer wall's own audience and can apply nothing. Serving
+    it what maps to a record column would hand it an archived prayer request for a team that
+    consented to ``coordenacao`` and nothing more, out of a second store the consent gate does
+    not reach into.
     """
     link = await a_link(client, headers)
     await answer(
@@ -641,6 +714,116 @@ async def test_the_submission_detail_serves_only_what_the_record_does_not(
     # Asserted on the answers and not on the whole body: the field spec legitimately lists
     # ``coordenacao`` among the choices, and it is the leader's *answer* that must not travel.
     assert "coordenacao" not in json.dumps(served)
+
+
+async def test_the_person_who_applies_is_shown_what_they_are_applying(
+    client, db_session, shema_app, headers, project
+) -> None:
+    """**The coordinator decides, and the decision is on the answers they cannot otherwise see.**
+
+    Applying writes the chapter counts and the leader's consent level onto the record, and
+    until it is applied there is nowhere else to read them: the record has not been written
+    and this is the only read of the archive. ``prayerVisibility: "rede"`` is the sharp one —
+    the click that applies it is what lets the project's prayer request leave coordination —
+    and the whole argument for answering the link with 202 is that a person who can be asked
+    decides. A person shown four of the seven answers is not deciding.
+    """
+    link = await a_link(client, headers)
+    await answer(
+        client,
+        link["token"],
+        voice="A colheita foi boa.",
+        prayerRequest="Orem pela travessia do rio.",
+        prayerVisibility="rede",
+        bookProgress=[book(16, 9)],
+    )
+    row = (await db_session.execute(select(ShemaSubmission))).scalar_one()
+
+    detail = await client.get(f"{SUBMISSIONS}/{row.id}", headers=headers)
+
+    assert detail.status_code == 200
+    served = detail.json()["answers"]
+    assert served["prayerVisibility"] == "rede"
+    assert served["prayerRequest"] == "Orem pela travessia do rio."
+    assert served["bookProgress"][0]["translated"] == 9
+    assert served["voice"] == "A colheita foi boa."
+    # Read before it is applied, which is the whole point: the record still says nothing.
+    assert detail.json()["appliedAt"] is None
+
+
+async def test_once_it_is_applied_the_read_goes_narrow_again(
+    client, db_session, shema_app, headers, project
+) -> None:
+    """**The gap closes, and the archive stops answering what the record answers.**
+
+    This is the half that keeps a withdrawal a withdrawal. A team that takes its request back
+    off the record leaves ``prayerRequests`` empty and the audit trail holds no value for it —
+    so an archive that kept serving the text to the same coordinator would be the second store
+    the module spends four files refusing, with *consent withdrawn means the text is erased,
+    not hidden* false one route over. The read is wide exactly while the record cannot answer.
+    """
+    link = await a_link(client, headers)
+    await answer(
+        client,
+        link["token"],
+        voice="A colheita foi boa.",
+        prayerRequest="Orem pela travessia do rio.",
+        prayerVisibility="rede",
+        bookProgress=[book(16, 9)],
+    )
+    row = (await db_session.execute(select(ShemaSubmission))).scalar_one()
+
+    before = await client.get(f"{SUBMISSIONS}/{row.id}", headers=headers)
+    assert "prayerRequest" in before.json()["answers"]
+
+    applied = await client.post(
+        f"{SUBMISSIONS}/{row.id}/import",
+        headers={**headers, "If-Match": '"1"'},
+    )
+    assert applied.status_code == 200, applied.text
+
+    after = await client.get(f"{SUBMISSIONS}/{row.id}", headers=headers)
+
+    assert after.json()["appliedAt"] is not None
+    assert set(after.json()["answers"]) == {"submittedBy", "period", "voice"}
+    assert "Orem pela travessia do rio." not in after.text
+
+
+async def test_a_member_who_cannot_apply_is_not_shown_what_the_import_would_write(
+    client, db_session, shema_app, headers, project
+) -> None:
+    """The widening is bounded by the role that acts, not by being signed in.
+
+    An OBT Lab mentor reads a Pulse as legitimately as a coordinator — the voice of the field
+    and what is blocking the team — and cannot apply one. Reading the consent level and the
+    request behind it would be the archive answering a question the mentor has no act to take
+    on, through the one route in this module that admits any member.
+    """
+    link = await a_link(client, headers)
+    await answer(
+        client,
+        link["token"],
+        voice="A colheita foi boa.",
+        prayerRequest="Orem pela travessia do rio.",
+        prayerVisibility="rede",
+        bookProgress=[book(16, 9)],
+    )
+    row = (await db_session.execute(select(ShemaSubmission))).scalar_one()
+
+    mentor = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="mentoria@shema.test",
+        role_key="obtLab",
+        regions=[ShemaRegionKey.SOUTH_AMERICA],
+    )
+    detail = await client.get(
+        f"{SUBMISSIONS}/{row.id}", headers=await auth_header(db_session, mentor)
+    )
+
+    assert detail.status_code == 200
+    assert set(detail.json()["answers"]) == {"submittedBy", "period", "voice"}
+    assert "Orem pela travessia do rio." not in detail.text
 
 
 # --- scope ----------------------------------------------------------------------------
@@ -686,6 +869,68 @@ async def test_an_import_cannot_reach_a_project_outside_the_scope(
 
     assert response.status_code == 404
     assert (await db_session.execute(select(ShemaSubmission))).first() is None
+
+
+# --- the stored spec is read back typed -----------------------------------------------
+
+
+def field_specs_row() -> dict:
+    """The ``period`` field as it is stored — one real row rather than an invented one."""
+    from app.utils.shema_forms import field_specs
+
+    return next(row for row in field_specs(PULSE_KIND) if row["key"] == "period")
+
+
+def test_a_stored_spec_reads_back_as_the_fields_that_wrote_it() -> None:
+    """**One declaration of the key names, watched from both ends.**
+
+    ``FormField.as_spec`` writes the stored row and ``spec_fields`` reads it back, and four
+    services then use attributes rather than ``field.get("column")``. The failure this replaces
+    is silent: a key renamed on the writing side answered ``None`` on the reading side, and
+    ``column`` becoming ``None`` is an answer that quietly stops being applied to the record —
+    a state no reader can tell from a field that legitimately maps to nothing.
+    """
+    from app.utils.shema_forms import PULSE_FIELDS, field_specs, spec_fields
+
+    read_back = spec_fields(field_specs(PULSE_KIND))
+
+    assert len(read_back) == len(PULSE_FIELDS)
+    for stored, authored in zip(read_back, PULSE_FIELDS, strict=True):
+        assert stored.key == authored.key
+        assert stored.type == authored.type.value
+        assert stored.required == authored.required
+        assert stored.label_key == authored.label_key
+        assert stored.column == authored.column
+        assert stored.max_length == authored.max_length
+        assert stored.options == list(authored.options)
+
+
+def test_a_renamed_spec_key_fails_where_it_is_read_instead_of_going_quiet() -> None:
+    """The four structural names are required, so a rename is a refusal and not a ``None``."""
+    from pydantic import ValidationError as PydanticValidationError
+
+    from app.utils.shema_forms import SpecField
+
+    row = field_specs_row()
+    assert SpecField.model_validate(row).label_key == "forms_q_period"
+
+    with pytest.raises(PydanticValidationError):
+        SpecField.model_validate({**{k: v for k, v in row.items() if k != "labelKey"}})
+
+
+def test_a_definition_cut_before_a_field_existed_is_still_readable() -> None:
+    """Extras are ignored rather than forbidden, and the archive is why.
+
+    A stored row holds whatever the spec said the day it was cut. A model that refused a key
+    this file no longer writes would make every definition older than the deletion unreadable —
+    a 500 on the one table whose whole purpose is that an old answer stays readable.
+    """
+    from app.utils.shema_forms import SpecField
+
+    aged = SpecField.model_validate({**field_specs_row(), "helpTextKey": "forms_q_period_help"})
+
+    assert aged.key == "period"
+    assert aged.column is None
 
 
 # --- the wiring, read off the built application ---------------------------------------

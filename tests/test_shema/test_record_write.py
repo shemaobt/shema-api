@@ -453,6 +453,70 @@ async def test_a_story_only_table_does_not_zero_the_counts(client, db_session, h
     assert len(after.json()["progressHistory"]) == 1
 
 
+async def test_a_save_that_touches_no_table_writes_no_second_entry(
+    client, db_session, headers
+) -> None:
+    """The roll runs on every save, and on a record it agrees with it moves nothing.
+
+    *What keeps the trail a record of progress rather than a log of saves* is the condition in
+    ``record_progress``, and this is the half of it the write path owns: a coordinator fixing a
+    typo in the status comments re-rolls the stored table, finds the four numbers already
+    there, and leaves the trail where it was.
+    """
+    created = await _create(client, headers)
+    rolled = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"bookProgress": [book("mat", 28, 28, 10, 4)]},
+        headers={**headers, "If-Match": _etag(created)},
+    )
+    after = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"statusComments": "gravação começou"},
+        headers={**headers, "If-Match": _etag(rolled)},
+    )
+
+    assert after.status_code == 200
+    body = after.json()
+    assert body["translatedUnits"] == 28
+    assert body["communityCheckedUnits"] == 10
+    assert body["approvedUnits"] == 4
+    assert body["totalUnits"] == 28
+    assert len(body["progressHistory"]) == 1
+    entries = (await db_session.execute(select(ShemaProgressEntry))).scalars().all()
+    assert len(entries) == 1
+
+
+async def test_the_tables_win_over_a_typed_aggregate_on_a_record_that_has_one(
+    client, db_session, headers
+) -> None:
+    """FE-44 §7.2's *the tables win over what the client typed*, on the body that could break it.
+
+    A ``PATCH`` carrying an aggregate and no table is why the roll is read off the **merged**
+    record and not off the payload: rolling only when a table was sent would store 999 against
+    a table that sums to 28 — which is exactly the disagreement the roll exists to prevent.
+    """
+    created = await _create(client, headers)
+    rolled = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"bookProgress": [book("mat", 28, 28, 10, 4)]},
+        headers={**headers, "If-Match": _etag(created)},
+    )
+    after = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"translatedUnits": 999},
+        headers={**headers, "If-Match": _etag(rolled)},
+    )
+
+    assert after.status_code == 200
+    assert after.json()["translatedUnits"] == 28
+    stored = (
+        await db_session.execute(select(ShemaProject).where(ShemaProject.id == "guarani-mbya"))
+    ).scalar_one()
+    await db_session.refresh(stored)
+    assert stored.translated_units == 28
+    assert len((await db_session.execute(select(ShemaProgressEntry))).scalars().all()) == 1
+
+
 async def test_a_record_may_still_carry_more_translated_than_its_scope(
     client, db_session, headers
 ) -> None:

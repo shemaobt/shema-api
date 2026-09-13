@@ -273,22 +273,29 @@ class ShemaProjectUpdate(BaseModel):
         them, so a payload that carries both is a client that believes the columns are two
         facts — and picking one silently is how the drift BE-02 removed comes back through a
         door nobody is watching.
+
+        **The values are compared and never hashed.** A ``before`` validator is handed the
+        client's raw body, so ``{"ywamBase": []}`` puts a list on this line; a set built from
+        one raises ``TypeError``, and Pydantic turns only ``ValueError`` and
+        ``AssertionError`` into a 422. That made a body with the wrong *type* a 500 instead of
+        the validation error the very same body earns one step later, where ``team`` is
+        declared ``str``. Equality is all this rule ever needed: there are two keys.
         """
         if not isinstance(data, dict):
             return data
         sent = [key for key in THE_BASE if key in data]
         if not sent:
             return data
-        values = {data[key] for key in sent}
+        values = [data[key] for key in sent]
         team = data.get("team")
-        if "team" in data and data["team"] not in values:
+        if "team" in data and team not in values:
             raise ValueError(
                 "team and ywamBase are one input on one column: send one, or send both equal"
             )
-        if len(values) > 1:
+        if any(value != values[0] for value in values[1:]):
             raise ValueError("ywamBase sent twice with two values")
         data = {key: value for key, value in data.items() if key not in THE_BASE}
-        data["team"] = team if "team" in data else values.pop()
+        data["team"] = team if "team" in data else values[0]
         return data
 
     @field_validator(*REQUIRED_TO_SAVE)

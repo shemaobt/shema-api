@@ -148,6 +148,12 @@ Authorization: Bearer {{token}}
 # This is where the voice and the blockers are read. They map to no record column on purpose:
 # a Pulse that replaced a coordinator's status comments with a leader's free text would be the
 # record being edited through the weakest credential in the system.
+#
+# `answers` depends on who is asking and on whether the import below has run. A coordinator —
+# the only role that can run it — is shown all of them while the submission is still pending,
+# including the chapter counts and the leader's `prayerVisibility`, because until the import
+# runs they are on no other surface and the click that applies them is the decision. After the
+# import, and for any other member, this read serves only what maps to no record column.
 GET {{baseUrl}}/api/shema/forms/submissions/{{submissionId}}
 Authorization: Bearer {{token}}
 

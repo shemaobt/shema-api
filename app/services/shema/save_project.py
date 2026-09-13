@@ -138,6 +138,17 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     coordinate* and that is a fact about the pair — the record keeps the number the export gave
     and nothing here decides what it means.
 
+    **The roll runs on every save and not only on one that sent a table**, which is what keeps
+    the four aggregates and the three tables one truth instead of two. The payload that can
+    break that is a ``PATCH`` carrying ``translatedUnits`` and no table: FE-44 §7.2's *the
+    tables win over what the client typed* has to hold for that body too, and it holds only
+    because the roll is read off the **merged** record, stored tables included. The cost a
+    reader expects from that — an unrelated save moving a count, and ``record_progress``
+    stamping an entry for it — needs a record whose stored aggregates disagree with its own
+    rows, and this function is what makes one unreachable: every save writes the roll of the
+    rows it leaves behind, so the next roll finds the same four numbers already there and they
+    never reach ``changed``.
+
     ``needs_items`` leaves here because it is not a column of this row at all: it is a child
     table, and ``_needs.py`` is what merges it. ``_audit.NOT_COLUMNS`` names both departures in
     one place so the diff and this function cannot disagree about what a column is.

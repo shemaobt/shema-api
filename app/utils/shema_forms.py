@@ -43,6 +43,9 @@ import json
 from collections.abc import Mapping
 from typing import Any, Final, NamedTuple
 
+from pydantic import AliasGenerator, BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
+
 
 class ShemaFieldType(enum.StrEnum):
     """What an answer to one field may be.
@@ -63,6 +66,48 @@ class ShemaFieldType(enum.StrEnum):
     CHOICE = "choice"
     PERIOD = "period"
     PROGRESS_ROWS = "progressRows"
+
+
+class SpecField(BaseModel):
+    """One field of a **stored** spec, read back as attributes instead of by string key.
+
+    ``shema_form_definitions.fields`` is a JSON column, so what comes back out of it is a list
+    of plain dictionaries, and every reader of one used to subscript it — ``field["key"]`` in
+    five functions, ``field.get("column")`` in two. The ``.get`` half is the one that bites: a
+    key renamed in :meth:`FormField.as_spec` does not fail, it becomes ``None``, and ``column``
+    becoming ``None`` is an answer that quietly stops being applied to the record. Nothing
+    downstream can see that, because a field that maps to no column is a legitimate state.
+
+    **So the spec is written and read through one declaration of the names.**
+    :meth:`FormField.as_spec` builds this model and dumps it, :func:`spec_fields` validates it
+    back, and the readers use attributes — a rename now moves both sides at once or fails at
+    the boundary, which is the property a dictionary of strings cannot have.
+
+    ``type`` stays a ``str`` rather than :class:`ShemaFieldType`, deliberately. A stored row
+    holds whatever the spec said the day it was cut, and a member removed from the enum later
+    would make every definition that used it unreadable — a 500 on an archive whose whole
+    purpose is to stay readable. ``_form_validation.py`` already answers an unknown type with a
+    fault naming it, which is the refusal that belongs to one submission rather than to the row.
+
+    **Extras are ignored rather than forbidden**, for the same reason and the same direction:
+    an old definition that carries a key this file no longer writes is history, not a bug, and
+    a model that refused it would break the readers the day a field is dropped.
+    """
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        alias_generator=AliasGenerator(validation_alias=to_camel, serialization_alias=to_camel),
+    )
+
+    key: str
+    type: str
+    required: bool
+    label_key: str
+    #: The record column this answer is applied to, or ``None`` for one that is archived and
+    #: not applied. Typed so that *not applied* is a value somebody wrote and never a typo.
+    column: str | None = None
+    max_length: int | None = None
+    options: list[str] = Field(default_factory=list)
 
 
 class FormField(NamedTuple):
@@ -96,16 +141,21 @@ class FormField(NamedTuple):
         after this file has moved on; served so the intake form the leader opens *is* the
         definition the answer is checked against, rather than a second rendering of it that
         can disagree.
+
+        Built through :class:`SpecField` rather than as a dictionary literal, so the keys this
+        writes and the attributes :func:`spec_fields` reads back are **one declaration**. A
+        literal here and a ``field.get("maxLength")`` over there are two spellings of one name,
+        and the day they stop agreeing nothing fails — the reader just sees ``None``.
         """
-        return {
-            "key": self.key,
-            "type": self.type.value,
-            "required": self.required,
-            "labelKey": self.label_key,
-            "column": self.column,
-            "maxLength": self.max_length,
-            "options": list(self.options),
-        }
+        return SpecField(
+            key=self.key,
+            type=self.type.value,
+            required=self.required,
+            label_key=self.label_key,
+            column=self.column,
+            max_length=self.max_length,
+            options=list(self.options),
+        ).model_dump(by_alias=True)
 
 
 #: The only kind of submission that is archivable, and the reason ``shema_submissions`` has no
@@ -203,6 +253,17 @@ FORM_FIELDS: Final[dict[str, tuple[FormField, ...]]] = {PULSE_KIND: PULSE_FIELDS
 def field_specs(kind: str) -> list[dict[str, Any]]:
     """The stored form of one kind's spec, or an empty list when the kind is not published."""
     return [field.as_spec() for field in FORM_FIELDS.get(kind, ())]
+
+
+def spec_fields(spec: list[dict[str, Any]]) -> list[SpecField]:
+    """A stored spec, read back as typed rows — the one way this repository reads one.
+
+    Every reader of ``ShemaFormDefinition.fields`` goes through here: the validator, the record
+    mapping, the intake form and the coordinator's read of a submission. Each of them used to
+    reach into the dictionaries itself, which is one more place a renamed key could go quiet
+    in; the model is what makes a rename fail at the boundary instead.
+    """
+    return [SpecField.model_validate(field) for field in spec]
 
 
 def spec_hash(spec: list[dict[str, Any]]) -> str:

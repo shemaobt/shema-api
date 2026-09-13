@@ -35,6 +35,15 @@ would make one route stricter than the route beside it while buying nothing — 
 grant themselves ``coordinator`` with one call to ``grant_app_role``. The cost is real and
 lands on the tests: **a negative test written per role must not use an admin account**, or
 it passes for the wrong reason.
+
+**One role key is also asked as a value and not only as a guard**, which is :data:`MayApply`
+below. It is not the capability map this file refuses: there is no table, no second
+vocabulary and no OR — it is ``coordinator``, the same key the route beside it is guarded on,
+read as a boolean because the answer shapes a payload rather than admitting a request. The
+grant is read once per request by :func:`_granted` and both consumers share it, so asking the
+second question costs no second query: a scope and a role resolved from two separate reads of
+one fact is the defect ``app/services/shema/_scope.py``'s ``scope_from_roles`` was written to
+close, and it would come straight back through this file.
 """
 
 from __future__ import annotations
@@ -53,7 +62,8 @@ from app.services.shema._scope import (
     OBT_LAB_ROLE,
     RESOURCE_CIRCLE_ROLE,
     RegionScope,
-    region_scope,
+    granted_roles,
+    scope_from_roles,
 )
 
 APP_KEY = "shema"
@@ -67,7 +77,27 @@ ObtLabUser = Annotated[User, require_role(APP_KEY, OBT_LAB_ROLE)]
 ResourceCircleUser = Annotated[User, require_role(APP_KEY, RESOURCE_CIRCLE_ROLE)]
 
 
-async def _scope(user: CurrentUser, db: Db) -> RegionScope:
+async def _granted(user: CurrentUser, db: Db) -> frozenset[str]:
+    """The Shemá role keys this account holds, read once and shared by everything below.
+
+    FastAPI caches a dependency's result for the life of one request, so a handler that
+    declares both :data:`Scope` and :data:`MayApply` reads the grant once. That is the whole
+    reason this is a dependency of its own rather than a line inside each of them.
+
+    **A platform admin is answered without reading the table**, as they are by every guard in
+    this repository. The empty set is not a claim that they hold nothing — it is that nothing
+    below depends on what they hold, because every consumer asks ``is_platform_admin`` first.
+    """
+    if user.is_platform_admin:
+        return frozenset()
+    return frozenset(await granted_roles(db, user.id, APP_KEY))
+
+
+#: The caller's Shemá roles, read once per request.
+Granted = Annotated[frozenset[str], Depends(_granted)]
+
+
+async def _scope(user: CurrentUser, db: Db, granted: Granted) -> RegionScope:
     """Resolve the caller's region scope, once, for a handler to hand down.
 
     Chained behind ``CurrentUser`` rather than beside it, so an account with no role in this
@@ -81,8 +111,28 @@ async def _scope(user: CurrentUser, db: Db) -> RegionScope:
     and a filter applied in a handler is a filter the next handler writes slightly
     differently.
     """
-    return await region_scope(db, user, APP_KEY)
+    return await scope_from_roles(db, user, set(granted))
 
 
 #: The caller's reach, for a handler to pass straight into a service.
 Scope = Annotated[RegionScope, Depends(_scope)]
+
+
+async def _may_apply(user: CurrentUser, granted: Granted) -> bool:
+    """Whether this caller may apply a submission to the record — ``coordinator``, or an admin.
+
+    The question ``POST /forms/submissions/{id}/import`` is already guarded on, asked as a
+    value so that the read beside it can show the person who will answer it what they are
+    answering. ``app/services/shema/read_submission.py`` carries why that matters: the answers
+    an import writes are on no other surface until it has written them, so a coordinator who
+    cannot read them decides blind — and one of them is the consent level that decides whether
+    a prayer request leaves coordination at all.
+
+    No database read of its own: :func:`_granted` has already been resolved for this request.
+    """
+    return user.is_platform_admin or COORDINATOR_ROLE in granted
+
+
+#: Whether the caller can apply what they are being shown. **A payload's shape, never a guard**
+#: — a route that must refuse a non-coordinator uses :data:`CoordinatorUser`, which refuses.
+MayApply = Annotated[bool, Depends(_may_apply)]
