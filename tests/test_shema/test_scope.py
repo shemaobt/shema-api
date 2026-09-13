@@ -559,6 +559,43 @@ async def test_the_refusal_log_does_not_carry_the_protected_rows_columns(
         assert not any(key.endswith(forbidden) for key in record.__dict__)
 
 
+async def test_a_missing_id_reaches_the_same_line_and_is_not_called_an_authorization_refusal(
+    db_session, shema_app, three_regions, caplog
+):
+    """**The indistinguishable answer, felt on the logging side.**
+
+    ``get_project``'s branch fires on any miss of the scoped statement, so an id that never
+    existed is logged by the same line an out-of-region one is. That is not a gap: settling
+    which case it was would take the unscoped query the 404 exists to avoid.
+
+    What the line must therefore not do is claim a decision the service never made. A
+    mistyped slug counted as a refused authorization is a false positive on whatever reads
+    these lines, so the message classifies the outcome — no row, for one of two reasons —
+    and this asserts the wording in both directions, because the helpful shorter one is what
+    a later reader restores.
+    """
+    user = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="typo-log@shema.test",
+        role_key="coordinator",
+        regions=[AFRICA],
+    )
+    scope = await region_scope(db_session, user, APP_KEY)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="app.services.shema._scope"),
+        pytest.raises(NotFoundError),
+    ):
+        await get_project(db_session, scope, "no-such-project-at-all", user=user)
+
+    (record,) = [r for r in caplog.records if r.name == "app.services.shema._scope"]
+    assert record.shema_project_id == "no-such-project-at-all"
+    assert record.shema_scope_regions == ["africa"]
+    assert "no such id" in record.getMessage()
+    assert "authorization refused" not in record.getMessage()
+
+
 # --- the router hands the value down, and nothing else -------------------------------
 
 

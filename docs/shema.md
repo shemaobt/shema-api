@@ -712,8 +712,17 @@ choice: a 403 on a direct id **is** the existence-without-detail answer delivere
 code, and a caller who can tell *this slug is real but not yours* from *no such slug* holds
 an oracle over the whole collection. A Shemá slug is `<language>-<place>`, and for the two
 records FE-44 §8.1 flags, existence in a region is precisely the fact being protected. The
-two refusals therefore carry the same exception and the same message, and the log line is
-what tells them apart for whoever has to investigate — `app/services/shema/_scope.py`.
+two refusals therefore carry the same exception and the same message.
+
+**And the log line does not tell them apart either — it records the event, not the verdict.**
+`get_project`'s branch fires on any miss of the scoped statement, so a mistyped id reaches
+the same line an out-of-region one does, and settling which case it was would take the
+unscoped query the 404 exists to avoid. So the line names the caller, the operation, the id
+asked for and the regions the caller does hold — the fields a misconfigured scope and a probe
+look different in — and classifies the outcome as *no row, out of region scope or no such id*
+rather than announcing a refused authorization the service never decided. An investigator
+allowed to know which it was joins the id where being allowed is checked —
+`app/services/shema/_scope.py`.
 
 **"No rows means global" holds for `globalStrategist` and for nobody else — BE-03 narrowed
 it, deliberately.** The sentence above names who the empty case serves; read as *anyone with
