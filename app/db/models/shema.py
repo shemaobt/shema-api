@@ -80,6 +80,13 @@ no server default**, and NULL means ``coordenacao``: nothing has to be written f
 to stay private, and something has to be written for it to travel. A migration that backfills
 it to ``rede`` publishes every request in the database.
 
+The guard has a fourth place to look, and it is ``source`` below. ``prayerRequests`` is one
+of the export's 55 keys, so the row kept verbatim carries that key too, under the export's
+own camelCase spelling — empty in today's export, and exactly where the next one's text
+lands. ``prayerVisibility`` and ``prayerRequestsAudio`` are not in it at all, being two of
+the 18 the product added. So a glob written on the three column names alone walks straight
+past ``source["prayerRequests"]``.
+
 **``region_key`` is stored and maintained, which is §10's second open question and this
 issue's answer.** It is derived — ``location.split(",")[0]`` through ``COUNTRY_REGION``,
 falling back to ``other`` — and computing it per query would make the one predicate every
@@ -206,7 +213,7 @@ class ShemaProject(Base):
     #: Checked and never refused. The export holds ``?``, ``N/A``, ``not iso language``,
     #: ``LLL``, ``jaa-b`` and ``pah`` five times — which is why it is text and not a FK.
     language_code: Mapped[str] = mapped_column(String(50), default="", server_default="")
-    #: Required to save and empty on all 127 records; see the module docstring's rule three.
+    #: Required to save and empty on all 127 records, which is why no ``CHECK`` guards it.
     bridge_language: Mapped[str] = mapped_column(String(200), default="", server_default="")
     #: Free text offered as the six-step UNESCO scale. The stored value is ``""``, never the
     #: form's ``"na"`` sentinel, which exists only because Radix reads ``value=""`` as
@@ -243,7 +250,6 @@ class ShemaProject(Base):
     mentor_contact: Mapped[str | None] = mapped_column(String(300), nullable=True)
     facilitator: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
-    #: ``Objective[]``. JSON and not a child table — see the class docstring on indexes.
     objective: Mapped[list[str]] = mapped_column(
         JSON(none_as_null=True), default=list, server_default=text("'[]'")
     )
@@ -299,7 +305,8 @@ class ShemaProject(Base):
     #: received form — relabelling it as one lies to a coordinator about whether a team was
     #: heard.
     last_updated: Mapped[date | None] = mapped_column(Date, nullable=True)
-    #: GATE-01 item 6. Nothing writes it yet; see the module docstring.
+    #: GATE-01 item 6: ``status`` records *that* a project finished, never *when*, and the
+    #: ETEN report is per year. Nothing writes it yet.
     completed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     status: Mapped[ShemaProjectStatus | None] = mapped_column(PROJECT_STATUS, nullable=True)
@@ -357,6 +364,14 @@ class ShemaProject(Base):
     )
     #: The export row as it arrived, for every column this schema interpreted. NULL for a
     #: record born in the product.
+    #:
+    #: **One of the three guarded columns has a second address in here.**
+    #: ``prayerRequests`` is one of the 55 keys the export has (FE-44 §5.1), so a seeded row
+    #: carries it as ``source["prayerRequests"]`` beside ``prayer_requests`` above — empty in
+    #: today's export, and the place the next one's text lands. ``prayerVisibility`` and
+    #: ``prayerRequestsAudio`` are not here at all: they are two of the 18 the product added
+    #: and the export has no column for either. So BE-04's glob (``docs/shema.md`` §6.4) has
+    #: to fail on this spelling too, not only on the three snake_case names.
     source: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(

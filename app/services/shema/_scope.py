@@ -25,7 +25,12 @@ existence-without-detail answer, delivered by status code. A caller who can tell
 is real but not yours* apart from *no such slug* holds an oracle over the whole collection,
 and a Shemá slug is ``<language>-<place>`` — for the records FE-44 §8.1 flags, existence in
 a region is precisely the fact being protected. So the two refusals are indistinguishable
-on the wire, and the log below is what tells them apart for whoever has to investigate.
+on the wire — **and they are indistinguishable in here too**, because the scoped statement
+returns no row either way and settling which case it was would take the unscoped query the
+404 exists to avoid. What the log below gives an investigator is therefore the event and not
+the verdict: who asked, for which id, holding which regions. A misconfigured scope and a
+probe look different in those fields, and the id is what somebody allowed to know the answer
+joins against.
 
 **Reads and writes take the same value.** A regional holder who may read a region may write
 it; the product has no third answer, so nothing here offers one.
@@ -34,9 +39,9 @@ it; the product has no third answer, so nothing here offers one.
 from __future__ import annotations
 
 import logging
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
-from sqlalchemy import Select, select
+from sqlalchemy import ColumnElement, Select, false, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -147,6 +152,11 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: set[str]) -> R
     both start at the same three-table join. Without this entry point it ran twice per
     request — the defect the sibling's ``Reach`` was written to close (PR #281, review),
     arriving here by a different door because the second read is in another file.
+
+    The admin check below repeats :func:`region_scope`'s, which is deliberate rather than
+    redundant: this is a second public entry point, and one that answered a regional scope
+    for an administrator because its caller happened not to check first would be a guard
+    with a way around it.
     """
     if user.is_platform_admin or GLOBAL_ROLE in granted:
         return RegionScope(global_=True, regions=frozenset())
@@ -157,7 +167,7 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: set[str]) -> R
     return RegionScope(global_=False, regions=frozenset(key.value for key in rows.scalars()))
 
 
-def within_scope(scope: RegionScope) -> Any:
+def within_scope(scope: RegionScope) -> ColumnElement[bool]:
     """The ``WHERE`` clause of the region axis, as one expression every reader shares.
 
     A global caller gets a literal true rather than an absent predicate, so a caller can
@@ -165,12 +175,14 @@ def within_scope(scope: RegionScope) -> Any:
     the branch from being rewritten slightly differently by the next reader.
 
     An empty, non-global scope gets a literal false: the fail-closed floor written as SQL,
-    so a query cannot leak by forgetting to check the set was empty first.
+    so a query cannot leak by forgetting to check the set was empty first. ``false()`` and
+    not a predicate over a column — a column comparison is a filter somebody can optimise
+    away on the grounds that a primary key is never null, and this one must survive that.
     """
     if scope.global_:
-        return ShemaProject.id.is_not(None)
+        return true()
     if not scope.regions:
-        return ShemaProject.id.is_(None)
+        return false()
     return ShemaProject.region_key.in_(sorted(scope.regions))
 
 
@@ -178,9 +190,13 @@ def visible_projects(scope: RegionScope) -> Select[tuple[ShemaProject]]:
     """The projects this caller may reach, as a ``Select`` to build on.
 
     **Start here rather than at** ``select(ShemaProject)``. A ``LIMIT`` or an ``ORDER BY``
-    or a ``count()`` layered onto this statement stays scoped, because the predicate is
-    underneath them rather than beside them — which is the whole reason paging past a
-    scope, or counting past it, is not a thing a later query can do by accident.
+    layered onto this statement stays scoped, because the predicate is underneath them
+    rather than beside them — which is the whole reason paging past a scope is not a thing
+    a later query can do by accident.
+
+    An aggregate is the one exception and composes :func:`within_scope` into a ``count()``
+    of its own instead; ``app/services/shema/count_projects.py`` carries the reason, which
+    is that a count layered onto *this* statement loses its ``FROM`` for a global caller.
     """
     return select(ShemaProject).where(within_scope(scope))
 
@@ -220,11 +236,24 @@ def refuse_out_of_scope(
     name, its location and its team — none of them appear here, and the DoD's last line is
     the reason.
 
+    **The line records an event and not a verdict, and says so.** Its caller reaches it on
+    any miss of a scoped statement, so an id that never existed arrives here exactly as an
+    out-of-region one does — the indistinguishability the 404 was chosen for, felt from the
+    logging side. Naming it *authorization refused* would assert a decision this function
+    has no way to have made: telling the two apart takes the unscoped query the module
+    deliberately does not have, and a mistyped slug counted as a refused authorization is a
+    false positive on whatever reads these lines. So the message classifies the outcome it
+    knows — no row, for one of two reasons — and offers the id to an investigator who may
+    join it where being allowed to is checked.
+
+    Nothing in ``extra`` discriminates the two, because nothing here can: a constant field
+    saying *undetermined* on every line would carry no information the message does not.
+
     It returns the exception rather than raising it, so the call site reads ``raise
     refuse_out_of_scope(...)`` and mypy can see the function ends there.
     """
     logger.warning(
-        "shema authorization refused: out of region scope",
+        "shema scoped project read found no row: out of region scope or no such id",
         extra={
             "shema_operation": operation,
             "shema_user_id": user.id,

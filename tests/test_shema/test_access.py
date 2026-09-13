@@ -50,7 +50,13 @@ def test_the_app_key_is_the_one_three_documents_name() -> None:
 
 
 def test_the_app_key_is_named_once_in_the_module() -> None:
-    """Where all eight applications in this repository keep theirs."""
+    """Where all eight applications in this repository keep theirs.
+
+    The needle is the **quoted** literal and not the bare word, which is the one adaptation
+    this module's key forces on the sibling's version of this test: ``shema`` is a substring
+    of the route prefix, the package path and the design document's filename, so a bare
+    search would fail on every docstring that says where the module lives.
+    """
     module = Path(__file__).resolve().parents[2] / "app" / "api" / "shema"
     offenders = [
         path.name

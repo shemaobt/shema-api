@@ -53,6 +53,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models.shema_enums import (
+    ShemaPrayerVisibility,
     ShemaProjectStatus,
     ShemaYesNo,
 )
@@ -141,7 +142,10 @@ class ShemaProjectUpdate(BaseModel):
 
     #: Guarded by ``app/services/shema/_consent.py`` once it exists. Absent is not ``""``.
     prayer_requests: str | None = None
-    prayer_visibility: str | None = None
+    #: Typed, not free text: the column is the enum and the two members are the whole
+    #: vocabulary, so ``"publico"`` is refused by the shape instead of by the database. NULL
+    #: stays absent and absent means ``coordenacao``.
+    prayer_visibility: ShemaPrayerVisibility | None = None
     prayer_requests_audio: str | None = None
 
     needs_pastoral_intervention: ShemaYesNo | None = None
