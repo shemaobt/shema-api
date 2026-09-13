@@ -21,6 +21,15 @@ months ago is kept in the history and changes nothing on the record, because the
 read since. FE-44 §9.4 asks for this in one line and it is the reason the projection is a
 comparison rather than an assignment.
 
+**What it steps aside for is a newer reading, and a date alone is not one.** A record holding
+a ``health_assessment_date`` with four empty dimensions is the row ``docs/shema.md`` §7.4 warns
+about — a team reported as heard when nobody rated it — which is exactly why :func:`_carried_entry`
+refuses to carry it into the history. The two answers have to agree: a record the carry calls
+*nothing to keep* must not also be the record the projection defers to, or a first submission
+backdated before that stale date would leave the date and the assessor standing over four NULLs
+while a real reading sat in the history behind them. So the comparison asks whether the record is
+rated before it asks whose day is later.
+
 **A record that predates the history has its flat fields carried in first.** Otherwise the first
 assessment ever filed through this endpoint would silently replace a reading that was already on
 the record — from the Notion export, or from BE-16's seed — and the history would start by losing
@@ -32,7 +41,8 @@ for its reason:
 
 1. the record, **inside the caller's scope** — out of scope is refused exactly as absent is;
 2. the audience — a narrower question than who may open the record (``_health_audience.py``);
-3. the overall reading **before** anything is written, off the flat fields;
+3. the overall reading **before** anything is written, off the flat fields — which is both
+   the notice's *before* and the projection's *is this record actually rated*;
 4. the carried entry, if the record predates the history;
 5. the new entry;
 6. the projection, and the record-side fields the submission carried;
@@ -65,7 +75,6 @@ not.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select, update
@@ -81,8 +90,6 @@ from app.services.shema._health_notice import entered_critical, notify_critical
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
 from app.utils.shema_derivations import OverallHealth, overall_of
 from app.utils.shema_health_questions import CURRENT_QUESTION_SET, DIMENSIONS
-
-logger = logging.getLogger(__name__)
 
 #: The record columns the projection writes, paired with the entry column each one mirrors.
 #:
@@ -264,10 +271,8 @@ async def append_assessment(
     db.add_all(entries)
 
     newest = max(entries, key=_sort_key)
-    if (
-        project.health_assessment_date is None
-        or _sort_key(newest)[0] >= project.health_assessment_date
-    ):
+    on_record = project.health_assessment_date
+    if on_record is None or before is OverallHealth.NA or _sort_key(newest)[0] >= on_record:
         _project_onto(project, newest)
 
     for column in RECORD_FIELDS:

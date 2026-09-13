@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import event, select
 
 from app.db.models.notification import Notification
 from app.db.models.shema import ShemaProject
@@ -221,6 +221,32 @@ async def test_nothing_is_carried_in_for_a_date_with_no_rating_behind_it(
 
     body = (await _file(client, headers, project)).json()
     assert [entry["date"] for entry in body["healthHistory"]] == ["2026-09-10"]
+
+
+async def test_a_date_with_no_rating_behind_it_is_not_a_newer_reading_to_defer_to(
+    client, db_session, headers, project
+) -> None:
+    """The other half of the case above, and the one where nothing is carried **and** nothing
+    is projected.
+
+    Same stale row — a ``healthAssessmentDate`` with four empty dimensions — and a first
+    submission *backdated before* it. The carry refuses it because it is not a reading anybody
+    took, so the projection must not treat it as a newer one either: otherwise the record keeps
+    the date and the assessor over four NULLs while the history already holds a real reading,
+    which is the opposite of what the module promises.
+    """
+    row = await db_session.get(ShemaProject, project)
+    row.health_assessment_date = date(2026, 5, 14)
+    row.health_assessor = "Notion"
+    await db_session.commit()
+
+    body = (await _file(client, headers, project, date="2026-01-20", emotional="critica")).json()
+
+    assert [entry["date"] for entry in body["healthHistory"]] == ["2026-01-20"]
+    assert body["healthAssessmentDate"] == "2026-01-20"
+    assert body["healthAssessor"] == "Marina Alves", "the stale row's assessor outlived its date"
+    assert body["healthEmotional"] == "critica"
+    assert body["derived"]["health"] == "critica"
 
 
 async def test_the_carry_happens_once_and_not_on_every_later_submission(
@@ -756,6 +782,57 @@ async def test_a_critical_reading_that_reaches_nobody_still_lands(
     assert response.status_code == 201
     assert await _notices(db_session) == []
     assert response.json()["derived"]["health"] == "critica"
+
+
+async def test_addressing_the_notice_does_not_cost_a_round_trip_per_recipient(
+    client, db_session, shema_app, headers, coordinator, test_engine
+) -> None:
+    """The audience is read once for the whole list, never once per person.
+
+    The sibling's ``board_watchers`` reads the holders and filters in Python; this one has a
+    second axis to apply, so it reads the region table once for the list instead of asking
+    ``_scope.py`` per holder — two queries per recipient on a write a mentor is waiting in
+    front of, and Neon is a network away.
+
+    Asserted as *the same write costs the same reads with one recipient and with four* rather
+    than as a pinned total: the total counts the door's own lookups and the notice rows
+    themselves, which grow with the audience for a reason this test is not about.
+    """
+
+    async def _reads(project_id: str) -> list[str]:
+        created = await client.post(PROJECTS, json={**NEW, "id": project_id}, headers=headers)
+        assert created.status_code == 201, created.text
+
+        statements: list[str] = []
+
+        @event.listens_for(test_engine.sync_engine, "before_cursor_execute")
+        def _record(conn, cursor, statement, parameters, context, executemany) -> None:
+            statements.append(statement)
+
+        try:
+            filed = await _file(client, headers, project_id, date="2026-09-11", emotional="critica")
+        finally:
+            event.remove(test_engine.sync_engine, "before_cursor_execute", _record)
+        assert filed.status_code == 201, filed.text
+        return [s for s in statements if "shema_user_regions" in s or "user_app_roles" in s]
+
+    with_one = await _reads("guarani-um")
+    for index in range(3):
+        await make_scoped_user(
+            db_session,
+            shema_app,
+            email=f"coordenacao-{index}@shema.test",
+            role_key="coordinator",
+            regions=[ShemaRegionKey.SOUTH_AMERICA],
+        )
+    with_four = await _reads("guarani-quatro")
+
+    assert len(await _notices(db_session)) == 1 + 4, "the four recipients were all addressed"
+    assert len(with_four) == len(with_one), (
+        "the recipient list grew and so did the number of queries, which is a read per "
+        f"holder: {len(with_one)} for one recipient, {len(with_four)} for four\n"
+        + "\n".join(with_four)
+    )
 
 
 async def test_the_notice_and_the_assessment_land_under_one_commit(
