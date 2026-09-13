@@ -49,31 +49,35 @@ from pydantic import ValidationError as PydanticValidationError
 from app.core.exceptions import ValidationError
 from app.db.models.shema_form import ShemaFormDefinition
 from app.models.shema import ShemaProjectUpdate
-from app.utils.shema_forms import ShemaFieldType
+from app.utils.shema_forms import ShemaFieldType, SpecField, spec_fields
 
 #: ``YYYY-MM``. The Pulse is monthly and the period is the month it is about — not a date, not
 #: a range, and not a day, because a report filed on the 3rd is about the month that ended.
 _PERIOD = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 
 
-def _fault(field: dict[str, Any], answer: Any) -> str | None:
+def _fault(field: SpecField, answer: Any) -> str | None:
     """What is wrong with one answer, or ``None``.
 
     One function per **type** rather than per field, so a second instrument added to
     ``app/utils/shema_forms.py`` is validated by this file without touching it. A validator
     written per form is a validator the second form does not get.
+
+    ``field`` is a :class:`~app.utils.shema_forms.SpecField` and not the stored dictionary,
+    which is what makes ``max_length`` and ``options`` readable without a ``.get`` that answers
+    ``None`` for *the key moved* and for *the field has no limit* in the same breath.
     """
-    key = field["key"]
-    kind = field["type"]
+    key = field.key
+    kind = field.type
     if kind in (ShemaFieldType.TEXT, ShemaFieldType.LONG_TEXT):
         if not isinstance(answer, str):
             return f"{key}: expected text"
-        limit = field.get("maxLength")
+        limit = field.max_length
         if limit is not None and len(answer) > limit:
             return f"{key}: {len(answer)} characters, and the field holds {limit}"
         return None
     if kind == ShemaFieldType.CHOICE:
-        options = field.get("options") or []
+        options = field.options
         if answer not in options:
             return f"{key}: {answer!r} is not one of {', '.join(options)}"
         return None
@@ -111,13 +115,13 @@ def validated_answers(definition: ShemaFormDefinition, answers: dict[str, Any]) 
     next version of this one — and silently dropping it files an answer with a hole in it that
     nothing downstream can see.
     """
-    spec = {field["key"]: field for field in definition.fields}
+    spec = {field.key: field for field in spec_fields(definition.fields)}
     faults = [f"{key}: this form has no such field" for key in sorted(answers) if key not in spec]
 
     for key, field in spec.items():
         present = key in answers
         if not present or _is_empty(answers[key]):
-            if field["required"]:
+            if field.required:
                 faults.append(f"{key}: required")
             continue
         fault = _fault(field, answers[key])
@@ -159,14 +163,13 @@ def record_update(definition: ShemaFormDefinition, answers: dict[str, Any]) -> S
     property Pydantic's own collection gives and this translation must not lose.
     """
     update: dict[str, Any] = {}
-    for field in definition.fields:
-        column = field.get("column")
-        if column is None:
+    for field in spec_fields(definition.fields):
+        if field.column is None:
             continue
-        answer = answers.get(field["key"])
+        answer = answers.get(field.key)
         if _is_empty(answer):
             continue
-        update[column] = answer
+        update[field.column] = answer
     try:
         return ShemaProjectUpdate.model_validate(update)
     except PydanticValidationError as refused:

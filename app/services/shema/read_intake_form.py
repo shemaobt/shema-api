@@ -31,6 +31,7 @@ from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition
 from app.models.shema_forms import IntakeField, IntakeForm
 from app.services.shema._intake_tokens import expires_on, verify_intake_token
+from app.utils.shema_forms import spec_fields
 
 
 def form_fields(definition: ShemaFormDefinition) -> list[IntakeField]:
@@ -38,17 +39,21 @@ def form_fields(definition: ShemaFormDefinition) -> list[IntakeField]:
 
     Shared with the coordinator's own read of a submission, so that *the form this answered*
     is one shape wherever it is shown rather than two that drift.
+
+    The stored rows are read back through :func:`~app.utils.shema_forms.spec_fields` rather than
+    subscripted here, so that a label key renamed in the spec fails where the spec is read
+    instead of arriving at the client as a field with no label.
     """
     return [
         IntakeField(
-            key=field["key"],
-            type=field["type"],
-            required=field["required"],
-            label_key=field["labelKey"],
-            max_length=field.get("maxLength"),
-            options=list(field.get("options") or []),
+            key=field.key,
+            type=field.type,
+            required=field.required,
+            label_key=field.label_key,
+            max_length=field.max_length,
+            options=list(field.options),
         )
-        for field in definition.fields
+        for field in spec_fields(definition.fields)
     ]
 
 

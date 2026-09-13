@@ -63,7 +63,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, Request, Response, status
 from slowapi.util import get_remote_address
 
-from app.api.shema._deps import APP_KEY, CoordinatorUser, CurrentUser, Db, Scope
+from app.api.shema._deps import APP_KEY, CoordinatorUser, CurrentUser, Db, MayApply, Scope
 from app.api.shema.projects import LOCAL_DAY_HEADER, _expected_version, _local_day
 from app.core.rate_limit import limiter
 from app.models.shema_forms import (
@@ -185,15 +185,23 @@ async def received(
 
 @router.get("/forms/submissions/{submission_id}", response_model=ReceivedSubmissionDetail)
 async def received_detail(
-    submission_id: str, db: Db, scope: Scope, user: CurrentUser
+    submission_id: str, db: Db, scope: Scope, user: CurrentUser, may_apply: MayApply
 ) -> ReceivedSubmissionDetail:
     """One submission opened — the answers as they arrived, beside the form they answered.
 
     Not in FE-44 §9.9's list and declared in the PR. Without it the archive is write-only and
     the free-text answers the import deliberately does not apply to the record are kept where
     nobody can read them, which is the failure the issue names in its own words.
+
+    **Any member may open it and what they read depends on whether they may apply it.**
+    ``may_apply`` is ``coordinator`` — the key the import below is guarded on — passed down as a
+    value rather than re-derived in the service, so the payload and the guard cannot come to
+    disagree about who decides. ``app/services/shema/read_submission.py`` carries the argument:
+    the answers an import writes are on no other surface until it has written them, so the
+    coordinator who is about to apply a leader's consent level must be shown it, and the
+    ``resourceCircle`` account that cannot apply anything must not be.
     """
-    return await read_submission(db, scope, submission_id, user=user)
+    return await read_submission(db, scope, submission_id, user=user, may_apply=may_apply)
 
 
 @router.post(
