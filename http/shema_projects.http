@@ -1,0 +1,94 @@
+# Shemá — Projetos (BE-05 · OBT-394)
+#
+# One endpoint behind the whole screen: the scoped collection, the twenty-one filters it
+# offers, the sixteen facet groups the sidebar counts, the four presets, five orders and a
+# window. The parameter names are the console's own URL parameters
+# (src/utils/filterSerialisation.ts), so a saved view's link and a request here are the same
+# string.
+#
+# Two things to know before running anything below:
+#   * every response carries `counts`, including the unfiltered one — there is no way to ask
+#     for the filter alone;
+#   * a project in a sensitive country comes back with its region where its country would be,
+#     and the `country` facet counts it the same way. That is not an error in the fixture.
+#
+# Before running: seed the app and its roles, grant one, and give the account a region.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py coord.local@test.com shema coordinator
+# A regional role with no region granted reaches nothing, on purpose — grant the region
+# through the module's own path (app/services/shema/set_region_scope.py), or grant
+# `globalStrategist` instead, which reaches every region.
+
+@baseUrl = http://localhost:8000
+@appKey = shema
+@accessToken = {{shema_login.response.body.tokens.access_token}}
+
+### Login — named, so every request below reuses the token
+# @name shema_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coord.local@test.com",
+  "password": "password123"
+}
+
+### Session — who the caller is and how far they reach (BE-03)
+GET {{baseUrl}}/api/shema/session
+Authorization: Bearer {{accessToken}}
+
+### The whole scoped collection, with every facet count
+GET {{baseUrl}}/api/shema/projects
+Authorization: Bearer {{accessToken}}
+
+### One filter — the counts in the other fifteen groups narrow with it
+GET {{baseUrl}}/api/shema/projects?status=em-andamento
+Authorization: Bearer {{accessToken}}
+
+### Filters compose, across five different shapes of group
+# A stored enum, a derived value, a JSON array, a child-table join and free text.
+GET {{baseUrl}}/api/shema/projects?status=em-andamento&health=critica&objective=NT&needCategory=equipment&q=guarani
+Authorization: Bearer {{accessToken}}
+
+### "Sem notícias 60+ dias" — atencao OR critico, not the [60, 120) bucket
+GET {{baseUrl}}/api/shema/projects?stale=atencao
+Authorization: Bearer {{accessToken}}
+
+### The same filter's strict half
+GET {{baseUrl}}/api/shema/projects?stale=critico
+Authorization: Bearer {{accessToken}}
+
+### Presets — a comma list, exactly as the screen's URL writes it
+GET {{baseUrl}}/api/shema/projects?presets=attention,recent
+Authorization: Bearer {{accessToken}}
+
+### The Início screen's "urgent" indicator, which is this request and no endpoint of its own
+GET {{baseUrl}}/api/shema/projects?presets=attention
+Authorization: Bearer {{accessToken}}
+
+### A page, ordered — `total` and `counts` still describe the whole filtered set
+GET {{baseUrl}}/api/shema/projects?sort=health&limit=24&offset=0
+Authorization: Bearer {{accessToken}}
+
+### The next page
+GET {{baseUrl}}/api/shema/projects?sort=health&limit=24&offset=24
+Authorization: Bearer {{accessToken}}
+
+### The five orders: deadline (default), name, progress, team, health
+GET {{baseUrl}}/api/shema/projects?sort=name
+Authorization: Bearer {{accessToken}}
+
+### A region — the scope already refuses the ones the caller cannot reach
+GET {{baseUrl}}/api/shema/projects?continent=africa
+Authorization: Bearer {{accessToken}}
+
+### An option no record answers to — an empty list, never a 422
+GET {{baseUrl}}/api/shema/projects?objective=Xyz
+Authorization: Bearer {{accessToken}}
+
+### A misspelled parameter — 422, because a filter that silently does not apply is worse
+GET {{baseUrl}}/api/shema/projects?contintent=africa
+Authorization: Bearer {{accessToken}}
+
+### No token — 401 before any of the above is considered
+GET {{baseUrl}}/api/shema/projects

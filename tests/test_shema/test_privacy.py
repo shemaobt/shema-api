@@ -28,7 +28,13 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.shema._deps import Db, Scope
 from app.db.models.shema import ShemaProject
-from app.db.models.shema_enums import ShemaPrayerVisibility, ShemaRegionKey
+from app.db.models.shema_enums import (
+    ShemaMaterialKind,
+    ShemaMediaKind,
+    ShemaPrayerVisibility,
+    ShemaRegionKey,
+)
+from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
 from app.models.shema_need import ShemaNeedLine
 from app.models.shema_privacy import (
     REGION_CENTROIDS,
@@ -36,7 +42,10 @@ from app.models.shema_privacy import (
     LeavingShape,
     ShemaAudience,
 )
+from app.services.oral_collector import gcs_utils
 from app.services.shema import (
+    DOWNLOAD_URL_EXPIRY_MINUTES,
+    GCS_SHEMA_BUCKET,
     can_export_notes,
     can_share_media,
     count_projects_by_region,
@@ -45,23 +54,40 @@ from app.services.shema import (
     is_withheld,
     list_projects,
     log_reference,
+    material_download_url,
+    media_download_url,
     prayer_visibility,
     reaches_prayer_wall,
     region_scope,
     searchable_text,
     shared_prayer_audio,
     shared_prayer_text,
+    storage_key,
     withheld_note,
 )
+from app.services.shema._media_storage import MATERIALS, MEDIA
 from tests.test_shema.conftest import PREFIX, auth_header, make_scoped_user
 
-#: The country the whole file is trying to extract, and the place beside it. Both are real
-#: strings from the export's two flagged records (FE-44 §8.1), so a test that passes here
-#: passes against the data the seed actually carries.
+#: The country the whole file is trying to extract, and the place and the person beside it.
+#: All three are the shape of the export's two flagged records (FE-44 §8.1) — a base that
+#: names a place, a personal number — so a test that passes here passes against the data the
+#: seed actually carries.
+#:
+#: **They are canaries, and nothing else in the fixtures may contain them.** Most assertions
+#: below are ``secret not in <the whole body>`` rather than a field comparison, because a
+#: field comparison tests the field somebody remembered and a body search tests the ones they
+#: did not. That only works while the cleared record is somewhere else entirely, which is why
+#: it is in Brazil and why the two sets of constants do not overlap by a substring.
 COUNTRY = "Egypt"
 BASE = "YWAM Egypt"
 CONTACT = "+20 100 555 0000"
 REQUEST_TEXT = "Pray for the team crossing the border this month."
+
+#: The record the rule has nothing to do with. A module that withholds everything is broken,
+#: not private, so every path is exercised on this one too.
+OPEN_COUNTRY = "Brazil"
+OPEN_BASE = "JOCUM Porto Alegre"
+OPEN_CONTACT = "+55 51 99999 0000"
 
 NAIVE_PROBE = f"{PREFIX}/_probe/naive"
 NAIVE_MODELS_PROBE = f"{PREFIX}/_probe/naive-models"
@@ -144,21 +170,27 @@ async def _make_project(
 
     Written here rather than grown onto ``conftest.make_shema_project``, which fills the three
     columns the scope tests read and says in its own docstring why it fills no more.
+
+    The flagged record and the cleared one are in **different countries**, which is not
+    decoration: the assertions search whole response bodies for a canary, and a cleared record
+    that happened to sit in the same country would make every one of them pass while the
+    string it found belonged to the wrong row.
     """
+    withheld = sensitive
     project = ShemaProject(
         id=project_id,
-        language_name="Siwi",
-        bridge_language="Arabic",
-        location=COUNTRY,
-        location2="Siwa Oasis",
-        longitude=25.5,
-        latitude=29.2,
+        language_name="Siwi" if withheld else "Mbyá Guaraní",
+        bridge_language="Arabic" if withheld else "Portuguese",
+        location=COUNTRY if withheld else OPEN_COUNTRY,
+        location2="Siwa Oasis" if withheld else "Rio Grande do Sul",
+        longitude=25.5 if withheld else -51.2,
+        latitude=29.2 if withheld else -30.0,
         sensitive_country=sensitive,
         sensitivity="restricted access country" if sensitive else "",
-        team=BASE,
-        team_contact=CONTACT,
-        team_leader_contact=CONTACT,
-        mentor_contact=CONTACT,
+        team=BASE if withheld else OPEN_BASE,
+        team_contact=CONTACT if withheld else OPEN_CONTACT,
+        team_leader_contact=CONTACT if withheld else OPEN_CONTACT,
+        mentor_contact=CONTACT if withheld else OPEN_CONTACT,
         prayer_requests=REQUEST_TEXT,
         prayer_visibility=visibility,
         prayer_requests_audio="shema/audio/siwa.m4a",
@@ -281,9 +313,10 @@ def test_a_cleared_record_is_not_reduced(cleared) -> None:
     """The other half. A module that withholds everything is broken, not private."""
     out = NaiveProjectOut.model_validate(cleared).model_dump(by_alias=True)
 
-    assert out["location"] == COUNTRY
-    assert out["team"] == BASE
-    assert (out["longitude"], out["latitude"]) == (25.5, 29.2)
+    assert out["location"] == OPEN_COUNTRY
+    assert out["team"] == OPEN_BASE
+    assert (out["longitude"], out["latitude"]) == (-51.2, -30.0)
+    assert out["team_leader_contact"] == OPEN_CONTACT
     assert out["locationWithheld"] is False
 
 
@@ -398,7 +431,8 @@ def test_the_search_haystack_of_a_withheld_project_holds_no_place(flagged, clear
     assert "Siwa Oasis" not in searchable_text(flagged)
     assert ShemaRegionKey.AFRICA.value in searchable_text(flagged)
 
-    assert COUNTRY in searchable_text(cleared)
+    assert OPEN_COUNTRY in searchable_text(cleared)
+    assert OPEN_BASE in searchable_text(cleared)
 
 
 async def test_an_aggregate_is_keyed_by_region_and_never_by_a_place(
@@ -510,15 +544,23 @@ async def test_an_endpoint_written_without_knowledge_of_the_rule_still_protects(
     assert res.status_code == 200
     by_id = {row["id"]: row for row in res.json()}
 
-    for guarded in (COUNTRY, BASE, CONTACT):
-        assert guarded not in json.dumps(by_id[flagged.id], ensure_ascii=False)
+    # Read per record and not over the whole body: the cleared record is **supposed** to leave
+    # whole, and that is the second half of this test. BE-05 (OBT-394) split the assertion for
+    # a fixture pair that shared a country, where a scan of ``res.text`` could not tell the
+    # leak from the legitimate value; BE-04 then gave the cleared record its own country
+    # (``OPEN_COUNTRY``), so the two halves now name different values. Per record either way —
+    # the split is what keeps the test honest if the fixtures ever share a country again.
+    withheld = json.dumps(by_id[flagged.id], ensure_ascii=False)
+    assert COUNTRY not in withheld
+    assert BASE not in withheld
+    assert CONTACT not in withheld
 
     assert by_id[flagged.id]["locationWithheld"] is True
     assert by_id[flagged.id]["location"] == ShemaRegionKey.AFRICA.value
     assert by_id[cleared.id]["locationWithheld"] is False
-    assert by_id[cleared.id]["location"] == COUNTRY
-    assert by_id[cleared.id]["team"] == BASE
-    assert by_id[cleared.id]["team_contact"] == CONTACT
+    assert by_id[cleared.id]["location"] == OPEN_COUNTRY
+    assert by_id[cleared.id]["team"] == OPEN_BASE
+    assert by_id[cleared.id]["team_contact"] == OPEN_CONTACT
 
 
 async def test_the_second_serialization_pass_agrees_with_the_first(
@@ -545,9 +587,11 @@ async def test_the_second_serialization_pass_agrees_with_the_first(
     from_models = await naive_client.get(NAIVE_MODELS_PROBE, headers=headers)
 
     assert from_rows.json() == from_models.json()
-    built = {row["id"]: row for row in from_models.json()}
-    assert COUNTRY not in json.dumps(built[flagged.id], ensure_ascii=False)
-    assert built[cleared.id]["location"] == COUNTRY
+
+    # Per record, for the reason the test above states.
+    by_id = {row["id"]: row for row in from_models.json()}
+    assert COUNTRY not in json.dumps(by_id[flagged.id], ensure_ascii=False)
+    assert by_id[cleared.id]["location"] == OPEN_COUNTRY
 
 
 async def test_the_record_read_still_carries_the_truth(db_session, shema_app, flagged) -> None:
@@ -671,3 +715,226 @@ def test_notes_never_leave_coordination_whatever_the_record_says() -> None:
     was not thinking about a file being forwarded."""
     assert can_export_notes(ShemaAudience.COORDENACAO) is True
     assert can_export_notes(ShemaAudience.PUBLICO) is False
+
+
+# --------------------------------------------------------------------------------------
+# The bytes, which is where a predicate either holds or is decorative
+# --------------------------------------------------------------------------------------
+
+
+class FakeStore:
+    """``gcs_utils`` without a bucket, recording what it was asked to sign."""
+
+    def __init__(self) -> None:
+        self.signed: list[tuple[str, str, int]] = []
+
+    async def sign(
+        self,
+        bucket: str,
+        key: str,
+        *,
+        expiry_minutes: int = 15,
+        response_content_type: str | None = None,
+    ) -> str:
+        self.signed.append((bucket, key, expiry_minutes))
+        return f"https://storage.example/signed/{key}?x-goog-expires={expiry_minutes * 60}"
+
+
+@pytest.fixture()
+def storage(monkeypatch) -> FakeStore:
+    fake = FakeStore()
+    monkeypatch.setattr(gcs_utils, "generate_signed_download_url", fake.sign)
+    return fake
+
+
+async def _make_photo(db_session, project: ShemaProject, *, granted: bool | None) -> ShemaMediaItem:
+    item = ShemaMediaItem(
+        project_id=project.id,
+        kind=ShemaMediaKind.PHOTO,
+        storage_key=storage_key(MEDIA, "11111111-2222-3333-4444-555555555555", "a" * 64, ".jpg"),
+        file_name="team at the border.jpg",
+        authorization_granted=granted,
+    )
+    db_session.add(item)
+    await db_session.commit()
+    return item
+
+
+def test_the_object_key_names_the_row_and_never_the_project_or_the_upload() -> None:
+    """A signed URL travels further than the payload it came from, and a Shemá id is
+    ``<language>-<place>``. The key is addressed by content, scoped to the row's own uuid,
+    and carries a frozen last segment rather than the name somebody uploaded."""
+    key = storage_key(MEDIA, "0f7c-uuid", "b" * 64, ".jpg")
+
+    assert key == f"shema/media/0f7c-uuid/{'b' * 64}/photo.jpg"
+    assert "arabic-siwa" not in key
+    assert storage_key(MATERIALS, "0f7c-uuid", "b" * 64, ".mp3").endswith("/material.mp3")
+
+    with pytest.raises(ValueError, match="unknown media collection"):
+        storage_key("photos", "0f7c-uuid", "b" * 64, ".jpg")
+
+
+async def test_an_authorized_item_is_served_from_the_private_bucket_and_expires(
+    db_session, shema_app, storage, cleared
+) -> None:
+    """The link is minted per call, against the module's own private bucket, and nothing
+    stores it — which is what makes the expiry worth anything."""
+    user = await make_scoped_user(
+        db_session, shema_app, email="media@shema.test", role_key="globalStrategist"
+    )
+    scope = await region_scope(db_session, user, "shema")
+    item = await _make_photo(db_session, cleared, granted=True)
+
+    link = await media_download_url(db_session, scope, cleared.id, item.id, user=user)
+
+    assert storage.signed == [(GCS_SHEMA_BUCKET, item.storage_key, DOWNLOAD_URL_EXPIRY_MINUTES)]
+    assert GCS_SHEMA_BUCKET == "shema-private"
+    assert link.expires_in_minutes == DOWNLOAD_URL_EXPIRY_MINUTES
+    assert link.url.startswith("https://storage.example/signed/")
+
+
+async def test_media_of_a_withheld_project_is_refused_to_a_public_audience(
+    db_session, shema_app, storage, flagged
+) -> None:
+    """**The predicate applied where it counts.** The item is authorized; the audience is
+    what refuses it, and no URL is minted — so there is no address to leak."""
+    from app.core.exceptions import AuthorizationError
+
+    user = await make_scoped_user(
+        db_session, shema_app, email="publisher@shema.test", role_key="globalStrategist"
+    )
+    scope = await region_scope(db_session, user, "shema")
+    item = await _make_photo(db_session, flagged, granted=True)
+
+    with pytest.raises(AuthorizationError) as refusal:
+        await media_download_url(
+            db_session, scope, flagged.id, item.id, user=user, audience=ShemaAudience.PUBLICO
+        )
+
+    assert storage.signed == []
+    assert COUNTRY not in str(refusal.value)
+
+    link = await media_download_url(db_session, scope, flagged.id, item.id, user=user)
+    assert link.url  # the same item, to coordination, is served
+
+
+async def test_the_refusal_reads_the_same_whichever_gate_closed(
+    db_session, shema_app, storage, flagged, cleared
+) -> None:
+    """*Why* is a fact about the project or about a decision somebody made, and that is the
+    thing being protected. An undecided item, a refused one and an authorized one on a
+    withheld project asked for publicly all answer one sentence."""
+    from app.core.exceptions import AuthorizationError
+
+    user = await make_scoped_user(
+        db_session, shema_app, email="prober@shema.test", role_key="globalStrategist"
+    )
+    scope = await region_scope(db_session, user, "shema")
+    undecided = await _make_photo(db_session, cleared, granted=None)
+    refused = await _make_photo(db_session, cleared, granted=False)
+    withheld = await _make_photo(db_session, flagged, granted=True)
+
+    messages = set()
+    for project_id, item, audience in (
+        (cleared.id, undecided, ShemaAudience.COORDENACAO),
+        (cleared.id, refused, ShemaAudience.COORDENACAO),
+        (flagged.id, withheld, ShemaAudience.PUBLICO),
+    ):
+        with pytest.raises(AuthorizationError) as refusal:
+            await media_download_url(
+                db_session, scope, project_id, item.id, user=user, audience=audience
+            )
+        messages.add(str(refusal.value))
+
+    assert len(messages) == 1, f"the refusal tells the three cases apart: {messages}"
+    assert storage.signed == []
+
+
+async def test_a_caller_outside_the_region_learns_nothing_about_the_media(
+    db_session, shema_app, storage, flagged
+) -> None:
+    """The scope gate closes first, and it closes as a 404 — so a probe cannot tell an item
+    that is not shared from a project that is not theirs, let alone from one that is not
+    there."""
+    from app.core.exceptions import NotFoundError
+
+    user = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="elsewhere@shema.test",
+        role_key="coordinator",
+        regions=[ShemaRegionKey.SOUTH_AMERICA],
+    )
+    scope = await region_scope(db_session, user, "shema")
+    item = await _make_photo(db_session, flagged, granted=True)
+
+    with pytest.raises(NotFoundError):
+        await media_download_url(db_session, scope, flagged.id, item.id, user=user)
+
+    assert storage.signed == []
+
+
+async def test_a_video_has_no_object_to_serve(db_session, shema_app, storage, cleared) -> None:
+    """``ProjectVideo.url`` is an address on somebody else's service, and a photo slot may
+    carry a caption and no image yet. Both are *nothing to serve* rather than a refusal."""
+    from app.core.exceptions import NotFoundError
+
+    user = await make_scoped_user(
+        db_session, shema_app, email="video@shema.test", role_key="globalStrategist"
+    )
+    scope = await region_scope(db_session, user, "shema")
+    video = ShemaMediaItem(
+        project_id=cleared.id,
+        kind=ShemaMediaKind.VIDEO,
+        url="https://youtu.be/abc123",
+        authorization_granted=True,
+    )
+    db_session.add(video)
+    await db_session.commit()
+
+    with pytest.raises(NotFoundError):
+        await media_download_url(db_session, scope, cleared.id, video.id, user=user)
+
+    assert storage.signed == []
+
+
+async def test_a_material_rides_the_same_three_gates_as_a_photo(
+    db_session, shema_app, storage, flagged, cleared
+) -> None:
+    """FE-44 §8.3 is *media and materials*, and two copies of three gates would be two
+    chances for the second one to put the audience gate in the wrong place."""
+    from app.core.exceptions import AuthorizationError
+
+    user = await make_scoped_user(
+        db_session, shema_app, email="materials@shema.test", role_key="globalStrategist"
+    )
+    scope = await region_scope(db_session, user, "shema")
+
+    def _material(project: ShemaProject) -> ShemaMaterial:
+        return ShemaMaterial(
+            project_id=project.id,
+            kind=ShemaMaterialKind.AUDIO,
+            scope="Luke 1-3",
+            storage_key=storage_key(MATERIALS, "9999-uuid", "c" * 64, ".mp3"),
+            authorization_granted=True,
+        )
+
+    open_one, withheld_one = _material(cleared), _material(flagged)
+    db_session.add_all([open_one, withheld_one])
+    await db_session.commit()
+
+    link = await material_download_url(db_session, scope, cleared.id, open_one.id, user=user)
+    assert link.url.startswith("https://storage.example/signed/")
+    assert storage.signed[-1][0] == GCS_SHEMA_BUCKET
+
+    with pytest.raises(AuthorizationError) as refusal:
+        await material_download_url(
+            db_session,
+            scope,
+            flagged.id,
+            withheld_one.id,
+            user=user,
+            audience=ShemaAudience.PUBLICO,
+        )
+    assert COUNTRY not in str(refusal.value)
+    assert len(storage.signed) == 1
