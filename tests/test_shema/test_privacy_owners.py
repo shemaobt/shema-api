@@ -109,11 +109,18 @@ OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 #: has both return the recomputed record, so a reduced reply to a save would show the author a
 #: withheld version of what they had just typed. Every other read — the collection, the wall,
 #: the report, the file — leaves coordination and goes through the boundary.
+#: **The fourth entry is BE-07's**, and it is here for the third one's reason rather than a new
+#: one: ``POST /api/shema/projects/{id}/health-assessments`` answers *the recomputed record*
+#: (FE-44 §9.4's own ``-> Project``), so it is the same coordination surface the record's save is,
+#: reached through a different door. The assessment history beside it — ``GET`` on the same path —
+#: is **not** listed and needs no exemption: a ``HealthAssessment`` names no place at all, which
+#: is why the audit does not ask about it.
 COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("GET", f"{PREFIX}/projects/{{project_id}}"),
         ("POST", f"{PREFIX}/projects"),
         ("PATCH", f"{PREFIX}/projects/{{project_id}}"),
+        ("POST", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
     }
 )
 

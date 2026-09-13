@@ -69,6 +69,7 @@ from app.db.models.shema_enums import (
 )
 from app.models.shema_projects import ShemaProjectDerived
 from app.utils.shema_books import chapters_in
+from app.utils.shema_derivations import OverallHealth, overall_of
 
 #: ``datetime.date`` under a second name. Two shapes below carry a field literally called
 #: ``date`` — FE-44's own key for the day a history entry or an assessment belongs to — and a
@@ -384,6 +385,18 @@ class ShemaHealthAssessmentEntry(BaseModel):
     blob is derived from ``dimensionNotes`` at write time so the older display keeps working,
     and a server that stored only the blob has lost the data and cannot get it back. Both
     travel, and BE-07 owns the derivation.
+
+    **BE-07 added three keys to FE-44's seven, and every one of them is a DoD line on the wire.**
+    ``questionSetVersion`` is which guiding questions these ratings answered — ``null`` for the
+    entry carried out of the record's flat fields, which answered no questionnaire at all
+    (``app/db/models/shema_health.py``). ``author`` is who entered the row, which is not always
+    the ``assessor`` who read the team. And ``overall`` is the worst of the four, computed by
+    the one owner of that rule (``app/utils/shema_derivations.py``) **per entry**, so the trend
+    the console draws is the server's computation rather than a second implementation of the
+    thing ``docs/shema.md`` says lives here once.
+
+    The three are additive: a client reading only FE-44's seven keys sees exactly
+    ``HealthAssessment``. The pull request declares them.
     """
 
     model_config = _OUTWARD
@@ -396,6 +409,19 @@ class ShemaHealthAssessmentEntry(BaseModel):
     physical: ShemaHealthLevel | None = None
     notes: str = ""
     dimension_notes: dict[str, str] | None = None
+    question_set_version: int | None = None
+    author: str = Field(default="", validation_alias="created_by_name")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def overall(self) -> OverallHealth:
+        """The worst of this entry's own four — ``na`` when the row rates none.
+
+        Computed and never stored, which is what keeps it from becoming a second truth: a
+        column would be a copy of four columns beside it, and a copy that can disagree with
+        them is worse than a derivation that cannot.
+        """
+        return overall_of(self.emotional, self.relational, self.spiritual, self.physical)
 
 
 class ShemaProjectRecord(BaseModel):
