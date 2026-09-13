@@ -41,15 +41,30 @@ visible and cheap (a shape built from a ``ShemaProject`` always answers, because
 *"location withheld"* and a file can count how many rows it reduced. It is one bit: that
 something was reduced. It never carries the country, the place, the base or the reason.
 
-**One seam, named rather than left to be discovered.** FastAPI serialises a returned model by
-dumping it to a dict and validating that dict back into the response model
-(``fastapi.routing._prepare_response_content``), which drops the excluded inputs below. A
-second pass therefore cannot re-read the flag — so a payload that already carries
-``locationWithheld`` is taken at its word rather than withheld again. The marker is produced
-by this class and by nothing else, every leaving shape is built server-side from a row that
-does answer, and re-applying the rule to an already-withheld payload is in any case a no-op;
-what the seam buys is that a record the rule cleared does not come back withheld on the
-second pass. ``tests/test_shema/test_privacy.py`` pins both halves.
+**One seam, named rather than left to be discovered.** A payload rebuilt from a dump of a
+leaving shape — ``model_validate(shape.model_dump())``, which is what a dict round trip
+through any transport looks like — carries neither :attr:`LeavingShape.sensitive_country`
+nor :attr:`LeavingShape.region_key`, because both are ``exclude=True``. It can answer
+neither *was this withheld* nor *which region*, and it does not need to: it already carries
+``locationWithheld`` and the reduced fields the first pass wrote. So a payload that arrives
+with the marker and without the flag is **taken at its word**, the decision and the fields
+both. Withholding it again would rewrite the region the first pass named to
+:data:`UNKNOWN_REGION` and move every withheld record onto one square degree — the opposite
+of what :data:`REGION_CENTROIDS` is for — and would bring back withheld a record the rule had
+cleared.
+
+**Which makes the marker a report and never a request.** A caller that wants a payload
+withheld says ``sensitive_country=True``, or says nothing at all, because the default
+withholds. What it may not do is set ``locationWithheld`` on a payload that still names a
+place and expect this class to finish the job.
+
+**Today's FastAPI does not take that round trip, and the seam is here anyway.** On Pydantic v2
+``fastapi.routing.serialize_response`` skips ``_prepare_response_content`` — that call is
+guarded by ``hasattr(field, "serialize")``, true only on the v1 branch — and hands the
+returned value to ``ModelField.validate``, which passes an instance of the response model
+straight through. A handler that returns rows and one that returns models therefore serialise
+identically, and which round trip a payload takes is the framework's decision to change
+rather than ours. ``tests/test_shema/test_privacy.py`` pins the wire and the round trip both.
 """
 
 from __future__ import annotations
@@ -202,12 +217,13 @@ class LeavingShape(BaseModel):
         handler's return value into the response model — so a payload cannot be assembled
         past this by returning a model the route did not declare.
         """
-        if self.sensitive_country is not None:
-            withheld = self.sensitive_country
-        elif "location_withheld" in self.__pydantic_fields_set__:
-            withheld = self.location_withheld
-        else:
-            withheld = True
+        if self.sensitive_country is None and "location_withheld" in self.__pydantic_fields_set__:
+            # The seam. The marker arrived and the flag did not, so this payload has already
+            # been through here once and is taken at its word — reducing it a second time
+            # would be done against a `region_key` that did not survive the dump either.
+            return self
+
+        withheld = True if self.sensitive_country is None else self.sensitive_country
 
         if withheld:
             region = self.region_key or UNKNOWN_REGION
