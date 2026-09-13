@@ -245,6 +245,22 @@ def test_the_rule_holds_with_a_filter_already_active_in_another_group(region: st
             )
 
 
+@pytest.mark.parametrize("group", ["eten", "sensitive", "hasMedia", "hasOpenNeeds"])
+def test_an_unrecognised_value_on_a_yes_no_group_answers_nothing(group: str) -> None:
+    """``?eten=true`` once read as *no* and returned the half the sidebar never promised.
+
+    The sidebar publishes ``yes`` and ``no`` and nothing else, so any other value is the
+    ``objective=Xyz`` case and gets its answer: an empty list — and, because every record
+    then fails exactly this one group, counts for it that still describe the two real
+    options, so the checkboxes a user can click stay right while the list says *nothing*.
+    """
+    page = filter_projects(RECORDS, _filters(group, "true"), TODAY)
+    unfiltered = filter_projects(RECORDS, Filters(), TODAY)
+    assert page.matched == 0
+    assert page.counts.groups[group] == unfiltered.counts.groups[group]
+    assert page.counts.groups[group]["yes"] > 0 and page.counts.groups[group]["no"] > 0
+
+
 def test_the_group_all_row_is_the_count_with_that_group_cleared() -> None:
     """``groupAll`` is the *All* row of a group: the count with that group's filter removed."""
     page = filter_projects(RECORDS, Filters(continent="africa", eten="yes"), TODAY)
