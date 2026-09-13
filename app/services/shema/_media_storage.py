@@ -40,7 +40,7 @@ buys a URL that names nothing.
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, Literal
 
 #: Configuration, not a secret, the same as every other bucket constant in this repository.
 GCS_SHEMA_BUCKET: Final = "shema-private"
@@ -53,20 +53,32 @@ DOWNLOAD_URL_EXPIRY_MINUTES: Final = 15
 #: The two collections that keep bytes. ``ShemaMediaItem`` holds the record's photos (a video
 #: is a URL on somebody else's service and has no object here); ``ShemaMaterial`` holds what
 #: the project produced.
-MEDIA: Final = "media"
-MATERIALS: Final = "materials"
+#:
+#: A set this small and this closed is a ``Literal`` in this codebase — ``Sex`` in
+#: ``app/models/oc_storyteller.py``, ``InviteStatus`` in ``app/models/resource_request_access.py``
+#: — so that a wrong collection is a name ``mypy`` reads at the call site rather than a string
+#: that travels as far as :func:`storage_key` before anybody notices.
+MediaCollection = Literal["media", "materials"]
+
+MEDIA: Final[MediaCollection] = "media"
+MATERIALS: Final[MediaCollection] = "materials"
 
 #: The last segment is frozen per collection because it is what a browser saves the download
 #: as, and the only alternative — the name the person uploaded — is the user-controlled
 #: segment this file will not put in a key.
-_FILENAMES: Final[dict[str, str]] = {MEDIA: "photo", MATERIALS: "material"}
+_FILENAMES: Final[dict[MediaCollection, str]] = {MEDIA: "photo", MATERIALS: "material"}
 
 
-def storage_key(collection: str, item_id: str, sha256: str, extension: str) -> str:
+def storage_key(collection: MediaCollection, item_id: str, sha256: str, extension: str) -> str:
     """One item's immutable object name: scoped to its row, addressed by its content.
 
     ``extension`` carries its own dot (``.jpg``) or is empty, which is what
     ``os.path.splitext`` answers and what the sibling's callers pass.
+
+    The membership check stays behind the annotation rather than instead of it: ``mypy`` does
+    not run over ``tests/`` (``pyproject.toml``), and a collection can also arrive as a plain
+    string off a row or a request body, where a typo has to raise rather than build a key
+    under a folder nothing will ever look in.
     """
     if collection not in _FILENAMES:
         raise ValueError(f"unknown media collection: {collection}")
