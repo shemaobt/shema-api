@@ -42,7 +42,7 @@ from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_form import ShemaFormDefinition, ShemaSubmission
 from app.models.shema_forms import ReceivedSubmission, SubmissionImport
-from app.services.shema._form_definitions import current_definition, definition_at
+from app.services.shema._form_definitions import definition_at, publish_definition
 from app.services.shema._form_validation import record_update
 from app.services.shema._progress import ProgressSource
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
@@ -60,15 +60,18 @@ async def _resolve_definition(db: AsyncSession, version: int | None) -> ShemaFor
     typing an answer today is answering today's form. A version that was named and never
     published is still refused; what is absent is not guessed at, it is the current one, and
     whichever it was is what the row records.
+
+    **Publishing here as well as at the link, because this is the other authenticated write.**
+    ``_form_definitions.py``'s rule is that the spec is published on an authenticated write and
+    never on the public read; minting a link is one such write and this is the other. Without
+    it a coordinator filing an answer that arrived on paper would be refused until somebody
+    had minted a link for a leader who never used one — a dependency between two unrelated
+    acts, and the kind that is discovered in the field. Publishing is by content, so this cuts
+    no version when one already stands.
     """
     if version is not None:
         return await definition_at(db, PULSE_KIND, version)
-    definition = await current_definition(db, PULSE_KIND)
-    if definition is None:
-        raise NotFoundError(
-            f"No version of the {PULSE_KIND} form is published yet. Mint an intake link first."
-        )
-    return definition
+    return await publish_definition(db, PULSE_KIND)
 
 
 async def _apply(
@@ -112,6 +115,23 @@ async def _apply(
     await db.commit()
 
 
+async def _answered_definition(
+    db: AsyncSession, submission: ShemaSubmission
+) -> ShemaFormDefinition:
+    """The version a **stored** submission answered, which is not always the one just resolved.
+
+    Re-filing bytes this server already has is a no-op, and the row it answers with is the one
+    that was archived — possibly under an older spec, if the definition has been cut since and
+    the body named no version. Reporting today's version for it would say the submission
+    answered words it never saw, which is the exact failure the version column exists to
+    prevent, arriving through the idempotency path instead of through an edit.
+    """
+    definition = await db.get(ShemaFormDefinition, submission.definition_id)
+    if definition is None:
+        raise NotFoundError("The form this submission answered is no longer published.")
+    return definition
+
+
 async def import_submission(
     db: AsyncSession,
     scope: RegionScope,
@@ -138,7 +158,7 @@ async def import_submission(
         )
 
     definition = await _resolve_definition(db, payload_in.definition_version)
-    submission, _created = await archive_submission(
+    submission, created = await archive_submission(
         db,
         project,
         definition,
@@ -149,19 +169,20 @@ async def import_submission(
     )
     await db.commit()
 
+    answered = definition if created else await _answered_definition(db, submission)
     if submission.applied_at is None:
         await _apply(
             db,
             scope,
             project,
             submission,
-            definition,
-            payload_in.answers,
+            answered,
+            archived_answers(submission),
             user=user,
             expected_version=expected_version,
             day=day,
         )
-    return as_received(submission, definition.version)
+    return as_received(submission, answered.version)
 
 
 async def apply_submission(

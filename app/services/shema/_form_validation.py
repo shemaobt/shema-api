@@ -22,6 +22,15 @@ Pydantic names every bad row by index before raising. A second reading of *what 
 is* would drift from that one, and the drift would show as a Pulse the console can save and
 the import cannot.
 
+**But it is checked before anything is archived, not when the record is written.**
+:func:`validate_submission` runs both halves, and the order is what makes *rejected whole*
+true of a row the record refuses: the definition says ``bookProgress`` is a list and a row
+claiming thirty chapters of a sixteen-chapter book *is* a list, so the form-level check passes
+it. If the record's refusal waited until the write, that submission would already be archived
+and already announced — a Pulse in the inbox that no coordinator can ever apply, which is the
+uninterpretable leftover the issue's *never store unvalidated payloads to clean later* is
+about, arriving by a door one layer down.
+
 **The empty answer is not an answer, and that is a rule rather than a convenience.** A field
 whose answer is absent or empty contributes nothing to the record write. FE-44 §8.2 states the
 sharp case: a save that writes ``prayerRequests: ""`` unconditionally **deletes an existing
@@ -34,6 +43,8 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core.exceptions import ValidationError
 from app.db.models.shema_form import ShemaFormDefinition
@@ -139,9 +150,13 @@ def record_update(definition: ShemaFormDefinition, answers: dict[str, Any]) -> S
     record being edited through the weakest credential in the system.
 
     Validation of what survives is ``ShemaProjectUpdate``'s, which is BE-06's and is the same
-    validation the ficha's own ``PATCH`` meets. A ``pydantic.ValidationError`` from here is the
-    progress rows being refused row by row, and the caller lets it become the 422 FastAPI
-    already gives a body it could parse and could not accept.
+    validation the ficha's own ``PATCH`` meets. **Its refusal is translated rather than
+    allowed to escape**: on the ficha's ``PATCH`` that model is the request body and FastAPI
+    turns a bad row into a 422, but here it is built inside a service, where an uncaught
+    ``pydantic.ValidationError`` reaches the global handler as a 500 — *rejected whole* said
+    with the status code for *the server broke*. So it is caught and re-raised as this
+    repository's own ``ValidationError``, with every bad row still named by index, which is the
+    property Pydantic's own collection gives and this translation must not lose.
     """
     update: dict[str, Any] = {}
     for field in definition.fields:
@@ -152,4 +167,25 @@ def record_update(definition: ShemaFormDefinition, answers: dict[str, Any]) -> S
         if _is_empty(answer):
             continue
         update[column] = answer
-    return ShemaProjectUpdate.model_validate(update)
+    try:
+        return ShemaProjectUpdate.model_validate(update)
+    except PydanticValidationError as refused:
+        faults = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in refused.errors()
+        )
+        raise ValidationError(
+            f"{definition.kind} v{definition.version}: the submission does not match the "
+            f"record, so none of it was applied — {faults}"
+        ) from None
+
+
+def validate_submission(definition: ShemaFormDefinition, answers: dict[str, Any]) -> None:
+    """Both checks, in the order that leaves nothing behind — the whole of *rejected whole*.
+
+    One function so that the two callers cannot drift into running one and not the other, and
+    so that the archive has a single thing to ask before it writes. It answers nothing: what it
+    is for is the exception it does not raise.
+    """
+    validated_answers(definition, answers)
+    record_update(definition, answers)

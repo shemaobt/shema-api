@@ -14,9 +14,32 @@ FE-44's frozen six keys plus two; the detail adds the form and the answers. None
 declares a field of a place, a base or a contact, so BE-04's route audit has nothing to hold —
 which is a fact about the shape rather than an exemption, and it is why this module adds no
 line to ``COORDINATION_ROUTES``.
+
+**The detail read answers only the answers that map to no record column, and the rule is one
+sentence rather than a list of exceptions.** An answer the import applies is readable on the
+record, behind the record's own surface and the rules that surface already enforces; an answer
+that maps to nothing is readable nowhere else, and it is the whole reason this read exists —
+the voice of the field and what is blocking the team.
+
+The rule is principled and it also closes a hole, which is the honest order to state it in.
+This route is open to **any** member in the caller's region, because an OBT Lab mentor reads a
+Pulse as legitimately as a coordinator does and ``require_role`` cannot say *or*
+(``app/api/shema/_deps.py`` records why this module has no capability map). Without the rule,
+a ``resourceCircle`` account — the prayer wall's own audience — could read an archived prayer
+request out of this payload for a team that consented to ``coordenacao`` and nothing more.
+``app/services/shema/_consent.py`` guards the **columns**; the archive is a second store and
+the gate does not reach into it, so the answer is not to reimplement the gate here but to stop
+serving what the record already serves. *An unauthorized prayer request is absent from all four
+output paths* stays true of a fifth nobody had counted.
+
+**Which answers those are is read off the definition**, whose ``column`` field is the mapping,
+so this file names no record column and needs no allowlist entry in
+``tests/test_shema/test_privacy_owners.py``.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +75,23 @@ def as_received(submission: ShemaSubmission, definition_version: int) -> Receive
             None if submission.applied_at is None else as_utc(submission.applied_at).date()
         ),
     )
+
+
+def unapplied_answers(
+    definition: ShemaFormDefinition | None, answers: dict[str, Any]
+) -> dict[str, Any]:
+    """The answers this read may serve — the ones the import applies to no record column.
+
+    See the module docstring for the argument. In one line: what was applied is readable on the
+    record, and what maps to nothing is what this read is for.
+
+    A definition that cannot be resolved answers **nothing** rather than everything, which is
+    the fail-closed direction and costs a coordinator a click through to the record.
+    """
+    if definition is None:
+        return {}
+    unmapped = {field["key"] for field in definition.fields if field.get("column") is None}
+    return {key: value for key, value in answers.items() if key in unmapped}
 
 
 def _scoped(scope: RegionScope) -> Select[tuple[ShemaSubmission, int]]:
@@ -102,5 +142,5 @@ async def read_submission(
     return ReceivedSubmissionDetail(
         **received.model_dump(),
         fields=[] if definition is None else form_fields(definition),
-        answers=archived_answers(submission),
+        answers=unapplied_answers(definition, archived_answers(submission)),
     )

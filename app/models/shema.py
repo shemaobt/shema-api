@@ -206,6 +206,8 @@ class ShemaProjectUpdate(BaseModel):
 
     #: Guarded by ``app/services/shema/_consent.py``. Absent is not ``""``.
     prayer_requests: str | None = None
+    #: Typed, not free text: the column is the enum and the two members are the whole
+    #: vocabulary, so ``"publico"`` is refused by the shape instead of by the database.
     #: NULL means ``coordenacao`` and an explicit ``null`` is how a request is taken back off
     #: the wall — which is a state this shape can express only because *absent* is a third
     #: answer beside it (``model_fields_set``).
