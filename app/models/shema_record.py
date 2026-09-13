@@ -119,6 +119,18 @@ class ShemaCountedProgressRow(BaseModel):
     Every violation in a batch is reported at once, by index, because Pydantic collects the
     errors of a list before it raises — which is what makes *a partial failure applies nothing*
     true of the validation half without a loop that has to remember to keep going.
+
+    **These rules run on the read as well, and that is safe only while the write is the one
+    writer.** ``app/models/shema.py`` takes these same classes for the ``PATCH``'s tables and
+    ``app/services/shema/save_project.py`` is the only thing that writes the four JSON columns,
+    so a stored row is a row that already passed here and checking it again on the way out
+    refuses nothing. The seed is the same answer: ``bookProgress``, ``storyProgress`` and
+    ``phases`` are ``[]`` on all 127 export records and ``otherProgress`` is not one of its
+    keys, so no migrated row exists for these rules to meet. **The first writer that is not
+    that path** — BE-12's import, BE-16's seed, a migration — **either goes through the write
+    shape or makes the read tolerant here**, because what it costs otherwise is a 500 on the
+    ficha for one badly written row, which is the price
+    :meth:`ShemaProjectRecord._tolerate_a_null_array` already declines to pay for a NULL.
     """
 
     model_config = _DOCUMENT
