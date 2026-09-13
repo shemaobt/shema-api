@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -24,26 +25,43 @@ from app.db.models.shema_notification import ShemaNotificationRead
 from app.services.notifications import mark_as_read
 
 
-async def _mark_derived_read(db: AsyncSession, user_id: str, entry_id: str) -> None:
-    """Insert the ``(user, entry)`` pair once — a plain read-then-write, not a dialect upsert.
+async def _mark_derived_read(db: AsyncSession, user_id: str, entry_ids: list[str]) -> None:
+    """Insert every missing ``(user, entry)`` pair in ``entry_ids`` with a single commit.
 
-    This module's tables run on SQLite in the suite and on PostgreSQL in production
-    (``docs/shema.md`` §7.2), so a dialect-specific ``ON CONFLICT`` construct would work on
-    one and not the other; the primary key already refuses a second row, and the read that
-    checks for one first is the portable half of the same guarantee.
+    One ``select`` finds which of the batch already has a row, then every missing pair is
+    ``add``ed in-memory — no per-id round trip — before the one commit at the end. This module's
+    tables run on SQLite in the suite and on PostgreSQL in production (``docs/shema.md`` §7.2),
+    so a dialect-specific ``ON CONFLICT`` upsert would work on one and not the other; the primary
+    key already refuses a second row, and the batched read that checks for one first is the
+    portable half of the same guarantee.
     """
-    existing = await db.get(ShemaNotificationRead, {"user_id": user_id, "entry_id": entry_id})
-    if existing is not None:
-        return
-    db.add(ShemaNotificationRead(user_id=user_id, entry_id=entry_id, read_at=datetime.now(UTC)))
+    stmt = select(ShemaNotificationRead.entry_id).where(
+        ShemaNotificationRead.user_id == user_id,
+        ShemaNotificationRead.entry_id.in_(entry_ids),
+    )
+    existing = set((await db.execute(stmt)).scalars())
+    now = datetime.now(UTC)
+    for entry_id in entry_ids:
+        if entry_id in existing:
+            continue
+        db.add(ShemaNotificationRead(user_id=user_id, entry_id=entry_id, read_at=now))
     await db.commit()
 
 
 async def mark_notifications_read(db: AsyncSession, user_id: str, ids: list[str]) -> None:
-    """Mark every id in ``ids`` read, whichever of the two stores it belongs to."""
+    """Mark every id in ``ids`` read, whichever of the two stores it belongs to.
+
+    The derived half is one read plus one commit for the whole batch (see
+    ``_mark_derived_read``). The delivered half still goes through ``mark_as_read`` per id,
+    unchanged — it already owns the row's ``is_read`` write and its own commit, and is not this
+    module's to refactor.
+    """
+    stale_ids = [entry_id for entry_id in ids if entry_id.startswith("stale:")]
+    if stale_ids:
+        await _mark_derived_read(db, user_id, stale_ids)
+
     for entry_id in ids:
         if entry_id.startswith("stale:"):
-            await _mark_derived_read(db, user_id, entry_id)
             continue
         try:
             await mark_as_read(db, entry_id, user_id)

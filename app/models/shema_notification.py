@@ -30,11 +30,17 @@ with, with no row to look up first.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import AliasGenerator, BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 from app.db.models.shema_notification import ShemaNotificationPrefs
+
+#: The five kinds FE-44 §5.8 freezes: the three delivered event types, plus the one computed
+#: kind (``stale``) that has no event at all. Closed rather than open, so a sixth spelling
+#: fails typing instead of landing on the panel unnoticed.
+NotificationKind = Literal["health", "need", "prayer", "field", "stale"]
 
 _OUTWARD = ConfigDict(
     from_attributes=True,
@@ -60,7 +66,7 @@ class ShemaNotificationEntry(BaseModel):
     model_config = _OUTWARD
 
     id: str
-    kind: str
+    kind: NotificationKind
     title: str
     body: str
     urgent: bool

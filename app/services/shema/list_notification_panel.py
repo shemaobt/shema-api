@@ -26,11 +26,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
 from app.db.models.shema_notification import ShemaNotificationRead
-from app.models.shema_notification import ShemaNotificationEntry
+from app.models.shema_notification import NotificationKind, ShemaNotificationEntry
 from app.models.shema_projects import ShemaProjectCard, ShemaProjectQuery
 from app.services.notifications import get_shema_app_id, list_notifications
 from app.services.shema._health_audience import reads_assessments
+from app.services.shema._health_notice import EVENT_TYPE as HEALTH_EVENT_TYPE
+from app.services.shema._needs import URGENT_NEED_EVENT
 from app.services.shema._scope import RegionScope
+from app.services.shema._submission_notices import ARRIVAL_EVENT, PRAYER_EVENT
 from app.services.shema.browse_projects import browse_projects
 from app.utils.shema_derivations import StaleStatus
 
@@ -39,24 +42,28 @@ PANEL_CAP = 30
 
 STALE_TITLE = "A project has gone quiet"
 
+#: The panel's ``kind`` for a delivered notice's ``event_type`` — off the three writers' own
+#: constants, not a substring guess, so a fifth writer's spelling fails loudly here instead of
+#: quietly landing on the wrong kind (or matching one it never meant).
+_KIND_BY_EVENT_TYPE: dict[str, NotificationKind] = {
+    HEALTH_EVENT_TYPE: "health",
+    URGENT_NEED_EVENT: "need",
+    ARRIVAL_EVENT: "field",
+    PRAYER_EVENT: "prayer",
+}
 
-def _kind_of(event_type: str) -> str:
-    """The panel's ``kind`` for a delivered notice's ``event_type``.
+#: Which kinds page a recipient rather than merely inform them. The event type already says
+#: it for two of the four delivered kinds — a critical health reading and an urgent need — so
+#: it is derived here rather than answered the same way for every delivered entry.
+_URGENT_KINDS = frozenset({"health", "need"})
 
-    Read by substring rather than by an exact table, because the three writers spelled their
-    own event names independently (``shema_health_critical``, ``shema.need.urgent``,
-    ``shema.submission.received``/``.prayer``) and a fourth writer's spelling should still land
-    on a real kind rather than on an exception.
-    """
-    if "health" in event_type:
-        return "health"
-    if "need" in event_type:
-        return "need"
-    if "prayer" in event_type:
-        return "prayer"
-    if "submission" in event_type:
-        return "field"
-    return "other"
+
+def _kind_of(event_type: str) -> NotificationKind:
+    return _KIND_BY_EVENT_TYPE[event_type]
+
+
+def _is_urgent(kind: NotificationKind) -> bool:
+    return kind in _URGENT_KINDS
 
 
 def _stale_body(language_name: str, days_since_update: int | None) -> str:
@@ -88,7 +95,7 @@ async def _stale_entries(
                 kind="stale",
                 title=STALE_TITLE,
                 body=_stale_body(card.language_name, days),
-                urgent=True,
+                urgent=_is_urgent("stale"),
                 project_id=card.id,
                 region=card.region_key.value if card.region_key else None,
                 created_at=stamp,
@@ -116,20 +123,22 @@ async def list_notification_panel(
     a scope applied by a permissive keyword is a scope the next caller forgets.
     """
     app_id = await get_shema_app_id(db)
-    delivered = [
-        ShemaNotificationEntry(
-            id=row.id,
-            kind=_kind_of(row.event_type),
-            title=row.title,
-            body=row.body,
-            urgent=False,
-            project_id=None,
-            region=None,
-            created_at=row.created_at,
-            is_read=row.is_read,
+    delivered = []
+    for row in await list_notifications(db, user.id, app_id, limit=PANEL_CAP):
+        kind = _kind_of(row.event_type)
+        delivered.append(
+            ShemaNotificationEntry(
+                id=row.id,
+                kind=kind,
+                title=row.title,
+                body=row.body,
+                urgent=_is_urgent(kind),
+                project_id=None,
+                region=None,
+                created_at=row.created_at,
+                is_read=row.is_read,
+            )
         )
-        for row in await list_notifications(db, user.id, app_id, limit=PANEL_CAP)
-    ]
 
     stale: list[ShemaNotificationEntry] = []
     if await reads_assessments(db, user, app_key):
