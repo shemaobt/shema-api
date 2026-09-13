@@ -20,7 +20,7 @@ service where it is a property of a query.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -56,6 +56,13 @@ NEW = {
 }
 
 TODAY = date(2026, 9, 11)
+
+#: The machine's own UTC day. :data:`TODAY` is frozen because the sweep takes the day as a
+#: parameter and a test of it must not move when the machine does — but two claims below cross
+#: a clock the test does not inject: ``created_at`` is stamped by the database, and the
+#: local-day header is bounded against the server's own day. A literal in those two would pass
+#: on the afternoon it was written and fail every day after.
+UTC_TODAY = datetime.now(UTC).date()
 
 
 def need(**overrides) -> dict:
@@ -254,19 +261,24 @@ async def test_acknowledging_stamps_the_day_and_the_person_and_the_client_states
     item_id = created.json()["needsItems"][0]["id"]
     assert created.json()["needsItems"][0]["acknowledgedAt"] is None
 
+    #: One day back: a real local day on the UTC-12 side, never the server's own — so the stamp
+    #: below proves the **actor's** day was written and not ``datetime.now``. Derived rather
+    #: than written down, because the header is refused outside one day either side of the
+    #: server's, and a literal leaves that window the day after it is typed.
+    local_day = UTC_TODAY - timedelta(days=1)
     seen = await client.patch(
         f"{PROJECTS}/guarani-mbya",
         json={"needsItems": [need(id=item_id, acknowledged=True)]},
         headers={
             **headers,
             "If-Match": created.headers["ETag"],
-            "X-Shema-Local-Date": "2026-09-11",
+            "X-Shema-Local-Date": local_day.isoformat(),
         },
     )
     assert seen.status_code == 200
 
     item = seen.json()["needsItems"][0]
-    assert item["acknowledgedAt"] == "2026-09-11"
+    assert item["acknowledgedAt"] == local_day.isoformat()
     assert item["acknowledgedBy"] == coordinator.display_name
 
 
@@ -352,9 +364,10 @@ async def test_an_undated_need_ages_from_the_day_the_row_arrived(db_session, she
     )
     row = await _add_need(db_session, "guarani-mbya", submitted_at=None)
 
-    #: ``created_at`` is today's, so it is inside the band now and outside it a year on.
-    assert await list_unacknowledged_needs(db_session, GLOBAL, today=TODAY, after_days=0) != []
-    found = await list_unacknowledged_needs(db_session, GLOBAL, today=TODAY, after_days=0)
+    #: ``created_at`` is stamped by the database, so this is the one sweep whose calendar is
+    #: the machine's — :data:`UTC_TODAY` and not :data:`TODAY`. The band is zero days wide, so
+    #: the row is inside it today and outside it a year on.
+    found = await list_unacknowledged_needs(db_session, GLOBAL, today=UTC_TODAY, after_days=0)
     assert [line.id for line in found] == [row.id]
 
 
