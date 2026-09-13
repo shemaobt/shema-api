@@ -24,7 +24,15 @@ exist:
    batch named at once, and nothing written for any of them;
 4. the diff; **a save that changed nothing stops here**, writing nothing and stamping nobody;
 5. the version bump, as a conditional ``UPDATE`` that is also the race guard;
-6. the row, the progress entry and the trail — staged together, committed once.
+6. the row, the needs, the progress entry, the trail and any urgent notice — staged
+   together, committed once.
+
+**The needs are a step of this write and not an endpoint of their own** (BE-08). They travel
+with the project (``docs/shema.md`` §5.4), so they arrive in the same payload, pass the same
+version guard, land in the same transaction and are recorded in the same trail — and an urgent
+one stages its notice under the same commit, so a need that rolled back tells nobody it
+existed. ``_needs.py`` holds the batch's own rules; what this file owns is that they happen
+inside the six steps above rather than beside them.
 
 **Step 4 is why a no-op save does not invalidate everybody else.** Stamping ``updated_by`` and
 bumping the version unconditionally would make pressing save on an untouched tab refuse every
@@ -56,7 +64,7 @@ from app.core.exceptions import AuthorizationError, ConflictError, ValidationErr
 from app.db.models.auth import User
 from app.db.models.shema import ShemaProject
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
-from app.services.shema import _audit
+from app.services.shema import _audit, _needs
 from app.services.shema._audit import ChangesSince
 from app.services.shema._progress import (
     Aggregates,
@@ -129,6 +137,10 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     ``coords`` expands into the two columns the database has, because ``[0, 0]`` is *no
     coordinate* and that is a fact about the pair — the record keeps the number the export gave
     and nothing here decides what it means.
+
+    ``needs_items`` leaves here because it is not a column of this row at all: it is a child
+    table, and ``_needs.py`` is what merges it. ``_audit.NOT_COLUMNS`` names both departures in
+    one place so the diff and this function cannot disagree about what a column is.
     """
     sent = {name: getattr(payload, name) for name in payload.model_fields_set}
     merged = {column: getattr(project, column) for column in _audit.AUDITED_COLUMNS}
@@ -137,6 +149,7 @@ def _merged(project: ShemaProject, payload: ShemaProjectUpdate) -> dict[str, Any
     if coords is not None:
         merged["longitude"], merged["latitude"] = float(coords[0]), float(coords[1])
     sent.pop("id", None)
+    sent.pop("needs_items", None)
 
     for column, value in sent.items():
         merged[column] = value
@@ -244,8 +257,11 @@ async def save_project(
     merged = _merged(project, payload)
     _refuse_impossible_dates(merged)
 
+    batch = _needs.needs_payload(payload)
+    plan = _needs.NeedPlan() if batch is None else await _needs.plan_needs(db, project, batch)
+
     changed = [column for column in _audit.AUDITED_COLUMNS if before[column] != merged[column]]
-    if not changed:
+    if not changed and not plan:
         return project
 
     version = await _bump_version(db, project, expected_version)
@@ -277,13 +293,16 @@ async def save_project(
         if entry is not None:
             db.add(entry)
 
+    need_changes, urgent = await _needs.apply_needs(db, project, plan, user=user, day=day)
+
     _audit.record_edits(
         db,
         project,
         version=version,
-        changes=_audit.field_changes(before, project),
+        changes=[*_audit.field_changes(before, project), *need_changes],
         user=user,
     )
+    await _needs.notify_urgent(db, project, urgent, actor=user)
     await db.commit()
     await db.refresh(project)
     return project
@@ -365,6 +384,10 @@ async def create_project(
 
     await db.flush()
 
+    batch = _needs.needs_payload(payload)
+    plan = _needs.NeedPlan() if batch is None else await _needs.plan_needs(db, project, batch)
+    need_changes, urgent = await _needs.apply_needs(db, project, plan, user=user, day=day)
+
     entry = record_progress(
         project.id,
         previous=None,
@@ -379,8 +402,13 @@ async def create_project(
         db.add(entry)
 
     _audit.record_edits(
-        db, project, version=1, changes=_audit.field_changes(before, project), user=user
+        db,
+        project,
+        version=1,
+        changes=[*_audit.field_changes(before, project), *need_changes],
+        user=user,
     )
+    await _needs.notify_urgent(db, project, urgent, actor=user)
     await db.commit()
     await db.refresh(project)
     return project

@@ -29,6 +29,15 @@ by every response model that leaves coordination, from
 ``app/models/shema_privacy.py``, because ``app/models/`` may not import ``app/services/``
 and because a rule a service has to call is a rule the next service forgets.
 
+**BE-08 landed the needs and the money they carry.** ``_needs.py`` is the batch's own
+rules, and it is a step of ``save_project`` rather than an endpoint because a need travels
+with its project (``docs/shema.md`` §5.4) — one write path, one version guard, one
+transaction, one trail, and an urgent need's notice staged under the same commit.
+``list_unacknowledged_needs.py`` is the other half and the one the area exists for: *open,
+and nobody has even looked*, as a single scoped query rather than as something somebody
+remembers to check. Nothing in either sums a need: categories are not commensurable and
+neither are currencies, and every amount is stored with the currency it is in.
+
 **BE-06 landed the record's lifecycle**, and it is three files rather than one for the
 reason the two above are one each. ``save_project.py`` is the **only** thing in this module
 that moves ``shema_projects.version``, so the concurrency guard cannot be forgotten by a
@@ -67,6 +76,16 @@ from app.services.shema._media_storage import (
     GCS_SHEMA_BUCKET,
     storage_key,
 )
+from app.services.shema._needs import (
+    NEEDS_FIELD_KEY,
+    URGENT_NEED_EVENT,
+    URGENT_NEED_ROLES,
+    apply_needs,
+    moves,
+    notify_urgent,
+    plan_needs,
+    raise_day_moves,
+)
 from app.services.shema._progress import (
     Aggregates,
     ProgressSource,
@@ -83,6 +102,7 @@ from app.services.shema._redaction import (
 )
 from app.services.shema._scope import (
     RegionScope,
+    holders_reaching,
     reaches,
     region_scope,
     visible_projects,
@@ -93,6 +113,11 @@ from app.services.shema.count_projects import count_projects, count_projects_by_
 from app.services.shema.get_project import get_project
 from app.services.shema.get_session import get_session
 from app.services.shema.list_projects import list_projects
+from app.services.shema.list_unacknowledged_needs import (
+    UNACKNOWLEDGED_AFTER_DAYS,
+    list_unacknowledged_needs,
+    unacknowledged_needs,
+)
 from app.services.shema.media_download_url import (
     MediaLink,
     material_download_url,
@@ -105,12 +130,17 @@ from app.services.shema.set_region_scope import set_region_scope
 __all__ = [
     "DOWNLOAD_URL_EXPIRY_MINUTES",
     "GCS_SHEMA_BUCKET",
+    "NEEDS_FIELD_KEY",
+    "UNACKNOWLEDGED_AFTER_DAYS",
+    "URGENT_NEED_EVENT",
+    "URGENT_NEED_ROLES",
     "Aggregates",
     "ChangesSince",
     "MediaLink",
     "ProgressSource",
     "RecordVersionConflict",
     "RegionScope",
+    "apply_needs",
     "author_name",
     "browse_projects",
     "build_record",
@@ -124,13 +154,19 @@ __all__ = [
     "field_changes",
     "get_project",
     "get_session",
+    "holders_reaching",
     "is_authorized",
     "is_withheld",
     "list_projects",
+    "list_unacknowledged_needs",
     "log_reference",
     "material_download_url",
     "media_download_url",
+    "moves",
+    "notify_urgent",
+    "plan_needs",
     "prayer_visibility",
+    "raise_day_moves",
     "reaches",
     "reaches_prayer_wall",
     "read_changes_since",
@@ -145,6 +181,7 @@ __all__ = [
     "shared_prayer_audio",
     "shared_prayer_text",
     "storage_key",
+    "unacknowledged_needs",
     "visible_projects",
     "with_rolled_aggregates",
     "withheld_note",
