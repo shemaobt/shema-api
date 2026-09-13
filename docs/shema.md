@@ -742,7 +742,7 @@ file.
 | File | Owns | The rule |
 |---|---|---|
 | `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. |
-| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` | **The only reader of those three columns**, and one query applies the gate. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
+| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` — **and `source["prayerRequests"]`, which is a fourth copy of the same text** | **The only reader of those three columns**, and one query applies the gate. `prayerRequests` is one of the export's 55 keys, so `shema_projects.source`, which keeps the export row verbatim, carries that key too under the export's own camelCase spelling — empty in today's export, and where the next one's text lands; `prayerVisibility` and `prayerRequestsAudio` are two of the 18 the product added and are not in it. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
 | `app/services/shema/_media_sharing.py` | `authorization` on media and materials | Composes, most restrictive wins: an authorized item reaches `coordenacao`; the same item on a sensitive project **never** reaches `publico`. |
 
 **The split that keeps this from over-redacting.** A project **read** by someone allowed to
@@ -761,6 +761,11 @@ globs a directory and fails on a literal. `tests/test_shema/test_privacy_owners.
 `app/services/shema/*.py` and `app/api/shema/*.py` and fails when a file that is not the
 named owner references one of the guarded columns. A rule applied per endpoint is a rule the
 next endpoint forgets; a glob is not.
+
+**The literals that test looks for are four, not three.** `prayer_requests`,
+`prayer_visibility` and `prayer_requests_audio` are the columns, and `prayerRequests` is the
+same field again inside `source` — the export row kept verbatim (§5.1). A guard written on the
+three snake_case names reads that copy and does not see it.
 
 **The acceptance test the delivery plan already names:** an unauthorized prayer request is
 absent from **all four** output paths — the wall, exports, the ETEN report and notifications.

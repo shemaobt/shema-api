@@ -59,7 +59,7 @@ class ShemaProjectStatus(enum.StrEnum):
 
 
 class ShemaHealthLevel(enum.StrEnum):
-    """A rated dimension. *Not assessed* is NULL and is not a member — see the module docstring."""
+    """A rated dimension. *Not assessed* is NULL and is not a member."""
 
     BOA = "boa"
     ATENCAO = "atencao"
