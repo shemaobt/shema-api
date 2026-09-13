@@ -63,7 +63,7 @@ class ShemaProgressEntry(Base):
     project_id: Mapped[str] = mapped_column(
         String(120), ForeignKey("shema_projects.id", ondelete="RESTRICT"), nullable=False
     )
-    #: The actor's local day, not a UTC one — see the module docstring.
+    #: The actor's local day, not a UTC one.
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     translated_units: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))

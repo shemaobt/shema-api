@@ -103,7 +103,7 @@ file.
 
 **C3 — FE-44 §9.6 gives the intercessor network to BE-09; the Linear issue titles give it to
 BE-13** (*"BE-13 · Equipe e intercessores"*, OBT-402), and BE-09 is *"Oração: pedidos,
-autorização e geração do Pulso"* (OBT-398). §4.9 and §5.3 decide the seam; §11 records it as
+autorização e geração do Pulso"* (OBT-398). §3.1 and §5.7 decide the seam; §11 records it as
 an issue edit rather than leaving two owners.
 
 ### 1.4 What PR #127 carries, and what is taken from it — **Decided**
@@ -200,20 +200,22 @@ The role keys are the frontend's own ids verbatim, which is the precedent
 `seed_apps_roles.py`'s docstring already gives: *"the four keys are the role ids of the
 frontend's `capabilities.ts` verbatim, not a translation of them."* Here the ids are
 camelCase (`SessionRole` in `src/types/role.ts`) while most of this repository's role keys
-are snake_case. **Keep the camelCase.** `GET /api/shema/session` (§6.4) must answer a
+are snake_case. **Keep the camelCase.** `GET /api/shema/session` (§6.3) must answer a
 `SessionRole` the frontend can use as a key; a translation table between two spellings of
 one vocabulary is a second place to be wrong, and it would be read on every request.
 
 `role_key` is `String(100)` free text scoped per app (`uq_roles_app_role_key`), so nothing
 in the platform objects.
 
-**`app_url` is Open · BE-03.** `seed_apps_roles.py`'s docstring records that the column is
-not decoration — `request_password_reset` builds `{app_url}/reset-password?token=…` from it,
-and a wrong value breaks password recovery silently. The console's hostname is named nowhere
-in either repository: `app/core/config.py`'s CORS list carries `tripod-console`,
-`oralcollector`, `translationhelper`, `annotationstudio` and `soundnecklace`, and no Shemá
-entry. BE-03 reads the real hostname off the deployment rather than guessing, and adds it to
-`cors_origins` in the same change.
+~~**`app_url` is Open · BE-03.**~~ **Answered: `https://shema.shemaywam.com`, in `SEED_APPS`
+and in `cors_origins`, both by BE-03.** `seed_apps_roles.py`'s docstring records that the
+column is not decoration — `request_password_reset` builds `{app_url}/reset-password?token=…`
+from it, and a wrong value breaks password recovery silently. The hostname is named nowhere
+in either repository, and *"read it off the deployment"* turned out to have nothing to read:
+the console is wave 1, with no deploy workflow and no environment file beyond
+`VITE_API_PROXY_TARGET`. So it follows the eight rows already in `SEED_APPS` — the product's
+name, lowercased, no separators. §10 item 3 carries why the conventional value beats an empty
+one.
 
 ### 2.4 What it shares — **Decided**
 
@@ -259,7 +261,7 @@ bucket, which is the precedent, not a trespass).
 | Path | Owner | Holds |
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.2's region-scope dependency. The app key is named here and nowhere else in the module. |
+| `app/api/shema/_deps.py` | BE-03 **· built** | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.1's region-scope dependency. The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | BE-07 | `POST`/`GET /projects/{id}/health-assessments`. |
 | `app/api/shema/prayer.py` | BE-09 | The wall and the intercessor network. |
@@ -269,9 +271,9 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
-| `app/api/shema/session.py` | BE-03 | `GET /api/shema/session` — §6.4. |
+| `app/api/shema/session.py` | BE-03 **· built** | `GET /api/shema/session` — §6.3. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
-| `app/services/shema/_scope.py` | BE-03 | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. |
+| `app/services/shema/_scope.py` | BE-03 **· built** | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
 | `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
 | `app/services/shema/_redaction.py` | **BE-04, built** | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
 | `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
@@ -282,7 +284,7 @@ bucket, which is the precedent, not a trespass).
 | `app/db/models/shema.py`, `app/db/models/shema_*.py` | BE-02 authors, each issue grows its own | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — [`docs/resource_requests.md`](resource_requests.md) §8.1. |
 | `alembic/versions/20260NNN_shemaNN_*.py` | BE-02 onward | Migrations. Single head, clean `downgrade -1`. §7.1. |
 | `tests/test_shema/` | all | Extend; do not replace. `test_mount.py` is BE-01's. |
-| `http/shema*.http` | BE-03 onward | Request examples, as the siblings keep them. |
+| `http/shema*.http` | BE-03 onward | Request examples, as the siblings keep them. `http/shema_session.http` is the first. |
 
 **The derivations are in `app/utils/`, not in the service package, and the reason is a rule
 this repository enforces with a test.** `tests/test_app_boots.py::test_no_dto_module_reaches_up_into_the_service_layer`
@@ -337,8 +339,8 @@ nothing in column 3 imports `fastapi`.
 | **Role** | The four aliases, `require_role(APP_KEY, key)`. | Nothing. |
 | **Region scope** | Declares the dependency; receives a `RegionScope` value. | `_scope.py` computes it from `shema_user_regions` and the granted roles, and **every list query takes it as a parameter**. §6.1. |
 | **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a duplicate slug is a `ConflictError`). |
-| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | `_redaction.py`, called by every service that builds a *leaving* shape. §6.5. |
-| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; `list_prayer_requests` is the only query that applies the gate. §6.5. |
+| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service. `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
+| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; the wall's query (BE-09) is the only one that applies the gate. §6.4. |
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
@@ -359,7 +361,7 @@ files), `app/db/models/auth.py`. JWT access + refresh, `refresh_tokens` and
 platform guard, `users.is_active`, `users.locale`.
 
 Shemá adds **no login of its own**. INT-01 targets `POST /api/auth/login`, `/refresh`,
-`/logout`, `GET /api/auth/me`. The only Shemá-specific session read is §6.4's
+`/logout`, `GET /api/auth/me`. The only Shemá-specific session read is §6.3's
 `GET /api/shema/session`, and it exists because of the region, not because of the login.
 
 ### 4.2 Roles and app scoping — **Reuse the spine, extend the scope**
@@ -524,6 +526,14 @@ call as a short-lived signed GET that nothing persists. Its docstring refuses
 **Verdict:** `app/services/storage/` **not applicable**; `gcs_utils` **reuse**; a
 `shema-private` bucket and a `_media_storage.py` beside it, **new** — BE-04, with BE-02
 owning the `storage_key` column.
+
+**Built (BE-04).** `_media_storage.py` (bucket, expiry, key) and `media_download_url.py` (the
+gate and the minted link). The key is scoped by the media row's uuid rather than by the
+project slug — §6.4 carries that argument — and the route that calls it belongs to the issue
+that first has a screen for media (BE-09, BE-14). **The upload half is not built**: it needs a
+content type and size policy per collection (`ProjectMaterial.kind` is `text | audio | video`)
+and a screen to be wrong in front of, and nothing here freezes it. `upload_gcs_object` with
+`GCS_SHEMA_BUCKET` and `storage_key` is the whole of what that issue has to write.
 
 ### 4.7 Phases — **Not applicable**
 
@@ -703,6 +713,37 @@ answers "who are you and in what role"; the module answers "how far does that re
 - **Writes are scoped by the same value as reads.** A regional `coordinator` who may read a
   region may write it; there is no third answer in the product.
 
+**What a caller sees of another region's project — answered by BE-03: nothing.** The issue
+named the two defensible answers, *nothing* and *the existence without detail*, and asked
+that one be chosen rather than fall out of how a query was written. An out-of-scope project
+is absent from the collection, absent from every count, and refused on a direct id with
+`NotFoundError` — **never** `AuthorizationError`. The status code is the sharp end of the
+choice: a 403 on a direct id **is** the existence-without-detail answer delivered by status
+code, and a caller who can tell *this slug is real but not yours* from *no such slug* holds
+an oracle over the whole collection. A Shemá slug is `<language>-<place>`, and for the two
+records FE-44 §8.1 flags, existence in a region is precisely the fact being protected. The
+two refusals therefore carry the same exception and the same message.
+
+**And the log line does not tell them apart either — it records the event, not the verdict.**
+`get_project`'s branch fires on any miss of the scoped statement, so a mistyped id reaches
+the same line an out-of-region one does, and settling which case it was would take the
+unscoped query the 404 exists to avoid. So the line names the caller, the operation, the id
+asked for and the regions the caller does hold — the fields a misconfigured scope and a probe
+look different in — and classifies the outcome as *no row, out of region scope or no such id*
+rather than announcing a refused authorization the service never decided. An investigator
+allowed to know which it was joins the id where being allowed is checked —
+`app/services/shema/_scope.py`.
+
+**"No rows means global" holds for `globalStrategist` and for nobody else — BE-03 narrowed
+it, deliberately.** The sentence above names who the empty case serves; read as *anyone with
+no rows is global* it inverts the product's own rule, which is that a regional coordinator
+sees **their** region. It also has a live path to it: `app/services/access_request` grants a
+role on approval and grants no region, so every approved account would land globally scoped.
+So a **regional** role with no row reaches nothing, and making such an account unscoped is
+an explicit act — name its seven regions, or grant it `globalStrategist` too. The
+`default_role_for("shema")` entry is `resourceCircle` for the same reason: an approval hands
+out a role and no data.
+
 ### 6.2 What the region scope is *not* allowed to become
 
 Two temptations, refused here so nobody spends a week on them:
@@ -729,8 +770,18 @@ are.
 
 `globalStrategist` is a role key with no org-chart seat (the chart's three roles are per
 region). FE-44 §12.2 leaves `GLOBAL_STRATEGIST_NAME` as the frontend's one remaining
-hardcoded name. **Open · BE-03:** whether `name` for that role falls back to
-`users.display_name`. Either answer is cheap; picking silently is what is not.
+hardcoded name. ~~**Open · BE-03:** whether `name` for that role falls back to
+`users.display_name`.~~ **Answered by BE-03: yes, and the fallback is one rule rather than
+four special cases.** The chart's rule exists so there is no second owner of a seat's name;
+`globalStrategist` has no seat, so there is no fact being duplicated and no rename to follow,
+and the rule does not reach it. `null` was the alternative the contract permits, and it would
+guarantee that `GLOBAL_STRATEGIST_NAME` stays — which is what this endpoint exists to retire.
+
+So: the seat is read when there is exactly one seat to read — the role has a seat **and** the
+scope names exactly one region **and** the seat is filled. Global scope, a two-region scope,
+`globalStrategist`, and an unassigned seat all fall back to `users.display_name`, and the
+last of those is the ordinary path rather than an edge case: all twenty-one seats ship
+unassigned.
 
 ### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 built**
 
@@ -744,7 +795,7 @@ file.
 | File | Owns | The rule |
 |---|---|---|
 | `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. |
-| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` | **The only reader of those three columns**, and one query applies the gate. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
+| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` — **and `source["prayerRequests"]`, which is a fourth copy of the same text** | **The only reader of those three columns**, and one query applies the gate. `prayerRequests` is one of the export's 55 keys, so `shema_projects.source`, which keeps the export row verbatim, carries that key too under the export's own camelCase spelling — empty in today's export, and where the next one's text lands; `prayerVisibility` and `prayerRequestsAudio` are two of the 18 the product added and are not in it. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
 | `app/services/shema/_media_sharing.py` | `authorization` on media and materials | Composes, most restrictive wins: an authorized item reaches `coordenacao`; the same item on a sensitive project **never** reaches `publico`. |
 
 **The split that keeps this from over-redacting.** A project **read** by someone allowed to
@@ -764,10 +815,15 @@ globs a directory and fails on a literal. `tests/test_shema/test_privacy_owners.
 named owner references one of the guarded columns. A rule applied per endpoint is a rule the
 next endpoint forgets; a glob is not.
 
+**The literals that test looks for are four, not three.** `prayer_requests`,
+`prayer_visibility` and `prayer_requests_audio` are the columns, and `prayerRequests` is the
+same field again inside `source` — the export row kept verbatim (§5.1). A guard written on the
+three snake_case names reads that copy and does not see it.
+
 **The acceptance test the delivery plan already names:** an unauthorized prayer request is
 absent from **all four** output paths — the wall, exports, the ETEN report and notifications.
 
-#### What BE-04 built, and the one place it departs from §3.1
+#### What BE-04 built
 
 **The rule is not in `_redaction.py`. It is in `app/models/shema_privacy.py`, and it is
 inherited rather than called.** Everything else in this section held; this one line did not,
@@ -788,9 +844,9 @@ module from importing `app/services/` — the inversion that closed an import cy
 the rule has to be reachable from the shape for the paragraph above to be true. This is the
 same trade §3.1 already makes for the derivations, arriving one issue earlier: the half that
 both services and response models need lives where the response models may reach it.
-`_redaction.py` keeps the three things a `Select` cannot inherit — `is_withheld`,
-`withheld_note`, `log_reference` and `searchable_text` — and stays the module's sole reader of
-the guarded columns.
+`_redaction.py` keeps what a `Select` cannot inherit — `is_withheld`, `withheld_note`,
+`log_reference` and `searchable_text` — and stays the module's sole reader of the guarded
+columns.
 
 **The fields a leaving shape reduces**, in one list, because the value of one list is that
 there is one: `location`, `location2`, `country` (to the **region key**, never an empty
@@ -819,14 +875,23 @@ and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
 today and BE-06's record read as the one line expected in it. And a vocabulary check, so the
 list of guarded fields and the list of replacements cannot drift apart.
 
-**Three departures, each declared in BE-04's PR rather than absorbed here.** The base name is
+**And the bytes, because a predicate that ends in a public URL decides nothing.** §4.6's
+verdict is built: `app/services/shema/_media_storage.py` holds the `shema-private` bucket and
+the content-addressed key, `app/services/shema/media_download_url.py` applies
+`can_share_media` on the only address the bytes have, and the address is a signed GET that
+expires in fifteen minutes and is persisted nowhere. **One departure from the sibling's key
+shape, and it is this section's own argument arriving in the object store:**
+`resource-requests-private` scopes a key by its `request_id`; this one scopes by the media
+row's uuid, because a Shemá id is `<language>-<place>` and a signed URL travels further than
+the payload it came from — into a history, a referrer, a proxy log, a forwarded message. The
+refusal reads the same sentence whichever of its three reasons fired, for the reason the whole
+section gives: *why* is the fact being protected.
+
+**Two departures, each declared in BE-04's PR rather than absorbed here.** The base name is
 withheld on **every** leaving shape and not only in a file (§9.4 — the gate keeps the console's
-own rendering, which is presentation). The collection read is a leaving shape and only the
-record read is a coordination surface, because the issue names *list* among the output paths
-and FE-44 §8.7 says display is never enforcement. And the media half of §8.3 — a signed or
-expiring URL — is named and not built, because this repository's upload returns a public
-bucket URL (FE-44 §3.1) and the predicate is necessary without being sufficient; it belongs to
-the issue that first serves a file.
+own rendering, which is presentation). And the collection read is a leaving shape, with only
+the record read a coordination surface, because the issue names *list* among the output paths
+and FE-44 §8.7 says display is never enforcement.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
@@ -994,6 +1059,20 @@ Three files and one line, and nothing else:
 No models, no migration, no service, no endpoint. The anchor is what lets BE-02…BE-16 add
 routers without touching `app/main.py` and without a second conversation about the prefix.
 
+**What BE-03 added to it, and the one shape worth knowing before writing a router.**
+`app/api/shema/__init__.py` now holds two routers: `router`, which `app/main.py` mounts and
+which carries no dependency of its own, and `authenticated`, which carries
+`require_app_access(APP_KEY)` once. **Include your sub-router into `authenticated`.** That is
+what makes the module deny-by-default — a route added by a later issue is refused for an
+account with no Shemá grant whether or not its author wired a guard — and it is a property of
+the file rather than a thing to remember. `router` stays plain so BE-12's two unauthenticated
+intake routes (§6.6) have somewhere to go: the hole is a named line in a diff instead of a
+dependency somebody has to notice is missing. Two tests hold the shape —
+`test_every_shema_route_is_guarded` reads the built application's route table against an
+allowlist that is empty today, and `test_every_authenticated_route_reaches_the_application`
+catches the one footgun of the arrangement, which is that `include_router` copies routes at
+call time and a line added below the mount would 404 rather than fail.
+
 ---
 
 ## 9. The open client gates — what each one costs this module
@@ -1071,8 +1150,8 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 |---|---|---|
 | 1 | ~~Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each.~~ **Answered by BE-02, in opposite directions, because the pairs are not the same shape.** `team` and `ywamBase` are **one column**: they are one concept in two languages, identical on all 127 records, and collapsing removes the drift instead of policing it. `sensitivity` and `sensitive_country` **stay two**, with the boolean authoritative: the text is a free-text export column that agrees with the flag by accident of the data, so collapsing would delete evidence. | ~~BE-02~~ **closed** |
 | 2 | ~~Whether `region_key` is stored as a maintained derived column or computed per query.~~ **Answered by BE-02: stored, maintained, indexed — and deliberately not a generated column,** because the derivation is a lookup over 25 country strings kept in Python and expressing it in DDL would be a second copy of a map whose whole value is that there is one. | ~~BE-02~~ **closed** |
-| 3 | The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry. Read it off the deployment (§2.3). | **BE-03** |
-| 4 | Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3). | **BE-03** |
+| 3 | ~~The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry.~~ **Answered by BE-03: `https://shema.shemaywam.com`, and the same value added to `cors_origins`.** There was no deployment to read — the console is wave 1, with no deploy workflow, no environment file beyond `VITE_API_PROXY_TARGET`, and no host named in either repository — so this follows the eight rows already in `SEED_APPS`, every one of them the product's name lowercased with no separators. Leaving it empty was the alternative and is worse: `request_password_reset` then builds the reset link from `http://localhost:5173` in production, which is the silent failure §2.3 warns about, while a conventional hostname that turns out wrong fails on the first click and is a one-row UPDATE to correct. | ~~BE-03~~ **closed** |
+| 4 | ~~Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3).~~ **Answered by BE-03: yes**, and generalised to one rule — the seat is read when the role has one, the scope names exactly one region and the seat is filled; everything else falls back. §6.3 carries the argument. | ~~BE-03~~ **closed** |
 | 5 | Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3). | **BE-09 / BE-13**, settled by §11's issue edit |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
 | 7 | Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1). **All three answers are now free of a migration**: BE-02 gave `shema_projects` an `approved_units_unverified` column, which is the only one of the three that needed schema. | **BE-16**, with BE-11 needing the answer |
