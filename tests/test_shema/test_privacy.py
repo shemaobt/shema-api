@@ -496,6 +496,15 @@ async def test_an_endpoint_written_without_knowledge_of_the_rule_still_protects(
     model declares the record's fields and nothing else. Neither mentions the rule, and the
     flagged record still leaves reduced while the cleared one leaves whole — which is the
     difference between a rule that holds and a module that withholds everything.
+
+    **The leak is measured per record and not over the whole document** (BE-06's correction).
+    ``cleared`` is built from the same factory as ``flagged`` and therefore carries the same
+    country, the same base and the same contact — deliberately, because *the same strings,
+    reduced on one row and whole on the other* is exactly the property being asserted. A
+    substring search over the response can only report that one of the two carries them, which
+    is true by construction and says nothing about the rule; asserted that way the test could
+    never pass while the assertions below it did. The reduced half and the whole half are now
+    asserted where each of them actually lives.
     """
     user = await make_scoped_user(
         db_session,
@@ -525,6 +534,7 @@ async def test_an_endpoint_written_without_knowledge_of_the_rule_still_protects(
     assert by_id[cleared.id]["locationWithheld"] is False
     assert by_id[cleared.id]["location"] == OPEN_COUNTRY
     assert by_id[cleared.id]["team"] == OPEN_BASE
+    assert by_id[cleared.id]["team_contact"] == OPEN_CONTACT
 
 
 async def test_the_second_serialization_pass_agrees_with_the_first(
@@ -536,6 +546,8 @@ async def test_the_second_serialization_pass_agrees_with_the_first(
     drops the excluded inputs — so a handler that builds its own models runs the rule against
     a payload that can no longer read the flag. The two probes must answer identically, or a
     cleared record comes back withheld depending on how a handler happened to be written.
+
+    Per record rather than over the document, for the reason the test above carries.
     """
     user = await make_scoped_user(
         db_session,

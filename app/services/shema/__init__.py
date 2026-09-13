@@ -29,12 +29,27 @@ by every response model that leaves coordination, from
 ``app/models/shema_privacy.py``, because ``app/models/`` may not import ``app/services/``
 and because a rule a service has to call is a rule the next service forgets.
 
+**BE-06 landed the record's lifecycle**, and it is three files rather than one for the
+reason the two above are one each. ``save_project.py`` is the **only** thing in this module
+that moves ``shema_projects.version``, so the concurrency guard cannot be forgotten by a
+second writer; ``_progress.py`` is the **only** writer of ``shema_progress_history``, which
+is what makes an imported Pulse and a typed update indistinguishable afterwards (FE-44 §9.9);
+and ``_audit.py`` is the only writer of the trail, which is what makes *who changed what* a
+property of the write path rather than of whoever remembered. BE-07, BE-08 and BE-12 write
+the record through ``save_project`` rather than beside it, and get all three.
+
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
 """
 
 from __future__ import annotations
 
+from app.services.shema._audit import (
+    ChangesSince,
+    author_name,
+    changes_since,
+    field_changes,
+)
 from app.services.shema._consent import (
     prayer_visibility,
     reaches_prayer_wall,
@@ -45,13 +60,22 @@ from app.services.shema._media_sharing import (
     can_export_notes,
     can_share_media,
     is_authorized,
+    recorded_decision,
 )
 from app.services.shema._media_storage import (
     DOWNLOAD_URL_EXPIRY_MINUTES,
     GCS_SHEMA_BUCKET,
     storage_key,
 )
+from app.services.shema._progress import (
+    Aggregates,
+    ProgressSource,
+    record_progress,
+    roll_up,
+    with_rolled_aggregates,
+)
 from app.services.shema._redaction import (
+    derive_region,
     is_withheld,
     log_reference,
     searchable_text,
@@ -74,18 +98,30 @@ from app.services.shema.media_download_url import (
     material_download_url,
     media_download_url,
 )
+from app.services.shema.read_record import build_record, read_changes_since, read_record
+from app.services.shema.save_project import RecordVersionConflict, create_project, save_project
 from app.services.shema.set_region_scope import set_region_scope
 
 __all__ = [
     "DOWNLOAD_URL_EXPIRY_MINUTES",
     "GCS_SHEMA_BUCKET",
+    "Aggregates",
+    "ChangesSince",
     "MediaLink",
+    "ProgressSource",
+    "RecordVersionConflict",
     "RegionScope",
+    "author_name",
     "browse_projects",
+    "build_record",
     "can_export_notes",
     "can_share_media",
+    "changes_since",
     "count_projects",
     "count_projects_by_region",
+    "create_project",
+    "derive_region",
+    "field_changes",
     "get_project",
     "get_session",
     "is_authorized",
@@ -97,13 +133,20 @@ __all__ = [
     "prayer_visibility",
     "reaches",
     "reaches_prayer_wall",
+    "read_changes_since",
+    "read_record",
+    "record_progress",
+    "recorded_decision",
     "region_scope",
+    "roll_up",
+    "save_project",
     "searchable_text",
     "set_region_scope",
     "shared_prayer_audio",
     "shared_prayer_text",
     "storage_key",
     "visible_projects",
+    "with_rolled_aggregates",
     "withheld_note",
     "within_scope",
 ]

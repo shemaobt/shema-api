@@ -32,10 +32,12 @@ media (BE-09, BE-14); the rule does not wait for it.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from app.db.models.shema import ShemaProject
 from app.models.shema_privacy import ShemaAudience
+from app.models.shema_record import ShemaMediaAuthorization
 from app.services.shema._redaction import is_withheld
 
 
@@ -49,6 +51,11 @@ class Authorizable(Protocol):
     """
 
     authorization_granted: bool | None
+    #: The evidence beside the decision — who decided and when, as a snapshot. Declared here
+    #: rather than read with ``getattr`` so the type checker sees what this file reads, which
+    #: is also what the column glob sees.
+    authorized_by: str | None
+    authorized_at: datetime | None
 
 
 def is_authorized(item: Authorizable) -> bool:
@@ -94,3 +101,30 @@ def can_export_notes(audience: ShemaAudience) -> bool:
     about an enum.
     """
     return audience == ShemaAudience.COORDENACAO
+
+
+def recorded_decision(item: Authorizable) -> ShemaMediaAuthorization | None:
+    """The decision on an item, as the record's shape carries it — or ``None``, undecided.
+
+    **The shape is built here because the columns are read here.** ``MediaAuthorization`` is a
+    response shape and ``app/models/`` is deliberately outside the glob that watches these
+    three columns (``tests/test_shema/test_privacy_owners.py``'s own note says why: a request
+    model legitimately carries the names a client writes). So a model that read the columns
+    itself would be a second reader the glob *cannot* see, which is worse than one it can. The
+    owner assembles and hands over; the shape declares and knows nothing.
+
+    ``None`` for a row nobody has decided, rather than ``{granted: false}``: FE-44 §5.2 makes
+    *undecided* and *refused* behave identically and keeps them distinguishable, and a shape
+    asserting a ``false`` nobody recorded is the server inventing a refusal.
+
+    It is a read of the decision and **not** permission to share it — that is
+    :func:`can_share_media`, which takes the project and the audience this one deliberately
+    does not.
+    """
+    if item.authorization_granted is None:
+        return None
+    return ShemaMediaAuthorization(
+        granted=is_authorized(item),
+        by=item.authorized_by or "",
+        at=item.authorized_at,
+    )
