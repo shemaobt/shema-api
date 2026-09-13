@@ -83,7 +83,18 @@ MEDIA_COLUMNS = frozenset({"authorization_granted", "authorized_by", "authorized
 #: ``region_key`` derived from it, and BE-16's seed interprets ``sensitivity`` into the flag —
 #: though that one is a script and not in these packages at all.
 OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
-    "sensitive country": (REDACTION_COLUMNS, frozenset({"_redaction.py"})),
+    "sensitive country": (
+        REDACTION_COLUMNS,
+        # ``_needs.py``'s ``urgent_need_notice``/``urgent_needs_notice`` read
+        # ``ShemaNeedLine.location`` — never ``ShemaProject.location``. By the time either
+        # function sees it, ``_redaction.py``'s boundary has already reduced it to the region
+        # key or emptied it, because ``ShemaNeedLine`` is a ``LeavingShape`` and the reduction
+        # runs in its own model validator on construction (``app/models/shema_privacy.py``).
+        # The glob cannot see a Pydantic attribute apart from an ORM column by name alone, so
+        # the second reader here is real by the letter of the check and safe by what it reads —
+        # BE-15 names it rather than widening the columns the check watches.
+        frozenset({"_redaction.py", "_needs.py"}),
+    ),
     "consent": (CONSENT_COLUMNS, frozenset({"_consent.py"})),
     "media authorization": (MEDIA_COLUMNS, frozenset({"_media_sharing.py"})),
 }
@@ -109,11 +120,18 @@ OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 #: has both return the recomputed record, so a reduced reply to a save would show the author a
 #: withheld version of what they had just typed. Every other read — the collection, the wall,
 #: the report, the file — leaves coordination and goes through the boundary.
+#: **The fourth entry is BE-07's**, and it is here for the third one's reason rather than a new
+#: one: ``POST /api/shema/projects/{id}/health-assessments`` answers *the recomputed record*
+#: (FE-44 §9.4's own ``-> Project``), so it is the same coordination surface the record's save is,
+#: reached through a different door. The assessment history beside it — ``GET`` on the same path —
+#: is **not** listed and needs no exemption: a ``HealthAssessment`` names no place at all, which
+#: is why the audit does not ask about it.
 COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset(
     {
         ("GET", f"{PREFIX}/projects/{{project_id}}"),
         ("POST", f"{PREFIX}/projects"),
         ("PATCH", f"{PREFIX}/projects/{{project_id}}"),
+        ("POST", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
     }
 )
 

@@ -44,6 +44,7 @@ cannot disagree.
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Any, Self
 
 from pydantic import (
@@ -69,6 +70,7 @@ from app.db.models.shema_enums import (
 )
 from app.models.shema_projects import ShemaProjectDerived
 from app.utils.shema_books import chapters_in
+from app.utils.shema_derivations import OverallHealth, overall_of
 
 #: ``datetime.date`` under a second name. Two shapes below carry a field literally called
 #: ``date`` — FE-44's own key for the day a history entry or an assessment belongs to — and a
@@ -356,7 +358,19 @@ class ShemaNeedItem(BaseModel):
     ``id`` is the row's and is emitted, which is a small departure from the frozen shape where
     a ``NeedItem`` carries none: ``docs/shema.md`` §10 item 6 hands the question to BE-08, the
     column exists either way, and a record whose items cannot be addressed cannot have one
-    edited. It costs a key the console may ignore.
+    edited. It costs a key the console may ignore. **BE-08 confirmed it and made it the write's
+    address** — ``app/models/shema_need.py``'s :class:`~app.models.shema_need.ShemaNeedWrite`
+    carries that answer and its reasons.
+
+    **Four more keys than FE-44 froze, and BE-08 owns all four.** ``acknowledgedAt`` and
+    ``acknowledgedBy`` are the second axis — *somebody has seen this*, which is not a state in
+    the four-member vocabulary and must not become one — and ``estimatedAmount`` /
+    ``estimatedCurrency`` are the money, stored as money beside the free text the contract
+    already had. A record screen that cannot read them cannot edit them, so the departure is
+    the read's half of the same decision.
+
+    This is the **record**, which is a coordination surface: it carries what is there.
+    :class:`~app.models.shema_need.ShemaNeedLine` is the same need on its way out.
     """
 
     model_config = _OUTWARD
@@ -367,6 +381,10 @@ class ShemaNeedItem(BaseModel):
     status: ShemaNeedStatus = ShemaNeedStatus.OPEN
     description: str = ""
     estimated_value: str | None = None
+    #: The parsed pair, beside the typed string rather than instead of it — every amount
+    #: carries the currency it is in, and nothing in this module converts one.
+    estimated_amount: Decimal | None = None
+    estimated_currency: str | None = None
     deadline: date | None = None
     prayer_shared: bool = False
     prayer_answered: bool = False
@@ -375,6 +393,12 @@ class ShemaNeedItem(BaseModel):
     dropped_date: date | None = None
     submitted_by: str | None = None
     submitted_at: date | None = None
+    #: NULL is *nobody has said they saw this*, which is the state the sweep looks for. It is
+    #: never defaulted and never backfilled (``docs/shema.md`` §7.4's rule, third instance).
+    acknowledged_at: date | None = None
+    #: The name as it stood when the person acknowledged it — a snapshot beside
+    #: ``fulfilled_by``, which is also a name, and never the account id.
+    acknowledged_by: str = Field(default="", validation_alias="acknowledged_by_name")
 
 
 class ShemaHealthAssessmentEntry(BaseModel):
@@ -384,6 +408,18 @@ class ShemaHealthAssessmentEntry(BaseModel):
     blob is derived from ``dimensionNotes`` at write time so the older display keeps working,
     and a server that stored only the blob has lost the data and cannot get it back. Both
     travel, and BE-07 owns the derivation.
+
+    **BE-07 added three keys to FE-44's seven, and every one of them is a DoD line on the wire.**
+    ``questionSetVersion`` is which guiding questions these ratings answered — ``null`` for the
+    entry carried out of the record's flat fields, which answered no questionnaire at all
+    (``app/db/models/shema_health.py``). ``author`` is who entered the row, which is not always
+    the ``assessor`` who read the team. And ``overall`` is the worst of the four, computed by
+    the one owner of that rule (``app/utils/shema_derivations.py``) **per entry**, so the trend
+    the console draws is the server's computation rather than a second implementation of the
+    thing ``docs/shema.md`` says lives here once.
+
+    The three are additive: a client reading only FE-44's seven keys sees exactly
+    ``HealthAssessment``. The pull request declares them.
     """
 
     model_config = _OUTWARD
@@ -396,6 +432,19 @@ class ShemaHealthAssessmentEntry(BaseModel):
     physical: ShemaHealthLevel | None = None
     notes: str = ""
     dimension_notes: dict[str, str] | None = None
+    question_set_version: int | None = None
+    author: str = Field(default="", validation_alias="created_by_name")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def overall(self) -> OverallHealth:
+        """The worst of this entry's own four — ``na`` when the row rates none.
+
+        Computed and never stored, which is what keeps it from becoming a second truth: a
+        column would be a copy of four columns beside it, and a copy that can disagree with
+        them is worse than a derivation that cannot.
+        """
+        return overall_of(self.emotional, self.relational, self.spiritual, self.physical)
 
 
 class ShemaProjectRecord(BaseModel):

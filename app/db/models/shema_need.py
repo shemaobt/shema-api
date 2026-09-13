@@ -13,12 +13,41 @@ by. *Still outstanding* is ``open`` or ``in-progress``, and it has one owner.
 
 **Urgency is not health.** The two never share a vocabulary and the health derivation never
 reads a need.
+
+**Being seen is not being worked on** (BE-08). The failure this aggregate exists to make
+visible is a need raised and never acknowledged by anybody, and that state has to be
+*findable in a query* rather than remembered — so acknowledgement is a stamp of its own
+(:attr:`ShemaNeed.acknowledged_at` and the two columns beside it) and not a fifth member of
+:class:`~app.db.models.shema_enums.ShemaNeedStatus`. The lifecycle the product speaks is
+*raised, seen, being attended, attended*; the vocabulary FE-44 froze has four members and the
+console renders exactly those four in a ``<select>``, so the second axis lives beside the
+first instead of inside it.
+
+**An amount without its currency is not a number, and this module never converts one**
+(BE-08). ``estimated_amount`` is ``Numeric(14, 2)`` and ``estimated_currency`` is ISO-4217,
+and a ``CHECK`` keeps them together in both directions — the sibling's decision
+(``docs/resource_requests.md`` §7.2) taken here for its reason and for one more: these seven
+regions do not share a currency, so a single stored number would be a number whose meaning
+depends on a column somebody could forget to select. Nothing converts on write, there is no
+base currency and no rate anywhere in this module, and nothing sums across currencies or
+across categories — *categories are not commensurable* and neither are pesos and rupiah.
 """
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Index, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -50,7 +79,11 @@ class ShemaNeed(Base):
 
     ``estimated_value`` is a string because the contract types it as one: the field records
     an amount as it was typed, with its currency and its caveats, and parsing it into money
-    here would be this schema deciding what a field team meant.
+    here would be this schema deciding what a field team meant. **BE-08 kept it and put the
+    money beside it** rather than parsing it: :attr:`estimated_amount` and
+    :attr:`estimated_currency` are what a query, a report and a donor spreadsheet read, and
+    the free text stays exactly as somebody typed it — *a caveat is data too*, and the field
+    that says ``"about 5.000, more if the second village joins"`` still says it.
 
     ``submitted_at`` is a ``Date`` and not a moment. It is half of the identity a derived
     notification is keyed by (``need:{project}:{category}:{submittedAt}``), and FE-44 §5.8's
@@ -64,6 +97,37 @@ class ShemaNeed(Base):
     __table_args__ = (
         Index("ix_shema_needs_project_status", "project_id", "status"),
         Index("ix_shema_needs_category_status", "category", "status"),
+        #: The third of the three axes the DoD asks a need to be queryable by. Its own index
+        #: rather than a column appended to one of the two above: a B-tree serves its leading
+        #: column, and *the high-urgency needs of every region* is the question the ``attention``
+        #: preset asks without naming a project or a category.
+        Index("ix_shema_needs_urgency_status", "urgency", "status"),
+        #: **The sweep of** ``list_unacknowledged_needs`` — the one query the DoD asks for. It
+        #: leads on ``acknowledged_at`` because that is the column with two values in practice
+        #: (a day, or NULL) and the sweep always fixes it to NULL, which is the narrowest
+        #: leading predicate the three have.
+        Index("ix_shema_needs_unacknowledged", "acknowledged_at", "status", "submitted_at"),
+        #: **Neither half of an amount travels alone.** A number with no currency is a number
+        #: whose meaning depends on who reads it, and a currency with no number is a column
+        #: filled by a form that lost its value — both are refused here rather than in a
+        #: validator, because the DoD's line is an invariant of the data and not of one write
+        #: path. ``app/models/shema_need.py`` refuses the same pair earlier and with a better
+        #: message; this is what holds for a seed, an import and a psql session.
+        CheckConstraint(
+            "(estimated_amount IS NULL) = (estimated_currency IS NULL)",
+            name="ck_shema_needs_amount_carries_currency",
+        ),
+        #: ISO-4217 and not a symbol: several currencies share a glyph and ``$`` is the worst
+        #: of them (``docs/resource_requests.md`` §7.2). ``upper`` and ``length`` rather than a
+        #: regular expression, because ``~`` is PostgreSQL's and this constraint has to be
+        #: readable by the SQLite the suite runs on — which is the only dialect where a test
+        #: can watch the database refuse a value.
+        CheckConstraint(
+            "estimated_currency IS NULL OR ("
+            "length(estimated_currency) = 3 AND estimated_currency = upper(estimated_currency)"
+            ")",
+            name="ck_shema_needs_currency_is_iso_4217",
+        ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -79,6 +143,19 @@ class ShemaNeed(Base):
     description: Mapped[str] = mapped_column(Text, default="", server_default="")
 
     estimated_value: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    #: **The amount, exactly**, and ``Numeric`` rather than ``Float`` for the sibling's
+    #: measured reason (``docs/resource_requests.md`` §7.2): summing ``0.10`` and ``0.20``
+    #: gives ``Decimal('0.30')`` here and ``0.30000000000000004`` through a float. Nothing in
+    #: this module sums needs — categories are not commensurable and neither are currencies —
+    #: but the column a report is later built on is not the place to leave error to accumulate.
+    estimated_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    #: The ISO-4217 code the amount is in. **Stored with the value, always**, and never
+    #: converted: seven regions do not share a currency, a rate is a fact about a day rather
+    #: than about a need, and converting on write would destroy the number somebody typed in
+    #: exchange for a number nobody chose.
+    estimated_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     #: Reaches the prayer wall through this and only this.
@@ -89,6 +166,20 @@ class ShemaNeed(Base):
     prayer_answered: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
     )
+
+    #: **The day somebody said they had seen this**, and the whole of the second axis. NULL
+    #: is *nobody has*, which is the state ``list_unacknowledged_needs`` sweeps for; it is
+    #: nullable with no default and nothing backfills it, for the reason ``docs/shema.md``
+    #: §7.4 gives about the other two absences in this module — a default here would report
+    #: every unanswered need as answered, which is the exact failure the column exists for.
+    acknowledged_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Who acknowledged it. ``SET NULL`` on a deleted account, because the accountability copy
+    #: is the name beside it — the same split ``shema_projects.updated_by`` already makes.
+    acknowledged_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    #: A snapshot that must not follow a rename: *who saw this, as they were called then*.
+    acknowledged_by_name: Mapped[str] = mapped_column(String(200), default="", server_default="")
 
     fulfilled_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     fulfilled_date: Mapped[date | None] = mapped_column(Date, nullable=True)
