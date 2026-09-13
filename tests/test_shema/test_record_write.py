@@ -369,11 +369,15 @@ async def test_the_refused_write_applied_nothing(client, db_session, headers) ->
 async def test_a_progress_batch_rolls_the_aggregates_and_appends_one_entry(
     client, db_session, headers
 ) -> None:
+    # Relative to today, not a written date: ``_local_day`` refuses a header more than one day
+    # from the server's own, so a literal turns this test into a bomb that goes off the day
+    # after it is written. ``test_the_day_is_the_actors_own`` below already does it this way.
+    today = date.today().isoformat()
     created = await _create(client, headers)
     response = await client.patch(
         f"{PROJECTS}/guarani-mbya",
         json={"bookProgress": [book("mat", 28, 28, 10, 4), book("mrk", 16, 8)]},
-        headers={**headers, "If-Match": _etag(created), "X-Shema-Local-Date": "2026-09-11"},
+        headers={**headers, "If-Match": _etag(created), "X-Shema-Local-Date": today},
     )
 
     assert response.status_code == 200
@@ -384,7 +388,7 @@ async def test_a_progress_batch_rolls_the_aggregates_and_appends_one_entry(
     assert body["totalUnits"] == 44
     assert len(body["progressHistory"]) == 1
     entry = body["progressHistory"][0]
-    assert entry["date"] == "2026-09-11"
+    assert entry["date"] == today
     assert entry["previousTranslated"] == 0
     assert len(entry["bookProgress"]) == 2
 

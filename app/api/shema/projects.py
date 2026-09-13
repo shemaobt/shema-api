@@ -26,13 +26,13 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Header, Response, status
+from fastapi import APIRouter, Header, Query, Response, status
 from fastapi.responses import JSONResponse
 
 from app.api.shema._deps import CurrentUser, Db, Scope
 from app.core.exceptions import ERROR_CODE_CONFLICT, ValidationError
 from app.models.shema import ShemaProjectCreate, ShemaProjectUpdate
-from app.models.shema_projects import ProjectQuery, ShemaProjectPage
+from app.models.shema_projects import ShemaProjectPage, ShemaProjectQuery
 from app.models.shema_record import ShemaProjectRecord
 from app.services.shema import (
     RecordVersionConflict,
@@ -44,6 +44,18 @@ from app.services.shema import (
 )
 
 router = APIRouter()
+
+#: The whole filter set as **one** query-model dependency (FastAPI 0.115's own feature), and
+#: not twenty-three ``Query(...)`` parameters on a handler. Two reasons, and the second is the
+#: one that matters: the pass downstream takes the filters as a single object, so a handler
+#: that unpacked them would only have to pack them again; and ``extra="forbid"`` on the model
+#: makes a misspelled parameter a 422 rather than a filter that silently does not apply —
+#: which, on a screen whose whole promise is that the numbers agree with the list, is the
+#: difference between a wrong answer and an error message.
+#:
+#: The alias is **here and not beside the model**, so that ``app/models/`` stays free of
+#: ``fastapi``: the shape is a shape and where it is read from is an HTTP fact.
+ProjectQuery = Annotated[ShemaProjectQuery, Query()]
 
 
 @router.get("/projects", response_model=ShemaProjectPage)

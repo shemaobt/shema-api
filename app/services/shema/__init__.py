@@ -19,8 +19,13 @@ inconvenience. ``_redaction.py`` is the only reader of the sensitive-country col
 ``_consent.py`` the only reader of the three prayer columns, ``_media_sharing.py`` the
 only reader of the three authorization columns, and
 ``tests/test_shema/test_privacy_owners.py`` globs this package and ``app/api/shema/``
-and fails on a second one. The **rule** the first of them guards is not in this package
-at all — it is inherited by every response model that leaves coordination, from
+and fails on a second one. ``_media_storage.py`` and ``media_download_url.py`` are the
+fourth file and its one caller: a per-item authorization that ends in a public URL
+enforces nothing, so the predicate is applied on the only address the bytes have and
+that address expires (``docs/shema.md`` §4.6).
+
+The **rule** the first of them guards is not in this package at all — it is inherited
+by every response model that leaves coordination, from
 ``app/models/shema_privacy.py``, because ``app/models/`` may not import ``app/services/``
 and because a rule a service has to call is a rule the next service forgets.
 
@@ -74,6 +79,11 @@ from app.services.shema._media_sharing import (
     is_authorized,
     recorded_decision,
 )
+from app.services.shema._media_storage import (
+    DOWNLOAD_URL_EXPIRY_MINUTES,
+    GCS_SHEMA_BUCKET,
+    storage_key,
+)
 from app.services.shema._progress import (
     Aggregates,
     ProgressSource,
@@ -102,14 +112,22 @@ from app.services.shema.get_project import get_project
 from app.services.shema.get_session import get_session
 from app.services.shema.list_assessments import list_assessments
 from app.services.shema.list_projects import list_projects
+from app.services.shema.media_download_url import (
+    MediaLink,
+    material_download_url,
+    media_download_url,
+)
 from app.services.shema.read_record import build_record, read_changes_since, read_record
 from app.services.shema.save_project import RecordVersionConflict, create_project, save_project
 from app.services.shema.set_region_scope import set_region_scope
 
 __all__ = [
+    "DOWNLOAD_URL_EXPIRY_MINUTES",
+    "GCS_SHEMA_BUCKET",
     "HEALTH_AUDIENCE",
     "Aggregates",
     "ChangesSince",
+    "MediaLink",
     "ProgressSource",
     "RecordVersionConflict",
     "RegionScope",
@@ -133,6 +151,8 @@ __all__ = [
     "list_assessments",
     "list_projects",
     "log_reference",
+    "material_download_url",
+    "media_download_url",
     "notice_body",
     "notify_critical",
     "prayer_visibility",
@@ -152,6 +172,7 @@ __all__ = [
     "set_region_scope",
     "shared_prayer_audio",
     "shared_prayer_text",
+    "storage_key",
     "visible_projects",
     "with_rolled_aggregates",
     "withheld_note",

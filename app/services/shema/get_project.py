@@ -9,6 +9,12 @@ statement, so the two cases arrive at the same line.
 The refusal is logged — with the caller, the operation and the caller's own regions, and
 without any column of the row being protected. That is the DoD's last line, and it is what
 makes an indistinguishable response investigable.
+
+**The branch below fires on any miss**, so a mistyped id reaches the same line an
+out-of-region one does. That is the choice above seen from the logging side rather than a
+gap in it: this function cannot tell the two apart without the unscoped query the 404 exists
+to avoid. What it can do is not claim to, which is why the message classifies the outcome
+rather than announcing a refused authorization — see ``refuse_out_of_scope``.
 """
 
 from __future__ import annotations

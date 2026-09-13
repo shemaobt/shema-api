@@ -260,13 +260,18 @@ async def test_the_carry_happens_once_and_not_on_every_later_submission(
 async def test_the_day_is_the_actors_own_when_the_submission_states_none(
     client, headers, project
 ) -> None:
+    # Relative to today, not a written date: ``_local_day`` refuses a header more than one day
+    # from the server's own, so a literal turns this into a test that starts failing the day
+    # after it is written — and the test below, which asserts exactly that refusal, is the one
+    # that would have to change if the window ever moved.
+    today = date.today().isoformat()
     payload = {key: value for key, value in WHOLE.items() if key != "date"}
     response = await client.post(
         assessments(project),
         json=payload,
-        headers={**headers, "X-Shema-Local-Date": "2026-09-11"},
+        headers={**headers, "X-Shema-Local-Date": today},
     )
-    assert response.json()["healthAssessmentDate"] == "2026-09-11"
+    assert response.json()["healthAssessmentDate"] == today
 
 
 @pytest.mark.parametrize("day", ["2025-09-11", "not-a-day"])
