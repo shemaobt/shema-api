@@ -34,7 +34,6 @@ from __future__ import annotations
 import re
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
 from pydantic import (
     AliasGenerator,
@@ -46,7 +45,9 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
+from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaNeedStatus, ShemaNeedUrgency
+from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
 from app.utils.shema_facets import OPEN_NEED_STATUSES
 
@@ -290,14 +291,21 @@ class ShemaNeedLine(LeavingShape):
         )
 
     @classmethod
-    def of(cls, need: Any, project: Any) -> ShemaNeedLine:
+    def of(cls, need: ShemaNeed, project: ShemaProject) -> ShemaNeedLine:
         """Build one line from a need row and the project it hangs off.
 
         Two objects and therefore an explicit constructor: ``from_attributes`` reads one, and
         the sensitive flag and the region live on the **project** while the money lives on the
         **need**. Everything the boundary needs is passed, so the shape never falls back to
-        the fail-closed default for want of a column somebody forgot to select — and if a
-        caller does hand over something that cannot answer, the default withholds.
+        the fail-closed default for want of a column somebody forgot to select.
+
+        **The two rows are typed**, which is the shape ``app/models/resource_request.py`` and
+        ``app/models/device.py`` already have for their own ``of()`` (``row:
+        RRRequestFieldHistory``, ``device: Device``): this is the one place in the module that
+        reads eleven attributes off two objects, and a named model is where a renamed column
+        is caught instead of arriving as a missing key at the boundary. Importing a row class
+        into ``app/models/`` is the house direction and not a layering breach — the ban is the
+        other way round, on SQLAlchemy models reaching the api layer.
         """
         return cls.model_validate(
             {

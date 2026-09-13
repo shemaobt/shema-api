@@ -257,8 +257,6 @@ async def save_project(
     merged = _merged(project, payload)
     _refuse_impossible_dates(merged)
 
-    #: Resolved and validated before anything is applied, exactly as ``_merged`` is: an unknown
-    #: need id names itself and no row of the batch — and no column of the record — is written.
     batch = _needs.needs_payload(payload)
     plan = _needs.NeedPlan() if batch is None else await _needs.plan_needs(db, project, batch)
 
