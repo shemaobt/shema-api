@@ -103,7 +103,7 @@ file.
 
 **C3 — FE-44 §9.6 gives the intercessor network to BE-09; the Linear issue titles give it to
 BE-13** (*"BE-13 · Equipe e intercessores"*, OBT-402), and BE-09 is *"Oração: pedidos,
-autorização e geração do Pulso"* (OBT-398). §4.9 and §5.3 decide the seam; §11 records it as
+autorização e geração do Pulso"* (OBT-398). §3.1 and §5.7 decide the seam; §11 records it as
 an issue edit rather than leaving two owners.
 
 ### 1.4 What PR #127 carries, and what is taken from it — **Decided**
@@ -200,7 +200,7 @@ The role keys are the frontend's own ids verbatim, which is the precedent
 `seed_apps_roles.py`'s docstring already gives: *"the four keys are the role ids of the
 frontend's `capabilities.ts` verbatim, not a translation of them."* Here the ids are
 camelCase (`SessionRole` in `src/types/role.ts`) while most of this repository's role keys
-are snake_case. **Keep the camelCase.** `GET /api/shema/session` (§6.4) must answer a
+are snake_case. **Keep the camelCase.** `GET /api/shema/session` (§6.3) must answer a
 `SessionRole` the frontend can use as a key; a translation table between two spellings of
 one vocabulary is a second place to be wrong, and it would be read on every request.
 
@@ -259,7 +259,7 @@ bucket, which is the precedent, not a trespass).
 | Path | Owner | Holds |
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
-| `app/api/shema/_deps.py` | BE-03 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.2's region-scope dependency. The app key is named here and nowhere else in the module. |
+| `app/api/shema/_deps.py` | BE-03 | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.1's region-scope dependency. The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | BE-05, BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | BE-07 | `POST`/`GET /projects/{id}/health-assessments`. |
 | `app/api/shema/prayer.py` | BE-09 | The wall and the intercessor network. |
@@ -269,12 +269,12 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
-| `app/api/shema/session.py` | BE-03 | `GET /api/shema/session` — §6.4. |
+| `app/api/shema/session.py` | BE-03 | `GET /api/shema/session` — §6.3. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/shema/_scope.py` | BE-03 | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. |
-| `app/services/shema/_redaction.py` | BE-04 | The sensitive-country owners: the location display and the map placement. §6.5. |
-| `app/services/shema/_consent.py` | BE-04 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.5. |
-| `app/services/shema/_media_sharing.py` | BE-04 | `can_share_media` — authorization × audience × the sensitive flag. §6.5. |
+| `app/services/shema/_redaction.py` | BE-04 | The sensitive-country owners: the location display and the map placement. §6.4. |
+| `app/services/shema/_consent.py` | BE-04 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
+| `app/services/shema/_media_sharing.py` | BE-04 | `can_share_media` — authorization × audience × the sensitive flag. §6.4. |
 | `app/utils/shema_derivations.py` | BE-05 | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
 | `app/models/shema.py`, `app/models/shema_*.py` | BE-02 …, per §2.2 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models; separate `Create` / `Update` / `Response`. |
 | `app/db/models/shema.py`, `app/db/models/shema_*.py` | BE-02 authors, each issue grows its own | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — [`docs/resource_requests.md`](resource_requests.md) §8.1. |
@@ -335,8 +335,8 @@ nothing in column 3 imports `fastapi`.
 | **Role** | The four aliases, `require_role(APP_KEY, key)`. | Nothing. |
 | **Region scope** | Declares the dependency; receives a `RegionScope` value. | `_scope.py` computes it from `shema_user_regions` and the granted roles, and **every list query takes it as a parameter**. §6.1. |
 | **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a duplicate slug is a `ConflictError`). |
-| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | `_redaction.py`, called by every service that builds a *leaving* shape. §6.5. |
-| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; `list_prayer_requests` is the only query that applies the gate. §6.5. |
+| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | `_redaction.py`, called by every service that builds a *leaving* shape. §6.4. |
+| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; `list_prayer_requests` is the only query that applies the gate. §6.4. |
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
@@ -357,7 +357,7 @@ files), `app/db/models/auth.py`. JWT access + refresh, `refresh_tokens` and
 platform guard, `users.is_active`, `users.locale`.
 
 Shemá adds **no login of its own**. INT-01 targets `POST /api/auth/login`, `/refresh`,
-`/logout`, `GET /api/auth/me`. The only Shemá-specific session read is §6.4's
+`/logout`, `GET /api/auth/me`. The only Shemá-specific session read is §6.3's
 `GET /api/shema/session`, and it exists because of the region, not because of the login.
 
 ### 4.2 Roles and app scoping — **Reuse the spine, extend the scope**
@@ -742,7 +742,7 @@ file.
 | File | Owns | The rule |
 |---|---|---|
 | `app/services/shema/_redaction.py` | `sensitive_country` | The location is replaced by the **region name** — the withheld **marker**, never an empty string, so the redaction travels in the shape and a renderer downstream cannot leak what the payload does not hold. Coordinates become the region centroid. **The base name goes with the location** in any file that leaves: both flagged records carry a base that names a place (`YWAM Egypt`, `YWAM Morelia`), so withholding `Egypt` while printing `YWAM Egypt` one column over redacts nothing. |
-| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` | **The only reader of those three columns**, and one query applies the gate. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
+| `app/services/shema/_consent.py` | `prayer_requests`, `prayer_visibility`, `prayer_requests_audio` — **and `source["prayerRequests"]`, which is a fourth copy of the same text** | **The only reader of those three columns**, and one query applies the gate. `prayerRequests` is one of the export's 55 keys, so `shema_projects.source`, which keeps the export row verbatim, carries that key too under the export's own camelCase spelling — empty in today's export, and where the next one's text lands; `prayerVisibility` and `prayerRequestsAudio` are two of the 18 the product added and are not in it. The column is **nullable and NULL means `coordenacao`** — do not default it to `rede` and do not backfill it. It is a **visibility level, not a published boolean**: a team that has not consented to being shared still reaches the people who follow up. |
 | `app/services/shema/_media_sharing.py` | `authorization` on media and materials | Composes, most restrictive wins: an authorized item reaches `coordenacao`; the same item on a sensitive project **never** reaches `publico`. |
 
 **The split that keeps this from over-redacting.** A project **read** by someone allowed to
@@ -761,6 +761,11 @@ globs a directory and fails on a literal. `tests/test_shema/test_privacy_owners.
 `app/services/shema/*.py` and `app/api/shema/*.py` and fails when a file that is not the
 named owner references one of the guarded columns. A rule applied per endpoint is a rule the
 next endpoint forgets; a glob is not.
+
+**The literals that test looks for are four, not three.** `prayer_requests`,
+`prayer_visibility` and `prayer_requests_audio` are the columns, and `prayerRequests` is the
+same field again inside `source` — the export row kept verbatim (§5.1). A guard written on the
+three snake_case names reads that copy and does not see it.
 
 **The acceptance test the delivery plan already names:** an unauthorized prayer request is
 absent from **all four** output paths — the wall, exports, the ETEN report and notifications.

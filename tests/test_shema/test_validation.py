@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from app.db.models.shema_enums import ShemaPrayerVisibility
 from app.models.shema import REQUIRED_TO_SAVE, ShemaProjectCreate, ShemaProjectUpdate
 
 VALID = {
@@ -114,3 +115,17 @@ def test_a_record_may_carry_more_translated_than_total() -> None:
     """``156/25`` is a real record. The scope is what is wrong in it, not the count."""
     patch = ShemaProjectUpdate(total_units=25, translated_units=156)
     assert patch.translated_units == 156
+
+
+def test_a_visibility_the_vocabulary_does_not_have_is_refused_by_the_shape() -> None:
+    """``publico`` is not one of the two, and the shape is where that has to be said.
+
+    ``status`` and ``needs_pastoral_intervention`` beside it already carry their enums; a
+    plain ``str`` here would let the payload through and let the database raise instead —
+    on the one field this module argues the hardest about.
+    """
+    with pytest.raises(ValidationError):
+        ShemaProjectUpdate(prayer_visibility="publico")
+    assert ShemaProjectUpdate(prayer_visibility="rede").prayer_visibility is (
+        ShemaPrayerVisibility.REDE
+    )
