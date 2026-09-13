@@ -50,8 +50,9 @@ _REVISIONS = sorted(
 )
 
 #: The keys the Notion export has. They have an empty state and never an absent one, so the
-#: column is NOT NULL with an empty default — except nine that are export-backed and nullable
-#: anyway, each named in one of the three lists below together with the reason.
+#: column is NOT NULL with an empty default — except nine, each named in one of the three
+#: lists below with its reason. Eight of them break the NOT NULL half; ``id`` breaks only the
+#: default half, being a primary key that is supplied and never defaulted.
 EXPORT_BACKED_NOT_NULL = (
     "language_name",
     "language_code",
