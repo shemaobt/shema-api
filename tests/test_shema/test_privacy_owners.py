@@ -39,6 +39,7 @@ from pydantic import BaseModel
 from app.db.models.shema_enums import ShemaRegionKey
 from app.main import create_app
 from app.models.shema_privacy import (
+    BASE_FIELDS,
     CONTACT_FIELDS,
     PLACE_FIELDS,
     WITHHELD_FIELDS,
@@ -187,8 +188,16 @@ def _models_in(annotation: Any, depth: int = 0) -> set[type[BaseModel]]:
 
 
 def _names_a_place(model: type[BaseModel]) -> list[str]:
-    """The fields that make a shape able to name where a project is."""
-    telling = set(PLACE_FIELDS) | set(CONTACT_FIELDS) | {"sensitive_country"}
+    """The fields that make a shape able to name where a project is.
+
+    :data:`~app.models.shema_privacy.BASE_FIELDS` is in here for the reason the PR argues
+    ``team`` has to be withheld at all — ``YWAM Egypt`` names Egypt — and for one the other
+    fields do not have: ``team`` is deliberately outside the owner globs above, so a shape
+    that declares it and nothing else would be the one guarded field with no net on it. A
+    later notification or Pulse entry with a ``team`` and no ``location`` is exactly the shape
+    that would pass an audit that only looked for a place column.
+    """
+    telling = set(PLACE_FIELDS) | set(BASE_FIELDS) | set(CONTACT_FIELDS) | {"sensitive_country"}
     return sorted(name for name in model.model_fields if name in telling)
 
 
