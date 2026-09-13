@@ -363,6 +363,26 @@ def _in_band(derived: Derivations, band: str) -> bool:
     return False
 
 
+def _yes_no(selected: str | None, fact: bool) -> bool:
+    """One of the four ``yes``/``no`` groups: nothing selected passes, ``yes`` and ``no`` ask
+    the fact, and **anything else matches nothing**.
+
+    The spelling this replaces, ``(selected == "yes") == fact``, read ``?eten=true`` as *no*
+    and returned exactly the projects that are **not** in ETEN — the list disagreeing with
+    the sidebar, which is the failure this whole file exists to prevent. The sidebar only
+    ever publishes ``yes`` and ``no`` (``DENSE_GROUPS``), so any other value is the
+    ``objective=Xyz`` case and gets the same honest answer: an empty list, under counts that
+    still describe the two real options.
+    """
+    if not selected:
+        return True
+    if selected == "yes":
+        return fact
+    if selected == "no":
+        return not fact
+    return False
+
+
 def _passes(
     record: Facetable,
     derived: Derivations,
@@ -393,16 +413,11 @@ def _passes(
             not filters.translation_type or filters.translation_type in record.translation_type
         ),
         "needCategory": not filters.need_category or filters.need_category in need_categories,
-        "eten": not filters.eten or (filters.eten == "yes") == record.in_eten,
-        "sensitive": (
-            not filters.sensitive or (filters.sensitive == "yes") == record.location_withheld
-        ),
+        "eten": _yes_no(filters.eten, record.in_eten),
+        "sensitive": _yes_no(filters.sensitive, record.location_withheld),
         "progressRange": not filters.progress_range or _in_band(derived, filters.progress_range),
-        "hasMedia": not filters.has_media or (filters.has_media == "yes") == record.has_media,
-        "hasOpenNeeds": (
-            not filters.has_open_needs
-            or (filters.has_open_needs == "yes") == has_open_needs(record.needs)
-        ),
+        "hasMedia": _yes_no(filters.has_media, record.has_media),
+        "hasOpenNeeds": _yes_no(filters.has_open_needs, has_open_needs(record.needs)),
         "attention": not filters.attention or presets["attention"],
         "prayer": not filters.prayer or presets["prayer"],
         "celebrate": not filters.celebrate or presets["celebrate"],
