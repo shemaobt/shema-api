@@ -229,6 +229,40 @@ async def test_a_seat_points_at_an_account_and_the_name_still_comes_from_the_cha
     assert res.json()["teamAccounts"]["coordinator"] == holder.id
 
 
+async def test_the_collection_serves_names_and_never_the_account_behind_them(
+    db_session, client, shema_app
+) -> None:
+    """``GET /regions`` is read by every member; the account id leaves only through the
+    editor's read. Asserted over the serialised body rather than over a model's field list,
+    because the claim is about what a member receives and not about one class's keys."""
+    _user, headers = await _coordinator(
+        db_session, shema_app, email="wide@shema.test", regions=[ShemaRegionKey.ASIA]
+    )
+    holder = await make_user(db_session, email="ana-wide@shema.test")
+    await client.put(
+        ASIA_TEAM,
+        headers=headers,
+        json={
+            "team": {"coordinator": "Ana Lima", "obtLab": "", "resourceCircle": ""},
+            "accounts": {"coordinator": holder.id},
+        },
+    )
+    member = await make_scoped_user(
+        db_session, shema_app, email="anyone@shema.test", role_key="obtLab", regions=[]
+    )
+
+    res = await client.get(REGIONS, headers=await auth_header(db_session, member))
+
+    assert res.status_code == 200
+    assert "teamAccounts" not in res.text
+    assert holder.id not in res.text
+    asia = next(row for row in res.json() if row["key"] == "asia")
+    assert asia["team"]["coordinator"] == "Ana Lima"
+
+    editor = await client.get(ASIA_TEAM, headers=headers)
+    assert editor.json()["teamAccounts"]["coordinator"] == holder.id
+
+
 async def test_replacing_the_holder_clears_the_account_the_previous_one_carried(
     db_session, client, shema_app
 ) -> None:

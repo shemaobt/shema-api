@@ -11,11 +11,15 @@ one name.
 ``alias="from"``. That is not a rename — the wire says ``from``, which is what the console
 reads, and the attribute is the only thing that had to move.
 
-**What is added, and why it is a sibling field rather than a change to a frozen one.**
-:class:`Region` gains ``teamAccounts``: the Tripod account of each seat's holder, where they
-have one. ``team`` stays three strings exactly as frozen, so a console written against the
-contract keeps working and a console that wants the account reads a key beside it. Widening
-``team`` into three objects would have been the same information and a broken client.
+**What is added, and why it is a second shape rather than a field on the frozen one.**
+:class:`RegionWithAccounts` is :class:`Region` plus ``teamAccounts``: the Tripod account of
+each seat's holder, where they have one. It is what ``GET /regions/{key}/team`` answers the
+editor, and it is **not** what ``GET /regions`` answers its four consumers — that collection
+is a directory of offices and carries a name per seat and nothing else, so a user id, which
+is an internal identifier, leaves through one surface and never through the one every member
+reads. ``team`` stays three strings exactly as frozen on both, so a console written against
+the contract keeps working; widening ``team`` into three objects would have been the same
+information and a broken client.
 
 **Dates are** ``YYYY-MM-DD`` (FE-44 §9.0), ``changedAt`` included, and the day is the **UTC**
 day. ``docs/shema.md`` §6.5's *actor's local day* rule is the progress stamp's and cannot be
@@ -78,13 +82,23 @@ class RegionTeamAccounts(BaseModel):
 
 
 class Region(BaseModel):
-    """One region and its three seats. **Frozen**, plus ``teamAccounts``."""
+    """One region and its three seats. **Frozen** — ``Region`` in ``src/types/region.ts``."""
 
     model_config = ConfigDict(populate_by_name=True)
 
     key: str
     label_key: str = Field(alias="labelKey")
     team: RegionTeam
+
+
+class RegionWithAccounts(Region):
+    """The editor's read: the frozen shape, plus the account behind each seat.
+
+    A subclass rather than an optional field on :class:`Region`, so the wide read cannot
+    carry an account even by accident: the shape the collection serialises has no field for
+    the answer, which is a stronger guarantee than a field left ``None``.
+    """
+
     team_accounts: RegionTeamAccounts = Field(alias="teamAccounts")
 
 

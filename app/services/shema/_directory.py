@@ -80,6 +80,7 @@ __all__ = [
     "count_people",
     "create_person",
     "edit_person",
+    "entries_of",
     "entry_of",
     "erase_person",
     "leaving_directory",
@@ -195,7 +196,13 @@ async def withdraw_consent(
     *,
     commit: bool = True,
 ) -> bool:
-    """Delete the row, and answer whether there was one. **No flag is written.**"""
+    """Delete the row, and answer whether there was one. **No flag is written.**
+
+    The subject is read first for the reason :func:`record_consent` gives: a withdrawal for
+    somebody who does not exist is a 404 naming what is missing, and not a 204 about a row
+    that was never there.
+    """
+    await _person(db, intercessor_id)
     result = await db.execute(
         delete(ShemaIntercessorConsent).where(
             ShemaIntercessorConsent.intercessor_id == intercessor_id,
@@ -303,6 +310,48 @@ async def entry_of(db: AsyncSession, intercessor_id: str) -> IntercessorEntry:
             .order_by(ShemaIntercessorConsent.recorded_at, ShemaIntercessorConsent.context)
         )
     ).scalars()
+    return _entry(person, list(rows))
+
+
+async def entries_of(db: AsyncSession, ids: list[str]) -> list[IntercessorEntry]:
+    """Many people's coordination shape, in the order the ids came — two statements, not 2N.
+
+    The directory is the caller. :func:`listable_ids` answers ids as scalars, so nothing is in
+    the identity map and a per-person :func:`entry_of` is a ``db.get`` plus a consent
+    ``select`` each — the right cost for one person after a write, and 2N round trips on the
+    Resource Circle's network screen, which is the whole consumer of that route. So the rows
+    come in one ``select`` over the ids and the consents in one more, grouped by person here;
+    :func:`_entry` builds the shape for both paths, so the two cannot drift.
+
+    An id with no row by the time the second statement runs is skipped rather than raised:
+    the list was true when it was made, and a person erased in between is exactly somebody
+    the directory must not name.
+    """
+    if not ids:
+        return []
+    people = {
+        person.id: person
+        for person in (
+            await db.execute(select(ShemaIntercessor).where(ShemaIntercessor.id.in_(ids)))
+        ).scalars()
+    }
+    consents: dict[str, list[ShemaIntercessorConsent]] = {}
+    stmt = (
+        select(ShemaIntercessorConsent)
+        .where(ShemaIntercessorConsent.intercessor_id.in_(ids))
+        .order_by(ShemaIntercessorConsent.recorded_at, ShemaIntercessorConsent.context)
+    )
+    for row in (await db.execute(stmt)).scalars():
+        consents.setdefault(row.intercessor_id, []).append(row)
+    return [
+        _entry(people[person_id], consents.get(person_id, []))
+        for person_id in ids
+        if person_id in people
+    ]
+
+
+def _entry(person: ShemaIntercessor, rows: list[ShemaIntercessorConsent]) -> IntercessorEntry:
+    """The one assembly of a collection entry, shared by the single and the batched read."""
     return IntercessorEntry(
         id=person.id,
         name=person.name,

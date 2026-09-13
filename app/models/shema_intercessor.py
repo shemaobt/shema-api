@@ -93,6 +93,22 @@ def _clean_name(value: str | None) -> str | None:
     return name
 
 
+def _clean_basis(value: str) -> str:
+    """Refuse a basis that is only whitespace, naming the field.
+
+    ``min_length`` counts characters and does not strip, so ``"   "`` passed it, the service
+    stored ``basis.strip()`` and the row met ``ck_shema_consents_basis_present`` inside the
+    flush — an ``IntegrityError`` reaching the caller as a 500 for their own bad payload, which
+    is the failure ``_account_or_refuse`` argues against at length on the chart's side of the
+    module. Stripped here, so what the service stores is what the validator accepted. Never
+    ``None``: neither shape that carries a basis makes it optional.
+    """
+    basis = value.strip()
+    if not basis:
+        raise ValueError("basis is required: how the consent was obtained and how it is evidenced")
+    return basis
+
+
 class IntercessorCreate(BaseModel):
     """A new contact, with the consent that lets the row exist at all.
 
@@ -115,11 +131,12 @@ class IntercessorCreate(BaseModel):
     contact: str
     sensitive_country: bool = Field(default=False, alias="sensitiveCountry")
     #: How the ``network`` consent was obtained and how it is evidenced, as a person wrote it.
-    consent_basis: str = Field(alias="consentBasis", min_length=1, max_length=300)
+    consent_basis: str = Field(alias="consentBasis", max_length=300)
 
     _check_name = field_validator("name")(_clean_name)
     _check_country = field_validator("country")(_clean_country)
     _check_contact = field_validator("contact")(_clean_contact)
+    _check_basis = field_validator("consent_basis")(_clean_basis)
 
 
 class IntercessorUpdate(BaseModel):
@@ -162,11 +179,13 @@ class IntercessorUpdate(BaseModel):
 
 
 class ConsentGrant(BaseModel):
-    """Stating one consent. The basis is the field, and it may not be empty."""
+    """Stating one consent. The basis is the field, and it may not be blank."""
 
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    basis: str = Field(min_length=1, max_length=300)
+    basis: str = Field(max_length=300)
+
+    _check_basis = field_validator("basis")(_clean_basis)
 
 
 class Consent(BaseModel):

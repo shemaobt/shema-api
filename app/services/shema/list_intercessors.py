@@ -23,14 +23,18 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.shema_intercessor import IntercessorDirectory
-from app.services.shema._directory import count_people, entry_of, listable_ids
+from app.services.shema._directory import count_people, entries_of, listable_ids
 
 
 async def list_intercessors(db: AsyncSession) -> IntercessorDirectory:
-    """Everyone who consented to be listed, plus how many did not."""
+    """Everyone who consented to be listed, plus how many did not.
+
+    Four statements whatever the size of the network — the gate, the order, the count and
+    the batched read — rather than two per person; ``entries_of`` carries the argument.
+    """
     visible = await listable_ids(db)
     total = await count_people(db)
     return IntercessorDirectory(
-        people=[await entry_of(db, person_id) for person_id in visible],
+        people=await entries_of(db, visible),
         withheldCount=total - len(visible),
     )

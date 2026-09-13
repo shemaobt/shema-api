@@ -51,7 +51,7 @@ async def seats_of(
 
 
 def region_of(region_key: ShemaRegionKey, seats: dict[ShemaRoleKey, ShemaRegionTeam]) -> Region:
-    """One region's frozen shape, built over whatever rows exist for it."""
+    """One region's frozen shape, built over whatever rows exist for it. Names, and only names."""
     return Region(
         key=region_key.value,
         labelKey=label_key_for(region_key.value),
@@ -61,12 +61,21 @@ def region_of(region_key: ShemaRegionKey, seats: dict[ShemaRoleKey, ShemaRegionT
                 for seat in SEAT_ORDER
             }
         ),
-        teamAccounts=RegionTeamAccounts(
-            **{
-                FIELD_FOR_SEAT[seat]: (seats[seat].holder_user_id if seat in seats else None)
-                for seat in SEAT_ORDER
-            }
-        ),
+    )
+
+
+def accounts_of(seats: dict[ShemaRoleKey, ShemaRegionTeam]) -> RegionTeamAccounts:
+    """The account behind each seat — for the one read allowed to hand it out.
+
+    Beside :func:`region_of` and not inside it, so the collection cannot carry an account id
+    by construction: :func:`list_regions` never calls this, and the shape it builds has no
+    field for the answer. ``get_region_team.py`` is the caller.
+    """
+    return RegionTeamAccounts(
+        **{
+            FIELD_FOR_SEAT[seat]: (seats[seat].holder_user_id if seat in seats else None)
+            for seat in SEAT_ORDER
+        }
     )
 
 

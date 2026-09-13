@@ -9,6 +9,8 @@ authentication.
 
 from __future__ import annotations
 
+from sqlalchemy import event
+
 from tests.baker import make_user
 from tests.test_shema.conftest import PEOPLE, auth_header, make_intercessor, make_scoped_user
 
@@ -38,6 +40,35 @@ async def test_a_person_cannot_be_stored_without_a_recorded_basis(
 
     assert res.status_code == 422
     assert (await client.get(PEOPLE, headers=headers)).json()["people"] == []
+
+
+async def test_a_basis_of_whitespace_is_a_bad_payload_and_not_a_server_fault(
+    db_session, client, shema_app
+) -> None:
+    """``min_length`` counts characters and does not strip: ``"   "`` used to pass the
+    validator, be stripped by the service and meet the CHECK constraint inside the flush —
+    a 500 for the caller's own bad payload. Both places a basis enters are asserted."""
+    _user, headers = await _circle(db_session, shema_app)
+
+    res = await client.post(
+        PEOPLE,
+        headers=headers,
+        json={
+            "name": "Maria",
+            "country": "BR",
+            "contact": "maria@example.org",
+            "consentBasis": "   ",
+        },
+    )
+    assert res.status_code == 422
+    assert (await client.get(PEOPLE, headers=headers)).json()["people"] == []
+
+    person = await make_intercessor(client, headers)
+    res = await client.put(
+        f"{PEOPLE}/{person['id']}/consents/directory", headers=headers, json={"basis": " \t "}
+    )
+    assert res.status_code == 422
+    assert [row["context"] for row in person["consents"]] == ["network"]
 
 
 async def test_the_create_grants_the_floor_consent_and_not_the_other_two(
@@ -147,6 +178,58 @@ async def test_withdrawing_the_floor_consent_erases_the_person(
     assert (
         await client.get(f"{PEOPLE}/{person['id']}/contact", headers=headers)
     ).status_code == 404
+
+
+async def test_withdrawing_from_somebody_who_is_not_there_is_a_404(
+    db_session, client, shema_app
+) -> None:
+    """The subject is read before the delete, so an unknown id is a 404 naming what is
+    missing and not a 204 about a row that was never there."""
+    _user, headers = await _circle(db_session, shema_app)
+
+    res = await client.delete(f"{PEOPLE}/nobody/consents/directory", headers=headers)
+
+    assert res.status_code == 404
+
+
+async def test_the_directory_is_read_in_the_same_number_of_statements_whatever_its_size(
+    db_session, client, shema_app, test_engine
+) -> None:
+    """Per-person reads made the directory 2N+2 round trips, on the network screen that is
+    the whole consumer of the route. The people come in one ``select`` and the consents in
+    one more, so the statement count of the read is the same for one person and for six —
+    measured, rather than asserted as a number that the auth chain would make brittle."""
+    _user, headers = await _circle(db_session, shema_app)
+
+    async def _listed(index: int) -> None:
+        person = await make_intercessor(
+            client, headers, name=f"Person {index}", contact=f"person{index}@example.org"
+        )
+        await client.put(
+            f"{PEOPLE}/{person['id']}/consents/directory", headers=headers, json={"basis": "yes"}
+        )
+
+    async def _statements_of_a_read() -> int:
+        statements: list[str] = []
+
+        def _count(_conn, _cursor, statement, _parameters, _context, _executemany) -> None:
+            statements.append(statement)
+
+        event.listen(test_engine.sync_engine, "before_cursor_execute", _count)
+        try:
+            res = await client.get(PEOPLE, headers=headers)
+        finally:
+            event.remove(test_engine.sync_engine, "before_cursor_execute", _count)
+        assert res.status_code == 200
+        return len(statements)
+
+    await _listed(0)
+    with_one = await _statements_of_a_read()
+    for index in range(1, 6):
+        await _listed(index)
+
+    assert len((await client.get(PEOPLE, headers=headers)).json()["people"]) == 6
+    assert await _statements_of_a_read() == with_one
 
 
 # --- the contact --------------------------------------------------------------------------

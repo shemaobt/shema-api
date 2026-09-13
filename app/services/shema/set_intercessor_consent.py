@@ -57,16 +57,16 @@ async def withdraw_intercessor_consent(
     context: ShemaConsentContext,
     *,
     actor: User,
-) -> IntercessorEntry | None:
-    """Delete the consent row. Answers ``None`` when the person went with it.
+) -> None:
+    """Delete the consent row — or, for ``network``, the person.
 
-    ``None`` is the ``network`` case and the router turns it into a 204: there is no entry to
-    return, because there is no person. Returning a shape with the fields blanked would be a
-    tombstone in a response body.
+    Answers nothing on either branch. The route is a 204 both ways (its docstring carries the
+    argument: two shapes on one route, and in the erasing case a body describing somebody the
+    request just removed), so an entry assembled here would be two statements for a value
+    nobody reads. A caller that wants the person after a narrowing re-reads the directory.
     """
     if context is ShemaConsentContext.NETWORK:
         await remove_intercessor(db, intercessor_id, actor=actor)
-        return None
+        return
 
     await withdraw_consent(db, intercessor_id, context, commit=True)
-    return await entry_of(db, intercessor_id)

@@ -30,7 +30,13 @@ from fastapi import APIRouter
 
 from app.api.shema._deps import CoordinatorUser, CurrentUser, Db, Scope
 from app.db.models.shema_enums import ShemaRegionKey
-from app.models.shema_org_chart import Region, RegionTeamSave, RegionTeamSaved, RoleChange
+from app.models.shema_org_chart import (
+    Region,
+    RegionTeamSave,
+    RegionTeamSaved,
+    RegionWithAccounts,
+    RoleChange,
+)
 from app.services.shema import (
     get_region_team,
     list_regions,
@@ -63,14 +69,18 @@ async def read_role_changes(user: CoordinatorUser, db: Db, scope: Scope) -> list
     return await list_role_changes(db, scope)
 
 
-@router.get("/regions/{region_key}/team", response_model=Region)
-async def read_region_team(region_key: ShemaRegionKey, user: CoordinatorUser, db: Db) -> Region:
+@router.get("/regions/{region_key}/team", response_model=RegionWithAccounts)
+async def read_region_team(
+    region_key: ShemaRegionKey, user: CoordinatorUser, db: Db
+) -> RegionWithAccounts:
     """One region's seats, with the account behind each — what the editing screen loads.
 
     ``coordinator`` rather than ``CurrentUser``, which is the one place this module answers
     the same fact at two widths on purpose: the collection above serves four consumers a
-    name, and this serves an editor the account behind that name. A user id is an internal
-    identifier and the fewer surfaces hand one out, the fewer there are to think about.
+    name, and this serves an editor the account behind that name. The two widths are two
+    shapes — ``Region`` has no field for an account, so the collection cannot carry one — and
+    a user id is an internal identifier: the fewer surfaces hand one out, the fewer there are
+    to think about.
     """
     return await get_region_team(db, region_key)
 
