@@ -231,6 +231,46 @@ async def test_read_marks_a_stale_entry_seen(db_session, shema_app) -> None:
     assert reread.is_read is True
 
 
+async def test_read_tolerates_the_same_stale_id_twice_in_one_batch(db_session, shema_app) -> None:
+    """A client resending the same id in one call is not a 500 on the primary key."""
+    long_ago = datetime.now(UTC).date() - timedelta(days=400)
+    project = await make_shema_project(
+        db_session, project_id="quiet-project-3", region_key=ShemaRegionKey.EUROPE
+    )
+    project.start_date = long_ago
+    project.status = None
+    await db_session.commit()
+
+    coordinator = await make_scoped_user(
+        db_session,
+        shema_app,
+        email="europe-coord-dup@shema.test",
+        role_key="coordinator",
+        regions=[ShemaRegionKey.EUROPE],
+    )
+    today = datetime.now(UTC).date()
+    scope = await region_scope(db_session, coordinator, APP_KEY)
+
+    [entry] = [
+        entry
+        for entry in await list_notification_panel(
+            db_session, scope, coordinator, app_key=APP_KEY, today=today
+        )
+        if entry.project_id == project.id
+    ]
+
+    await mark_notifications_read(db_session, coordinator.id, [entry.id, entry.id])
+
+    [reread] = [
+        entry
+        for entry in await list_notification_panel(
+            db_session, scope, coordinator, app_key=APP_KEY, today=today
+        )
+        if entry.project_id == project.id
+    ]
+    assert reread.is_read is True
+
+
 async def test_prefs_round_trip_through_the_router(db_session, client, shema_app) -> None:
     from tests.baker import make_user
     from tests.test_shema.conftest import auth_header, grant

@@ -34,14 +34,20 @@ async def _mark_derived_read(db: AsyncSession, user_id: str, entry_ids: list[str
     so a dialect-specific ``ON CONFLICT`` upsert would work on one and not the other; the primary
     key already refuses a second row, and the batched read that checks for one first is the
     portable half of the same guarantee.
+
+    ``entry_ids`` is deduplicated first: unlike the old per-id ``db.get``, which autoflushed and
+    saw a just-``add``ed pending row, the one batched ``select`` runs before anything is staged,
+    so a repeated id in the same call would otherwise be ``add``ed twice and the single commit
+    would die on the primary key.
     """
+    unique_ids = list(dict.fromkeys(entry_ids))
     stmt = select(ShemaNotificationRead.entry_id).where(
         ShemaNotificationRead.user_id == user_id,
-        ShemaNotificationRead.entry_id.in_(entry_ids),
+        ShemaNotificationRead.entry_id.in_(unique_ids),
     )
     existing = set((await db.execute(stmt)).scalars())
     now = datetime.now(UTC)
-    for entry_id in entry_ids:
+    for entry_id in unique_ids:
         if entry_id in existing:
             continue
         db.add(ShemaNotificationRead(user_id=user_id, entry_id=entry_id, read_at=now))
