@@ -103,8 +103,11 @@ file.
 
 **C3 — FE-44 §9.6 gives the intercessor network to BE-09; the Linear issue titles give it to
 BE-13** (*"BE-13 · Equipe e intercessores"*, OBT-402), and BE-09 is *"Oração: pedidos,
-autorização e geração do Pulso"* (OBT-398). §3.1 and §5.7 decide the seam; §11 records it as
-an issue edit rather than leaving two owners.
+autorização e geração do Pulso"* (OBT-398). **The owner is not chosen here.** The routes are
+`/api/shema/prayer/intercessors` in both readings (FE-44 §9.6), so §3.1 puts them in
+`prayer.py` and §5.7 keeps the aggregate whole whoever writes it; what is contested is only
+**which issue writes them**, and §11 puts that boundary on both descriptions rather than
+picking for the two.
 
 > **Settled by BE-13: the network is BE-13's.** The evidence is in the graph rather than in
 > either document — **INT-10, *Integrar Equipe e Intercessores*, is blocked by OBT-402 and not
@@ -273,7 +276,7 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/_deps.py` | BE-03 **· built** | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.1's region-scope dependency. The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | BE-05, BE-06 | The collection read, the record read, `POST`, `PATCH`. |
 | `app/api/shema/health_assessments.py` | BE-07 | `POST`/`GET /projects/{id}/health-assessments`. |
-| `app/api/shema/prayer.py` | BE-09 | The wall and the intercessor network. |
+| `app/api/shema/prayer.py` | BE-09 | The wall, and the intercessor network — the routes are under `/prayer/` whoever writes them, and §1.3 C3 leaves open which issue that is. |
 | `app/api/shema/meetings.py` | BE-10 | Definitions and the log. |
 | `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
 | `app/api/shema/forms.py` | BE-12 | Submissions, the Pulse artifact, intake links, and the two **unauthenticated** intake routes. |
@@ -1071,11 +1074,19 @@ items, so they are stated once:
 - **Read the migration head in your own worktree before writing a revision** (§7.1).
 - Every issue that emits data depends on **BE-04's three owners** being in place first (§6.4).
 
-Two issues get more than a note, and both are recorded here because they are boundary
-changes rather than reminders:
+Three of these get more than a note, recorded here because they are boundary changes rather
+than reminders:
 
 - **BE-02** inherits `shema_projects` as its own table with **no FK to `projects` and no
   `language_id`** (§4.3), the eleven aggregates of §5, and §7.4's two absences that an ORM
   default would erase.
 - **BE-03** inherits §6.1's `shema_user_regions` instead of an `organizations` mapping, and
   §6.3's session endpoint.
+- **BE-09 and BE-13** get the same boundary written into both descriptions, and **neither is
+  handed the aggregate**: FE-44 §9.6 puts the intercessor routes on BE-09's screen, the
+  Linear title *"BE-13 · Equipe e intercessores"* (OBT-402) claims them, and one aggregate
+  with two owners is the defect. The edit says *settle it before either writes the table*, on
+  OBT-398 and OBT-402 alike — **this document records the conflict rather than choosing for
+  the two issues** (§1.3 C3, §10 item 5). What is not contested, and is on both: the network
+  never joins a role in either direction, and the three privacy questions of §10 item 8
+  follow it wherever it lands (§5.7).
