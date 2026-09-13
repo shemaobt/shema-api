@@ -29,6 +29,7 @@ from app.api.shema._deps import (
     ResourceCircleUser,
     Scope,
 )
+from app.core.rate_limit import limiter
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaRegionKey
 from app.services.shema._scope import ROLE_KEYS
@@ -45,6 +46,19 @@ SCOPE_PROBE = f"{PREFIX}/_probe/scope"
 #: One probe per role alias, so an alias wired to the wrong key is a real failure rather
 #: than an unread line. ``test_access.py`` asserts every key in ``ROLE_KEYS`` has one.
 ROLE_PROBES: dict[str, str] = {role: f"{PREFIX}/_probe/role/{role}" for role in ROLE_KEYS}
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """slowapi counts in a process-global store, so one test's calls are another's budget.
+
+    Autouse rather than opted into: a limit exhausted by the file that proves the limit works
+    would otherwise fail whichever test happened to run next, which is the kind of red that
+    gets a limit deleted instead of read.
+    """
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -107,9 +121,12 @@ async def client(db_session):
     answers 422 before the guard ever runs.
     """
     from fastapi import APIRouter, FastAPI
+    from slowapi import _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
 
     from app.api.auth import router as auth_router
     from app.api.shema import authenticated
+    from app.api.shema import router as module_router
     from app.core.database import get_db
     from app.core.exceptions import register_exception_handlers
 
@@ -147,6 +164,13 @@ async def client(db_session):
     try:
         authenticated.include_router(probe)
         test_app = FastAPI()
+        # BE-12's two intake routes carry slowapi limits, and slowapi reads the limiter off
+        # ``app.state``. Without these two lines every call to a limited route raises before
+        # the handler, which reads as the route being broken rather than as the fixture being
+        # incomplete. ``create_app()`` does the same two things for the same reason.
+        test_app.state.limiter = limiter
+        test_app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        test_app.include_router(module_router, prefix=PREFIX)
         test_app.include_router(authenticated, prefix=PREFIX)
         test_app.include_router(auth_router, prefix="/api/auth")
         register_exception_handlers(test_app)

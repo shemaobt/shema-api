@@ -1,0 +1,204 @@
+# Shemá — forms, submissions and the leader link (BE-12 · OBT-401)
+#
+# The loop this file walks is the product's own, and it has five steps: a coordinator mints a
+# link, sends it, the leader answers, a coordinator imports, the system archives. Two of the
+# five happen with no `Authorization` header at all — they are the only routes in this module
+# that do, and they are the reason to run this file by hand rather than trust the tests.
+#
+# Four things are worth watching while you run it:
+#
+#   1. the raw token appears in exactly one response, the one that mints the link. The listing
+#      does not carry it and the row stores only its SHA-256. Copy it when you see it.
+#   2. `GET /api/shema/intake/{token}` answers the form and the language name and nothing else
+#      of the project. Put a location, a base and a prayer request on the record first and look
+#      for them in the answer — a forwarded WhatsApp message reaches whoever it reaches.
+#   3. the answer comes back `202`, and the record does not move. That is the design: the link
+#      deposits and a coordinator applies, because `save_project` wants an actor the audit
+#      trail can name and a version somebody read, and a link has neither.
+#   4. sending the same answer twice changes nothing — one archive, one notice, one progress
+#      entry. A leader who forwards the same file twice must not double a chapter count.
+#
+# Before running: seed the app and its roles, then grant one and a region.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py coordenacao.local@test.com shema coordinator
+#   # the region scope is this module's own table; set it through the service or by SQL:
+#   #   INSERT INTO shema_user_regions (user_id, region_key) VALUES ('<id>', 'south-america');
+#
+# `shema_record.http` beside this one creates the record these routes need.
+
+@baseUrl = http://localhost:8000
+@slug = guarani-mbya
+
+### Log in — the shared /api/auth, as every product here does
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coordenacao.local@test.com",
+  "password": "password123"
+}
+
+###
+@token = {{login.response.body.access_token}}
+
+### Mint a link — project-scoped, expiring, and the only sight of the raw token
+# `expiresAt` is optional: without it the link lives 45 days, which is longer than one Pulse
+# cycle and shorter than two. Ask for more than 90 days and it is refused.
+# @name minted
+POST {{baseUrl}}/api/shema/intake-links
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "projectId": "{{slug}}"
+}
+
+###
+@link = {{minted.response.body.token}}
+@linkId = {{minted.response.body.id}}
+
+### The links out on this project — note that none of them carries a token
+GET {{baseUrl}}/api/shema/intake-links?project_id={{slug}}
+Authorization: Bearer {{token}}
+
+### The form the leader opens — NO Authorization header, deliberately
+# The whole of what the link grants. `kind`, `definitionVersion`, `languageName`, `expiresAt`,
+# `fields`, `locationWithheld` — and nothing else. If you can find the project's location, its
+# base, a contact or a count in this answer, that is the bug this route exists not to have.
+GET {{baseUrl}}/api/shema/intake/{{link}}
+
+### The leader answers — NO Authorization header either. Answers 202 and writes no record.
+# `definitionVersion` has to be the one the link was minted with; the server checks it against
+# the link rather than using it to pick a form. A field this version does not have is refused,
+# and so is the whole submission with it.
+POST {{baseUrl}}/api/shema/intake/{{link}}
+Content-Type: application/json
+
+{
+  "definitionVersion": 1,
+  "answers": {
+    "submittedBy": "Kuaray",
+    "period": "2026-09",
+    "voice": "A equipe gravou Marcos 1 a 9 com os anciãos da aldeia.",
+    "blockers": "O gerador queimou; sem energia não há gravação.",
+    "bookProgress": [
+      {
+        "id": "mrk",
+        "name": "Marcos",
+        "chapters": 16,
+        "translated": 9,
+        "communityChecked": 4,
+        "mentorApproved": 0
+      }
+    ],
+    "prayerRequest": "Orem pela travessia do rio na cheia.",
+    "prayerVisibility": "coordenacao"
+  }
+}
+
+### The same answer again — 202, and nothing changes. Run it and look at the inbox after.
+POST {{baseUrl}}/api/shema/intake/{{link}}
+Content-Type: application/json
+
+{
+  "definitionVersion": 1,
+  "answers": {
+    "submittedBy": "Kuaray",
+    "period": "2026-09",
+    "voice": "A equipe gravou Marcos 1 a 9 com os anciãos da aldeia.",
+    "blockers": "O gerador queimou; sem energia não há gravação.",
+    "bookProgress": [
+      {
+        "id": "mrk",
+        "name": "Marcos",
+        "chapters": 16,
+        "translated": 9,
+        "communityChecked": 4,
+        "mentorApproved": 0
+      }
+    ],
+    "prayerRequest": "Orem pela travessia do rio na cheia.",
+    "prayerVisibility": "coordenacao"
+  }
+}
+
+### A submission that does not match — every fault named at once, and nothing archived
+POST {{baseUrl}}/api/shema/intake/{{link}}
+Content-Type: application/json
+
+{
+  "definitionVersion": 1,
+  "answers": {
+    "period": "septembro",
+    "prayerVisibility": "todo-mundo",
+    "rainfall": "forte"
+  }
+}
+
+### The inbox — scoped to the regions this coordinator reaches
+# @name inbox
+GET {{baseUrl}}/api/shema/forms/submissions
+Authorization: Bearer {{token}}
+
+###
+@submissionId = {{inbox.response.body.0.id}}
+
+### One submission opened — the answers as they arrived, beside the form they answered
+# This is where the voice and the blockers are read. They map to no record column on purpose:
+# a Pulse that replaced a coordinator's status comments with a leader's free text would be the
+# record being edited through the weakest credential in the system.
+GET {{baseUrl}}/api/shema/forms/submissions/{{submissionId}}
+Authorization: Bearer {{token}}
+
+### Read the record to get the version the import will quote
+# @name record
+GET {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+
+### Import it — the coordinator's step, guarded exactly as a typed save is
+# The progress goes through `save_project`, so the history entry carries `fromField` and
+# `formType` and is otherwise indistinguishable from one a coordinator typed. Run it twice:
+# the second call answers 200, applies nothing and does not double the chapter count.
+POST {{baseUrl}}/api/shema/forms/submissions/{{submissionId}}/import
+Authorization: Bearer {{token}}
+If-Match: {{record.response.headers.ETag}}
+X-Shema-Local-Date: 2026-09-11
+
+### File an answer that arrived some other way — paper, a voice note, a bad phone line
+# Same validation, same archive, same idempotency, and an actor the trail can name.
+# `definitionVersion` is optional here and means *the version standing today*.
+POST {{baseUrl}}/api/shema/forms/submissions
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: "2"
+X-Shema-Local-Date: 2026-09-11
+
+{
+  "projectId": "{{slug}}",
+  "answers": {
+    "submittedBy": "Jaxuka",
+    "period": "2026-10",
+    "voice": "Lido por telefone; a ligação caiu duas vezes."
+  }
+}
+
+### Revoke the link — and then try the two intake routes again
+# Revocation beats expiry: a link taken back stays taken back after its clock runs out. Both
+# intake routes answer 404 afterwards, with a message that says which of the three it is.
+POST {{baseUrl}}/api/shema/intake-links/{{linkId}}/revoke
+Authorization: Bearer {{token}}
+
+### The form behind a revoked link — 404, and the message says why
+GET {{baseUrl}}/api/shema/intake/{{link}}
+
+### The rate limit — run this one in a loop from a shell rather than by clicking
+# Two buckets are stacked on each intake route: one keyed on the caller's address and one on
+# the link's own token. The per-link bucket is the tighter of the two on purpose — a link
+# forwarded to a hundred phones is one token, and an address bucket never notices it.
+#
+#   for i in $(seq 1 25); do
+#     curl -s -o /dev/null -w '%{http_code}\n' {{baseUrl}}/api/shema/intake/{{link}}
+#   done
+#
+# The last few answer 429.

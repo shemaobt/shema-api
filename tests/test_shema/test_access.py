@@ -35,13 +35,18 @@ from tests.test_shema.conftest import (
 
 #: Paths under ``/api/shema`` that are allowed to carry no authentication.
 #:
-#: **Empty, and the emptiness is the point today.** BE-12 adds ``GET`` and ``POST``
-#: ``/api/shema/intake/{token}`` here — the module's one deliberate hole, by FE-44 §9.0 and
-#: ``docs/shema.md`` §6.6, where the token *is* the guard and the guard is a service function
-#: so the rule holds for any future caller of it. A route that arrives without a line added
-#: here fails ``test_every_shema_route_is_guarded``, which is what makes forgetting a guard
-#: a red build rather than an open endpoint.
-UNAUTHENTICATED_PATHS: frozenset[str] = frozenset()
+#: **One path and two methods, which is the module's whole hole.** BE-04 expected this list to
+#: stay empty until BE-12 and BE-12 added exactly the entry it predicted: ``GET`` and ``POST
+#: /api/shema/intake/{token}``, by FE-44 §9.0 and ``docs/shema.md`` §6.6, where the token *is*
+#: the guard and the guard is a service function (``verify_intake_token``) so the rule holds
+#: for any future caller of it rather than for the two routes it was written under.
+#:
+#: A route that arrives without a line added here fails ``test_every_shema_route_is_guarded``,
+#: which is what makes forgetting a guard a red build rather than an open endpoint. Keyed by
+#: path because that is what the audit compares; the two methods on it are both exempt and
+#: ``tests/test_shema/test_intake_link.py`` is where each is held to what it may actually
+#: serve — the guard being absent is the premise of that file, not a gap in this one.
+UNAUTHENTICATED_PATHS: frozenset[str] = frozenset({f"{PREFIX}/intake/{{token}}"})
 
 
 def test_the_app_key_is_the_one_three_documents_name() -> None:

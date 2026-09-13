@@ -36,6 +36,8 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.shema._deps import APP_KEY
+from app.api.shema.forms import intake as intake_router
+from app.api.shema.forms import router as forms_router
 from app.api.shema.projects import router as projects_router
 from app.api.shema.session import router as session_router
 from app.core.access_control import require_app_access
@@ -49,6 +51,17 @@ authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
 
 authenticated.include_router(session_router)  # BE-03
 authenticated.include_router(projects_router)  # BE-05
+authenticated.include_router(forms_router)  # BE-12
+
+#: **The module's one deliberate hole**, and it is this line rather than a missing dependency.
+#: ``GET`` and ``POST /api/shema/intake/{token}`` carry no ``Authorization`` requirement, by
+#: FE-44 §9.0 and ``docs/shema.md`` §6.6: the token *is* the guard, and the guard is a service
+#: function (``verify_intake_token``) so the rule holds for any future caller of it rather than
+#: for the two routes it was written under. Included into ``router`` and not ``authenticated``,
+#: which is what makes the exemption visible in a diff; ``tests/test_shema/test_access.py``
+#: carries the two paths in ``UNAUTHENTICATED_PATHS`` and fails on a third that arrives without
+#: a line added there. BE-12.
+router.include_router(intake_router)
 
 # Keep this the last statement in the file. ``include_router`` copies routes at call time,
 # so a line added below it is included into a router the application never sees: the route

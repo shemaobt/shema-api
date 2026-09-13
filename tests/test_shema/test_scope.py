@@ -362,18 +362,32 @@ def test_no_service_reads_the_project_table_without_reaching_for_the_scope() -> 
 
     A check and not a review item, which is the same argument ``docs/shema.md`` §6.4 makes
     for the consent gate. A file that genuinely needs an exemption has to change this test,
-    and that is a line in a diff a reviewer reads.
+    and that is a line in a diff a reviewer reads — which is what :data:`_NO_CALLER_TO_SCOPE`
+    is, and why it is a list of names rather than a rule.
     """
     package = Path(__file__).resolve().parents[2] / "app" / "services" / "shema"
     offenders = []
     for path in sorted(package.glob("*.py")):
-        if path.name == "_scope.py":
+        if path.name == "_scope.py" or path.name in _NO_CALLER_TO_SCOPE:
             continue
         names = _names_used(path)
         if _selects_projects(path) and not names & {"within_scope", "visible_projects"}:
             offenders.append(path.name)
 
     assert offenders == [], f"reads shema_projects without the scope predicate: {offenders}"
+
+
+#: BE-12's two intake services, and the only exemption in the package.
+#:
+#: The region scope answers *how far does this caller reach*, and on the leader's link there is
+#: no caller: the field leader has no account, no role and no region. **The token is the
+#: authorization**, and both statements filter on ``ShemaProject.id == link.project_id`` — the
+#: project the verified link names and no other — so the property this test defends is held by
+#: the column rather than by the predicate. Each file argues it in its own module docstring.
+#:
+#: A new name here is the diff a reviewer has to agree with. A file that reads the table for a
+#: caller who *does* have a scope belongs on the other side of this list.
+_NO_CALLER_TO_SCOPE = frozenset({"read_intake_form.py", "receive_submission.py"})
 
 
 def _selects_projects(path: Path) -> bool:
