@@ -36,6 +36,9 @@ from tests.baker import make_role, make_user, make_user_app_role
 
 PREFIX = "/api/shema"
 SESSION = f"{PREFIX}/session"
+REGIONS = f"{PREFIX}/regions"
+ROLE_CHANGES = f"{REGIONS}/role-changes"
+PEOPLE = f"{PREFIX}/prayer/intercessors"
 
 #: The route with **no guard of its own**, hung off the ``authenticated`` router. The whole
 #: deny-by-default claim is that this one is refused anyway.
@@ -222,3 +225,34 @@ async def make_scoped_user(
     if regions is not None:
         await set_region_scope(db_session, user.id, regions)
     return user
+
+
+async def make_intercessor(
+    client,
+    headers: dict[str, str],
+    *,
+    name: str = "Maria Santos",
+    country: str = "BR",
+    contact: str = "maria.santos@example.org",
+    sensitive: bool = False,
+    basis: str = "verbal, at the 2026 regional gathering",
+) -> dict:
+    """One network contact, through the real endpoint.
+
+    Created over HTTP rather than by inserting a row, because the rule under test in most of
+    these files is that a person **cannot** be stored without a recorded basis — a fixture
+    that wrote the row directly would be the one caller that proves nothing.
+    """
+    res = await client.post(
+        PEOPLE,
+        headers=headers,
+        json={
+            "name": name,
+            "country": country,
+            "contact": contact,
+            "sensitiveCountry": sensitive,
+            "consentBasis": basis,
+        },
+    )
+    assert res.status_code == 201, res.text
+    return res.json()

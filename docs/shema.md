@@ -109,6 +109,15 @@ autorização e geração do Pulso"* (OBT-398). **The owner is not chosen here.*
 **which issue writes them**, and §11 puts that boundary on both descriptions rather than
 picking for the two.
 
+> **Settled by BE-13: the network is BE-13's.** The evidence is in the graph rather than in
+> either document — **INT-10, *Integrar Equipe e Intercessores*, is blocked by OBT-402 and not
+> by OBT-398**, so the screen that consumes the network waits on BE-13 — and every line of
+> OBT-402's Context section is about that table: contact details, consent, removal, sensitive
+> countries. BE-09 keeps the wall, the authorization of requests and the Pulse, which is what
+> its own title says. **The frozen paths did not move**: the routes are still
+> `/api/shema/prayer/intercessors`, where the console's `prayerAPI` namespace points, in
+> `app/api/shema/intercessors.py`; `prayer.py` stays BE-09's. §10 item 5 is closed.
+
 ### 1.4 What PR #127 carries, and what is taken from it — **Decided**
 
 PR #127 (`feat(OBT-266): scaffold the Shemá module inside tripod-api`, branch
@@ -272,6 +281,7 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
 | `app/api/shema/forms.py` | BE-12 | Submissions, the Pulse artifact, intake links, and the two **unauthenticated** intake routes. |
 | `app/api/shema/regions.py` | BE-13 | The org chart and its audit trail. |
+| `app/api/shema/intercessors.py` | BE-13 | The network, at FE-44 §9.6's frozen `/prayer/intercessors` paths — §1.3 C3. |
 | `app/api/shema/transfer.py` | BE-14 | Export and import. |
 | `app/api/shema/notifications.py` | BE-15 | The derived panel, preferences, read state. |
 | `app/api/shema/session.py` | BE-03 **· built** | `GET /api/shema/session` — §6.3. |
@@ -279,6 +289,7 @@ bucket, which is the precedent, not a trespass).
 | `app/services/shema/_scope.py` | BE-03 **· built** | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
 | `app/services/shema/_redaction.py` | BE-04 | The sensitive-country owners: the location display and the map placement. §6.4. |
 | `app/services/shema/_consent.py` | BE-04 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
+| `app/services/shema/_directory.py` | BE-13 | A person's contact, their consents and their country — the **only** file in either package that names `ShemaIntercessor`. §6.4's fourth owner. |
 | `app/services/shema/_media_sharing.py` | BE-04 | `can_share_media` — authorization × audience × the sensitive flag. §6.4. |
 | `app/utils/shema_derivations.py` | BE-05 | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
 | `app/models/shema.py`, `app/models/shema_*.py` | BE-02 …, per §2.2 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models; separate `Create` / `Update` / `Response`. |
@@ -631,8 +642,8 @@ behaviour on it.
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
 | 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). |
 | 5.6 | **Prayer** | *(none for the wall)* | BE-09 | **The wall is derived, never stored**, which is what makes withdrawal free: moving a request back to `coordenacao` removes it from the next query with no cleanup step. The three columns live on the record; `_consent.py` is their only reader. If BE-09 ever stores requests, a withdrawn one is **deleted from that store**, never flagged and retained. |
-| 5.7 | **Intercessor network** | `shema_intercessors` | BE-02, and BE-09 *or* BE-13 — the open boundary of §1.3 C3, put on both issues by §11 | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. |
-| 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. |
+| 5.7 | **Intercessor network** | `shema_intercessors`, `shema_intercessor_consents` | BE-02, **BE-13** — §1.3 C3, settled | **Never joined to roles, in either direction.** Country is ISO 3166-1 alpha-2, never prose. At least one usable channel or the record is **refused**. **Removal erases** — no tombstone, no `removed` flag, the contact absent from storage. **BE-13 added consent as a row per (person, context)**, not a column: presence *is* the consent and withdrawal deletes the row, so a `granted = false` cannot exist; withdrawing the `network` context erases the person, because it was the basis the row stood on. |
+| 5.8 | **Org chart** | `shema_region_teams`, `shema_role_changes` | BE-02, BE-13 | **The single source of who holds which role where**, with four consumers, all by reference. No other model stores a role-holder's name. A team change is a write **with an audit row**, not a silent update, and the name in the audit row is a snapshot that must not follow a rename. **BE-13 gave a seat a nullable `holder_user_id`** — the account, never the name; changing `holder_name` clears it, because the link belongs to the holder and not to the slot. |
 | 5.9 | **Meetings** | `shema_meeting_log` (+ `shema_meeting_definitions` only if GATE-02 says so) | BE-02, BE-10 | Unique per `(meeting, scope, period)` — a second log for the same period **replaces** the first. The server derives `period` from the date and the cadence, never from the client. **Whether the definitions are a table at all is Open · GATE-02** (§9.2). |
 | 5.10 | **Notification preferences and read state** | `shema_notification_prefs`, `shema_notification_reads` | BE-02, BE-15 | The panel's entries are **derived from the projects**, so their ids are not rows. The read state is its own small table keyed by `(user, derived id)` — which FE-44 §5.8's stable-id rule is what makes safe. **Route by role and region *before* capping at 30**; capping first lets one region evict another recipient's entries. |
 | 5.11 | **ETEN ledger** | `shema_eten_credits` | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule is **Open · GATE-01** (§9.1). |
@@ -815,6 +826,22 @@ three snake_case names reads that copy and does not see it.
 
 **The acceptance test the delivery plan already names:** an unauthorized prayer request is
 absent from **all four** output paths — the wall, exports, the ETEN report and notifications.
+
+> **BE-13 added a fourth owner, on a different subject.** The three above guard facts about a
+> project; `app/services/shema/_directory.py` guards a **person** — the network's contact
+> column, its sensitive-country flag and every read and write of `shema_intercessor_consents`
+> — and it is the only file in `app/services/shema/` or `app/api/shema/` that names
+> `ShemaIntercessor`, checked by the glob this section asks for
+> (`tests/test_shema/test_people_privacy.py`). It reuses this section's mechanism rather than
+> inventing a second: the same flag, the same withheld marker (FE-44 §9.6's `country: ""`
+> beside the marker), the same *redact on every path that leaves, never on the record read*
+> split. If the shapes want to be one function, `leaving_person` folds into `_redaction.py`
+> and the glob moves with it.
+>
+> **One residual is named and not closed.** A withheld person's *name* still travels, because
+> the rule above withholds a **location**. Whether a person's name is itself a location in a
+> dangerous place belongs to §9.4's fourth gate, whose own instruction is to raise it rather
+> than invent it surface by surface.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
@@ -1023,10 +1050,10 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 | 2 | ~~Whether `region_key` is stored as a maintained derived column or computed per query.~~ **Answered by BE-02: stored, maintained, indexed — and deliberately not a generated column,** because the derivation is a lookup over 25 country strings kept in Python and expressing it in DDL would be a second copy of a map whose whole value is that there is one. | ~~BE-02~~ **closed** |
 | 3 | ~~The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry.~~ **Answered by BE-03: `https://shema.shemaywam.com`, and the same value added to `cors_origins`.** There was no deployment to read — the console is wave 1, with no deploy workflow, no environment file beyond `VITE_API_PROXY_TARGET`, and no host named in either repository — so this follows the eight rows already in `SEED_APPS`, every one of them the product's name lowercased with no separators. Leaving it empty was the alternative and is worse: `request_password_reset` then builds the reset link from `http://localhost:5173` in production, which is the silent failure §2.3 warns about, while a conventional hostname that turns out wrong fails on the first click and is a one-row UPDATE to correct. | ~~BE-03~~ **closed** |
 | 4 | ~~Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3).~~ **Answered by BE-03: yes**, and generalised to one rule — the seat is read when the role has one, the scope names exactly one region and the seat is filled; everything else falls back. §6.3 carries the argument. | ~~BE-03~~ **closed** |
-| 5 | Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3). | **BE-09 / BE-13** — §11 puts it on both; they settle it before either writes the table |
+| 5 | ~~Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3).~~ **Answered by BE-13: the network is BE-13's**, because INT-10 is blocked by OBT-402 and not by OBT-398 and OBT-402's whole Context section is about that table. The frozen paths did not move. §1.3 C3 carries the argument. | ~~BE-09 / BE-13~~ **closed** |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
 | 7 | Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1). **All three answers are now free of a migration**: BE-02 gave `shema_projects` an `approved_units_unverified` column, which is the only one of the three that needed schema. | **BE-16**, with BE-11 needing the answer |
-| 8 | The three privacy questions the intercessor network cannot ship without: what consent was given and how it is evidenced; how someone outside the platform asks to be removed when they cannot log in; what happens to a contact nobody has used in a year. **Shipping the storage before answering them is how silent retention starts.** | **BE-09**, or whoever item 5's boundary gives the network to — and they are not engineering questions |
+| 8 | The three privacy questions the intercessor network cannot ship without. **The first — what consent was given and how it is evidenced — is answered by BE-13**, as `shema_intercessor_consents`: a row per person per context, with a non-empty `basis`, and a create that cannot store a person without one. **The other two are still owed and neither is engineering's**: how someone outside the platform asks to be removed when they cannot log in, and what happens to a contact nobody has used in a year. **Shipping more storage before answering them is how silent retention starts.** | **BE-13** (first), **the client** (the other two) |
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |

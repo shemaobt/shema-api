@@ -37,11 +37,12 @@ from app.db.models.shema_org_chart import ShemaRoleChange
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.db.types import UtcDateTime
 
-_REVISION = (
-    Path(__file__).resolve().parents[2]
-    / "alembic"
-    / "versions"
-    / "20260911_shema01_shema_module.py"
+#: Every revision this module owns, oldest first. **A glob and not one filename**: BE-02
+#: built sixteen tables in ``20260911_shema01`` and twelve issues author migrations in waves
+#: beside each other, so a test pinned to the first revision goes green while the second one's
+#: table is in no migration at all. BE-13 widened it on adding ``shema02``.
+_REVISIONS = sorted(
+    (Path(__file__).resolve().parents[2] / "alembic" / "versions").glob("*_shema[0-9][0-9]_*.py")
 )
 
 #: The keys the Notion export has. They have an empty state and never an absent one, so the
@@ -462,20 +463,30 @@ def test_every_moment_this_module_stores_reads_back_knowing_its_clock() -> None:
 def test_every_shema_table_is_in_the_migration_both_ways() -> None:
     """The defect this catches is adding a model and forgetting the revision.
 
-    Read off the revision's source rather than by running it: no migration in this
+    Read off the revisions' source rather than by running them: no migration in this
     repository can run under SQLite, so the suite cannot walk the graph at all.
+
+    Both directions, over **every** revision the module owns. ``downgrade`` matters as much as
+    ``upgrade`` here: ``migrations.yml`` walks the newest revision down and back up on a real
+    PostgreSQL, so a table created and never dropped fails CI on the second ``upgrade`` rather
+    than on the first.
     """
-    source = _REVISION.read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    bodies = {
-        node.name: ast.get_source_segment(source, node) or ""
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef)
-    }
+    assert _REVISIONS, "the module owns no migration"
+    upgraded, downgraded = "", ""
+    for revision in _REVISIONS:
+        source = revision.read_text(encoding="utf-8")
+        bodies = {
+            node.name: ast.get_source_segment(source, node) or ""
+            for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef)
+        }
+        upgraded += bodies["upgrade"]
+        downgraded += bodies["downgrade"]
+
     tables = sorted(name for name in Base.metadata.tables if name.startswith("shema"))
     assert tables, "the metadata knows of no shema table"
-    assert [t for t in tables if f'"{t}"' not in bodies["upgrade"]] == []
-    assert [t for t in tables if f'"{t}"' not in bodies["downgrade"]] == []
+    assert [t for t in tables if f'"{t}"' not in upgraded] == []
+    assert [t for t in tables if f'"{t}"' not in downgraded] == []
 
 
 def test_the_scoped_collection_read_has_an_index_and_region_key_has_no_second_one() -> None:
@@ -513,9 +524,10 @@ def test_the_append_only_guard_is_written_for_the_dialect_in_hand() -> None:
 
 
 async def test_the_schema_the_suite_builds_carries_every_table(db_session: AsyncSession) -> None:
+    """Sixteen from BE-02, plus ``shema_intercessor_consents`` from BE-13."""
     bind = db_session.get_bind()
     names = await db_session.run_sync(lambda session: inspect(session.get_bind()).get_table_names())
-    assert len([n for n in names if n.startswith("shema")]) == 16
+    assert len([n for n in names if n.startswith("shema")]) == 17
     assert bind is not None
 
 
