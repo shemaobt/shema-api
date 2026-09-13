@@ -222,6 +222,105 @@ async def test_an_id_that_is_not_this_projects_is_refused_and_nothing_is_written
     assert after.headers["ETag"] == etag, "a refused batch moved the version"
 
 
+# --- the partial row --------------------------------------------------------------------
+
+
+async def test_a_field_absent_from_a_row_is_untouched_too(
+    client, db_session, shema_app, headers
+) -> None:
+    """*Absent means unchanged* one level down — the batch's rule inside the row.
+
+    Thirteen of the fourteen written columns default on ``ShemaNeedWrite``, so a row copied
+    across as a block would make ``{"id": ..., "category": ...}`` put the need back to ``open``
+    and clear the deadline, the description and the money. A tab that moves one field must not
+    destroy the twelve it never held.
+    """
+    created = await _create(
+        client,
+        headers,
+        needsItems=[
+            need(
+                status="in-progress",
+                urgency="high",
+                description="two motorbikes for the second village",
+                deadline="2026-11-30",
+                fulfilledBy="Igreja Batista",
+                estimatedAmount="5000.00",
+                estimatedCurrency="BRL",
+            )
+        ],
+    )
+    item = created.json()["needsItems"][0]
+
+    moved = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"needsItems": [{"id": item["id"], "category": "equipment"}]},
+        headers={**headers, "If-Match": created.headers["ETag"]},
+    )
+    assert moved.status_code == 200
+
+    after = moved.json()["needsItems"][0]
+    assert after["category"] == "equipment", "the one field the row carried"
+    assert after["status"] == "in-progress"
+    assert after["urgency"] == "high"
+    assert after["description"] == "two motorbikes for the second village"
+    assert after["deadline"] == "2026-11-30"
+    assert after["fulfilledBy"] == "Igreja Batista"
+    assert after["estimatedAmount"] == "5000.00"
+    assert after["estimatedCurrency"] == "BRL"
+
+
+async def test_a_row_that_repeats_what_it_carries_moves_nothing(
+    client, db_session, shema_app, headers
+) -> None:
+    """The other half: what the row does not carry cannot make the save an edit either.
+
+    A version bump refuses every other coordinator in the meeting, so a partial row of values
+    that already hold has to reach the same decision a whole one does.
+    """
+    created = await _create(
+        client, headers, needsItems=[need(estimatedAmount="120.00", estimatedCurrency="USD")]
+    )
+    item = created.json()["needsItems"][0]
+
+    again = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"needsItems": [{"id": item["id"], "category": "financial"}]},
+        headers={**headers, "If-Match": created.headers["ETag"]},
+    )
+    assert again.status_code == 200
+    assert again.headers["ETag"] == created.headers["ETag"]
+
+
+async def test_an_amount_cleared_on_a_partial_row_takes_its_currency_with_it(
+    client, db_session, shema_app, headers
+) -> None:
+    """Nothing is cleared by omission, so ``null`` is how a field is cleared — and the money
+    is a pair.
+
+    ``estimatedAmount: null`` alone passes the payload's both-or-neither rule, because both
+    halves read ``None`` on the model. Written as the one column it named, it would leave a
+    currency standing behind an amount that is gone and
+    ``ck_shema_needs_amount_carries_currency`` would refuse the commit — a 500 on a save the
+    client was already told had been accepted.
+    """
+    created = await _create(
+        client, headers, needsItems=[need(estimatedAmount="5000.00", estimatedCurrency="BRL")]
+    )
+    item = created.json()["needsItems"][0]
+
+    cleared = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"needsItems": [{"id": item["id"], "category": "financial", "estimatedAmount": None}]},
+        headers={**headers, "If-Match": created.headers["ETag"]},
+    )
+    assert cleared.status_code == 200
+
+    after = cleared.json()["needsItems"][0]
+    assert after["estimatedAmount"] is None
+    assert after["estimatedCurrency"] is None, "neither half of the money travels alone"
+
+
 # --- acknowledgement ------------------------------------------------------------------
 
 

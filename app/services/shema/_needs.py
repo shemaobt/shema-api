@@ -22,6 +22,12 @@ list **without being deleted**, because deleting loses the history a region is j
 nothing here deletes a need, and the product's answer to *take this off my list* is the state
 it already has.
 
+**And it holds one level further down: a field absent from a row is untouched too.** A row
+carries what the tab that sent it owns, so an update writes the columns
+``model_fields_set`` names and no others (:func:`sent_columns`) — a client moving a category
+does not also put the need back to ``open`` and clear the money. A create is the other case
+and takes the payload whole, because there is no earlier value to keep.
+
 **The order, inside** ``save_project``'s **one transaction**: the whole batch is resolved and
 validated before a single row is touched — an unknown id names itself and nothing at all is
 written — then the rows move, then the trail, then the notices, then the caller's one commit.
@@ -83,9 +89,11 @@ NEEDS_FIELD_KEY = "needsItems"
 #: the one notice this module sends rather than in a table, because there is one notice.
 URGENT_NEED_ROLES = (COORDINATOR_ROLE, OBT_LAB_ROLE)
 
-#: The columns a batch row copies across as sent. ``id`` addresses, ``acknowledged`` is a
-#: gesture the server turns into three columns, and ``submitted_at`` is the one field that can
-#: be set and not cleared — :func:`raise_day_moves` says why.
+#: The columns a batch row can carry. ``id`` addresses, ``acknowledged`` is a gesture the
+#: server turns into three columns, and ``submitted_at`` is the one field that can be set and
+#: not cleared — :func:`raise_day_moves` says why. A **create** takes all of them, because a
+#: new need has no earlier value and the payload's defaults are what it starts with; an
+#: **update** writes only the ones the row actually sent — :func:`sent_columns` says why.
 _WRITTEN_COLUMNS = (
     "category",
     "urgency",
@@ -103,11 +111,49 @@ _WRITTEN_COLUMNS = (
     "submitted_by",
 )
 
+#: **The two halves of the money move together or not at all** — the payload's own
+#: both-or-neither rule, carried into the partial write. ``{"estimatedAmount": null}`` on its
+#: own passes validation, because both halves *are* ``None`` on the model; applying only the
+#: half it named would leave a currency standing behind an amount that is gone, and
+#: ``ck_shema_needs_amount_carries_currency`` would refuse that at the commit — after the save
+#: had been accepted.
+_MONEY_COLUMNS = ("estimated_amount", "estimated_currency")
+
 #: What the trail records about a need that moved. The lifecycle and nothing else: the
 #: description is free text a team wrote and could name a place, and ``_audit.py``'s own rule
 #: is that a trail is read by more people and kept longer than a response body. A reader learns
 #: that the need moved and goes to the record, where being allowed is checked.
 _TRAIL_COLUMNS = ("category", "urgency", "status", "acknowledged_at")
+
+
+def sent_columns(row: ShemaNeedWrite) -> tuple[str, ...]:
+    """The columns this row actually carries, in :data:`_WRITTEN_COLUMNS` order.
+
+    **Absent means unchanged inside the row too, and that is the whole of the rule.**
+    ``app/models/shema.py`` states it for the record — *a tab sends what it owns* — and a
+    needs row is the same case one level down: thirteen of the fourteen columns have a default
+    on :class:`~app.models.shema_need.ShemaNeedWrite` (only ``category`` is required), so
+    copying the set across as a block would make ``{"id": ..., "category": "financial"}`` put
+    the need back to ``open``/``low`` and clear the description, the deadline, ``fulfilled_by``
+    and both halves of the money. A client moving one field would silently destroy the other
+    twelve, and the money is the one a Resource Circle acts on.
+
+    ``submitted_at`` and ``acknowledged`` were already carved out of the block for the same
+    reason — the client does not hold them — and this is that carve-out finished: what the
+    server reads is ``model_fields_set``, exactly as ``save_project``'s ``_merged`` reads it
+    for the record's own seventy-three columns. A console that does send the whole
+    ``NeedItem`` back is unaffected, because every column it sends is in the set.
+
+    **Nothing is cleared by omission**, which leaves every field clearable by saying so: an
+    explicit ``null`` is *sent* and lands, and ``description`` takes ``""``.
+
+    Only an update asks this. A create has no earlier value to protect, so :func:`_new_need`
+    takes the whole set and the payload's defaults are what the need starts with.
+    """
+    sent = set(row.model_fields_set)
+    if sent.intersection(_MONEY_COLUMNS):
+        sent.update(_MONEY_COLUMNS)
+    return tuple(column for column in _WRITTEN_COLUMNS if column in sent)
 
 
 def raise_day_moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
@@ -121,12 +167,13 @@ def raise_day_moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
     that carries ``None`` leaves it standing. *Never cleared* is not *never changed*: a
     coordinator fixing a wrong date is ordinary, and it lands.
 
-    **Without that rule every re-save of an untouched tab is an edit.** The console sends whole
-    ``NeedItem`` rows, and a field the *server* filled that the client never had would differ
-    from the row on every single save: the version would bump, the trail would grow a row, and
-    every other coordinator in the meeting would be refused — over a save that moved nothing.
-    The record's own diff already refuses to read a re-sent value as a change; this is the same
-    rule for a value the client was never given to re-send.
+    **Without that rule every re-save of an untouched tab is an edit.** This is a field the
+    *server* filled, so a tab re-sending the row it read sends it back empty — and an empty
+    read as *clear it* would differ from the row on every single save: the version would bump,
+    the trail would grow a row, and every other coordinator in the meeting would be refused —
+    over a save that moved nothing. The record's own diff already refuses to read a re-sent
+    value as a change; this is the same rule for a value the client was never given to re-send.
+    :func:`sent_columns` is the same answer for the columns the client *does* hold.
     """
     return row.submitted_at is not None and row.submitted_at != need.submitted_at
 
@@ -236,7 +283,7 @@ def moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
 
     Equality and not identity, for ``_audit.py``'s reason.
     """
-    if any(getattr(need, column) != getattr(row, column) for column in _WRITTEN_COLUMNS):
+    if any(getattr(need, column) != getattr(row, column) for column in sent_columns(row)):
         return True
     if raise_day_moves(need, row):
         return True
@@ -244,8 +291,13 @@ def moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
 
 
 def _apply(need: ShemaNeed, row: ShemaNeedWrite, *, user: User | None, day: date) -> None:
-    """Move one row onto one need. :func:`moves` already said it would."""
-    for column in _WRITTEN_COLUMNS:
+    """Move one row onto one need. :func:`moves` already said it would.
+
+    The same :func:`sent_columns` the decision was taken over, so *what moved* and *what is
+    written* cannot disagree — a column the check ignored and the write applied would be a
+    version bump nobody asked for, or worse, a value nobody sent.
+    """
+    for column in sent_columns(row):
         setattr(need, column, getattr(row, column))
     if row.submitted_at is not None:
         need.submitted_at = row.submitted_at
@@ -255,6 +307,12 @@ def _apply(need: ShemaNeed, row: ShemaNeedWrite, *, user: User | None, day: date
 
 def _new_need(project_id: str, row: ShemaNeedWrite, *, user: User | None, day: date) -> ShemaNeed:
     """One need, as the batch asked for it.
+
+    **The whole of** :data:`_WRITTEN_COLUMNS` **and not** :func:`sent_columns`, which is the
+    one place the two paths part: a create has no earlier value for an omitted field to
+    preserve, so the payload's defaults *are* what the need starts with — ``open``, ``low``, no
+    money — and reading ``model_fields_set`` here would hand ``category`` and ``urgency``
+    NULL for columns the table declares ``NOT NULL``.
 
     ``submitted_at`` falls back to the day the need arrived rather than staying NULL, and it is
     the one value this path supplies that the payload did not — :func:`raise_day_moves` carries
