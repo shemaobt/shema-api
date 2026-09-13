@@ -146,6 +146,10 @@ def withheld_value(field_name: str, region: ShemaRegionKey) -> Any:
     decide for itself whether the data is missing or protected — and will guess wrong in a
     file it forwards. The base and the contacts are the other half of the same rule and do go
     empty, because there is no reduced form of a person's phone number.
+
+    ``location2`` goes empty for the same reason rather than against it: it is a **second**
+    address line, so the reduced form the rule asks for is already in ``location`` beside it,
+    and repeating the region under it would say the region twice and the place never.
     """
     if field_name in ("location", "country"):
         return region.value

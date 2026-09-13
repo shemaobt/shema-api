@@ -45,9 +45,8 @@ filter that disagrees.
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Any, Self
+from typing import Any, Self
 
-from fastapi import Query
 from pydantic import (
     AliasGenerator,
     BaseModel,
@@ -354,14 +353,21 @@ class ShemaProjectQuery(BaseModel):
     are paging and ordering, and both are bounded below.
     """
 
+    #: A plain ``alias_generator`` and not the read models' serialisation-only one: the query
+    #: model is never validated off a row, and ``alias`` is the half FastAPI publishes in the
+    #: OpenAPI document. With only a validation alias the server would *accept* ``translationType``
+    #: while its own schema advertised ``translation_type``, which is worse than either spelling
+    #: alone — a generated client would be written against a name the screen never sends.
+    #: ``populate_by_name`` keeps the snake_case spelling working for anything already using it.
     model_config = ConfigDict(
         populate_by_name=True,
-        alias_generator=AliasGenerator(validation_alias=to_camel),
+        alias_generator=to_camel,
         extra="forbid",
     )
 
     #: Free text. Matched against ``_redaction.py``'s haystack, unaccented and case-folded.
-    search: str | None = Field(default=None, validation_alias="q")
+    #: ``q`` because that is what ``SEARCH_PARAM`` is called in the URL the screen writes.
+    search: str | None = Field(default=None, alias="q")
 
     team: str | None = None
     country: str | None = None
@@ -412,13 +418,3 @@ class ShemaProjectQuery(BaseModel):
         if self.sort not in SORT_KEYS:
             self.sort = DEFAULT_SORT
         return self
-
-
-#: The whole filter set as **one** query-model dependency (FastAPI 0.115's own feature), and
-#: not twenty-three ``Query(...)`` parameters on a handler. Two reasons, and the second is the
-#: one that matters: the pass downstream takes the filters as a single object, so a handler
-#: that unpacked them would only have to pack them again; and ``extra="forbid"`` on the model
-#: makes a misspelled parameter a 422 rather than a filter that silently does not apply —
-#: which, on a screen whose whole promise is that the numbers agree with the list, is the
-#: difference between a wrong answer and an error message.
-ProjectQuery = Annotated[ShemaProjectQuery, Query()]

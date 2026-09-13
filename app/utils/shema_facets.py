@@ -50,21 +50,23 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Final, Generic, Protocol, TypeVar
+from typing import Any, Final, Generic, Protocol, TypeVar
 
-from app.db.models.shema_enums import ShemaNeedStatus, ShemaNeedUrgency, ShemaRegionKey
+from app.db.models.shema_enums import (
+    ShemaNeedStatus,
+    ShemaNeedUrgency,
+    ShemaProjectStatus,
+    ShemaRegionKey,
+)
 from app.utils.shema_derivations import (
     FALLBACK_REGION,
     Derivations,
     OverallHealth,
-    ProjectPriority,
     Sortable,
     StaleStatus,
     derive,
     get_country,
-    in_progress_range,
     is_recently_updated,
-    sort_key,
     stale_filter_matches,
 )
 
@@ -98,7 +100,7 @@ PRESETS: Final[tuple[str, ...]] = ("attention", "prayer", "celebrate", "recent")
 FILTER_GROUPS: Final[tuple[str, ...]] = ("search", *FACET_GROUPS, *PRESETS)
 
 #: The progress bands, **inclusive at both ends**, so 50% counts under two of them. See
-#: :func:`~app.utils.shema_derivations.in_progress_range`.
+#: :func:`in_progress_range`.
 PROGRESS_RANGES: Final[tuple[tuple[str, int, int], ...]] = (
     ("0-25", 0, 25),
     ("25-50", 25, 50),
@@ -299,11 +301,59 @@ def preset_matches(record: Facetable, derived: Derivations, now: date) -> dict[s
         ),
         "prayer": any(need.prayer_shared for need in record.needs),
         "celebrate": (
-            derived.priority is ProjectPriority.COMPLETED
+            derived.status is ShemaProjectStatus.CONCLUIDO
             or any(need.prayer_answered for need in record.needs)
         ),
         "recent": is_recently_updated(record, now),
     }
+
+
+def in_progress_range(derived: Derivations, low: int, high: int) -> bool:
+    """Whether a record's progress falls inside a sidebar band, **both ends inclusive**.
+
+    Inclusive at both ends is the frontend's own reading and is why the bands overlap: a record
+    at exactly 50% counts under ``25-50`` *and* ``50-75``. It is a sidebar affordance, not a
+    partition, and making it one here would make the four counts sum to something the list
+    cannot reproduce.
+    """
+    return low <= derived.progress <= high
+
+
+def _collation_key(value: str) -> tuple[str, str]:
+    """How a name orders: unaccented and case-folded first, the raw string as the tiebreak.
+
+    ``localeCompare`` is what the screen sorts with over there, and Python has no locale
+    collation without an extra dependency. Comparing code points instead would file every
+    accented name after ``Z`` — which on a list of language names in Portuguese, Spanish and
+    Indonesian is not a near-miss, it is a second alphabet at the bottom of the page. Folding
+    first gets the common cases right; the raw string second keeps the order total, so two
+    spellings that fold together do not swap between requests.
+    """
+    return (normalize_search_text(value), value)
+
+
+def sort_key(record: Sortable, derived: Derivations, key: str) -> tuple[int, Any]:
+    """The Projetos screen's five orders, as a key the caller sorts ascending by.
+
+    ``src/components/pages/projetos/sorting.ts`` is the reference, and the half worth keeping
+    is ``blanksLast``: a record with no deadline, no language name or no base sorts **after**
+    every record that has one, in every direction. Sorting blanks first puts the thinnest
+    records at the top of the busiest screen, which is where nobody is looking for them.
+
+    ``progress`` and ``health`` descend over there; the leading ``0``/``1`` here is the blank
+    flag, and the value is negated so one ascending sort serves all five.
+    """
+    if key == "progress":
+        return (0, -derived.progress)
+    if key == "health":
+        return (0, -derived.health_score)
+    if key == "deadline":
+        return (1, date.max) if record.deadline is None else (0, record.deadline)
+    if key == "team":
+        return (1, ("", "")) if not record.team else (0, _collation_key(record.team))
+    if not record.language_name:
+        return (1, ("", ""))
+    return (0, _collation_key(record.language_name))
 
 
 def _in_band(derived: Derivations, band: str) -> bool:

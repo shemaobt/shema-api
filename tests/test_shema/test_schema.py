@@ -50,7 +50,8 @@ _REVISIONS = sorted(
 )
 
 #: The keys the Notion export has. They have an empty state and never an absent one, so the
-#: column is NOT NULL with an empty default — except a date, which has no empty string.
+#: column is NOT NULL with an empty default — except nine that are export-backed and nullable
+#: anyway, each named in one of the three lists below together with the reason.
 EXPORT_BACKED_NOT_NULL = (
     "language_name",
     "language_code",
@@ -94,7 +95,9 @@ EXPORT_BACKED_NOT_NULL = (
     "notes",
 )
 
-#: The eighteen the product added. Absent means absent, so every one of them is nullable.
+#: Fifteen of the eighteen the product added; the other three are collections and live in a
+#: child table, not in a column here. Absent means absent, so every one of these is nullable
+#: with no default of any kind.
 PRODUCT_ADDED_NULLABLE = (
     "location2",
     "team_leader_contact",
@@ -115,6 +118,58 @@ PRODUCT_ADDED_NULLABLE = (
 
 #: Export keys that carry a date. Rule one cannot hold for them: a ``Date`` has no ``""``.
 EXPORT_BACKED_DATES = ("start_date", "deadline", "last_updated", "health_assessment_date")
+
+#: Export keys nullable for the other reason: NULL is a state the value itself has, so an
+#: empty default would be the server answering on the record's behalf. ``getProjectStatus``
+#: (FE-44 §7.1) already derives from progress when the stored value is not one of the six,
+#: which is exactly what NULL is; and an unrated dimension is the contract's ``""``, which
+#: §7.4 forbids anything from reading as ``boa``.
+EXPORT_BACKED_NULL_IS_A_STATE = (
+    "status",
+    "health_emotional",
+    "health_relational",
+    "health_spiritual",
+)
+
+#: The export's slug, frozen as the primary key (FE-44 §5.1). NOT NULL like the other 48 and
+#: with no default, because a primary key is supplied and never defaulted — BE-16 does not
+#: mint new ids for the 127 that already have theirs.
+EXPORT_BACKED_PRIMARY_KEY = ("id",)
+
+#: Neither side of FE-44's cut: nine columns this schema added. Two answer a gate before it
+#: can ask (``approved_units_unverified`` for §10 item 7, ``completed_date`` for GATE-01
+#: item 6), two are the module's own (``region_key`` derived, ``source`` the export row kept
+#: verbatim), two are the platform's housekeeping, and three are BE-06's write path:
+#: ``version`` is the value a ``PATCH`` cites in ``If-Match`` and the only counter
+#: ``save_project`` moves, and the ``updated_by`` pair is who moved it — the name is kept
+#: beside the id because the org chart can rename a person after the edit and the trail has
+#: to still read as it did.
+ADDED_BY_THE_SCHEMA = (
+    "approved_units_unverified",
+    "completed_date",
+    "region_key",
+    "source",
+    "created_at",
+    "updated_at",
+    "version",
+    "updated_by",
+    "updated_by_name",
+)
+
+#: FE-44 §5.1's own two numbers. The table's column count is derived from them, not equal to
+#: them, and ``test_the_cut_is_the_contract_s_two_numbers`` writes every step of the
+#: derivation down.
+EXPORT_KEYS = 55
+PRODUCT_ADDED_KEYS = 18
+#: Keys that are collections: they live in a child table, not in a column on the record.
+EXPORT_KEYS_IN_A_CHILD_TABLE = ("progressHistory", "needsItems", "materials")
+PRODUCT_KEYS_IN_A_CHILD_TABLE = ("healthHistory", "mediaPhotos", "mediaVideos")
+#: Export keys with no column anywhere: the org chart owns the three (FE-44 §5.3).
+EXPORT_KEYS_DROPPED = ("regionalCoordinator", "obtLabPerson", "resourceCirclePerson")
+#: One key that shares a column with another: ``ywamBase`` is ``team``.
+EXPORT_KEYS_COLLAPSED = ("ywamBase",)
+#: One key that is two columns: ``coords`` is ``longitude`` and ``latitude``.
+EXPORT_KEYS_SPLIT_IN_TWO = ("coords",)
 
 
 @pytest.fixture()
@@ -143,15 +198,94 @@ def test_the_product_added_columns_are_absent_rather_than_empty() -> None:
     ] == []
 
 
+def test_every_column_is_on_one_side_of_the_cut_and_exactly_one() -> None:
+    """The DoD's *column by column, in both directions*, made total.
+
+    Lists that watch part of a table are the defect they were written to prevent: a column
+    added later on either side of the cut is watched by none of them, and nothing says so.
+    This is the test that fails the moment a column is added and not classified — which is
+    the moment somebody still knows which side it belongs to. Failing here is not a bug to
+    route around: put the new column in the list whose rule it keeps, or in
+    ``ADDED_BY_THE_SCHEMA`` with the reason written beside it.
+    """
+    census = (
+        EXPORT_BACKED_NOT_NULL
+        + EXPORT_BACKED_DATES
+        + EXPORT_BACKED_NULL_IS_A_STATE
+        + EXPORT_BACKED_PRIMARY_KEY
+        + PRODUCT_ADDED_NULLABLE
+        + ADDED_BY_THE_SCHEMA
+    )
+    twice = sorted({name for name in census if census.count(name) > 1})
+    assert twice == [], "a column classified on two sides of the cut"
+
+    columns = set(ShemaProject.__table__.columns.keys())
+    assert sorted(columns - set(census)) == [], "column on the table that no list watches"
+    assert sorted(set(census) - columns) == [], "watched name that is not a column"
+
+
+def test_the_cut_is_the_contract_s_two_numbers() -> None:
+    """55 + 18 keys become 49 + 15 columns, and every step of the difference is a decision.
+
+    The keys are FE-44 §5.1's; the columns are this table's. They differ by six choices and
+    each one is written down above, so a count that drifts points at the choice that moved
+    rather than at an arbitrary number nobody can check.
+    """
+    export_backed = (
+        EXPORT_BACKED_NOT_NULL
+        + EXPORT_BACKED_DATES
+        + EXPORT_BACKED_NULL_IS_A_STATE
+        + EXPORT_BACKED_PRIMARY_KEY
+    )
+    expected = (
+        EXPORT_KEYS
+        - len(EXPORT_KEYS_IN_A_CHILD_TABLE)
+        - len(EXPORT_KEYS_DROPPED)
+        - len(EXPORT_KEYS_COLLAPSED)
+        + len(EXPORT_KEYS_SPLIT_IN_TWO)
+    )
+    assert len(export_backed) == expected == 49
+    assert (
+        len(PRODUCT_ADDED_NULLABLE) == PRODUCT_ADDED_KEYS - len(PRODUCT_KEYS_IN_A_CHILD_TABLE) == 15
+    )
+
+
+def test_a_dropped_org_chart_key_and_a_collapsed_one_have_no_column_to_drift_in() -> None:
+    """The three differences the census counts, asserted rather than only counted.
+
+    FE-44 §5.3 offers *reject the write or drop the columns* and this took the second;
+    ``ywamBase`` is ``team`` under another name; and ``coords`` is one key over two columns.
+    """
+    columns = set(ShemaProject.__table__.columns.keys())
+    assert columns.isdisjoint({"regional_coordinator", "obt_lab_person", "resource_circle_person"})
+    assert "ywam_base" not in columns
+    assert "team" in columns
+    assert {"longitude", "latitude"} <= columns
+    assert "coords" not in columns
+
+
+def test_the_primary_key_is_the_export_slug_and_nothing_defaults_it() -> None:
+    """A supplied address, not a minted one — so the one export-backed column with no default."""
+    column = ShemaProject.__table__.columns["id"]
+    assert column.primary_key
+    assert not column.nullable
+    assert column.default is None
+    assert column.server_default is None
+
+
+def test_an_export_key_whose_value_has_a_null_state_keeps_it() -> None:
+    """NULL is not ``desconhecido`` and it is not ``boa``; a default here would invent both."""
+    columns = ShemaProject.__table__.columns
+    for name in EXPORT_BACKED_NULL_IS_A_STATE:
+        column = columns[name]
+        assert column.nullable, name
+        assert column.default is None, name
+        assert column.server_default is None, name
+
+
 def test_an_export_date_is_nullable_because_a_date_has_no_empty_string() -> None:
     columns = ShemaProject.__table__.columns
     assert [name for name in EXPORT_BACKED_DATES if not columns[name].nullable] == []
-
-
-def test_the_region_role_holders_have_no_column_to_drift_in() -> None:
-    """FE-44 §5.3 offers *reject the write or drop the columns*; this took the second."""
-    names = set(ShemaProject.__table__.columns.keys())
-    assert names.isdisjoint({"regional_coordinator", "obt_lab_person", "resource_circle_person"})
 
 
 def test_nothing_defaults_prayer_visibility() -> None:

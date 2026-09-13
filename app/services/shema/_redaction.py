@@ -91,8 +91,8 @@ def log_reference(project: ShemaProject) -> dict[str, object]:
     base, the coordinates, the contacts and the free-text ``sensitivity``. An investigator
     who is allowed to know those joins them from the id, in a place where being allowed is
     checked — the argument ``_scope.py``'s ``refuse_out_of_scope`` already makes for the
-    refusal it logs, and the keys here are its keys so two lines about one record can be read
-    together.
+    refusal it logs, and ``shema_project_id`` is spelled the way that function spells it so
+    two lines about one record join on the same field.
 
     ``shema_location_withheld`` is in the line on purpose: an investigator who cannot see why
     a payload was reduced will go and look at the row, which is the trip this saves them.
