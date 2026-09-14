@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import re
 from functools import lru_cache
+from typing import Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
 from app.services.internalization_room.languages import FLOOR
@@ -20,6 +21,8 @@ class FailSafe(enum.StrEnum):
     STRETCH_TO_CORRECT = "I"
 
 
+ProcessFamily = Literal["P", "X"]
+
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
 
@@ -36,7 +39,7 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     return parsed
 
 
-def utterances(kind: str, language_code: str = FLOOR) -> list[str]:
+def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> list[str]:
     """The pre-approved lines for one situation, in the session language when written.
 
     These are application strings and not a model call, which is the whole point of a
@@ -57,7 +60,7 @@ def utterances(kind: str, language_code: str = FLOOR) -> list[str]:
     return sections.get((str(kind), None), [])
 
 
-def localized(kind: str, language_code: str) -> list[str]:
+def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     """The lines written *for this language*, and nothing borrowed from another.
 
     ``utterances`` never comes back empty, because it falls back to the authored block —
@@ -97,9 +100,10 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     failure costs no synthesis and needs no network — which matters, because the network is
     often what failed.
 
-    It takes a ``FailSafe`` and not the plain string the lookup underneath accepts, so that
-    a process family cannot be handed to the one reader that rotates: ``choose("X", turn=7)``
-    would answer X-whole where the step means the retelling, and the type is what refuses it.
+    It takes a ``FailSafe`` and never a process family, so that a step cannot be handed to
+    the one reader that rotates: ``choose("X", turn=7)`` would answer X-whole where the step
+    means the retelling, and the type is what refuses it. The lookup underneath is closed to
+    the same two sets, so the refusal does not end here and turn into silence one call down.
     """
     lines = utterances(kind, language_code)
     if not lines:
@@ -122,13 +126,13 @@ class UnknownProcessLine(LookupError):
     """
 
 
-PROCESS_STEPS: dict[str, tuple[str, ...]] = {
+PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
     "P": ("start", "tell", "unheard", "approved"),
     "X": ("open", "retell", "whole", "frases", "thanks"),
 }
 
 
-def process_line(family: str, step: str, language_code: str = FLOOR) -> tuple[str, str]:
+def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
     """The line for one step of the telling-back or of the external check, and its name.
 
     A fail-safe answers a failure and rotates, on the authored file's own instruction. A
