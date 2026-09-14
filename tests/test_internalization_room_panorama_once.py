@@ -39,10 +39,9 @@ from app.core.exceptions import register_exception_handlers
 from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.book_material import unwalkable
-from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -67,13 +66,10 @@ async def a_team(db: AsyncSession, *, name: str):
 
 
 async def having_closed(db: AsyncSession, team, *pericopes: str) -> None:
+    """Worked to the floor and then recorded, which is what finishes a passage."""
     for pericope in pericopes:
         session = await open_ir_session(db, pericope=pericope, project_id=team.id)
-        await room.apply_coverage(
-            db,
-            session.id,
-            dict.fromkeys(element_keys(pericope), CoverageStatus.PARTIALLY_ENGAGED.value),
-        )
+        await having_finished_the_passage(db, session)
 
 
 async def the_app_launches(db: AsyncSession, team):

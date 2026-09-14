@@ -17,7 +17,7 @@ fetched from GCP Secret Manager at startup; nothing sensitive is committed here.
 ```sh
 gcloud auth login && gcloud auth application-default login
 SECRETS_PROJECT_ID=shemaobt-secrets docker compose up --build backend
-JWT_SECRET_KEY=test-secret-for-pytest-only DATABASE_URL=sqlite+aiosqlite:///./test.db uv run pytest tests/ -v
+JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -v
 ```
 
 The database comes up seeded and migrated. The full procedure — access, seeding from a
@@ -27,6 +27,7 @@ production dump and the warnings that go with it, the Hebrew text data — is in
 ## Where the rest is
 
 - [`AGENTS.md`](AGENTS.md) — how to run and check everything, in one page.
+- [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at a pinned commit of `Tripod-Internalization`. It binds every change to this repository, and her prompts sit beside ours under `prompts/vendor/` so the difference is a `diff`.
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. It is what the words in this repository mean.
 - [`docs/adr/`](docs/adr/) — the decisions, one to a file, each with what was rejected.
 - [`docs/`](docs/) — conventions and runbooks.

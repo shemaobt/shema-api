@@ -65,6 +65,13 @@ def test_the_bare_alias_resolves_to_the_book_the_room_serves() -> None:
     assert resolve_pericope("P03") == "P03"
 
 
+def test_the_wheels_own_panorama_id_also_resolves_to_the_book_the_room_serves() -> None:
+    """The passage wheel hands a team `"panorama"`, not `"OV"` — a session opened with the
+    id the wheel just gave out must reach the panorama, not a refusal from a pericope
+    nobody vendored."""
+    assert resolve_pericope("panorama") == OV
+
+
 @pytest.mark.asyncio
 async def test_the_alias_opens_a_real_panorama_session(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope="OV")

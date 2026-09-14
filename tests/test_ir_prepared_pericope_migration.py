@@ -10,20 +10,15 @@ the sessions would lose every conversation the room has ever had, which no test 
 itself would notice.
 """
 
-import os
-import subprocess
-import sys
 import uuid
-from pathlib import Path
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from tests.alembic_harness import columns_of, run_alembic
 
 REVISION = "20260820_0004"
 PREVIOUS_REVISION = "20260820_0002"
@@ -31,21 +26,6 @@ PREVIOUS_REVISION = "20260820_0002"
 TABLE = "ir_sessions"
 COLUMN = "prepared_pericope"
 WHEN = "2026-08-20 00:00:00"
-
-
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
 
 
 async def _build_and_seed(database_url: str) -> str:
@@ -76,33 +56,23 @@ async def applied_database(tmp_path):
     url = f"sqlite+aiosqlite:///{path}"
     session_id = await _build_and_seed(url)
 
-    stamped = _run_alembic(url, "stamp", REVISION)
+    stamped = run_alembic(url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
 
     yield url, session_id
-
-
-async def _columns(url: str) -> set[str]:
-    engine = create_async_engine(url)
-    async with engine.connect() as conn:
-        found = await conn.run_sync(
-            lambda sync: {c["name"] for c in inspect(sync).get_columns(TABLE)}
-        )
-    await engine.dispose()
-    return found
 
 
 @pytest.mark.asyncio
 async def test_the_column_goes_away_on_downgrade_and_comes_back_on_upgrade(applied_database):
     url, _session_id = applied_database
 
-    down = _run_alembic(url, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
-    assert COLUMN not in await _columns(url)
+    assert COLUMN not in await columns_of(url, TABLE)
 
-    up = _run_alembic(url, "upgrade", REVISION)
+    up = run_alembic(url, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
-    assert COLUMN in await _columns(url)
+    assert COLUMN in await columns_of(url, TABLE)
 
 
 @pytest.mark.asyncio
@@ -110,8 +80,8 @@ async def test_the_round_trip_leaves_the_sessions_alone(applied_database):
     """Dropping a column on SQLite rebuilds the table. The conversations have to survive it."""
     url, session_id = applied_database
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     engine = create_async_engine(url)
     async with engine.connect() as conn:
@@ -142,8 +112,8 @@ async def test_the_passage_a_line_was_written_for_does_not_survive_the_downgrade
     """
     url, session_id = applied_database
 
-    assert _run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(url, "upgrade", REVISION).returncode == 0
+    assert run_alembic(url, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(url, "upgrade", REVISION).returncode == 0
 
     engine = create_async_engine(url)
     async with engine.connect() as conn:

@@ -1,11 +1,14 @@
 """The comprehension-aware passage turn.
 
 Order matters — this is the state machine the handoff document calls "app-owned": resolve
-the bridge mode (explicit switches only), resolve the recording-handoff consent bound to
-the prior persisted question, read what the team's telling settles about practice, and
-only then let the Guide speak — or bypass it entirely with exact app-owned speech where
-safety demands fixed wording. The consent question becomes state only after it was
-actually voiced, so an answer is never bound to an unvoiced prompt.
+the bridge mode (explicit switches only), read what the team's telling settles about
+practice, and only then let the Guide speak — or bypass it entirely with exact app-owned
+speech where safety demands fixed wording.
+
+The room asks nothing about recording. It used to voice its own yes/no consent question
+here and re-offer it every third turn the team kept working, which is the nag ENG-777 is
+named after; what invites the rehearsal now is the Guide's own send-off, and the record
+entry has been open the whole session, so the team decides when.
 
 The Guide checks the retelling itself, item by item against the pinned map, with the whole
 conversation in context. Nothing here tells it what it may say next.
@@ -16,7 +19,6 @@ before anything is asked of the team — frame first, elicit second.
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,34 +36,21 @@ from app.services.internalization_room.comprehension.practice import (
     scenes_practiced_by_the_telling_the_guide_invited,
 )
 from app.services.internalization_room.comprehension.probe import (
-    ActiveProbe,
-    ProbePurpose,
     select_probe_after_oral_turn,
 )
 from app.services.internalization_room.comprehension.session_readiness import (
-    evaluate_session_comprehension,
     render_comprehension_status,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import (
     CoverageStatus,
     engaged_scene_ids,
-    floor_met,
 )
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.rehearsal_readiness import (
-    explicitly_requests_recording_handoff,
-    rehearsal_consent_declined_line,
-    rehearsal_consent_question,
-    rehearsal_readiness_cue,
-    resolve_rehearsal_consent,
-    should_offer_recording_consent,
-)
 from app.services.internalization_room.run_turn import (
     TurnOutcome,
-    detects_peer_cue,
     run_turn,
 )
 from app.services.internalization_room.sessions import comprehension_of
@@ -124,13 +113,6 @@ async def run_comprehension_turn(
     empty = not transcript.strip()
     reliable = not uncertain and not mother_tongue
 
-    consent_decision = resolve_rehearsal_consent(
-        probe=prior_probe,
-        previous_guide_utterance=last_guide,
-        team_utterance=transcript,
-        reliable_bridge_speech=reliable,
-    )
-
     scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
     practiced_now = scenes_practiced_by_the_telling_the_guide_invited(
         prior_probe, last_guide, transcript, reliable, scene_pointer
@@ -147,45 +129,6 @@ async def run_comprehension_turn(
         current_scene=scene_pointer,
     )
 
-    coverage_complete = floor_met(session.coverage_state or {}, pericope)
-    semantic_ready = (
-        evaluate_session_comprehension(
-            checkpoints=checkpoints,
-            scene_ids=scene_ids,
-            ledger=state.ledger,
-            practiced_scene_ids=projected_practice,
-            engaged_scene_ids=engaged_scenes,
-        ).evaluation.outcome.value
-        != "needs_more_work"
-    )
-    eligible = coverage_complete and semantic_ready
-    resume_requested = (
-        state.recording_handoff_paused
-        and reliable
-        and explicitly_requests_recording_handoff(transcript)
-    )
-
-    next_probe: ActiveProbe | None = None
-    if not opening and should_offer_recording_consent(
-        eligible=eligible,
-        paused=state.recording_handoff_paused,
-        paused_turns=state.recording_handoff_paused_turns,
-        explicit_resume_requested=resume_requested,
-        prior_decision=consent_decision,
-        reliable_bridge_speech=reliable,
-    ):
-        next_probe = ActiveProbe(
-            id=str(uuid.uuid4()), purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT
-        )
-
-    app_owned_line: str | None = None
-    if not opening and eligible and consent_decision == "accepted":
-        app_owned_line = rehearsal_readiness_cue(session.language)
-    elif prior_probe is not None and consent_decision == "declined":
-        app_owned_line = rehearsal_consent_declined_line(session.language)
-    elif next_probe is not None:
-        app_owned_line = rehearsal_consent_question(session.language)
-
     app_context = comprehension_status
 
     if mother_tongue:
@@ -201,12 +144,6 @@ async def run_comprehension_turn(
             used_fail_safe=True,
             degraded=True,
             fixed_line=fixed,
-        )
-    elif app_owned_line is not None:
-        outcome = TurnOutcome(
-            speech=app_owned_line,
-            transcript=transcript,
-            peer_cue=detects_peer_cue(app_owned_line),
         )
     else:
         outcome = await run_turn(
@@ -230,7 +167,7 @@ async def run_comprehension_turn(
     final_probe = select_probe_after_oral_turn(
         outcome="fail_safe" if outcome.used_fail_safe else "pass",
         prior_probe=prior_probe,
-        next_probe=next_probe,
+        next_probe=None,
         transcript_uncertain=uncertain,
         transcript_was_mother_tongue=mother_tongue,
         transcript_empty=empty,
@@ -240,22 +177,5 @@ async def run_comprehension_turn(
         ledger=state.ledger,
         active_probe=final_probe,
         practiced_scene_ids=projected_practice,
-        recording_consent_given=(
-            state.recording_consent_given or (eligible and consent_decision == "accepted")
-        ),
-        recording_handoff_paused=(
-            True
-            if consent_decision == "declined"
-            else False
-            if consent_decision == "accepted" or resume_requested
-            else state.recording_handoff_paused
-        ),
-        recording_handoff_paused_turns=(
-            0
-            if consent_decision in ("accepted", "declined") or resume_requested
-            else state.recording_handoff_paused_turns + 1
-            if state.recording_handoff_paused and reliable and not empty
-            else state.recording_handoff_paused_turns
-        ),
     )
     return ComprehensionTurn(outcome=outcome, state=new_state)

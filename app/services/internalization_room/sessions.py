@@ -11,6 +11,7 @@ from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.auth import User
 from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     SupersededAttempt,
@@ -33,20 +34,24 @@ from app.services.internalization_room.coverage import (
     initial_state,
     is_panorama,
 )
-from app.services.internalization_room.coverage_events import record_transitions
+from app.services.internalization_room.coverage_events import (
+    necklace_with_touches,
+    record_transitions,
+)
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
+from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import final_segments, retire_every_segment
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
 PANORAMA_ALIAS = "OV"
-#: How many second tellings of a stretch before the room asks for a person to come and
-#: watch. A warning, not a cap: nothing is refused at or past this number, the next stretch
-#: is taken like any other, and the next turn that lands clears the mark. Measured in the
-#: field at six against three with the passage checked, and kept that way by decision of
-#: the product owner (ENG-706): a team that keeps missing gets company, not a closed door.
+#: How many tellings of one stretch make it a hard stretch. Three is ours — measured in the
+#: field at six against three with the passage checked — and the signal is Marcia's ruling of
+#: 08/09: "keep it, as you have it: a mark, never a wall". Nothing is refused at or past this
+#: number and the next stretch is taken like any other; what the crossing leaves behind is a
+#: row for the facilitator and for the consultant, cleared by nothing that follows.
 RETELLS_BEFORE_A_WARNING = 3
 
 #: Re-exported so the room's callers go on asking the session service what a panorama is.
@@ -62,12 +67,16 @@ def resolve_pericope(pericope: str) -> str:
     """`OV` alone is the panorama of whichever book the room serves, so a client can ask
     for it without naming the book — the canon stays entirely on this side.
 
+    `PANORAMA` (`"panorama"`) resolves the same way: it is the id the passage wheel puts
+    on the wire, so a client that opens a session with the id the wheel just handed it
+    reaches the panorama instead of `require_walkable` refusing a pericope nobody vendored.
+
     It expanded through `book_of(DEFAULT_PERICOPE)`, which asked a passage what book it
     belonged to in order to learn the only book there is. `ROOM_BOOK` is not that constant
     under another name: a book is not a passage, the room serves one, and `elements_for`,
     `labelled_elements` and `run_turn` already take it as a parameter.
     """
-    if pericope == PANORAMA_ALIAS:
+    if pericope in (PANORAMA_ALIAS, PANORAMA):
         return PANORAMA_PREFIX + ROOM_BOOK
     return pericope
 
@@ -106,6 +115,15 @@ async def create_session(
     and refusing a session without one would take every room in the field offline to gain a
     column value. Work with no project has no history to read, so it starts at the beginning.
 
+    The necklace is the team's and not this conversation's. A session on a passage the team
+    has already worked opens with those beads where the team's own coverage events left them,
+    so a tablet closed in the middle of the third scene on Tuesday comes back on Thursday to
+    the beads it filled, and the Guide is handed a REMAINING block naming what is actually
+    left rather than the whole passage again. A bead the events point at that this canon no
+    longer serves is dropped rather than carried: the spine is the canon's and the events are
+    only laid over it, which is `necklace_of`'s rule (`coverage_events.py`) and `floor_met`'s
+    own bias.
+
     A request for the panorama is a request and not an instruction. The app asks for it at
     every launch, and a team that already heard it for the passage they stand on is answered
     with that passage instead, opened as any other session and not as one that follows a
@@ -139,6 +157,11 @@ async def create_session(
     spoken = normalize(language)
     if language is not None and spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
+    carried = (
+        {}
+        if panorama or project_id is None
+        else await necklace_with_touches(db, project_id=project_id, pericope=pericope)
+    )
     session = IRSession(
         project_id=project_id,
         pericope=pericope,
@@ -147,7 +170,12 @@ async def create_session(
         after_panorama=after_panorama,
         # A panorama has no coverage spine and never completes: it prepares the team to enter
         # the book, and asks no retelling of them.
-        coverage_state={} if panorama else initial_state(pericope),
+        coverage_state={}
+        if panorama
+        else {
+            element_key: carried[element_key].status.value if element_key in carried else status
+            for element_key, status in initial_state(pericope).items()
+        },
         kept_takes={},
         back_translation={},
         language=spoken or floor(),
@@ -181,6 +209,30 @@ async def get_session_for_facilitator(db: AsyncSession, user: User, session_id: 
     """
     session = await get_session(db, session_id)
     if session.project_id is None or not await facilitates_project(db, user, session.project_id):
+        raise NotFoundError(_no_such_session(session_id))
+    return session
+
+
+async def get_session_for_room_caller(
+    db: AsyncSession, session_id: str, project_id: str | None
+) -> IRSession:
+    """The session, if it belongs to the team the tablet says it is.
+
+    The team's own routes have always resolved a session by id alone, which is safe while
+    everything they do is about a session the tablet already holds. Approving is not: a
+    release is the whole of what a team recorded, and a route that writes one has to know
+    whose passage it is naming.
+
+    A session that names no project is reached by whoever asks, credentialed or not, and is
+    refused further in by name — the release cannot be numbered without a project, and that
+    is a different thing to be told than "no such session". Which caller is holding the
+    tablet does not change it: the session is the one that cannot be released.
+
+    Somebody else's session *is* refused as not found, with the message
+    `get_session_for_facilitator` gives, because unowned is nobody's but owned is somebody's.
+    """
+    session = await get_session(db, session_id)
+    if session.project_id is not None and session.project_id != project_id:
         raise NotFoundError(_no_such_session(session_id))
     return session
 
@@ -304,14 +356,15 @@ def semantics_ready(session: IRSession) -> bool:
 
 
 def session_is_done(session: IRSession) -> bool:
-    """The full advance gate: coverage floor, semantic readiness with practice, and the
-    team's explicit recording consent. Coverage bookkeeping alone can no longer end the
-    interview — that is what let bridge-limited teams be judged on Portuguese output."""
-    return (
-        floor_met(session.coverage_state or {}, session.pericope)
-        and semantics_ready(session)
-        and comprehension_of(session).recording_consent_given
-    )
+    """The advance gate, with the third term removed rather than replaced.
+
+    It used to end on the team's answer to the app's own yes/no recording question. The room
+    has no such question any more, so nothing could ever write that flag again and the gate
+    would have held every session open for good. What closes a passage instead is ENG-803's
+    to say — the Guide's send-off and a rehearsal take that was kept — and until it lands the
+    floor and the practice reading close the session between them.
+    """
+    return floor_met(session.coverage_state or {}, session.pericope) and semantics_ready(session)
 
 
 async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRSession]:
@@ -361,15 +414,22 @@ async def sessions_waiting_on_a_person(db: AsyncSession, user: User) -> list[IRS
     return list(result.scalars())
 
 
-async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltKind) -> IRSession:
+async def mark_needs_person(
+    db: AsyncSession, session: IRSession, *, kind: HaltKind, commit: bool = True
+) -> IRSession:
     """Halt the room, saying which kind of halt this is.
 
     ``kind`` is required and has no default, because the two are different walks for whoever
     reads the queue and a default would quietly make one of them the other. The three writers
-    each know their own: the tablet's route and the hard stop cannot go on, and the retell
-    budget refuses nothing.
+    each know their own: the tablet's route and the hard stop cannot go on, and a stretch
+    crossing into a hard stretch refuses nothing.
 
     The kind is written on every halt and cleared by none — see ``halt.last``.
+
+    ``commit=False`` leaves the transaction open so a caller can write more in it. The mark of a
+    hard stretch is the one that needs it: the row that records the crossing and the halt that
+    asks for somebody are one fact, and committed apart a failure between them leaves a stretch
+    marked hard in a room that never asked for anybody.
 
     **A new ask is an unattended ask**, so the visit that answered the *previous* halt is
     cleared here. The stamps are what a facilitator reads to skip a row a colleague already
@@ -384,8 +444,11 @@ async def mark_needs_person(db: AsyncSession, session: IRSession, *, kind: HaltK
     session.attended_by = None
     session.lifted_halt = None
     session.person_arrived_at = None
-    await db.commit()
-    await db.refresh(session)
+    if commit:
+        await db.commit()
+        await db.refresh(session)
+    else:
+        await db.flush()
     return session
 
 
@@ -484,11 +547,19 @@ def back_translation_of(session: IRSession) -> BackTranslationState:
 
 
 async def save_back_translation(
-    db: AsyncSession, session: IRSession, state: BackTranslationState
+    db: AsyncSession, session: IRSession, state: BackTranslationState, *, commit: bool = True
 ) -> IRSession:
+    """Write the telling-back state whole, which is how it is always read and rewritten.
+
+    ``commit=False`` leaves the transaction open for a caller composing several writes into one
+    — the captured telling, where the stretch row, this state and the mark are one fact.
+    """
     session.back_translation = state.model_dump(mode="json")
-    await db.commit()
-    await db.refresh(session)
+    if commit:
+        await db.commit()
+        await db.refresh(session)
+    else:
+        await db.flush()
     return session
 
 
@@ -497,27 +568,38 @@ async def report_playback(
     session: IRSession,
     state: BackTranslationState,
     *,
+    played_by_take: list[PlayedTake],
     played_ranges: list[list[int]],
     clip_duration_ms: int | None,
 ) -> BackTranslationState:
-    """Store what the tablet played, stamped with the rehearsal audio it was played from.
+    """Store what the tablet played of each rehearsal part, as it was sent.
 
-    The subject is the recordings the stretches standing right now are slices of — a stretch
-    names its recording, and that was checked when the stretch was captured. Taken here and
-    not read back at release time, because by then the team may have started the telling-back
-    over on a clip they recorded again, and the answer would be about audio this report was
-    never about.
+    The per-part report is stored exactly as the tablet sent it, subject and all. Nothing is
+    computed from it here and nothing is thrown away: the app names the recording each span was
+    played from, and the room has no better answer than the one the player measured.
 
-    Deliberately not "the newest rehearsal take". `created_at` is stamped when the upload
-    lands rather than when the passage was recorded, and the tablet's outbox drains whenever
-    the link comes back — so an abandoned rehearsal can be written down after the one that
-    replaced it, and newest-by-arrival would name the wrong file. The stretches carry the
-    answer already and carry it in order-independent form.
+    **A report with parts replaces, it does not merge.** What arrives is the whole of what the
+    team has heard, never a delta, because the tablet keeps the ledger and the server has no way
+    to tell a part left out of a short report from a part that was never played.
 
-    With nothing told back yet there is nothing to bind to and the stamp stays empty. That
-    report can never confirm anything, which is the honest reading of it.
+    **A report with no part named takes nothing away.** An older build sends the flat pair and
+    nothing else, and the two builds meet on one session when a team changes tablet mid-passage.
+    Overwriting on that press erased a report that had a subject and re-blocked a session that
+    was ready — the older build cannot say what it did not measure, and silence about the parts
+    is not a claim that none was played. The flat numbers are still stored, as the record of
+    that press.
+
+    The flat pair is stored beside it for the record, as the older builds send it, and the
+    stamp of which recordings the session was standing on is kept for the reason it was taken:
+    a stretch names the recording it is a slice of, checked when it was captured, and that
+    answer does not move, while "the newest take" does — `created_at` is stamped when the
+    upload lands and the tablet's outbox drains whenever the link comes back, so an abandoned
+    rehearsal can be written down after the one that replaced it. Neither is evidence, and
+    `playback_confirms_rehearsal` reads neither.
     """
     told = await final_segments(db, session.id)
+    if played_by_take:
+        state.played_by_take = played_by_take
     state.played_ranges = played_ranges
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})
@@ -539,10 +621,10 @@ async def begin_back_translation_again(
     counting — nothing takes their place, because the clip they explained was thrown away —
     and only what was never theirs is copied in here.
 
-    The retell count carries across. `BackTranslationState(scope=...)` takes every other
-    default, so it went back to zero — and re-recording is a room-key route the team drives
-    by voice. The count that decides when the room asks for a person was reset by tapping
-    "record again", which is exactly the tap a stuck team makes.
+    The count of tellings is not carried and does not need to be: it lives on the stretch, and
+    every stretch of the session stops counting here. What the team tells next is a new stretch
+    on a new recording, counted from one — while the hard stretches already noted stay exactly
+    where they are, in a table this does not touch.
     """
     state = back_translation_of(session)
     told = await final_segments(db, session.id)
@@ -551,6 +633,7 @@ async def begin_back_translation_again(
         superseded.append(
             SupersededAttempt(
                 findings=state.findings,
+                played_by_take=state.played_by_take,
                 played_ranges=state.played_ranges,
                 clip_duration_ms=state.clip_duration_ms,
             )
@@ -559,6 +642,6 @@ async def begin_back_translation_again(
     await save_back_translation(
         db,
         session,
-        BackTranslationState(scope=state.scope, retells=state.retells, superseded=superseded),
+        BackTranslationState(scope=state.scope, superseded=superseded),
     )
     return back_translation_of(session)

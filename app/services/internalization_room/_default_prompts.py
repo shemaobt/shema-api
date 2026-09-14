@@ -16,42 +16,16 @@ _FILES: dict[IRPromptKey, str] = {
     IRPromptKey.BT_ANALYST: "backtranslation_analysis_system_prompt.md",
     IRPromptKey.BT_CORRECTION: "backtranslation_correction_system_prompt.md",
     IRPromptKey.BT_VERDICT_SPEAKER: "backtranslation_verdict_system_prompt.md",
-    IRPromptKey.COMPREHENSION_ASSESSOR: "comprehension_evidence_system_prompt.md",
 }
 
-_META: dict[IRPromptKey, tuple[str, str]] = {
-    IRPromptKey.GUIDE: (
-        "Guide",
-        "Conduz a sessão de internalização: enquadra, elicia e manda a equipe ensaiar.",
-    ),
-    IRPromptKey.VALIDATOR: (
-        "Validator",
-        "Três portões antes de virar voz: mapa, políticas fixas e coerência com a conversa.",
-    ),
-    IRPromptKey.COVERAGE_CLASSIFIER: (
-        "Coverage Classifier",
-        "Quatro estados entre o mencionado e o que a equipe trabalhou. Subconta por desenho.",
-    ),
-    IRPromptKey.BOOK_PANORAMA: (
-        "Book Panorama",
-        "Panorama do livro antes de entrar na passagem, sem revelar o que ela guarda.",
-    ),
-    IRPromptKey.BT_ANALYST: (
-        "BT Analyst",
-        "Achados da retrotradução: missing, addition, unclear. Nunca é falado.",
-    ),
-    IRPromptKey.BT_CORRECTION: (
-        "BT Correction",
-        "Verifica uma correção contra o achado que ela responde. Forma varia, conteúdo não.",
-    ),
-    IRPromptKey.BT_VERDICT_SPEAKER: (
-        "BT Verdict Speaker",
-        "Voz do veredito da retrotradução: um achado por turno, e para.",
-    ),
-    IRPromptKey.COMPREHENSION_ASSESSOR: (
-        "Comprehension Evidence Assessor",
-        "Classifica evidência semântica da resposta ao probe autorizado. Nunca é falado.",
-    ),
+_META: dict[IRPromptKey, str] = {
+    IRPromptKey.GUIDE: "Guide",
+    IRPromptKey.VALIDATOR: "Validator",
+    IRPromptKey.COVERAGE_CLASSIFIER: "Coverage Classifier",
+    IRPromptKey.BOOK_PANORAMA: "Book Panorama",
+    IRPromptKey.BT_ANALYST: "BT Analyst",
+    IRPromptKey.BT_CORRECTION: "BT Correction",
+    IRPromptKey.BT_VERDICT_SPEAKER: "BT Verdict Speaker",
 }
 
 
@@ -84,5 +58,4 @@ def fail_safe_utterances() -> str:
 
 
 def default_prompt(key: IRPromptKey) -> dict[str, str]:
-    name, description = _META[key]
-    return {"name": name, "description": description, "prompt": load_prompt(key)}
+    return {"name": _META[key], "prompt": load_prompt(key)}

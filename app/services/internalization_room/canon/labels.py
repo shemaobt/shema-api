@@ -57,9 +57,11 @@ class ElementLabelsBroken(Exception):
     Deliberately not a `ValidationError`, which is answered 400 with its own message in the
     body: a file of ours being wrong is not the caller's request being wrong, and answering
     it that way sends somebody to debug their own code over our deploy — with `P01 scene:1`
-    in front of them to do it with. It carries no handler for the same reason, so it is a
-    500 and is logged as ours, which is what the house rule asks of an infrastructure
-    failure.
+    in front of them to do it with. `app/core/exceptions.py` registers a handler of its own
+    for it: still a 500, still logged as ours, but naming the pericope, the key and the
+    language in the body rather than the generic catch-all's blank "try again later" — a
+    coverage bead with no label used to answer indistinguishably from any other crash on
+    three facilitator screens, and ENG-925 is what tells them apart on the wire.
 
     Asking for a pericope nobody has translated stays a `ValidationError`: that one really
     is about what was asked for. ENG-449 decided what its route answers, and the decision was
@@ -329,9 +331,15 @@ def _read(path: Path) -> dict:
 
     `json.loads` answers `Any`, so without this the shape is never established and the first
     symptom of a malformed file is an `AttributeError` raised somewhere far from it.
+
+    Named by `path.name`, never the full `path`: ENG-925 gave this exception's message a
+    registered handler that puts `str(exc)` straight in the caller's response body, and
+    `LABELS_DIR` is built from `__file__`, so the full path is this deploy's own filesystem
+    layout on the wire to an authenticated facilitator — a smaller leak than the message being
+    silent, but not one this refusal needs to carry.
     """
     if not path.exists():
-        raise ElementLabelsBroken(f"no label catalogue at {path}")
+        raise ElementLabelsBroken(f"no label catalogue at {path.name}")
     written = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(written, dict):
         raise ElementLabelsBroken(f"{path.name} is not a catalogue of labels")
