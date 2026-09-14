@@ -38,7 +38,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
-from tests.test_internalization_room_release import P, _one_stretch, _ready_session
+from tests.release_harness import P, one_stretch, ready_session
 from tests.test_ir_project_id import KEY, PREFIX, a_claimed_device
 
 APP_KEY = "internalization-room"
@@ -126,7 +126,7 @@ async def _releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
 
 async def test_a_credentialed_team_that_approves_gets_version_one(client, db_session):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
     approved = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
@@ -149,7 +149,7 @@ async def test_a_credentialed_team_that_approves_gets_version_one(client, db_ses
 
 async def test_approving_again_with_nothing_changed_returns_the_same_release(client, db_session):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
     first = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
     second = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
@@ -173,13 +173,13 @@ async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_on
     the rule; `compose.py` owns the rebuild path and its own tests.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
     first = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
     version_one = (await _releases_of(db_session, session.id))[0]
     as_approved = json.dumps(version_one.packet, sort_keys=True)
 
-    await _one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
     second = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
 
     assert second.status_code == 200, second.text
@@ -196,7 +196,7 @@ async def test_the_packet_names_its_release_and_says_which_schema_it_is(
     client, db_session, room_app
 ):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
     desk = await _facilitator(db_session, room_app, project)
 
     before = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
@@ -204,7 +204,7 @@ async def test_the_packet_names_its_release_and_says_which_schema_it_is(
         f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
     )
     after = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
-    await _one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
     redrafted = await client.get(
         f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk
     )
@@ -245,7 +245,7 @@ async def test_two_approvals_cannot_take_one_number(db_session):
 
 async def test_the_version_is_never_the_callers(client, db_session):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
     approved = await client.post(
         f"{PREFIX}/sessions/{session.id}/release",
@@ -261,7 +261,7 @@ async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
     client, db_session, room_app
 ):
     project, _credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     desk = await _facilitator(db_session, room_app, project)
 
     refused = await client.post(
@@ -309,7 +309,7 @@ async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numb
     refuses it.
     """
     project, credential = await a_claimed_device(db_session)
-    session_id = (await _ready_session(db_session, project_id=project.id)).id
+    session_id = (await ready_session(db_session, project_id=project.id)).id
     winner = IRRelease(
         session_id=session_id,
         project_id=project.id,
@@ -349,8 +349,8 @@ async def test_a_second_conversation_about_one_passage_shares_the_sequence(clien
     not the draft it approved before.
     """
     project, credential = await a_claimed_device(db_session)
-    first_session = await _ready_session(db_session, project_id=project.id)
-    second_session = await _ready_session(db_session, project_id=project.id)
+    first_session = await ready_session(db_session, project_id=project.id)
+    second_session = await ready_session(db_session, project_id=project.id)
 
     first = await client.post(
         f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential)
@@ -379,8 +379,8 @@ async def test_a_packet_stops_naming_its_release_once_the_passage_moved_on(
     is the exact case where a session-scoped read and a project-scoped approval disagree.
     """
     project, credential = await a_claimed_device(db_session)
-    first_session = await _ready_session(db_session, project_id=project.id)
-    second_session = await _ready_session(db_session, project_id=project.id)
+    first_session = await ready_session(db_session, project_id=project.id)
+    second_session = await ready_session(db_session, project_id=project.id)
     desk = await _facilitator(db_session, room_app, project)
 
     await client.post(f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential))
@@ -410,7 +410,7 @@ async def test_a_credentialed_tablet_is_refused_by_name_on_a_session_with_no_pro
     which is the one thing that is not true.
     """
     _project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
 
     refused = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
@@ -425,7 +425,7 @@ async def test_no_team_writes_a_release_on_another_teams_passage(client, db_sess
     """There is no team route that reads a release, so writing is the whole of the rule here."""
     project_a, credential_a = await a_claimed_device(db_session, email="a@example.com")
     _project_b, credential_b = await a_claimed_device(db_session, email="b@example.com")
-    session = await _ready_session(db_session, project_id=project_a.id)
+    session = await ready_session(db_session, project_id=project_a.id)
 
     stranger = await client.post(
         f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential_b)

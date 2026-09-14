@@ -64,7 +64,7 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
-from tests.test_internalization_room_release import _ready_session, _supported_comprehension
+from tests.release_harness import ready_session, supported_comprehension
 from tests.test_ir_a_release_is_a_numbered_row import TABLET, _releases_of, _team
 from tests.test_ir_project_id import KEY, PREFIX, a_claimed_device
 
@@ -165,7 +165,7 @@ async def _a_p02_telling_with_the_swapped_cause(db: AsyncSession, project) -> IR
     """
     session = await create_session(db, pericope=P02, project_id=project.id)
     session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
-    await save_comprehension(db, session, _supported_comprehension(P02))
+    await save_comprehension(db, session, supported_comprehension(P02))
     db.add(
         IRTake(
             session_id=session.id,
@@ -245,7 +245,7 @@ async def test_a_force_with_nothing_to_waive_is_still_recorded_as_one(client, db
     actually waived. This is the one where there was nothing to waive at all.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
     desk, facilitator = await _at_the_desk(db_session, room_app, project)
 
     forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
@@ -339,7 +339,7 @@ async def _comprehension_in_conflict(db: AsyncSession, session: IRSession) -> No
     the practice report and a unit nobody evidenced blocks nothing. A conflict on a critical
     unit is the state, and it leaves the floor and the rehearsal exactly where they were.
     """
-    state = _supported_comprehension(P02)
+    state = supported_comprehension(P02)
     critical = next(checkpoint for checkpoint in checkpoints_for(P02) if checkpoint.critical)
     state.ledger = [
         *state.ledger,
@@ -466,7 +466,7 @@ async def test_the_team_route_never_reads_force(client, db_session):
     """
     project, credential = await a_claimed_device(db_session)
     disputed = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    clean = await _ready_session(db_session, project_id=project.id)
+    clean = await ready_session(db_session, project_id=project.id)
 
     refused = await client.post(
         _team_release(disputed.id), headers=_team(credential), json={"force": True}
@@ -492,7 +492,7 @@ async def test_the_teams_approval_records_the_device(client, db_session):
     that numbers a draft for the external check — did not.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
     approved = await client.post(_team_release(session.id), headers=_team(credential))
 
@@ -530,7 +530,7 @@ async def test_forcing_what_the_team_already_approved_returns_the_teams_release(
     nobody had to force rather than as a force with no clock on it.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
     desk, _facilitator = await _at_the_desk(db_session, room_app, project)
 
     approved = await client.post(_team_release(session.id), headers=_team(credential))
