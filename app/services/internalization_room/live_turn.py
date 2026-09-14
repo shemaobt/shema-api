@@ -39,7 +39,6 @@ from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
 from app.services.internalization_room.comprehension.session_readiness import (
-    APP_OWNED_STATE,
     render_comprehension_status,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
@@ -131,7 +130,6 @@ async def run_comprehension_turn(
     )
 
     app_context = comprehension_status
-    validator_context = f"{APP_OWNED_STATE}\n{comprehension_status}"
 
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
@@ -163,7 +161,6 @@ async def run_comprehension_turn(
             settings=settings,
             session_id=session.id,
             app_context=app_context,
-            validator_context=validator_context,
             ask_for_movements=opening and not messages,
         )
 

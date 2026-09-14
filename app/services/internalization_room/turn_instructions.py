@@ -46,6 +46,21 @@ def _nobody_spoke_this_turn(telling_back: str, language_code: str) -> str:
     return messages["told_back"] if telling_back else messages["opening"]
 
 
+#: What is asked of the Speaker on a turn with no team utterance and nothing to open — the
+#: back-translation verdict, whose whole instruction is already in its system prompt. The
+#: conversation used to reach the model as one block of text, which made a user message by
+#: accident; now that it travels as the turns it was, the request would end on the Guide's
+#: own last speech, and the API refuses that as an assistant prefill.
+_SPEAK_THIS_TURN: dict[str, str] = {
+    "pt": "Fale este turno.",
+    "en": "Speak this turn.",
+}
+
+
+def speak_this_turn(language_code: str) -> str:
+    return _SPEAK_THIS_TURN.get(language_code, _SPEAK_THIS_TURN[FLOOR])
+
+
 OPENING_MOVEMENT_MARK = "[[CENA]]"
 _MOVEMENT_MARK = re.compile(r"^[ \t]*\[\[CENA\]\][ \t]*$", re.M)
 
