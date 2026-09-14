@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.models.internalization_room import PlayedTake
 from app.services import internalization_room as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
@@ -220,8 +221,16 @@ async def _a_failed_capture_then_two_good_ones(client: httpx.AsyncClient) -> str
 async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """Everything `build_internalization_release` asks for besides the telling-back itself.
 
-    The telling-back is left exactly as the caller built it: only comprehension, coverage,
-    consent and the playback report are added here, none of which this ticket's rule touches.
+    What the caller told back is left exactly as they told it: only comprehension, coverage
+    and the playback report are added here, and none of them is what these cases are about —
+    they are about which takes the packet lists, and under which numbers.
+
+    The analyst is stood in for rather than run, which is what `analysed_segment_ids` below has
+    always done: these sessions tell back through the room's own routes and never press
+    `terminei`, so nothing here ever asked the analyst anything. `checked` is the other half of
+    that same stand-in and is set for the same reason — the session these cases mean is one
+    that came out clean, and a release refused over a finding nobody ever raised would fail
+    them on a gate they are not watching (ENG-882).
     """
     session.coverage_state = merge(
         initial_state(PASSAGE), pericope_num=PASSAGE, engaged=element_keys(PASSAGE)
@@ -231,9 +240,18 @@ async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, 
     told = await room.final_segments(db, session.id)
     state = room.back_translation_of(session)
     state.analysed_segment_ids = [segment.id for segment in told]
+    state.checked = True
     clip_end = max((segment.ends_ms for segment in told), default=0)
     await room.report_playback(
-        db, session, state, played_ranges=[[0, clip_end]], clip_duration_ms=clip_end
+        db,
+        session,
+        state,
+        played_by_take=[
+            PlayedTake(take_id=take_id, played_ranges=[[0, clip_end]], clip_duration_ms=clip_end)
+            for take_id in sorted({segment.take_id for segment in told})
+        ],
+        played_ranges=[[0, clip_end]],
+        clip_duration_ms=clip_end,
     )
 
     return await build_internalization_release(db, session)

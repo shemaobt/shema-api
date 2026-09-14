@@ -23,6 +23,7 @@ from app.services.internalization_room.comprehension.evidence import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
+from app.services.internalization_room.hard_stretches import note_a_hard_stretch
 from app.services.internalization_room.segments import (
     capture_segment,
     final_segments,
@@ -33,7 +34,6 @@ from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     append_exchange,
     apply_coverage,
-    back_translation_of,
     begin_back_translation_again,
     comprehension_of,
     create_session,
@@ -99,12 +99,25 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="ENG-803 redefines done as the Guide's send-off plus a rehearsal take that was "
+    "kept; until it lands the floor closes the session on its own",
+)
 @pytest.mark.asyncio
 async def test_the_coverage_floor_alone_no_longer_closes_the_session(
     db_session: AsyncSession,
 ) -> None:
     """Coverage bookkeeping is participation, not comprehension — the very confusion the
-    bridge-language calibration exists to undo."""
+    bridge-language calibration exists to undo.
+
+    What held this shut was the recording-consent flag, and only by accident: the room's own
+    question was the flag's one writer, so a session that had never been asked could not
+    close. ENG-777 took the question away, and the premise is left with nothing implementing
+    it — the ledger the calibration was written around went with the Assessor (ENG-831), and
+    a fully engaged scene already reads as a rehearsed one. It is ENG-803 that puts the
+    premise back on its feet, in the terms Marcia gave it.
+    """
     session = await create_session(db_session, pericope=P)
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
 
@@ -127,12 +140,11 @@ def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
     return ComprehensionState(
         ledger=list(ledger),
         practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
     )
 
 
 @pytest.mark.asyncio
-async def test_floor_plus_evidence_practice_and_consent_closes_the_session(
+async def test_the_floor_with_evidence_and_practice_closes_the_session(
     db_session: AsyncSession,
 ) -> None:
     session = await create_session(db_session, pericope=P)
@@ -156,10 +168,11 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
 
-    The scenario carries calibration, evidence, practice and consent because the floor alone
-    stopped closing anything: ``session_is_done`` folds those in, deliberately, so that
-    bridge-limited teams are not judged on Portuguese output. What is asserted here is
-    unchanged — that the close is *stamped* — only what it takes to reach a close moved.
+    The scenario carries calibration, evidence and practice, and none of them is what
+    holds it up today: with every bead engaged, the practice reading is met on the beads
+    alone, which is what the strict xfail above this says out loud. They are kept because
+    ENG-803 is about to make them load-bearing again. What is asserted here is unchanged
+    either way — that the close is *stamped*, not what it takes to reach one.
     """
     session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
@@ -231,37 +244,36 @@ async def test_a_fresh_recording_throws_the_whole_telling_back_away(
     db_session: AsyncSession,
 ) -> None:
     session = await create_session(db_session, pericope=P)
-    await save_back_translation(db_session, session, BackTranslationState(scope=P, retells=2))
+    await save_back_translation(db_session, session, BackTranslationState(scope=P))
     await _tell(db_session, session, "velho")
 
-    state = await begin_back_translation_again(db_session, session)
+    await begin_back_translation_again(db_session, session)
 
     assert await final_segments(db_session, session.id) == []
-    assert state.retells == 2, (
-        "o contado de volta é jogado fora; a contagem de recontos não é parte dele. "
-        "Zerá-la punha nas mãos da equipe — por um toque em 'gravar de novo' — o contador "
-        "que decide quando a sala pede uma pessoa"
-    )
     assert session.status is IRSessionStatus.IN_PROGRESS
 
 
 @pytest.mark.asyncio
-async def test_the_retells_are_counted_and_reach_the_warning(db_session: AsyncSession) -> None:
+async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: AsyncSession) -> None:
+    """The count is the stretch's, so the service decides on the stretch and not on the state.
+
+    Written as arithmetic the test did itself, this case asserted nothing about the room: it
+    called `mark_needs_person` and then checked that the room was marked.
+    """
     session = await create_session(db_session, pericope=P)
-    await save_back_translation(
-        db_session, session, BackTranslationState(scope=P, retells=RETELLS_BEFORE_A_WARNING - 1)
-    )
+    told = await _tell(db_session, session, "o trecho")
+    told.tellings = RETELLS_BEFORE_A_WARNING - 1
+    await db_session.commit()
 
-    state = back_translation_of(session)
-    state.retells += 1
-    await save_back_translation(db_session, session, state)
-    if state.retells >= RETELLS_BEFORE_A_WARNING:
-        await mark_needs_person(db_session, session, kind=HaltKind.WARNING)
+    assert await note_a_hard_stretch(db_session, session, told) is False
+    assert session.status is not IRSessionStatus.NEEDS_PERSON
 
-    assert session.status is IRSessionStatus.NEEDS_PERSON, (
-        "contar o mesmo trecho de novo era um ciclo que ninguém contava, e o "
-        "aviso que existia estava numa rota que o app nunca chamava"
-    )
+    told.tellings = RETELLS_BEFORE_A_WARNING
+    await db_session.commit()
+
+    assert await note_a_hard_stretch(db_session, session, told) is True
+    assert session.status is IRSessionStatus.NEEDS_PERSON
+    assert session.halt_kind == HaltKind.WARNING.value
 
 
 @pytest.mark.asyncio
@@ -273,7 +285,6 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
         BackTranslationState(
             scope=P,
             findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
-            retells=2,
         ),
     )
     told = await _tell(db_session, session, "Noemi mandou Rute voltar")
@@ -282,7 +293,6 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
 
     assert await final_segments(db_session, session.id) == []
     assert fresh.findings == []
-    assert fresh.retells == 2
     assert len(fresh.superseded) == 1
     archived = fresh.superseded[0]
     assert archived.findings[0].kind is FindingKind.MISSING
@@ -352,6 +362,8 @@ async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
         },
         "practiced_scene_ids": ["S1"],
         "recording_consent_given": True,
+        "recording_handoff_paused": True,
+        "recording_handoff_paused_turns": 2,
     }
     await db_session.commit()
 
@@ -359,4 +371,3 @@ async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
 
     assert state.active_probe is None
     assert state.practiced_scene_ids == ["S1"]
-    assert state.recording_consent_given

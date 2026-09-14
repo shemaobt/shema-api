@@ -46,7 +46,7 @@ async def _checked_turn_for(draft: str, patch_speaker) -> str:
     await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(None),
+        findings_text=findings_block([]),
         closing=closing_block(None, checked=True),
         scope=P,
         pericope_num=P,
@@ -65,7 +65,7 @@ async def _checked_turn_with_loop(draft: str, patch_loop):
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(None),
+        findings_text=findings_block([]),
         closing=closing_block(None, checked=True),
         scope=P,
         pericope_num=P,

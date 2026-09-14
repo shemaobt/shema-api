@@ -1,7 +1,7 @@
 """The draft-gate-voice engine every session type funnels through.
 
 `call_agent`, `strays_from`, `MAX_REDRAFTS` and the logger are read off `run_turn` at call
-time instead of being imported here. Twenty-seven sites across thirteen test files install
+time instead of being imported here. Thirty-four sites across twenty-three test files install
 their fake model by writing over `run_turn.call_agent`, one writes over `run_turn.strays_from`,
 and `tests/test_internalization_room_model_failure.py` asserts on records whose `record.name`
 is exactly `app.services.internalization_room.run_turn`. A monkeypatch reaches a function only
@@ -75,6 +75,23 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
         )
         for message in messages
     ]
+
+
+def _conversation_as_evidence(conversation: list[Turn]) -> str:
+    """The whole session, quoted, for the Validator to check a recollection against.
+
+    The Guide hears every turn (no window), so it may say what the team told it three
+    scenes ago. The Validator's evidence rule refuses any such sentence it cannot find in a
+    record, and with the slot reading "not this turn" nothing could be found: a true
+    recollection of the team's own words died as an "epistemic" violation and the team heard
+    the pause line for asking what it had said. This is quoted evidence, never a window — it
+    is all of it, oldest first, and the doctrine forbids the window, not the record.
+    """
+    if not conversation:
+        return NOT_THIS_TURN
+    return "\n".join(
+        f"{'Team' if turn['role'] == 'user' else 'Guide'}: {turn['text']}" for turn in conversation
+    )
 
 
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
@@ -265,7 +282,7 @@ async def _voiced_after_validation(
                 cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
-                RECENT_CONVERSATION=NOT_THIS_TURN,
+                RECENT_CONVERSATION=_conversation_as_evidence(conversation),
                 TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,

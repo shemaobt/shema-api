@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -264,6 +265,12 @@ class CoverageView(BaseModel):
     absence_index: int
 
 
+class CoverageFrame(BaseModel):
+    turn_id: str
+    status: Literal["settled", "failed"]
+    coverage: CoverageView | None
+
+
 class CreateSessionRequest(BaseModel):
     pericope: str | None = Field(default=None, max_length=120)
     after_panorama: bool = False
@@ -324,10 +331,10 @@ class SegmentsResponse(BaseModel):
     #: exactly as it was — replacing a good explanation with an empty one over a transcriber
     #: outage would lose the team's work to somebody else's failure.
     captured: bool = True
-    #: True when the retells ran out on this correction. The room stops instead of buying
-    #: another round, and it is said here as well as on the telling-back route: a team that
-    #: spends the last of the budget still gets the stretches back, and would otherwise have no
-    #: sign that the room had stopped.
+    #: True on the one correction that made this stretch a hard stretch. The room asks for a
+    #: person rather than refusing anything, and it is said here as well as on the telling-back
+    #: route: a team that crosses still gets the stretches back, and would otherwise have no
+    #: sign that the room had asked at all.
     needs_person: bool = False
     #: The recording of the passage that was rebuilt around a stretch re-recorded in the mother
     #: tongue. Every stretch above that was a slice of the recording it replaced is now a slice
@@ -353,7 +360,6 @@ class BackTranslationProgress(BaseModel):
     #: stretch only by lining up by position, and lined up with nothing once a stretch could
     #: be replaced.
     segments: list[SegmentView] = Field(default_factory=list)
-    retells: int = 0
     checked: bool = False
     finding_segment_id: str | None = None
     finding_kind: str | None = None
@@ -403,6 +409,8 @@ class TurnResponse(BaseModel):
     degraded: bool = False
     coverage: CoverageView
     done: bool
+    turn_id: str = ""
+    classification_pending: bool = False
     #: The session's opening cut at the boundary the Guide drew itself: the whole passage
     #: first, then the scene and its invitation. Empty on every other turn, and empty
     #: whenever the Guide did not mark the boundary exactly where it was asked for.
@@ -411,6 +419,9 @@ class TurnResponse(BaseModel):
 
 class PassageView(BaseModel):
     pericope: str
+    #: "panorama" is the book's own entry — the one the wheel offers before any passage, and
+    #: the one entry with no beads of its own.
+    kind: Literal["passage", "panorama"]
     #: Where to fetch the line that names this passage aloud. There is no text field: the
     #: team does not read, so a passage the room cannot say is a passage it cannot offer.
     audio_url: str
@@ -425,20 +436,47 @@ class BookPassagesResponse(BaseModel):
 
 class BackTranslationChunkResponse(BaseModel):
     session_id: str
+    #: How many stretches the passage has after this call, not how many recordings the team
+    #: sent. A retelling replaces the stretch it retells, so it adds none — the number moves
+    #: only when the team tells a stretch nobody had told yet.
     chunks: int
     captured: bool
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding. The
     #: evidence packet that travels to Refine carries pass-1/pass-2 labels, and the app has
     #: no business deciding which one a chunk is.
     pass_number: int = 1
-    #: True when the retells reached `RETELLS_BEFORE_A_WARNING`: the room asks for a person
-    #: to come and watch. A warning the app voices, not a stop — this chunk was taken, the
-    #: next one will be too, and the next turn that lands clears the mark.
+    #: True on the one call that made this stretch a hard stretch: the room asks for a person
+    #: to come and watch. A warning the app voices, not a stop — this chunk was taken and the
+    #: next one will be too. False on every telling after it, because the ask is once per
+    #: stretch and repeating it would erase the visit it already got.
     needs_person: bool = False
 
 
+class PlayedTake(BaseModel):
+    """What the tablet played of one rehearsal part, in that part's own milliseconds.
+
+    The part is named, and that is the whole of it. A report over the glued passage said a clip
+    had been played through without saying which clip, so it went on reading as proof after the
+    team recorded one part again — and it threw away their listening to every other part with
+    it. Named, the rule the room applies is per part: what the team heard of one part is judged
+    against that part alone.
+
+    The tablet keeps the ledger and sends all of it every time, because what is stored is what
+    was sent: a report listing one part is a report that one part was played and the others
+    were not.
+
+    A length of zero is the honest default for an entry that arrives without one, rather than a
+    refusal. Nothing can be measured against it, so it costs the release — and `terminei` still
+    answers, which is the line `FinishBackTranslationRequest` draws below.
+    """
+
+    take_id: str
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int = Field(default=0, ge=0)
+
+
 class FinishBackTranslationRequest(BaseModel):
-    """What the tablet actually played of the team's own recording, in milliseconds.
+    """What the tablet actually played of the team's own recording, part by part.
 
     Optional end to end, and the room still answers `terminei` without it: the analysis
     already happens only after the client let the clip run to its end, so an app that sends
@@ -446,11 +484,17 @@ class FinishBackTranslationRequest(BaseModel):
 
     What it loses is the release. The report is the only evidence the room has that the team
     heard their own recording before the telling-back was blessed, so a session that never
-    sends one is refused at the handoff rather than travelling on silence. Which rehearsal the
-    report is about is not asked of the tablet — the server stamps it, so no app in the field
-    has to be updated to release.
+    sends one is refused at the handoff rather than travelling on silence.
+
+    The two flat fields are the shape the tablets in the field still send, and they are still
+    accepted and still stored, because they are the record of what that build reported. They
+    are evidence of nothing: they carry no subject, so nothing can tell whether they are about
+    the recordings this session is standing on. `played_by_take` is what the gate reads, and an
+    app that sends only the flat pair cannot release until it plays the rehearsal through on a
+    build that names the parts (ADR 0017).
     """
 
+    played_by_take: list[PlayedTake] = Field(default_factory=list)
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = Field(default=None, ge=0)
 
@@ -617,6 +661,20 @@ class QuestionInboxResponse(BaseModel):
     next_cursor: str | None
 
 
+class HardStretchView(BaseModel):
+    """One stretch this team told three times, as the facilitator's queue carries it.
+
+    `segment_id` names the first row of the stretch's chain of replacements, so a stretch told
+    five times is still one name. `tellings` is the count at the moment it crossed, not the
+    count now: what the reader is being told is that it happened, and when.
+    """
+
+    segment_id: str
+    tellings: int
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    crossed_at: str
+
+
 class FacilitatorSessionView(BaseModel):
     """One room on the queue a facilitator drains.
 
@@ -650,6 +708,11 @@ class FacilitatorSessionView(BaseModel):
     #: (ENG-792) — a different fact from `attended_at`, which is a facilitator saying it from
     #: the Desk afterwards. Null until the first press, and null again on the next halt.
     person_arrived_at: str | None = None
+    #: The stretches this team told three times, oldest crossing first. Unlike the halt and the
+    #: stamps beside it, these are cleared by nothing: the halt is the room asking now, and
+    #: this is the record that it happened at all. The tablet's own read carries none of it —
+    #: the team never hears that the room counted (ENG-869).
+    hard_stretches: list[HardStretchView] = Field(default_factory=list)
 
 
 class AttendedResponse(BaseModel):
@@ -745,6 +808,44 @@ class TakeResponse(BaseModel):
 class TakesResponse(BaseModel):
     session_id: str
     takes: list[TakeResponse]
+
+
+class ReleaseResponse(BaseModel):
+    """What the tablet is told when the team's approval landed.
+
+    The packet itself is not here: it is the file Refine reads, and the room has no use for
+    it on the way back. What the tablet shows is the number the passage now carries and the
+    fingerprint of what was approved under it.
+    """
+
+    release_id: str
+    session_id: str
+    version: int
+    package_sha256: str
+    approved_at: str
+
+
+class ForceReleaseRequest(BaseModel):
+    """The facilitator saying, in so many words, to mint this past the gate.
+
+    Defaulted rather than required, so a body without it meets the route's own conflict
+    instead of the body parser: "you did not ask for a force" is something the Desk can act
+    on, and a 422 naming a missing field is not.
+    """
+
+    force: bool = False
+
+
+class ForcedReleaseResponse(ReleaseResponse):
+    """What the Desk is told after a force: what the tablet is told, and when it was forced.
+
+    ``forced_at`` is null when the release that came back was not forced. An unchanged packet
+    returns the release that already exists (ADR 0014), and that row may be the one the team
+    minted themselves — the Desk reads this field to show *forçada às HH:MM*, so the honest
+    answer there is nothing rather than the clock of an approval nobody had to force.
+    """
+
+    forced_at: str | None
 
 
 class QuestionAudioResponse(BaseModel):

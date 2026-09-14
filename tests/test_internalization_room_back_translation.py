@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 import re
@@ -21,11 +22,15 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     analyse_telling_back,
     closing_block,
+    current_findings,
     findings_block,
+    findings_remaining,
     played_ranges_cover_clip,
     points_at_a_stretch,
     segments_block,
+    the_finding_that_leads,
     verify_correction,
+    with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
@@ -113,6 +118,27 @@ def _told() -> list[IRSegment]:
         _segment(1, "Noemi mandou Rute voltar."),
         _segment(2, "Rute disse que ia junto."),
     ]
+
+
+def _addition_on(chunk: int, segment_id: str | None, note: str = "o pedido das noras") -> Finding:
+    return Finding(kind=FindingKind.ADDITION, note=note, segment_id=segment_id, chunk=chunk)
+
+
+def _missing_on(chunk: int, segment_id: str | None, note: str = "a notícia do pão") -> Finding:
+    return Finding(kind=FindingKind.MISSING, note=note, segment_id=segment_id, chunk=chunk)
+
+
+def _silence_on(
+    chunk: int, segment_id: str | None, note: str = "o que a história guarda"
+) -> Finding:
+    """An addition the analyst named with the wire kind, as a reply would carry it."""
+    return Finding.model_validate(
+        {"kind": "silence", "note": note, "segment_id": segment_id, "chunk": chunk}
+    )
+
+
+def _unclear_on(chunk: int, note: str = "não deu para ouvir") -> Finding:
+    return Finding(kind=FindingKind.UNCLEAR, note=note, segment_id=None, chunk=chunk)
 
 
 @pytest.fixture
@@ -224,22 +250,49 @@ async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
     assert analysis is None
 
 
-def test_only_one_finding_ever_reaches_the_speaker() -> None:
+def test_an_addition_with_a_missing_on_another_frase_goes_alone() -> None:
+    """Acceptance 3. Only the same frase is one thing; two frases are two things to act on.
+
+    The join is opportunistic and never a precondition. An addition on one frase and a missing
+    element on another are two swaps of nothing: the team is asked about the first and hears
+    about the second next round, exactly as before this rule existed.
+    """
     state = BackTranslationState(
         findings=[
-            Finding(kind=FindingKind.MISSING, note="primeiro"),
-            Finding(kind=FindingKind.ADDITION, note="segundo"),
+            _addition_on(1, "segmento-1", "primeiro"),
+            _missing_on(3, "segmento-3", "segundo"),
         ]
     )
 
-    block = findings_block(state.current_finding)
+    block = findings_block(current_findings(state))
 
     assert "primeiro" in block
     assert "segundo" not in block
+    assert findings_remaining(state.findings) == 2
+
+
+def test_a_row_written_before_the_frase_number_existed_never_pairs() -> None:
+    """A state stored before the field carries no number, and the number is what pairs.
+
+    The frase the analyst gave is not recoverable from the stretch, so a row from before this
+    rule cannot be read as a swap. It behaves exactly as it did on the day it was written.
+    """
+    state = BackTranslationState.model_validate(
+        {
+            "findings": [
+                {"kind": "addition", "note": "primeiro", "segment_id": "segmento-1"},
+                {"kind": "missing", "note": "segundo", "segment_id": "segmento-1"},
+            ]
+        }
+    )
+
+    assert [finding.chunk for finding in state.findings] == [None, None]
+    assert [finding.note for finding in current_findings(state)] == ["primeiro"]
+    assert findings_remaining(state.findings) == 2
 
 
 def test_no_findings_reads_as_complete() -> None:
-    assert "nenhum achado" in findings_block(None)
+    assert "nenhum achado" in findings_block([])
 
 
 @pytest.mark.asyncio
@@ -250,7 +303,7 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(finding),
+        findings_text=findings_block([finding]),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -327,6 +380,43 @@ async def test_the_analyst_pointer_is_resolved_to_the_stretch_it_names(patch_ana
 
 
 @pytest.mark.asyncio
+async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> None:
+    """The number the analyst gave is kept beside the stretch it resolved to.
+
+    The stretch alone cannot answer *which frase is this about*: a missing element placed
+    after frase 3 sits at the start of stretch 4, and one placed after the last frase sits
+    on no stretch at all (ADR 0007). A number that names no position in this reading resolves
+    to nothing, here as it always did, and takes no frase with it.
+    """
+    patch_analyst(
+        '{"findings":['
+        '{"kind":"missing","chunk":3,"where":"after","note":"a"},'
+        '{"kind":"missing","chunk":4,"where":"after","note":"b"},'
+        '{"kind":"missing","chunk":2,"where":"inside","note":"c"},'
+        '{"kind":"addition","chunk":1,"note":"d"},'
+        '{"kind":"unclear","chunk":9,"note":"e"}]}'
+    )
+    four = [_segment(number, f"trecho {number}") for number in range(1, 5)]
+
+    analysis = await analyse_telling_back(
+        segments=four,
+        scope=P,
+        pericope_num=P,
+        analyst_prompt=ANALYST,
+        settings=_settings(),
+    )
+
+    assert analysis is not None
+    assert [(f.chunk, f.segment_id) for f in analysis.findings] == [
+        (3, "segmento-4"),
+        (4, None),
+        (2, "segmento-2"),
+        (1, "segmento-1"),
+        (None, None),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     patch_analyst,
 ) -> None:
@@ -383,7 +473,7 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
 def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
     state = BackTranslationState(scope=P, findings=[])
 
-    assert state.current_finding is None
+    assert current_findings(state) == []
 
 
 @pytest.mark.parametrize(
@@ -561,9 +651,10 @@ async def test_the_retired_evidence_kind_is_dropped_from_a_correction_too(
 
     with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
         check = await verify_correction(
-            finding=Finding(kind=FindingKind.MISSING, note="Orfa", segment_id="segmento-1"),
+            findings=[Finding(kind=FindingKind.MISSING, note="Orfa", segment_id="segmento-1")],
             earlier=_segment(1, "Noemi mandou Rute voltar."),
             corrected=_segment(2, "Noemi mandou Rute voltar para a casa da mãe."),
+            chunk=1,
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
@@ -637,7 +728,7 @@ def _on_a_stretch(kind: FindingKind, note: str = "Orfa") -> Finding:
     return Finding(kind=kind, note=note, segment_id="segmento-2")
 
 
-async def _verdict_for(finding: Finding, patch_speaker) -> str:
+async def _verdict_for(findings: list[Finding], patch_speaker) -> str:
     """The system prompt the Speaker was actually handed for this finding.
 
     Asserted against the prompt rather than the answer: what must never happen is the model
@@ -648,8 +739,8 @@ async def _verdict_for(finding: Finding, patch_speaker) -> str:
     await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(finding),
-        closing=closing_block(finding),
+        findings_text=findings_block(findings),
+        closing=closing_block(findings[0] if findings else None),
         scope=P,
         pericope_num=P,
         messages=[],
@@ -660,9 +751,174 @@ async def _verdict_for(finding: Finding, patch_speaker) -> str:
     return str(agent.seen[0])
 
 
+# ---------------------------------------------------------------------------
+# An addition and a missing element on the same frase are one finding — ENG-870
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_an_addition_and_a_missing_on_the_same_frase_reach_the_speaker_together(
+    patch_speaker,
+) -> None:
+    """Acceptance 1. One swap of one frase is one thing to say and one thing to fix.
+
+    The telling put a cause in and dropped the one the story tells. Raised one at a time, the
+    team records that part once for the addition and again, next round, for the missing
+    element: a second re-recording of the same scene, for one swap.
+    """
+    state = BackTranslationState(
+        findings=[_addition_on(1, "segmento-1"), _missing_on(1, "segmento-1")]
+    )
+
+    voiced = current_findings(state)
+    spoken_to = await _verdict_for(voiced, patch_speaker)
+
+    assert [finding.note for finding in voiced] == ["o pedido das noras", "a notícia do pão"]
+    assert "o pedido das noras" in spoken_to
+    assert "a notícia do pão" in spoken_to
+    assert voiced[0].segment_id == "segmento-1"
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") in spoken_to
+    assert findings_remaining(state.findings) == 1
+    said = with_the_whole_stretch_asked_for("A frase 1 de novo.", voiced[0])
+    assert said != "A frase 1 de novo.", "o par pede o trecho inteiro, como qualquer achado nele"
+
+
+@pytest.mark.asyncio
+async def test_a_missing_placed_after_the_same_frase_still_pairs(patch_speaker) -> None:
+    """Acceptance 2. The pair is keyed on the frase, never on the stretch each resolved to.
+
+    A missing element placed *after* frase 1 sits at the start of stretch 2 (ADR 0007), so the
+    two halves of one swap land on two different stretches. A rule that compared stretches
+    would not see the pair and the missing element would come back next round.
+    """
+    state = BackTranslationState(
+        findings=[_addition_on(1, "segmento-1"), _missing_on(1, "segmento-2")]
+    )
+
+    voiced = current_findings(state)
+    spoken_to = await _verdict_for(voiced, patch_speaker)
+
+    assert [finding.note for finding in voiced] == ["o pedido das noras", "a notícia do pão"]
+    assert "a notícia do pão" in spoken_to
+    assert voiced[0].segment_id == "segmento-1"
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") in spoken_to
+    assert findings_remaining(state.findings) == 1
+
+
+def test_a_missing_listed_first_still_lets_the_addition_lead() -> None:
+    """Which half carries the address is not the order the analyst happened to answer in.
+
+    The addition names the stretch the team records again. Led by a missing element placed
+    after that frase, the closing and the screen would hand the team the stretch *after* the
+    swap, which is the re-recording this rule exists to spare them.
+    """
+    state = BackTranslationState(
+        findings=[_missing_on(1, "segmento-2"), _addition_on(1, "segmento-1")]
+    )
+
+    voiced = current_findings(state)
+
+    assert [finding.kind for finding in voiced] == [FindingKind.ADDITION, FindingKind.MISSING]
+    assert voiced[0].segment_id == "segmento-1"
+    assert findings_remaining(state.findings) == 1
+
+
+def test_a_pair_that_is_not_the_current_finding_still_counts_as_one() -> None:
+    """What is left to act on is counted over the whole list, not over this turn's finding.
+
+    The count is what the app shows the team about the round ahead of them, and two halves of
+    one swap are one stop on it wherever they sit in the list.
+
+    The turn is led away from the pair by a lone addition the analyst listed first: both are
+    additions in the **Priority**, which says nothing between them, so the analyst's own order
+    decides (ENG-876). It used to be led away by an `unclear` listed first, and the Priority
+    put an end to that — an unclear frase is the last thing the room raises.
+    """
+    state = BackTranslationState(
+        findings=[
+            _addition_on(3, "segmento-3", "outro acréscimo"),
+            _addition_on(1, "segmento-1"),
+            _missing_on(1, "segmento-1"),
+        ]
+    )
+
+    assert [finding.note for finding in current_findings(state)] == ["outro acréscimo"]
+    assert findings_remaining(state.findings) == 2
+
+
+@pytest.mark.asyncio
+async def test_an_addition_alone_is_voiced_as_today(patch_speaker) -> None:
+    """The regression that catches a reader built around the pair (*P02-causa-a-mais*).
+
+    Her script has the news of the bread present and a cause added on top of it: an addition,
+    no missing element anywhere, and still one fix. The join is opportunistic, never a
+    precondition, so an addition on its own is voiced exactly as it was.
+    """
+    state = BackTranslationState(findings=[_addition_on(1, "segmento-1")])
+
+    voiced = current_findings(state)
+    spoken_to = await _verdict_for(voiced, patch_speaker)
+
+    assert voiced == state.findings
+    assert "o pedido das noras" in findings_block(voiced)
+    assert "\n" not in findings_block(voiced), "uma linha só, como antes desta regra"
+    assert CLOSING_ON_SCREEN.format(session_language="Portuguese") in spoken_to
+    assert findings_remaining(state.findings) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_validator_judges_the_same_block_the_speaker_was_handed(patch_speaker) -> None:
+    """The gate before the team's ears is shown the swap, not half of it.
+
+    The Validator's rule is that voicing what the block carries is obedience, and voicing a
+    finding it does not carry is not. Handed one line while the Speaker was handed two, it
+    would read a correct swap verdict — the addition and the missing element in one turn — as
+    exactly the invented second finding it exists to refuse, and the team would hear the
+    fail-safe instead of the verdict this rule was written to give them.
+    """
+    state = BackTranslationState(
+        findings=[_addition_on(1, "segmento-1"), _missing_on(1, "segmento-1")]
+    )
+    voiced = current_findings(state)
+    agent = patch_speaker("No que vocês me traduziram, vamos olhar a frase 1 de novo.")
+
+    await run_verdict_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        findings_text=findings_block(voiced),
+        closing=closing_block(voiced[0]),
+        scope=P,
+        pericope_num=P,
+        messages=[],
+        speaker_prompt=SPEAKER,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    judged = [seen for seen in agent.seen if "corrected_response" in seen]
+
+    assert judged, "o validador tinha de ter sido chamado"
+    assert "o pedido das noras" in judged[0]
+    assert "a notícia do pão" in judged[0]
+
+
+def test_a_missing_element_with_nowhere_to_point_never_pairs() -> None:
+    """A missing element after everything told is the other walk, not half of a swap.
+
+    It carries the last frase's number and no stretch of its own: the team records what is
+    still missing and goes back to the rehearsal, erasing nothing (ADR 0007). Joined to an
+    addition on that frase, the turn would promise two microphones on a stretch that is not
+    there, and ask for one fix for two different walks.
+    """
+    state = BackTranslationState(findings=[_addition_on(2, "segmento-2"), _missing_on(2, None)])
+
+    assert [finding.note for finding in current_findings(state)] == ["o pedido das noras"]
+    assert findings_remaining(state.findings) == 2
+
+
 @pytest.mark.asyncio
 async def test_a_finding_on_a_stretch_hands_the_choice_to_the_screen(patch_speaker) -> None:
-    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.ADDITION), patch_speaker)
+    spoken_to = await _verdict_for([_on_a_stretch(FindingKind.ADDITION)], patch_speaker)
 
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") in spoken_to
     assert CLOSING_SPOKEN not in spoken_to
@@ -677,7 +933,7 @@ async def test_a_finding_with_no_stretch_keeps_asking_out_loud(patch_speaker) ->
     """
     homeless = Finding(kind=FindingKind.ADDITION, note="Orfa", segment_id=None)
 
-    spoken_to = await _verdict_for(homeless, patch_speaker)
+    spoken_to = await _verdict_for([homeless], patch_speaker)
 
     assert CLOSING_SPOKEN in spoken_to
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
@@ -691,7 +947,7 @@ async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_s
     screen exists to answer a boundary question. So the deciding fact is not whether the
     finding has an address, it is whether one was asked.
     """
-    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.UNCLEAR), patch_speaker)
+    spoken_to = await _verdict_for([_on_a_stretch(FindingKind.UNCLEAR)], patch_speaker)
 
     assert CLOSING_SPOKEN in spoken_to
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
@@ -699,11 +955,15 @@ async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_s
 
 @pytest.mark.asyncio
 async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speaker) -> None:
-    """Scenario 2. The one law, which the new closing may not loosen along with the rest."""
-    spoken_to = await _verdict_for(_on_a_stretch(FindingKind.ADDITION), patch_speaker)
+    """Scenario 2. The one law, which the new closing may not loosen along with the rest.
+
+    The name keeps the scenario's English: *telling back* is the glossary's term for the act.
+    What the law is worded in is Marcia's Portuguese, and since ENG-873 that is *traduziram*.
+    """
+    spoken_to = await _verdict_for([_on_a_stretch(FindingKind.ADDITION)], patch_speaker)
 
     assert "never know what their recording says" in spoken_to
-    assert "o que você me contou" in spoken_to
+    assert "o que vocês me traduziram" in spoken_to
     assert "Never mention the map, findings, analysis" in spoken_to
 
 
@@ -734,7 +994,7 @@ async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> Non
 
     with pytest.raises(ValidationError):
         await run_verdict_turn(
-            findings_text=findings_block(_on_a_stretch(FindingKind.ADDITION)),
+            findings_text=findings_block([_on_a_stretch(FindingKind.ADDITION)]),
             closing=closing_block(_on_a_stretch(FindingKind.ADDITION)),
             scope=P,
             pericope_num=P,
@@ -752,7 +1012,7 @@ async def test_a_turn_with_no_finding_is_not_told_about_one(patch_speaker) -> No
     `findings_block` is saying "(nenhum achado)" in the same prompt, and this is the turn that
     only affirms and names the badge. It closes the way it always did.
     """
-    spoken_to = await _verdict_for(None, patch_speaker)
+    spoken_to = await _verdict_for([], patch_speaker)
 
     assert CLOSING_PLAIN in spoken_to
     assert CLOSING_SPOKEN not in spoken_to
@@ -772,7 +1032,7 @@ async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker)
     finding = _on_a_stretch(FindingKind.ADDITION)
 
     await run_verdict_turn(
-        findings_text=findings_block(finding),
+        findings_text=findings_block([finding]),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -787,6 +1047,161 @@ async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker)
     assert "the telling in Swahili" in spoken_to
     assert "{session_language}" not in spoken_to
     assert "the telling in Portuguese" not in spoken_to
+
+
+# ---------------------------------------------------------------------------
+# The room raises the highest finding in the Priority — ENG-876
+# ---------------------------------------------------------------------------
+
+
+def test_every_permutation_of_the_four_tiers_picks_the_same_finding() -> None:
+    """The **Priority** decides the turn, whatever order the analyst answered in.
+
+    One finding per tier, each on its own frase so nothing pairs, in all twenty-four
+    orders. The pick has to be the same one every time: today it is index zero, so
+    twenty-three of these are the team hearing about whichever finding the model
+    happened to write first.
+
+    Peeled tier by tier rather than asserted only at the top, because an order that got
+    the first tier right by luck — a rule that only knows about a **Filled silence** —
+    would pass a case that never took the silence away.
+    """
+    silence = _silence_on(4, "segmento-4", "o silêncio preenchido")
+    addition = _addition_on(3, "segmento-3", "outro acréscimo")
+    missing = _missing_on(2, "segmento-2", "a falta")
+    unclear = _unclear_on(1, "pouco claro")
+
+    for tiers, expected in (
+        ([silence, addition, missing, unclear], "o silêncio preenchido"),
+        ([addition, missing, unclear], "outro acréscimo"),
+        ([missing, unclear], "a falta"),
+        ([unclear], "pouco claro"),
+    ):
+        led = {
+            the_finding_that_leads(BackTranslationState(findings=list(order))).note
+            for order in itertools.permutations(tiers)
+        }
+        assert led == {expected}, f"a ordem do analista decidiu o turno: {led}"
+
+
+def test_two_findings_of_one_tier_keep_the_analysts_order() -> None:
+    """Within one tier there is nothing to rank by, so the analyst's order stands.
+
+    The **Priority** is over the tiers and says nothing inside one. Reaching for a second
+    key here — the frase number, the stretch, the length of the note — would be the room
+    inventing a precedence Marcia never ruled.
+    """
+    additions = BackTranslationState(
+        findings=[
+            _addition_on(3, "segmento-3", "primeiro"),
+            _addition_on(1, "segmento-1", "segundo"),
+        ]
+    )
+    missings = BackTranslationState(
+        findings=[
+            _missing_on(3, "segmento-3", "primeiro"),
+            _missing_on(1, "segmento-1", "segundo"),
+        ]
+    )
+
+    assert the_finding_that_leads(additions).note == "primeiro"
+    assert the_finding_that_leads(missings).note == "primeiro"
+
+
+def test_a_swap_ranks_by_its_addition() -> None:
+    """A swap is one thing, and what it ranks as is what its addition ranks as.
+
+    Its missing element is not a finding of its own to rank: the two halves are one
+    thing the team did, and the addition is the half that names the stretch. Ranked by
+    the missing element instead, a swap would sink below every lone addition and the
+    team would be sent elsewhere in the middle of one mistake.
+
+    The third case is where that costs a round. The analyst listed the swap's missing half
+    first and a lone addition after it: both are additions in the **Priority**, so the
+    analyst's own order decides, and the swap leads. Read as two findings, the swap's missing
+    element would fall a tier and the lone addition would take the turn.
+    """
+    outranked = BackTranslationState(
+        findings=[
+            _addition_on(1, "segmento-1"),
+            _missing_on(1, "segmento-1"),
+            _silence_on(3, "segmento-3", "o silêncio preenchido"),
+        ]
+    )
+    leading = BackTranslationState(
+        findings=[
+            _silence_on(1, "segmento-1", "o silêncio preenchido"),
+            _missing_on(1, "segmento-1"),
+            _addition_on(3, "segmento-3", "outro acréscimo"),
+        ]
+    )
+
+    listed_by_its_missing_half = BackTranslationState(
+        findings=[
+            _missing_on(1, "segmento-1"),
+            _addition_on(5, "segmento-5", "outro acréscimo"),
+            _addition_on(1, "segmento-1"),
+        ]
+    )
+
+    assert [finding.note for finding in current_findings(outranked)] == ["o silêncio preenchido"]
+    assert [finding.note for finding in current_findings(leading)] == [
+        "o silêncio preenchido",
+        "a notícia do pão",
+    ]
+    assert [finding.note for finding in current_findings(listed_by_its_missing_half)] == [
+        "o pedido das noras",
+        "a notícia do pão",
+    ]
+
+
+def test_state_keeps_the_analysts_order() -> None:
+    """The order is applied at the pick, and the stored list is untouched by it.
+
+    Reordering the list instead would put the **Priority** where the packet, the resume and
+    the correction check all read from, and a finding a check put at the front would be taken
+    away from it — which is the precedence `findings_after_correction` exists to hold.
+    """
+    state = BackTranslationState(
+        findings=[_unclear_on(1, "pouco claro"), _addition_on(3, "segmento-3", "outro acréscimo")]
+    )
+
+    led = the_finding_that_leads(state)
+
+    assert led.note == "outro acréscimo"
+    assert [finding.note for finding in state.findings] == ["pouco claro", "outro acréscimo"]
+
+
+def test_a_row_stored_before_the_flags_reads_with_both_of_them_false() -> None:
+    """Every state written before this change validates, and picks by the tier order.
+
+    The state is a JSON column read back through the model on every request, so a row
+    that predates the two fields is the common case for as long as any session is open.
+    """
+    stored = BackTranslationState.model_validate(
+        {"findings": [{"kind": "addition", "note": "x", "segment_id": "segmento-1", "chunk": 1}]}
+    )
+
+    assert [finding.fills_silence for finding in stored.findings] == [False]
+    assert [finding.raised_by_check for finding in stored.findings] == [False]
+
+
+def test_a_silence_wire_kind_is_an_addition_that_fills_one() -> None:
+    """The wire name is read as an addition and kept only as the flag that ranks it.
+
+    Read on arrival and again on every read of the stored row: the flag is what the order
+    is keyed on, so a row that carried it and came back without it would be a filled
+    silence that waits behind every other addition from the second request onward.
+    """
+    fresh = Finding.model_validate(
+        {"kind": "silence", "note": "x", "segment_id": "segmento-1", "chunk": 1}
+    )
+    stored = Finding.model_validate(fresh.model_dump(mode="json"))
+
+    assert fresh.kind is FindingKind.ADDITION
+    assert fresh.fills_silence is True
+    assert stored.kind is FindingKind.ADDITION
+    assert stored.fills_silence is True
 
 
 # ---------------------------------------------------------------------------
@@ -959,7 +1374,7 @@ async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(finding),
+        findings_text=findings_block([finding]),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -1098,7 +1513,7 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
         await run_verdict_turn(
             session_language="Portuguese",
             language_code="pt",
-            findings_text=findings_block(finding),
+            findings_text=findings_block([finding]),
             closing=closing_block(finding),
             scope=P,
             pericope_num=P,
@@ -1132,7 +1547,7 @@ async def test_a_missing_element_on_a_stretch_closes_like_any_other_finding(patc
     the same choice every other finding on a stretch hands to the screen. The one-microphone
     closing this used to get promised a screen that no longer exists.
     """
-    spoken_to = await _verdict_for(_missing("segmento-2"), patch_speaker)
+    spoken_to = await _verdict_for([_missing("segmento-2")], patch_speaker)
 
     assert THE_TWO_VOICES_CLOSING in spoken_to
     assert "microphone of the voice" in spoken_to
@@ -1151,7 +1566,7 @@ async def test_a_missing_element_after_everything_told_sends_them_on_to_record(
     frente?"* came from. The screen takes them on to record what is still missing, keeping
     everything they recorded, and the closing has to say exactly that and nothing past it.
     """
-    spoken_to = await _verdict_for(_missing(None), patch_speaker)
+    spoken_to = await _verdict_for([_missing(None)], patch_speaker)
 
     assert CLOSING_MISSING_TO_REHEARSAL in spoken_to
     assert "next conversational turn" not in spoken_to
@@ -1197,7 +1612,7 @@ async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(finding),
+        findings_text=findings_block([finding]),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -1284,7 +1699,7 @@ async def test_the_validator_is_handed_the_closing_that_was_ordered(
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(finding),
+        findings_text=findings_block([finding]),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,

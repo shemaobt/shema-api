@@ -39,6 +39,7 @@ from app.services.internalization_room.canon.elements import ElementKind, elemen
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     grant_facilitator_app_role,
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -133,6 +134,16 @@ async def a_session_that_moved(
     session = await open_ir_session(db, pericope=pericope, project_id=project_id)
     await room.apply_coverage(db, session.id, moved)
     return session
+
+
+async def a_session_the_team_finished(db: AsyncSession, *, project_id: str | None, pericope: str):
+    """A conversation this team took to its end, which is their own recording of the passage.
+
+    Working every bead is not the end of one: the floor is the gate on the invitation to
+    record, and the record is what closes the passage.
+    """
+    session = await open_ir_session(db, pericope=pericope, project_id=project_id)
+    return await having_finished_the_passage(db, session)
 
 
 def by_key(body: list[dict]) -> dict[str, dict]:
@@ -477,12 +488,7 @@ async def test_the_pericope_omitted_means_the_one_the_team_is_on(
     that has closed the first is answered about the second.
     """
     _user, project, headers = await a_facilitator(db_session, email="b6@x.com")
-    await a_session_that_moved(
-        db_session,
-        project_id=project.id,
-        pericope="P01",
-        moved=dict.fromkeys(element_keys("P01"), PARTIALLY_ENGAGED),
-    )
+    await a_session_the_team_finished(db_session, project_id=project.id, pericope="P01")
 
     response = await client.get(coverage_url(project.id), headers=headers)
     named = await client.get(coverage_url(project.id, "P02"), headers=headers)
@@ -512,11 +518,8 @@ async def test_a_team_that_closed_the_book_has_no_passage_to_default_to(
 
     _user, project, headers = await a_facilitator(db_session, email="b6end@x.com")
     for meaning_map in load_book(ROOM_BOOK):
-        await a_session_that_moved(
-            db_session,
-            project_id=project.id,
-            pericope=meaning_map.pericope_num,
-            moved=dict.fromkeys(element_keys(meaning_map.pericope_num), PARTIALLY_ENGAGED),
+        await a_session_the_team_finished(
+            db_session, project_id=project.id, pericope=meaning_map.pericope_num
         )
 
     refused = await client.get(coverage_url(project.id), headers=headers)

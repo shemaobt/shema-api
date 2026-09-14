@@ -64,20 +64,4 @@ ALLOWLIST: list[AllowlistEntry] = [
         Rule.PROBE,
         "purpose: ProbePurpose",
     ),
-    AllowlistEntry("app/services/internalization_room/live_turn.py", Rule.PROBE, "ProbePurpose,"),
-    AllowlistEntry(
-        "app/services/internalization_room/live_turn.py",
-        Rule.PROBE,
-        "id=str(uuid.uuid4()), purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/rehearsal_readiness.py",
-        Rule.PROBE,
-        "from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose",
-    ),
-    AllowlistEntry(
-        "app/services/internalization_room/rehearsal_readiness.py",
-        Rule.PROBE,
-        "or probe.purpose is not ProbePurpose.RECORDING_HANDOFF_CONSENT",
-    ),
 ]

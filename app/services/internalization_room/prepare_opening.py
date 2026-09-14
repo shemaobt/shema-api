@@ -34,8 +34,9 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
     The passage is written down beside the line. What it is for is `hand_over`; why it cannot
     be derived instead is on the column.
 
-    Failure here is silent on purpose: the prepared line is an optimisation, and the session
-    opens perfectly well without one.
+    Failure here is silent to the session, not to the log: the prepared line is an
+    optimisation and the session opens perfectly well without one, but a refusal or a
+    transport error still leaves a WARNING behind, naming the session and the pericope.
     """
     try:
         async with AsyncSessionLocal() as db:
@@ -61,7 +62,21 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
                 session_id=panorama_session_id,
             )
             if outcome.used_fail_safe:
-                logger.info("Not keeping a fail-safe as the prepared opening")
+                reason = (
+                    ", ".join(str(issue.get("problem", "?")) for issue in outcome.issues)
+                    or "no issue reported"
+                )
+                logger.warning(
+                    "Prepared opening refused by the Validator for session %s, pericope %s: %s",
+                    panorama_session_id,
+                    pericope,
+                    reason,
+                    extra={
+                        "session_id": panorama_session_id,
+                        "pericope": pericope,
+                        "reason": reason,
+                    },
+                )
                 return
             speech, _ = await synthesize_facilitator_speech(outcome.speech, language=spoken)
             panorama = await get_session(db, panorama_session_id)
@@ -69,8 +84,15 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             panorama.prepared_audio_key = speech.key
             panorama.prepared_pericope = pericope
             await db.commit()
-    except Exception:
-        logger.exception("Could not prepare the opening for %s", pericope)
+    except Exception as error:
+        logger.warning(
+            "Could not prepare the opening for session %s, pericope %s: %s",
+            panorama_session_id,
+            pericope,
+            error,
+            extra={"session_id": panorama_session_id, "pericope": pericope},
+            exc_info=True,
+        )
 
 
 def hand_over(prepared: IRSession, opening: IRSession) -> bool:

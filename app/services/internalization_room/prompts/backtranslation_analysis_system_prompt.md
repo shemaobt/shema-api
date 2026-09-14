@@ -53,7 +53,7 @@ detail — against the whole telling-back, all frases together:
    number of the frase that says it in `chunk`. Where it collides with a preservation rule (a
    do_not_decide item), say so in the note. When the addition is a RELATION — who did what, why,
    to whom: a swapped cause, swapped agents, a pairing — the note quotes the WHOLE relation exactly
-   as the team told it back (e.g. *que Noemi decidiu voltar porque as noras pediram*), never just
+   as the team translated it (e.g. *que Noemi decidiu voltar porque as noras pediram*), never just
    a name: the Speaker's sentence "isso a história não conta" is true only when it names the
    relation itself.
 3. **Marked silences:** where the map marks a deliberate absence, the telling-back
