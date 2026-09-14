@@ -33,8 +33,6 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     segments_block,
 )
-from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     approve_release,
@@ -47,15 +45,13 @@ from app.services.internalization_room.segments import (
 from app.services.internalization_room.sessions import (
     back_translation_of,
     begin_back_translation_again,
-    create_session,
-    save_comprehension,
 )
 from tests.release_harness import (
     P,
     ensaio_take,
+    ready_session,
     reported_playback,
     retro_take,
-    supported_comprehension,
 )
 
 TEAM = "equipe-de-rute"
@@ -90,28 +86,34 @@ async def _a_retro_take(
     return take
 
 
-async def _read_and_reported(
+async def _read(
     db: AsyncSession, session: IRSession, findings: tuple[Finding, ...] = ()
 ) -> BackTranslationState:
-    """The analyst has read every stretch that counts and the team reported the playback."""
+    """The state one whole reading of every stretch that counts leaves behind."""
     told = await final_segments(db, session.id)
-    state = BackTranslationState(
+    return BackTranslationState(
         scope=P,
         findings=list(findings),
         checked=not findings,
         analysed_segment_ids=[stretch.id for stretch in told],
     )
+
+
+async def _read_and_reported(
+    db: AsyncSession, session: IRSession, findings: tuple[Finding, ...] = ()
+) -> BackTranslationState:
+    """The same reading, stored with the team's report of what the tablet played."""
+    state = await _read(db, session, findings)
     await reported_playback(db, session, state)
     return state
 
 
-async def _told_in_three_stretches(db: AsyncSession) -> IRSession:
-    """A session the team could approve, told back in three stretches with three retro takes."""
-    session = await create_session(db, pericope=P, project_id=TEAM)
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P))
-    db.add(ensaio_take(session.id))
-    await db.commit()
+async def _three_stretches(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    """The passage told back in three stretches of one rehearsal.
+
+    Each on a retro take of its own, because which take gave a stretch its words is half of
+    what a frozen entry says.
+    """
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         retro = await _a_retro_take(db, session, f"retro-{starts_ms}")
         await capture_segment(
@@ -123,8 +125,12 @@ async def _told_in_three_stretches(db: AsyncSession) -> IRSession:
             bridge_take_id=retro.id,
             transcript=text,
         )
-    await _read_and_reported(db, session)
-    return session
+    return await _read(db, session)
+
+
+async def _told_in_three_stretches(db: AsyncSession) -> IRSession:
+    """A session the team could approve, told back in three stretches."""
+    return await ready_session(db, project_id=TEAM, tell=_three_stretches)
 
 
 async def _tell_again(
@@ -353,7 +359,7 @@ async def test_a_standing_finding_keeps_its_stretch_when_frase_three_is_divided(
 
 async def _every_shape_of_retro_take(
     db: AsyncSession,
-) -> tuple[IRSession, dict[str, IRTake]]:
+) -> tuple[IRSession, dict[str, IRTake], dict[str, str]]:
     """A session holding, beside the takes that gave the version its words, the three that did not.
 
     The first stretch was told again, so its first retro take hangs on a row that stopped
@@ -389,15 +395,19 @@ async def _every_shape_of_retro_take(
         .scalars()
         .all()
     }
-    return session, {
-        "superseded": takes[superseded_take],
-        "second": takes[second_take],
-        "divided_parent": takes[divided_take],
-        "empty": heard_nothing,
-        "told_again": told_again,
-        "head": half_takes[0],
-        "tail": half_takes[1],
-    }
+    return (
+        session,
+        {
+            "superseded": takes[superseded_take],
+            "second": takes[second_take],
+            "divided_parent": takes[divided_take],
+            "empty": heard_nothing,
+            "told_again": told_again,
+            "head": half_takes[0],
+            "tail": half_takes[1],
+        },
+        {"retold": told[0].id, "divided": told[2].id},
+    )
 
 
 @pytest.mark.asyncio
@@ -411,7 +421,7 @@ async def test_a_superseded_an_empty_and_a_divided_parents_retro_take_never_ente
     then cut in two. They stay in the packet as history, because the team recorded them and
     that is the record; none of them is what a frozen stretch points at.
     """
-    session, takes = await _every_shape_of_retro_take(db_session)
+    session, takes, set_aside = await _every_shape_of_retro_take(db_session)
 
     release = await approve_release(db_session, session, device_id=TABLET)
 
@@ -427,6 +437,20 @@ async def test_a_superseded_an_empty_and_a_divided_parents_retro_take_never_ente
         take["take_id"] for take in release.packet["back_translation"]["retro_takes"]
     }, "a história fica: a equipe gravou, e o pacote guarda o que ela gravou"
 
+    aside = (
+        release.packet["back_translation"]["superseded_segments"]
+        + release.packet["back_translation"]["divided_segments"]
+    )
+    named = {entry["segment_id"]: entry for entry in aside}
+    assert named[set_aside["retold"]]["retro_take_id"] == takes["superseded"].id
+    assert named[set_aside["divided"]]["retro_take_id"] == takes["divided_parent"].id
+    assert all("retro_take_id" in entry for entry in aside), (
+        "uma vista, uma forma: quem saiu da leitura ainda diz em que gravação foi explicado"
+    )
+    assert all("frase" not in entry for entry in aside), (
+        "nenhuma delas esteve na leitura que a equipe ouviu, e ausente não é nulo"
+    )
+
 
 @pytest.mark.asyncio
 async def test_frase_and_segment_id_are_each_unique_within_a_version(
@@ -440,7 +464,7 @@ async def test_frase_and_segment_id_are_each_unique_within_a_version(
     the three ways a stretch can be written twice, which is where a repeated number would come
     from.
     """
-    session, _ = await _every_shape_of_retro_take(db_session)
+    session, _, _ = await _every_shape_of_retro_take(db_session)
 
     release = await approve_release(db_session, session, device_id=TABLET)
     frozen = _frozen(await _stored_again(db_session, release))
@@ -453,7 +477,7 @@ async def test_frase_and_segment_id_are_each_unique_within_a_version(
 async def test_a_stretch_recorded_again_and_untold_cannot_be_approved(
     db_session: AsyncSession,
 ) -> None:
-    """An approved version does not let the approval after it through on a stretch with words.
+    """An approved version does not let the approval after it through on a stretch without words.
 
     That a wordless stretch refuses a release at all is
     `test_ir_no_stretch_travels_without_words.py::test_a_release_is_refused_while_a_stretch_has_no_words`,

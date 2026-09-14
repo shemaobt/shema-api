@@ -10,6 +10,7 @@ it is here and not in either of them.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -178,17 +179,28 @@ async def reported_playback(
     )
 
 
-async def ready_session(db: AsyncSession, *, project_id: str | None = None, **comprehension_kwargs):
+async def ready_session(
+    db: AsyncSession,
+    *,
+    project_id: str | None = None,
+    tell: Callable[[AsyncSession, IRSession], Awaitable[BackTranslationState]] | None = None,
+    **comprehension_kwargs,
+):
     """A session carrying everything the packet refuses to travel without.
 
     ``project_id`` is the team whose conversation this is. It stays optional because most of
     these cases are about the packet and not about whose it is; the release is numbered per
     project, so the cases about the number name one.
+
+    ``tell`` is what the team told back, answering the state one whole reading leaves behind;
+    the default is a single stretch, read and clean. A case that needs the passage told in
+    several stretches passes its own and inherits the rest of the scaffold rather than
+    rebuilding it, which is the only part of this that ever differs.
     """
     session = await create_session(db, pericope=P, project_id=project_id)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
     db.add(ensaio_take(session.id))
     await db.commit()
-    await reported_playback(db, session, await checked_telling_back(db, session))
+    await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session

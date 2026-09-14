@@ -101,13 +101,6 @@ def _segment_view(segment: IRSegment) -> dict[str, Any]:
     together, in one place, and a reader of this packet resolves every stretch against the
     recording named here and needs to do nothing else.
 
-    There is no number here. ``frase`` is a position in one reading rather than anything on
-    the row, so the list that has a reading adds it and the other two have no reading to add
-    one from: a superseded or a divided stretch was not in the one the team heard, and the
-    number an older reading gave it is recoverable from nothing. Absent rather than null, so a
-    reader asking a superseded stretch for its number is answered by the failure and not by a
-    silence that looks like an answer.
-
     ``retro_take_id`` is the recording of the team explaining this stretch, read off the row
     and never looked up. Which retro take is current is a question ``retro_takes`` cannot
     answer — it keeps every one of them, including the one a retelling replaced, the one
@@ -176,6 +169,14 @@ async def build_internalization_release(
     left the artifact in silence. Hearing it again and finding two ideas is the team working,
     not the team erring, so what they said the first time is kept rather than the division
     being refused.
+
+    ``frase`` is added to ``segments`` here and to neither of those two. It is a position in
+    one reading rather than anything on a row — the same enumeration ``segments_block`` gives
+    the analyst, over the same list — so only the list that *is* a reading has one to give. A
+    superseded or a divided stretch was not in the reading the team heard, and the number an
+    older reading gave it is recoverable from nothing; the key is absent there rather than
+    null, so a reader asking one of them for its number meets the failure instead of a silence
+    that looks like an answer.
 
     What a forced package says is unchanged: ``checked`` false and every open finding in
     ``findings``. Judging the quality of a telling-back is not this artifact's job — carrying
