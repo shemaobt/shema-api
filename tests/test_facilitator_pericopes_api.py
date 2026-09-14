@@ -33,6 +33,7 @@ from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_bo
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     grant_facilitator_app_role,
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -91,11 +92,15 @@ async def a_facilitator(db: AsyncSession, *, email="facilitadora@example.com"):
 
 
 async def having_closed(db: AsyncSession, team, *passages: str) -> None:
+    """Walk this team through these passages the way the room does: worked, then recorded.
+
+    Both halves, because they answer different things. The coverage events are what the
+    necklace and the element list read; the recording is what closes the passage — a floor
+    met is a conversation that got somewhere, not one that ended.
+    """
     for passage in passages:
         session = await open_ir_session(db, pericope=passage, project_id=team.id)
-        await room.apply_coverage(
-            db, session.id, dict.fromkeys(element_keys(passage), PARTIALLY_ENGAGED)
-        )
+        await having_finished_the_passage(db, session)
 
 
 def positions(body: list[dict]) -> dict[str, str]:

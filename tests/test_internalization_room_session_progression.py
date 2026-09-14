@@ -38,7 +38,12 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.prepare_opening import hand_over
-from tests.baker import make_language, make_project, open_ir_session
+from tests.baker import (
+    having_finished_the_passage,
+    make_language,
+    make_project,
+    open_ir_session,
+)
 
 _codes = itertools.count()
 
@@ -59,20 +64,22 @@ async def a_team(db: AsyncSession, *, name: str):
     return await make_project(db, language.id, name=name)
 
 
-def closed(pericope: str) -> dict[str, str]:
+def at_the_floor(pericope: str) -> dict[str, str]:
     return dict.fromkeys(element_keys(pericope), PARTIALLY_ENGAGED)
 
 
-async def having_closed(db: AsyncSession, team, *pericopes: str) -> None:
-    """Walk the team through these passages the way the room does.
+async def having_finished(db: AsyncSession, team, *pericopes: str) -> None:
+    """Walk the team through these passages the way the room does, to the end of each.
 
-    The coverage events are written by `apply_coverage`, never inserted. Since ENG-589 the
-    room refuses eight of the fourteen, so the session rows for those come from
-    `open_ir_session` — the end of the book is no longer a place the production path reaches.
+    A passage is finished because the team recorded their rehearsal of it, so the fixture
+    records. The coverage events are still written by `apply_coverage` and never inserted,
+    because they are what the necklace and the element list read. Since ENG-589 the room
+    refuses eight of the fourteen, so the session rows for those come from `open_ir_session` —
+    the end of the book is no longer a place the production path reaches.
     """
     for pericope in pericopes:
         session = await open_ir_session(db, pericope=pericope, project_id=team.id)
-        await room.apply_coverage(db, session.id, closed(pericope))
+        await having_finished_the_passage(db, session)
 
 
 # ------------------------------------------------------------------- opening where the team is
@@ -98,7 +105,7 @@ async def test_a_session_opened_without_a_passage_lands_on_the_teams_next_one(
 ) -> None:
     """The acceptance criterion: a team whose first passage met the floor opens on the second."""
     team = await a_team(db_session, name="Andou")
-    await having_closed(db_session, team, FIRST)
+    await having_finished(db_session, team, FIRST)
 
     session = await room.create_session(db_session, project_id=team.id)
 
@@ -111,7 +118,7 @@ async def test_two_teams_open_on_their_own_passages_in_the_same_installation(
 ) -> None:
     ahead = await a_team(db_session, name="Adiantada")
     behind = await a_team(db_session, name="Atrasada")
-    await having_closed(db_session, ahead, FIRST)
+    await having_finished(db_session, ahead, FIRST)
 
     for_ahead = await room.create_session(db_session, project_id=ahead.id)
     for_behind = await room.create_session(db_session, project_id=behind.id)
@@ -157,7 +164,7 @@ async def test_a_team_that_closed_the_last_passage_is_refused_rather_than_sent_r
     position that leaves nothing to open. Naming a passage still works, which is the door out.
     """
     team = await a_team(db_session, name="Terminou")
-    await having_closed(db_session, team, *CANON)
+    await having_finished(db_session, team, *CANON)
 
     with pytest.raises(ConflictError):
         await room.create_session(db_session, project_id=team.id)
@@ -175,7 +182,7 @@ async def test_a_team_that_closed_every_passage_it_could_walk_is_refused_the_sam
     refusal came back as a broken room, on that touch and on every touch after it.
     """
     team = await a_team(db_session, name="Andou tudo que dava")
-    await having_closed(db_session, team, *WALKABLE)
+    await having_finished(db_session, team, *WALKABLE)
 
     with pytest.raises(ConflictError, match="can walk"):
         await room.create_session(db_session, project_id=team.id)
@@ -186,7 +193,7 @@ async def test_a_team_that_finished_the_book_may_still_be_given_a_passage_by_nam
     db_session: AsyncSession,
 ) -> None:
     team = await a_team(db_session, name="Terminou mas volta")
-    await having_closed(db_session, team, *CANON)
+    await having_finished(db_session, team, *CANON)
 
     session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
 
