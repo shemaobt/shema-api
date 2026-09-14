@@ -26,6 +26,7 @@ from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -408,7 +409,7 @@ async def test_a_stretch_of_another_session_is_refused_the_way_an_absent_one_is(
 
 
 async def test_the_back_translation_the_room_already_does_goes_on_working(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The regression case of the slice."""
     turn_module = sys.modules["app.services.internalization_room.run_turn"]
@@ -448,8 +449,8 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
         _voice,
     )
 
-    verdict = await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
+    verdict = await press_terminei(
+        client, session_id, report=await heard_every_part(db_session, session_id)
     )
 
     assert verdict.status_code == 200, verdict.text

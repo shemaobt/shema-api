@@ -280,10 +280,10 @@ async def declare_rehearsal_parts(
     """Her draft clips as real rehearsal takes, declared rather than uploaded.
 
     A **Part** the room can address is a row, not a file: `current_stretch_at`,
-    `report_playback` and `playback_confirms_rehearsal` all read the row and the report, and
-    none of them opens the audio. So the seam writes the row and stores nothing — the bucket
-    is never touched, and the size and checksums say what they are, which is that there are no
-    bytes to describe.
+    `report_playback` and `unheard_parts` all read the row and the report, and none of them
+    opens the audio. So the seam writes the row and stores nothing — the bucket is never
+    touched, and the size and checksums say what they are, which is that there are no bytes
+    to describe.
 
     `store_take` is deliberately not reused: it exists to put bytes somewhere and read them
     back, and it refuses a take with no audio. What they share is the row, and the row is

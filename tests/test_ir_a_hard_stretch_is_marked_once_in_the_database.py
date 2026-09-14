@@ -40,7 +40,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
-from tests.test_ir_a_hard_stretch_is_marked_once import (
+from tests.hard_stretch_harness import (
     DESK,
     DEVICE,
     IR,
@@ -48,16 +48,36 @@ from tests.test_ir_a_hard_stretch_is_marked_once import (
     SLICES,
     Facilitator,
     P,
-    _a_session,
-    _attend,
-    _current,
-    _marks,
-    _MemoryStore,
-    _rehearse,
-    _row,
-    _tell,
-    _told,
-    _voice,
+)
+from tests.hard_stretch_harness import (
+    MemoryStore as _MemoryStore,
+)
+from tests.hard_stretch_harness import (
+    a_session as _a_session,
+)
+from tests.hard_stretch_harness import (
+    attend as _attend,
+)
+from tests.hard_stretch_harness import (
+    current as _current,
+)
+from tests.hard_stretch_harness import (
+    marks as _marks,
+)
+from tests.hard_stretch_harness import (
+    rehearse as _rehearse,
+)
+from tests.hard_stretch_harness import (
+    row as _row,
+)
+from tests.hard_stretch_harness import (
+    tell as _tell,
+)
+from tests.hard_stretch_harness import (
+    told as _told,
+)
+from tests.hard_stretch_harness import (
+    voice as _voice,
 )
 
 REVISION = "20260911_hard02"

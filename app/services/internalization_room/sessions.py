@@ -569,7 +569,7 @@ async def report_playback(
     state: BackTranslationState,
     *,
     played_by_take: list[PlayedTake],
-    played_ranges: list[list[int]],
+    played_ranges: list[tuple[int, int]],
     clip_duration_ms: int | None,
 ) -> BackTranslationState:
     """Store what the tablet played of each rehearsal part, as it was sent.
@@ -595,12 +595,12 @@ async def report_playback(
     answer does not move, while "the newest take" does — `created_at` is stamped when the
     upload lands and the tablet's outbox drains whenever the link comes back, so an abandoned
     rehearsal can be written down after the one that replaced it. Neither is evidence, and
-    `playback_confirms_rehearsal` reads neither.
+    `unheard_parts` reads neither.
     """
     told = await final_segments(db, session.id)
     if played_by_take:
         state.played_by_take = played_by_take
-    state.played_ranges = played_ranges
+    state.played_ranges = [[start, end] for start, end in played_ranges]
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})
     await save_back_translation(db, session, state)

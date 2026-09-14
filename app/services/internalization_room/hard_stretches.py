@@ -112,6 +112,10 @@ async def capture_and_note_a_hard_stretch(
     does not, and passes nothing. It sits here rather than in the router because the router does
     not touch the database (ADR 0009), and here rather than in `segments` because this composes
     the count and the halt, which is what this module is between the two services for.
+
+    The scope a state is stored under is defaulted here for the same reason. Two doors reach
+    this capture — the tablet's chunks route and the text seam — and both wrote the default
+    themselves, so the rule held until somebody opened a third door.
     """
     captured = await capture_segment(
         db,
@@ -126,6 +130,7 @@ async def capture_and_note_a_hard_stretch(
         commit=False,
     )
     if state is not None:
+        state.scope = state.scope or session.pericope
         await save_back_translation(db, session, state, commit=False)
     crossed = await note_a_hard_stretch(db, session, captured)
     await db.commit()

@@ -471,7 +471,17 @@ class PlayedTake(BaseModel):
     """
 
     take_id: str
-    played_ranges: list[list[int]] = Field(default_factory=list)
+    #: A span is a start and an end, and exactly those two. Typed as a bare list of ints it
+    #: crossed the door in any shape, and the covering arithmetic that unpacks it raised at
+    #: release time instead — a stored report the team can no longer change turned every
+    #: release attempt into a 500.
+    #:
+    #: The type binds on the way out of the database as well as on the way in, because the
+    #: stored state is this same model: a row already holding a malformed span would now fail
+    #: to load on every route of that session rather than only at the handoff. Nothing has
+    #: written one — the app has always sent pairs, and no build is in a store yet (ADR 0017)
+    #: — and reading leniently would mean carrying a shape the arithmetic cannot use.
+    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
     clip_duration_ms: int = Field(default=0, ge=0)
 
 
@@ -495,7 +505,7 @@ class FinishBackTranslationRequest(BaseModel):
     """
 
     played_by_take: list[PlayedTake] = Field(default_factory=list)
-    played_ranges: list[list[int]] = Field(default_factory=list)
+    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
     clip_duration_ms: int | None = Field(default=None, ge=0)
 
 
@@ -517,6 +527,13 @@ class BackTranslationVerdictResponse(BaseModel):
     #: inference that cost a team their morning — the app had no address, inferred "start
     #: over", and threw away every recording of the passage.
     untold_segment_id: str | None = None
+    #: Which parts of the rehearsal the report does not cover, by the take each was played
+    #: from, sorted; empty when the team has heard the whole of it. Its own field for the
+    #: reason `untold_segment_id` is its own: the two are different errands, and an app that
+    #: read one from the absence of the other would send the team to record again when what
+    #: they owe is a clip to play. Empty on every answer that is not this refusal, so the app
+    #: decides by the field and never by what is missing from the body.
+    unheard_take_ids: list[str] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
 

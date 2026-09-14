@@ -207,7 +207,7 @@ async def _a_p02_telling_with_the_swapped_cause(db: AsyncSession, project) -> IR
             analysed_segment_ids=[told.id],
         ),
         played_by_take=[
-            PlayedTake(take_id=told.take_id, played_ranges=[[0, CLIP_MS]], clip_duration_ms=CLIP_MS)
+            PlayedTake(take_id=told.take_id, played_ranges=[(0, CLIP_MS)], clip_duration_ms=CLIP_MS)
         ],
         played_ranges=[[0, CLIP_MS]],
         clip_duration_ms=CLIP_MS,
@@ -281,7 +281,7 @@ async def test_the_facilitator_forces_past_a_rehearsal_only_half_heard(
         session,
         state,
         played_by_take=[
-            PlayedTake(take_id="ensaio-1", played_ranges=[[0, 20000]], clip_duration_ms=CLIP_MS)
+            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
         ],
         played_ranges=[[0, 20000]],
         clip_duration_ms=CLIP_MS,

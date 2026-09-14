@@ -708,7 +708,7 @@ def test_an_absent_report_is_not_a_short_one() -> None:
     """The arithmetic has nothing to measure and says so by not objecting.
 
     Whether an absent report counts as having listened is not decided here — the release gate
-    asks `playback_confirms_rehearsal`, and there it does not.
+    asks `unheard_parts`, and there it does not.
     """
     assert played_ranges_cover_clip([], None)
     assert played_ranges_cover_clip([], 61000)

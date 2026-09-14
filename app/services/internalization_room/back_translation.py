@@ -197,6 +197,11 @@ class BackTranslationState(BaseModel):
     #: nothing. Numbers with no subject say a clip was played through without saying which clip,
     #: so they went on reading as proof after the team threw that recording away and started the
     #: telling-back over on a new one (ADR 0017).
+    #:
+    #: Read leniently, where the door above is strict. Nothing measures this pair — the covering
+    #: arithmetic is asked of `played_by_take` and of nothing else — so a shape it cannot use is
+    #: no danger here, while refusing it on the way out of the database would stop a row written
+    #: by an older build from loading on every route of that session.
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
     #: Which rehearsal recordings the flat report above was stored against, stamped by the
@@ -278,7 +283,9 @@ class BackTranslationState(BaseModel):
 PLAYBACK_TOLERANCE_MS = 750
 
 
-def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: int | None) -> bool:
+def played_ranges_cover_clip(
+    played_ranges: list[tuple[int, int]], clip_duration_ms: int | None
+) -> bool:
     """Whether the reported playback reached the whole clip, within tolerance.
 
     A telling-back is a check of what was actually heard, not of what the team remembers,
@@ -287,7 +294,7 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     at either edge or between stretches. This is the arithmetic only: an absent report is
     not a short one, so it is not this function's to judge and comes back True. Whether a
     report exists at all, and whether it is about the recording still in play, is
-    `playback_confirms_rehearsal`, which is what the release gate asks.
+    `unheard_parts`, which is what the release gate asks.
 
     The merged reach has to *land on* the clip's end, not merely reach it: a report that
     runs past the end by more than the same slack cannot be a report about this clip at
@@ -309,9 +316,18 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
 
 
-def playback_confirms_rehearsal(
-    state: BackTranslationState, rehearsal_take_ids: list[str]
-) -> list[str]:
+def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
+    """The parts of the rehearsal the current stretches are slices of, sorted.
+
+    The subject of the listening question, and the one both askers have to agree on: the check
+    refuses on it before the analyst, and the release blocks on it at the handoff. Asked of the
+    stretches that count — a stretch whose audio was replaced names a recording no part is any
+    more — so a part leaves the question by being recorded over and by nothing else.
+    """
+    return sorted({stretch.take_id for stretch in stretches})
+
+
+def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) -> list[str]:
     """Which parts of the rehearsal the team has no evidence of having heard, sorted.
 
     Empty is heard. The question is asked once per part and answered per part, because that is

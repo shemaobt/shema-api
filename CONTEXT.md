@@ -185,7 +185,7 @@ _Avoid_: erased, discarded, Substituída
 The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it.
 _Avoid_: complete, done, Conferida
 
-**Heard the rehearsal** (`playback_confirms_rehearsal`):
+**Heard the rehearsal** (`unheard_parts`):
 The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
 _Avoid_: complete playback, Ouviu o ensaio
 

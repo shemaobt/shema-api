@@ -123,7 +123,7 @@ async def _the_analyst_has_read(
             analysed_segment_ids=[stretch.id for stretch in stretches],
         ),
         played_by_take=[
-            PlayedTake(take_id=take_id, played_ranges=[[0, CLIP_MS]], clip_duration_ms=CLIP_MS)
+            PlayedTake(take_id=take_id, played_ranges=[(0, CLIP_MS)], clip_duration_ms=CLIP_MS)
             for take_id in sorted({stretch.take_id for stretch in stretches})
         ],
         played_ranges=[[0, CLIP_MS]],
