@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.models.internalization_room import PlayedTake
 from app.services.internalization_room import release as release_module
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -26,7 +27,9 @@ from app.services.internalization_room.comprehension.evidence import (
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
+    FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
+    approve_release,
     build_internalization_release,
 )
 from app.services.internalization_room.segments import (
@@ -66,7 +69,6 @@ def _supported_comprehension(pericope: str, *, carry_one: bool = False) -> Compr
     return ComprehensionState(
         ledger=list(ledger),
         practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
     )
 
 
@@ -162,20 +164,39 @@ async def _reported_playback(
     binds a report to the rehearsal it is about at the moment it arrives. A report assembled
     here would name no recording, which is a state the release is entitled to refuse.
 
-    The defaults describe a clip played through; a case about a report that falls short says
+    One entry per part the session's stretches name, each carrying the numbers this call was
+    given. These sessions rehearse in one part, so the numbers that used to describe the whole
+    passage are the numbers that part is measured by, and every case here keeps the verdict it
+    had. The flat pair travels beside it, as a tablet still in the field sends it.
+
+    The defaults describe a part played through; a case about a report that falls short says
     so by naming the numbers it means.
     """
+    spans = [[0, 61000]] if played_ranges is None else played_ranges
+    told = await final_segments(db, session.id)
     await report_playback(
         db,
         session,
         state,
-        played_ranges=[[0, 61000]] if played_ranges is None else played_ranges,
+        played_by_take=[
+            PlayedTake(take_id=take_id, played_ranges=spans, clip_duration_ms=clip_duration_ms or 0)
+            for take_id in sorted({stretch.take_id for stretch in told})
+        ],
+        played_ranges=spans,
         clip_duration_ms=clip_duration_ms,
     )
 
 
-async def _ready_session(db: AsyncSession, **comprehension_kwargs):
-    session = await create_session(db, pericope=P)
+async def _ready_session(
+    db: AsyncSession, *, project_id: str | None = None, **comprehension_kwargs
+):
+    """A session carrying everything the packet refuses to travel without.
+
+    ``project_id`` is the team whose conversation this is. It stays optional because most of
+    these cases are about the packet and not about whose it is; the release is numbered per
+    project, so the cases about the number name one.
+    """
+    session = await create_session(db, pericope=P, project_id=project_id)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
     db.add(_ensaio_take(session.id))
@@ -186,8 +207,9 @@ async def _ready_session(db: AsyncSession, **comprehension_kwargs):
 
 @pytest.mark.asyncio
 async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) -> None:
-    """`telling_back_not_checked` left this list with ENG-584: a telling-back has to exist,
-    which `no_telling_back` already says, but it does not have to have come out clean."""
+    """`telling_back_not_checked` left this list with ENG-584 and came back with ENG-882: a
+    telling-back has to exist, which `no_telling_back` already says, and it has to have come
+    out clean, which is Marcia's gate and only a facilitator's code sets aside."""
     session = await create_session(db_session, pericope=P)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
@@ -195,7 +217,6 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
 
     assert set(blocked.value.blockers) >= {
         "comprehension_needs_more_work",
-        "recording_consent_never_given",
         "coverage_floor_not_met",
         "no_rehearsal_audio",
         "no_telling_back",
@@ -225,10 +246,14 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     assert artifact["comprehension"]["outcome"] == "ready_supported"
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
-    assert artifact["back_translation"]["played_ranges"] == [[0, 61000]]
+    assert [entry["played_ranges"] for entry in artifact["back_translation"]["played_by_take"]] == [
+        [[0, 61000]]
+    ]
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
     sealed.pop("created_at")
+    sealed.pop("release_id")
+    sealed.pop("version")
     assert len(stamp) == 64
     from app.services.internalization_room.release import _package_sha256
 
@@ -463,6 +488,7 @@ async def _told_back_with_an_open_finding(
                 kind=FindingKind.ADDITION,
                 note="a equipe disse que Noemi voltou alegre",
                 segment_id=told.id,
+                chunk=1,
             )
         ],
         checked=False,
@@ -471,23 +497,51 @@ async def _told_back_with_an_open_finding(
 
 
 @pytest.mark.asyncio
-async def test_a_session_carrying_an_open_finding_still_releases(
+async def test_a_session_carrying_an_open_finding_is_refused(
     db_session: AsyncSession,
 ) -> None:
-    """Taking the questions to Refine is an outcome the room is meant to have.
+    """ENG-584 argued the other way here, and the argument lost.
 
-    Refusing it left the rehearsal, the coverage, the ledger and the telling-back on the
-    tablet with no way out, for a team that had done every piece of the work.
+    It was that taking the questions to Refine is an outcome the room is meant to have, and
+    that refusing it left a team who had done every piece of the work with no way out. What
+    it did not weigh is what a disputed finding actually is: the map wrong, which is rare and
+    worth having; the team not understanding; the recogniser erring. Only the first deserves
+    to travel, and a door open to all three sends the other two downstream as a passage the
+    room approved — heard as approved at the community's check.
+
+    The way out is still there and it is a person's: the raised hand, answered, and then the
+    facilitator's code.
     """
     session = await _ready_session(db_session)
     await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session)
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
 
-    assert artifact["readiness"] == "ready_for_refine"
-    assert artifact["back_translation"]["checked"] is False
+    assert blocked.value.blockers == ["telling_back_not_checked"]
+
+
+@pytest.mark.asyncio
+async def test_a_never_analysed_telling_back_is_named_before_the_open_finding(
+    db_session: AsyncSession,
+) -> None:
+    """One errand at a time, and this is the one that comes first.
+
+    A telling-back nobody read has no finding to be open: its emptiness is the default, not a
+    reading. Named `telling_back_not_checked`, a facilitator would go looking for a finding
+    that was never raised, and would find the room had never been asked.
+    """
+    session = await _ready_session(db_session)
+    state = await _told_back_with_an_open_finding(db_session, session)
+    state.analysed_segment_ids = None
+    await _reported_playback(db_session, session, state)
+
+    with pytest.raises(InternalizationReleaseBlocked) as blocked:
+        await build_internalization_release(db_session, session)
+
+    assert blocked.value.blockers == ["telling_back_never_analysed"]
 
 
 @pytest.mark.asyncio
@@ -517,25 +571,28 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
 
 
 @pytest.mark.asyncio
-async def test_the_finding_travels_in_the_package_it_unblocked(
+async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
     db_session: AsyncSession,
 ) -> None:
-    """A package that does not name the finding is worse than the refusal.
+    """A forced packet that does not name the finding is worse than the refusal it replaced.
 
-    The team would have carried the question all the way to Refine and nobody there would
-    see it — and unlike a blocked release, that looks resolved.
+    The release exists because a person overruled the room, so what they overruled has to be
+    inside it and on the row beside it. Without that the question reaches Refine unseen, and
+    unlike a blocked release that looks resolved.
     """
-    session = await _ready_session(db_session)
+    session = await _ready_session(db_session, project_id="time-que-discordou")
     await _reported_playback(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session)
+    release = await approve_release(db_session, session, forced_by="a-facilitadora")
 
-    carried = artifact["back_translation"]["findings"]
+    carried = release.packet["back_translation"]["findings"]
     assert [finding["kind"] for finding in carried] == ["addition"]
     assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
     assert carried[0]["segment_id"] is not None
+    assert carried[0]["chunk"] == 1
+    assert release.forced_open_findings == carried
 
 
 @pytest.mark.asyncio
@@ -554,7 +611,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
 
     assert set(blocked.value.blockers) >= {
         "comprehension_needs_more_work",
-        "recording_consent_never_given",
         "coverage_floor_not_met",
     }
 
@@ -658,7 +714,7 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
     session = await _ready_session(db_session)
     await _a_row_written_before_the_taxonomy_shrank(db_session, session)
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
 
     assert [f["kind"] for f in artifact["back_translation"]["findings"]] == ["addition"]
     assert [
@@ -700,7 +756,7 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     session.back_translation = stored
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
 
     package = artifact["back_translation"]
     assert "evidence_sufficient" not in package
@@ -719,8 +775,40 @@ async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
 
+    assert artifact["open_questions"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_standing_swap_is_one_open_question_in_the_headline(
+    db_session: AsyncSession,
+) -> None:
+    """The packet counts what the team was told is left, not how many rows hold it.
+
+    A swap is two findings and one thing to do. Counted by rows, the packet tells Refine two
+    questions are open on a passage the room told the team has one thing left — and Refine
+    reads that headline to decide how much of the draft still needs a person.
+    """
+    session = await _ready_session(db_session)
+    state = await _told_back_with_an_open_finding(db_session, session)
+    state.findings = [
+        *state.findings,
+        Finding(
+            kind=FindingKind.MISSING,
+            note="a notícia do pão não apareceu",
+            segment_id=state.findings[0].segment_id,
+            chunk=state.findings[0].chunk,
+        ),
+    ]
+    await _reported_playback(db_session, session, state)
+
+    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+
+    assert [finding["kind"] for finding in artifact["back_translation"]["findings"]] == [
+        "addition",
+        "missing",
+    ]
     assert artifact["open_questions"] == 1
 
 
@@ -752,6 +840,6 @@ async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
         db_session, session, await _told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
 
     assert artifact["open_questions"] == 2

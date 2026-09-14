@@ -4,13 +4,15 @@ The room reads canon only from the vendored directory — never over the network
 time, and never writing back. Canon changes through the project's own governed process; this
 script is the one door, and it is deliberate.
 
-`--sync` overwrites the vendored directory wholesale, so nothing of ours may live inside it.
+`--sync` overwrites the vendored directory wholesale — including deleting a locally vendored
+file whose name the upstream listing no longer has — so nothing of ours may live inside it.
 The facilitator-facing element labels are the case that already exists: they sit in
 `canon/element-labels/`, a sibling of `canon/vendor/`, precisely so a re-pin cannot delete
 them without a word.
 
-    uv run python scripts/sync_internalization_canon.py --check   # drift only, exits 1
-    uv run python scripts/sync_internalization_canon.py --sync    # re-pin to current main
+    uv run python scripts/sync_internalization_canon.py --check      # drift/extra, exits 1
+    uv run python scripts/sync_internalization_canon.py --sync       # re-pin to current main
+    uv run python scripts/sync_internalization_canon.py --sync --pin <sha>   # re-pin to <sha>
 """
 
 from __future__ import annotations
@@ -18,9 +20,13 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import re
 import sys
 import urllib.request
 from pathlib import Path
+
+SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 REPO = "MarciaSuzuki/tripod_compiler"
 BOOKS = ("Ruth",)
@@ -33,7 +39,12 @@ KINDS = {
 
 
 def _get(url: str) -> bytes:
-    with urllib.request.urlopen(url, timeout=30) as response:
+    headers = {}
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"token {token}"
+    request = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(request, timeout=30) as response:
         return response.read()
 
 
@@ -56,14 +67,19 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:12]
 
 
-def sync() -> int:
-    sha = _head_sha()
+def sync(pin: str | None = None) -> int:
+    sha = pin if pin else _head_sha()
     for kind in KINDS:
         target = VENDOR / kind
         target.mkdir(parents=True, exist_ok=True)
-        for name in _listing(kind, sha):
+        names = _listing(kind, sha)
+        for name in names:
             (target / name).write_bytes(_raw(kind, sha, name))
             print(f"  {kind}/{name}")
+        for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
+            if existing not in names:
+                (target / existing).unlink()
+                print(f"  removed {kind}/{existing}")
     PIN_FILE.write_text(sha + "\n")
     print(f"pinned at {sha}")
     return 0
@@ -76,13 +92,20 @@ def check() -> int:
     sha = PIN_FILE.read_text().strip()
     drifted: list[str] = []
     for kind in KINDS:
-        for name in _listing(kind, sha):
+        names = _listing(kind, sha)
+        for name in names:
             local = VENDOR / kind / name
             upstream = _raw(kind, sha, name)
             if not local.exists():
                 drifted.append(f"missing: {kind}/{name}")
             elif _digest(local.read_bytes()) != _digest(upstream):
                 drifted.append(f"changed: {kind}/{name}")
+
+        target = VENDOR / kind
+        if target.is_dir():
+            for existing in sorted(p.name for p in target.iterdir() if p.is_file()):
+                if existing not in names:
+                    drifted.append(f"extra: {kind}/{existing}")
 
     if drifted:
         print(f"canon drifted from pin {sha}:", file=sys.stderr)
@@ -98,8 +121,13 @@ def main() -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--sync", action="store_true")
     group.add_argument("--check", action="store_true")
+    parser.add_argument("--pin", metavar="<sha>")
     args = parser.parse_args()
-    return sync() if args.sync else check()
+    if args.pin and not args.sync:
+        parser.error("--pin needs --sync")
+    if args.pin and not SHA_RE.fullmatch(args.pin):
+        parser.error("--pin needs a full 40-character sha, not a ref")
+    return sync(pin=args.pin) if args.sync else check()
 
 
 if __name__ == "__main__":

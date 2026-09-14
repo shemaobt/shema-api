@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -13,7 +13,10 @@ from app.core.database import Base
 
 class AsTierCClip(Base):
     __tablename__ = "as_tier_c_clips"
-    __table_args__ = (UniqueConstraint("language_id", "clip_number", name="uq_as_tier_c_clip"),)
+    __table_args__ = (
+        UniqueConstraint("language_id", "clip_number", name="uq_as_tier_c_clip"),
+        Index("ix_as_tier_c_clips_language_status", "language_id", "upload_status"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     language_id: Mapped[str] = mapped_column(

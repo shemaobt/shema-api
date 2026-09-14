@@ -1,7 +1,7 @@
 """The draft-gate-voice engine every session type funnels through.
 
 `call_agent`, `strays_from`, `MAX_REDRAFTS` and the logger are read off `run_turn` at call
-time instead of being imported here. Twenty-seven sites across thirteen test files install
+time instead of being imported here. Thirty-four sites across twenty-three test files install
 their fake model by writing over `run_turn.call_agent`, one writes over `run_turn.strays_from`,
 and `tests/test_internalization_room_model_failure.py` asserts on records whose `record.name`
 is exactly `app.services.internalization_room.run_turn`. A monkeypatch reaches a function only
@@ -39,6 +39,12 @@ from app.services.internalization_room.turn_instructions import (
     _nobody_spoke_this_turn,
     split_opening_movements,
 )
+from app.services.internalization_room.usage import (
+    Spend,
+    close_ledger,
+    open_ledger,
+    report_session,
+)
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
 
 
@@ -75,6 +81,23 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
         )
         for message in messages
     ]
+
+
+def _conversation_as_evidence(conversation: list[Turn]) -> str:
+    """The whole session, quoted, for the Validator to check a recollection against.
+
+    The Guide hears every turn (no window), so it may say what the team told it three
+    scenes ago. The Validator's evidence rule refuses any such sentence it cannot find in a
+    record, and with the slot reading "not this turn" nothing could be found: a true
+    recollection of the team's own words died as an "epistemic" violation and the team heard
+    the pause line for asking what it had said. This is quoted evidence, never a window — it
+    is all of it, oldest first, and the doctrine forbids the window, not the record.
+    """
+    if not conversation:
+        return NOT_THIS_TURN
+    return "\n".join(
+        f"{'Team' if turn['role'] == 'user' else 'Guide'}: {turn['text']}" for turn in conversation
+    )
 
 
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
@@ -153,6 +176,7 @@ async def _draft(
     if redraft_note:
         user_content += f"\n\n## Rewrite note\n\n{redraft_note}\n"
     draft: str = await shim.call_agent(
+        role="guide",
         system_prompt=guide_prompt,
         user_content=user_content,
         conversation=conversation,
@@ -162,27 +186,61 @@ async def _draft(
     return draft.strip()
 
 
-def _timed(outcome: TurnOutcome, started: float, session_id: str) -> TurnOutcome:
-    """Say how long the turn took and how it ended, on its way out.
+def _timed(outcome: TurnOutcome, started: float, session_id: str, spend: Spend) -> TurnOutcome:
+    """Say how long the turn took, how it ended, and what it asked of the models.
 
-    Both exits pass through here rather than each logging for itself, because the two numbers
-    only mean anything next to each other: a turn is allowed to take 56 seconds, and the way
-    to tell that apart from a turn that gave up is whether it was voiced or fell to a line.
+    Both exits pass through here rather than each logging for itself, because the numbers only
+    mean anything next to each other: a turn is allowed to take 56 seconds, and the way to tell
+    that apart from a turn that gave up is whether it was voiced or fell to a line — and a turn
+    that cost ten times the usual is a different thing again depending on whether it redrafted
+    twice or read a 896-thousand-token map that stopped coming from cache.
+
+    `spend` is the turn's own ledger and not a running total: what a redraft costs is only
+    visible against turns that did not redraft. Every number it contributes is spelled
+    `turn_*`, as `turn_ms` already was — a reader filtering the log for the per-call lines
+    picks them out by the fields only a call has, and a summary that answered to the same
+    names would be counted as a third call of every turn.
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
     elapsed_ms = round((time.monotonic() - started) * 1000)
     shim.logger.info(
-        "Turn answered in %s ms after %s redrafts",
+        "[llm-turn] session %s answered in %s ms after %s redrafts, %s calls, US$ %s: "
+        "in=%s cache_read=%s cache_write=%s out=%s%s%s",
+        session_id,
         elapsed_ms,
         outcome.redrafts,
+        spend.calls,
+        spend.cost_usd,
+        spend.input_tokens,
+        spend.cache_read_tokens,
+        spend.cache_write_tokens,
+        spend.output_tokens,
+        f" — answered on rung {spend.rung_number}, {spend.rung_fell_because}"
+        if spend.rung_number > 1
+        else "",
+        f" — {spend.unpriced_calls} unpriced, so the total is short"
+        if spend.unpriced_calls
+        else "",
         extra={
             "session_id": session_id,
             "turn_ms": elapsed_ms,
             "redrafts": outcome.redrafts,
             "used_fail_safe": outcome.used_fail_safe,
+            "turn_calls": spend.calls,
+            "turn_cost_usd": spend.cost_usd,
+            "turn_unpriced_calls": spend.unpriced_calls,
+            "turn_input_tokens": spend.input_tokens,
+            "turn_output_tokens": spend.output_tokens,
+            "turn_cache_read_tokens": spend.cache_read_tokens,
+            "turn_cache_write_tokens": spend.cache_write_tokens,
+            "turn_model_ms": spend.model_ms,
+            "turn_rung_number": spend.rung_number,
+            "turn_rung_fell_because": spend.rung_fell_because,
         },
     )
+    report_session(session_id, spend)
+    close_ledger()
     return outcome
 
 
@@ -239,11 +297,11 @@ async def _voiced_after_validation(
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
     started = time.monotonic()
+    spend = open_ledger()
     conversation = _conversation_turns(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
 
-    model_failed = False
     for attempt in range(shim.MAX_REDRAFTS + 1):
         try:
             draft, movements = split_opening_movements(
@@ -264,7 +322,7 @@ async def _voiced_after_validation(
                 cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
-                RECENT_CONVERSATION=NOT_THIS_TURN,
+                RECENT_CONVERSATION=_conversation_as_evidence(conversation),
                 TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
@@ -272,6 +330,7 @@ async def _voiced_after_validation(
                 ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
             )
             raw_verdict = await shim.call_agent(
+                role="validator",
                 system_prompt=validator_system,
                 user_content=VALIDATOR_USER_MESSAGE,
                 max_output_tokens=4096,
@@ -298,7 +357,6 @@ async def _voiced_after_validation(
                 "Guide or Validator call failed; the turn degrades to a fail-safe",
                 extra={"session_id": session_id, "attempt": attempt + 1},
             )
-            model_failed = True
             break
 
         if speech and shim.strays_from(speech, language_code):
@@ -320,6 +378,7 @@ async def _voiced_after_validation(
                 ),
                 started,
                 session_id,
+                spend,
             )
 
         redraft_note = _redraft_note(issues, language_code)
@@ -328,14 +387,7 @@ async def _voiced_after_validation(
             "Fail-safe fired after %s redrafts: issues=%s", shim.MAX_REDRAFTS, issues
         )
 
-    off_language = not model_failed and any(
-        issue.get("problem") == "off_bridge_language" for issue in issues
-    )
-    speech, line = choose(
-        FailSafe.OFF_BRIDGE_LANGUAGE if off_language else FailSafe.UNREPAIRABLE,
-        language_code,
-        turn=len(messages),
-    )
+    speech, line = choose(FailSafe.UNREPAIRABLE, language_code, turn=len(messages))
     return _timed(
         TurnOutcome(
             speech=speech,
@@ -348,4 +400,5 @@ async def _voiced_after_validation(
         ),
         started,
         session_id,
+        spend,
     )

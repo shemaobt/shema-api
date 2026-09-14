@@ -2,7 +2,7 @@
 
 The turn itself moved out — `passage_turn`, `panorama_turn`, `verdict_turn` and the engine
 under them — and this file imports all of it back, so not one import line anywhere else had
-to change. The names are not free to follow it: twenty-seven sites across thirteen test files
+to change. The names are not free to follow it: thirty-four sites across twenty-three test files
 install their fake model by writing over `call_agent` on this module, one writes over
 `strays_from`, and `tests/test_internalization_room_model_failure.py` asserts on records whose
 `record.name` is exactly this module's. `validated_turn` reads those four off here at call

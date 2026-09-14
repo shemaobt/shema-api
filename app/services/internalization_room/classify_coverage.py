@@ -174,6 +174,7 @@ async def classify_coverage(
 
     try:
         raw = await call_agent(
+            role="classifier",
             system_prompt=system,
             user_content="Classify this exchange now. Return only the JSON object.",
             ladder=classifier_ladder(cfg),

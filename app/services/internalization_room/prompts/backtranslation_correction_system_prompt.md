@@ -78,6 +78,11 @@ element the map gives is answered when that element is stated in the new telling
 Do not require the team to have said it the way the map says it, and do not require them to have
 mentioned the finding itself.
 
+When the finding is two lines — an addition and a missing element on the same frase, which is one
+swapped relation — `resolved` is `true` only when the new telling no longer carries the addition
+**and** now carries the missing element. Half of that is not an answer: the team was asked for one
+fix that does both, and either half alone leaves the swap standing.
+
 **3. Did answering it break something?** (`findings`)
 
 Compare the new telling against the earlier one and against the map, and report only these:
