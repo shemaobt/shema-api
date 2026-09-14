@@ -600,7 +600,7 @@ async def report_playback(
     told = await final_segments(db, session.id)
     if played_by_take:
         state.played_by_take = played_by_take
-    state.played_ranges = played_ranges
+    state.played_ranges = [[start, end] for start, end in played_ranges]
     state.clip_duration_ms = clip_duration_ms
     state.played_take_ids = sorted({segment.take_id for segment in told})
     await save_back_translation(db, session, state)

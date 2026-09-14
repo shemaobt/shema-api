@@ -147,7 +147,7 @@ async def reported_playback(
     session: IRSession,
     state: BackTranslationState,
     *,
-    played_ranges: list[tuple[int, int]] | None = None,
+    played_ranges: list[list[int]] | None = None,
     clip_duration_ms: int | None = 61000,
 ) -> None:
     """Store the telling-back together with the team's report of what the tablet played.
@@ -164,7 +164,7 @@ async def reported_playback(
     The defaults describe a part played through; a case about a report that falls short says
     so by naming the numbers it means.
     """
-    spans = [(0, 61000)] if played_ranges is None else played_ranges
+    spans = [[0, 61000]] if played_ranges is None else played_ranges
     told = await final_segments(db, session.id)
     await report_playback(
         db,

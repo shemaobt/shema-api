@@ -153,7 +153,7 @@ class SupersededAttempt(BaseModel):
 
     findings: list[Finding] = Field(default_factory=list)
     played_by_take: list[PlayedTake] = Field(default_factory=list)
-    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
+    played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
 
     @model_validator(mode="before")
@@ -197,7 +197,12 @@ class BackTranslationState(BaseModel):
     #: nothing. Numbers with no subject say a clip was played through without saying which clip,
     #: so they went on reading as proof after the team threw that recording away and started the
     #: telling-back over on a new one (ADR 0017).
-    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
+    #:
+    #: Read leniently, where the door above is strict. Nothing measures this pair — the covering
+    #: arithmetic is asked of `played_by_take` and of nothing else — so a shape it cannot use is
+    #: no danger here, while refusing it on the way out of the database would stop a row written
+    #: by an older build from loading on every route of that session.
+    played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
     #: Which rehearsal recordings the flat report above was stored against, stamped by the
     #: server from the stretches. It was the subject that report could not carry for itself,

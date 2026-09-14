@@ -163,7 +163,7 @@ async def test_a_carried_point_travels_with_its_canonical_material(
 async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession) -> None:
     session = await ready_session(db_session)
     state = await checked_telling_back(db_session, session)
-    await reported_playback(db_session, session, state, played_ranges=[(0, 20000)])
+    await reported_playback(db_session, session, state, played_ranges=[[0, 20000]])
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)

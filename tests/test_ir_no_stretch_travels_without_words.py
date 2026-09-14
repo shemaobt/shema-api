@@ -126,7 +126,7 @@ async def _the_analyst_has_read(
             PlayedTake(take_id=take_id, played_ranges=[(0, CLIP_MS)], clip_duration_ms=CLIP_MS)
             for take_id in sorted({stretch.take_id for stretch in stretches})
         ],
-        played_ranges=[(0, CLIP_MS)],
+        played_ranges=[[0, CLIP_MS]],
         clip_duration_ms=CLIP_MS,
     )
 

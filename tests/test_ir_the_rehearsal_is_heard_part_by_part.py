@@ -229,7 +229,7 @@ async def test_a_flat_report_is_evidence_of_nothing(
     )
 
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
-    assert stored.played_ranges == [(0, glued)], "the numbers are kept, as two ints now"
+    assert stored.played_ranges == [[0, glued]]
     assert stored.clip_duration_ms == glued
     assert stored.played_take_ids == ids
     assert unheard_parts(in_flight, ids) == ids, (

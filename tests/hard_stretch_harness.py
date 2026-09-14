@@ -204,10 +204,10 @@ async def ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, A
         session,
         state,
         played_by_take=[
-            PlayedTake(take_id=take_id, played_ranges=[(0, clip_end)], clip_duration_ms=clip_end)
+            PlayedTake(take_id=take_id, played_ranges=[[0, clip_end]], clip_duration_ms=clip_end)
             for take_id in sorted({segment.take_id for segment in told_back})
         ],
-        played_ranges=[(0, clip_end)],
+        played_ranges=[[0, clip_end]],
         clip_duration_ms=clip_end,
     )
 
