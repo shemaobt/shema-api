@@ -28,10 +28,15 @@ from app.db.models.internalization_room import IRRelease, IRSegment, IRSession, 
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
+    FindingKind,
+    current_findings,
+    findings_remaining,
+    segments_block,
 )
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
+    InternalizationReleaseBlocked,
     approve_release,
 )
 from app.services.internalization_room.segments import (
@@ -40,6 +45,7 @@ from app.services.internalization_room.segments import (
     final_segments,
 )
 from app.services.internalization_room.sessions import (
+    back_translation_of,
     begin_back_translation_again,
     create_session,
     save_comprehension,
@@ -285,6 +291,66 @@ async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
 
 
+@pytest.mark.asyncio
+async def test_a_standing_finding_keeps_its_stretch_when_frase_three_is_divided(
+    db_session: AsyncSession,
+) -> None:
+    """Cutting frase 3 while two findings stand on it moves neither of them.
+
+    The number on a finding is the number the analyst gave it, and the analyst is numbered off
+    the same list the packet freezes — so while nothing has been divided since that reading,
+    a standing finding's `chunk` **is** the stretch's `frase`, which is what this asks first.
+
+    Then a finding keeps `segment_id`, the stretch it was about, and keeps `chunk` beside it
+    (ADR 0018). The cut renumbers the reading and nothing else, so the two go on naming the
+    stretch the team has to record again — and they go on not being a swap, which is joined on
+    the frase and not on the stretch: the addition was told under frase 3, and the missing
+    element was placed after frase 2, which is where frase 3 begins (ADR 0007, pinned by
+    `test_ir_a_missing_element_says_where_it_goes.py`).
+    """
+    session = await _told_in_three_stretches(db_session)
+    told = await final_segments(db_session, session.id)
+    third = told[2]
+    release = await approve_release(db_session, session, device_id=TABLET)
+    numbered = [line.split(". ", 1)[0] for line in segments_block(told).splitlines()]
+    assert numbered == [str(entry["frase"]) for entry in _frozen(release)], (
+        "a analista e o pacote contam a mesma lista, senão o número do achado não é a frase"
+    )
+
+    await _read_and_reported(
+        db_session,
+        session,
+        (
+            Finding(
+                kind=FindingKind.ADDITION,
+                note="disseram que elas choraram alto",
+                segment_id=third.id,
+                chunk=3,
+            ),
+            Finding(
+                kind=FindingKind.MISSING,
+                note="nao disseram que voltaram para Juda",
+                segment_id=third.id,
+                chunk=2,
+            ),
+        ),
+    )
+    frase_of_the_third = _frozen(release)[2]["frase"]
+    addition, missing = back_translation_of(session).findings
+    assert addition.chunk == frase_of_the_third
+    assert missing.chunk + 1 == frase_of_the_third, "depois da frase 2 é onde a frase 3 começa"
+
+    halves = await divide_segment(db_session, session, third, at_ms=50000)
+
+    standing = back_translation_of(session).findings
+    assert [finding.segment_id for finding in standing] == [third.id, third.id]
+    assert {half.id for half in halves}.isdisjoint({finding.segment_id for finding in standing})
+    assert findings_remaining(standing) == 2
+    assert len(current_findings(back_translation_of(session))) == 1, (
+        "dois achados de frases diferentes não são uma troca, e uma troca falaria os dois"
+    )
+
+
 async def _every_shape_of_retro_take(
     db: AsyncSession,
 ) -> tuple[IRSession, dict[str, IRTake]]:
@@ -381,3 +447,47 @@ async def test_frase_and_segment_id_are_each_unique_within_a_version(
 
     assert [entry["frase"] for entry in frozen] == list(range(1, len(frozen) + 1))
     assert len({entry["segment_id"] for entry in frozen}) == len(frozen)
+
+
+@pytest.mark.asyncio
+async def test_a_stretch_recorded_again_and_untold_cannot_be_approved(
+    db_session: AsyncSession,
+) -> None:
+    """An approved version does not let the approval after it through on a stretch with words.
+
+    That a wordless stretch refuses a release at all is
+    `test_ir_no_stretch_travels_without_words.py::test_a_release_is_refused_while_a_stretch_has_no_words`,
+    which asserts the whole blocker list. What is here is the version beside it: the team has
+    already approved once, so the refusal has to hold on the path that mints the *next*
+    number, and hold without disturbing the one already frozen. That is what lets every other
+    case here assume a frozen stretch has words.
+    """
+    session = await _told_in_three_stretches(db_session)
+    first = await approve_release(db_session, session, device_id=TABLET)
+
+    again = ensaio_take(session.id, sha256="b" * 64)
+    db_session.add(again)
+    await db_session.commit()
+    await capture_segment(
+        db_session,
+        session,
+        take_id=again.id,
+        starts_ms=0,
+        ends_ms=20000,
+        replaces=(await final_segments(db_session, session.id))[0],
+    )
+
+    with pytest.raises(InternalizationReleaseBlocked) as refused:
+        await approve_release(db_session, session, device_id=TABLET)
+
+    assert "untold_stretch" in refused.value.blockers
+    versions = (
+        (
+            await db_session.execute(
+                select(IRRelease.version).where(IRRelease.session_id == session.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(versions) == [first.version], "nada foi numerado por cima do que já está frio"
