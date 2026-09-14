@@ -17,6 +17,23 @@ PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no 
 
 The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon. The test database is a file per pytest run, in the system temporary directory and named by the process, so two runs in one checkout do not corrupt each other; `DATABASE_URL` is honoured when set, and the run then uses that file and leaves it behind.
 
+## Golden runs
+
+Marcia's golden scripts are played against a running server through the **Text seam**, which
+exists only where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and the seam
+answers 404. Two runners, one convention: reports land under `golden/reports/<date>/` and the
+key travels as `ACCESS_CODE`.
+
+```sh
+# the Guide's conversation
+ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/internalization-room/text-seam --script <her.json> --out golden/reports/<date>
+# the back-translation check, judged by her own checks; exit 1 on a failed check
+ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py --base-url <host>/api/internalization-room/text-seam/back-translation/ --script <her-bt.json> --out golden/reports/<date>
+```
+
+Each run costs real model calls, so neither is part of the suite. The back-translation run is
+the gate on any change to the two back-translation prompts.
+
 ## Rules
 
 Every schema change is an Alembic migration, and nothing is applied by hand. Routers never touch the database and services never raise HTTP: [ADR 0009](docs/adr/0009-routers-never-touch-the-database.md).

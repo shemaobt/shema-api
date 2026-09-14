@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import UnreadableReply, UpstreamServiceError, ValidationError
-from app.db.models.internalization_room import IRPromptKey, IRSessionStatus, IRTakeKind
+from app.core.exceptions import ValidationError
+from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationRestartResponse,
@@ -13,11 +13,8 @@ from app.models.internalization_room import (
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
-from app.services.internalization_room.back_translation import VoicedVerdict
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import heard
-from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 from app.services.internalization_room.voice_handles import clip_url
@@ -193,37 +190,6 @@ async def finish(
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
 
-    **No passage is checked on stretch-by-stretch verifications alone.** A verification answers
-    the finding it was shown and nothing else, so a list it emptied has never been measured
-    against the set — and two things live only in the set: a correction can answer, by
-    accident, a finding raised on another stretch, and whether the telling-back is too thin to
-    judge at all. So when nothing is outstanding and only verifications have looked since the
-    last whole reading, one whole reading runs, and it is the one that decides. The fast test
-    while working; the whole suite before closing.
-
-    It is not paid for twice. The reading turns the flag off and takes the signature with it,
-    so pressing `terminei` again with nothing changed reaches neither branch — and a team that
-    got it right the first time never turns the flag on at all, so it is checked on one reading
-    and not two.
-
-    A closing reading that could not be made saves nothing, exactly as the reading above it
-    does: a passage checked because the analyst was unreachable would be struck off the wheel
-    on an outage, and a finished passage never comes back.
-
-    A verdict that lands on one stretch carries the I family after it, on the same clip: the
-    screen is about to offer a microphone on that stretch — two for most findings, one for a
-    missing element — and tapping it replaces everything the team had told there.
-    `with_the_whole_stretch_asked_for` is where that is decided.
-
-    A verdict that degraded to a fail-safe carries nothing after it, which the same function
-    decides: those are played from inside the app by name, so a sentence appended to one would
-    reach the transcript and never the room.
-
-    The request and the verification are two halves of the same correction. This is what asks
-    the team for the whole stretch; `verify_correction` a few lines above is what reads what
-    they told, against the finding that sent them back. A team that re-recorded only the
-    amendment would hand that verification a fragment to judge the finding by.
-
     Pressed again over the same stretches, the room serves the verdict it already reached and
     consults nothing. The press is the same question, and answering it afresh cost a validator
     and a spoken synthesis every time and wrote the room into the conversation as having spoken
@@ -304,114 +270,37 @@ async def finish(
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
-    correction = room.correction_to_verify(state, told, await room.retired_segments(db, session.id))
-    if correction is not None:
-        verified = await room.verify_correction(
-            findings=correction.findings,
-            earlier=correction.earlier,
-            corrected=correction.corrected,
-            chunk=correction.chunk,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
-            session_language=LANGUAGE_NAMES[session.language],
-            settings=get_settings(),
-            session_id=session.id,
-        )
-        if verified is None:
-            # Nothing is saved, exactly as on the reading below: a verification that never
-            # happened must not read as one that passed. Dropping the finding here would take
-            # it off the list for good, and the team would never be asked about it again.
-            raise UpstreamServiceError("a verificação da correção não pôde ser feita agora")
-        state.findings = room.findings_after_correction(
-            state.findings, verified, correction.corrected
-        )
-        state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = True
-    elif not state.already_analysed(told):
-        read = await room.analyse_telling_back(
-            segments=told,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            settings=get_settings(),
-            session_id=session.id,
-        )
-        if read is None:
-            # Nothing is saved: `checked` stays as it was and `analysed_segment_ids` does not
-            # advance, so pressing `terminei` again actually re-runs the analyst instead of
-            # serving a verdict nobody ever reached. An outage never reaches this line: the
-            # service raises it as the upstream failure it is.
-            raise UnreadableReply("a resposta do analista não pôde ser lida")
-        state.findings = read.findings
-        state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = False
-
-    if not state.findings and state.verified_since_whole_reading:
-        closing = await room.analyse_telling_back(
-            segments=told,
-            scope=state.scope or session.pericope,
-            pericope_num=session.pericope,
-            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
-            session_language=LANGUAGE_NAMES[session.language],
-            settings=get_settings(),
-            session_id=session.id,
-        )
-        if closing is None:
-            raise UpstreamServiceError("a leitura final da tradução não pôde ser feita agora")
-        state.findings = closing.findings
-        state.analysed_segment_ids = [segment.id for segment in told]
-        state.verified_since_whole_reading = False
-
-    current = room.current_findings(state)
-    finding = room.the_finding_that_leads(state)
-    state.checked = finding is None
-
-    outcome = await room.run_verdict_turn(
-        findings_text=room.findings_block(current),
-        closing=room.closing_block(finding, checked=state.checked),
-        scope=state.scope or session.pericope,
-        pericope_num=session.pericope,
-        messages=session.messages or [],
-        telling_back=room.segments_block(told),
-        speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
-        validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
-        session_language=LANGUAGE_NAMES[session.language],
-        language_code=session.language,
+    verdict = await room.check_the_telling_back(
+        session,
+        state=state,
+        told=told,
+        retired=await room.retired_segments(db, session.id),
         settings=get_settings(),
-        session_id=session.id,
-    )
-
-    said = room.with_the_whole_stretch_asked_for(
-        outcome.speech,
-        finding,
-        session.language,
-        used_fail_safe=outcome.used_fail_safe,
     )
     voiced = (
         None
-        if outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(said, language=session.language))[0]
+        if verdict.outcome.fixed_line
+        else (await room.synthesize_facilitator_speech(verdict.said, language=session.language))[0]
     )
-    session = await room.append_exchange(db, session, team_utterance="", guide_response=said)
-    state.verdict = VoicedVerdict(
+    session = await room.save_the_spoken_verdict(
+        db,
+        session,
+        state,
+        said=verdict.said,
         clip_key=voiced.key if voiced else "",
-        fixed_line=outcome.fixed_line,
-        used_fail_safe=outcome.used_fail_safe,
+        used_fail_safe=verdict.outcome.used_fail_safe,
+        fixed_line=verdict.outcome.fixed_line,
     )
-    await room.save_back_translation(db, session, state)
 
     return BackTranslationVerdictResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
-        fixed_line=outcome.fixed_line,
-        checked=state.checked,
-        finding_kind=finding.kind if finding else None,
-        finding_segment_id=finding.segment_id if finding else None,
-        findings_remaining=room.findings_remaining(state.findings),
-        used_fail_safe=outcome.used_fail_safe,
+        fixed_line=verdict.outcome.fixed_line,
+        checked=verdict.checked,
+        finding_kind=verdict.finding.kind if verdict.finding else None,
+        finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
+        findings_remaining=verdict.findings_remaining,
+        used_fail_safe=verdict.outcome.used_fail_safe,
     )
 
 
