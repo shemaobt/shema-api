@@ -104,6 +104,56 @@ of these tiny pre-approved lines, then the thoughtful reply follows. Content-fre
 - "Deixa eu pensar um instante."
 - "Tá."
 
+### P. Process lines — the telling-back (retroverificação por frases)
+Not a failure path — the *process* path (docs/RETROVERIFICACAO-POR-FRASES-SPEC.md §5). The app owns
+the steps of the back-translation check (the full listen, the telling frase by frase, the refusal
+while a take is still unheard, the approval) and voices these fixed lines at those steps. They say
+what to DO, never anything about the passage. The order is fixed and read by position
+(`src/turn/failsafe.ts` — `btProcessLine`): start · tell · unheard · approved. The session language
+is named inside the "tell" line.
+
+- "First let's listen to your whole recording, from beginning to end. For now, just listen."
+- "Now let's go back to the beginning. You will listen to your recording and, at each sentence, pause to translate for me only what was said there. Tap the circle to pause, translate, and tap again so the recording goes on. Don't add anything and don't explain; it doesn't need to sound nice. Say in English exactly what that sentence says. Pause wherever it helps you remember what was said so you can translate it. When the whole recording has been translated, tap 'done'."
+- "There is still a part of the recording to listen to before I check."
+- "Approved as the team's final draft. It goes to OBT Refine."
+
+### P-pt. (Português brasileiro)
+
+- "Primeiro vamos ouvir a gravação de vocês inteira, do começo ao fim. Por enquanto é só ouvir."
+- "Agora vamos voltar ao começo. Vocês vão ouvir a gravação de vocês e, a cada frase, pausar para me traduzir só o que foi dito ali. Toquem no círculo para pausar, traduzam, e toquem de novo para a gravação seguir. Não acrescentem nada e não expliquem; não precisa ficar bonito. Digam em português exatamente o que aquela frase diz. Façam as pausas onde for melhor para vocês lembrarem do que foi dito e traduzirem. Quando a gravação inteira estiver traduzida, toquem em 'terminei'."
+- "Ainda falta ouvir um trecho da gravação antes de eu conferir."
+- "Aprovado como rascunho final da equipe. Ele vai para o OBT Refine."
+
+### X. Process lines — the external check (Checagem Externa)
+Not a failure path — the *process* path of the second phase (docs/CHECAGEM-EXTERNA-SPEC.md §1, §5),
+like P. After the team's final draft is approved, listeners who did NOT help translate hear the whole
+passage and react: first a retelling of what they heard, then comments on the whole, then frase by
+frase. The app owns those steps and voices these fixed lines at them, through `/api/ack?cat=X&step=`
+(`step` = open · retell · whole · frases · thanks) exactly as category P is voiced. **There is no model
+call anywhere in this phase**: listener audio is stored as audio and never transcribed. The lines say
+what to DO, never anything about the passage; they name only the buttons on the screen ('está boa',
+'nada a acrescentar'). The order is fixed and read by position (`src/turn/failsafe.ts` —
+`externalLines`): open · retell · whole · frases · thanks. **Ruled by Marcia 2026-09-04 late evening**
+— the Portuguese texts are hers, verbatim (X-retell, X-frases and X-thanks carry her edits; X-open
+and X-whole stood as drafted); the English lines mirror her Portuguese. X-retell addresses "vocês" and
+then "você" on purpose — **ruled by Marcia 2026-09-08**: sometimes one listener retells alone, sometimes
+a group works together; the mix stays and is not an open detail. Consent sentence added to X-open —
+Marcia's ruling 2026-09-08 (João's question: the listener must know they are recorded before speaking).
+
+- "Now it's the turn of those who didn't help translate. What you say here is recorded, only for the team to hear afterwards. You will hear the whole passage. Then I'll ask what you understood. There is no right answer: what you understood is what matters."
+- "Now tell me, in your own way, what you heard. It doesn't need to be perfect, tell what you remember. Tap the circle to speak and tap again when you finish."
+- "Did anything stay unclear? Would you like to comment on anything about the whole passage? If so, tap the circle and speak, as many times as you want. If not, tap 'nothing to add'."
+- "Now, listen to the sentences one by one. When you hear a sentence, if you think it is good, tap the 'it's good' button. But if you think the sentence needs to change in some way, or if you think it is not clear, tap the circle again and make your comment."
+- "Thank you for your help. What you said is kept for the team to hear."
+
+### X-pt. (Português brasileiro)
+
+- "Agora é a vez de quem não ajudou a traduzir. O que vocês disserem aqui fica gravado, só para a equipe ouvir depois. Vocês vão ouvir a passagem inteira. Depois eu pergunto o que vocês entenderam. Não tem resposta certa: o que vocês entenderam é o que importa."
+- "Agora me contem, do jeito de vocês, o que vocês ouviram. Não precisa ser perfeito, conte o que você se lembrar. Toquem no círculo para falar e toquem de novo quando terminarem."
+- "Alguma coisa não ficou clara? Querem comentar alguma coisa sobre a passagem inteira? Se sim, toquem no círculo e falem, quantas vezes quiserem. Se não, toquem em 'nada a acrescentar'."
+- "Agora, escute as frases uma por uma. Quando ouvir uma frase, se achar que ela está boa, clique no botão 'está boa'. Mas se achar que a frase precisa mudar em alguma coisa, ou se achar que ela não está clara, clique novamente no círculo e faça o seu comentário."
+- "Agradecemos sua ajuda. O que vocês disseram fica guardado para a equipe ouvir."
+
 ### E. Hard stop (repeated failures across multiple turns)
 If fail-safes fire repeatedly across several consecutive turns (e.g. 3+), something is wrong (a bad map load, an outage). Don't loop forever. Degrade to a graceful pause and surface the facilitator handoff.
 
