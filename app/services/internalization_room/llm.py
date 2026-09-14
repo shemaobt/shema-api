@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Sequence
 from typing import Any, Literal, TypedDict
 
@@ -15,6 +16,7 @@ from anthropic.types import (
 )
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.usage import cost_of, record
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ async def call_agent(
     *,
     system_prompt: str,
     user_content: str,
+    role: str = "?",
     conversation: Sequence[Turn] | None = None,
     ladder: list[str] | None = None,
     max_output_tokens: int = 2000,
@@ -152,6 +155,7 @@ async def call_agent(
         api_key=settings.anthropic_api_key, default_headers=_workspace_header(settings)
     )
     for model in _from_the_settled_rung(rungs):
+        started = time.monotonic()
         try:
             response = await client.messages.create(
                 model=model,
@@ -172,7 +176,15 @@ async def call_agent(
             )
             continue
         _SETTLED[rungs[0]] = model
-        _report_spend(response, model)
+        _report_spend(
+            response,
+            model,
+            role=role,
+            rung_number=rungs.index(model) + 1,
+            rungs=rungs,
+            effort=effort,
+            latency_ms=round((time.monotonic() - started) * 1000),
+        )
         _report_unfinished(response, max_output_tokens)
         return _spoken_text(response)
     raise AssertionError("unreachable: the last rung either answers or raises")
@@ -223,31 +235,100 @@ def _spoken_text(response: Message) -> str:
     return ""
 
 
-def _report_spend(response: Message, model: str) -> None:
-    """What this call cost and which rung answered it.
+def _report_spend(
+    response: Message,
+    model: str,
+    *,
+    role: str,
+    rung_number: int,
+    rungs: list[str],
+    effort: Effort,
+    latency_ms: int,
+) -> None:
+    """What this call cost, which rung answered it, and how long the model took.
 
-    `cache_read_tokens` is the reason the field is here rather than a total: a cache that
-    silently stops matching costs the map's full price on every turn and changes nothing else
-    that anyone would notice, so a run where this number is flat at zero is the symptom.
+    `cache_read_tokens` is the reason the tokens are broken out rather than totalled: a cache
+    that silently stops matching costs the map's full price on every turn and changes nothing
+    else that anyone would notice, so a run where this number is flat at zero is the symptom.
     Carrying the rung beside it is what makes a session's spend legible when the ladder moved
-    partway through it. The team's own words never reach this logger, only counts.
+    partway through it, and a rung below the first says in the line itself why it fell — the
+    only thing that steps the room down is a key that may not use the rung above. In the line
+    and not only in its fields, because for the analyst and the correction check this is the
+    only record there is: they run outside any ledger, so no turn or session summary carries
+    the reason for them, and the warning the step-down writes fires once per process and
+    never again once the settled rung is warm.
+
+    The team's own words never reach this logger, only counts: `[llm-usage]` is a line an
+    operator greps for on a machine where the passage itself must not be readable.
     """
     usage = response.usage
-    logger.info(
-        "Room agent answered on %s: in=%s cache_read=%s cache_write=%s out=%s",
+    skipped = rungs[: rung_number - 1]
+    fell_because = _fell_because(skipped)
+    cache_read = _counted(usage.cache_read_input_tokens)
+    cache_write = _counted(usage.cache_creation_input_tokens)
+    cost = cost_of(
         model,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_write_tokens=cache_write,
+        cache_read_tokens=cache_read,
+    )
+    logger.info(
+        "[llm-usage] %s answered on %s (rung %s of %s) at %s effort in %s ms, US$ %s: "
+        "in=%s cache_read=%s cache_write=%s out=%s%s",
+        role,
+        model,
+        rung_number,
+        len(rungs),
+        effort,
+        latency_ms,
+        cost,
         usage.input_tokens,
-        usage.cache_read_input_tokens,
-        usage.cache_creation_input_tokens,
+        cache_read,
+        cache_write,
         usage.output_tokens,
+        f" — {fell_because}" if fell_because else "",
         extra={
+            "role": role,
             "rung": model,
+            "rung_number": rung_number,
+            "rung_fell_because": fell_because,
+            "effort": effort,
+            "latency_ms": latency_ms,
+            "cost_usd": cost,
             "input_tokens": usage.input_tokens,
-            "cache_read_tokens": usage.cache_read_input_tokens,
-            "cache_write_tokens": usage.cache_creation_input_tokens,
+            "cache_read_tokens": cache_read,
+            "cache_write_tokens": cache_write,
             "output_tokens": usage.output_tokens,
         },
     )
+    record(
+        cost_usd=cost,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
+        latency_ms=latency_ms,
+        rung_number=rung_number,
+        rung_fell_because=fell_because,
+    )
+
+
+def _counted(tokens: int | None) -> int:
+    """A cache counter the provider left unset, read as the zero it means.
+
+    A response carries `None` there rather than `0` when nothing was cached at all, which is
+    precisely the reading this record exists to make loud — so it is normalised here instead
+    of travelling as an absence that a grep for a flat-zero cache would never match.
+    """
+    return tokens or 0
+
+
+def _fell_because(skipped: list[str]) -> str:
+    """Why the answer came from below the top of the ladder, or nothing when it did not."""
+    if not skipped:
+        return ""
+    return f"the key cannot use {', '.join(skipped)}"
 
 
 def _report_unfinished(response: Message, max_output_tokens: int) -> None:
