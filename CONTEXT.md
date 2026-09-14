@@ -112,6 +112,10 @@ Where a stretch sits: the take it belongs to, and its start and end in milliseco
 that one file.
 _Avoid_: range, offset, position, Endereço
 
+**Frase number** (`frase`):
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside `idx`, which is the stretch id under Marcia's name. A cut or a fresh telling after the approval changes nothing in that version.
+_Avoid_: ordinal (per sibling group, never per passage), position, index, n (her listener number), Número da frase
+
 **Divided stretch** (`parent_id`, `ordinal`):
 A stretch cut out of another one, numbered among its own siblings rather than among the
 session's stretches.
@@ -238,8 +242,14 @@ The file a release hands to Refine: the rehearsal, the telling-back with its fin
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
-A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: consent, coverage, audio, a telling-back and its reading are material, not a dispute.
+A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: comprehension, coverage, audio, a telling-back, its reading and an untold stretch are material, not a dispute.
 _Avoid_: override, bypass, forced approval, Aprovação forçada
+
+### Process lines
+
+**Process line**:
+One of Marcia's fixed lines for a step of the telling-back (P: start, tell, unheard, approved) or of the external check (X: open, retell, whole, frases, thanks), copied verbatim from her file, read by position in the session language and never rotated. It is not a fail-safe: a fail-safe answers a failure and rotates, a process line marks a step and is always the same one. No model sits on its path.
+_Avoid_: fail-safe (A to I), prompt, canned line, Linha de processo
 
 ### Test seams
 
