@@ -77,6 +77,23 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     ]
 
 
+def _conversation_as_evidence(conversation: list[Turn]) -> str:
+    """The whole session, quoted, for the Validator to check a recollection against.
+
+    The Guide hears every turn (no window), so it may say what the team told it three
+    scenes ago. The Validator's evidence rule refuses any such sentence it cannot find in a
+    record, and with the slot reading "not this turn" nothing could be found: a true
+    recollection of the team's own words died as an "epistemic" violation and the team heard
+    the pause line for asking what it had said. This is quoted evidence, never a window — it
+    is all of it, oldest first, and the doctrine forbids the window, not the record.
+    """
+    if not conversation:
+        return NOT_THIS_TURN
+    return "\n".join(
+        f"{'Team' if turn['role'] == 'user' else 'Guide'}: {turn['text']}" for turn in conversation
+    )
+
+
 def _refused(condition: str, raw: str, session_id: str, attempt: int) -> None:
     """Every refused Validator reply leaves itself behind, whole, with what refused it.
 
@@ -266,7 +283,7 @@ async def _voiced_after_validation(
                 cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
                 SESSION_LANGUAGE=session_language,
                 MEANING_MAP=standard_of_truth,
-                RECENT_CONVERSATION=NOT_THIS_TURN,
+                RECENT_CONVERSATION=_conversation_as_evidence(conversation),
                 TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back, language_code),
                 DRAFTED_RESPONSE=draft,
                 TELLING_BACK=telling_back or NOT_THIS_TURN,
