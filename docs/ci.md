@@ -12,7 +12,7 @@ named in the table.
 | Lint, boot job | The application imports in a clean interpreter. A suite's collection order can hide an import cycle; this cannot. |
 | Lint, mypy job | Type checking over the application package. |
 | Test | The pytest suite on SQLite, with `ffmpeg` installed first so recordings are measured the way the deployed image measures them. |
-| Migrations | The graph stands at one head with no duplicate revision ids, and the newest migrations walk down and back up on a clean Postgres. |
+| Migrations | The graph stands at one head with no duplicate revision ids, the models match the migrated schema (`alembic check`), and the newest migrations walk down and back up on a clean Postgres. |
 | Deploy | A push to `main` builds the image, upgrades the production database and deploys to Cloud Run. |
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
 | Claude mention | Answers an `@claude` mention on a pull request or issue. |

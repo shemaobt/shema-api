@@ -32,11 +32,11 @@ from google_crc32c import Checksum
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room import back_translation as bt_api
 from app.core.config import Settings
 from app.core.exceptions import ERROR_CODE_UPSTREAM
 from app.db.models.internalization_room import IRPromptKey, IRSegment, IRTakeKind
 from app.services.internalization_room import sessions as room
+from app.services.internalization_room import verdict_round
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
 from app.services.internalization_room.voice_handles import clip_url
@@ -438,13 +438,13 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     the analyst again rather than serving a verdict nobody reached.
     """
     verdicts: list[str] = []
-    voiced = bt_api.room.run_verdict_turn
+    voiced = verdict_round.run_verdict_turn
 
     async def counting(*args: Any, **kwargs: Any) -> Any:
         verdicts.append(kwargs.get("closing", ""))
         return await voiced(*args, **kwargs)
 
-    monkeypatch.setattr(bt_api.room, "run_verdict_turn", counting)
+    monkeypatch.setattr(verdict_round, "run_verdict_turn", counting)
     analyst.reply = json.dumps({"evidence_sufficient": True, "findings": "nada"})
     session_id = await _four_stretches_told(client)
 

@@ -7,9 +7,12 @@ from enum import StrEnum
 #: because `app/models` needs it too — see `app/core/room_enums.py`.
 from app.core import room_enums
 from app.core.room_enums import CoverageStatus
+from app.db.models.internalization_room import IRSession
+from app.models.internalization_room import CoverageView
 from app.services.internalization_room.canon.elements import (
     Element,
     ElementKind,
+    absence_index,
     element_keys,
     elements_for,
 )
@@ -149,6 +152,16 @@ def counts(state: dict[str, str]) -> dict[str, int]:
     )
     surfaced = sum(1 for value in state.values() if value in encountered)
     return {"engaged": engaged, "surfaced": surfaced, "total": len(state)}
+
+
+def coverage_view(session: IRSession) -> CoverageView:
+    numbers = counts(session.coverage_state or {})
+    return CoverageView(
+        engaged=numbers["engaged"],
+        surfaced=numbers["surfaced"],
+        total=numbers["total"],
+        absence_index=-1 if is_panorama(session.pericope) else absence_index(session.pericope),
+    )
 
 
 def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:

@@ -31,6 +31,7 @@ from app.core.database import Base
 from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.services import internalization_room as room
 from app.services.platform.storage import StoredObject
+from tests.alembic_harness import columns_of, run_alembic, scalar
 from tests.test_ir_a_take_is_numbered_by_its_stretch import (
     DEVICE,
     KEY,
@@ -41,7 +42,6 @@ from tests.test_ir_a_take_is_numbered_by_its_stretch import (
     _ready_for_release,
     _record,
 )
-from tests.test_ir_project_id_migration import _columns, _run_alembic, _scalar
 
 REVISION = "20260910_take01"
 PREVIOUS_REVISION = "20260908_arr02"
@@ -274,7 +274,7 @@ async def renamed_database(tmp_path) -> dict[str, str]:
     database_url = f"sqlite+aiosqlite:///{tmp_path / 'ir_takes_ordinal.db'}"
     take_id = await _built_and_seeded(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", REVISION)
+    stamped = run_alembic(database_url, "stamp", REVISION)
     assert stamped.returncode == 0, stamped.stderr
 
     return {"url": database_url, "take_id": take_id}
@@ -286,26 +286,26 @@ async def test_the_migration_renames_the_column_both_ways_without_losing_the_num
     url = renamed_database["url"]
     take_id = renamed_database["take_id"]
 
-    at_revision = await _columns(url, "ir_takes")
+    at_revision = await columns_of(url, "ir_takes")
     assert "ordinal" in at_revision
     assert "chunk_index" not in at_revision
 
-    down = _run_alembic(url, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(url, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
 
-    below = await _columns(url, "ir_takes")
+    below = await columns_of(url, "ir_takes")
     assert "chunk_index" in below
     assert "ordinal" not in below
     assert (
-        await _scalar(url, "SELECT chunk_index FROM ir_takes WHERE id = :id", {"id": take_id}) == 4
+        await scalar(url, "SELECT chunk_index FROM ir_takes WHERE id = :id", {"id": take_id}) == 4
     ), "o rename perdeu o número na descida"
 
-    up = _run_alembic(url, "upgrade", REVISION)
+    up = run_alembic(url, "upgrade", REVISION)
     assert up.returncode == 0, up.stderr
 
-    back = await _columns(url, "ir_takes")
+    back = await columns_of(url, "ir_takes")
     assert "ordinal" in back
     assert "chunk_index" not in back
-    assert (
-        await _scalar(url, "SELECT ordinal FROM ir_takes WHERE id = :id", {"id": take_id}) == 4
-    ), "o rename perdeu o número na volta"
+    assert await scalar(url, "SELECT ordinal FROM ir_takes WHERE id = :id", {"id": take_id}) == 4, (
+        "o rename perdeu o número na volta"
+    )

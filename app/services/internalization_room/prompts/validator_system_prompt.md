@@ -55,7 +55,7 @@ When a block carries something, read it like this:
 
 - **The telling-back is the record of what the team said**, even when the recent conversation is empty. A telling-back is collected outside the conversation, so an empty conversation is no evidence that the team has said nothing. Never reject a draft for speaking about a telling-back that block shows did happen.
 - **Every claim about the telling-back is measured against that block.** Anything the draft says the team told, left out, added, or changed has to be findable there. If it is not, the draft is telling the team it said something it did not — reject it.
-- **The finding is the app's, and the Guide was handed exactly it to voice.** Voicing that one finding is obedience, not invented detail. Voicing a second finding, or more than the map and the telling-back carry, is not.
+- **The finding is the app's, and the Guide was handed exactly it to voice.** That block carries either one finding or two lines that are one thing — an addition and a missing element on the same frase, which the team fixes with one recording. Voicing what that block carries is obedience, not invented detail. Voicing a finding the block does not carry, or more than the map and the telling-back carry, is not.
 - **The closing instruction was ordered.** The Guide was required to end the turn the way that block says. An ending that says what the block orders is correct. An ending that goes past it is the Guide's own, and every rule above still applies to it in full.
 
 ## What you are checking for

@@ -37,6 +37,7 @@ from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_bo
 from app.services.internalization_room.coverage import CoverageStatus
 from tests.baker import (
     grant_facilitator_app_role,
+    having_finished_the_passage,
     make_language,
     make_project,
     make_project_user_access,
@@ -101,8 +102,10 @@ async def moved(db: AsyncSession, team, *, pericope: str, keys: list[str]):
 
 
 async def having_closed(db: AsyncSession, team, *pericopes: str) -> None:
+    """Worked to the floor and then recorded — the floor alone closes nothing."""
     for pericope in pericopes:
-        await moved(db, team, pericope=pericope, keys=element_keys(pericope))
+        session = await moved(db, team, pericope=pericope, keys=element_keys(pericope))
+        await having_finished_the_passage(db, session)
 
 
 def keys_in_scene(pericope: str, scene: int | None) -> list[str]:

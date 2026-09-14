@@ -69,7 +69,7 @@ def recording(monkeypatch: pytest.MonkeyPatch) -> _Recording:
 async def test_the_map_the_teams_words_and_the_draft_last_and_nothing_else(
     recording: _Recording,
 ) -> None:
-    """And no window: nine exchanges of team speech used to ride in ahead of the utterance."""
+    """No window, but the whole record: a recollection has to be checkable against it."""
     await run_turn(
         transcript="e a fome, por que ela veio?",
         coverage_state=initial_state(P),
@@ -91,10 +91,12 @@ async def test_the_map_the_teams_words_and_the_draft_last_and_nothing_else(
     assert judged.index("e a fome, por que ela veio?") < judged.index(DRAFT), (
         "o rascunho é a última coisa que o Validador lê"
     )
-    assert EARLIER_TEAM not in judged, (
-        f"a janela de conversa continuava chegando ao Validador: {judged[-1500:]}"
+    assert judged.index(EARLIER_TEAM) < judged.index("e a fome, por que ela veio?"), (
+        "a conversa inteira chega como evidência citada, antes da fala de agora"
     )
-    assert EARLIER_GUIDE not in judged
+    assert EARLIER_GUIDE in judged, (
+        "o que o Guia disse antes também é evidência para conferir uma lembrança"
+    )
 
 
 async def test_no_app_owned_state_block_is_appended_to_what_it_judges(
