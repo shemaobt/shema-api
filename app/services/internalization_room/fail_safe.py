@@ -80,12 +80,12 @@ def localized(kind: str, language_code: str) -> list[str]:
     return []
 
 
-def first(kind: str, language_code: str = FLOOR) -> str:
+def first(kind: FailSafe, language_code: str = FLOOR) -> str:
     lines = utterances(kind, language_code)
     return lines[0] if lines else ""
 
 
-def choose(kind: str, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str, str]:
+def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str, str]:
     """One line for this situation, and the name the app knows it by.
 
     Rotating with the turn is what the authored file asks for — *"vary them, don't repeat
@@ -96,6 +96,10 @@ def choose(kind: str, language_code: str = FLOOR, *, turn: int = 0) -> tuple[str
     The name is what the app plays: these lines are shipped as audio inside the app, so a
     failure costs no synthesis and needs no network — which matters, because the network is
     often what failed.
+
+    It takes a ``FailSafe`` and not the plain string the lookup underneath accepts, so that
+    a process family cannot be handed to the one reader that rotates: ``choose("X", turn=7)``
+    would answer X-whole where the step means the retelling, and the type is what refuses it.
     """
     lines = utterances(kind, language_code)
     if not lines:
