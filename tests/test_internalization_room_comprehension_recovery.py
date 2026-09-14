@@ -14,14 +14,6 @@ from app.services.internalization_room.comprehension.practice import (
     is_semantically_empty_answer,
     scenes_practiced_by_the_telling_the_guide_invited,
 )
-from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
-from app.services.internalization_room.rehearsal_readiness import (
-    RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-    rehearsal_consent_question,
-    rehearsal_readiness_cue,
-    resolve_rehearsal_consent,
-    should_offer_recording_consent,
-)
 
 INVITATION = {
     "pt": "Ensaiem esta cena juntos na língua de vocês; quando terminarem, digam pronto.",
@@ -142,132 +134,6 @@ def test_the_closing_word_is_heard_at_the_end_of_a_clause_too() -> None:
     assert not confirms_completed_mother_tongue_practice(INVITATION["es"], "ya no está listo")
 
 
-_CONSENT_PROBE = ActiveProbe(id="consent", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
-
-
-def test_consent_needs_the_exact_question_and_probe() -> None:
-    assert (
-        resolve_rehearsal_consent(
-            probe=_CONSENT_PROBE,
-            previous_guide_utterance=rehearsal_consent_question("pt"),
-            team_utterance="sim",
-            reliable_bridge_speech=True,
-        )
-        == "accepted"
-    )
-    assert (
-        resolve_rehearsal_consent(
-            probe=_CONSENT_PROBE,
-            previous_guide_utterance="Querem gravar em breve?",
-            team_utterance="sim",
-            reliable_bridge_speech=True,
-        )
-        == "unclear"
-    )
-    assert (
-        resolve_rehearsal_consent(
-            probe=None,
-            previous_guide_utterance=rehearsal_consent_question("pt"),
-            team_utterance="sim",
-            reliable_bridge_speech=True,
-        )
-        == "unclear"
-    )
-
-
-def test_declining_consent_is_recognized() -> None:
-    assert (
-        resolve_rehearsal_consent(
-            probe=_CONSENT_PROBE,
-            previous_guide_utterance=rehearsal_consent_question("pt"),
-            team_utterance="ainda não",
-            reliable_bridge_speech=True,
-        )
-        == "declined"
-    )
-
-
-def test_uncertain_speech_never_consents() -> None:
-    assert (
-        resolve_rehearsal_consent(
-            probe=_CONSENT_PROBE,
-            previous_guide_utterance=rehearsal_consent_question("pt"),
-            team_utterance="sim",
-            reliable_bridge_speech=False,
-        )
-        == "unclear"
-    )
-
-
-def test_a_paused_handoff_is_not_reoffered_before_the_cooldown_elapses() -> None:
-    assert not should_offer_recording_consent(
-        eligible=True,
-        paused=True,
-        paused_turns=0,
-        explicit_resume_requested=False,
-        prior_decision="unclear",
-        reliable_bridge_speech=True,
-    )
-    assert should_offer_recording_consent(
-        eligible=True,
-        paused=True,
-        paused_turns=0,
-        explicit_resume_requested=True,
-        prior_decision="unclear",
-        reliable_bridge_speech=True,
-    )
-
-
-def test_a_paused_handoff_is_reoffered_once_the_cooldown_elapses() -> None:
-    """The team answered the app's own yes/no question with one of the two words it
-    offered; the pause is a deferral, so the question comes back on its own."""
-    assert not should_offer_recording_consent(
-        eligible=True,
-        paused=True,
-        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS - 1,
-        explicit_resume_requested=False,
-        prior_decision="unclear",
-        reliable_bridge_speech=True,
-    )
-    assert should_offer_recording_consent(
-        eligible=True,
-        paused=True,
-        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-        explicit_resume_requested=False,
-        prior_decision="unclear",
-        reliable_bridge_speech=True,
-    )
-
-
-def test_an_elapsed_cooldown_never_outranks_the_other_gates() -> None:
-    """Waiting is not readiness: the passage still has to be finished, the answer still
-    has to be heard, and the turn that just declined still declines."""
-    assert not should_offer_recording_consent(
-        eligible=False,
-        paused=True,
-        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-        explicit_resume_requested=False,
-        prior_decision="unclear",
-        reliable_bridge_speech=True,
-    )
-    assert not should_offer_recording_consent(
-        eligible=True,
-        paused=True,
-        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-        explicit_resume_requested=False,
-        prior_decision="unclear",
-        reliable_bridge_speech=False,
-    )
-    assert not should_offer_recording_consent(
-        eligible=True,
-        paused=True,
-        paused_turns=RECORDING_HANDOFF_REOFFER_AFTER_TURNS,
-        explicit_resume_requested=False,
-        prior_decision="declined",
-        reliable_bridge_speech=True,
-    )
-
-
 _INVITATION = (
     "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
     "Rehearse this scene together in your own language; when you have finished, "
@@ -301,40 +167,17 @@ def test_the_room_hearing_itself_never_finishes_the_practice() -> None:
     )
 
 
-def test_the_rooms_own_consent_question_never_marks_a_scene_practiced() -> None:
-    """The recording-consent question reads exactly like an invitation to rehearse.
+def test_a_real_invitation_still_marks_the_scene_it_asked_about() -> None:
+    """What the reader was refusing alongside the invitations is gone, not loosened.
 
-    "…record the first rehearsal in your own language?" carries the practice stem and the
-    mother-tongue phrase in all three languages, so a team answering it with a whole
-    sentence looked like a team reporting a rehearsal — of whatever scene the pointer
-    happened to be on, which nobody had invited in that exchange.
-
-    Reading the probe is not enough: accepting the recording clears the planned probe, so
-    the readiness cue that follows is an app-owned invitation with no probe behind it at
-    all. What settles it is the line — the room's own recording speech never counts, while
-    the fixed practice prompt, which is a real invitation, still does."""
-    consent = ActiveProbe(id="c", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
-    assert (
-        scenes_practiced_by_the_telling_the_guide_invited(
-            consent,
-            rehearsal_consent_question("en"),
-            "Yes, let us go ahead and record it now",
-            True,
-            "S3",
-        )
-        == []
-    )
-    for language in ("en", "pt", "es"):
-        for line in (rehearsal_consent_question(language), rehearsal_readiness_cue(language)):
-            assert (
-                scenes_practiced_by_the_telling_the_guide_invited(
-                    None, line, "Yes, let us go ahead and record it now", True, "S3"
-                )
-                == []
-            )
-    assert scenes_practiced_by_the_telling_the_guide_invited(
-        None, _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True, "S1"
-    ) == ["S1"]
+    The room used to have recording speech of its own — a yes/no consent question and the
+    readiness cue after it — and both read exactly like an invitation to rehearse: they
+    carried the practice stem and the mother-tongue phrase in every language the room
+    spoke, so a team agreeing to record was read as a team reporting a rehearsal of
+    whatever scene the pointer happened to be on. The reader had to name those lines and
+    refuse them. ENG-777 took the lines away, and the refusal went with them; what is left
+    is the case they were guarding, which still has to work.
+    """
     assert scenes_practiced_by_the_telling_the_guide_invited(
         None,
         INVITATION["en"],

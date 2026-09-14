@@ -4,6 +4,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
+import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from alembic import context
 from app.core.config import get_settings
 from app.core.database import Base

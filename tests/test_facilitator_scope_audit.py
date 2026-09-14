@@ -73,6 +73,9 @@ from tests.baker import (
 IR = "/api/internalization-room"
 DESK = "/api/facilitator"
 AUDIO = {"files": {"file": ("resposta.m4a", b"resposta falada", "audio/mp4")}}
+#: The only body the force route accepts as a force. Without it the route answers
+#: `nothing_to_force` for every caller alike, which would tell this audit nothing about scope.
+FORCE = {"json": {"force": True}}
 
 
 def _dependency_calls(dependant) -> set:
@@ -258,6 +261,7 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
     # withdrawn, so sharing a session would make each case depend on the other's order.
     attend_id, _ = await _a_recorded_session_of(db, owner, f"a{tag}")
     unattend_id, _ = await _a_recorded_session_of(db, owner, f"u{tag}")
+    force_id, _ = await _a_recorded_session_of(db, owner, f"z{tag}")
     patch_device = await _a_device_of(db, owner, f"p{tag}")
     delete_device = await _a_device_of(db, owner, f"d{tag}")
     # One device per route, for the reason the two sessions above are separate: the mark and
@@ -402,6 +406,16 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             #: which is every one of them except scope.
             "owner_expects": 409,
         },
+        {
+            "method": "POST",
+            "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
+            "ids": (force_id, absent),
+            #: The owner is refused by the gate, for the reason the read above is: a force
+            #: sets aside two blockers and a session this far from finished stands on the
+            #: others. A stranger is still 404, which is the whole question here.
+            "owner_expects": 409,
+        },
     ]
 
 
@@ -423,6 +437,7 @@ def _shape(body, *ids: str):
 REFUSING_TEMPLATES = {
     ("POST", f"{DESK}/devices/claim"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
+    ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),
     ("POST", f"{DESK}/devices/{{device_id}}/attended"),

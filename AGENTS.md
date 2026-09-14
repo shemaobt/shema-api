@@ -8,14 +8,31 @@ the Facilitator Desk, the Sound Necklace, the Oral Collector and the Annotation 
 Package manager is `uv`, on Python 3.11: `uv python install 3.11`, then `uv sync --frozen --group dev`.
 
 ```sh
-JWT_SECRET_KEY=test-secret-for-pytest-only DATABASE_URL=sqlite+aiosqlite:///./test.db uv run pytest tests/ -v
+JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -v
 uv run mypy app/
 uv run ruff check . && uv run ruff format --check .
 DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python -c "import app.main"
 PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no duplicate ids
 ```
 
-The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon.
+The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon. The test database is a file per pytest run, in the system temporary directory and named by the process, so two runs in one checkout do not corrupt each other; `DATABASE_URL` is honoured when set, and the run then uses that file and leaves it behind.
+
+## Golden runs
+
+Marcia's golden scripts are played against a running server through the **Text seam**, which
+exists only where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and the seam
+answers 404. Two runners, one convention: reports land under `golden/reports/<date>/` and the
+key travels as `ACCESS_CODE`.
+
+```sh
+# the Guide's conversation
+ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/internalization-room/text-seam --script <her.json> --out golden/reports/<date>
+# the back-translation check, judged by her own checks; exit 1 on a failed check
+ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py --base-url <host>/api/internalization-room/text-seam/back-translation/ --script <her-bt.json> --out golden/reports/<date>
+```
+
+Each run costs real model calls, so neither is part of the suite. The back-translation run is
+the gate on any change to the two back-translation prompts.
 
 ## Rules
 
@@ -35,6 +52,7 @@ gcloud run services describe tripod-backend-staging --region us-central1 --forma
 
 ## Where the rest is
 
+- [`docs/doctrine/`](docs/doctrine/) — Marcia's [`DOCTRINE.md`](docs/doctrine/vendor/DOCTRINE.md), vendored at the pin in [`DOCTRINE_PIN`](docs/doctrine/DOCTRINE_PIN) and binding on every change here. Read it before touching a prompt, the turn loop or the model seam; a change to one of her artifacts needs a ruling in [`rulings/`](docs/doctrine/rulings/).
 - [`CONTEXT.md`](CONTEXT.md) — the glossary. Use its terms in code, tests and commits.
 - [`docs/adr/`](docs/adr/) — one hard-to-reverse decision each. Conventions and runbooks: [local development](docs/local-development.md), [database](docs/database.md), [API conventions](docs/api-conventions.md), [code style](docs/code-style.md), [CI](docs/ci.md), [buckets](docs/buckets.md), [the divine name, spoken](docs/divine-name-speakable-form.md), and the pinned [Sound Necklace snapshot](docs/sound_necklace_interview_package.md).
 - [`RUNNING-LOCALLY.md`](RUNNING-LOCALLY.md) — the composed API on its own port. [`http/`](http/) — request examples.

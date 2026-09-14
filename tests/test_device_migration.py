@@ -16,8 +16,6 @@ arrive with the internalization-room work and are not on ``main``. The general f
 asserted instead.
 """
 
-import subprocess
-import sys
 import uuid
 from pathlib import Path
 
@@ -27,6 +25,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
+from tests.alembic_harness import run_alembic
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PREVIOUS_REVISION = "20260812_0001"
@@ -88,23 +87,6 @@ ATTENDED_REVISION = "20260908_arr01"
 #: The migration these tests are actually about: the one that creates the table.
 DEVICE_TABLE_REVISION = "20260817_0001"
 NEW_TABLE = "devices"
-
-
-def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
-    import os
-
-    return subprocess.run(
-        [sys.executable, "-m", "alembic", *argv],
-        cwd=REPO_ROOT,
-        env={
-            **os.environ,
-            "DATABASE_URL": database_url,
-            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
-            "INNGEST_DEV": "1",
-        },
-        capture_output=True,
-        text=True,
-    )
 
 
 async def _build_schema_without_the_new_table(database_url: str) -> None:
@@ -194,10 +176,10 @@ def _walk_the_device_column_migrations(database_url: str) -> None:
     further, so the room's own migrations are recorded as done without being run — they
     write to tables this file never builds.
     """
-    assert _run_alembic(database_url, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    assert run_alembic(database_url, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
     for predecessor, device_revision in DEVICE_COLUMN_MIGRATIONS:
-        assert _run_alembic(database_url, "stamp", predecessor).returncode == 0
-        columns_added = _run_alembic(database_url, "upgrade", device_revision)
+        assert run_alembic(database_url, "stamp", predecessor).returncode == 0
+        columns_added = run_alembic(database_url, "upgrade", device_revision)
         assert columns_added.returncode == 0, columns_added.stderr
 
 
@@ -207,7 +189,7 @@ async def stamped_database(tmp_path) -> str:
     await _build_schema_without_the_new_table(database_url)
     await _seed_rows(database_url)
 
-    stamped = _run_alembic(database_url, "stamp", PREVIOUS_REVISION)
+    stamped = run_alembic(database_url, "stamp", PREVIOUS_REVISION)
     assert stamped.returncode == 0, stamped.stderr
 
     return database_url
@@ -216,15 +198,15 @@ async def stamped_database(tmp_path) -> str:
 async def test_migration_upgrade_adds_the_table_and_downgrade_removes_it(stamped_database):
     assert NEW_TABLE not in await _table_names(stamped_database)
 
-    up = _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
+    up = run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
     assert up.returncode == 0, up.stderr
     assert NEW_TABLE in await _table_names(stamped_database)
 
-    down = _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION)
+    down = run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
     assert NEW_TABLE not in await _table_names(stamped_database)
 
-    again = _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
+    again = run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
     assert again.returncode == 0, again.stderr
     assert NEW_TABLE in await _table_names(stamped_database)
 
@@ -234,13 +216,13 @@ async def test_migration_round_trip_leaves_everything_outside_the_new_table_unch
 ):
     before = await _schema_outside_the_new_table(stamped_database)
 
-    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    assert run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
     after_upgrade = await _schema_outside_the_new_table(stamped_database)
 
-    assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
     after_downgrade = await _schema_outside_the_new_table(stamped_database)
 
-    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    assert run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
     after_reupgrade = await _schema_outside_the_new_table(stamped_database)
 
     assert after_upgrade == before
@@ -252,9 +234,9 @@ async def test_migration_round_trip_leaves_existing_rows_intact(stamped_database
     before = await _project_ids(stamped_database)
     assert before
 
-    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
-    assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
-    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    assert run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    assert run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
 
     assert await _project_ids(stamped_database) == before
 
@@ -319,7 +301,7 @@ async def test_the_halt_column_arrives_with_its_migration_and_leaves_with_its_do
     migrated_columns, _indexes = await _migrated_shape(stamped_database)
     assert NEEDS_PERSON_COLUMN in {name for name, _nullable in migrated_columns}
 
-    down = _run_alembic(stamped_database, "downgrade", f"{NEEDS_PERSON_REVISION}-1")
+    down = run_alembic(stamped_database, "downgrade", f"{NEEDS_PERSON_REVISION}-1")
     assert down.returncode == 0, down.stderr
 
     after_downgrade, _again = await _migrated_shape(stamped_database)
@@ -346,7 +328,7 @@ async def test_the_visit_columns_arrive_with_their_migration_and_leave_with_its_
     migrated_columns, _indexes = await _migrated_shape(stamped_database)
     assert {name for name, _nullable in migrated_columns} >= ATTENDED_COLUMNS
 
-    down = _run_alembic(stamped_database, "downgrade", f"{ATTENDED_REVISION}-1")
+    down = run_alembic(stamped_database, "downgrade", f"{ATTENDED_REVISION}-1")
     assert down.returncode == 0, down.stderr
 
     after_downgrade, _again = await _migrated_shape(stamped_database)

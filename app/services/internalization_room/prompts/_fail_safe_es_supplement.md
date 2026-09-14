@@ -65,10 +65,10 @@ says *decirme en español*. It is the language the room is speaking, never a fix
 
 ### H-es. (Español)
 
-- "Todavía falta parte del pasaje por contarme. Terminemos eso primero, y después reviso todo junto."
-- "Todavía hay un pedazo que no me contaron. Cuéntenmelo, y luego miro el pasaje entero."
-- "Todavía falta un poco por contar. Cuando terminen, lo reviso todo de una vez."
+- "Todavía falta parte del pasaje por traducirme. Terminemos eso primero, y después reviso todo junto."
+- "Todavía hay un pedazo que no me tradujeron. Tradúzcanmelo, y luego miro el pasaje entero."
+- "Todavía falta un poco por traducir. Cuando terminen, lo reviso todo de una vez."
 
 ### I-es. (Español)
 
-- "Necesito que me cuenten esta parte entera de nuevo — lo que ya me habían contado, y también lo que faltó."
+- "Necesito que me traduzcan esta parte entera de nuevo — lo que ya me habían traducido, y también lo que faltó."

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
 from app.services.oral_collector.gcs_utils import generate_signed_download_url
 from app.services.platform.storage import GcsPlatformStore, StoredObject
 from app.services.project.facilitates_project import facilitates_project
@@ -260,3 +260,71 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
         )
     )
     return list(result.scalars().all())
+
+
+#: Where a declared part's key lives, and the device a text seam speaks for. A part declared
+#: through the seam has no bytes and no bucket object: it is the address a stretch is a slice
+#: of, and nothing else, so the key carries the name her script gave it.
+TEXT_SEAM_PREFIX = "text-seam"
+TEXT_SEAM_DEVICE = "text-seam"
+TEXT_SEAM_CONTENT_TYPE = "text/plain"
+
+
+def _declared_key(session_id: str, key: str) -> str:
+    return f"{TEXT_SEAM_PREFIX}/{session_id}/{key}"
+
+
+async def declare_rehearsal_parts(
+    db: AsyncSession, session: IRSession, keys: list[str]
+) -> list[IRTake]:
+    """Her draft clips as real rehearsal takes, declared rather than uploaded.
+
+    A **Part** the room can address is a row, not a file: `current_stretch_at`,
+    `report_playback` and `playback_confirms_rehearsal` all read the row and the report, and
+    none of them opens the audio. So the seam writes the row and stores nothing — the bucket
+    is never touched, and the size and checksums say what they are, which is that there are no
+    bytes to describe.
+
+    `store_take` is deliberately not reused: it exists to put bytes somewhere and read them
+    back, and it refuses a take with no audio. What they share is the row, and the row is
+    written here.
+
+    Only the keys: a declared part's length is not a column of a take, it is what the listening
+    report says about it, and that is where her `durationMs` lands.
+    """
+    declared = [
+        IRTake(
+            id=str(uuid.uuid4()),
+            project_id=session.project_id,
+            session_id=session.id,
+            device_id=TEXT_SEAM_DEVICE,
+            pericope=session.pericope,
+            kind=IRTakeKind.ENSAIO,
+            scope=session.pericope,
+            storage_key=_declared_key(session.id, key),
+            size_bytes=0,
+            sha256="",
+            crc32c="",
+            content_type=TEXT_SEAM_CONTENT_TYPE,
+            ordinal=position,
+        )
+        for position, key in enumerate(keys)
+    ]
+    db.add_all(declared)
+    await db.commit()
+    for take in declared:
+        await db.refresh(take)
+    return declared
+
+
+async def declared_parts_by_key(db: AsyncSession, session_id: str) -> dict[str, IRTake]:
+    """The parts a seam session declared, by the key her script names them with."""
+    prefix = _declared_key(session_id, "")
+    result = await db.execute(
+        select(IRTake).where(
+            IRTake.session_id == session_id,
+            IRTake.kind == IRTakeKind.ENSAIO,
+            IRTake.storage_key.startswith(prefix),
+        )
+    )
+    return {take.storage_key.removeprefix(prefix): take for take in result.scalars()}
