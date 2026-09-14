@@ -32,6 +32,7 @@ from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.services import internalization_room as room
 from app.services.platform.storage import StoredObject
 from tests.alembic_harness import columns_of, run_alembic, scalar
+from tests.hard_stretch_harness import ready_for_release as _ready_for_release
 from tests.test_ir_a_take_is_numbered_by_its_stretch import (
     DEVICE,
     KEY,
@@ -39,7 +40,6 @@ from tests.test_ir_a_take_is_numbered_by_its_stretch import (
     PREFIX,
     _a_failed_capture_then_two_good_ones,
     _open_session,
-    _ready_for_release,
     _record,
 )
 

@@ -83,7 +83,7 @@ async def declare_back_translation_session(
     Her runner marks each clip fully listened to before round one, because the rehearsal a
     team never heard cannot be checked and the passage would never close. The report is the
     real one: one entry per part, each in that part's own milliseconds, which is what
-    `playback_confirms_rehearsal` reads (ADR 0017).
+    `unheard_parts` reads (ADR 0017).
     """
     keys = [clip.key for clip in payload.clips]
     if len(set(keys)) != len(keys):
@@ -99,7 +99,7 @@ async def declare_back_translation_session(
         played_by_take=[
             PlayedTake(
                 take_id=take.id,
-                played_ranges=[[0, clip.durationMs]],
+                played_ranges=[(0, clip.durationMs)],
                 clip_duration_ms=clip.durationMs,
             )
             for take, clip in zip(parts, payload.clips, strict=True)
@@ -219,7 +219,6 @@ async def _capture(
                 f"frase {number} supersedes a telling, and no stretch stands at "
                 f"{frase.clipKey} {frase.coversFrom}-{frase.coversTo}s"
             )
-    state.scope = state.scope or session.pericope
     await room.capture_and_note_a_hard_stretch(
         db,
         session,

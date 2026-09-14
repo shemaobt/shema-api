@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRTakeKind
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -179,10 +180,15 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _press_terminei(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _press_terminei(
+    client: httpx.AsyncClient, db: AsyncSession, session_id: str
+) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _a_passage_told_back(client: httpx.AsyncClient) -> tuple[str, str]:
@@ -206,7 +212,7 @@ async def _what_the_room_said(db: AsyncSession, session_id: str) -> list[str]:
 
 @pytest.mark.asyncio
 async def test_a_second_terminei_with_nothing_new_consults_no_model(
-    client: httpx.AsyncClient, consulted: Consulted
+    client: httpx.AsyncClient, consulted: Consulted, db_session: AsyncSession
 ) -> None:
     """Case 1. The same question, already answered, is not paid for twice.
 
@@ -215,12 +221,12 @@ async def test_a_second_terminei_with_nothing_new_consults_no_model(
     """
     session_id, _ = await _a_passage_told_back(client)
 
-    first = await _press_terminei(client, session_id)
+    first = await _press_terminei(client, db_session, session_id)
     assert first.status_code == 200, first.text
     after_first = consulted.total
     assert after_first > 0, "the first press must actually reach the models"
 
-    again = await _press_terminei(client, session_id)
+    again = await _press_terminei(client, db_session, session_id)
     assert again.status_code == 200, again.text
 
     assert consulted.total == after_first
@@ -236,11 +242,11 @@ async def test_a_second_terminei_does_not_write_a_second_exchange(
     """
     session_id, _ = await _a_passage_told_back(client)
 
-    await _press_terminei(client, session_id)
+    await _press_terminei(client, db_session, session_id)
     after_first = await _what_the_room_said(db_session, session_id)
     assert len(after_first) == 1, after_first
 
-    await _press_terminei(client, session_id)
+    await _press_terminei(client, db_session, session_id)
 
     assert await _what_the_room_said(db_session, session_id) == after_first
 
@@ -256,14 +262,14 @@ async def test_a_terminei_after_something_new_was_told_back_does_run(
     """
     session_id, take_id = await _a_passage_told_back(client)
 
-    await _press_terminei(client, session_id)
+    await _press_terminei(client, db_session, session_id)
     after_first = consulted.total
     said_after_first = await _what_the_room_said(db_session, session_id)
 
     client.said.append("Rute disse que ia junto.")  # type: ignore[attr-defined]
     await _tell_back(client, session_id, take_id=take_id, starts_ms=9000, ends_ms=21000)
 
-    fresh = await _press_terminei(client, session_id)
+    fresh = await _press_terminei(client, db_session, session_id)
     assert fresh.status_code == 200, fresh.text
 
     assert consulted.total > after_first
@@ -277,7 +283,7 @@ async def test_the_first_terminei_is_untouched(
     """Case 4. Control. Nothing about reaching a verdict the first time changes."""
     session_id, _ = await _a_passage_told_back(client)
 
-    verdict = await _press_terminei(client, session_id)
+    verdict = await _press_terminei(client, db_session, session_id)
 
     assert verdict.status_code == 200, verdict.text
     body = verdict.json()

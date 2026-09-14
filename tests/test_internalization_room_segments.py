@@ -30,6 +30,7 @@ from app.services.internalization_room.back_translation import analyse_telling_b
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.takes import store_take
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -527,7 +528,7 @@ async def test_a_stretch_knows_which_stretch_it_was_divided_out_of(
 
 
 async def test_the_back_translation_the_room_already_does_goes_on_working(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The regression case of the slice, and it is large on purpose.
 
@@ -580,8 +581,8 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
         _voice,
     )
 
-    verdict = await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
+    verdict = await press_terminei(
+        client, session_id, report=await heard_every_part(db_session, session_id)
     )
 
     assert verdict.status_code == 200, verdict.text

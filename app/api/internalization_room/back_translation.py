@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, room_caller_dep
@@ -13,7 +13,7 @@ from app.models.internalization_room import (
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
@@ -123,7 +123,6 @@ async def add_chunk(
             pass_number=pass_number,
             needs_person=warned,
         )
-    state.scope = state.scope or session.pericope
     warned = await room.capture_and_note_a_hard_stretch(
         db,
         session,
@@ -152,7 +151,6 @@ async def add_chunk(
 )
 async def finish(
     session_id: str,
-    response: Response,
     payload: FinishBackTranslationRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
@@ -189,6 +187,15 @@ async def finish(
     model — and this is not that: the gate fires with the server answering normally, before
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
+
+    Told back is not the same as heard, and the second errand is asked after the first. While
+    any current part of the rehearsal is unheard, the analyst is not asked either: what it
+    would answer is a list of what is missing from the passage, and over a part nobody played
+    that sentence is about audio the team never listened to — the room would voice it as if
+    the work were done, on a reading of a passage they were still walking through. So the
+    refusal names the parts, says her P-unheard line, and spends nothing: no reading, no turn
+    on the waiting ladder, which belongs to the untold errand, and no line in the conversation.
+    Nothing is saved either, because nothing changed: the report above is already stored.
 
     Pressed again over the same stretches, the room serves the verdict it already reached and
     consults nothing. The press is the same question, and answering it afresh cost a validator
@@ -235,6 +242,20 @@ async def finish(
             fixed_line="",
             checked=False,
             untold_segment_id=untold.id,
+            findings_remaining=0,
+        )
+
+    rehearsed = sorted({segment.take_id for segment in final})
+    unheard = room.unheard_parts(state, rehearsed)
+    if unheard:
+        line, _ = process_line("P", "unheard", session.language)
+        spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]
+        return BackTranslationVerdictResponse(
+            session_id=session.id,
+            audio_url=clip_url(spoken.key),
+            fixed_line="",
+            checked=False,
+            unheard_take_ids=unheard,
             findings_remaining=0,
         )
 

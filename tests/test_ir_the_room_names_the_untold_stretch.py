@@ -35,6 +35,7 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -198,10 +199,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The team listened; what is missing is the telling. Reporting it is what keeps these cases
+    about the untold stretch and not about the part nobody played.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _three_stretches_told(client: httpx.AsyncClient) -> str:
@@ -278,7 +282,7 @@ async def test_the_room_names_the_stretch_that_was_never_told_back(
     standing = await _standing(db_session, session_id)
     waiting = await _re_record_the_native(db_session, session_id, standing[1])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == waiting.id, (
         "a resposta tem de dizer qual trecho falta, e não apenas que falta algum"
@@ -300,7 +304,7 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     later = await _re_record_the_native(db_session, session_id, standing[2])
     earlier = await _re_record_the_native(db_session, session_id, standing[0])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == earlier.id, (
         "a equipe conta a passagem na sequência dela; mandá-la para um buraco no meio "
@@ -323,7 +327,7 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     standing = await _standing(db_session, session_id)
     await _re_record_the_native(db_session, session_id, standing[1])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] is not None
     assert body["checked"] is False, "um endereço não é uma passagem conferida"
@@ -341,12 +345,12 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
 
 @pytest.mark.asyncio
 async def test_a_telling_back_with_every_stretch_told_names_no_stretch(
-    client: httpx.AsyncClient, analyst: Analyst
+    client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
     """Case 4. The ordinary path is untouched: a verdict, and no address."""
     session_id = await _three_stretches_told(client)
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] is None
     assert body["checked"] is True
@@ -371,7 +375,7 @@ async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     await _explain(db_session, session_id, retired_with_no_telling)
     still_waiting = await _re_record_the_native(db_session, session_id, standing[2])
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == still_waiting.id
     assert body["untold_segment_id"] != retired_with_no_telling.id, (
@@ -397,7 +401,7 @@ async def test_a_stretch_divided_in_two_is_named_by_its_first_half(
     session = await get_session(db_session, session_id)
     head, tail = await service.divide_segment(db_session, session, standing[0], at_ms=4000)
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["untold_segment_id"] == head.id
     assert body["untold_segment_id"] != tail.id, (

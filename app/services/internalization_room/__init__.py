@@ -10,6 +10,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     segments_block,
     the_finding_that_leads,
+    unheard_parts,
     verify_correction,
     with_the_whole_stretch_asked_for,
 )
@@ -134,6 +135,7 @@ __all__ = [
     "the_finding_that_leads",
     "told_back",
     "unattend",
+    "unheard_parts",
     "verify_correction",
     "with_the_whole_stretch_asked_for",
 ]

@@ -28,9 +28,9 @@ from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
 from app.db.models.internalization_room import IRTakeKind
 from app.services import internalization_room as room
-from app.services.internalization_room.back_translation import playback_confirms_rehearsal
+from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.takes import takes_of
-from tests.test_ir_a_correction_is_verified_on_its_own import CORRECTION_MARK
+from tests.room_harness import CORRECTION_MARK
 
 SEAM = "/api/internalization-room/text-seam/back-translation"
 RUNNER_KEY = "runner-de-teste"
@@ -343,7 +343,7 @@ async def test_a_declared_session_has_her_parts_heard(client, db_session) -> Non
     assert [take.kind for take in takes] == [IRTakeKind.ENSAIO] * 3
     state = room.back_translation_of(session)
     assert [entry.clip_duration_ms for entry in state.played_by_take] == [20000, 25000, 45000]
-    assert playback_confirms_rehearsal(state, [take.id for take in takes]) == [], (
+    assert unheard_parts(state, [take.id for take in takes]) == [], (
         "o roteiro dela marca cada clipe como ouvido por inteiro antes da primeira rodada; "
         "sem isso a passagem nunca fecha e a rodada dela mede outra coisa"
     )
