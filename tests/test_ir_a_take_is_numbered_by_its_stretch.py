@@ -27,7 +27,7 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import build_internalization_release
 from app.services.platform.storage import StoredObject
-from tests.test_internalization_room_release import _supported_comprehension
+from tests.release_harness import supported_comprehension
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -235,7 +235,7 @@ async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, 
     session.coverage_state = merge(
         initial_state(PASSAGE), pericope_num=PASSAGE, engaged=element_keys(PASSAGE)
     )
-    await room.save_comprehension(db, session, _supported_comprehension(PASSAGE))
+    await room.save_comprehension(db, session, supported_comprehension(PASSAGE))
 
     told = await room.final_segments(db, session.id)
     state = room.back_translation_of(session)

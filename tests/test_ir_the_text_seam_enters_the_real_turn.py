@@ -334,6 +334,10 @@ async def test_every_model_call_of_the_turn_comes_back_with_its_rung_and_tokens(
     answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
 
     body = answered.json()
+    for call in body["usage"]:
+        assert isinstance(call.pop("latency_ms"), int), (
+            "a linha de uso agora carrega a latência de cada chamada, e a costura a repassa"
+        )
     assert body["usage"] == [
         {
             "rung": "claude-fable-5-1",
@@ -341,7 +345,6 @@ async def test_every_model_call_of_the_turn_comes_back_with_its_rung_and_tokens(
             "output_tokens": len(GUIDE_LINE),
             "cache_read_tokens": 896000,
             "cache_write_tokens": 0,
-            "latency_ms": None,
         },
         {
             "rung": "claude-fable-5-1",
@@ -349,7 +352,6 @@ async def test_every_model_call_of_the_turn_comes_back_with_its_rung_and_tokens(
             "output_tokens": len('{"verdict": "pass", "issues": []}'),
             "cache_read_tokens": 896000,
             "cache_write_tokens": 0,
-            "latency_ms": None,
         },
     ], "o custo de um turno ficava só no log do servidor, longe do runner que compara com o dela"
     assert body["turnMs"] >= 0

@@ -100,10 +100,17 @@ def _segment_view(segment: IRSegment) -> dict[str, Any]:
     rebuilds the file they are all slices of: they are re-pointed at the rebuilt passage
     together, in one place, and a reader of this packet resolves every stretch against the
     recording named here and needs to do nothing else.
+
+    ``retro_take_id`` is the recording of the team explaining this stretch, read off the row
+    and never looked up. Which retro take is current is a question ``retro_takes`` cannot
+    answer — it keeps every one of them, including the one a retelling replaced, the one
+    nobody could make out and the one that explained a stretch the team then cut in two — and
+    the stretch is the only place the answer exists.
     """
     return {
         "segment_id": segment.id,
         "take_id": segment.take_id,
+        "retro_take_id": segment.bridge_take_id,
         "starts_ms": segment.starts_ms,
         "ends_ms": segment.ends_ms,
         "pass_number": segment.pass_number,
@@ -162,6 +169,14 @@ async def build_internalization_release(
     left the artifact in silence. Hearing it again and finding two ideas is the team working,
     not the team erring, so what they said the first time is kept rather than the division
     being refused.
+
+    ``frase`` is added to ``segments`` here and to neither of those two. It is a position in
+    one reading rather than anything on a row — the same enumeration ``segments_block`` gives
+    the analyst, over the same list — so only the list that *is* a reading has one to give. A
+    superseded or a divided stretch was not in the reading the team heard, and the number an
+    older reading gave it is recoverable from nothing; the key is absent there rather than
+    null, so a reader asking one of them for its number meets the failure instead of a silence
+    that looks like an answer.
 
     What a forced package says is unchanged: ``checked`` false and every open finding in
     ``findings``. Judging the quality of a telling-back is not this artifact's job — carrying
@@ -330,7 +345,10 @@ async def build_internalization_release(
         "back_translation": {
             "scope": telling_back.scope,
             "checked": telling_back.checked,
-            "segments": [_segment_view(segment) for segment in told],
+            "segments": [
+                {**_segment_view(segment), "frase": frase}
+                for frase, segment in enumerate(told, start=1)
+            ],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
             "played_by_take": [
                 entry.model_dump(mode="json") for entry in telling_back.played_by_take

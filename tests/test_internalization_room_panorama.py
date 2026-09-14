@@ -1,8 +1,11 @@
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
+from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -11,21 +14,89 @@ from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.book_material import build_book_material
 from app.services.internalization_room.coverage import counts
 from app.services.internalization_room.fail_safe import FailSafe, utterances
-from app.services.internalization_room.run_turn import run_panorama_turn
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.run_turn import TurnOutcome, run_panorama_turn
 from app.services.internalization_room.sessions import (
     book_of,
     create_session,
     is_panorama,
     resolve_pericope,
 )
+from app.services.platform.tts import SynthesizedSpeech
 
 PANORAMA = default_prompt(IRPromptKey.BOOK_PANORAMA)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 OV = "OV-Ruth"
+PREFIX = "/api/internalization-room"
+KEY = "sala-de-teste"
 
 
 def _settings() -> Settings:
     return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    """The turn endpoint as the tablet reaches it, in a panorama session.
+
+    `run_panorama_turn` is patched per test at `sessions_api.room`, the same seam
+    `test_internalization_room_api.py` uses — the endpoint reads it off the `room` module,
+    not by name, so a bare-function monkeypatch there is what the route actually calls.
+    """
+    from fastapi import FastAPI
+
+    from app.api.internalization_room import router
+    from app.api.internalization_room import sessions as sessions_api
+    from app.core.config import get_settings
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+
+    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
+
+    async def _speech(text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
+        entry = SynthesizedSpeech(
+            audio=b"audio",
+            mime_type="audio/mpeg",
+            etag="e",
+            cached=False,
+            key=f"tts/v/m/f/{abs(hash(text))}.mp3",
+        )
+        return entry, False
+
+    async def _no_prepared_opening(*_: Any, **__: Any) -> None:
+        return None
+
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api, "prepare_opening", _no_prepared_opening)
+
+    test_app = FastAPI()
+    test_app.include_router(router, prefix=PREFIX)
+    register_exception_handlers(test_app)
+
+    async def _get_db():
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+async def _open_panorama(client: httpx.AsyncClient) -> str:
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", "language": "pt"}
+    )
+    session_id: str = created.json()["session_id"]
+    await client.post(f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY})
+    return session_id
+
+
+async def _speak(client: httpx.AsyncClient, session_id: str, filename: str) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns",
+        headers={"X-Room-Key": KEY},
+        files={"file": (filename, b"audio", "audio/m4a")},
+    )
 
 
 class FakeAgent:
@@ -185,3 +256,207 @@ async def test_a_rejected_panorama_turn_is_never_voiced(patch_agent) -> None:
 
     assert outcome.used_fail_safe is True
     assert "Boaz" not in outcome.speech
+
+
+async def test_a_panorama_past_its_opening_takes_a_second_and_a_third_utterance(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A panorama does not stop after the opening — the team keeps talking, turn after turn."""
+    from app.api.internalization_room import sessions as sessions_api
+
+    heard = ["pergunta dois", "pergunta três"]
+    routed: list[str] = []
+
+    async def _panorama(*, transcript: str, **_: Any) -> TurnOutcome:
+        routed.append(transcript)
+        return TurnOutcome(speech=f"resposta {len(routed)}.", transcript=transcript)
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(text=heard.pop(0))
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+
+    session_id = await _open_panorama(client)
+    second = await _speak(client, session_id, "q2.m4a")
+    third = await _speak(client, session_id, "q3.m4a")
+
+    assert second.status_code == 200
+    assert third.status_code == 200
+    assert routed == ["", "pergunta dois", "pergunta três"], (
+        "as duas falas seguintes à abertura têm de chegar ao motor do panorama"
+    )
+    for turn in (second, third):
+        body = turn.json()
+        assert body["audio_url"].startswith(f"{PREFIX}/voice/")
+        assert body["transcript"]
+
+
+async def test_the_third_turn_still_carries_the_sessions_first_exchange(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every call gets the whole conversation — no window drops the session's opening.
+
+    A six-turn window would still hold this session's first exchange by the third turn, so
+    it is asserted directly rather than merely counted: the opening's own line has to be the
+    oldest entry the third call sees, word for word.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    heard = ["pergunta dois", "pergunta três"]
+    seen_messages: list[list[dict[str, Any]]] = []
+
+    async def _panorama(
+        *, transcript: str, messages: list[dict[str, Any]], **_: Any
+    ) -> TurnOutcome:
+        seen_messages.append(messages)
+        return TurnOutcome(speech=f"resposta {len(seen_messages)}.", transcript=transcript)
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(text=heard.pop(0))
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+
+    session_id = await _open_panorama(client)
+    await _speak(client, session_id, "q2.m4a")
+    await _speak(client, session_id, "q3.m4a")
+
+    opening_exchange = {"role": "guide", "text": "resposta 1."}
+    assert seen_messages[0] == [], "a abertura não tem conversa nenhuma atrás dela"
+    assert opening_exchange in seen_messages[2], (
+        "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
+    )
+    assert seen_messages[2] == [
+        opening_exchange,
+        {"role": "team", "text": "pergunta dois"},
+        {"role": "guide", "text": "resposta 2."},
+    ]
+
+
+async def test_a_slow_panorama_turn_is_not_cut_short(patch_agent) -> None:
+    """No prazo por chamada: a room speaking to a slow model still gets its answer.
+
+    Nothing in the panorama's call path wraps the Guide or the Validator in a deadline
+    of its own — the doctrine's own numbers (10-56 s, median 27 s per turn) only make
+    sense with none. Each of the two real calls is made to take real time here; a
+    regression that wrapped either in a short `asyncio.wait_for` would cut this turn
+    to a fail-safe well before both had run.
+    """
+    import asyncio
+    import time
+
+    class _SlowAgent(FakeAgent):
+        async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+            await asyncio.sleep(0.3)
+            return await super().__call__(
+                system_prompt=system_prompt, user_content=user_content, **kwargs
+            )
+
+    agent = patch_agent(_SlowAgent({"verdict": "pass", "issues": []}))
+
+    started = time.monotonic()
+    outcome = await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="me contem mais",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        settings=_settings(),
+    )
+    elapsed = time.monotonic() - started
+
+    assert elapsed >= 0.6, (
+        "as duas chamadas (Guia e Validador) têm de esperar de verdade, sem atalho"
+    )
+    assert outcome.used_fail_safe is False
+    assert outcome.speech == agent.draft
+
+
+@pytest.mark.parametrize("workflow", ["deploy.yml", "deploy-staging.yml"])
+def test_the_only_ceiling_on_a_panorama_turn_is_the_routes_own_300_seconds(workflow: str) -> None:
+    """The doctrine's 300 s is Cloud Run's, not this app's — pinned where it actually lives.
+
+    Nothing in the turn's own code imposes a deadline (the sibling test above pins that);
+    the route accepts up to what the deployed service is told to accept. That number is
+    `--timeout=300` on the `gcloud run deploy` command each workflow runs, and a change to
+    either is exactly what would move this ceiling without a line of `app/` ever noticing.
+    """
+    import yaml
+
+    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / workflow
+    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
+    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
+
+    assert "--timeout=300" in deploy_step["run"].split()
+
+
+async def test_a_panorama_never_reports_the_session_done_no_matter_how_many_turns(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A panorama never 'completes' — not at the opening, not five turns in."""
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _panorama(*, transcript: str, **_: Any) -> TurnOutcome:
+        return TurnOutcome(speech="resposta.", transcript=transcript)
+
+    async def _heard(_audio: bytes, **_: Any) -> HeardSpeech:
+        return HeardSpeech(text="mais uma pergunta")
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard)
+
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "OV", "language": "pt"}
+    )
+    session_id = created.json()["session_id"]
+    opening = await client.post(
+        f"{PREFIX}/sessions/{session_id}/turns", headers={"X-Room-Key": KEY}
+    )
+
+    turns = [opening] + [await _speak(client, session_id, f"q{n}.m4a") for n in range(2, 6)]
+
+    assert [turn.json()["done"] for turn in turns] == [False] * 5, (
+        "nenhum turno do panorama pode dizer que a sessão terminou, em turno nenhum"
+    )
+
+
+async def test_a_direct_question_about_who_ruth_marries_is_answered_from_a_prompt_that_defers(
+    patch_agent,
+) -> None:
+    """Not a test of what a model says — of the prompt and material that make deferring the
+    only honest answer.
+
+    The panorama's own hard rule ("Keep the book's secrets") and the book's withholdings
+    (Ruth's marriage pairing held to 4:10, the famine and the deaths left agentless) are
+    both rendered straight into the system prompt every turn is drafted against. Asserting a
+    recorded model reply here would test a fixture, not the room; this asserts the ingredients
+    a compliant answer has no way around.
+    """
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+
+    await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="com quem Rute vai se casar?",
+        messages=[],
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        settings=_settings(),
+    )
+
+    speaker_system = agent.systems[0]
+    assert "Keep the book's secrets" in speaker_system
+    assert "every withholding is still ahead of them" in speaker_system
+    assert "never with a spoiler" in speaker_system
+    assert "must not infer the pairing here" in speaker_system, (
+        "o par Rute-Malom, só revelado em 4:10, tem de seguir retido no material da fala"
+    )
+    assert "must not assign divine causation" in speaker_system, (
+        "a fome e as mortes não podem ser atribuídas a Deus no material que sustenta a fala"
+    )

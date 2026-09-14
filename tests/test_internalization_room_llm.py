@@ -208,3 +208,40 @@ async def test_a_rate_limit_keeps_the_rung_it_is_on(ladder_client) -> None:
         "um limite de taxa gastava a escada inteira e a sessão seguia num modelo mais fraco "
         "por um minuto de pressa; a escada é sobre o que a chave PODE usar, não sobre pressa"
     )
+
+
+async def test_the_conversation_travels_as_turns_with_the_new_utterance_last(fake_client):
+    """The Guide is handed the exchange it lived, not a block of text describing it.
+
+    Nine exchanges in, the Guide greeted the team and introduced itself: everything older
+    than six messages had never been in its prompt. The room now sends what was said as the
+    turns it was said in, and `user_content` is the last of them.
+    """
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(
+        system_prompt="s",
+        user_content="e a fome?",
+        conversation=[
+            {"role": "assistant", "text": "Sou o guia."},
+            {"role": "user", "text": "a fome levou eles embora"},
+            {"role": "assistant", "text": "Isso mesmo."},
+        ],
+        settings=_settings(),
+    )
+
+    assert holder["client"].messages.kwargs["messages"] == [
+        {"role": "assistant", "content": "Sou o guia."},
+        {"role": "user", "content": "a fome levou eles embora"},
+        {"role": "assistant", "content": "Isso mesmo."},
+        {"role": "user", "content": "e a fome?"},
+    ]
+
+
+async def test_a_caller_that_names_no_conversation_still_sends_one_user_message(fake_client):
+    """The analyst, the classifier and the two back-translation callers share this function."""
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert holder["client"].messages.kwargs["messages"] == [{"role": "user", "content": "u"}]
