@@ -29,7 +29,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.services.internalization_room.fail_safe import FailSafe, utterances
+from app.services.internalization_room.fail_safe import (
+    PROCESS_STEPS,
+    FailSafe,
+    process_line,
+    utterances,
+)
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
@@ -108,13 +113,23 @@ NEVER_SHIPPED = frozenset({FailSafe.UNTOLD_STRETCH, FailSafe.STRETCH_TO_CORRECT}
 
 
 def catalogue(language_code: str) -> dict[str, str]:
-    """Every pre-approved line the app ships, by the name it plays it under."""
+    """Every pre-approved line the app ships, by the name it plays it under.
+
+    Two sources, because the room speaks two kinds of fixed line and only one of them is a
+    failure. The process families are read off the step tables rather than listed again
+    here: a name written twice is a name that drifts, and it is the tables the accessor
+    answers from, so a step added there has to reach the bundle by the same act.
+    """
     lines: dict[str, str] = {}
     for kind in FailSafe:
         if kind in NEVER_SHIPPED:
             continue
         for index, text in enumerate(utterances(kind, language_code)):
             lines[f"{kind}{index}"] = text
+    for family, steps in PROCESS_STEPS.items():
+        for step in steps:
+            text, name = process_line(family, step, language_code)
+            lines[name] = text
     lines.update(STANDALONE.get(language_code, {}))
     return lines
 
