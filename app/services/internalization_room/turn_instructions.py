@@ -2,63 +2,39 @@ from __future__ import annotations
 
 import re
 
-from app.services.internalization_room.languages import FLOOR
-
 #: What an app-owned block says when the turn has none. The Validator is shared with every
 #: conversation turn, where there is no finding, no ordered closing and no telling-back, and
 #: an empty heading there reads as evidence withheld rather than as a block that does not
 #: apply. The prompt says so in words; this is the same sentence in the slot itself.
-NOT_THIS_TURN = "(não se aplica a este turno)"
+NOT_THIS_TURN = "(not applicable to this turn)"
 
-#: What the Validator is told when nobody spoke this turn, in the session's own language.
-#: Keyed by language code, in the shape the other per-language tables use — an unclaimed
-#: language falls back to the authored English line. Two cases per language: the opening
-#: turn, where nobody has spoken yet, and the verdict path, where the team has spoken —
-#: outside the conversation, into the telling-back — and the opening line would say the
-#: opposite, which is the sentence the Validator quoted back when it refused the verdict.
-_NO_TEAM_UTTERANCE: dict[str, dict[str, str]] = {
-    "pt": {
-        "opening": "(a equipe ainda não falou — abertura da sessão)",
-        "told_back": (
-            "(a equipe não falou nesta conversa; o que ela traduziu está no bloco abaixo)"
-        ),
-    },
-    "en": {
-        "opening": "(the team has not spoken yet — session opening)",
-        "told_back": (
-            "(the team has not spoken in this conversation; what they translated is in the "
-            "block below)"
-        ),
-    },
-    "es": {
-        "opening": "(el equipo aún no ha hablado — apertura de la sesión)",
-        "told_back": (
-            "(el equipo no ha hablado en esta conversación; lo que tradujeron está "
-            "en el bloque de abajo)"
-        ),
-    },
+#: What the Validator is told when nobody spoke this turn. Composed in English like every
+#: other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language the
+#: team speaks. Two cases: the opening turn, where nobody has spoken yet, and the verdict
+#: path, where the team has spoken — outside the conversation, into the telling-back — and
+#: the opening line would say the opposite, which is the sentence the Validator quoted back
+#: when it refused the verdict.
+_NO_TEAM_UTTERANCE: dict[str, str] = {
+    "opening": "(the team has not spoken yet — session opening)",
+    "told_back": (
+        "(the team has not spoken in this conversation; what they translated is in the block below)"
+    ),
 }
 
 
-def _nobody_spoke_this_turn(telling_back: str, language_code: str) -> str:
+def _nobody_spoke_this_turn(telling_back: str) -> str:
     """What stands where the team's utterance would, on a turn that had none."""
-    messages = _NO_TEAM_UTTERANCE.get(language_code, _NO_TEAM_UTTERANCE[FLOOR])
-    return messages["told_back"] if telling_back else messages["opening"]
+    return _NO_TEAM_UTTERANCE["told_back"] if telling_back else _NO_TEAM_UTTERANCE["opening"]
 
 
 #: What is asked of the Speaker on a turn with no team utterance and nothing to open — the
 #: back-translation verdict, whose whole instruction is already in its system prompt. The
 #: conversation used to reach the model as one block of text, which made a user message by
 #: accident; now that it travels as the turns it was, the request would end on the Guide's
-#: own last speech, and the API refuses that as an assistant prefill.
-_SPEAK_THIS_TURN: dict[str, str] = {
-    "pt": "Fale este turno.",
-    "en": "Speak this turn.",
-}
-
-
-def speak_this_turn(language_code: str) -> str:
-    return _SPEAK_THIS_TURN.get(language_code, _SPEAK_THIS_TURN[FLOOR])
+#: own last speech, and the API refuses that as an assistant prefill. Composed in English like
+#: every other backend instruction (ENG-822) — only {{SESSION_LANGUAGE}} carries what language
+#: the team speaks.
+SPEAK_THIS_TURN = "Speak this turn."
 
 
 OPENING_MOVEMENT_MARK = "[[CENA]]"
@@ -87,26 +63,28 @@ def split_opening_movements(draft: str) -> tuple[str, list[str]]:
 
 
 OPENING_INSTRUCTION = (
-    "A sessão está começando agora e a equipe ainda não falou. Abra a sessão: "
-    "apresente-se brevemente, dê à equipe o todo antes das partes, e fique com a "
-    "equipe na compreensão: o convite ao ensaio espera até ela mostrar que tem a parte."
+    "The session is starting now and the team has not spoken yet. Open the "
+    "session: introduce yourself briefly, give the team the whole before the "
+    "parts, and stay with the team on understanding — the invitation to rehearse "
+    "waits until they show they have the part."
 )
 
 ALREADY_MET_INSTRUCTION = (
-    "A sessão desta passagem está começando agora e a equipe ainda não falou. "
-    "Vocês acabaram de percorrer juntos o panorama do livro, então a equipe já "
-    "conhece você: NÃO se apresente de novo nem diga seu nome. Entre direto na "
-    "passagem: dê à equipe o todo antes das partes, e fique com a equipe na "
-    "compreensão: o convite ao ensaio espera até ela mostrar que tem a parte."
+    "This passage's session is starting now and the team has not spoken yet. "
+    "You just walked the book's panorama together, so the team already knows "
+    "you: do NOT introduce yourself again or say your name. Go straight into "
+    "the passage: give the team the whole before the parts, and stay with the "
+    "team on understanding — the invitation to rehearse waits until they show "
+    "they have the part."
 )
 
 OPENING_MOVEMENT_INSTRUCTION = (
-    "Escreva esta abertura em dois movimentos, separados por uma linha contendo "
-    f"apenas {OPENING_MOVEMENT_MARK} e nada mais. Antes da linha: o todo da "
-    "passagem, o arco e o tom. Depois da linha: abra a primeira cena e fique nela "
-    "com a equipe; o convite ao ensaio não fecha a abertura. "
-    "Não escreva a marca em nenhum outro lugar e não a comente."
+    "Write this opening in two movements, separated by a line containing only "
+    f"{OPENING_MOVEMENT_MARK} and nothing else. Before the line: the whole of the "
+    "passage, its arc and its tone. After the line: open the first scene and "
+    "stay in it with the team; the invitation to rehearse does not close the "
+    "opening. Do not write the mark anywhere else, and do not comment on it."
 )
 
 
-VALIDATOR_USER_MESSAGE = "Julgue a resposta rascunhada."
+VALIDATOR_USER_MESSAGE = "Validate the drafted response now. Return only the JSON object."

@@ -24,8 +24,7 @@ FLOOR = "en"
 
 LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
-    "es": "Spanish",
-    "pt": "Portuguese",
+    "pt": "Brazilian Portuguese",
 }
 
 
