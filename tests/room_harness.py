@@ -38,9 +38,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
-
-#: What the release calls a supported comprehension, built where the release cases build
-#: it. A second ledger here would be a second answer to what "supported" means.
+from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import supported_comprehension
 
 PREFIX = "/api/internalization-room"
@@ -79,6 +77,29 @@ def the_analyst_reads(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     return reader
 
 
+def the_bucket_is_in_memory(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
+    """Keep the takes where a case can reach them, so a route that stores audio needs no bucket.
+
+    The store the hard-stretch cases already use; a second one here would be a second answer
+    to what a bucket does.
+    """
+    from app.services.internalization_room import takes as takes_service
+
+    store = MemoryStore()
+    monkeypatch.setattr(takes_service, "_store", lambda *_, **__: store)
+    return store
+
+
+def the_transcriber_says(monkeypatch: pytest.MonkeyPatch, said: list[str]) -> None:
+    """What the transcriber will answer, one entry per capture, in the order they are sent."""
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def heard(*_: Any, **__: Any) -> str:
+        return said.pop(0) if said else "algo que a equipe contou"
+
+    monkeypatch.setattr(bt_api, "heard", heard)
+
+
 def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """The Speaker and the synthesizer, and every line the room was asked to say.
 
@@ -108,9 +129,13 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 @asynccontextmanager
 async def room_client(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, *, runner_key: str | None = None
 ) -> AsyncIterator[httpx.AsyncClient]:
-    """The room's routes on an app of their own, over the session the case writes through."""
+    """The room's routes on an app of their own, over the session the case writes through.
+
+    `runner_key` opens the text seam as well, which exists only where the key is set, and
+    sends it on every request the way her runner does.
+    """
     from fastapi import FastAPI
 
     from app.api.internalization_room import router
@@ -119,6 +144,10 @@ async def room_client(
     from app.core.exceptions import register_exception_handlers
 
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
+    if runner_key is not None:
+        monkeypatch.setattr(
+            get_settings(), "internalization_room_runner_key", runner_key, raising=False
+        )
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -129,7 +158,11 @@ async def room_client(
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-Access-Code": runner_key} if runner_key else {},
+    ) as client:
         yield client
 
 

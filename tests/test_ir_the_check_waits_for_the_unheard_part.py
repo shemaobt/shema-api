@@ -76,6 +76,7 @@ async def test_a_part_the_team_never_played_refuses_the_check_and_names_it(
     """
     session, (first, second, third) = await rehearsed_in_parts(db_session, 3)
     before = await _transcript(db_session, session.id)
+    was = await stored_telling_back(db_session, session)
 
     answered = await press_terminei(
         client, session.id, report=played_every_part([first.id, second.id])
@@ -93,9 +94,9 @@ async def test_a_part_the_team_never_played_refuses_the_check_and_names_it(
     assert analyst.readings == 0
 
     stored = await stored_telling_back(db_session, session)
-    assert stored.waited == 0, "the waiting line is the untold errand's ladder, not this one"
-    assert stored.analysed_segment_ids is None
-    assert stored.checked is False
+    assert stored.waited == was.waited, "the waiting line is the untold errand's ladder"
+    assert stored.analysed_segment_ids == was.analysed_segment_ids
+    assert stored.checked == was.checked
     assert await _transcript(db_session, session.id) == before
 
 
