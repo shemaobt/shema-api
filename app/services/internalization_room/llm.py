@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal
+from collections.abc import Sequence
+from typing import Any, Literal, TypedDict
 
 import anthropic
 from anthropic.types import (
@@ -18,6 +19,19 @@ from app.core.config import Settings, get_settings
 logger = logging.getLogger(__name__)
 
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
+
+
+class Turn(TypedDict):
+    """One thing that was said, on its way to the model as the turn it was.
+
+    `text` rather than `content` because this is what a caller has: the room stores its
+    conversation as `role`/`text` rows, and the mapping from its own two speakers to the two
+    the API knows belongs to the caller that knows which of them is the assistant.
+    """
+
+    role: Literal["user", "assistant"]
+    text: str
+
 
 #: Where a system prompt stops repeating. A caller that knows which half of its prompt is the
 #: same every turn writes this in at the boundary, and the two halves are sent as separate
@@ -85,6 +99,7 @@ async def call_agent(
     *,
     system_prompt: str,
     user_content: str,
+    conversation: Sequence[Turn] | None = None,
     ladder: list[str] | None = None,
     max_output_tokens: int = 2000,
     effort: Effort = "high",
@@ -108,6 +123,12 @@ async def call_agent(
     A `schema` is for a reply that is read rather than spoken: it binds the answer to a shape
     the caller can parse. The spoken calls pass none, because the team hears prose.
 
+    A `conversation` is everything said before this turn, and `user_content` stays what is
+    being said now — so the request always ends on a user message, which is the one shape the
+    API takes: it refuses a request that ends on an assistant turn as a prefill, and refuses
+    an empty user message. A caller with nothing behind it names no conversation and sends
+    the single message it always sent.
+
     The ladder is walked only for the one error that means *this key may not use this model*.
     Everything else — a rate limit, an overload, a bad gateway — keeps the rung it is on and
     rises to the caller: those say the model is busy, not that it is unavailable, and stepping
@@ -123,7 +144,10 @@ async def call_agent(
     output_config: OutputConfigParam = {"effort": effort}
     if schema is not None:
         output_config["format"] = {"type": "json_schema", "schema": schema}
-    messages: list[MessageParam] = [{"role": "user", "content": user_content}]
+    messages: list[MessageParam] = [
+        {"role": turn["role"], "content": turn["text"]} for turn in conversation or ()
+    ]
+    messages.append({"role": "user", "content": user_content})
     client = anthropic.AsyncAnthropic(
         api_key=settings.anthropic_api_key, default_headers=_workspace_header(settings)
     )
