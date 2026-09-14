@@ -32,6 +32,7 @@ from app.services.internalization_room.fail_safe import (
     first,
     localized,
     process_line,
+    utterances,
 )
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 
@@ -176,10 +177,6 @@ HER_PROCESS_LINES: tuple[HerLine, ...] = (
 )
 
 
-def _spoken(line: HerLine, language_code: str) -> str:
-    return f"{line.name}-{language_code}"
-
-
 @pytest.mark.parametrize("language_code", ["en", "pt-BR"])
 @pytest.mark.parametrize("line", HER_PROCESS_LINES, ids=lambda line: line.name)
 def test_every_step_reads_her_line_at_its_position(line: HerLine, language_code: str) -> None:
@@ -220,6 +217,31 @@ def test_an_unknown_step_or_family_raises_and_never_speaks() -> None:
         process_line("X", "unheard", "pt-BR")
 
 
+def test_a_family_whose_block_is_not_loaded_raises_rather_than_reading_past_the_end() -> None:
+    """The tables say the step exists; the loaded text is what says whether it was written.
+
+    Nothing can reach this while her four blocks are in the file, and that is the point: the
+    day one of them is dropped, `lines[position]` would raise a bare `IndexError` from inside
+    a lookup that has a named error for exactly this, and the traceback would say nothing
+    about a missing block. P answering in the same breath is the control — it proves the
+    document under test really is the one being read.
+    """
+    from app.services.internalization_room import fail_safe
+
+    without_x = '### P. Process lines\n- "one"\n- "two"\n- "three"\n- "four"\n'
+    real_loader = fail_safe.fail_safe_utterances
+    fail_safe.fail_safe_utterances = lambda: without_x  # type: ignore[assignment]
+    fail_safe._sections.cache_clear()
+    try:
+        assert process_line("P", "start") == ("one", "P0")
+        with pytest.raises(UnknownProcessLine):
+            process_line("X", "open")
+    finally:
+        fail_safe.fail_safe_utterances = real_loader  # type: ignore[assignment]
+        fail_safe._sections.cache_clear()
+        real_loader.cache_clear()
+
+
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
 def test_every_language_the_room_claims_has_her_process_lines_written(spoken: str) -> None:
     """A claimed language with no block of its own would ship English clips under its name.
@@ -248,9 +270,19 @@ def test_the_catalogue_lists_the_process_lines_as_never_rendered(
     """
     catalogue = render.catalogue(spoken)
     process_names = {line.name for line in HER_PROCESS_LINES}
+    shipped_fail_safes = {
+        f"{kind}{index}"
+        for kind in FailSafe
+        if kind not in render.NEVER_SHIPPED
+        for index in range(len(utterances(kind, spoken)))
+    }
 
     for line in HER_PROCESS_LINES:
         assert catalogue[line.name] == line.written(spoken)
+
+    assert set(catalogue) == (
+        shipped_fail_safes | set(render.STANDALONE.get(spoken, {})) | process_names
+    ), "the catalogue gained a name that is neither a shipped fail-safe nor one of her steps"
 
     rendered = {
         name: render.fingerprint(text)
