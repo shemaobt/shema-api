@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.services.internalization_room.languages import floor
+from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.speakable import speakable_text
 from app.services.internalization_room.voices import voice_for
 from app.services.platform.tts import SpeechStore, SynthesizedSpeech
@@ -21,9 +21,13 @@ async def synthesize_facilitator_speech(
     """Speak one facilitator line in the internalization room's own voice.
 
     The language is the caller's, because it is the session's, because it is the tablet's.
-    A caller that names none gets the floor. The voice follows the language rather than being
-    chosen alongside it: the app never picks how the facilitator sounds, only which language
-    it sounds in.
+    A caller that names none gets the floor, and so does a caller that names a language the
+    room no longer claims: `es` left `ROOM_LANGUAGES` in shema-api#362, and a session row
+    persisted before that still passes it here on every turn. `voice_for` does not refuse
+    `es` — that voice entry is kept on purpose so a legacy row does not 500 — so a caller
+    is floored before the voice is chosen, not after. The voice follows the language rather
+    than being chosen alongside it: the app never picks how the facilitator sounds, only
+    which language it sounds in.
 
     That the voice moves with the language is also what keeps the cache honest. The bucket
     key is content-addressed over text, voice, model, format and tuning but not language, so
@@ -46,7 +50,7 @@ async def synthesize_facilitator_speech(
     paid ElevenLabs again for a sentence it had just spoken.
     """
     cfg = settings or get_settings()
-    spoken = language or floor(cfg)
+    spoken = normalize(language) or floor(cfg)
     text = speakable_text(text, spoken)
     speech = await platform_speech(
         text,

@@ -14,6 +14,7 @@ from pathlib import Path
 _MODULES = [
     "app/services/internalization_room/back_translation.py",
     "app/api/internalization_room/back_translation.py",
+    "app/services/internalization_room/verdict_round.py",
     "app/services/internalization_room/turn_instructions.py",
 ]
 

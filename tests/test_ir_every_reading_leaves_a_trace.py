@@ -140,9 +140,10 @@ async def test_an_accepted_correction_reading_leaves_an_info_record(
 
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         check = await verify_correction(
-            finding=finding,
+            findings=[finding],
             earlier=earlier,
             corrected=corrected,
+            chunk=1,
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
@@ -183,9 +184,10 @@ async def test_the_teams_own_words_do_not_reach_this_logger(
 
     with caplog.at_level(logging.INFO, logger=LOGGER_NAME):
         check = await verify_correction(
-            finding=finding,
+            findings=[finding],
             earlier=earlier,
             corrected=corrected,
+            chunk=1,
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,

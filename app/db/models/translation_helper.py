@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -64,9 +64,10 @@ class THChatMessage(Base):
 
 class THAgentPrompt(Base):
     __tablename__ = "th_agent_prompts"
+    __table_args__ = (UniqueConstraint("agent_id", name="uq_th_agent_prompts_agent_id"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    agent_id: Mapped[AgentId] = mapped_column(_AGENT_ID_TYPE, unique=True, index=True)
+    agent_id: Mapped[AgentId] = mapped_column(_AGENT_ID_TYPE, index=True)
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(Text)
     prompt: Mapped[str] = mapped_column(Text)

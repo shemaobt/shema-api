@@ -16,21 +16,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError
+from app.core.exceptions import ConflictError, ReleaseWithoutProject
 from app.db.models.internalization_room import (
     IRQuestion,
+    IRRelease,
     IRSegment,
     IRSession,
     IRTake,
     IRTakeKind,
 )
-from app.services.internalization_room.back_translation import playback_confirms_rehearsal
+from app.services.internalization_room.back_translation import (
+    findings_remaining,
+    playback_confirms_rehearsal,
+)
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -58,8 +64,18 @@ from app.services.internalization_room.takes import takes_of
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
 #: key says ``segments`` because that is what they are. Bumped again to v0.3 when the
 #: conversation-mode key left the payload with the mode itself: a consumer diffing the two
-#: versions finds one key gone and nothing renamed.
-SCHEMA_VERSION = "tripod.internalization-release.v0.3"
+#: versions finds one key gone and nothing renamed. And to v0.4 with ``release_id`` and
+#: ``version``: the packet says which approved draft it is, or says it is none. And to v0.5
+#: with ``played_by_take`` in place of ``played_ranges`` and ``clip_duration_ms``: the report of
+#: listening names the part it was played from, and the two it replaces are gone rather than
+#: still there and no longer meaning what they said (ADR 0017).
+SCHEMA_VERSION = "tripod.internalization-release.v0.5"
+
+#: The whole of what a facilitator's code can set aside, and the one place that says so. They
+#: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
+#: two a person can disagree about after looking at them. Every other blocker is missing
+#: material: there is nothing in a rehearsal nobody recorded for anybody to overrule.
+FORCEABLE_BLOCKERS = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
 
 
 class InternalizationReleaseBlocked(ConflictError):
@@ -111,15 +127,29 @@ def _take_view(take: IRTake) -> dict[str, Any]:
     }
 
 
-async def build_internalization_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+async def build_internalization_release(
+    db: AsyncSession, session: IRSession, *, waived: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     """Build the closed-world release for one session, or refuse with typed blockers.
 
-    A telling-back has to exist; it does not have to have come out clean. ``checked`` says
-    one whole reading returned no finding (ADR 0013), so any question the team chose not to
-    resolve makes it false — and blocking on it denied the one outcome the room is meant to
-    be able to reach, taking the questions to Refine. The rehearsal, the coverage, the ledger
-    and the telling-back stayed on the tablet with no way out, for a team that had done every
-    piece of the work.
+    The gate is Marcia's, whole: "Adote o meu portão inteiro, agora: sem achado em aberto e
+    com a gravação toda ouvida, senão não aprova; só o código do facilitador força."
+
+    ``checked`` says one whole reading returned no finding (ADR 0013), so a question the team
+    chose not to answer makes it false and ``telling_back_not_checked`` refuses the release.
+    This module used to argue the other way at length — that carrying the questions to Refine
+    was the one outcome the room existed to reach — and that argument lost on what a disputed
+    finding is. It is one of three things: the map wrong, which is rare and worth having; the
+    team not understanding; the recogniser erring. Only the first deserves to travel, and a
+    door open to all three sends the other two downstream as a passage the room approved, to
+    be heard as approved at the community's check.
+
+    The team that disagrees has a road, and it is older than this one: the raised hand, active
+    the whole session, answered by a person. If that person agrees with the team, a facilitator
+    forces the release with their own code, and the force is recorded on the row. ``waived`` is
+    how that reaches this function and ``FORCEABLE_BLOCKERS`` is the whole of what it may name;
+    ``panorama_sessions_never_release`` is raised before the list is built and so is out of
+    reach of any of it, because a panorama is not a draft of a passage at all.
 
     ``superseded_segments`` carries the stretches that stopped counting, replaced or
     abandoned, each still naming the recording it was a slice of. They used to be copied into
@@ -133,30 +163,35 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     not the team erring, so what they said the first time is kept rather than the division
     being refused.
 
-    What the package says instead of refusing: ``checked`` false and every open finding in
+    What a forced package says is unchanged: ``checked`` false and every open finding in
     ``findings``. Judging the quality of a telling-back is not this artifact's job — carrying
-    it honestly is.
+    it honestly is, and the decision that it may travel anyway was a person's and is recorded
+    on the release rather than dressed up here.
 
-    That honesty is why an unread telling-back is still refused. A team that captured the
-    stretches and never asked for the verdict leaves no findings at all, which is the same
-    package a clean check produces. Carrying the questions is the point; carrying silence as
-    if it were clean is not.
+    ``telling_back_never_analysed`` keeps its precedence over the open finding, and has to. A
+    team that captured the stretches and never asked for the verdict leaves no findings at
+    all, which is the same package a clean check produces — told the passage is not checked, a
+    facilitator would go looking for a finding that was never raised.
 
-    The report of playback is held to the same line, and it is why the gate names a rehearsal
-    rather than only measuring one. Silence used to pass it — an absent report satisfied the
-    coverage arithmetic the way an unread telling-back satisfied ``checked`` — and so did a
-    report the team had since made untrue by recording the passage again. Both said the team
-    heard themselves when nobody knows whether they did. The package is refused unless the
-    report names the recording this package ships and reaches the end of it.
+    The report of playback is held to the same line, and it is why the gate names the parts of
+    the rehearsal rather than only measuring one clip. Silence used to pass it — an absent
+    report satisfied the coverage arithmetic the way an unread telling-back satisfied
+    ``checked`` — and so did a report the team had since made untrue by recording the passage
+    again. Both said the team heard themselves when nobody knows whether they did. The package
+    is refused unless every part the stretches name was played through, each in its own
+    milliseconds.
+
+    Only whether anything is unheard is read here. Which parts they are is the same answer, and
+    it is what the room says to the team when it sends them back; this decides one thing.
 
     What the report has to name is asked of the stretches, which say which recording each is a
     slice of and were checked on the way in. Not of the takes table: ``created_at`` there is
     when the upload landed, the tablet's outbox drains whenever the link comes back, and the
     newest-arriving rehearsal is sometimes the one the team abandoned.
 
-    Sessions already in flight when this shipped carry a report with no such name, and are
+    Sessions already in flight when this shipped carry a report with no part named, and are
     refused until the team plays their rehearsal through again. That is the correct reading of
-    them: a report we cannot tie to a recording is not evidence about any recording.
+    them: a report we cannot tie to a recording is not evidence about any recording (ADR 0017).
 
     A session with nothing told back is not asked. ``no_telling_back`` already says what is
     wrong there, and a second blocker about playback would only repeat it in other words.
@@ -193,10 +228,12 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
     restated, so what counts as words stays one sentence in one place: the analyst is numbered
     off that same list, and the two must not drift.
 
-    ``package_sha256`` is taken before ``created_at`` is written into the returned dict:
-    ``created_at`` records when this read happened, not what the session holds, and two reads
-    of an unchanged session must carry one hash. Stamping the clock first fingerprinted it
-    along with the content.
+    ``package_sha256`` is taken before ``created_at``, ``release_id`` and ``version`` are
+    written into the returned dict, so the hash covers none of the three. ``created_at``
+    records when this read happened and not what the session holds; the other two say which
+    approval this content became. All three would move without the content moving, and two
+    reads of an unchanged session must carry one hash. A consumer verifying the fingerprint
+    drops those three keys and hashes the rest.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -223,8 +260,6 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
 
     if readiness.evaluation.outcome.value == "needs_more_work":
         blockers.append("comprehension_needs_more_work")
-    if not comprehension.recording_consent_given:
-        blockers.append("recording_consent_never_given")
     if not floor_met(session.coverage_state or {}, session.pericope):
         blockers.append("coverage_floor_not_met")
     if not ensaio_takes:
@@ -233,13 +268,16 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         blockers.append("no_telling_back")
     elif telling_back.never_analysed:
         blockers.append("telling_back_never_analysed")
+    elif not telling_back.checked:
+        blockers.append("telling_back_not_checked")
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = sorted({segment.take_id for segment in stretches})
-    if rehearsed and not playback_confirms_rehearsal(telling_back, rehearsed):
+    if rehearsed and playback_confirms_rehearsal(telling_back, rehearsed):
         blockers.append("playback_did_not_cover_the_clip")
-    if blockers:
-        raise InternalizationReleaseBlocked(blockers)
+    standing = [code for code in blockers if code not in waived]
+    if standing:
+        raise InternalizationReleaseBlocked(standing)
 
     by_id = {checkpoint.id: checkpoint for checkpoint in checkpoints}
     open_points = []
@@ -292,11 +330,11 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         "back_translation": {
             "scope": telling_back.scope,
             "checked": telling_back.checked,
-            "retells": telling_back.retells,
             "segments": [_segment_view(segment) for segment in told],
             "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
-            "played_ranges": telling_back.played_ranges,
-            "clip_duration_ms": telling_back.clip_duration_ms,
+            "played_by_take": [
+                entry.model_dump(mode="json") for entry in telling_back.played_by_take
+            ],
             "superseded_attempts": [
                 attempt.model_dump(mode="json") for attempt in telling_back.superseded
             ],
@@ -314,8 +352,133 @@ async def build_internalization_release(db: AsyncSession, session: IRSession) ->
         ],
         "open_questions": len(open_points)
         + sum(1 for question in questions if question.status.value != "resolved")
-        + len(telling_back.findings),
+        + findings_remaining(telling_back.findings),
     }
     artifact["package_sha256"] = _package_sha256(artifact)
+    approved = await _release_of(db, session, artifact["package_sha256"])
+    artifact["release_id"] = approved.id if approved else None
+    artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
     return artifact
+
+
+async def _release_of(
+    db: AsyncSession, session: IRSession, package_sha256: str
+) -> IRRelease | None:
+    """The release this content *is*, if this content is the approved draft of the passage.
+
+    Literally the question the approval asks, over the same row: the last release of this
+    pericope and project, kept only when its hash is the fresh one. Scoping it to the session
+    instead would let the composer and the approval disagree — after another conversation
+    about the same passage approved a v2, a read of the first session would still name its
+    v1 while approving it would mint a v3, and the packet would name a draft that is no
+    longer the one the passage is on.
+
+    A session that names no project has no release to be: the number is per project, and a
+    room on the shared key names none.
+    """
+    if session.project_id is None:
+        return None
+    latest = await _latest_release(db, session.project_id, session.pericope)
+    if latest is None or latest.package_sha256 != package_sha256:
+        return None
+    return latest
+
+
+async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> IRRelease | None:
+    """The last release of this passage for this team, whichever session wrote it.
+
+    Scoped to the project and the pericope and not to the session, because that is what the
+    number is per: two conversations about one passage share the sequence, and numbering each
+    session on its own would hand Marcia two drafts both called v1.
+    """
+    result = await db.execute(
+        select(IRRelease)
+        .where(IRRelease.project_id == project_id, IRRelease.pericope == pericope)
+        .order_by(IRRelease.version.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def approve_release(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    device_id: str | None = None,
+    forced_by: str | None = None,
+) -> IRRelease:
+    """The team approves this passage: one numbered row, or the one that already says it.
+
+    Refused before anything is composed when the session names no project, because the
+    number is per project and per pericope and there is nothing to number it under. The
+    blockers the packet raises are the gate, and ``forced_by`` is the one thing that moves
+    it: named, the two codes of ``FORCEABLE_BLOCKERS`` are waived and the row records who
+    forced it, when, and which findings were open at that moment. Everything else still
+    refuses, under a force exactly as without one.
+
+    ``device_id`` is the tablet, and only a team's approval has one. The two never arrive
+    together: a force comes from the Desk, where there is a person and no device.
+
+    A force with nothing to waive is still a force and is still recorded as one, with an
+    empty list of findings. The act was the facilitator's, and a row that hid that would say
+    the team approved a draft the team did not approve.
+
+    Unchanged content returns the release that already exists rather than minting a version
+    beside it: a new **Version** starts with zero listeners on Marcia's external check, so
+    one that means nothing changed is worse than none. "Unchanged" is measured against the
+    last release of this pericope and project — a packet that comes back to an earlier
+    version's content is a later draft, not that version again, and giving its number back
+    would put comments on a draft nobody is looking at.
+
+    The number is one past the last, which two approvals arriving together can both read.
+    The unique index is what refuses the second, and the refusal is answered rather than
+    retried: the tablet asks again and the second ask returns the release the first one
+    wrote, because by then the winner is what ``_latest_release`` reads.
+
+    The house loop for this shape retries the allocation instead — ``tier_a_service`` and
+    ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
+    winner. Rejected here on purpose: those allocate a number nobody is waiting on, while a
+    second approval of an unchanged packet must come back with the *same* release, and a loop
+    that re-allocates after losing the race would mint the version the idempotency check
+    exists to prevent. Answering the caller keeps the decision in one place.
+    """
+    if session.project_id is None:
+        raise ReleaseWithoutProject(
+            "this session names no project, so a release for it cannot be numbered"
+        )
+
+    packet = await build_internalization_release(
+        db, session, waived=FORCEABLE_BLOCKERS if forced_by else frozenset()
+    )
+    latest = await _latest_release(db, session.project_id, session.pericope)
+    if latest is not None and latest.package_sha256 == packet["package_sha256"]:
+        return latest
+
+    release_id = str(uuid.uuid4())
+    version = latest.version + 1 if latest is not None else 1
+    packet["release_id"] = release_id
+    packet["version"] = version
+    release = IRRelease(
+        id=release_id,
+        session_id=session.id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        version=version,
+        package_sha256=packet["package_sha256"],
+        packet=packet,
+        device_id=device_id,
+        forced_by=forced_by,
+        forced_at=datetime.now(UTC) if forced_by else None,
+        forced_open_findings=packet["back_translation"]["findings"] if forced_by else None,
+    )
+    db.add(release)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ConflictError(
+            "another approval took this version while this one was being written"
+        ) from exc
+    await db.refresh(release)
+    return release
