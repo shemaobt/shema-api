@@ -12,11 +12,14 @@ yet; re-pinning the doctrine vendor is not this slice's to do.
 """
 
 import importlib
+import json
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+import scripts.render_fixed_voice_lines as render
 from app.services.internalization_room.fail_safe import (
     FailSafe,
     UnknownProcessLine,
@@ -24,6 +27,7 @@ from app.services.internalization_room.fail_safe import (
     first,
     process_line,
 )
+from app.services.internalization_room.languages import ROOM_LANGUAGES
 
 HER_PROCESS_LINES: dict[tuple[str, str, str], tuple[str, str]] = {
     ("P", "start", "en"): (
@@ -114,6 +118,40 @@ def test_an_unknown_step_or_family_raises_and_never_speaks() -> None:
         process_line("Q", "open")
     with pytest.raises(UnknownProcessLine):
         process_line("X", "unheard", "pt-BR")
+
+
+@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
+def test_the_catalogue_lists_the_process_lines_as_never_rendered(
+    tmp_path: Path, spoken: str
+) -> None:
+    """The bundle has no clip for a step yet, and only the catalogue can say so.
+
+    The render script iterated the fail-safe families alone, so the nine process clips were
+    invisible to `--check`: a person could edit one of her lines and the guard would stay
+    green over audio that no longer says it.
+    """
+    catalogue = render.catalogue(spoken)
+    process_names = {name for _, _, name in EVERY_STEP}
+
+    for family, step, name in EVERY_STEP:
+        assert catalogue[name] == process_line(family, step, spoken)[0]
+
+    rendered = {
+        name: render.fingerprint(text)
+        for name, text in catalogue.items()
+        if name not in process_names
+    }
+    for name in rendered:
+        clip = render._clip_path(tmp_path, spoken, name)
+        clip.parent.mkdir(parents=True, exist_ok=True)
+        clip.write_bytes(b"")
+    manifest = render._bundle(tmp_path, spoken) / render.MANIFEST
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(json.dumps(rendered), encoding="utf-8")
+
+    complaints = render.drift(tmp_path, spoken)
+
+    assert set(complaints) == {f"{spoken}/{name}: never rendered" for name in process_names}
 
 
 def test_no_model_is_reachable_from_a_process_line(monkeypatch: pytest.MonkeyPatch) -> None:
