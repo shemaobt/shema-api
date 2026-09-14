@@ -419,6 +419,18 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
 
 
 @pytest.mark.asyncio
+async def test_an_honest_report_on_the_current_rehearsal_releases(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """Control: the team played their own clip through, and the package travels."""
+    session = await _rehearsed_and_told_back(db_session)
+
+    await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
+
+    assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
+
+
+@pytest.mark.asyncio
 async def test_a_fresh_report_after_a_re_record_releases(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:

@@ -26,16 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
@@ -48,6 +38,10 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
+
+#: What the release calls a supported comprehension, built where the release cases build
+#: it. A second ledger here would be a second answer to what "supported" means.
+from tests.release_harness import supported_comprehension
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -137,23 +131,6 @@ async def room_client(
     transport = ASGITransport(app=test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
-
-
-def supported_comprehension(pericope: str) -> ComprehensionState:
-    return ComprehensionState(
-        ledger=[
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-            )
-            for index, checkpoint in enumerate(checkpoints_for(pericope))
-        ],
-        practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
-    )
 
 
 def rehearsal_take(session_id: str, *, sha256: str) -> IRTake:

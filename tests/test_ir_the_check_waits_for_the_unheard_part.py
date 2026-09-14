@@ -34,7 +34,9 @@ from tests.room_harness import (
     the_room_speaks,
 )
 
-#: Her P-unheard line, as the process-line file writes it for a room speaking Portuguese.
+#: Her P-unheard line, pinned from the ticket and not read back out of the file that
+#: carries it: the case is that the team hears *this sentence*, and a copy of whatever
+#: the room happens to say would agree with any of them.
 UNHEARD_LINE = "Ainda falta ouvir um trecho da gravação antes de eu conferir."
 PART_MS = 61000
 

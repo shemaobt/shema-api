@@ -35,6 +35,7 @@ from app.db.models.internalization_room import (
 )
 from app.services.internalization_room.back_translation import (
     findings_remaining,
+    rehearsed_parts,
     unheard_parts,
 )
 from app.services.internalization_room.canon.book_material import vendor_pin
@@ -287,7 +288,7 @@ async def build_internalization_release(
         blockers.append("telling_back_not_checked")
     if told != stretches:
         blockers.append("untold_stretch")
-    rehearsed = sorted({segment.take_id for segment in stretches})
+    rehearsed = rehearsed_parts(stretches)
     if rehearsed and unheard_parts(telling_back, rehearsed):
         blockers.append("playback_did_not_cover_the_clip")
     standing = [code for code in blockers if code not in waived]

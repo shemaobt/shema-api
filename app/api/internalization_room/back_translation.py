@@ -245,8 +245,7 @@ async def finish(
             findings_remaining=0,
         )
 
-    rehearsed = sorted({segment.take_id for segment in final})
-    unheard = room.unheard_parts(state, rehearsed)
+    unheard = room.unheard_parts(state, room.rehearsed_parts(final))
     if unheard:
         line, _ = process_line("P", "unheard", session.language)
         spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]

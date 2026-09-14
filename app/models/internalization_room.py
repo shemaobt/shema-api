@@ -474,7 +474,13 @@ class PlayedTake(BaseModel):
     #: A span is a start and an end, and exactly those two. Typed as a bare list of ints it
     #: crossed the door in any shape, and the covering arithmetic that unpacks it raised at
     #: release time instead — a stored report the team can no longer change turned every
-    #: release attempt into a 500. Two ints, refused here or never.
+    #: release attempt into a 500.
+    #:
+    #: The type binds on the way out of the database as well as on the way in, because the
+    #: stored state is this same model: a row already holding a malformed span would now fail
+    #: to load on every route of that session rather than only at the handoff. Nothing has
+    #: written one — the app has always sent pairs, and no build is in a store yet (ADR 0017)
+    #: — and reading leniently would mean carrying a shape the arithmetic cannot use.
     played_ranges: list[tuple[int, int]] = Field(default_factory=list)
     clip_duration_ms: int = Field(default=0, ge=0)
 

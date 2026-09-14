@@ -135,9 +135,11 @@ async def play_a_round(
 
     The verdict is the one `terminei` reaches, from the Correction check to the Speaker's
     words, and it is voiced as text: the seam synthesizes nothing, so the clip key it records
-    is empty and only the words are kept. What it does not carry are the three answers
-    `terminei` gives before that point — the untold-stretch halt, the empty telling-back and
-    the cached verdict of a second press — because they are about a tablet and a team. A round
+    is empty and only the words are kept. What it does not carry are the four answers
+    `terminei` gives before that point — the untold-stretch halt, the unheard-part halt, the
+    empty telling-back and the cached verdict of a second press — because they are about a
+    tablet and a team. The unheard part is the one it could never meet anyway: the session
+    declares every clip listened to through before round one. A round
     with no frases is refused here instead: read as a telling-back, it would ask the analyst to
     compare nothing against the map, get no findings back, and report a golden round as
     `conferida` that nobody ever told.
