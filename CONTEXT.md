@@ -112,6 +112,10 @@ Where a stretch sits: the take it belongs to, and its start and end in milliseco
 that one file.
 _Avoid_: range, offset, position, Endereço
 
+**Frase number** (`frase`):
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside `idx`, which is the stretch id under Marcia's name. A cut or a fresh telling after the approval changes nothing in that version.
+_Avoid_: ordinal (per sibling group, never per passage), position, index, n (her listener number), Número da frase
+
 **Divided stretch** (`parent_id`, `ordinal`):
 A stretch cut out of another one, numbered among its own siblings rather than among the
 session's stretches.
@@ -146,6 +150,14 @@ _Avoid_: position, offset, Onde
 **Swap** (`current_findings`; *relação trocada*, in Marcia's words):
 An addition and a missing element the analyst reported on the same **Chunk**: the telling put one relation in and dropped the one the story tells in its place. One thing for the team — one thing said, one stretch recorded again, one **Correction check** answering both — and never two. Both halves must point at a stretch, so a **Missing without an address** is never half of one. The addition leads it, whichever half the analyst listed first.
 _Avoid_: pair (it says there are two things), swapped relation (Marcia's phrase for the mistake, not for what the room carries), troca
+
+**Priority**:
+The order in which the room raises one reading's findings: an addition that fills a marked silence, then any other addition, then a missing element, then an unclear frase. A **Swap** ranks by its addition, a finding the **Correction check** put at the front keeps the front for the round that follows, and within one tier the analyst's order holds. The stored list is never reordered; only the pick is.
+_Avoid_: severity, ranking, sorting (the stored list keeps the analyst's order), Prioridade
+
+**Filled silence** (`fills_silence`):
+An addition the analyst reported under the wire kind `silence`: the telling says something the passage keeps quiet on purpose. It stays an addition for the app, the packet, the golden scripts and the Speaker, and decides only the **Priority**.
+_Avoid_: fourth kind, silence kind (the wire name only), Silêncio preenchido
 
 **Points at a stretch** (`points_at_a_stretch`):
 The property of a finding that puts one specific stretch on screen with the two microphones. It decides the closing of the verdict.
@@ -218,7 +230,7 @@ _Avoid_: review, refinement
 ### Release
 
 **Release** (`ir_releases`):
-The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. An approval that changes nothing returns the release that already exists.
+The record that the team approved the passage as its final draft: one numbered row per approval per pericope per project, carrying the packet as approved beside its hash. An approval that changes nothing returns the release that already exists. It is refused while the telling-back carries an open finding or a part of the rehearsal is unheard, and the team's approval records the device that approved.
 _Avoid_: approval (the gesture, not the record), finalization, export, snapshot, Liberação
 
 **Version**:
@@ -228,6 +240,33 @@ _Avoid_: revision, pass (the count of tellings of a stretch), rebuild (a new pas
 **Packet**:
 The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content.
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
+
+**Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
+A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: comprehension, coverage, audio, a telling-back, its reading and an untold stretch are material, not a dispute.
+_Avoid_: override, bypass, forced approval, Aprovação forçada
+
+### Process lines
+
+**Process line**:
+One of Marcia's fixed lines for a step of the telling-back (P: start, tell, unheard, approved) or of the external check (X: open, retell, whole, frases, thanks), copied verbatim from her file, read by position in the session language and never rotated. It is not a fail-safe: a fail-safe answers a failure and rotates, a process line marks a step and is always the same one. No model sits on its path.
+_Avoid_: fail-safe (A to I), prompt, canned line, Linha de processo
+
+### Test seams
+
+**Text seam** (`text-seam`):
+A door that takes as text what the team would have spoken and runs the real Guide, Analyst, Speaker and Validator, so that Marcia's golden scripts judge the room by measurement. It exists only where the runner key is set, answers 404 without it, and never reaches a tablet.
+_Avoid_: test mode, mock, stub, simulator, Entrada de texto
+
+**Golden script**:
+One of Marcia's JSON scripts under her `golden/`: a declared draft of clips and the rounds of
+frases told back over it, with what each round is expected to produce. A runner plays one
+against a stack and judges it with her own checks. Read verbatim, never forked.
+_Avoid_: fixture, scenario, test case, roteiro
+
+**Runner key** (`internalization_room_runner_key`, header `X-Access-Code`):
+The secret that opens the **Text seam**. Empty in production, where the seam answers 404 to
+every door behind it.
+_Avoid_: api key (the room's own is a different door), token, password, Chave do runner
 
 ### Other subsystems
 

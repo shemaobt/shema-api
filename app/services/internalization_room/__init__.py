@@ -69,11 +69,17 @@ from app.services.internalization_room.sessions import (
 from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
+from app.services.internalization_room.verdict_round import (
+    TellingBackVerdict,
+    check_the_telling_back,
+    save_the_spoken_verdict,
+)
 
 __all__ = [
     "BackTranslationState",
     "ComprehensionTurn",
     "Finding",
+    "TellingBackVerdict",
     "TurnOutcome",
     "analyse_telling_back",
     "append_exchange",
@@ -83,6 +89,7 @@ __all__ = [
     "begin_back_translation_again",
     "capture_and_note_a_hard_stretch",
     "capture_segment",
+    "check_the_telling_back",
     "classify_coverage",
     "closing_block",
     "comprehension_of",
@@ -117,6 +124,7 @@ __all__ = [
     "run_verdict_turn",
     "save_back_translation",
     "save_comprehension",
+    "save_the_spoken_verdict",
     "segment_by_id",
     "segment_for_session",
     "segments_block",

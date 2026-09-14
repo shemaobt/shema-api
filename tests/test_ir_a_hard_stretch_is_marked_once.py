@@ -146,7 +146,7 @@ def the_room_answers(monkeypatch: pytest.MonkeyPatch) -> None:
     No assertion here is about either: they stand in for the two model calls a press has to
     reach through, and the case that *is* about them is the byte-identical one below.
     """
-    from app.api.internalization_room import back_translation as bt_api
+    from app.services.internalization_room import verdict_round
     from app.services.internalization_room.back_translation import BtAnalysis
     from app.services.internalization_room.validated_turn import TurnOutcome
 
@@ -156,8 +156,8 @@ def the_room_answers(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _speaker(**_: Any) -> TurnOutcome:
         return TurnOutcome(speech="a passagem está conferida", transcript="")
 
-    monkeypatch.setattr(bt_api.room, "analyse_telling_back", _analyst)
-    monkeypatch.setattr(bt_api.room, "run_verdict_turn", _speaker)
+    monkeypatch.setattr(verdict_round, "analyse_telling_back", _analyst)
+    monkeypatch.setattr(verdict_round, "run_verdict_turn", _speaker)
 
 
 class Facilitator:
@@ -512,6 +512,7 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
     rather than as the row objects, because the row objects are what may not leak.
     """
     from app.api.internalization_room import back_translation as bt_api
+    from app.services.internalization_room import verdict_round
     from app.services.internalization_room.back_translation import BtAnalysis
     from app.services.internalization_room.validated_turn import TurnOutcome
 
@@ -528,8 +529,8 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
         verdicts.append({**kwargs, "session_id": ""})
         return TurnOutcome(speech="a passagem está conferida", transcript="")
 
-    monkeypatch.setattr(bt_api.room, "analyse_telling_back", _analyst)
-    monkeypatch.setattr(bt_api.room, "run_verdict_turn", _speaker)
+    monkeypatch.setattr(verdict_round, "analyse_telling_back", _analyst)
+    monkeypatch.setattr(verdict_round, "run_verdict_turn", _speaker)
 
     async def _a_twin(*, with_a_mark: bool) -> dict[str, Any]:
         session_id = await _a_session(db_session)
