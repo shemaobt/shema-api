@@ -128,12 +128,15 @@ async def notify_critical(
     **No recipient is not an error.** A region with no coordinator and no OBT Lab holder is a
     gap in the org chart, not a failure of this write — the assessment is filed either way and
     the history carries it. It is logged, because a critical reading that reached nobody is
-    exactly the thing somebody should find out about.
-    """
-    app = await authorization_service.get_app_by_key(db, app_key)
-    if app is None:
-        raise RuntimeError(f"App '{app_key}' is not registered; notifications cannot be addressed")
+    exactly the thing somebody should find out about. The recipients are read **before** the app
+    registry row, so that path costs one query instead of two.
 
+    The ``RuntimeError`` below is reachable only on an installation with no ``shema`` row in
+    ``apps`` — which is an installation nobody could have authenticated into, because
+    ``require_app_access`` needs that row to admit the caller who got this far. It is raised
+    rather than swallowed all the same: a notice that cannot be addressed is not a notice that
+    should be quietly skipped, and the assessment rolls back with it.
+    """
     told = await recipients(db, app_key=app_key, region=region, exclude=actor.id)
     if not told:
         logger.warning(
@@ -145,6 +148,10 @@ async def notify_critical(
             },
         )
         return 0
+
+    app = await authorization_service.get_app_by_key(db, app_key)
+    if app is None:
+        raise RuntimeError(f"App '{app_key}' is not registered; notifications cannot be addressed")
 
     body = notice_body(language_name, day=day)
     for recipient in told:

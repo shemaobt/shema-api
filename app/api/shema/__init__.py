@@ -53,8 +53,8 @@ authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
 
 authenticated.include_router(session_router)  # BE-03
 authenticated.include_router(projects_router)  # BE-05
-authenticated.include_router(forms_router)  # BE-12
 authenticated.include_router(health_assessments_router)  # BE-07
+authenticated.include_router(forms_router)  # BE-12
 authenticated.include_router(notifications_router)  # BE-15
 
 #: **The module's one deliberate hole**, and it is this line rather than a missing dependency.

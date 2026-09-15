@@ -21,6 +21,15 @@ months ago is kept in the history and changes nothing on the record, because the
 read since. FE-44 §9.4 asks for this in one line and it is the reason the projection is a
 comparison rather than an assignment.
 
+**What it steps aside for is a newer reading, and a date alone is not one.** A record holding
+a ``health_assessment_date`` with four empty dimensions is the row ``docs/shema.md`` §7.4 warns
+about — a team reported as heard when nobody rated it — which is exactly why :func:`_carried_entry`
+refuses to carry it into the history. The two answers have to agree: a record the carry calls
+*nothing to keep* must not also be the record the projection defers to, or a first submission
+backdated before that stale date would leave the date and the assessor standing over four NULLs
+while a real reading sat in the history behind them. So the comparison asks whether the record is
+rated before it asks whose day is later.
+
 **A record that predates the history has its flat fields carried in first.** Otherwise the first
 assessment ever filed through this endpoint would silently replace a reading that was already on
 the record — from the Notion export, or from BE-16's seed — and the history would start by losing
@@ -32,7 +41,8 @@ for its reason:
 
 1. the record, **inside the caller's scope** — out of scope is refused exactly as absent is;
 2. the audience — a narrower question than who may open the record (``_health_audience.py``);
-3. the overall reading **before** anything is written, off the flat fields;
+3. the overall reading **before** anything is written, off the flat fields — which is both
+   the notice's *before* and the projection's *is this record actually rated*;
 4. the carried entry, if the record predates the history;
 5. the new entry;
 6. the projection, and the record-side fields the submission carried;
@@ -65,7 +75,6 @@ not.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select, update
@@ -81,8 +90,6 @@ from app.services.shema._health_notice import entered_critical, notify_critical
 from app.services.shema._scope import RegionScope, refuse_out_of_scope, visible_projects
 from app.utils.shema_derivations import OverallHealth, overall_of
 from app.utils.shema_health_questions import CURRENT_QUESTION_SET, DIMENSIONS
-
-logger = logging.getLogger(__name__)
 
 #: The record columns the projection writes, paired with the entry column each one mirrors.
 #:
@@ -148,6 +155,11 @@ def _carried_entry(project: ShemaProject, *, at: datetime) -> ShemaHealthAssessm
 
     The date is the one the record holds; with none, the entry has no honest day of its own and
     the flat fields are treated as the assessment this submission is the first of.
+
+    **The question set and the author are NULL and neither is invented.** These ratings answered a
+    Notion column rather than a questionnaire, so stamping a version would manufacture provenance;
+    and nobody knows who filed them, so ``created_by_name`` is ``""`` — which is the same honest
+    empty ``shema_projects.updated_by_name`` takes for a record whose saver is unknown.
     """
     if project.health_assessment_date is None:
         return None
@@ -162,7 +174,6 @@ def _carried_entry(project: ShemaProject, *, at: datetime) -> ShemaHealthAssessm
         spiritual=project.health_spiritual,
         physical=project.health_physical,
         notes=project.health_notes,
-        #: Neither is knowable and neither is invented — see the module docstring.
         question_set_version=None,
         created_by=None,
         created_by_name="",
@@ -171,6 +182,12 @@ def _carried_entry(project: ShemaProject, *, at: datetime) -> ShemaHealthAssessm
 
 
 async def _has_history(db: AsyncSession, project_id: str) -> bool:
+    """Whether anything has ever been appended — which is what makes the carry happen once.
+
+    Asked before the new rows are staged, and ``LIMIT 1`` because the answer is a yes or a no: a
+    count over a project's whole history to decide one branch is a read that grows with the data
+    for no reason.
+    """
     stmt = (
         select(ShemaHealthAssessment.id)
         .where(ShemaHealthAssessment.project_id == project_id)
@@ -206,6 +223,13 @@ async def append_assessment(
     ``app_key`` is a parameter because the app key is named in ``app/api/shema/_deps.py`` and
     nowhere else in the module, and a service that reached for it would be the second place to be
     wrong about it.
+
+    **One moment for the whole write, and the carried entry a microsecond ahead of the new one.**
+    Both rows land under one commit, so the transaction's clock would give them the same value and
+    the history would come back in an order nobody chose — which would make *the projection is the
+    last entry the client sees* false on the one case that needs it to be true. The carried entry
+    **is** the older reading and has to read as one even when it shares a day with the new, so the
+    offset is stated rather than left to a clock's resolution.
     """
     project = (
         await db.execute(visible_projects(scope).where(ShemaProject.id == project_id))
@@ -220,10 +244,6 @@ async def append_assessment(
     before = _overall(project)
     snapshot = _audit.snapshot(project)
 
-    #: One moment for the whole write, and the carried entry a microsecond ahead of the new one.
-    #: Both rows are written under one commit, so the transaction's clock gives them the same
-    #: value and the history would come back in an order nobody chose; the carried entry *is*
-    #: the older reading and has to read as one even when it shares a day with the new.
     at = datetime.now(UTC)
 
     entries: list[ShemaHealthAssessment] = []
@@ -251,10 +271,8 @@ async def append_assessment(
     db.add_all(entries)
 
     newest = max(entries, key=_sort_key)
-    if (
-        project.health_assessment_date is None
-        or _sort_key(newest)[0] >= project.health_assessment_date
-    ):
+    on_record = project.health_assessment_date
+    if on_record is None or before is OverallHealth.NA or _sort_key(newest)[0] >= on_record:
         _project_onto(project, newest)
 
     for column in RECORD_FIELDS:

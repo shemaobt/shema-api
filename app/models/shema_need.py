@@ -34,7 +34,6 @@ from __future__ import annotations
 import re
 from datetime import date
 from decimal import Decimal
-from typing import Any
 
 from pydantic import (
     AliasGenerator,
@@ -46,7 +45,9 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
+from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaNeedStatus, ShemaNeedUrgency
+from app.db.models.shema_need import ShemaNeed
 from app.models.shema_privacy import LeavingShape
 from app.utils.shema_facets import OPEN_NEED_STATUSES
 
@@ -121,7 +122,9 @@ class ShemaNeedWrite(BaseModel):
     #: Absent is *a new need*. Present is *this one*, and it must be one of this project's.
     id: str | None = None
 
-    category: str = Field(min_length=1, max_length=60)
+    #: The name the need presents itself by. Required on a create and dispensable on an
+    #: update — see :meth:`_a_need_is_named_when_it_is_raised`.
+    category: str | None = Field(default=None, min_length=1, max_length=60)
     urgency: ShemaNeedUrgency = ShemaNeedUrgency.LOW
     status: ShemaNeedStatus = ShemaNeedStatus.OPEN
     description: str = ""
@@ -166,16 +169,15 @@ class ShemaNeedWrite(BaseModel):
         it is a typo. The sibling left negatives to its own validation rule because a fund
         movement legitimately has two directions; an ask has one.
 
-        ``NaN`` and ``Infinity`` are refused before anything is compared against them, because
-        :class:`~decimal.Decimal` parses both from a string and every comparison with a ``NaN``
-        is false — so the two checks below would pass it through to a column that cannot store
-        it. That is the shape of a guard that reads as thorough and admits the one value it
-        was written for.
+        ``NaN`` and ``Infinity`` never reach here: Pydantic refuses a non-finite
+        :class:`~decimal.Decimal` before a field validator runs, with *input should be a finite
+        number*. Worth the sentence because the trap is real and the guard is not — every
+        comparison with a ``NaN`` is false, so the checks below would have waved it through,
+        and a guard written here would have been unreachable code that reads as thorough.
+        ``tests/test_shema/test_needs.py`` pins the refusal where it actually happens.
         """
         if value is None:
             return value
-        if not value.is_finite():
-            raise ValueError(f"{value} is not an amount")
         if value < 0:
             raise ValueError("an amount asked for is not negative")
         exponent = value.as_tuple().exponent
@@ -199,6 +201,44 @@ class ShemaNeedWrite(BaseModel):
             raise ValueError(
                 f"{missing} is required: an amount travels with the currency it is in, and "
                 "nothing in this module converts one"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _a_need_is_named_when_it_is_raised(self) -> ShemaNeedWrite:
+        """**A create needs a category; an update does not, and cannot clear one.**
+
+        The column is ``NOT NULL`` and a new need has no earlier name to keep, so a row
+        without an ``id`` is refused here — by the field's name, which is the one thing a
+        constraint violation could not say.
+
+        **An update is the other case, and making it carry the category too was a real cost.**
+        ``{"id": ..., "status": "dropped"}`` is the gesture the product has for *this stopped
+        mattering*, and requiring the name alongside it would break this module's own rule —
+        *a tab sends what it owns* — for exactly one of the fourteen columns. Nothing gains
+        by it: every surface that reads a category reads the **stored** row, not the payload
+        — the trail through ``_needs.py``'s ``_lifecycle`` and the notice through
+        :meth:`ShemaNeedLine.of` — so an update that omits it leaves every output naming what
+        it already named. And requiring it costs: what the client repeats is **written**
+        (:func:`~app.services.shema._needs.sent_columns`), so a stale name read before
+        somebody else renamed the row would rename it back in silence, and a mistaken id
+        would rename another team's need on top of dropping it. The requirement could not
+        protect the name, and it was the only thing able to overwrite it during a gesture
+        that was not about the name.
+
+        **Omitted and ``null`` stay different answers**, which is the rule one level up: an
+        explicit ``null`` is *sent* and would reach a ``NOT NULL`` column, so it is refused
+        by name here rather than at the commit. A need can be dropped; it cannot be left
+        anonymous.
+        """
+        if self.category is not None:
+            return self
+        if self.id is None:
+            raise ValueError("category is required on a new need: there is no earlier name to keep")
+        if "category" in self.model_fields_set:
+            raise ValueError(
+                "category cannot be cleared: a need is named in every output it reaches. "
+                "Omit it to keep the name this need already has"
             )
         return self
 
@@ -253,15 +293,59 @@ class ShemaNeedLine(LeavingShape):
     submitted_at: date | None = None
     acknowledged_at: date | None = None
 
+    def as_notice(self) -> tuple[str, str]:
+        """The title and the body of the notice this need sends, when it is urgent.
+
+        **The wording lives on the shape rather than in the service that sends it, and the
+        reason is the glob.** ``tests/test_shema/test_privacy_owners.py`` fails when a file in
+        ``app/services/shema/`` or ``app/api/shema/`` reads a guarded column by name, and the
+        one thing a notice has to say is *who, and roughly where*. Writing
+        ``line.location`` in the notifier would be that read — even though the value there is
+        already the region key, because the check reads the tree and not the type, and it is
+        right to: a rule that trusted the author to know which ``.location`` is safe is the
+        rule the next author gets wrong. ``app/models/`` is outside those globs precisely
+        because it is where the shapes and their rules live, so the sentence is composed here,
+        where the withholding has already happened and there is nothing left to leak.
+
+        The description is deliberately absent: it is free text a team wrote about their own
+        situation, and a notice is not the surface to forward it on. The amount is present when
+        there is one, because for an urgent need it is the fact the recipient acts on — and it
+        carries its currency, because in this module a number never travels without one.
+
+        **The copy is English**, which is a pendency rather than a decision: every notification
+        title in this repository is English, and the product's bilingual client-facing copy is
+        still open. Inventing Portuguese here would put unapproved wording in front of a field
+        team on nobody's authority — the sibling's ``_notices.py`` says the same, for the same
+        reason.
+        """
+        where = f" ({self.location})" if self.location else ""
+        money = (
+            ""
+            if self.estimated_amount is None
+            else f" Estimated at {self.estimated_amount} {self.estimated_currency}."
+        )
+        who = self.language_name or self.project_id
+        return (
+            f"Urgent need: {self.category}",
+            f"{who}{where} raised an urgent {self.category} need.{money}",
+        )
+
     @classmethod
-    def of(cls, need: Any, project: Any) -> ShemaNeedLine:
+    def of(cls, need: ShemaNeed, project: ShemaProject) -> ShemaNeedLine:
         """Build one line from a need row and the project it hangs off.
 
         Two objects and therefore an explicit constructor: ``from_attributes`` reads one, and
         the sensitive flag and the region live on the **project** while the money lives on the
         **need**. Everything the boundary needs is passed, so the shape never falls back to
-        the fail-closed default for want of a column somebody forgot to select — and if a
-        caller does hand over something that cannot answer, the default withholds.
+        the fail-closed default for want of a column somebody forgot to select.
+
+        **The two rows are typed**, which is the shape ``app/models/resource_request.py`` and
+        ``app/models/device.py`` already have for their own ``of()`` (``row:
+        RRRequestFieldHistory``, ``device: Device``): this is the one place in the module that
+        reads eleven attributes off two objects, and a named model is where a renamed column
+        is caught instead of arriving as a missing key at the boundary. Importing a row class
+        into ``app/models/`` is the house direction and not a layering breach — the ban is the
+        other way round, on SQLAlchemy models reaching the api layer.
         """
         return cls.model_validate(
             {

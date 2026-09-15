@@ -51,7 +51,7 @@ from app.services.shema._scope import (
     OBT_LAB_ROLE,
     granted_roles,
     reaches,
-    scope_from_roles,
+    scopes_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,21 +113,28 @@ async def recipients(
     accounts are already excluded there.
 
     **The region is applied per holder and not in the query**, because the second axis is this
-    module's own table: each holder's reach is resolved by ``_scope.py`` from the roles already
-    in hand, which is the same value their own requests are scoped by. A regional role with no
-    row in ``shema_user_regions`` reaches nothing and is therefore told nothing — the
-    fail-closed floor that file states, arriving here unchanged rather than relaxed for the
-    convenience of a fuller recipient list.
+    module's own table: each holder's reach is resolved by ``_scope.py``, which is the same value
+    their own requests are scoped by. A regional role with no row in ``shema_user_regions``
+    reaches nothing and is therefore told nothing — the fail-closed floor that file states,
+    arriving here unchanged rather than relaxed for the convenience of a fuller recipient list.
 
-    ``exclude`` drops one account, which is how the mentor who filed the assessment is not told
-    about their own act — the sibling's ``board_watchers`` does the same and for the same reason.
+    **Three queries and not two per holder**, which is the difference between a constant and an
+    ``n`` on a write a mentor is sitting in front of: the holders, the ids among them whose role
+    is unscoped, and ``_scope.py``'s one read of the region table for the whole list. The sibling
+    ``board_watchers`` has the same shape for the same reason — read the holders once and filter
+    in Python, never go back per person.
+
+    ``exclude`` drops one account **before** the reach is resolved, which is how the mentor who
+    filed the assessment is not told about their own act and also why they cost nothing to skip —
+    the sibling's ``board_watchers`` does the first half for the same reason.
     """
-    holders = await authorization_service.list_role_holders(db, app_key, HEALTH_AUDIENCE)
-    reached = []
-    for holder in holders:
-        if holder.id == exclude:
-            continue
-        scope = await scope_from_roles(db, holder, await granted_roles(db, holder.id, app_key))
-        if reaches(scope, region):
-            reached.append(holder)
-    return reached
+    holders = [
+        holder
+        for holder in await authorization_service.list_role_holders(db, app_key, HEALTH_AUDIENCE)
+        if holder.id != exclude
+    ]
+    if not holders:
+        return []
+    unscoped = await authorization_service.list_role_holders(db, app_key, (GLOBAL_ROLE,))
+    scopes = await scopes_for(db, holders, unscoped={holder.id for holder in unscoped})
+    return [holder for holder in holders if reaches(scopes[holder.id], region)]

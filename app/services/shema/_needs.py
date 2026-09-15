@@ -22,6 +22,12 @@ list **without being deleted**, because deleting loses the history a region is j
 nothing here deletes a need, and the product's answer to *take this off my list* is the state
 it already has.
 
+**And it holds one level further down: a field absent from a row is untouched too.** A row
+carries what the tab that sent it owns, so an update writes the columns
+``model_fields_set`` names and no others (:func:`sent_columns`) — a client moving a category
+does not also put the need back to ``open`` and clear the money. A create is the other case
+and takes the payload whole, because there is no earlier value to keep.
+
 **The order, inside** ``save_project``'s **one transaction**: the whole batch is resolved and
 validated before a single row is touched — an unknown id names itself and nothing at all is
 written — then the rows move, then the trail, then the notices, then the caller's one commit.
@@ -47,7 +53,7 @@ them. That is the same trade the whole module makes: the rule is inherited, not 
 from __future__ import annotations
 
 import json
-import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -68,8 +74,6 @@ from app.services.notifications.get_shema_app_id import SHEMA_APP_KEY
 from app.services.shema import _audit
 from app.services.shema._scope import COORDINATOR_ROLE, OBT_LAB_ROLE, holders_reaching
 
-logger = logging.getLogger(__name__)
-
 #: What ``notifications.event_type`` carries for this notice. Dotted and namespaced by the
 #: module, so a panel that lists eight applications' rows can tell whose it is without joining
 #: ``apps``; FE-44 §5.8's ``AppNotification.kind`` is ``need``, and this is the transport's
@@ -87,8 +91,11 @@ NEEDS_FIELD_KEY = "needsItems"
 #: the one notice this module sends rather than in a table, because there is one notice.
 URGENT_NEED_ROLES = (COORDINATOR_ROLE, OBT_LAB_ROLE)
 
-#: The columns a batch row may move. ``id`` addresses, ``acknowledged`` is a gesture the server
-#: turns into three columns, and everything else is a value copied across.
+#: The columns a batch row can carry. ``id`` addresses, ``acknowledged`` is a gesture the
+#: server turns into three columns, and ``submitted_at`` is the one field that can be set and
+#: not cleared — :func:`raise_day_moves` says why. A **create** takes all of them, because a
+#: new need has no earlier value and the payload's defaults are what it starts with; an
+#: **update** writes only the ones the row actually sent — :func:`sent_columns` says why.
 _WRITTEN_COLUMNS = (
     "category",
     "urgency",
@@ -104,8 +111,15 @@ _WRITTEN_COLUMNS = (
     "fulfilled_date",
     "dropped_date",
     "submitted_by",
-    "submitted_at",
 )
+
+#: **The two halves of the money move together or not at all** — the payload's own
+#: both-or-neither rule, carried into the partial write. ``{"estimatedAmount": null}`` on its
+#: own passes validation, because both halves *are* ``None`` on the model; applying only the
+#: half it named would leave a currency standing behind an amount that is gone, and
+#: ``ck_shema_needs_amount_carries_currency`` would refuse that at the commit — after the save
+#: had been accepted.
+_MONEY_COLUMNS = ("estimated_amount", "estimated_currency")
 
 #: What the trail records about a need that moved. The lifecycle and nothing else: the
 #: description is free text a team wrote and could name a place, and ``_audit.py``'s own rule
@@ -114,88 +128,64 @@ _WRITTEN_COLUMNS = (
 _TRAIL_COLUMNS = ("category", "urgency", "status", "acknowledged_at")
 
 
-class Notice(NamedTuple):
-    """One notification's two strings, rendered before anything is written.
+def sent_columns(row: ShemaNeedWrite) -> tuple[str, ...]:
+    """The columns this row actually carries, in :data:`_WRITTEN_COLUMNS` order.
 
-    A shape rather than a tuple of two strings, so the caller cannot swap them: a title in a
-    body renders, and nothing fails.
+    **Absent means unchanged inside the row too, and that is the whole of the rule.**
+    ``app/models/shema.py`` states it for the record — *a tab sends what it owns* — and a
+    needs row is the same case one level down: every one of the fourteen columns has a default
+    on :class:`~app.models.shema_need.ShemaNeedWrite`, so copying the set across as a block
+    would make ``{"id": ..., "category": "financial"}`` put the need back to ``open``/``low``
+    and clear the description, the deadline, ``fulfilled_by`` and both halves of the money. A
+    client moving one field would silently destroy the other thirteen, and the money is the
+    one a Resource Circle acts on.
+
+    **Including the category, which used to be the row's one required field.** It is required
+    on a **create** and dispensable on an update, and
+    :meth:`~app.models.shema_need.ShemaNeedWrite._a_need_is_named_when_it_is_raised` carries
+    the argument: what a client repeats here is written, so a name it had to send in order to
+    drop a need was the one value this function could not protect.
+
+    ``submitted_at`` and ``acknowledged`` were already carved out of the block for the same
+    reason — the client does not hold them — and this is that carve-out finished: what the
+    server reads is ``model_fields_set``, exactly as ``save_project``'s ``_merged`` reads it
+    for the record's own seventy-three columns. A console that does send the whole
+    ``NeedItem`` back is unaffected, because every column it sends is in the set.
+
+    **Nothing is cleared by omission**, which leaves every field clearable by saying so: an
+    explicit ``null`` is *sent* and lands, and ``description`` takes ``""``. ``category`` is
+    the one that cannot be cleared, and the payload refuses it by name rather than letting it
+    reach a ``NOT NULL`` column — a need can be dropped, and it cannot be left anonymous.
+
+    Only an update asks this. A create has no earlier value to protect, so :func:`_new_need`
+    takes the whole set and the payload's defaults are what the need starts with.
     """
+    sent = set(row.model_fields_set)
+    if sent.intersection(_MONEY_COLUMNS):
+        sent.update(_MONEY_COLUMNS)
+    return tuple(column for column in _WRITTEN_COLUMNS if column in sent)
 
-    title: str
-    body: str
 
+def raise_day_moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
+    """Whether ``row`` states a different day from the one this need was raised on.
 
-def urgent_need_notice(line: ShemaNeedLine) -> Notice:
-    """What an urgent need says to the people it reaches.
+    ``submitted_at`` is the one field a payload can **set and cannot clear**, which is why it
+    is not among :data:`_WRITTEN_COLUMNS`. Two things depend on it being answerable: the sweep
+    measures a need's age from it, and FE-44 §5.8 keys a derived notification on
+    ``need:{project}:{category}:{submittedAt}``. So this module stamps it at creation when the
+    client sent none, and from then on a payload that carries a day moves it while a payload
+    that carries ``None`` leaves it standing. *Never cleared* is not *never changed*: a
+    coordinator fixing a wrong date is ordinary, and it lands.
 
-    **Built from the leaving shape and from nothing else**, which is what makes it safe
-    without anybody here knowing the privacy rule: ``line.location`` is already the region key
-    for a flagged project, and there is no ``project.location`` in this function to leak. The
-    description is deliberately absent — it is free text a team wrote about their own
-    situation, and a notice is not the surface to forward it on.
-
-    The amount is in the body when there is one, because for an urgent need it is the fact the
-    recipient acts on, and it carries its currency because in this module a number never
-    travels without one.
-
-    **The copy is English**, which is a pendency rather than a decision: every notification
-    title in this repository is English, and the product's bilingual client-facing copy is
-    still open. Writing invented Portuguese here would put unapproved wording in front of a
-    field team on nobody's authority — the sibling's ``_notices.py`` says the same and for the
-    same reason.
+    **Without that rule every re-save of an untouched tab is an edit.** This is a field the
+    *server* filled, so a tab re-sending the row it read sends it back empty — and an empty
+    read as *clear it* would differ from the row on every single save: the version would bump,
+    the trail would grow a row, and every other coordinator in the meeting would be refused —
+    over a save that moved nothing. The record's own diff already refuses to read a re-sent
+    value as a change; this is the same rule for a value the client was never given to re-send.
+    :func:`sent_columns` is the same answer for the columns the client *does* hold.
     """
-    who = line.language_name or line.project_id
-    where = f" ({line.location})" if line.location else ""
-    money = (
-        ""
-        if line.estimated_amount is None
-        else f" Estimated at {line.estimated_amount} {line.estimated_currency}."
-    )
-    return Notice(
-        title=f"Urgent need: {line.category}",
-        body=f"{who}{where} raised an urgent {line.category} need.{money}",
-    )
-
-
-def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
-    """What **one save's** urgent needs say to the people they reach, in one notice.
-
-    **A batch is one notice per recipient, never one per need per recipient.** A save that
-    imports twenty rows and turns five of them urgent is one event a coordinator can act on,
-    not five interruptions telling the same story — BE-15's own line in ``docs/shema.md``'s
-    delivery plan is that an import which floods a panel trains its reader to stop opening it,
-    which is a worse failure than the notice never having existed. :func:`urgent_need_notice`
-    still answers the single-need case, unchanged, because most saves raise one.
-
-    Amounts are summed **per currency, never across one**, for the reason this module never
-    sums a need: a rupiah total beside a real total invents a number nobody asked for. A
-    currency with no amount for every need in the batch is left out rather than shown as zero.
-    """
-    if len(lines) == 1:
-        return urgent_need_notice(lines[0])
-
-    who = lines[0].language_name or lines[0].project_id
-    where = f" ({lines[0].location})" if lines[0].location else ""
-    categories = ", ".join(sorted({line.category for line in lines}))
-
-    totals: dict[str, Decimal] = {}
-    for line in lines:
-        if line.estimated_amount is not None and line.estimated_currency:
-            totals[line.estimated_currency] = (
-                totals.get(line.estimated_currency, Decimal(0)) + line.estimated_amount
-            )
-    money = (
-        ""
-        if not totals
-        else " Estimated at "
-        + ", ".join(f"{amount} {currency}" for currency, amount in sorted(totals.items()))
-        + "."
-    )
-
-    return Notice(
-        title=f"{len(lines)} urgent needs raised",
-        body=f"{who}{where} raised {len(lines)} urgent needs: {categories}.{money}",
-    )
+    return row.submitted_at is not None and row.submitted_at != need.submitted_at
 
 
 def _lifecycle(need: ShemaNeed) -> str:
@@ -240,6 +230,17 @@ async def plan_needs(
     An id that belongs to **another** project is refused exactly as an unknown one is. It is
     not an oracle — the caller already reached this project through the scope — and answering
     *that id is somebody else's* would say that the id exists.
+
+    **The same id twice in one batch is refused rather than resolved last-wins.** A client that
+    sends one need twice believes two different things about it, and picking the second in
+    silence is how the one it did not mean becomes the one that is stored. It would also put
+    two rows in the trail for one need, the second describing a change from a state that never
+    existed for anybody.
+
+    **A row that would move nothing does not enter the plan**, so an empty plan means *this
+    save changes no need* and ``save_project`` can stop at its own step 4 without bumping the
+    version. That is the difference between *the tab sent its table* and *the tab changed
+    something*, and only the second may refuse the other coordinators in the meeting.
     """
     existing = {
         row.id: row
@@ -248,16 +249,20 @@ async def plan_needs(
         ).scalars()
     }
 
-    plan, unknown = NeedPlan(), []
+    plan, problems, seen = NeedPlan(), [], set()
     for index, row in enumerate(rows):
         if row.id is None:
             plan.creates.append(row)
+        elif row.id in seen:
+            problems.append(f"needsItems[{index}]: {row.id} is addressed twice in one batch")
         elif row.id in existing:
-            plan.updates.append((existing[row.id], row))
+            seen.add(row.id)
+            if moves(existing[row.id], row):
+                plan.updates.append((existing[row.id], row))
         else:
-            unknown.append(f"needsItems[{index}]: {row.id} is not a need of this project")
-    if unknown:
-        raise ValidationError("; ".join(unknown))
+            problems.append(f"needsItems[{index}]: {row.id} is not a need of this project")
+    if problems:
+        raise ValidationError("; ".join(problems))
     return plan
 
 
@@ -276,40 +281,61 @@ def _acknowledge(need: ShemaNeed, *, user: User | None, day: date) -> None:
     need.acknowledged_by_name = _audit.author_name(user)
 
 
-def _apply(need: ShemaNeed, row: ShemaNeedWrite, *, user: User | None, day: date) -> bool:
-    """Move one row onto one need; answer whether anything actually changed.
+def moves(need: ShemaNeed, row: ShemaNeedWrite) -> bool:
+    """Whether this row would actually change this need.
 
-    Equality and not identity, for ``_audit.py``'s reason: a tab re-sending a need it did not
-    touch is not an edit, and a version bump on it would refuse every other coordinator in the
-    meeting over a save that moved nothing.
+    **Asked while planning and not while writing**, which is what keeps a version bump honest:
+    the record's own diff decides whether a save moved anything *before* the conditional
+    ``UPDATE`` runs, and a needs batch that re-sent what it read has to reach that decision the
+    same way. A tab re-sending its whole table on every save is what the progress tab already
+    does, and bumping the version for it would refuse every other coordinator in the meeting
+    over a save that moved nothing.
+
+    Equality and not identity, for ``_audit.py``'s reason.
     """
-    moved = False
-    for column in _WRITTEN_COLUMNS:
-        value = getattr(row, column)
-        if getattr(need, column) != value:
-            setattr(need, column, value)
-            moved = True
-    if row.acknowledged and need.acknowledged_at is None:
+    if any(getattr(need, column) != getattr(row, column) for column in sent_columns(row)):
+        return True
+    if raise_day_moves(need, row):
+        return True
+    return row.acknowledged and need.acknowledged_at is None
+
+
+def _apply(need: ShemaNeed, row: ShemaNeedWrite, *, user: User | None, day: date) -> None:
+    """Move one row onto one need. :func:`moves` already said it would.
+
+    The same :func:`sent_columns` the decision was taken over, so *what moved* and *what is
+    written* cannot disagree — a column the check ignored and the write applied would be a
+    version bump nobody asked for, or worse, a value nobody sent.
+    """
+    for column in sent_columns(row):
+        setattr(need, column, getattr(row, column))
+    if row.submitted_at is not None:
+        need.submitted_at = row.submitted_at
+    if row.acknowledged:
         _acknowledge(need, user=user, day=day)
-        moved = True
-    return moved
 
 
 def _new_need(project_id: str, row: ShemaNeedWrite, *, user: User | None, day: date) -> ShemaNeed:
     """One need, as the batch asked for it.
 
-    ``submitted_at`` falls back to the day it was raised rather than staying NULL, and that is
-    the one value this path supplies that the payload did not. Two things depend on the column
-    being answerable: the sweep measures a need's age from it, and FE-44 §5.8 keys a derived
-    notification on ``need:{project}:{category}:{submittedAt}`` — an id with a hole in it is
-    not stable, and a need with no date is a need no threshold can be past.
+    **The whole of** :data:`_WRITTEN_COLUMNS` **and not** :func:`sent_columns`, which is the
+    one place the two paths part: a create has no earlier value for an omitted field to
+    preserve, so the payload's defaults *are* what the need starts with — ``open``, ``low``, no
+    money — and reading ``model_fields_set`` here would hand ``urgency`` and ``status`` NULL
+    for columns the table declares ``NOT NULL``. ``category`` is the one with no default to
+    fall back on either way, which is why the payload refuses a create without it
+    (:meth:`~app.models.shema_need.ShemaNeedWrite._a_need_is_named_when_it_is_raised`) and why
+    this path can read it off the row.
+
+    ``submitted_at`` falls back to the day the need arrived rather than staying NULL, and it is
+    the one value this path supplies that the payload did not — :func:`raise_day_moves` carries
+    the reason and the other half of the rule.
     """
     need = ShemaNeed(
         project_id=project_id,
         **{column: getattr(row, column) for column in _WRITTEN_COLUMNS},
     )
-    if need.submitted_at is None:
-        need.submitted_at = day
+    need.submitted_at = row.submitted_at or day
     if row.acknowledged:
         _acknowledge(need, user=user, day=day)
     return need
@@ -353,8 +379,7 @@ async def apply_needs(
     for need, row in plan.updates:
         was_urgent = _is_urgent_and_open(need)
         before = _lifecycle(need)
-        if not _apply(need, row, user=user, day=day):
-            continue
+        _apply(need, row, user=user, day=day)
         changes.append(_audit.FieldChange(NEEDS_FIELD_KEY, before, _lifecycle(need)))
         if _is_urgent_and_open(need) and not was_urgent:
             became_urgent.append(need)
@@ -364,6 +389,61 @@ async def apply_needs(
     return changes, became_urgent
 
 
+class Notice(NamedTuple):
+    """The title and body one notification carries.
+
+    A pair with names, because the two are written together and read together and a bare
+    ``tuple[str, str]`` at three call sites is two positions somebody eventually swaps.
+    :meth:`~app.models.shema_need.ShemaNeedLine.as_notice` composes the sentence for a single
+    need and stays the only owner of it; this is the shape that carries it and the batch's.
+    """
+
+    title: str
+    body: str
+
+
+def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
+    """What **one save's** urgent needs say to the people they reach, in one notice.
+
+    **A batch is one notice per recipient, never one per need per recipient.** A save that
+    imports twenty rows and turns five of them urgent is one event a coordinator can act on,
+    not five interruptions telling the same story — and a panel that arrives five deep for one
+    act is the panel somebody stops opening, which costs the urgent need the attention the
+    whole area exists to buy it.
+
+    A single need is delegated to
+    :meth:`~app.models.shema_need.ShemaNeedLine.as_notice` rather than recomposed here, so the
+    sentence a recipient reads has exactly one owner and the privacy argument that put it in
+    ``app/models/`` keeps holding: the description never travels, and ``line.location`` is
+    already the region key for a flagged project.
+
+    **Amounts are totalled per currency and never across them.** This module's rule is that a
+    number never travels without the currency it was said in, so a batch naming reais and
+    dollars says both and adds neither to the other.
+    """
+    if len(lines) == 1:
+        return Notice(*lines[0].as_notice())
+
+    who = lines[0].language_name or lines[0].project_id
+    where = f" ({lines[0].location})" if lines[0].location else ""
+    categories = ", ".join(sorted({line.category for line in lines}))
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+    for line in lines:
+        if line.estimated_amount is not None and line.estimated_currency is not None:
+            totals[line.estimated_currency] += line.estimated_amount
+    money = (
+        ""
+        if not totals
+        else " Estimated at "
+        + ", ".join(f"{amount} {currency}" for currency, amount in sorted(totals.items()))
+        + "."
+    )
+    return Notice(
+        title=f"{len(lines)} urgent needs raised",
+        body=f"{who}{where} raised {len(lines)} urgent needs: {categories}.{money}",
+    )
+
+
 async def notify_urgent(
     db: AsyncSession,
     project: ShemaProject,
@@ -371,54 +451,53 @@ async def notify_urgent(
     *,
     actor: User | None,
 ) -> int:
-    """Stage **one notice per recipient for the whole batch**; answer how many were written.
+    """Stage one notice per recipient per urgent need; answer how many were written.
 
     **Routed by role and then by region, before anything is capped** (FE-44 §5.10's rule for
     the panel, applied at the source): the recipients are the holders of
     :data:`URGENT_NEED_ROLES` whose scope reaches this project's region, and a holder of a role
     in another region is not a recipient rather than a recipient who is filtered out later.
 
-    **One notice per recipient, not one per need.** A save that imports twenty needs and turns
-    five of them urgent is one event, and a coordinator who received five separate notices for
-    one save would learn to stop opening them — the exact failure a flood is named for in
-    ``docs/shema.md``'s delivery plan. :func:`urgent_needs_notice` folds the batch into one
-    ``Notice`` before anything is staged, so the recipient loop below runs once regardless of
-    how many needs raised it.
+    **One notice per recipient, not one per need.** A save that imports twenty needs and
+    turns five of them urgent is one event, and a coordinator who received five separate
+    notices for one save would learn to stop opening them. :func:`urgent_needs_notice` folds
+    the batch into one :class:`Notice` before anything is staged, so the recipient loop below
+    runs once regardless of how many needs raised it.
+
+    **The person who raised it is not told about their own act**, which is the sibling's
+    ``board_watchers(exclude=...)`` and its reason: a coordinator who just typed the need does
+    not need a notice saying they typed it, and the panel somebody actually reads is the one
+    holding only what other people did.
 
     Staged inside the caller's transaction with ``commit=False``. The flag exists for exactly
     this (``create_notification``'s own docstring): a need that landed always carries its
     notice, and one that rolled back leaves none.
 
-    **The body is built from a leaving shape**, so it cannot name the place even though the
-    people it reaches could read it on the record. The notice is the payload that travels
-    furthest with the least supervision — it is listed, it is counted, it is the thing a panel
-    renders next to seven others — and a rule that had to be remembered here is the rule
-    ``docs/shema.md`` §6.4 spends a section saying nobody remembers.
+    **The body is written by the leaving shape itself**
+    (:meth:`~app.models.shema_need.ShemaNeedLine.as_notice`), so it cannot name the place even
+    though the people it reaches could read it on the record.
+    A notice is the payload that travels furthest with the least supervision — it is listed, it
+    is counted, it is rendered next to seven others — and a rule that had to be remembered here
+    is the rule ``docs/shema.md`` §6.4 spends a section saying nobody remembers. It is also why
+    the sentence is composed there and not here: this package is globbed for guarded names, and
+    ``line.location`` written in this file would be a read the check cannot tell from a leak.
     """
     if not needs:
         return 0
 
     holders = await authorization_service.list_role_holders(db, SHEMA_APP_KEY, URGENT_NEED_ROLES)
-    recipients = await holders_reaching(db, holders, project.region_key, SHEMA_APP_KEY)
+    reaching = await holders_reaching(db, holders, project.region_key, SHEMA_APP_KEY)
+    recipients = [person for person in reaching if actor is None or person.id != actor.id]
     if not recipients:
-        logger.warning(
-            "shema urgent need raised and reached nobody",
-            extra={
-                "shema_operation": "notify_urgent",
-                "shema_project_id": project.id,
-                "shema_region": project.region_key.value,
-                "shema_need_count": len(needs),
-            },
-        )
         return 0
 
     app_id = await get_shema_app_id(db)
-    notice = urgent_needs_notice([ShemaNeedLine.of(need, project) for need in needs])
     written = 0
-    for user in recipients:
+    notice = urgent_needs_notice([ShemaNeedLine.of(need, project) for need in needs])
+    for person in recipients:
         await create_notification(
             db,
-            user_id=user.id,
+            user_id=person.id,
             app_id=app_id,
             event_type=URGENT_NEED_EVENT,
             title=notice.title,
