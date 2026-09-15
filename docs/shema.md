@@ -274,8 +274,11 @@ bucket, which is the precedent, not a trespass).
 |---|---|---|
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
 | `app/api/shema/_deps.py` | BE-03 **· built** | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.1's region-scope dependency. The app key is named here and nowhere else in the module. |
-| `app/api/shema/projects.py` | BE-05, BE-06 | The collection read, the record read, `POST`, `PATCH`. |
-| `app/api/shema/health_assessments.py` | BE-07 | `POST`/`GET /projects/{id}/health-assessments`. |
+| `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
+| `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
+| `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
+| `app/services/shema/_health_audience.py` | **BE-07, built** | Who may read a reading of a team, and who is told when one turns critical — one list, two uses. |
+| `app/services/shema/_health_notice.py` | **BE-07, built** | What a notice about a struggling team may say, which is the part of that feature that needed deciding. |
 | `app/api/shema/prayer.py` | BE-09 | The wall, and the intercessor network — the routes are under `/prayer/` whoever writes them, and §1.3 C3 leaves open which issue that is. |
 | `app/api/shema/meetings.py` | BE-10 | Definitions and the log. |
 | `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
@@ -287,11 +290,20 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/session.py` | BE-03 **· built** | `GET /api/shema/session` — §6.3. |
 | `app/services/shema/` | BE-03…BE-16 | **All** logic and **all** queries. One operation per file with an `__init__.py` re-export — the newer house style (`app/services/access_request/`, `project/`, `auth/`, `resource_request/`), not the grouped `*_service.py` of `annotation_studio/`. |
 | `app/services/shema/_scope.py` | BE-03 **· built** | Which projects a caller reaches, from role **and** region. The `app/services/resource_request/_scope.py` precedent, with §6.1's second axis. It holds the module's region predicate, and every service that reads `shema_projects` composes it — a check in `tests/test_shema/test_scope.py` refuses one that does not. |
-| `app/services/shema/_redaction.py` | BE-04 | The sensitive-country owners: the location display and the map placement. §6.4. |
-| `app/services/shema/_consent.py` | BE-04 | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
+| `app/models/shema_privacy.py` | **BE-04, built** | `LeavingShape` — the sensitive-country rule itself, applied in a model validator, plus `REGION_CENTROIDS` and the `ShemaAudience` vocabulary. The rule is here rather than in the service package because a response model may not import `app/services/` and the rule has to be reachable from the shape; §6.4 carries the argument. |
+| `app/services/shema/_redaction.py` | **BE-04, built** | The sensitive-country owner on the query side: `is_withheld`, `withheld_note`, `log_reference`, `searchable_text`. The only reader of the guarded columns in the two `shema` packages. §6.4. |
+| `app/services/shema/_consent.py` | **BE-04, built** | `reaches_prayer_wall` — the **only** reader of the three prayer columns. §6.4. |
 | `app/services/shema/_directory.py` | BE-13 | A person's contact, their consents and their country — the **only** file in either package that names `ShemaIntercessor`. §6.4's fourth owner. |
-| `app/services/shema/_media_sharing.py` | BE-04 | `can_share_media` — authorization × audience × the sensitive flag. §6.4. |
-| `app/utils/shema_derivations.py` | BE-05 | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
+| `app/services/shema/_media_sharing.py` | **BE-04, built** | `can_share_media` — authorization, then audience, then the sensitive flag; and `can_export_notes`. §6.4. |
+| `app/utils/shema_derivations.py` | **BE-05, built** | FE-44 §7's nine pure functions of `(record, now)`. **Not** in the service package — see below. |
+| `app/utils/shema_facets.py` | **BE-05, built** | FE-44 §7.6's `filterProjects`: one pass producing the visible list **and** every facet count, plus the screen's five orders. A second file beside the derivations rather than inside them — §6.5 says why. |
+| `app/utils/shema_books.py` | **BE-06, built** | FE-44 §5.2's 66 books — the table a `bookProgress` row is checked against. Not `bible_books`, which is the Meaning Map's: minted uuids, seeded rows, one language, an `is_enabled` flag another product owns. §5.2's note. |
+| `app/models/shema_record.py` | **BE-06, built** | The record's **read** shape — FE-44's `Project`, 55 + 18, key for key — and every sub-shape the ficha is made of. Separate from `app/models/shema.py`, which is what a client *sends*. |
+| `app/db/models/shema_audit.py` | **BE-06, built** | `shema_record_edits` — the trail: who moved which field, when, from what to what. Append-only, by the same trigger `shema_progress_history` uses. |
+| `app/services/shema/_audit.py` | **BE-06, built** | The trail's writer and its one reader. Names no guarded column and records no guarded **value**. |
+| `app/services/shema/_progress.py` | **BE-06, built** | FE-44 §7.2's `applyProgressUpdate`, server-side: the roll-up and the history entry. The module's **single** progress writer; BE-12's import goes through it. |
+| `app/services/shema/save_project.py` | **BE-06, built** | The create, the partial update, and the version guard. The one thing in the module that moves `shema_projects.version`. |
+| `app/services/shema/read_record.py` | **BE-06, built** | The record read, and `build_record` — the assembly the write path answers with. |
 | `app/models/shema.py`, `app/models/shema_*.py` | BE-02 …, per §2.2 | **Pydantic** request/response models. `ConfigDict(from_attributes=True)` on read models; separate `Create` / `Update` / `Response`. |
 | `app/db/models/shema.py`, `app/db/models/shema_*.py` | BE-02 authors, each issue grows its own | **SQLAlchemy** tables. Must be re-exported from `app/db/models/__init__.py` — [`docs/resource_requests.md`](resource_requests.md) §8.1. |
 | `alembic/versions/20260NNN_shemaNN_*.py` | BE-02 onward | Migrations. Single head, clean `downgrade -1`. §7.1. |
@@ -351,8 +363,8 @@ nothing in column 3 imports `fastapi`.
 | **Role** | The four aliases, `require_role(APP_KEY, key)`. | Nothing. |
 | **Region scope** | Declares the dependency; receives a `RegionScope` value. | `_scope.py` computes it from `shema_user_regions` and the granted roles, and **every list query takes it as a parameter**. §6.1. |
 | **Validation of the four required fields** | Pydantic models reject a payload before a service is called (FE-44 §5.1.1). | Re-checks nothing Pydantic already refuses; owns the cross-record rules (a duplicate slug is a `ConflictError`). |
-| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | `_redaction.py`, called by every service that builds a *leaving* shape. §6.4. |
-| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; `list_prayer_requests` is the only query that applies the gate. §6.4. |
+| **Redaction (sensitive country)** | Nothing. A router may not decide what leaves. | Nothing either, and that is BE-04's correction to this row: the rule is **inherited** by the response model (`LeavingShape`), not called by a service. `_redaction.py` owns what a `Select` cannot inherit. §6.4. |
+| **Consent (prayer)** | Nothing. | `_consent.py` is the only reader of the three prayer columns; the wall's query (BE-09) is the only one that applies the gate. §6.4. |
 | **Media authorization** | Nothing. | `_media_sharing.py`, plus the signed-URL adapter of §4.6. |
 | **Derivations** | Nothing. | Services call `app/utils/shema_derivations.py`; response models may import it too (§3.1). |
 | **Errors** | Maps a business exception onto a status, or lets the global handlers do it. | Raises `NotFoundError` / `ConflictError` / `ValidationError` / `AuthorizationError` from `app/core/exceptions.py`. **Never imports `HTTPException`.** |
@@ -539,6 +551,14 @@ call as a short-lived signed GET that nothing persists. Its docstring refuses
 `shema-private` bucket and a `_media_storage.py` beside it, **new** — BE-04, with BE-02
 owning the `storage_key` column.
 
+**Built (BE-04).** `_media_storage.py` (bucket, expiry, key) and `media_download_url.py` (the
+gate and the minted link). The key is scoped by the media row's uuid rather than by the
+project slug — §6.4 carries that argument — and the route that calls it belongs to the issue
+that first has a screen for media (BE-09, BE-14). **The upload half is not built**: it needs a
+content type and size policy per collection (`ProjectMaterial.kind` is `text | audio | video`)
+and a screen to be wrong in front of, and nothing here freezes it. `upload_gcs_object` with
+`GCS_SHEMA_BUCKET` and `storage_key` is the whole of what that issue has to write.
+
 ### 4.7 Phases — **Not applicable**
 
 `app/db/models/phase.py`, `app/services/phase/`, `app/api/phases.py`,
@@ -636,8 +656,8 @@ behaviour on it.
 
 | # | Aggregate | Tables (working names) | Owner | The invariant |
 |---|---|---|---|---|
-| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | The primary key is the **export slug**, not a minted uuid. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
-| 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day. |
+| 5.1 | **Project record** | `shema_projects` | BE-02 (schema), BE-06 (lifecycle) | **The concurrency token is a `version` column and a save must quote it** (BE-06 — `If-Match` required, `ETag` on every read; a stale save is a 409 naming the version, the fields and the person). A save that changed nothing moves nothing. The primary key is the **export slug**, not a minted uuid. Only four fields are required to save — `language_name`, `bridge_language`, `team`, `objective` — and **nothing else is `NOT NULL`**: 27 of the export's 55 columns are empty on all 127 records. No `translated <= total` constraint: three real records violate it. |
+| 5.2 | **Progress and its history** | `shema_progress_history` (+ the aggregates on the record) | BE-02, BE-06 | The history entry is **produced by the server**, never accepted from the client — the previous values are the server's own read before the write. An entry is appended **only if an aggregate changed**, and it snapshots the three unit tables. Roll up **only** the tables that can express counts. Stamp the actor's **local** day — which the server cannot know, so BE-06 has the client state it in `X-Shema-Local-Date` and bounds it to ±1 day of the server's own, the window every real offset fits in and a backdated ETEN credit does not. **A row is checked against the book that exists** (`app/utils/shema_books.py`): not a book, a scope longer than the book, a count above its own row. The ceiling is **per row and never over the aggregates** — three export records carry `156/25`. |
 | 5.3 | **Health assessment** | `shema_health_assessments` | BE-02, BE-07 | **Its own aggregate.** The flat fields on the record are a *projection of the newest entry*, never a second truth; append and re-project in one step, and carry a pre-history record into the history before appending. The **per-dimension note is the data**; the running note is derived from it at write time. `""` is not `boa`. |
 | 5.4 | **Needs** | `shema_needs` | BE-02, BE-08 | They **travel with the project** — edited on record tabs, saved by the record's `PATCH`. No separate needs endpoint in wave 1; adding one gives `needsItems` a second owner. Four states, not three: `dropped` leaves the open list without deleting the history a region is judged by. |
 | 5.5 | **Media and materials** | `shema_media_items`, `shema_materials` | BE-02, BE-04 (the rule), BE-06 (the write) | **The default is not authorized** — only an explicit `granted = true` counts, so an undecided item behaves as a refused one. Every decision carries who and when, as a **snapshot that must not follow a rename**. **Replacing the artifact resets the decision to undecided.** The row stores a storage **key**, never a URL (§4.6). |
@@ -649,6 +669,66 @@ behaviour on it.
 | 5.11 | **ETEN ledger** | `shema_eten_credits` | BE-02, BE-11 | A stored `manual` entry **overrides** the computed value; `calculated` marks what the rule produced. **A year with no data is not a year of zero credits.** Do not seed. The rule is **Open · GATE-01** (§9.1). |
 | 5.12 | **Forms and intake** | `shema_submissions`, `shema_intake_links` | BE-02, BE-12 | The import is **idempotent and transactional** — a double import is a no-op. The submission is archived **byte-identically**. **Only the Pulse is archivable.** The leader link grants the intake form and nothing else, and it expires. Format is **Open · GATE-03** (§9.3). |
 | 5.13 | **Region scope grant** | `shema_user_regions` | BE-03 | §6.1. The one thing this module owns about identity. Empty means global. |
+
+> **BE-06 ([OBT-395](https://linear.app/shema-obt/issue/OBT-395)) built the record's
+> lifecycle on rows 5.1 and 5.2, and four decisions travel with it.**
+>
+> - **The version is an integer column, not `updated_at`.** The issue named both; this module
+>   has already measured why the timestamp loses. `shema_progress_history`'s own docstring
+>   records that `func.now()` hands every row of one transaction the same microsecond and that
+>   SQLite's `CURRENT_TIMESTAMP` has one-second granularity — and two coordinators saving
+>   inside one second is the case the guard exists for. A counter has no granularity to lose.
+>   `SnSessionState.version` is the repository's precedent and `If-Match`/`ETag` the transport.
+> - **The guard is required, against the precedent it otherwise copies.**
+>   `app/services/sound_necklace/autosave_state.py` makes its `If-Match` optional because its
+>   writer is one tab autosaving its own session. Here the writer is one of several
+>   coordinators, so a skippable guard is last-write-wins one forgotten header away.
+> - **The audit is its own append-only table** (`shema_record_edits`, §3.1) rather than a
+>   column pair, and it is what makes the 409 explainable: keyed by the version a save
+>   produced, it answers *what moved between the version I read and the current one*. The
+>   **values** of a guarded field stay out of it — the key travels, `old`/`new` are NULL —
+>   because a country copied into a second table with different readers has left the boundary
+>   §6.4 holds. `shema_progress_history` gains **no** author column: `ProgressHistoryEntry` is
+>   a shape FE-44 froze, and the trail is where the author of every write lives, progress
+>   included.
+> - **The progress batch is the record's own `PATCH`, not a second endpoint.** FE-44 §9.3
+>   names the only split it will accept and asks in letters that BE-06 *not invent a different
+>   one*. Atomicity is a property of the write path instead: the whole batch is validated
+>   before a row is applied — every bad row named at once, by index — and the roll-up, the
+>   history entry and the trail commit together or not at all.
+
+> **BE-07 ([OBT-396](https://linear.app/shema-obt/issue/OBT-396)) built row 5.3, and five
+> decisions travel with it.**
+>
+> - **The question set is a constant, not a table.** `app/utils/shema_health_questions.py` holds
+>   every published set as an append-only tuple of `(version, [(dimension, i18next key)])`. A
+>   version cannot be added by data alone — a new question needs its key in the console's
+>   catalogue before it can be rendered, so a row inserted with no catalogue entry would be a
+>   question with no text. §4.11's rule is what makes it cheap: a set names **keys**, never the
+>   rendered sentence, so a translation changing is not a new version. `app/utils/shema_books.py`
+>   is the precedent and `GET /api/shema/health-questions` serves the table as **provenance** —
+>   what set *N* asked — and never as a second owner of what the wizard renders.
+> - **`question_set_version` is nullable and NULL is not version 1.** The entry carried out of
+>   the record's flat fields answered a Notion column rather than a questionnaire, and stamping
+>   it would manufacture provenance. §7.4's two absences, arriving a third time.
+> - **The author is its own pair of columns**, `created_by` / `created_by_name`, beside the
+>   `assessor` the contract already has: the assessor is *who read the team* and the author is
+>   *who entered the row*, and a mentor's visit typed up by the coordinator is one row with two
+>   people in it. `shema_record_edits`'s pair is the shape, RESTRICT included.
+> - **Immutable in the write path and not by trigger.** `append_assessment.py` is the only writer
+>   and only ever inserts; no route updates or deletes an assessment. The trigger stays off for
+>   the reason `app/db/models/shema_health.py` already gives — a mentor's typo in a note is a
+>   person's to correct — so §7.2's *exactly two database-level invariants* is unchanged.
+> - **No `If-Match`, against the record's own write.** Appending is not replacing: two mentors
+>   filing two readings are two rows and neither is lost, so a version guard could only refuse a
+>   reading taken in a conversation. The version is bumped and leaves in the `ETag`, because the
+>   flat fields did move. The cost is stated where it is paid: the prayer request and the pastoral
+>   answer a submission may carry are last-write-wins between two simultaneous wizards.
+>
+> And the **audience** is this module's answer to *read access at least as narrow as the
+> record's*: `globalStrategist`, `coordinator`, `obtLab` — `resourceCircle` opens the ficha and is
+> refused the assessment, off FE-44 §5.8's own table. The same list addresses the critical notice,
+> because notifying somebody who may not read it leaks the fact that it exists.
 
 **Two shapes worth naming because they are easy to get wrong the same way the sibling did.**
 The health assessment (5.3) is the module's counterpart of
@@ -787,7 +867,7 @@ scope names exactly one region **and** the seat is filled. Global scope, a two-r
 last of those is the ordinary path rather than an edge case: all twenty-one seats ship
 unassigned.
 
-### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 builds**
+### 6.4 Seam C — privacy, and why it is three owners and not one — **Decided; BE-04 built**
 
 FE-44 §8 is written as server requirements and `CLAUDE.md` §6.1/§6.2 as invariants. The
 scheduling is already right: BE-04 lands **before anything that emits data**. What this
@@ -842,6 +922,75 @@ absent from **all four** output paths — the wall, exports, the ETEN report and
 > the rule above withholds a **location**. Whether a person's name is itself a location in a
 > dangerous place belongs to §9.4's fourth gate, whose own instruction is to raise it rather
 > than invent it surface by surface.
+#### What BE-04 built
+
+**The rule is not in `_redaction.py`. It is in `app/models/shema_privacy.py`, and it is
+inherited rather than called.** Everything else in this section held; this one line did not,
+and it is worth the paragraph because the reason generalises.
+
+The DoD asks that *adding a new endpoint without knowledge of the rule still yields protected
+output*. A service function cannot deliver that — it has to be **called**, and a call is what
+the next endpoint forgets, which is the very sentence this section opens with. So the rule
+lives in `LeavingShape`, a Pydantic base class that every shape leaving coordination inherits,
+and it is applied in a `model_validator(mode="after")`: an author who writes
+`class PrayerRequestOut(LeavingShape)` with a `location` field gets the redaction **by
+declaring the field**, which is the one act they cannot skip. That is the serialization
+boundary the issue asks for, spelled in the only place FastAPI gives one.
+
+It could not live in `app/services/shema/_redaction.py` because
+`tests/test_app_boots.py::test_no_dto_module_reaches_up_into_the_service_layer` forbids a DTO
+module from importing `app/services/` — the inversion that closed an import cycle once — and
+the rule has to be reachable from the shape for the paragraph above to be true. This is the
+same trade §3.1 already makes for the derivations, arriving one issue earlier: the half that
+both services and response models need lives where the response models may reach it.
+`_redaction.py` keeps what a `Select` cannot inherit — `is_withheld`, `withheld_note`,
+`log_reference` and `searchable_text` — and stays the module's sole reader of the guarded
+columns.
+
+**The fields a leaving shape reduces**, in one list, because the value of one list is that
+there is one: `location`, `location2`, `country` (to the **region key**, never an empty
+string), `latitude` / `longitude` / `coords` (to the region centroid, so the marker moves
+rather than disappears), `team` / `base` and the three personal contacts (to `""`). The record
+read reduces none of them.
+
+**Fail closed, and the closed state is the default.** A shape built from something that cannot
+answer whether the record is sensitive — a hand-assembled dict, a partial row, a join that did
+not select the column — withholds. The cost is a coordinator clicking through to the record;
+the alternative costs somebody their safety, and fails silently.
+
+**The withholding is visible and says nothing about what.** `locationWithheld` is in every
+leaving shape's output, always. For a collection or a file, `withheld_note` answers *how many*
+rows were reduced — and answers `None` rather than `0`, because *"0 locations withheld"* on a
+file with no sensitive projects is a sentence about the absence of sensitive projects, said on
+every file, and interesting exactly when it should not be said.
+
+**Three nets, not one**, and `tests/test_shema/test_privacy_owners.py` is all three. The glob
+this section already asked for, over both `shema` packages and now for three column sets
+(sensitive country, consent, media authorization), each with a one-entry allowlist a later
+issue extends by writing a line it has to justify. **A route audit** that reads the built
+application's route table and fails when a response model under `/api/shema` can name a place
+and does not inherit `LeavingShape` — the `UNAUTHENTICATED_PATHS` shape of
+`test_access.py`, applied to the payload instead of the guard, with `COORDINATION_ROUTES` empty
+today and BE-06's record read as the one line expected in it. And a vocabulary check, so the
+list of guarded fields and the list of replacements cannot drift apart.
+
+**And the bytes, because a predicate that ends in a public URL decides nothing.** §4.6's
+verdict is built: `app/services/shema/_media_storage.py` holds the `shema-private` bucket and
+the content-addressed key, `app/services/shema/media_download_url.py` applies
+`can_share_media` on the only address the bytes have, and the address is a signed GET that
+expires in fifteen minutes and is persisted nowhere. **One departure from the sibling's key
+shape, and it is this section's own argument arriving in the object store:**
+`resource-requests-private` scopes a key by its `request_id`; this one scopes by the media
+row's uuid, because a Shemá id is `<language>-<place>` and a signed URL travels further than
+the payload it came from — into a history, a referrer, a proxy log, a forwarded message. The
+refusal reads the same sentence whichever of its three reasons fired, for the reason the whole
+section gives: *why* is the fact being protected.
+
+**Two departures, each declared in BE-04's PR rather than absorbed here.** The base name is
+withheld on **every** leaving shape and not only in a file (§9.4 — the gate keeps the console's
+own rendering, which is presentation). And the collection read is a leaving shape, with only
+the record read a coordination surface, because the issue names *list* among the output paths
+and FE-44 §8.7 says display is never enforcement.
 
 ### 6.5 Seam D — the derivations must match, not merely agree — **Decided**
 
@@ -863,6 +1012,47 @@ not different.**
   and on 31 December in the next *year*. `app/utils/stored_time.py` already exists in this
   repository and BE-05 reads it before writing a second clock helper.
 
+#### What BE-05 built, and the two places it departs from this document
+
+**One — the collection read takes the filter and the counts together, so its response is an
+envelope and not `Project[]`.** §9.1 of the frozen contract froze `GET /api/shema/projects` as
+the whole scoped collection with no pagination, no filter parameters and no facet counts, and
+BE-01's note on OBT-394 read that as *serve the scoped collection and do not build a second
+facet engine*. BE-05 read it the other way, and the argument is §9.1's own escape clause:
+
+> past roughly 2,000 projects, or when a role's scope stops being expressible as "these
+> regions" […] the server takes the filter **and** the counts together, in one endpoint, never
+> the filter alone — a filtered list with client-computed counts is the defect this note exists
+> to prevent.
+
+The defect §9.1 guards against is a **second owner** of the counting rule. Refusing the DoD
+does not avoid it: the DoD's third line already makes the server the owner of status, health
+and staleness, and §6.5 already demands those match exactly. With the derivations on both
+sides, the counting rule is the half that remains, and *one endpoint that answers both* is the
+shape §9.1 itself blesses for that case. So it is built now rather than at the two-thousandth
+project, with the property held by the return type: `counts` is not optional, no parameter
+suppresses it, and a request with no parameters still answers the whole scoped collection —
+§9.1's default, kept as the default. **What the contract owes in return is one edit: §9.1's
+`-> Project[]` becomes `-> {items, counts, matched, total, limit, offset, sort,
+locationsWithheld}`.** INT-02 reads `items` where it read the array.
+
+**Two — the facet pass is a second file in `app/utils/`, not part of `shema_derivations.py`.**
+§3.1 names one file. The nine derivations are FE-44 §7; the facet pass is §7.6, and it
+*consumes* them. They have different lifetimes: `shema_facets.py` is the file the ~2,000-project
+trigger replaces, and the derivations do not move when it does. Splitting them keeps that
+replacement a single file with one import direction.
+
+**And one thing that is not a departure, recorded because it looks like one.** The list item
+inherits `LeavingShape`, so a card in a sensitive country carries its region where its country
+would be — against §9.1's *"`Project` carries the true `location`"*. That is **BE-04's decision
+inherited**: `app/models/shema_privacy.py` names *the collection read* among the shapes that go
+through the boundary, and `COORDINATION_PATHS` is empty with a comment saying the one line
+expected in it is BE-06's record read. Following §9.1 here would mean adding this route to that
+list, which is a line somebody has to justify — and the justification does not exist, because
+the console draws cards and markers from the region anyway (`getLocationDisplay`,
+`getMapPlacement`). The facets read the card rather than the row, so a count cannot name a place
+the payload beside it withholds.
+
 ### 6.6 Seam E — the unauthenticated intake — **Decided**
 
 `GET /api/shema/intake/{token}` and `POST /api/shema/intake/{token}` are the only routes in
@@ -876,6 +1066,54 @@ this module with no `Authorization` requirement, by FE-44 §9.0. Three rules:
 - The token is stored **hashed**, following every other token in this repository —
   `refresh_tokens`, `password_reset_tokens` and `access_invites` all store a `String(64)`
   `token_hash` and let the raw value leave only once.
+
+> **BE-12 ([OBT-401](https://linear.app/shema-obt/issue/OBT-401)) built this seam, and five
+> decisions travel with it.** All three rules above held; what follows is what they did not
+> cover, because the section was written about the guard and these are about what the guard
+> lets through.
+>
+> - **`POST /api/shema/intake/{token}` does not write `shema_projects`.** It archives, notifies
+>   and answers `202`; a coordinator applies it through
+>   `POST /api/shema/forms/submissions/{id}/import`. FE-44 §9.9 already spells the split —
+>   `202` on this route and a `ReceivedSubmission` on the other — and the machinery agrees:
+>   `save_project` takes an actor that `shema_record_edits` names and a version somebody read,
+>   and a link has neither. Writing one would mean a nullable author in the trail or a
+>   synthetic account, and `PULSE_LOOP`'s `import` step is the coordinator's in the console's
+>   own constants. So the weakest credential in the system cannot move the numbers the ETEN
+>   report is reconstructed from without a person who can be asked about it.
+> - **The link pins the definition version it was minted with.** A leader opens the form,
+>   drives out to where the team is and answers days later; a definition edited in that window
+>   would otherwise reject an answer nobody gave wrongly. The client's `definitionVersion` is
+>   checked *against the link* rather than used to select a form.
+> - **Write-mostly is enforced by the `SELECT` list, not by the response model.**
+>   `read_intake_form` reads one column — `shema_projects.language_name` — so there is nothing
+>   else in memory for a later edit to reach for. The shape inherits `LeavingShape` anyway and
+>   declares no place field, which is a choice rather than a requirement: the day somebody adds
+>   `location` so the leader can confirm the project, the boundary is already underneath it.
+> - **The definitions are stored and versioned, and the spec is authored in
+>   `app/utils/shema_forms.py`.** A version is cut by content hash and never edited, because a
+>   definition changed in place rewrites the meaning of every answer already given to it. The
+>   spec lives in `app/utils/` for §3.1's stated reason and for one of its own: it holds the
+>   mapping from a form field to a record column, three of which the consent gate guards, so
+>   the ingest services name no guarded column at all and `test_privacy_owners.py` needs no
+>   allowlist entry for this issue.
+> - **`GET /api/shema/forms/submissions/{id}` serves an applied answer from the record and a
+>   pending one from the archive.** An answer the import applies is readable on the record, under
+>   the rules that surface enforces, so this read does not serve it — and that is only true once
+>   the import has run. Between the `202` and the import an answer that maps to a column is on
+>   **no** surface, which left a coordinator clicking *import* applying chapter counts and a
+>   `prayerVisibility` they had never been shown, on the one route that decides whether a request
+>   leaves coordination. The mapped answers are therefore served in exactly that gap and only to
+>   the caller who closes it — `coordinator`, read as a value by `app/api/shema/_deps.py` from the
+>   key the import route is guarded on — and the read goes narrow again once `appliedAt` is set.
+>   Both edges matter: the archive is a second store of the guarded columns that §6.4's gate does
+>   not reach into, so a `resourceCircle` account (the prayer wall's own audience) never reads a
+>   request out of it, and a withdrawn prayer request does not stay readable one route over after
+>   the record has erased it.
+>
+> **Not built, and it is GATE-03's:** `POST /api/shema/forms/pulse/{projectId}`, the generated
+> artifact. §9.3's own list — the format, which of two is authoritative, the distribution model
+> and withdrawal from an already-distributed file — is untouched by anything above.
 
 ---
 
@@ -1032,11 +1270,22 @@ byte-identically, and only the Pulse is archivable. Those are DoD lines, not for
 
 ### 9.4 The fourth gate, which has no issue: what *devida cautela* means per output
 
-`CLAUDE.md` §6.1 marks it. One concrete question is already open and named in §6.4: **the base
+`CLAUDE.md` §6.1 marks it. One concrete question was open and named in §6.4: **the base
 name**. The export empties it for a withheld record; the console still renders it verbatim in
 cards, tooltips and the prayer wall, and both flagged records carry a base that names a place.
 Redacting it everywhere is a **second rule** and it belongs to this gate — **do not invent it
 surface by surface.**
+
+**BE-04 answered the server half of it, once, and that is the opposite of surface by surface.**
+Every shape that leaves coordination withholds the base, because the rule is applied in one
+validator that every such shape inherits — so there is no surface holding a pen. The reasoning
+is the issue's own: withholding `Egypt` while printing `YWAM Egypt` one column over redacts
+nothing, so a file that carries the base carries the country, and when the rule cannot be
+decided the fail-closed answer is the one to take. **What is still the gate's** is the
+console's own rendering of its coordination surfaces — cards, tooltips, the record — which is
+presentation, and which the server neither sees nor should decide. If the client answers that
+the base may travel, the change is one line in `BASE_FIELDS` rather than a sweep of consumers,
+which is the property that made deciding now cheap enough to do.
 
 ---
 
@@ -1074,7 +1323,7 @@ items, so they are stated once:
 - **Read the migration head in your own worktree before writing a revision** (§7.1).
 - Every issue that emits data depends on **BE-04's three owners** being in place first (§6.4).
 
-Three of these get more than a note, recorded here because they are boundary changes rather
+Four of these get more than a note, recorded here because they are boundary changes rather
 than reminders:
 
 - **BE-02** inherits `shema_projects` as its own table with **no FK to `projects` and no
@@ -1082,6 +1331,9 @@ than reminders:
   default would erase.
 - **BE-03** inherits §6.1's `shema_user_regions` instead of an `organizations` mapping, and
   §6.3's session endpoint.
+- **BE-05** inherits §6.5's parity requirement and the vendoring that proves it, and returns an
+  envelope rather than `Project[]` — the one edit this module owes the frozen contract. §6.5's
+  *What BE-05 built* carries the argument.
 - **BE-09 and BE-13** get the same boundary written into both descriptions, and **neither is
   handed the aggregate**: FE-44 §9.6 puts the intercessor routes on BE-09's screen, the
   Linear title *"BE-13 · Equipe e intercessores"* (OBT-402) claims them, and one aggregate

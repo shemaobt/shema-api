@@ -75,6 +75,7 @@ from app.db.models.resource_request import (
     RRStage,
 )
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_audit import ShemaRecordEdit
 from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
 from app.db.models.shema_enums import (
     ShemaEtenCreditSource,
@@ -90,7 +91,7 @@ from app.db.models.shema_enums import (
     ShemaYesNo,
 )
 from app.db.models.shema_eten import ShemaEtenCredit
-from app.db.models.shema_form import ShemaIntakeLink, ShemaSubmission
+from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
 from app.db.models.shema_health import ShemaHealthAssessment
 from app.db.models.shema_intercessor import ShemaIntercessor
 from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
@@ -192,6 +193,7 @@ __all__ = [
     "ShemaConsentContext",
     "ShemaEtenCredit",
     "ShemaEtenCreditSource",
+    "ShemaFormDefinition",
     "ShemaHealthAssessment",
     "ShemaHealthLevel",
     "ShemaIntakeLink",
@@ -211,6 +213,7 @@ __all__ = [
     "ShemaProgressEntry",
     "ShemaProject",
     "ShemaProjectStatus",
+    "ShemaRecordEdit",
     "ShemaRegionKey",
     "ShemaRegionTeam",
     "ShemaRoleChange",

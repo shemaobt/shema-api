@@ -37,12 +37,16 @@ from app.db.models.shema_org_chart import ShemaRoleChange
 from app.db.models.shema_progress import ShemaProgressEntry
 from app.db.types import UtcDateTime
 
-#: Every revision this module owns, oldest first. **A glob and not one filename**: BE-02
-#: built sixteen tables in ``20260911_shema01`` and twelve issues author migrations in waves
-#: beside each other, so a test pinned to the first revision goes green while the second one's
-#: table is in no migration at all. BE-13 widened it on adding ``shema07``.
+#: Every revision that builds a piece of this module's schema, oldest first.
+#:
+#: **A glob and not a filename**, which is BE-06's change to BE-02's test. The module's schema
+#: arrives in waves — BE-02 built sixteen tables, this issue added the edit trail, and BE-07
+#: onward will add their own — so a check pinned to one file goes red on the next issue for
+#: the one reason it should never go red: the schema grew correctly. What the check is *for*
+#: is a model added without a revision, and that is a question about the graph, not about a
+#: file.
 _REVISIONS = sorted(
-    (Path(__file__).resolve().parents[2] / "alembic" / "versions").glob("*_shema[0-9][0-9]_*.py")
+    (Path(__file__).resolve().parents[2] / "alembic" / "versions").glob("*_shema*.py")
 )
 
 #: The keys the Notion export has. They have an empty state and never an absent one, so the
@@ -133,10 +137,14 @@ EXPORT_BACKED_NULL_IS_A_STATE = (
 #: mint new ids for the 127 that already have theirs.
 EXPORT_BACKED_PRIMARY_KEY = ("id",)
 
-#: Neither side of FE-44's cut: six columns this schema added. Two answer a gate before it
+#: Neither side of FE-44's cut: nine columns this schema added. Two answer a gate before it
 #: can ask (``approved_units_unverified`` for §10 item 7, ``completed_date`` for GATE-01
 #: item 6), two are the module's own (``region_key`` derived, ``source`` the export row kept
-#: verbatim), and two are the platform's housekeeping.
+#: verbatim), two are the platform's housekeeping, and three are BE-06's write path:
+#: ``version`` is the value a ``PATCH`` cites in ``If-Match`` and the only counter
+#: ``save_project`` moves, and the ``updated_by`` pair is who moved it — the name is kept
+#: beside the id because the org chart can rename a person after the edit and the trail has
+#: to still read as it did.
 ADDED_BY_THE_SCHEMA = (
     "approved_units_unverified",
     "completed_date",
@@ -144,6 +152,9 @@ ADDED_BY_THE_SCHEMA = (
     "source",
     "created_at",
     "updated_at",
+    "version",
+    "updated_by",
+    "updated_by_name",
 )
 
 #: FE-44 §5.1's own two numbers. The table's column count is derived from them, not equal to
@@ -466,27 +477,26 @@ def test_every_shema_table_is_in_the_migration_both_ways() -> None:
     Read off the revisions' source rather than by running them: no migration in this
     repository can run under SQLite, so the suite cannot walk the graph at all.
 
-    Both directions, over **every** revision the module owns. ``downgrade`` matters as much as
-    ``upgrade`` here: ``migrations.yml`` walks the newest revision down and back up on a real
-    PostgreSQL, so a table created and never dropped fails CI on the second ``upgrade`` rather
-    than on the first.
+    Across **every** shema revision rather than one, because a table's revision is whichever
+    one created it — see :data:`_REVISIONS`.
     """
-    assert _REVISIONS, "the module owns no migration"
-    upgraded, downgraded = "", ""
+    upgrades, downgrades = "", ""
     for revision in _REVISIONS:
         source = revision.read_text(encoding="utf-8")
-        bodies = {
-            node.name: ast.get_source_segment(source, node) or ""
-            for node in ast.parse(source).body
-            if isinstance(node, ast.FunctionDef)
-        }
-        upgraded += bodies["upgrade"]
-        downgraded += bodies["downgrade"]
+        tree = ast.parse(source)
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            body = ast.get_source_segment(source, node) or ""
+            if node.name == "upgrade":
+                upgrades += body
+            elif node.name == "downgrade":
+                downgrades += body
 
     tables = sorted(name for name in Base.metadata.tables if name.startswith("shema"))
     assert tables, "the metadata knows of no shema table"
-    assert [t for t in tables if f'"{t}"' not in upgraded] == []
-    assert [t for t in tables if f'"{t}"' not in downgraded] == []
+    assert [t for t in tables if f'"{t}"' not in upgrades] == []
+    assert [t for t in tables if f'"{t}"' not in downgrades] == []
 
 
 def test_the_scoped_collection_read_has_an_index_and_region_key_has_no_second_one() -> None:
@@ -524,10 +534,19 @@ def test_the_append_only_guard_is_written_for_the_dialect_in_hand() -> None:
 
 
 async def test_the_schema_the_suite_builds_carries_every_table(db_session: AsyncSession) -> None:
-    """Sixteen from BE-02, plus ``shema_intercessor_consents`` from BE-13."""
+    """Every table the models declare is a table the suite's own database actually has.
+
+    Counted against the metadata rather than against a literal (BE-06's change to BE-02's
+    test): a hard-coded sixteen is a number every later issue has to remember to bump, and the
+    one failure it would then report is *the module grew a table*, which is not a defect. What
+    this is watching for is a model that never reaches ``create_all`` — a file nobody imported
+    in ``app/db/models/__init__.py`` — and that is a comparison of two sets.
+    """
     bind = db_session.get_bind()
     names = await db_session.run_sync(lambda session: inspect(session.get_bind()).get_table_names())
-    assert len([n for n in names if n.startswith("shema")]) == 17
+    declared = {name for name in Base.metadata.tables if name.startswith("shema")}
+    assert declared - {n for n in names if n.startswith("shema")} == set()
+    assert len(declared) >= 16
     assert bind is not None
 
 

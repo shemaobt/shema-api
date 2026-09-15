@@ -9,6 +9,7 @@ Use these with VS Code [REST Client](https://marketplace.visualstudio.com/items?
 - **auth.http** – Signup, login, refresh, logout, me, my-roles. Login is named so `me` / `refresh` / `logout` / `my-roles` in the same file use the returned token.
 - **resource_requests_auth.http** – Resource Request Form: signup, login, `my-roles` filtered by `app_key`, and the forgot/reset password pair. The product has no login of its own — it uses the shared `/api/auth`; what belongs to it are the `app_key` and the `equipe` / `mesa` / `gestor` roles. Run `scripts/seed_apps_roles.py` and grant a role first.
 - **shema_people.http** – Shemá's two people directories: the org chart (`/api/shema/regions`, its audit trail and the team write) and the intercessor network (`/api/shema/prayer/intercessors`, consent per context, the single-contact reveal, erasure). They answer to two different roles — `coordinator` and `resourceCircle` — so a test account needs both grants. Set `@accessToken` after login.
+- **shema_projects.http** – Shemá: the Projetos screen's one endpoint — the scoped collection, the twenty-one filters, the sixteen facet groups and the four presets, paging and the five orders. Parameter names are the console's own URL parameters, so a saved view's link is a request. Run `scripts/seed_apps_roles.py`, grant a `shema` role, and give the account a region (a regional role with no region reaches nothing).
 - **roles.http** – Role check, assign, revoke. Requires a valid `access_token`: run **Auth: Login** in `auth.http`, copy `tokens.access_token` from the response, and set `@accessToken` at the top of `roles.http`.
 - **languages.http** – List, create, get by id/code. Set `@accessToken` after login.
 - **organizations.http** – List, create, get by id/slug, add member. Set `@accessToken` after login.
@@ -16,6 +17,7 @@ Use these with VS Code [REST Client](https://marketplace.visualstudio.com/items?
 - **projects.http** – List, create, get by id, update location, grant user/org access. Set `@accessToken` after login; replace `LANGUAGE_ID`, `PROJECT_ID`, `ORGANIZATION_ID`, `USER_ID` with real IDs.
 - **rag.http** – Upload `.md` document, query, list documents, delete document. Set `@accessToken` after login; replace `DOC_ID` with real id from upload/list response.
 - **errors.http** – Examples that trigger 401, 409, etc.
+- **shema_record.http** – Shemá: the ficha — the record read, the create, and the partial save per tab with its `If-Match` version guard, the progress batch and the 409 a stale save gets. Belongs beside `shema_projects.http` (BE-05's collection read) and sits here only so two branches in one stack do not add the same line to the same place. Run `scripts/seed_apps_roles.py`, grant a `shema` role and give the account a region.
 
 ## Base URL
 
