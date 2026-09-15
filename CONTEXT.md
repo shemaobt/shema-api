@@ -56,8 +56,8 @@ The slice of the passage checked in one reading by the analyst, which can be sma
 _Avoid_: stretch (the persistent object; a scope is one reading's slice of the passage), trecho, window, Escopo
 
 **Take**:
-An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, the whole passage in the mother tongue) or back-translation (`retro`, a stretch told in the bridge language).
-_Avoid_: recording, audio
+An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's scope is that part; the earlier ones stay as history.
+_Avoid_: recording, audio, clip
 
 **Mother tongue**:
 The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
@@ -113,7 +113,7 @@ that one file.
 _Avoid_: range, offset, position, Endereço
 
 **Frase number** (`frase`):
-The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside `idx`, which is the stretch id under Marcia's name. A cut or a fresh telling after the approval changes nothing in that version.
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam). A cut or a fresh telling after the approval changes nothing in that version.
 _Avoid_: ordinal (per sibling group, never per passage), position, index, n (her listener number), Número da frase
 
 **Divided stretch** (`parent_id`, `ordinal`):
@@ -183,15 +183,20 @@ _Avoid_: erased, discarded, Substituída
 
 **Checked**:
 The state in which the passage has been told and one whole reading of the analyst returned no finding, so it leaves the rotation for good. Spot correction checks never produce it, and thin evidence about a legible stretch does not prevent it.
-_Avoid_: complete, done, Conferida
+_Avoid_: complete, done, Conferida (in prose; `conferida` is the wire spelling in the **Check block** and the text seam)
 
 **Heard the rehearsal** (`unheard_parts`):
 The evidence that the team listened to every current part of the rehearsal, each in its own milliseconds, before closing; a part recorded again is unheard until it is played through again.
 _Avoid_: complete playback, Ouviu o ensaio
 
+**Unheard part** (`unheard_take_ids`):
+A current **Part** of the rehearsal the team's listening report does not cover, named by its take in the refusal the check answers with before the analyst runs. A part recorded again is unheard until it is played through.
+_Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part never heard), Parte não ouvida
+
 **Abandoned**:
 A superseded stretch that never got a replacement, which is what starting a telling-back
-over leaves behind on every stretch of a session at once.
+over leaves behind on every stretch of a session at once, and what recording a **Part** again
+leaves behind on that part's stretches alone.
 _Avoid_: erased, discarded, cancelled, Abandonada
 
 **Rebuild**:
@@ -244,6 +249,14 @@ _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
 A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: comprehension, coverage, audio, a telling-back, its reading and an untold stretch are material, not a dispute.
 _Avoid_: override, bypass, forced approval, Aprovação forçada
+
+**Check block** (`check`):
+The summary of a **Release**'s check that the **Packet** carries beside its **Version**, outside its hash and in Marcia's names: whether the check happened (`conferida`, `forcada`, `sem_conferencia`), whether every part was heard, when the verdict was reached, the open findings as kind and address, and where the retroverification file is. Never the analyst's note.
+_Avoid_: check state, manifest check, conferência
+
+**Retroverification file** (`retroverificacao`):
+The facilitator's and the consultant's record of everything the check learned about a session: every release and who forced it, the stretches with their frozen numbers, every telling including the superseded ones, the findings with the analyst's notes, the listening report, the hard stretches and a link to every take. Served only to a facilitator of that team; the analyst's note lives here and nowhere else.
+_Avoid_: export (banned for a release too), dossier (Marcia's other artifact), consultant's file, retroverificacao.json in prose
 
 ### Process lines
 
