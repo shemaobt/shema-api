@@ -38,8 +38,10 @@ def load_prompt(key: IRPromptKey) -> str:
 def fail_safe_utterances() -> str:
     """App-side strings, not a model call — kept beside the prompts they replace.
 
-    The authored file is concatenated with our own supplements, one per language, which are
-    kept separate so the authored one stays byte-identical to the project's own copy. Order
+    The authored file is concatenated with our own supplements, one per language, kept in
+    files of their own so that a language is added or dropped without touching the authored
+    text. That text is not the project's vendored copy either: it carries the G and X
+    families beyond it, recorded in the ruling of 2026-09-15 — X hers, G `unruled`. Order
     matters only in that the reader prefers a language-tagged block, and each section has at
     most one per language.
 
