@@ -26,7 +26,7 @@ import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -148,7 +148,12 @@ def _take_view(take: IRTake) -> dict[str, Any]:
     }
 
 
-def _check_status(conferida: bool, forced: bool) -> str:
+#: The three words a check can be in, and the whole of them. Closed because they are Marcia's
+#: and a fourth is a conversation with her rather than a value.
+CheckStatus = Literal["conferida", "forcada", "sem_conferencia"]
+
+
+def _check_status(conferida: bool, forced: bool) -> CheckStatus:
     """The one place the three words are chosen, for the composer and for the approval alike.
 
     ``conferida`` outranks the force. The status says whether the check happened and the flag
