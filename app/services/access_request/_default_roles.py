@@ -23,6 +23,18 @@ map here says which role it is granted.
 migration creates. It was missing here from launch, so every approval for it resolved the
 ``analyst`` fallback and raised ``RoleError`` instead of granting anything.
 
+``shema`` maps to ``resourceCircle``, the narrowest of its four: the Intercessor, whose
+whole relationship to the product is prayer. It needs an entry for the mechanical reason
+below — the app is in ``APP_ROLES_OVERRIDE`` and so defines no ``analyst`` — and the choice
+of *which* role is safe for a second reason worth writing down. The role carries no region:
+``app/services/shema/_scope.py`` grants reach from ``shema_user_regions``, and an account
+that holds a **regional** role with no row there reaches nothing. So an approval hands out a
+role and no data, and somebody still has to name a region before the account sees a project.
+That is the half of deny-by-default this file could have broken, and the reason the floor is
+not ``globalStrategist``: that key *is* the unscoped one, and defaulting to it would make
+every approval global. ``apps.auto_approve`` stays off for this app — Shemá access is
+granted, not registered for — so the approval this map serves is a human one either way.
+
 Which apps need an entry follows from how they were registered. An app taking
 ``DEFAULT_ROLES`` from ``scripts/seed_apps_roles.py`` already defines ``analyst`` and so
 survives on the fallback; an app listed in that script's ``APP_ROLES_OVERRIDE`` never does,
@@ -42,6 +54,7 @@ DEFAULT_ROLE_BY_APP_KEY: dict[str, str] = {
     "oral-collector": "member",
     "sound-necklace": "facilitator",
     "internalization-room": "facilitator",
+    "shema": "resourceCircle",
 }
 
 LEGACY_DEFAULT_ROLE = "analyst"
