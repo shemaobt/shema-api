@@ -131,12 +131,18 @@ def sent_columns(row: ShemaNeedWrite) -> tuple[str, ...]:
 
     **Absent means unchanged inside the row too, and that is the whole of the rule.**
     ``app/models/shema.py`` states it for the record — *a tab sends what it owns* — and a
-    needs row is the same case one level down: thirteen of the fourteen columns have a default
-    on :class:`~app.models.shema_need.ShemaNeedWrite` (only ``category`` is required), so
-    copying the set across as a block would make ``{"id": ..., "category": "financial"}`` put
-    the need back to ``open``/``low`` and clear the description, the deadline, ``fulfilled_by``
-    and both halves of the money. A client moving one field would silently destroy the other
-    twelve, and the money is the one a Resource Circle acts on.
+    needs row is the same case one level down: every one of the fourteen columns has a default
+    on :class:`~app.models.shema_need.ShemaNeedWrite`, so copying the set across as a block
+    would make ``{"id": ..., "category": "financial"}`` put the need back to ``open``/``low``
+    and clear the description, the deadline, ``fulfilled_by`` and both halves of the money. A
+    client moving one field would silently destroy the other thirteen, and the money is the
+    one a Resource Circle acts on.
+
+    **Including the category, which used to be the row's one required field.** It is required
+    on a **create** and dispensable on an update, and
+    :meth:`~app.models.shema_need.ShemaNeedWrite._a_need_is_named_when_it_is_raised` carries
+    the argument: what a client repeats here is written, so a name it had to send in order to
+    drop a need was the one value this function could not protect.
 
     ``submitted_at`` and ``acknowledged`` were already carved out of the block for the same
     reason — the client does not hold them — and this is that carve-out finished: what the
@@ -145,7 +151,9 @@ def sent_columns(row: ShemaNeedWrite) -> tuple[str, ...]:
     ``NeedItem`` back is unaffected, because every column it sends is in the set.
 
     **Nothing is cleared by omission**, which leaves every field clearable by saying so: an
-    explicit ``null`` is *sent* and lands, and ``description`` takes ``""``.
+    explicit ``null`` is *sent* and lands, and ``description`` takes ``""``. ``category`` is
+    the one that cannot be cleared, and the payload refuses it by name rather than letting it
+    reach a ``NOT NULL`` column — a need can be dropped, and it cannot be left anonymous.
 
     Only an update asks this. A create has no earlier value to protect, so :func:`_new_need`
     takes the whole set and the payload's defaults are what the need starts with.
@@ -311,8 +319,11 @@ def _new_need(project_id: str, row: ShemaNeedWrite, *, user: User | None, day: d
     **The whole of** :data:`_WRITTEN_COLUMNS` **and not** :func:`sent_columns`, which is the
     one place the two paths part: a create has no earlier value for an omitted field to
     preserve, so the payload's defaults *are* what the need starts with — ``open``, ``low``, no
-    money — and reading ``model_fields_set`` here would hand ``category`` and ``urgency``
-    NULL for columns the table declares ``NOT NULL``.
+    money — and reading ``model_fields_set`` here would hand ``urgency`` and ``status`` NULL
+    for columns the table declares ``NOT NULL``. ``category`` is the one with no default to
+    fall back on either way, which is why the payload refuses a create without it
+    (:meth:`~app.models.shema_need.ShemaNeedWrite._a_need_is_named_when_it_is_raised`) and why
+    this path can read it off the row.
 
     ``submitted_at`` falls back to the day the need arrived rather than staying NULL, and it is
     the one value this path supplies that the payload did not — :func:`raise_day_moves` carries

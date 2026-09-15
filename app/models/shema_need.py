@@ -122,7 +122,9 @@ class ShemaNeedWrite(BaseModel):
     #: Absent is *a new need*. Present is *this one*, and it must be one of this project's.
     id: str | None = None
 
-    category: str = Field(min_length=1, max_length=60)
+    #: The name the need presents itself by. Required on a create and dispensable on an
+    #: update — see :meth:`_a_need_is_named_when_it_is_raised`.
+    category: str | None = Field(default=None, min_length=1, max_length=60)
     urgency: ShemaNeedUrgency = ShemaNeedUrgency.LOW
     status: ShemaNeedStatus = ShemaNeedStatus.OPEN
     description: str = ""
@@ -199,6 +201,44 @@ class ShemaNeedWrite(BaseModel):
             raise ValueError(
                 f"{missing} is required: an amount travels with the currency it is in, and "
                 "nothing in this module converts one"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _a_need_is_named_when_it_is_raised(self) -> ShemaNeedWrite:
+        """**A create needs a category; an update does not, and cannot clear one.**
+
+        The column is ``NOT NULL`` and a new need has no earlier name to keep, so a row
+        without an ``id`` is refused here — by the field's name, which is the one thing a
+        constraint violation could not say.
+
+        **An update is the other case, and making it carry the category too was a real cost.**
+        ``{"id": ..., "status": "dropped"}`` is the gesture the product has for *this stopped
+        mattering*, and requiring the name alongside it would break this module's own rule —
+        *a tab sends what it owns* — for exactly one of the fourteen columns. Nothing gains
+        by it: every surface that reads a category reads the **stored** row, not the payload
+        — the trail through ``_needs.py``'s ``_lifecycle`` and the notice through
+        :meth:`ShemaNeedLine.of` — so an update that omits it leaves every output naming what
+        it already named. And requiring it costs: what the client repeats is **written**
+        (:func:`~app.services.shema._needs.sent_columns`), so a stale name read before
+        somebody else renamed the row would rename it back in silence, and a mistaken id
+        would rename another team's need on top of dropping it. The requirement could not
+        protect the name, and it was the only thing able to overwrite it during a gesture
+        that was not about the name.
+
+        **Omitted and ``null`` stay different answers**, which is the rule one level up: an
+        explicit ``null`` is *sent* and would reach a ``NOT NULL`` column, so it is refused
+        by name here rather than at the commit. A need can be dropped; it cannot be left
+        anonymous.
+        """
+        if self.category is not None:
+            return self
+        if self.id is None:
+            raise ValueError("category is required on a new need: there is no earlier name to keep")
+        if "category" in self.model_fields_set:
+            raise ValueError(
+                "category cannot be cleared: a need is named in every output it reaches. "
+                "Omit it to keep the name this need already has"
             )
         return self
 

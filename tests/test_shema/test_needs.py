@@ -270,6 +270,74 @@ async def test_a_field_absent_from_a_row_is_untouched_too(
     assert after["estimatedCurrency"] == "BRL"
 
 
+async def test_a_new_need_is_refused_without_a_category_and_the_field_is_named(
+    client, db_session, shema_app, headers
+) -> None:
+    """A create has no earlier name to keep, and the column is ``NOT NULL``.
+
+    Named by the payload rather than by the constraint, which is the module's rule for the
+    money pair one field over: a client holding a contract learns *which* field it left out.
+    """
+    refused = await _create(client, headers, needsItems=[{"urgency": "high", "status": "open"}])
+    assert refused.status_code == 422
+    assert "category" in refused.text
+
+    kept = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    assert kept.status_code == 404, "and nothing at all was written"
+
+
+async def test_dropping_a_need_does_not_make_it_repeat_its_own_name(
+    client, db_session, shema_app, headers
+) -> None:
+    """``{"id": ..., "status": "dropped"}`` is the gesture, and it lands whole.
+
+    The category is dispensable on an update for the reason the payload carries: what a row
+    repeats is *written*, so a name a client had to send in order to drop a need is the one
+    value ``sent_columns`` could not protect — a stale one would rename the row in silence.
+    Every surface that reads a category reads the stored row, so omitting it costs no output
+    its name.
+    """
+    created = await _create(
+        client, headers, needsItems=[need(category="equipment", urgency="high")]
+    )
+    item = created.json()["needsItems"][0]
+
+    dropped = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"needsItems": [{"id": item["id"], "status": "dropped"}]},
+        headers={**headers, "If-Match": created.headers["ETag"]},
+    )
+    assert dropped.status_code == 200, dropped.text
+
+    after = dropped.json()["needsItems"][0]
+    assert after["status"] == "dropped"
+    assert after["category"] == "equipment", "the name survives the gesture that omitted it"
+    assert after["urgency"] == "high"
+
+
+async def test_a_need_can_be_dropped_and_cannot_be_left_anonymous(
+    client, db_session, shema_app, headers
+) -> None:
+    """Omitted and ``null`` stay different answers, which is the rule one level up.
+
+    An explicit ``null`` is *sent*, so it would reach the ``NOT NULL`` column; it is refused
+    by name here instead of arriving as a constraint violation after the save was accepted.
+    """
+    created = await _create(client, headers, needsItems=[need()])
+    item = created.json()["needsItems"][0]
+
+    refused = await client.patch(
+        f"{PROJECTS}/guarani-mbya",
+        json={"needsItems": [{"id": item["id"], "category": None}]},
+        headers={**headers, "If-Match": created.headers["ETag"]},
+    )
+    assert refused.status_code == 422
+    assert "category" in refused.text
+
+    kept = await client.get(f"{PROJECTS}/guarani-mbya", headers=headers)
+    assert kept.json()["needsItems"][0]["category"] == "financial"
+
+
 async def test_a_row_that_repeats_what_it_carries_moves_nothing(
     client, db_session, shema_app, headers
 ) -> None:
