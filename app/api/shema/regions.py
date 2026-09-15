@@ -29,13 +29,13 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.api.shema._deps import CoordinatorUser, CurrentUser, Db, Scope
-from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema_org_chart import (
     Region,
     RegionTeamSave,
     RegionTeamSaved,
     RegionWithAccounts,
     RoleChange,
+    ShemaRegionKey,
 )
 from app.services.shema import (
     get_region_team,

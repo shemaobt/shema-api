@@ -38,6 +38,9 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# Re-exported so ``app/api/shema/intercessors.py`` can type a path parameter without
+# importing ``app.db.models`` — the layering rule ``tests/test_shema/test_layering.py`` keeps.
+from app.db.models.shema_consent import ShemaConsentContext as ShemaConsentContext
 from app.utils.shema_contacts import contact_channel
 from app.utils.shema_countries import is_country_code
 

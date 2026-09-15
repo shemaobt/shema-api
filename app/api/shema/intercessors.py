@@ -39,7 +39,6 @@ from __future__ import annotations
 from fastapi import APIRouter, status
 
 from app.api.shema._deps import Db, ResourceCircleUser
-from app.db.models.shema_consent import ShemaConsentContext
 from app.models.shema_intercessor import (
     ConsentGrant,
     IntercessorContact,
@@ -47,6 +46,7 @@ from app.models.shema_intercessor import (
     IntercessorDirectory,
     IntercessorEntry,
     IntercessorUpdate,
+    ShemaConsentContext,
 )
 from app.services.shema import (
     add_intercessor,

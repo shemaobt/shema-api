@@ -94,7 +94,16 @@ OWNERS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         # The glob cannot see a Pydantic attribute apart from an ORM column by name alone, so
         # the second reader here is real by the letter of the check and safe by what it reads —
         # BE-15 names it rather than widening the columns the check watches.
-        frozenset({"_redaction.py", "_needs.py"}),
+        #
+        # BE-13's two are about a **person**, never a project. ``_directory.py`` is the
+        # network's own owner — the only file in either package that names
+        # ``ShemaIntercessor`` — and reads that row's ``sensitive_country`` to withhold a
+        # person's country on every path that leaves (``docs/shema.md`` §6.4's note;
+        # ``test_people_privacy.py`` is its net). ``add_intercessor.py`` reads
+        # ``IntercessorCreate.sensitive_country`` — the client's own declaration in a request
+        # shape, which this file keeps outside the guarded packages on purpose — and hands it
+        # to the owner unchanged. Neither touches a project column.
+        frozenset({"_redaction.py", "_needs.py", "_directory.py", "add_intercessor.py"}),
     ),
     "consent": (CONSENT_COLUMNS, frozenset({"_consent.py"})),
     "media authorization": (MEDIA_COLUMNS, frozenset({"_media_sharing.py"})),
@@ -133,6 +142,30 @@ COORDINATION_ROUTES: frozenset[tuple[str, str]] = frozenset(
         ("POST", f"{PREFIX}/projects"),
         ("PATCH", f"{PREFIX}/projects/{{project_id}}"),
         ("POST", f"{PREFIX}/projects/{{project_id}}/health-assessments"),
+    }
+)
+
+#: Routes under ``/api/shema`` whose subject is a **person**, not a project, so the project
+#: vocabulary above misreads their fields — BE-13's two directories.
+#:
+#: The org chart's ``team`` is a list of accounts and a homonym of the base name BE-02
+#: collapsed ``ywamBase`` into; there is no place in it to withhold. The intercessor entry
+#: does name a country, and it is protected — by ``_directory.py``'s ``leaving_person``,
+#: the owner named in :data:`OWNERS`, under FE-44 §9.6's own marker (``country: ""``
+#: beside ``sensitiveCountry``) rather than a region key; and ``sensitiveCountry`` itself
+#: is the flag the resource circle sets and reads on the entry, which :class:`LeavingShape`
+#: would exclude. So the shape is not a ``LeavingShape`` and is not unguarded:
+#: ``tests/test_shema/test_people_privacy.py`` is the audit these six answer to. Listed by
+#: the pair, as above, so a future project-shaped route on a neighbouring path is still
+#: asked.
+PEOPLE_ROUTES: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", f"{PREFIX}/regions"),
+        ("GET", f"{PREFIX}/regions/{{region_key}}/team"),
+        ("GET", f"{PREFIX}/prayer/intercessors"),
+        ("POST", f"{PREFIX}/prayer/intercessors"),
+        ("PATCH", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}"),
+        ("PUT", f"{PREFIX}/prayer/intercessors/{{intercessor_id}}/consents/{{context}}"),
     }
 )
 
@@ -254,7 +287,8 @@ def test_every_route_that_can_name_a_place_leaves_through_the_boundary() -> None
         if not isinstance(route, APIRoute) or not route.path.startswith(PREFIX):
             continue
         methods = sorted(set(route.methods or ()) - {"HEAD", "OPTIONS"})
-        if all((method, route.path) in COORDINATION_ROUTES for method in methods):
+        exempt = COORDINATION_ROUTES | PEOPLE_ROUTES
+        if all((method, route.path) in exempt for method in methods):
             continue
         for model in _models_in(route.response_model):
             place = _names_a_place(model)

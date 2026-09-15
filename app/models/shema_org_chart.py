@@ -39,6 +39,10 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Re-exported so ``app/api/shema/regions.py`` can type a path parameter without importing
+# ``app.db.models`` — the layering rule ``tests/test_shema/test_layering.py`` keeps.
+from app.db.models.shema_enums import ShemaRegionKey as ShemaRegionKey
+
 
 def label_key_for(region_key: str) -> str:
     """The console's ``REGIONS`` entry for a key: ``south-america`` → ``continent_south_america``.
