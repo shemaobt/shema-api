@@ -22,16 +22,6 @@ from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
@@ -47,27 +37,11 @@ from app.services.internalization_room.sessions import (
     report_playback,
     save_comprehension,
 )
-from tests.release_harness import ensaio_take
+from tests.release_harness import ensaio_take, supported_comprehension
 
 P = "P03"
 CLIP_MS = 61000
 UNTOLD = "untold_stretch"
-
-
-def _supported_comprehension(pericope: str) -> ComprehensionState:
-    return ComprehensionState(
-        ledger=[
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=EvidenceResult.DEMONSTRATED,
-            )
-            for index, checkpoint in enumerate(checkpoints_for(pericope))
-        ],
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
 
 
 async def _told_back_and_read(db: AsyncSession) -> tuple[IRSession, IRTake]:
@@ -79,7 +53,7 @@ async def _told_back_and_read(db: AsyncSession) -> tuple[IRSession, IRTake]:
     """
     session = await create_session(db, pericope=P, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, _supported_comprehension(P))
+    await save_comprehension(db, session, supported_comprehension(P))
     take = ensaio_take(session.id, sha256="a" * 64)
     db.add(take)
     await db.commit()

@@ -8,6 +8,10 @@ incident the cases around it record.
 
 Fixtures are not exported, for the reason `room_harness` gives: what travels is the builder,
 and each module keeps the three-line fixture that calls it.
+
+The passage is declared here rather than read off `release_harness`, which also names it. A
+turn is judged with no release anywhere in sight, and reading it from there would put the
+release scaffold behind every case about the draft-and-gate loop.
 """
 
 from __future__ import annotations

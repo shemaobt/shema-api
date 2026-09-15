@@ -400,9 +400,9 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             #: over. That is the answer to somebody who *is* the owner — a stranger gets
             #: 404, the same as for an id that never existed. The two codes differing is
             #: what scoping means here, and asserting 200 would mean building a
-            #: release-ready session inside a scope audit: bridge calibrated,
-            #: comprehension evaluated, consent given, floor met, rehearsal audio and a
-            #: telling-back. The audit would then fail whenever any of those changed,
+            #: release-ready session inside a scope audit: comprehension evaluated,
+            #: the floor met, rehearsal audio, a telling-back read by the analyst and a
+            #: report of playback. The audit would then fail whenever any of those changed,
             #: which is every one of them except scope.
             "owner_expects": 409,
         },

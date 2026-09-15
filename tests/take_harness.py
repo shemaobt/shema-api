@@ -7,6 +7,12 @@ concludes from the rows it reads is the case's own.
 
 Fixtures are not exported, for the reason `room_harness` gives: what travels is the builder
 and each module keeps the three-line fixture that calls it.
+
+The room key and the prefix are declared here rather than read off `release_harness`, which
+also has them. A take is stored and numbered long before any release exists, and nothing here
+touches one: reading the constants from there would put the release scaffold — the project,
+the device claim, four bakers — behind every case about how a take gets its number, and the
+first reader would have to open that file to find out why.
 """
 
 from __future__ import annotations

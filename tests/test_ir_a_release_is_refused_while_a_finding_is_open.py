@@ -229,6 +229,30 @@ async def _a_p02_telling_with_the_swapped_cause(db: AsyncSession, project) -> IR
     return session
 
 
+async def _a_rehearsal_only_half_heard(db: AsyncSession, project) -> IRSession:
+    """A P02 session clean in every way but one: the tablet played twenty of the sixty-one seconds.
+
+    The telling-back is read and carries no finding, so the only thing between this session and
+    Refine is the half of the rehearsal the team closed on without hearing. That is the other
+    of the two blockers a facilitator's code can set aside.
+    """
+    session = await _a_p02_telling_with_the_swapped_cause(db, project)
+    state = back_translation_of(session)
+    state.checked = True
+    state.findings = []
+    await report_playback(
+        db,
+        session,
+        state,
+        played_by_take=[
+            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
+        ],
+        played_ranges=[[0, 20000]],
+        clip_duration_ms=CLIP_MS,
+    )
+    return session
+
+
 async def test_a_p02_telling_with_the_swapped_cause_is_refused_by_name(client, db_session):
     """The acceptance criterion: the team asks, and the room says which door is shut.
 
@@ -286,20 +310,7 @@ async def test_the_facilitator_forces_past_a_rehearsal_only_half_heard(
     from `FORCEABLE_BLOCKERS` would leave the whole suite green.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    state = back_translation_of(session)
-    state.checked = True
-    state.findings = []
-    await report_playback(
-        db_session,
-        session,
-        state,
-        played_by_take=[
-            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
-        ],
-        played_ranges=[[0, 20000]],
-        clip_duration_ms=CLIP_MS,
-    )
+    session = await _a_rehearsal_only_half_heard(db_session, project)
     desk, _facilitator = await _at_the_desk(db_session, room_app, project)
 
     refused = await client.post(_team_release(session.id), headers=team_headers(credential))
@@ -651,6 +662,35 @@ async def test_another_teams_facilitator_does_not_read_the_release(client, db_se
     assert "schema_version" not in stranger.json()
 
 
+async def test_a_version_this_team_minted_elsewhere_reads_under_this_session(
+    client, db_session, room_app
+):
+    """A **Version** is per pericope per project, and the URL a session names does not narrow it.
+
+    Two conversations of one team about one passage share the sequence — the approval has
+    always read the number that way, and this read has to agree with it. Scoping the row to
+    the session as well would answer 404 for a draft of the very passage this session is
+    standing on, and the packet it served would name a version nobody could then read back.
+
+    The body naming the *other* session is the point: what comes back is the release as it was
+    approved, not a packet composed for whoever asked.
+    """
+    project, credential = await a_claimed_device(db_session)
+    approving = await ready_session(db_session, project_id=project.id)
+    asking = await ready_session(db_session, project_id=project.id)
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    minted = await client.post(_team_release(approving.id), headers=team_headers(credential))
+    read = await client.get(_desk_release_at(asking.id, 1), headers=desk)
+
+    assert minted.status_code == 200, minted.text
+    assert minted.json()["version"] == 1
+    assert read.status_code == 200, read.text
+    assert read.json()["release_id"] == minted.json()["release_id"]
+    assert read.json()["session_id"] == approving.id
+    assert read.json()["session_id"] != asking.id
+
+
 async def test_the_version_read_is_this_teams_and_never_the_other_teams(
     client, db_session, room_app
 ):
@@ -785,20 +825,7 @@ async def test_a_changed_and_clean_session_after_a_force_mints_the_next_version(
     so this is version 2 — stamped with the tablet that approved it and with no force on it.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    state = back_translation_of(session)
-    state.checked = True
-    state.findings = []
-    await report_playback(
-        db_session,
-        session,
-        state,
-        played_by_take=[
-            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
-        ],
-        played_ranges=[[0, 20000]],
-        clip_duration_ms=CLIP_MS,
-    )
+    session = await _a_rehearsal_only_half_heard(db_session, project)
     desk, _facilitator = await _at_the_desk(db_session, room_app, project)
 
     forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
@@ -815,11 +842,13 @@ async def test_a_changed_and_clean_session_after_a_force_mints_the_next_version(
     assert rows[1].device_id == TABLET
 
 
-async def test_a_panorama_is_refused_before_any_release_is_compared(client, db_session):
-    """The one blocker raised before the list is out of reach of the comparison too.
+async def test_the_team_route_refuses_a_panorama(client, db_session):
+    """A panorama is not a draft of a passage at all, so the team's route refuses it too.
 
-    A panorama is not a draft of a passage at all, so there is no packet to compare and no
-    number to hand back. The force has its own case beside this one; this is the team's.
+    The force has its own case beside this one; nothing drove the *team* route on a panorama
+    until now. It says nothing about the comparison and cannot: this session has approved
+    nothing, so there is no release to compare against whatever the order, and a panorama
+    with a prior release is not a state that exists — composing one raises on the map.
     """
     project, credential = await a_claimed_device(db_session)
     session = await create_session(db_session, pericope="OV", project_id=project.id)

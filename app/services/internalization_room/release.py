@@ -7,11 +7,17 @@ with its findings and playback report, and every superseded attempt clearly mark
 
 The release fails closed. A blocker means the session is not ready to travel — never a
 partial artifact — because a package missing the comprehension it was built on, the coverage
-floor, the rehearsal audio, the telling-back, the analyst's reading of it, a stretch nobody
-told back, or the evidence the team heard their own rehearsal would look downstream exactly
-like a finished one. The output is always labeled ``first_team_rehearsal`` /
-``ready_for_refine``: the system never claims to have understood or approved the
-mother-tongue recording itself.
+floor, the rehearsal audio, the telling-back, the analyst's reading of it or a stretch nobody
+told back would look downstream exactly like a finished one; so would one composed for a
+panorama, which is not a draft of a passage at all. Those seven are missing material, and
+nothing overrules them: there is nothing in a rehearsal nobody recorded for anybody to
+overrule.
+
+The other two are Marcia's gate — an open finding the telling-back still carries, and a part
+of the rehearsal the team never heard through — and they are a dispute rather than a hole.
+A person can look at either and disagree, and only a facilitator's own code opens that door
+(ADR 0019). The output is always labeled ``first_team_rehearsal`` / ``ready_for_refine``:
+the system never claims to have understood or approved the mother-tongue recording itself.
 """
 
 from __future__ import annotations
@@ -149,7 +155,7 @@ def _judge(blockers: list[str], waived: frozenset[str]) -> None:
         raise InternalizationReleaseBlocked(standing)
 
 
-async def compose_internalization_release(
+async def _compose_internalization_release(
     db: AsyncSession, session: IRSession
 ) -> tuple[dict[str, Any], list[str]]:
     """The packet this session composes right now, and everything standing in its way.
@@ -412,7 +418,7 @@ async def build_internalization_release(
     whether the content changed before it asks whether the gate is shut, and it reaches for
     the composer and the judge itself rather than through this.
     """
-    artifact, blockers = await compose_internalization_release(db, session)
+    artifact, blockers = await _compose_internalization_release(db, session)
     _judge(blockers, waived)
     return artifact
 
@@ -518,6 +524,14 @@ async def approve_release(
     the content is not that draft — and then with nothing waived unless this caller is the
     one forcing, so compare-first never becomes a force the team can reach.
 
+    It answers an unchanged packet with its release whatever stands, and not only over the
+    finding somebody overruled. ``coverage_floor_not_met`` is the case that shows the reach:
+    it is read off ``session.coverage_state``, which is outside the hashed content, so a
+    session whose floor fell after its release was written still composes the same packet and
+    is still answered with that release. That is the rule ADR 0014 wrote — the number says
+    which content was approved, and this content was — and it is wider than the force it was
+    reopened for.
+
     The number is one past the last, which two approvals arriving together can both read.
     The unique index is what refuses the second, and the refusal is answered rather than
     retried: the tablet asks again and the second ask returns the release the first one
@@ -535,7 +549,7 @@ async def approve_release(
             "this session names no project, so a release for it cannot be numbered"
         )
 
-    packet, blockers = await compose_internalization_release(db, session)
+    packet, blockers = await _compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)
     if latest is not None and latest.package_sha256 == packet["package_sha256"]:
         return latest
