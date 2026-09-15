@@ -352,6 +352,14 @@ def test_no_service_reads_the_project_table_without_reaching_for_the_scope() -> 
     *describes* the rule is not a breach of it — the first spelling of this test failed on
     ``__init__.py``'s own paragraph about the rule.
 
+    What counts as reading the table is **building a** ``select`` **over it**, not naming the
+    class. Naming it is what a file does when it takes a row somebody else already fetched:
+    ``_consent.py``, ``_redaction.py``, ``_media_sharing.py`` and ``_audit.py`` all annotate a
+    ``project: ShemaProject`` parameter, and ``read_record.py`` does the same — none of them
+    can reach a row the scope did not hand them, which is the property, and flagging them
+    would only teach the next author to drop the annotation. The one file that composes a
+    query from a scoped one, ``browse_projects.py``, does it through ``list_projects``.
+
     A check and not a review item, which is the same argument ``docs/shema.md`` §6.4 makes
     for the consent gate. A file that genuinely needs an exemption has to change this test,
     and that is a line in a diff a reviewer reads.
@@ -362,10 +370,31 @@ def test_no_service_reads_the_project_table_without_reaching_for_the_scope() -> 
         if path.name == "_scope.py":
             continue
         names = _names_used(path)
-        if "ShemaProject" in names and not names & {"within_scope", "visible_projects"}:
+        if _selects_projects(path) and not names & {"within_scope", "visible_projects"}:
             offenders.append(path.name)
 
     assert offenders == [], f"reads shema_projects without the scope predicate: {offenders}"
+
+
+def _selects_projects(path: Path) -> bool:
+    """Whether the module builds a ``select`` whose subtree names ``ShemaProject``.
+
+    ``select(ShemaProject)``, ``select(ShemaProject.id)`` and any ``.where``/``.join`` chain
+    hanging off them all carry the ``Call`` node this looks for. A ``ShemaProject`` that only
+    appears in an annotation or an ``isinstance`` does not.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if name != "select":
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Name) and inner.id == "ShemaProject":
+                return True
+    return False
 
 
 def _names_used(path: Path) -> set[str]:
