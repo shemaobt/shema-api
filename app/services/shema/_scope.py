@@ -39,7 +39,6 @@ it; the product has no third answer, so nothing here offers one.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 from collections.abc import Collection, Sequence
 from typing import NamedTuple
 
@@ -212,6 +211,8 @@ async def holders_reaching(
         or user.id in globals_
         or region_key.value in granted.get(user.id, set())
     ]
+
+
 async def scopes_for(
     db: AsyncSession, users: Sequence[User], *, unscoped: Collection[str]
 ) -> dict[str, RegionScope]:
