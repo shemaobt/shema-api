@@ -23,6 +23,7 @@ class ProjectResponse(BaseModel):
     location_display_name: str | None
     created_at: datetime
     updated_at: datetime
+    team_size: int = 0
 
     model_config = {"from_attributes": True}
 
