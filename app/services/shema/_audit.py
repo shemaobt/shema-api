@@ -69,8 +69,15 @@ def _wire(column: str) -> str:
 #: through an instance; the dictionary is real and this is the one place that matters.
 _WRITABLE_FIELDS: dict[str, Any] = dict(ShemaProjectUpdate.model_fields)  # type: ignore[call-overload]
 
+#: The write model's fields that are **not** columns of ``shema_projects``, and therefore not
+#: rows of this diff. ``coords`` is two columns and is expanded below; ``needs_items`` is a
+#: child table with its own diff (``_needs.py``), which writes its changes under one key —
+#: ``needsItems`` — through :func:`record_edits` like everything else, so a 409 names it and a
+#: reader of the trail sees needs move beside the fields around them.
+NOT_COLUMNS: frozenset[str] = frozenset({"coords", "needs_items"})
+
 AUDITED_COLUMNS: tuple[str, ...] = tuple(
-    [name for name in _WRITABLE_FIELDS if name != "coords"] + ["latitude", "longitude"]
+    [name for name in _WRITABLE_FIELDS if name not in NOT_COLUMNS] + ["latitude", "longitude"]
 )
 
 FIELD_KEYS: dict[str, str] = {column: _wire(column) for column in AUDITED_COLUMNS}
