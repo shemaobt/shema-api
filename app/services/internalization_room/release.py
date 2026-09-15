@@ -43,6 +43,8 @@ from app.db.models.internalization_room import (
 )
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
+    Finding,
+    SupersededAttempt,
     findings_remaining,
     rehearsed_parts,
     unheard_parts,
@@ -78,8 +80,10 @@ from app.services.internalization_room.takes import takes_of
 #: ``version``: the packet says which approved draft it is, or says it is none. And to v0.5
 #: with ``played_by_take`` in place of ``played_ranges`` and ``clip_duration_ms``: the report of
 #: listening names the part it was played from, and the two it replaces are gone rather than
-#: still there and no longer meaning what they said (ADR 0017).
-SCHEMA_VERSION = "tripod.internalization-release.v0.5"
+#: still there and no longer meaning what they said (ADR 0017). And to v0.6 with the analyst's
+#: note gone from every finding, in ``findings`` and in the superseded attempts alike: a
+#: consumer diffing the two versions finds one key gone from every finding and nothing renamed.
+SCHEMA_VERSION = "tripod.internalization-release.v0.6"
 
 #: The whole of what a facilitator's code can set aside, and the one place that says so. They
 #: are Marcia's gate — no open finding, and the whole rehearsal heard — and they are the only
@@ -130,6 +134,30 @@ def _segment_view(segment: IRSegment) -> dict[str, Any]:
         "pass_number": segment.pass_number,
         "parent_segment_id": segment.parent_id,
         "text": segment.transcript,
+    }
+
+
+def _finding_view(finding: Finding) -> dict[str, Any]:
+    """One finding as the packet carries it: the kind and the address, and never the why.
+
+    The note cites internal rule ids and uses words Marcia banned from the team's ears, and
+    Refine is where the team works. It is moved rather than deleted: the retroverification
+    file is the one artifact written for a reader allowed to see them, and a **Forced
+    release** keeps its own dump of what was overruled on the row.
+    """
+    return finding.model_dump(mode="json", exclude={"note"})
+
+
+def _attempt_view(attempt: SupersededAttempt) -> dict[str, Any]:
+    """A telling-back the team replaced, its findings read through the view above.
+
+    They are a second list of the same thing, so a note taken out of one and left in the other
+    would leave the packet carrying it anyway. What the attempt reported of its own listening
+    is untouched: it is the record of what that reading stood on (ADR 0017).
+    """
+    return {
+        **attempt.model_dump(mode="json", exclude={"findings"}),
+        "findings": [_finding_view(finding) for finding in attempt.findings],
     }
 
 
@@ -436,13 +464,11 @@ async def _compose_internalization_release(
                 {**_segment_view(segment), "frase": frase}
                 for frase, segment in enumerate(told, start=1)
             ],
-            "findings": [finding.model_dump(mode="json") for finding in telling_back.findings],
+            "findings": [_finding_view(finding) for finding in telling_back.findings],
             "played_by_take": [
                 entry.model_dump(mode="json") for entry in telling_back.played_by_take
             ],
-            "superseded_attempts": [
-                attempt.model_dump(mode="json") for attempt in telling_back.superseded
-            ],
+            "superseded_attempts": [_attempt_view(attempt) for attempt in telling_back.superseded],
             "superseded_segments": [_segment_view(segment) for segment in replaced],
             "divided_segments": [_segment_view(segment) for segment in divided],
             "retro_takes": [_take_view(take) for take in retro_takes],
@@ -549,6 +575,21 @@ async def _latest_release(db: AsyncSession, project_id: str, pericope: str) -> I
     return result.scalar_one_or_none()
 
 
+async def releases_of_passage(db: AsyncSession, project_id: str, pericope: str) -> list[IRRelease]:
+    """Every approved draft of this passage for this team, in the order they were numbered.
+
+    Scoped like ``_latest_release`` and for its reason: that is what a **Version** is per, so a
+    number another conversation about this passage minted is a draft of this passage too, and a
+    list scoped to one session would hide it from the consultant reading the history.
+    """
+    result = await db.execute(
+        select(IRRelease)
+        .where(IRRelease.project_id == project_id, IRRelease.pericope == pericope)
+        .order_by(IRRelease.version)
+    )
+    return list(result.scalars().all())
+
+
 async def release_by_version(db: AsyncSession, session: IRSession, version: int) -> IRRelease:
     """One approved draft of this session's passage, read back under the number it was given.
 
@@ -596,6 +637,12 @@ async def approve_release(
     A force with nothing to waive is still a force and is still recorded as one, with an
     empty list of findings. The act was the facilitator's, and a row that hid that would say
     the team approved a draft the team did not approve.
+
+    What is open at that moment is dumped from the state the packet was composed from and not
+    copied out of the packet's own list, which is what lets the two differ by the analyst's
+    note. The packet carries a finding as a kind and an address because Refine is where the
+    team works; this row answers a facilitator asking what was overruled, which is the
+    consultant's question, so it keeps the words the analyst wrote.
 
     Unchanged content returns the release that already exists rather than minting a version
     beside it: a new **Version** starts with zero listeners on Marcia's external check, so
@@ -669,7 +716,11 @@ async def approve_release(
         device_id=device_id,
         forced_by=forced_by,
         forced_at=datetime.now(UTC) if forced_by else None,
-        forced_open_findings=packet["back_translation"]["findings"] if forced_by else None,
+        forced_open_findings=(
+            [finding.model_dump(mode="json") for finding in back_translation_of(session).findings]
+            if forced_by
+            else None
+        ),
     )
     db.add(release)
     try:

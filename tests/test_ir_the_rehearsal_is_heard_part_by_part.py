@@ -294,7 +294,7 @@ async def test_the_packet_carries_the_report_per_take(
     )
     packet = await release_packet(db_session, session)
 
-    assert packet["schema_version"] == "tripod.internalization-release.v0.5"
+    assert packet["schema_version"] == "tripod.internalization-release.v0.6"
     assert packet["back_translation"]["played_by_take"] == per_take
     assert "played_ranges" not in packet["back_translation"]
     assert "clip_duration_ms" not in packet["back_translation"]

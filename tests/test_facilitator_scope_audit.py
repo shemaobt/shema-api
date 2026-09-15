@@ -420,6 +420,17 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owner_expects": 404,
         },
         {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/retroverificacao", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/retroverificacao", {}),
+            #: The owner reaches this one, unlike the three reads above: the file is the record
+            #: of whatever the check learned, and a session that recorded almost nothing has a
+            #: file saying almost nothing rather than none at all. Nothing has to be built for
+            #: it — no gate, no version, no analyst — so asking for 200 costs this audit
+            #: nothing and is what makes the refusal beside it mean scope.
+            "ids": (session_id, absent),
+        },
+        {
             "method": "POST",
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
@@ -451,6 +462,7 @@ REFUSING_TEMPLATES = {
     ("POST", f"{DESK}/devices/claim"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),

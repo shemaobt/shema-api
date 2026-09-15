@@ -210,7 +210,10 @@ async def test_the_facilitator_forces_the_release_and_the_row_says_so(client, db
     assert row.forced_at is not None
     assert row.device_id is None
     assert row.packet["back_translation"]["checked"] is False
-    assert row.forced_open_findings == row.packet["back_translation"]["findings"]
+    assert [
+        {key: value for key, value in finding.items() if key != "note"}
+        for finding in row.forced_open_findings
+    ] == row.packet["back_translation"]["findings"]
     assert [finding["kind"] for finding in row.forced_open_findings] == ["addition"]
     assert row.forced_open_findings[0]["note"] == THE_FINDING
     assert row.forced_open_findings[0]["chunk"] == 1
