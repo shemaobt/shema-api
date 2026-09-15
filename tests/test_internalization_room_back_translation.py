@@ -1236,6 +1236,7 @@ DESTINATIONS = {
     "aqui na tela": "on screen",
     "no microfone daquela": "tap the microphone",
     "gravar o que ainda falta": "record what is still missing",
+    "Ouçam a gravação": "listen to their own recording once more",
     "no WhatsApp": "on WhatsApp",
 }
 

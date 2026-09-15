@@ -1213,8 +1213,8 @@ def findings_block(findings: list[Finding]) -> str:
 #: What every closing below promises except `CLOSING_CHECKED`: the process goes on. It used
 #: to be a static line in the prompt template itself, right under `{{CLOSING}}` and outside
 #: any branch — true of every verdict turn there was, until `CLOSING_CHECKED` gave the
-#: process an ending. Left there it would have sat right after "there is no next turn" and
-#: said the opposite in the same breath, so it now lives inside each closing that still has
+#: process an ending. Left there it would have promised another round of telling back beside
+#: the one step that closes the passage, so it now lives inside each closing that still has
 #: a next round instead, and not in the one that does not.
 _NEXT_ROUND = "After the team acts on this one, they will finish the telling-back again."
 
@@ -1238,13 +1238,17 @@ CLOSING_PLAIN = (
 #: at all affirms and names the badge; both other closings explain themselves in terms of *this
 #: finding*, and there is none — `findings_block` is saying so in the same prompt.
 
-CLOSING_CHECKED = """- Say plainly that the passage is told and checked, then stop there. Do \
-not ask a question, do not invite them to answer anything, do not ask how the team feels, and \
-do not say goodbye. There is no next turn on this passage — the screen takes the team on from \
-here. Never a checklist, never a speech."""
+CLOSING_CHECKED = """- Say plainly that this passage is translated and checked. Then name \
+the one step that is left: invite the team to listen to their own recording once more, from \
+beginning to end, without stopping, and, if it sounds right to their ears, to approve it as \
+the team's final draft. That invitation is the only next step you name — no other gesture and \
+no other screen. Do not ask them to answer anything out loud, do not ask how the team feels, \
+and do not say goodbye. Call it the team's final draft and nothing more than that: what they \
+approve here is what OBT Refine works from. Never a checklist, never a speech."""
 #: The one turn with no finding that also has no next round: `state.checked` closes the
-#: passage for good, so a question here would ask for an answer nobody will ever read — and,
-#: unlike every other closing, this one may not carry `_NEXT_ROUND` either.
+#: passage for good. The step it names is the team's own — their last listening and their
+#: approval — and not another turn of this conversation, so, unlike every other closing,
+#: this one may not carry `_NEXT_ROUND` either.
 
 CLOSING_SPOKEN = (
     "- End with exactly one answerable question or invitation, and let them answer in words. "

@@ -100,11 +100,18 @@ def the_transcriber_says(monkeypatch: pytest.MonkeyPatch, said: list[str]) -> No
     monkeypatch.setattr(bt_api, "heard", heard)
 
 
-def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+def the_room_speaks(
+    monkeypatch: pytest.MonkeyPatch, *, briefs: list[str] | None = None
+) -> list[str]:
     """The Speaker and the synthesizer, and every line the room was asked to say.
 
     Kept because the answer carries a clip name and never the words: what the room actually
     said is not readable from the response at all.
+
+    `briefs` collects what the Speaker was told, for a case whose subject is the instruction
+    the room ordered rather than the words that came back. The Validator's own brief is not
+    one of them — it is judging a draft, not being told how to end a turn — and it is told
+    apart here by the field it is asked to answer with.
     """
     said_aloud: list[str] = []
 
@@ -115,6 +122,8 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
             return json.dumps({"verdict": "pass", "issues": []})
+        if briefs is not None:
+            briefs.append(system_prompt)
         return "Vocês contaram bem."
 
     monkeypatch.setattr(turn_module, "call_agent", speaker)
