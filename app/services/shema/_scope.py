@@ -39,6 +39,7 @@ it; the product has no third answer, so nothing here offers one.
 from __future__ import annotations
 
 import logging
+from collections.abc import Collection, Sequence
 from typing import NamedTuple
 
 from sqlalchemy import ColumnElement, Select, false, select, true
@@ -165,6 +166,94 @@ async def scope_from_roles(db: AsyncSession, user: User, granted: set[str]) -> R
         select(ShemaUserRegion.region_key).where(ShemaUserRegion.user_id == user.id)
     )
     return RegionScope(global_=False, regions=frozenset(key.value for key in rows.scalars()))
+
+
+async def holders_reaching(
+    db: AsyncSession, users: Sequence[User], region_key: ShemaRegionKey, app_key: str
+) -> list[User]:
+    """Which of ``users`` reach ``region_key`` — the scope asked about a list of people.
+
+    :func:`region_scope` answers *how far does this caller reach* and every read in the module
+    starts there. Addressing a notice asks the same question from the other end, about a list
+    of accounts that :func:`~app.services.authorization.list_role_holders` just answered — and
+    it belongs here for that function's own stated reason: the rule about what a region grant
+    means has one owner, and a second file deciding that *no rows means nothing unless you are
+    ``globalStrategist``* is a second place for a fail-open to be introduced.
+
+    **Two queries for a list rather than two per person.** The roles of every holder and the
+    regions of every holder are each one read; the per-user loop underneath them is
+    arithmetic. A routing path called inside a save is not the place to issue a join per
+    recipient.
+
+    Order is preserved, because the caller's order is ``list_role_holders``'s — by e-mail, so
+    a recipient list is stable between calls and a test can assert one.
+    """
+    if not users:
+        return []
+
+    globals_ = {
+        user.id
+        for user in await authorization_service.list_role_holders(db, app_key, (GLOBAL_ROLE,))
+    }
+    rows = await db.execute(
+        select(ShemaUserRegion.user_id, ShemaUserRegion.region_key).where(
+            ShemaUserRegion.user_id.in_([user.id for user in users])
+        )
+    )
+    granted: dict[str, set[str]] = {}
+    for user_id, key in rows:
+        granted.setdefault(user_id, set()).add(key.value)
+
+    return [
+        user
+        for user in users
+        if user.is_platform_admin
+        or user.id in globals_
+        or region_key.value in granted.get(user.id, set())
+    ]
+
+
+async def scopes_for(
+    db: AsyncSession, users: Sequence[User], *, unscoped: Collection[str]
+) -> dict[str, RegionScope]:
+    """:func:`scope_from_roles` for a whole list of accounts, in **one** read of the region table.
+
+    The singular is written for the caller standing in front of one account. Addressing a
+    notification asks the same question about everybody who holds a role, and asking it one at a
+    time is two round trips per person on a write a mentor is waiting in front of — the defect
+    ``app/services/resource_request/_notices.py``'s ``board_watchers`` avoids on the other axis by
+    reading the holders once and filtering in Python. This is that shape for the region axis: the
+    rows are read for the whole list and each account's reach is resolved off them, so the cost is
+    one query rather than *n*.
+
+    ``unscoped`` is the ids of the accounts whose **role** already reaches every region — the
+    :data:`GLOBAL_ROLE` holders — and it is a parameter rather than a read because
+    ``docs/shema.md`` §2.4 gives ``user_app_roles`` to the auth spine: the caller asks
+    ``list_role_holders`` once for the whole list, which is the same one-query trade this function
+    makes for the table it does own. A platform admin is global here as they are everywhere else.
+
+    Every account in ``users`` gets an entry, including the ones with no row at all: the
+    fail-closed floor of :func:`region_scope` is an empty, non-global scope and not a missing key,
+    so a caller cannot read *reaches nothing* as *not answered*.
+    """
+    by_user: dict[str, set[str]] = {}
+    if users:
+        rows = await db.execute(
+            select(ShemaUserRegion.user_id, ShemaUserRegion.region_key).where(
+                ShemaUserRegion.user_id.in_([user.id for user in users])
+            )
+        )
+        for user_id, region_key in rows:
+            by_user.setdefault(user_id, set()).add(region_key.value)
+
+    return {
+        user.id: (
+            RegionScope(global_=True, regions=frozenset())
+            if user.is_platform_admin or user.id in unscoped
+            else RegionScope(global_=False, regions=frozenset(by_user.get(user.id, ())))
+        )
+        for user in users
+    }
 
 
 def within_scope(scope: RegionScope) -> ColumnElement[bool]:
