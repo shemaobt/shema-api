@@ -27,39 +27,16 @@ from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
 from app.services import internalization_room as room
 from app.services.internalization_room import llm
+from tests.text_seam_harness import (
+    GUIDE_LINE,
+    RUNNER_KEY,
+    TEAM_LINE,
+    the_models_answer,
+)
 
 SEAM = "/api/internalization-room/text-seam"
-RUNNER_KEY = "runner-de-teste"
-GUIDE_LINE = "Olá, eu sou o Facilitador Digital. Vamos começar pelo todo."
-TEAM_LINE = "Bom dia. Somos a equipe Terena. Pode continuar."
 CORRECTED_LINE = "Vamos ficar com o que a passagem conta."
 UNREPAIRABLE_LINE = "Quero que a gente fique perto da passagem. Vamos voltar juntos a esta cena."
-
-
-class _Agent:
-    """The Guide and the Validator answering as this test's script says, one entry per call."""
-
-    def __init__(self, script: list[Any]) -> None:
-        self._script = list(script)
-        self.guide_inputs: list[str] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        validating = "corrected_response" in system_prompt
-        if not validating:
-            self.guide_inputs.append(user_content)
-        planned = self._script.pop(0) if self._script else None
-        if planned is not None:
-            return planned
-        if validating:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return GUIDE_LINE
-
-
-def _the_models_answer(monkeypatch: pytest.MonkeyPatch, *script: Any) -> _Agent:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    agent = _Agent(list(script))
-    monkeypatch.setattr(module, "call_agent", agent)
-    return agent
 
 
 @pytest.fixture()
@@ -69,7 +46,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
     )
-    _the_models_answer(monkeypatch)
+    the_models_answer(monkeypatch)
 
     async def _never_voiced(text: str, **_: Any) -> None:
         raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")
@@ -171,7 +148,7 @@ async def test_a_second_kickoff_on_an_open_session_is_a_conflict(client) -> None
 async def test_the_teams_words_enter_where_the_transcriber_would_have_put_them(
     client, monkeypatch
 ) -> None:
-    agent = _the_models_answer(monkeypatch)
+    agent = the_models_answer(monkeypatch)
     session_id = await _a_session(client)
     await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
 
@@ -204,7 +181,7 @@ async def _an_open_session(client: httpx.AsyncClient) -> str:
 
 async def test_a_turn_the_validator_mended_is_tagged_corrected(client, monkeypatch) -> None:
     session_id = await _an_open_session(client)
-    _the_models_answer(
+    the_models_answer(
         monkeypatch,
         "Eles tinha dez filhos.",
         json.dumps(
@@ -231,7 +208,7 @@ async def test_a_turn_that_fell_to_a_canned_line_is_tagged_fail_safe(client, mon
     regenerate = json.dumps(
         {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}
     )
-    _the_models_answer(monkeypatch, None, regenerate, None, regenerate, None, regenerate)
+    the_models_answer(monkeypatch, None, regenerate, None, regenerate, None, regenerate)
 
     answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
 
@@ -251,7 +228,7 @@ async def test_mother_tongue_enters_where_the_recognizer_would_have_flagged_it(
     client, monkeypatch
 ) -> None:
     session_id = await _an_open_session(client)
-    agent = _the_models_answer(monkeypatch)
+    agent = the_models_answer(monkeypatch)
 
     answered = await client.post(
         f"{SEAM}/turn",

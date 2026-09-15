@@ -1,5 +1,6 @@
 import pytest
 
+from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.back_translation import (
     CLOSING_CHECKED,
     CLOSING_PLAIN,
@@ -10,25 +11,37 @@ from app.services.internalization_room.back_translation import (
     segments_block,
 )
 from app.services.internalization_room.run_turn import run_verdict_turn
-from tests.test_internalization_room_back_translation import (
+from tests.turn_harness import (
+    CONTINUES_TELLING_BACK,
+    INVITATION_WORDS,
     SPEAKER,
     VALIDATOR,
     P,
-    _settings,
-    _told,
-    patch_loop,
-    patch_speaker,
+    ValidatorReadsOnlyItsOwnPrompt,
+    settings,
+    the_loop_answers,
+    the_speaker_answers,
+    told_stretches,
 )
 
-#: Silences an unused-import lint warning: pytest discovers these fixtures by name because
-#: they are imported into this module's namespace, not because anything here calls them
-#: directly.
-_FIXTURES = (patch_loop, patch_speaker)
 
-#: The words the closing has to carry on this turn, named one by one rather than as the whole
-#: constant: the case is that the team is invited to *these two things*, and an assertion on
-#: the constant would agree with whatever it happened to say.
-INVITATION_WORDS = ("listen to", "once more", "approve", "final draft")
+@pytest.fixture
+def patch_loop(monkeypatch: pytest.MonkeyPatch):
+    """Both ends of the draft-and-gate loop, for the cases in this module."""
+
+    def _install(draft: str, told: list[IRSegment]) -> ValidatorReadsOnlyItsOwnPrompt:
+        return the_loop_answers(monkeypatch, draft, told)
+
+    return _install
+
+
+@pytest.fixture
+def patch_speaker(monkeypatch: pytest.MonkeyPatch):
+    def _install(draft: str):
+        return the_speaker_answers(monkeypatch, draft)
+
+    return _install
+
 
 #: The Refine-stage boundary, in the Validator's own vocabulary. The closing that invites the
 #: approval is the one place where the word would slip in.
@@ -44,12 +57,6 @@ PROHIBITIONS = (
     "That invitation is the only next step you name — no other gesture and no other screen",
     "Never a checklist, never a speech",
 )
-
-#: The prompt's own promise of a next round, previously a static line under `{{CLOSING}}`
-#: on every verdict turn. `CLOSING_CHECKED` has no next round, so this and it may not both
-#: reach the Speaker on the same turn — found in code review, same class of defect as the
-#: original bug: a signal that promises continuation on the one turn that has none.
-CONTINUES_TELLING_BACK = "finish the telling-back again"
 
 #: The shape of her clean turn: the passage translated with nothing different in it, and then
 #: the one step that is left. Every word of it is the Speaker's own — what makes it obedient
@@ -74,14 +81,14 @@ async def _checked_turn_for(draft: str, patch_speaker) -> str:
         messages=[],
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
     return str(agent.seen[0])
 
 
 async def _checked_turn_with_loop(draft: str, patch_loop):
     """Same turn, through the draft-and-gate loop so the Validator's own brief is visible."""
-    told = _told()
+    told = told_stretches()
     agent = patch_loop(draft, told)
     outcome = await run_verdict_turn(
         session_language="Portuguese",
@@ -94,7 +101,7 @@ async def _checked_turn_with_loop(draft: str, patch_loop):
         telling_back=segments_block(told),
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
     return outcome, agent
 

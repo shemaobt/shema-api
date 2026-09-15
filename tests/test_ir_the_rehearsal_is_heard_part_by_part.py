@@ -35,17 +35,16 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.segments import capture_segment
 from app.services.internalization_room.sessions import begin_back_translation_again
+from tests.release_harness import ensaio_take, rehearsed_session
 from tests.room_harness import (
     PART_MS,
     PLAYBACK_BLOCKER,
     P,
-    a_rehearsed_session,
     another_rehearsal_take,
     heard_every_part,
     played_every_part,
     press_terminei,
     record_the_part_again,
-    rehearsal_take,
     rehearsed_in_parts,
     release_blockers,
     release_packet,
@@ -94,14 +93,14 @@ def _covering(take: IRTake, *, duration_ms: int = PART_MS) -> dict[str, Any]:
 
 async def _rehearsed_and_told_back(db: AsyncSession) -> IRSession:
     """A session that needs nothing but the report to travel: one part, one stretch told."""
-    session, take = await a_rehearsed_session(db)
+    session, take = await rehearsed_session(db, language="pt")
     await tell_back_about(db, session, take)
     return session
 
 
 async def _told_back_on_a_new_part(db: AsyncSession, session: IRSession, *, sha256: str) -> IRTake:
     """The team started the telling-back over on a recording they made fresh."""
-    take = rehearsal_take(session.id, sha256=sha256)
+    take = ensaio_take(session.id, sha256=sha256)
     db.add(take)
     await db.commit()
     await capture_segment(
@@ -491,7 +490,7 @@ async def test_a_session_with_nothing_told_back_is_not_also_blamed_for_playback(
     There is nothing to have played back before a stretch exists, so the room names what is
     actually missing and does not hand the team a second errand that would not help.
     """
-    session, _ = await a_rehearsed_session(db_session)
+    session, _ = await rehearsed_session(db_session, language="pt")
 
     refused = await release_blockers(db_session, session)
 

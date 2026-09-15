@@ -22,10 +22,7 @@ from tests.room_harness import (
     the_analyst_reads,
     the_room_speaks,
 )
-
-#: The promise of another round of telling back. There is none after this turn, and the last
-#: step the team is invited to is not one.
-CONTINUES_TELLING_BACK = "finish the telling-back again"
+from tests.turn_harness import CONTINUES_TELLING_BACK, INVITATION_WORDS
 
 
 @pytest.fixture(autouse=True)
@@ -70,10 +67,8 @@ async def test_a_clean_check_orders_the_last_listening_and_the_approval(
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["checked"] is True
-    assert "listen to" in briefs[-1]
-    assert "once more" in briefs[-1]
-    assert "approve" in briefs[-1]
-    assert "final draft" in briefs[-1]
+    for word in INVITATION_WORDS:
+        assert word in briefs[-1]
     assert CONTINUES_TELLING_BACK not in briefs[-1]
     assert answered.json()["used_fail_safe"] is False
     assert len(spoken) == 1

@@ -23,12 +23,12 @@ from app.core.config import get_settings
 from app.services import internalization_room as room
 from scripts import bt_golden_runner
 from scripts.bt_golden_runner import export, load_script, open_session, play
-from tests.test_ir_the_text_seam_hears_a_telling_back import (
+from tests.text_seam_harness import (
     RUNNER_KEY,
     THE_EXTRA_CAUSE,
     Analyst,
     Speaker,
-    _the_app,
+    the_app,
 )
 
 BASE_URL = "http://test/api/internalization-room/text-seam/back-translation/"
@@ -83,7 +83,7 @@ def seam_app(
         raise AssertionError(f"a costura pediu um clipe ao sintetizador: {text!r}")
 
     monkeypatch.setattr(room, "synthesize_facilitator_speech", _never_voiced)
-    return _the_app(db_session)
+    return the_app(db_session)
 
 
 @pytest.fixture()

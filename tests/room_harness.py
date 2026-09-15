@@ -23,7 +23,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
+from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
@@ -39,11 +39,8 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from tests.hard_stretch_harness import MemoryStore
-from tests.release_harness import supported_comprehension
+from tests.release_harness import KEY, PREFIX, P, ensaio_take, supported_comprehension
 
-PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
-P = "P03"
 PART_MS = 61000
 PLAYBACK_BLOCKER = "playback_did_not_cover_the_clip"
 
@@ -175,35 +172,6 @@ async def room_client(
         yield client
 
 
-def rehearsal_take(session_id: str, *, sha256: str) -> IRTake:
-    return IRTake(
-        session_id=session_id,
-        device_id="tablet-1",
-        pericope=P,
-        kind=IRTakeKind.ENSAIO,
-        scope="passagem-inteira",
-        storage_key=f"takes/{session_id}/ensaio/{sha256}",
-        size_bytes=2048,
-        sha256=sha256,
-        crc32c="AAAAAAA=",
-        content_type="audio/mp4",
-    )
-
-
-async def a_rehearsed_session(db: AsyncSession) -> tuple[IRSession, IRTake]:
-    """A session that has done everything a release needs except tell the passage back.
-
-    Comprehension supported, consent given, coverage satisfied, the passage rehearsed.
-    """
-    session = await create_session(db, pericope=P, language="pt")
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P))
-    take = rehearsal_take(session.id, sha256="a" * 64)
-    db.add(take)
-    await db.commit()
-    return session, take
-
-
 async def tell_back_about(
     db: AsyncSession,
     session: IRSession,
@@ -235,7 +203,7 @@ async def rehearsed_in_parts(db: AsyncSession, count: int) -> tuple[IRSession, l
 
     parts = []
     for index in range(count):
-        take = rehearsal_take(session.id, sha256=chr(ord("a") + index) * 64)
+        take = ensaio_take(session.id, sha256=chr(ord("a") + index) * 64)
         db.add(take)
         await db.commit()
         await capture_segment(
@@ -253,7 +221,7 @@ async def rehearsed_in_parts(db: AsyncSession, count: int) -> tuple[IRSession, l
 
 async def another_rehearsal_take(db: AsyncSession, session: IRSession, *, sha256: str) -> IRTake:
     """One more recording of the mother tongue, carrying no telling-back with it."""
-    take = rehearsal_take(session.id, sha256=sha256)
+    take = ensaio_take(session.id, sha256=sha256)
     db.add(take)
     await db.commit()
     return take
