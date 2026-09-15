@@ -20,7 +20,9 @@ a validator, so the three things a query-side caller needs are:
 * :func:`withheld_note` — the collection-level announcement, so a file that reduced rows
   says how many;
 * :func:`log_reference` and :func:`searchable_text` — the two paths that are not payloads at
-  all, and the two this module would otherwise leak through unwatched.
+  all, and the two this module would otherwise leak through unwatched;
+* :func:`derive_region` — the write path's one question about ``location``, which lives here
+  because ``location`` lives here (BE-06; the function's own docstring carries the trade).
 
 **This is the only file in** ``app/services/shema/`` **and** ``app/api/shema/`` **allowed to
 read the guarded columns.** ``tests/test_shema/test_privacy_owners.py`` globs both packages
@@ -35,7 +37,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_enums import ShemaRegionKey
 from app.models.shema_privacy import LeavingShape
+from app.utils.shema_derivations import get_region
 
 
 def is_withheld(project: ShemaProject) -> bool:
@@ -120,3 +124,23 @@ def searchable_text(project: ShemaProject) -> str:
     if not is_withheld(project):
         fields.extend([project.location, project.location2 or "", project.team])
     return " ".join(part for part in fields if part)
+
+
+def derive_region(project: ShemaProject) -> ShemaRegionKey:
+    """The region this project's ``location`` puts it in — the write path's one question.
+
+    ``shema_projects.region_key`` is a stored column maintained by whoever writes ``location``
+    (``docs/shema.md`` §6.1: the region predicate rides on every scoped list query and a
+    per-query derivation would make it unsargable). So the record's write has to read
+    ``location`` back off the row after applying a payload — and ``location`` has **one
+    reader** in this package, which is this file.
+
+    **That is why a derivation lives in the redaction owner.** The alternative was an
+    allowlist entry in ``tests/test_shema/test_privacy_owners.py`` naming the write path as a
+    second reader of six guarded columns, to buy one line; the glob's own note foresees that
+    entry and it is still the worse trade — a second reader is second for every column, not
+    only for the one that was wanted. The rule itself is not duplicated here:
+    ``app/utils/shema_derivations.get_region`` is the single owner of the country map and this
+    is one call to it.
+    """
+    return get_region(project.location)

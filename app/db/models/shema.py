@@ -139,6 +139,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     Float,
+    ForeignKey,
     Index,
     Integer,
     String,
@@ -373,6 +374,34 @@ class ShemaProject(Base):
     #: and the export has no column for either. So BE-04's glob (``docs/shema.md`` §6.4) has
     #: to fail on this spelling too, not only on the three snake_case names.
     source: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    #: **The concurrency token** (BE-06). It counts saves, it is handed to the client as an
+    #: ``ETag`` and taken back as ``If-Match``, and a write whose ``If-Match`` is not this
+    #: value is refused rather than applied over work its author never saw.
+    #:
+    #: An integer and **not** ``updated_at``, which is the other shape the issue named. Two
+    #: coordinators saving inside one second is the case the whole guard exists for, and
+    #: ``shema_progress_history``'s own docstring already records that this repository has
+    #: measured the tie: ``func.now()`` hands every row of one transaction the same
+    #: microsecond and SQLite's ``CURRENT_TIMESTAMP`` has one-second granularity. A counter
+    #: has no granularity to lose. ``SnSessionState.version`` is the precedent.
+    #:
+    #: **Only a save that changed something moves it.** A ``PATCH`` whose fields all match
+    #: what is stored writes nothing, stamps nobody and leaves the version where it is — an
+    #: idempotent save that invalidated every other editor's copy would make the guard a
+    #: reason not to press save.
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    #: Who saved last, and it is **the account** — a reference, because this one is a pointer
+    #: for an investigator rather than an accountability snapshot. The snapshot lives beside
+    #: it and in ``shema_record_edits``; the distinction is the same one
+    #: ``ShemaMediaItem.authorized_by``'s docstring draws, read from the other side. NULL on
+    #: the 127 migrated records, which nobody in this product ever saved.
+    updated_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    #: The saver's name **as it was then**, so the record can say *saved by Maria at 14:02*
+    #: without a join and without following a later rename.
+    updated_by_name: Mapped[str] = mapped_column(String(200), default="", server_default="")
 
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()

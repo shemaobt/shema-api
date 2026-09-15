@@ -75,6 +75,7 @@ from app.db.models.resource_request import (
     RRStage,
 )
 from app.db.models.shema import ShemaProject
+from app.db.models.shema_audit import ShemaRecordEdit
 from app.db.models.shema_enums import (
     ShemaEtenCreditSource,
     ShemaHealthLevel,
@@ -208,6 +209,7 @@ __all__ = [
     "ShemaProgressEntry",
     "ShemaProject",
     "ShemaProjectStatus",
+    "ShemaRecordEdit",
     "ShemaRegionKey",
     "ShemaRegionTeam",
     "ShemaRoleChange",
