@@ -2,10 +2,10 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from app.models.project import ProjectResponse
+from app.models.project import ProjectBaseResponse
 
 
-class OCProjectListResponse(ProjectResponse):
+class OCProjectListResponse(ProjectBaseResponse):
     member_count: int = 0
     recording_count: int = 0
     total_duration_seconds: float = 0.0
