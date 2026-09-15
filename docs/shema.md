@@ -266,7 +266,10 @@ bucket, which is the precedent, not a trespass).
 | `app/api/shema/__init__.py` | **BE-01** | The module router, mounted once in `app/main.py` under `/api/shema`. Aggregates the sub-routers, one `include_router` line each. |
 | `app/api/shema/_deps.py` | BE-03 **· built** | `APP_KEY`, `Db`, `CurrentUser`, the four role aliases, and §6.1's region-scope dependency. The app key is named here and nowhere else in the module. |
 | `app/api/shema/projects.py` | **BE-05, built**; BE-06 | The collection read, the record read, `POST`, `PATCH`. |
-| `app/api/shema/health_assessments.py` | BE-07 | `POST`/`GET /projects/{id}/health-assessments`. |
+| `app/api/shema/health_assessments.py` | **BE-07, built** | `POST`/`GET /projects/{id}/health-assessments`, plus `GET /health-questions` — the question sets as provenance (§5.3's note). |
+| `app/utils/shema_health_questions.py` | **BE-07, built** | Every published set of guiding questions, append-only. The dimensions and the i18next key of each question, never the rendered sentence. |
+| `app/services/shema/_health_audience.py` | **BE-07, built** | Who may read a reading of a team, and who is told when one turns critical — one list, two uses. |
+| `app/services/shema/_health_notice.py` | **BE-07, built** | What a notice about a struggling team may say, which is the part of that feature that needed deciding. |
 | `app/api/shema/prayer.py` | BE-09 | The wall, and the intercessor network — the routes are under `/prayer/` whoever writes them, and §1.3 C3 leaves open which issue that is. |
 | `app/api/shema/meetings.py` | BE-10 | Definitions and the log. |
 | `app/api/shema/eten.py` | BE-11 | Report and the credit ledger. |
@@ -682,6 +685,39 @@ behaviour on it.
 >   one*. Atomicity is a property of the write path instead: the whole batch is validated
 >   before a row is applied — every bad row named at once, by index — and the roll-up, the
 >   history entry and the trail commit together or not at all.
+
+> **BE-07 ([OBT-396](https://linear.app/shema-obt/issue/OBT-396)) built row 5.3, and five
+> decisions travel with it.**
+>
+> - **The question set is a constant, not a table.** `app/utils/shema_health_questions.py` holds
+>   every published set as an append-only tuple of `(version, [(dimension, i18next key)])`. A
+>   version cannot be added by data alone — a new question needs its key in the console's
+>   catalogue before it can be rendered, so a row inserted with no catalogue entry would be a
+>   question with no text. §4.11's rule is what makes it cheap: a set names **keys**, never the
+>   rendered sentence, so a translation changing is not a new version. `app/utils/shema_books.py`
+>   is the precedent and `GET /api/shema/health-questions` serves the table as **provenance** —
+>   what set *N* asked — and never as a second owner of what the wizard renders.
+> - **`question_set_version` is nullable and NULL is not version 1.** The entry carried out of
+>   the record's flat fields answered a Notion column rather than a questionnaire, and stamping
+>   it would manufacture provenance. §7.4's two absences, arriving a third time.
+> - **The author is its own pair of columns**, `created_by` / `created_by_name`, beside the
+>   `assessor` the contract already has: the assessor is *who read the team* and the author is
+>   *who entered the row*, and a mentor's visit typed up by the coordinator is one row with two
+>   people in it. `shema_record_edits`'s pair is the shape, RESTRICT included.
+> - **Immutable in the write path and not by trigger.** `append_assessment.py` is the only writer
+>   and only ever inserts; no route updates or deletes an assessment. The trigger stays off for
+>   the reason `app/db/models/shema_health.py` already gives — a mentor's typo in a note is a
+>   person's to correct — so §7.2's *exactly two database-level invariants* is unchanged.
+> - **No `If-Match`, against the record's own write.** Appending is not replacing: two mentors
+>   filing two readings are two rows and neither is lost, so a version guard could only refuse a
+>   reading taken in a conversation. The version is bumped and leaves in the `ETag`, because the
+>   flat fields did move. The cost is stated where it is paid: the prayer request and the pastoral
+>   answer a submission may carry are last-write-wins between two simultaneous wizards.
+>
+> And the **audience** is this module's answer to *read access at least as narrow as the
+> record's*: `globalStrategist`, `coordinator`, `obtLab` — `resourceCircle` opens the ficha and is
+> refused the assessment, off FE-44 §5.8's own table. The same list addresses the critical notice,
+> because notifying somebody who may not read it leaks the fact that it exists.
 
 **Two shapes worth naming because they are easy to get wrong the same way the sibling did.**
 The health assessment (5.3) is the module's counterpart of
