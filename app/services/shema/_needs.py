@@ -53,9 +53,11 @@ them. That is the same trade the whole module makes: the rule is inherited, not 
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from decimal import Decimal
+from typing import Any, NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -387,6 +389,61 @@ async def apply_needs(
     return changes, became_urgent
 
 
+class Notice(NamedTuple):
+    """The title and body one notification carries.
+
+    A pair with names, because the two are written together and read together and a bare
+    ``tuple[str, str]`` at three call sites is two positions somebody eventually swaps.
+    :meth:`~app.models.shema_need.ShemaNeedLine.as_notice` composes the sentence for a single
+    need and stays the only owner of it; this is the shape that carries it and the batch's.
+    """
+
+    title: str
+    body: str
+
+
+def urgent_needs_notice(lines: list[ShemaNeedLine]) -> Notice:
+    """What **one save's** urgent needs say to the people they reach, in one notice.
+
+    **A batch is one notice per recipient, never one per need per recipient.** A save that
+    imports twenty rows and turns five of them urgent is one event a coordinator can act on,
+    not five interruptions telling the same story — and a panel that arrives five deep for one
+    act is the panel somebody stops opening, which costs the urgent need the attention the
+    whole area exists to buy it.
+
+    A single need is delegated to
+    :meth:`~app.models.shema_need.ShemaNeedLine.as_notice` rather than recomposed here, so the
+    sentence a recipient reads has exactly one owner and the privacy argument that put it in
+    ``app/models/`` keeps holding: the description never travels, and ``line.location`` is
+    already the region key for a flagged project.
+
+    **Amounts are totalled per currency and never across them.** This module's rule is that a
+    number never travels without the currency it was said in, so a batch naming reais and
+    dollars says both and adds neither to the other.
+    """
+    if len(lines) == 1:
+        return Notice(*lines[0].as_notice())
+
+    who = lines[0].language_name or lines[0].project_id
+    where = f" ({lines[0].location})" if lines[0].location else ""
+    categories = ", ".join(sorted({line.category for line in lines}))
+    totals: dict[str, Decimal] = defaultdict(Decimal)
+    for line in lines:
+        if line.estimated_amount is not None and line.estimated_currency is not None:
+            totals[line.estimated_currency] += line.estimated_amount
+    money = (
+        ""
+        if not totals
+        else " Estimated at "
+        + ", ".join(f"{amount} {currency}" for currency, amount in sorted(totals.items()))
+        + "."
+    )
+    return Notice(
+        title=f"{len(lines)} urgent needs raised",
+        body=f"{who}{where} raised {len(lines)} urgent needs: {categories}.{money}",
+    )
+
+
 async def notify_urgent(
     db: AsyncSession,
     project: ShemaProject,
@@ -400,6 +457,12 @@ async def notify_urgent(
     the panel, applied at the source): the recipients are the holders of
     :data:`URGENT_NEED_ROLES` whose scope reaches this project's region, and a holder of a role
     in another region is not a recipient rather than a recipient who is filtered out later.
+
+    **One notice per recipient, not one per need.** A save that imports twenty needs and
+    turns five of them urgent is one event, and a coordinator who received five separate
+    notices for one save would learn to stop opening them. :func:`urgent_needs_notice` folds
+    the batch into one :class:`Notice` before anything is staged, so the recipient loop below
+    runs once regardless of how many needs raised it.
 
     **The person who raised it is not told about their own act**, which is the sibling's
     ``board_watchers(exclude=...)`` and its reason: a coordinator who just typed the need does
@@ -430,20 +493,19 @@ async def notify_urgent(
 
     app_id = await get_shema_app_id(db)
     written = 0
-    for need in needs:
-        title, body = ShemaNeedLine.of(need, project).as_notice()
-        for person in recipients:
-            await create_notification(
-                db,
-                user_id=person.id,
-                app_id=app_id,
-                event_type=URGENT_NEED_EVENT,
-                title=title,
-                body=body,
-                actor_id=None if actor is None else actor.id,
-                commit=False,
-            )
-            written += 1
+    notice = urgent_needs_notice([ShemaNeedLine.of(need, project) for need in needs])
+    for person in recipients:
+        await create_notification(
+            db,
+            user_id=person.id,
+            app_id=app_id,
+            event_type=URGENT_NEED_EVENT,
+            title=notice.title,
+            body=notice.body,
+            actor_id=None if actor is None else actor.id,
+            commit=False,
+        )
+        written += 1
     return written
 
 
