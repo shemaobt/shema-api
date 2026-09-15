@@ -392,16 +392,19 @@ async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
     inside it and on the row beside it. Without that the question reaches Refine unseen, and
     unlike a blocked release that looks resolved.
     """
+    overruled = "a equipe disse que Noemi voltou alegre"
     session = await ready_session(db_session, project_id="time-que-discordou")
     await reported_playback(
-        db_session, session, await told_back_with_an_open_finding(db_session, session)
+        db_session,
+        session,
+        await told_back_with_an_open_finding(db_session, session, note=overruled),
     )
 
     release = await approve_release(db_session, session, forced_by="a-facilitadora")
 
     carried = release.packet["back_translation"]["findings"]
     assert [finding["kind"] for finding in carried] == ["addition"]
-    assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
+    assert carried[0]["note"] == overruled
     assert carried[0]["segment_id"] is not None
     assert carried[0]["chunk"] == 1
     assert release.forced_open_findings == carried

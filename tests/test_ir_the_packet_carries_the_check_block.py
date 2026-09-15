@@ -189,10 +189,10 @@ async def test_the_check_block_spells_marcias_names_verbatim(db_session: AsyncSe
     clean = await ready_session(db_session)
     disputed = await ready_session(db_session, tell=told_back_with_an_open_finding)
 
-    checked = await build_internalization_release(db_session, clean)
+    clean_packet = await build_internalization_release(db_session, clean)
     open_finding = await _live_view(db_session, disputed)
 
-    assert set(checked["check"]) == THE_BLOCKS_NAMES
+    assert set(clean_packet["check"]) == THE_BLOCKS_NAMES
     assert set(open_finding["check"]) == THE_BLOCKS_NAMES
     (entry,) = open_finding["check"]["findings"]
     assert set(entry) == AN_ENTRYS_NAMES
@@ -446,6 +446,11 @@ async def test_frase_is_the_frozen_number_of_the_stretch_the_finding_points_at(
     `chunk` is 2 while the stretch it points at is frase 3. The block ships beside
     `segments[]` and has to agree with it, so it reads the position and not the chunk.
 
+    The number is read back out of the packet's own `segments[]` as well as against the
+    literal, because the two are enumerated in two places and only their agreement is the
+    promise the block makes: a block whose number its own list does not carry addresses
+    nothing.
+
     A finding pointing at no stretch at all has no number to give, and it carries a `chunk`
     all the same — a missing element placed after the last frase names that frase and resolves
     to nothing (ADR 0007). So `frase` is absent rather than null, and an implementation reading
@@ -473,10 +478,15 @@ async def test_frase_is_the_frozen_number_of_the_stretch_the_finding_points_at(
         ),
     )
 
-    check = (await _live_view(db_session, session))["check"]
+    packet = await _live_view(db_session, session)
 
-    on_the_stretch, nowhere = check["findings"]
+    on_the_stretch, nowhere = packet["check"]["findings"]
     assert on_the_stretch["frase"] == 3, "a frase é a posição congelada, e o chunk dela discorda"
+    assert on_the_stretch["frase"] == next(
+        stretch["frase"]
+        for stretch in packet["back_translation"]["segments"]
+        if stretch["segment_id"] == third.id
+    ), "o bloco e a lista que viaja ao lado dele contam a mesma frase, ou o bloco não promete nada"
     assert on_the_stretch["idx"] == third.id
     assert on_the_stretch["clipKey"] == REHEARSAL
     assert "frase" not in nowhere, "o chunk que a analista deu não vira frase de trecho nenhum"
