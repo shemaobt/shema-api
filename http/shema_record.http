@@ -1,0 +1,138 @@
+# Shemá — the project record: read, create, partial update (BE-06 · OBT-395)
+#
+# `shema_projects.http` beside this one is BE-05's collection read, and the split is the
+# screens': that file is Projetos, this one is the ficha.
+#
+# The ficha's ten tabs read one shape and save it a tab at a time. Two things are worth
+# running by hand before believing either half:
+#
+#   1. every PATCH must carry If-Match, and the value is the ETag of the read it came from.
+#      A save that cannot say which version it is replacing is refused — several coordinators
+#      edit one record, sometimes in one meeting, and last-write-wins discards work silently.
+#   2. a progress table is a batch. One impossible row refuses the whole table and the record
+#      does not move: no roll-up, no history entry, no version bump.
+#
+# Before running: seed the app and its roles, then grant one and a region.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py coordenacao.local@test.com shema coordinator
+#   # the region scope is this module's own table; set it through the service or by SQL:
+#   #   INSERT INTO shema_user_regions (user_id, region_key) VALUES ('<id>', 'south-america');
+
+@baseUrl = http://localhost:8000
+@slug = guarani-mbya
+
+### Log in — the shared /api/auth, as every product here does
+# @name login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coordenacao.local@test.com",
+  "password": "password123"
+}
+
+###
+@token = {{login.response.body.access_token}}
+
+### The collection — BE-05's screen, for the slug to open
+GET {{baseUrl}}/api/shema/projects
+Authorization: Bearer {{token}}
+
+### Create — the id is the client's slug, and only four fields are required to save
+# @name created
+POST {{baseUrl}}/api/shema/projects
+Authorization: Bearer {{token}}
+Content-Type: application/json
+X-Shema-Local-Date: 2026-09-11
+
+{
+  "id": "{{slug}}",
+  "languageName": "Guarani Mbyá",
+  "bridgeLanguage": "Português",
+  "team": "YWAM Porto Velho",
+  "ywamBase": "YWAM Porto Velho",
+  "objective": ["NT"],
+  "location": "Brazil",
+  "regionalCoordinator": "",
+  "obtLabPerson": "",
+  "resourceCirclePerson": ""
+}
+
+### The record — the whole shape, and the ETag the next save has to quote
+# @name record
+GET {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+
+###
+@version = {{record.response.headers.ETag}}
+
+### One tab's save — absent means unchanged, all the way down
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: {{version}}
+
+{
+  "statusComments": "gravação começou em maio",
+  "statusGoal": "NT até 2028"
+}
+
+### The same save again, from the same version — 409, naming what moved and who moved it
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: {{version}}
+
+{
+  "statusComments": "a equipe parou"
+}
+
+### A progress batch — the aggregates are rolled from it and one history entry is appended
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: "2"
+X-Shema-Local-Date: 2026-09-11
+
+{
+  "bookProgress": [
+    {"id": "mat", "name": "Mateus", "chapters": 28, "translated": 28,
+     "communityChecked": 10, "mentorApproved": 4},
+    {"id": "mrk", "name": "Marcos", "chapters": 16, "translated": 8,
+     "communityChecked": 0, "mentorApproved": 0}
+  ]
+}
+
+### One impossible row refuses the whole batch — Matthew has 28 chapters, not 60
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: "3"
+
+{
+  "bookProgress": [
+    {"id": "luk", "name": "Lucas", "chapters": 24, "translated": 24,
+     "communityChecked": 0, "mentorApproved": 0},
+    {"id": "mat", "name": "Mateus", "chapters": 60, "translated": 0,
+     "communityChecked": 0, "mentorApproved": 0}
+  ]
+}
+
+### A save with no If-Match — refused, and the message names the header
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "notes": "sem carimbo de versão"
+}
+
+### A write that fills a role-holder the org chart owns — refused by name
+PATCH {{baseUrl}}/api/shema/projects/{{slug}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+If-Match: "3"
+
+{
+  "regionalCoordinator": "Joana"
+}

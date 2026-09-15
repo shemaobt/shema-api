@@ -107,7 +107,7 @@ from app.db.models.shema_enums import (
     ShemaRegionKey,
     ShemaYesNo,
 )
-from app.utils.shema_derivations import COUNTRY_REGION, countries_named, region_of
+from app.utils.shema_derivations import COUNTRY_REGION, countries_named, get_region
 
 #: The 55 keys FE-44 §5.1 pins as *exactly the keys the Notion export has*. The file is
 #: checked against this set rather than read key by key: a record missing one has been
@@ -620,7 +620,7 @@ def _read_row(row: dict[str, Any], countries: SensitiveCountries) -> PlannedReco
     location = values["location"]
     flag = _is_sensitive(row, location, countries)
     values["sensitive_country"] = flag.sensitive
-    values["region_key"] = region_of(location)
+    values["region_key"] = get_region(location)
     values["approved_units_unverified"] = True
     return PlannedRecord(project_id=project_id, values=values, source=row, flag=flag)
 
@@ -963,7 +963,7 @@ async def apply_plan(
                 )
             reported = True
 
-        derived = region_of(current.location)
+        derived = get_region(current.location)
         if current.region_key == derived:
             pass
         elif current.location == record.values["location"]:

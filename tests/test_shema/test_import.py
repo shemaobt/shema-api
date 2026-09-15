@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.shema import ShemaProject
 from app.db.models.shema_enums import ShemaProjectStatus, ShemaRegionKey
-from app.utils.shema_derivations import countries_named, country_of, region_of
+from app.utils.shema_derivations import countries_named, get_country, get_region
 from scripts.import_shema_projects import (
     DROPPED_KEYS,
     EXPORT_DATES,
@@ -151,25 +151,25 @@ def test_every_export_key_has_somewhere_to_go() -> None:
 
 # --- the region is derived from the first country -----------------------------------------
 def test_the_region_map_is_keyed_by_the_export_spellings() -> None:
-    assert region_of("São Tomé e Príncipe") is ShemaRegionKey.AFRICA
-    assert region_of("East Timor") is ShemaRegionKey.ASIA
-    assert region_of("Papua New Guinea") is ShemaRegionKey.OCEANIA
+    assert get_region("São Tomé e Príncipe") is ShemaRegionKey.AFRICA
+    assert get_region("East Timor") is ShemaRegionKey.ASIA
+    assert get_region("Papua New Guinea") is ShemaRegionKey.OCEANIA
 
 
 def test_several_countries_resolve_to_the_first() -> None:
     assert countries_named("China, Laos, Vietnam") == ("China", "Laos", "Vietnam")
-    assert country_of("China, Laos, Vietnam") == "China"
-    assert region_of("China, Laos, Vietnam") is ShemaRegionKey.ASIA
+    assert get_country("China, Laos, Vietnam") == "China"
+    assert get_region("China, Laos, Vietnam") is ShemaRegionKey.ASIA
 
 
 def test_an_empty_location_lands_in_other_and_is_not_a_gap() -> None:
     assert countries_named("") == ()
-    assert country_of("") == ""
-    assert region_of("") is ShemaRegionKey.OTHER
+    assert get_country("") == ""
+    assert get_region("") is ShemaRegionKey.OTHER
 
 
 def test_a_country_the_map_does_not_name_lands_in_other() -> None:
-    assert region_of("Laos") is ShemaRegionKey.OTHER
+    assert get_region("Laos") is ShemaRegionKey.OTHER
 
 
 def test_people_separators_never_split_a_place() -> None:
