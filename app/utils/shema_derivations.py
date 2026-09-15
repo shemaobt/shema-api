@@ -322,7 +322,23 @@ def overall_health(record: Assessable) -> OverallHealth:
     *Not assessed* is the dominant state and not an edge case — it is all 127 seed records —
     so the missing answer has a name of its own instead of being folded into ``boa``.
     """
-    values = _dimensions(record)
+    return overall_of(*_dimensions(record))
+
+
+def overall_of(*levels: ShemaHealthLevel | None) -> OverallHealth:
+    """:func:`overall_health`, for a carrier whose fields are not named ``health_*``.
+
+    One rule, two callers, and no second copy of it: a ``shema_health_assessments`` row spells
+    the four dimensions ``emotional``/``relational``/``spiritual``/``physical`` — it is an
+    assessment, so the prefix would be saying *health* twice — and so satisfies no protocol
+    written for the record. BE-07 needs the overall **per history entry**, which is what lets
+    the console draw the trend off the server's computation instead of re-implementing the one
+    thing ``docs/shema.md`` says lives here once.
+
+    ``None`` is filtered rather than scored, here as in :func:`_dimensions`: unassessed is not a
+    low rating.
+    """
+    values = [level for level in levels if level is not None]
     if not values:
         return OverallHealth.NA
     if ShemaHealthLevel.CRITICA in values:
