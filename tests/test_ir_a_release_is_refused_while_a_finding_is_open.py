@@ -20,70 +20,58 @@ has to be what the tablet actually receives.
 from __future__ import annotations
 
 import json
-import uuid
 from typing import get_args
 
 import httpx
 import pytest
 from httpx import ASGITransport
 from pydantic import BaseModel
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
-from app.core.enums import ProjectRole
-from app.db.models.auth import Role, User
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
-from app.models.internalization_room import PlayedTake
-from app.services.internalization_room.back_translation import (
-    BackTranslationState,
-    Finding,
-    FindingKind,
-)
-from app.services.internalization_room.canon.elements import element_keys
+from app.db.models.internalization_room import IRSession, IRTake
 from app.services.internalization_room.comprehension.checkpoints import checkpoints_for
 from app.services.internalization_room.comprehension.evidence import (
     EvidenceMethod,
     EvidenceObservation,
     EvidenceResult,
 )
-from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.segments import capture_segment, retire_every_segment
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
-    report_playback,
     save_back_translation,
     save_comprehension,
 )
 from tests.alembic_harness import columns_of, run_alembic, scalar
 from tests.baker import (
     make_app,
-    make_project_user_access,
     make_role,
-    make_user,
-    make_user_app_role,
 )
 from tests.release_harness import (
+    APP_KEY,
+    CLIP_MS,
     KEY,
+    P02,
     PREFIX,
     TABLET,
+    THE_FINDING,
     a_claimed_device,
+    a_p02_telling_with_the_swapped_cause,
+    a_rehearsal_only_half_heard,
+    at_the_desk,
+    desk_release,
+    desk_release_at,
     one_stretch,
     ready_session,
     releases_of,
     reported_playback,
     supported_comprehension,
     team_headers,
+    team_release,
 )
-
-APP_KEY = "internalization-room"
-
-#: The passage of Marcia's live test, and the one whose map names an act of God the team can
-#: swap away: P02 is Ruth 1:6-14.
-P02 = "P02"
-CLIP_MS = 61000
 
 REVISION = "20260911_rel02"
 PREVIOUS_REVISION = "20260911_hard02"
@@ -91,18 +79,6 @@ TABLE = "ir_releases"
 NEW_COLUMNS = {"device_id", "forced_by", "forced_at", "forced_open_findings"}
 SEEDED_RELEASE = "0b6a1c2d-3e4f-4a5b-8c9d-0e1f2a3b4c5d"
 SEEDED_SESSION = "7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f"
-
-#: What the team said on frase 1, and what the story says instead. Scene 1 of
-#: `canon/vendor/meaning-map/P02-Ruth-1-6-14.md` has Naomi hear in the fields of Moab that
-#: YHWH has visited his people in giving them bread, and rise to return. Putting the
-#: daughters-in-law in that place is an addition that also erases rule R1 of
-#: `canon/vendor/compilation-log/P02-Ruth-1-6-14-COMPILATION-LOG.md`, marked `do_not_decide`:
-#: the reconstructor must preserve the divine subject as the agent of the bread-provision.
-SWAPPED_CAUSE = "Noemi decidiu voltar para Judá porque as noras pediram"
-THE_FINDING = (
-    "a equipe trocou quem faz a coisa: o que move Noemi é a notícia de que YHWH visitou o "
-    "seu povo dando-lhe pão, e o pedido das noras entrou no lugar disso (regra R1)"
-)
 
 
 @pytest.fixture()
@@ -136,123 +112,6 @@ async def room_app(db_session: AsyncSession):
     return app
 
 
-async def _at_the_desk(db: AsyncSession, room_app, project) -> tuple[dict[str, str], User]:
-    """A facilitator of ``project``: the headers they call with, and the row they are.
-
-    The sibling helper in `test_ir_a_release_is_a_numbered_row` hands back the headers alone,
-    which is all a scoping case needs. A forced release is signed, so this one hands back the
-    user as well: `forced_by` has to be provably that person and not merely some id.
-    """
-    from app.services.auth.issue_tokens import issue_tokens
-
-    user = await make_user(db, email=f"desk-{uuid.uuid4()}@example.com")
-    role = (
-        await db.execute(
-            select(Role).where(Role.app_id == room_app.id, Role.role_key == "facilitator")
-        )
-    ).scalar_one()
-    await make_user_app_role(db, user.id, room_app.id, role.id)
-    await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    access, _refresh = await issue_tokens(db, user)
-    return {"Authorization": f"Bearer {access}"}, user
-
-
-def _team_release(session_id: str) -> str:
-    return f"{PREFIX}/sessions/{session_id}/release"
-
-
-def _desk_release(session_id: str) -> str:
-    return f"{PREFIX}/facilitator/sessions/{session_id}/release"
-
-
-def _desk_release_at(session_id: str, version: int) -> str:
-    return f"{PREFIX}/facilitator/sessions/{session_id}/releases/{version}"
-
-
-async def _a_p02_telling_with_the_swapped_cause(db: AsyncSession, project) -> IRSession:
-    """A P02 session ready in every way but one: frase 1 swapped who caused the return.
-
-    Everything the gate asks for is here — comprehension supported, the floor met, a
-    rehearsal recorded, one stretch told back and read by the analyst, the whole part played
-    through. The only thing between this session and Refine is the finding the team stopped
-    answering, which is the case the whole slice is about.
-    """
-    session = await create_session(db, pericope=P02, project_id=project.id)
-    session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
-    await save_comprehension(db, session, supported_comprehension(P02))
-    db.add(
-        IRTake(
-            session_id=session.id,
-            device_id=TABLET,
-            pericope=P02,
-            kind=IRTakeKind.ENSAIO,
-            scope="passagem-inteira",
-            storage_key=f"takes/{session.id}/ensaio/b",
-            size_bytes=2048,
-            sha256="b" * 64,
-            crc32c="AAAAAAA=",
-            content_type="audio/mp4",
-        )
-    )
-    await db.commit()
-    told = await capture_segment(
-        db,
-        session,
-        take_id="ensaio-1",
-        starts_ms=0,
-        ends_ms=CLIP_MS,
-        bridge_take_id="retro-1",
-        transcript=SWAPPED_CAUSE,
-    )
-    await report_playback(
-        db,
-        session,
-        BackTranslationState(
-            scope=P02,
-            findings=[
-                Finding(
-                    kind=FindingKind.ADDITION,
-                    note=THE_FINDING,
-                    segment_id=told.id,
-                    chunk=1,
-                )
-            ],
-            checked=False,
-            analysed_segment_ids=[told.id],
-        ),
-        played_by_take=[
-            PlayedTake(take_id=told.take_id, played_ranges=[(0, CLIP_MS)], clip_duration_ms=CLIP_MS)
-        ],
-        played_ranges=[[0, CLIP_MS]],
-        clip_duration_ms=CLIP_MS,
-    )
-    return session
-
-
-async def _a_rehearsal_only_half_heard(db: AsyncSession, project) -> IRSession:
-    """A P02 session clean in every way but one: the tablet played twenty of the sixty-one seconds.
-
-    The telling-back is read and carries no finding, so the only thing between this session and
-    Refine is the half of the rehearsal the team closed on without hearing. That is the other
-    of the two blockers a facilitator's code can set aside.
-    """
-    session = await _a_p02_telling_with_the_swapped_cause(db, project)
-    state = back_translation_of(session)
-    state.checked = True
-    state.findings = []
-    await report_playback(
-        db,
-        session,
-        state,
-        played_by_take=[
-            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
-        ],
-        played_ranges=[[0, 20000]],
-        clip_duration_ms=CLIP_MS,
-    )
-    return session
-
-
 async def test_a_p02_telling_with_the_swapped_cause_is_refused_by_name(client, db_session):
     """The acceptance criterion: the team asks, and the room says which door is shut.
 
@@ -262,9 +121,9 @@ async def test_a_p02_telling_with_the_swapped_cause_is_refused_by_name(client, d
     as a passage the daughters-in-law talked Naomi into leaving.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
 
-    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
+    refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert refused.status_code == 409, refused.text
     assert "telling_back_not_checked" in refused.json()["detail"]
@@ -284,9 +143,9 @@ async def test_a_force_with_nothing_to_waive_is_still_recorded_as_one(client, db
     """
     project, _credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
-    desk, facilitator = await _at_the_desk(db_session, room_app, project)
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
 
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
@@ -310,11 +169,11 @@ async def test_the_facilitator_forces_past_a_rehearsal_only_half_heard(
     from `FORCEABLE_BLOCKERS` would leave the whole suite green.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _a_rehearsal_only_half_heard(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_rehearsal_only_half_heard(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    refused = await client.post(team_release(session.id), headers=team_headers(credential))
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert refused.status_code == 409, refused.text
     assert "playback_did_not_cover_the_clip" in refused.json()["detail"]
@@ -338,10 +197,10 @@ async def test_the_facilitator_forces_the_release_and_the_row_says_so(client, db
     `device_id` is null because nobody's tablet did this. A force is the Desk's act.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, facilitator = await at_the_desk(db_session, room_app, project)
 
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
@@ -432,11 +291,11 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
     would let the Desk mint a packet out of a session that never happened.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
     await break_it(db_session, session)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    refused = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    refused = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert refused.status_code == 409, refused.text
     assert blocker in refused.json()["detail"]
@@ -447,9 +306,9 @@ async def test_a_panorama_is_never_forced(client, db_session, room_app):
     """The one blocker that is raised alone and before the rest, and stays out of reach."""
     project, _credential = await a_claimed_device(db_session)
     session = await create_session(db_session, pericope="OV", project_id=project.id)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    refused = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    refused = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert refused.status_code == 409, refused.text
     assert "panorama_sessions_never_release" in refused.json()["detail"]
@@ -468,11 +327,11 @@ async def test_a_facilitator_post_without_force_has_nothing_to_force(
     it has nothing to say about which session it was aimed at.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    refused = await client.post(_desk_release(session.id), headers=desk, json=body)
-    absent = await client.post(_desk_release("nao-existe"), headers=desk, json=body)
+    refused = await client.post(desk_release(session.id), headers=desk, json=body)
+    absent = await client.post(desk_release("nao-existe"), headers=desk, json=body)
 
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "NOTHING_TO_FORCE"
@@ -490,14 +349,14 @@ async def test_the_team_route_never_reads_force(client, db_session):
     because nobody forced anything.
     """
     project, credential = await a_claimed_device(db_session)
-    disputed = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    disputed = await a_p02_telling_with_the_swapped_cause(db_session, project)
     clean = await ready_session(db_session, project_id=project.id)
 
     refused = await client.post(
-        _team_release(disputed.id), headers=team_headers(credential), json={"force": True}
+        team_release(disputed.id), headers=team_headers(credential), json={"force": True}
     )
     approved = await client.post(
-        _team_release(clean.id), headers=team_headers(credential), json={"force": True}
+        team_release(clean.id), headers=team_headers(credential), json={"force": True}
     )
 
     assert refused.status_code == 409, refused.text
@@ -519,7 +378,7 @@ async def test_the_teams_approval_records_the_device(client, db_session):
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
 
-    approved = await client.post(_team_release(session.id), headers=team_headers(credential))
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert approved.status_code == 200, approved.text
     (row,) = await releases_of(db_session, session.id)
@@ -531,11 +390,11 @@ async def test_forcing_again_with_nothing_changed_returns_the_same_release(
 ):
     """ADR 0014 holds over a force: a version that means nothing changed is worse than none."""
     project, _credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    first = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
-    again = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    first = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    again = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert first.status_code == 200, first.text
     assert again.status_code == 200, again.text
@@ -556,10 +415,10 @@ async def test_forcing_what_the_team_already_approved_returns_the_teams_release(
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    approved = await client.post(_team_release(session.id), headers=team_headers(credential))
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert approved.status_code == 200, approved.text
     assert forced.status_code == 200, forced.text
@@ -575,10 +434,10 @@ async def test_the_desks_read_still_builds_under_the_whole_list(client, db_sessi
     act with a body and a record; opening the page is not one.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    read = await client.get(_desk_release(session.id), headers=desk)
+    read = await client.get(desk_release(session.id), headers=desk)
 
     assert read.status_code == 409, read.text
     assert "telling_back_not_checked" in read.json()["detail"]
@@ -593,12 +452,12 @@ async def test_the_desk_reads_a_forced_release_by_its_version(client, db_session
     over the very session whose version 1 reads back whole.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
-    read = await client.get(_desk_release_at(session.id, 1), headers=desk)
-    live = await client.get(_desk_release(session.id), headers=desk)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    read = await client.get(desk_release_at(session.id, 1), headers=desk)
+    live = await client.get(desk_release(session.id), headers=desk)
 
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
@@ -623,15 +482,15 @@ async def test_a_version_that_was_never_minted_is_not_found(client, db_session, 
     which of the two answered.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
     never = await ready_session(db_session, project_id=project.id)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
-    minted = await client.get(_desk_release_at(session.id, 1), headers=desk)
-    after = await client.get(_desk_release_at(session.id, 2), headers=desk)
-    before = await client.get(_desk_release_at(session.id, 0), headers=desk)
-    none_at_all = await client.get(_desk_release_at(never.id, 1), headers=desk)
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    minted = await client.get(desk_release_at(session.id, 1), headers=desk)
+    after = await client.get(desk_release_at(session.id, 2), headers=desk)
+    before = await client.get(desk_release_at(session.id, 0), headers=desk)
+    none_at_all = await client.get(desk_release_at(never.id, 1), headers=desk)
 
     assert forced.status_code == 200, forced.text
     assert minted.status_code == 200, minted.text
@@ -648,13 +507,13 @@ async def test_another_teams_facilitator_does_not_read_the_release(client, db_se
     """
     project_a, _credential_a = await a_claimed_device(db_session, email="a@example.com")
     project_b, _credential_b = await a_claimed_device(db_session, email="b@example.com")
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project_a)
-    desk_a, _facilitator_a = await _at_the_desk(db_session, room_app, project_a)
-    desk_b, _facilitator_b = await _at_the_desk(db_session, room_app, project_b)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project_a)
+    desk_a, _facilitator_a = await at_the_desk(db_session, room_app, project_a)
+    desk_b, _facilitator_b = await at_the_desk(db_session, room_app, project_b)
 
-    forced = await client.post(_desk_release(session.id), headers=desk_a, json={"force": True})
-    owner = await client.get(_desk_release_at(session.id, 1), headers=desk_a)
-    stranger = await client.get(_desk_release_at(session.id, 1), headers=desk_b)
+    forced = await client.post(desk_release(session.id), headers=desk_a, json={"force": True})
+    owner = await client.get(desk_release_at(session.id, 1), headers=desk_a)
+    stranger = await client.get(desk_release_at(session.id, 1), headers=desk_b)
 
     assert forced.status_code == 200, forced.text
     assert owner.status_code == 200, owner.text
@@ -678,10 +537,10 @@ async def test_a_version_this_team_minted_elsewhere_reads_under_this_session(
     project, credential = await a_claimed_device(db_session)
     approving = await ready_session(db_session, project_id=project.id)
     asking = await ready_session(db_session, project_id=project.id)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    minted = await client.post(_team_release(approving.id), headers=team_headers(credential))
-    read = await client.get(_desk_release_at(asking.id, 1), headers=desk)
+    minted = await client.post(team_release(approving.id), headers=team_headers(credential))
+    read = await client.get(desk_release_at(asking.id, 1), headers=desk)
 
     assert minted.status_code == 200, minted.text
     assert minted.json()["version"] == 1
@@ -705,11 +564,11 @@ async def test_the_version_read_is_this_teams_and_never_the_other_teams(
     project_b, credential_b = await a_claimed_device(db_session, email="b@example.com")
     ours = await ready_session(db_session, project_id=project_a.id)
     theirs = await ready_session(db_session, project_id=project_b.id)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project_a)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project_a)
 
-    our_first = await client.post(_team_release(ours.id), headers=team_headers(credential_a))
-    their_first = await client.post(_team_release(theirs.id), headers=team_headers(credential_b))
-    read = await client.get(_desk_release_at(ours.id, 1), headers=desk)
+    our_first = await client.post(team_release(ours.id), headers=team_headers(credential_a))
+    their_first = await client.post(team_release(theirs.id), headers=team_headers(credential_b))
+    read = await client.get(desk_release_at(ours.id, 1), headers=desk)
 
     assert our_first.status_code == 200, our_first.text
     assert their_first.status_code == 200, their_first.text
@@ -728,14 +587,14 @@ async def test_the_stored_packet_is_served_as_approved_not_rebuilt(client, db_se
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    first = await client.post(_team_release(session.id), headers=team_headers(credential))
+    first = await client.post(team_release(session.id), headers=team_headers(credential))
     await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
-    second = await client.post(_team_release(session.id), headers=team_headers(credential))
+    second = await client.post(team_release(session.id), headers=team_headers(credential))
 
-    one = await client.get(_desk_release_at(session.id, 1), headers=desk)
-    two = await client.get(_desk_release_at(session.id, 2), headers=desk)
+    one = await client.get(desk_release_at(session.id, 1), headers=desk)
+    two = await client.get(desk_release_at(session.id, 2), headers=desk)
 
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
@@ -765,12 +624,12 @@ async def test_the_teams_approval_after_a_force_returns_the_forced_release(
     not stamped over an act that was not the team's.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
-    again = await client.post(_team_release(session.id), headers=team_headers(credential))
+    refused = await client.post(team_release(session.id), headers=team_headers(credential))
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
+    again = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert refused.status_code == 409, refused.text
     assert "telling_back_not_checked" in refused.json()["detail"]
@@ -795,19 +654,19 @@ async def test_a_changed_and_still_blocked_session_is_refused_after_a_force(
     because the content really did change.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
     await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
-    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
+    refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert forced.status_code == 200, forced.text
     assert refused.status_code == 409, refused.text
     assert "telling_back_not_checked" in refused.json()["detail"]
     assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
-    forced_again = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    forced_again = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
     assert forced_again.status_code == 200, forced_again.text
     assert forced_again.json()["version"] == 2, (
@@ -825,12 +684,12 @@ async def test_a_changed_and_clean_session_after_a_force_mints_the_next_version(
     so this is version 2 — stamped with the tablet that approved it and with no force on it.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _a_rehearsal_only_half_heard(db_session, project)
-    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+    session = await a_rehearsal_only_half_heard(db_session, project)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
-    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
     await reported_playback(db_session, session, back_translation_of(session))
-    approved = await client.post(_team_release(session.id), headers=team_headers(credential))
+    approved = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
@@ -853,7 +712,7 @@ async def test_the_team_route_refuses_a_panorama(client, db_session):
     project, credential = await a_claimed_device(db_session)
     session = await create_session(db_session, pericope="OV", project_id=project.id)
 
-    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
+    refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert refused.status_code == 409, refused.text
     assert "panorama_sessions_never_release" in refused.json()["detail"]

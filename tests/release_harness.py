@@ -4,12 +4,15 @@ A session the room would let the team approve — comprehension supported, cover
 rehearsal recorded, a stretch told back and read, the playback reported — assembled through
 the room's own write paths so every case starts from state the field could produce.
 
-Shared by the cases about the artifact and the cases about the frozen numbers, which is why
-it is here and not in either of them.
+Shared by the cases about the artifact, the frozen numbers, the gate a facilitator forces and
+the check block the packet carries, which is why it is here and not in any of them. What a
+case lends another lives here; fixtures never travel, so each module keeps its own three-line
+fixture calling these.
 """
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
@@ -18,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
+from app.db.models.auth import App, Role, User
 from app.db.models.internalization_room import (
     IRRelease,
     IRSession,
@@ -27,7 +31,11 @@ from app.db.models.internalization_room import (
 from app.db.models.project import Project
 from app.models.internalization_room import PlayedTake
 from app.services.device import claim_device_as_facilitator, create_device
-from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    Finding,
+    FindingKind,
+)
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -42,16 +50,41 @@ from app.services.internalization_room.comprehension.state import ComprehensionS
 from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import (
+    back_translation_of,
     create_session,
     report_playback,
     save_comprehension,
 )
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.baker import (
+    make_language,
+    make_project,
+    make_project_user_access,
+    make_user,
+    make_user_app_role,
+)
 
 P = "P03"
 
+#: The passage of Marcia's live test, and the one whose map names an act of God the team can
+#: swap away: P02 is Ruth 1:6-14.
+P02 = "P02"
+CLIP_MS = 61000
+
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
+APP_KEY = "internalization-room"
+
+#: What the team said on frase 1, and what the story says instead. Scene 1 of
+#: `canon/vendor/meaning-map/P02-Ruth-1-6-14.md` has Naomi hear in the fields of Moab that
+#: YHWH has visited his people in giving them bread, and rise to return. Putting the
+#: daughters-in-law in that place is an addition that also erases rule R1 of
+#: `canon/vendor/compilation-log/P02-Ruth-1-6-14-COMPILATION-LOG.md`, marked `do_not_decide`:
+#: the reconstructor must preserve the divine subject as the agent of the bread-provision.
+SWAPPED_CAUSE = "Noemi decidiu voltar para Judá porque as noras pediram"
+THE_FINDING = (
+    "a equipe trocou quem faz a coisa: o que move Noemi é a notícia de que YHWH visitou o "
+    "seu povo dando-lhe pão, e o pedido das noras entrou no lugar disso (regra R1)"
+)
 
 #: The tablet the team approves from. Self-issued and unauthenticated like every other
 #: room write: it says which device did this and never which team, which the credential
@@ -135,6 +168,46 @@ async def checked_telling_back(db: AsyncSession, session: IRSession) -> BackTran
         checked=True,
         analysed_segment_ids=[told.id],
     )
+
+
+async def told_back_with_an_open_finding(
+    db: AsyncSession, session: IRSession, *, note: str = "a equipe disse que Noemi voltou alegre"
+) -> BackTranslationState:
+    """A telling-back the team finished and chose not to resolve.
+
+    `analysed_segment_ids` names the stretch because the analyst did read it — that is what
+    makes the finding open rather than the verdict unasked.
+
+    `checked` is written as `finding is None`, so an open finding makes it false.
+
+    `note` is the analyst's own words. It is a parameter because one case asks where they do
+    and do not travel, and a marker nothing else in the packet contains is what answers it.
+    """
+    told = await one_stretch(db, session)
+    return BackTranslationState(
+        scope=P,
+        findings=[
+            Finding(
+                kind=FindingKind.ADDITION,
+                note=note,
+                segment_id=told.id,
+                chunk=1,
+            )
+        ],
+        checked=False,
+        analysed_segment_ids=[told.id],
+    )
+
+
+async def never_analysed_telling_back(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    """A stretch told back that the analyst has never read.
+
+    `analysed_segment_ids` stays None, which is what `never_analysed` asks, and the defaults it
+    leaves behind — no findings, `checked` false — are the same ones a clean check produces.
+    That is why the release names this state before it names an open finding.
+    """
+    await one_stretch(db, session)
+    return BackTranslationState(scope=P)
 
 
 def ensaio_take(
@@ -280,3 +353,121 @@ async def ready_session(
     session, _take = await rehearsed_session(db, project_id=project_id, **comprehension_kwargs)
     await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session
+
+
+async def a_p02_telling_with_the_swapped_cause(db: AsyncSession, project: Project) -> IRSession:
+    """A P02 session ready in every way but one: frase 1 swapped who caused the return.
+
+    Everything the gate asks for is here — comprehension supported, the floor met, a
+    rehearsal recorded, one stretch told back and read by the analyst, the whole part played
+    through. The only thing between this session and Refine is the finding the team stopped
+    answering.
+    """
+    session = await create_session(db, pericope=P02, project_id=project.id)
+    session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
+    await save_comprehension(db, session, supported_comprehension(P02))
+    db.add(
+        IRTake(
+            session_id=session.id,
+            device_id=TABLET,
+            pericope=P02,
+            kind=IRTakeKind.ENSAIO,
+            scope="passagem-inteira",
+            storage_key=f"takes/{session.id}/ensaio/b",
+            size_bytes=2048,
+            sha256="b" * 64,
+            crc32c="AAAAAAA=",
+            content_type="audio/mp4",
+        )
+    )
+    await db.commit()
+    told = await capture_segment(
+        db,
+        session,
+        take_id="ensaio-1",
+        starts_ms=0,
+        ends_ms=CLIP_MS,
+        bridge_take_id="retro-1",
+        transcript=SWAPPED_CAUSE,
+    )
+    await report_playback(
+        db,
+        session,
+        BackTranslationState(
+            scope=P02,
+            findings=[
+                Finding(
+                    kind=FindingKind.ADDITION,
+                    note=THE_FINDING,
+                    segment_id=told.id,
+                    chunk=1,
+                )
+            ],
+            checked=False,
+            analysed_segment_ids=[told.id],
+        ),
+        played_by_take=[
+            PlayedTake(take_id=told.take_id, played_ranges=[(0, CLIP_MS)], clip_duration_ms=CLIP_MS)
+        ],
+        played_ranges=[[0, CLIP_MS]],
+        clip_duration_ms=CLIP_MS,
+    )
+    return session
+
+
+async def a_rehearsal_only_half_heard(db: AsyncSession, project: Project) -> IRSession:
+    """A P02 session clean in every way but one: the tablet played twenty of the sixty-one seconds.
+
+    The telling-back is read and carries no finding, so the only thing between this session and
+    Refine is the half of the rehearsal the team closed on without hearing. That is the other
+    of the two blockers a facilitator's code can set aside.
+    """
+    session = await a_p02_telling_with_the_swapped_cause(db, project)
+    state = back_translation_of(session)
+    state.checked = True
+    state.findings = []
+    await report_playback(
+        db,
+        session,
+        state,
+        played_by_take=[
+            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
+        ],
+        played_ranges=[[0, 20000]],
+        clip_duration_ms=CLIP_MS,
+    )
+    return session
+
+
+async def at_the_desk(
+    db: AsyncSession, room_app: App, project: Project
+) -> tuple[dict[str, str], User]:
+    """A facilitator of ``project``: the headers they call with, and the row they are.
+
+    The user comes back beside the headers because a forced release is signed: ``forced_by``
+    has to be provably that person and not merely some id.
+    """
+    from app.services.auth.issue_tokens import issue_tokens
+
+    user = await make_user(db, email=f"desk-{uuid.uuid4()}@example.com")
+    role = (
+        await db.execute(
+            select(Role).where(Role.app_id == room_app.id, Role.role_key == "facilitator")
+        )
+    ).scalar_one()
+    await make_user_app_role(db, user.id, room_app.id, role.id)
+    await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
+    access, _refresh = await issue_tokens(db, user)
+    return {"Authorization": f"Bearer {access}"}, user
+
+
+def team_release(session_id: str) -> str:
+    return f"{PREFIX}/sessions/{session_id}/release"
+
+
+def desk_release(session_id: str) -> str:
+    return f"{PREFIX}/facilitator/sessions/{session_id}/release"
+
+
+def desk_release_at(session_id: str, version: int) -> str:
+    return f"{PREFIX}/facilitator/sessions/{session_id}/releases/{version}"
