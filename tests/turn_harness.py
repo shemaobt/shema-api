@@ -113,8 +113,19 @@ DESTINATIONS = {
     "aqui na tela": "on screen",
     "no microfone daquela": "tap the microphone",
     "gravar o que ainda falta": "record what is still missing",
+    "Ouçam a gravação": "listen to their own recording once more",
     "no WhatsApp": "on WhatsApp",
 }
+
+#: The words the ordered closing of the checked turn has to carry, named one by one rather
+#: than as the whole constant: the case is that the team is invited to *these two things*, and
+#: an assertion on the constant would agree with whatever it happened to say. Shared because
+#: the service seam and the door both read them off the same closing.
+INVITATION_WORDS = ("listen to", "once more", "approve", "final draft")
+
+#: The prompt's own promise of a next round, spliced into every closing but the checked one.
+#: That turn has no next round, so this and it may not both reach the Speaker on the same turn.
+CONTINUES_TELLING_BACK = "finish the telling-back again"
 
 _ATTRIBUTION = re.compile(r"[Vv]ocê contou que ([^.?!]+)")
 _PROPER_NAME = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕ][\wáéíóúâêôãõç]+")

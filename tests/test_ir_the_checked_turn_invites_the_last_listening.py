@@ -12,6 +12,8 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.run_turn import run_verdict_turn
 from tests.turn_harness import (
+    CONTINUES_TELLING_BACK,
+    INVITATION_WORDS,
     SPEAKER,
     VALIDATOR,
     P,
@@ -41,19 +43,29 @@ def patch_speaker(monkeypatch: pytest.MonkeyPatch):
     return _install
 
 
-#: The phrase every kind but this one still closes with. Its absence is half of what "asks
-#: nothing" means here.
-ANSWERABLE_QUESTION = "answerable question"
+#: The Refine-stage boundary, in the Validator's own vocabulary. The closing that invites the
+#: approval is the one place where the word would slip in.
+FINAL_TRANSLATION = "final translation"
 
-#: The other half of the old instruction's vocabulary — the word this closing may not use
-#: even if it avoids a literal question mark.
-INVITATION = "invitation"
+#: What the closing forbade before it invited anything, and still forbids. A closing that
+#: gained the invitation and lost these would be the original defect turned around, and the
+#: constant as a whole cannot say so: `CLOSING_CHECKED in spoken_to` agrees with any wording.
+PROHIBITIONS = (
+    "Do not ask them to answer anything out loud",
+    "do not ask how the team feels",
+    "do not say goodbye",
+    "That invitation is the only next step you name — no other gesture and no other screen",
+    "Never a checklist, never a speech",
+)
 
-#: The prompt's own promise of a next round, previously a static line under `{{CLOSING}}`
-#: on every verdict turn. `CLOSING_CHECKED` has no next round, so this and it may not both
-#: reach the Speaker on the same turn — found in code review, same class of defect as the
-#: original bug: a signal that promises continuation on the one turn that has none.
-CONTINUES_TELLING_BACK = "finish the telling-back again"
+#: The shape of her clean turn: the passage translated with nothing different in it, and then
+#: the one step that is left. Every word of it is the Speaker's own — what makes it obedient
+#: rather than improvised is that the closing it was handed ordered exactly this step.
+HER_CLEAN_TURN = (
+    "Vocês traduziram tudo, e no que vocês traduziram não apareceu diferença. "
+    "Agora falta só um passo. Ouçam a gravação de vocês mais uma vez, do começo ao fim, "
+    "sem parar. Se ela soar bem para os ouvidos de vocês, aprovem como rascunho final."
+)
 
 
 async def _checked_turn_for(draft: str, patch_speaker) -> str:
@@ -95,18 +107,20 @@ async def _checked_turn_with_loop(draft: str, patch_loop):
 
 
 @pytest.mark.asyncio
-async def test_a_checked_turn_does_not_ask_a_question(patch_speaker) -> None:
-    """Case 1. Sem achado e com evidência suficiente, o fechamento não pede pergunta.
+async def test_a_checked_turn_invites_the_last_listening_and_the_approval(patch_speaker) -> None:
+    """Case 1. Sem achado e com evidência suficiente, o fechamento nomeia o último passo.
 
-    R5: a rota marcava `checked = True` e ainda assim mandava o narrador terminar com
-    "exactly one answerable question or invitation" — o `CLOSING_PLAIN` de sempre. Não há
-    próximo turno depois de `checked`, então a pergunta não tinha para quem responder.
+    R5: a rota marcava `checked = True` e mandava o narrador parar por ali. Não há próximo
+    turno depois de `checked`, mas há um passo: a equipe ouve a própria gravação inteira e
+    aprova como rascunho final. O fechamento é o único lugar em que esse convite é pedido.
     """
     spoken_to = await _checked_turn_for("A passagem foi contada e conferida.", patch_speaker)
 
-    assert ANSWERABLE_QUESTION not in spoken_to
-    assert INVITATION not in spoken_to
-    assert "Do not ask" in spoken_to
+    for word in INVITATION_WORDS:
+        assert word in spoken_to
+    for order in PROHIBITIONS:
+        assert order in spoken_to
+    assert FINAL_TRANSLATION not in spoken_to
     assert CLOSING_PLAIN not in spoken_to
     assert CLOSING_CHECKED in spoken_to
     assert CONTINUES_TELLING_BACK not in spoken_to
@@ -116,35 +130,38 @@ async def test_a_checked_turn_does_not_ask_a_question(patch_speaker) -> None:
 async def test_the_validator_is_shown_the_checked_closing_not_the_plain_one(
     patch_loop,
 ) -> None:
-    """Case 2. O validador vê o mesmo fechamento que o narrador recebeu, não `CLOSING_PLAIN`."""
+    """Case 2. O validador vê o mesmo fechamento que o narrador recebeu, não `CLOSING_PLAIN`.
+
+    É o que separa um convite obedecido de um improvisado: a linha 24 do prompt dela julga o
+    passo seguinte que o rascunho dá contra o bloco de fechamento, e um bloco que não pede o
+    convite transforma a fala limpa em improviso.
+
+    `FINAL_TRANSLATION` não é afirmado aqui de propósito, e a simetria com o caso 1 é a
+    armadilha: a linha 25 do prompt dela carrega essas palavras justamente para proibi-las, de
+    modo que o briefing as contém seja qual for o fechamento. O caso 1 é onde a afirmação
+    quer dizer alguma coisa.
+    """
     _, agent = await _checked_turn_with_loop("A passagem foi contada e conferida.", patch_loop)
 
     assert CLOSING_CHECKED in agent.briefs[0]
     assert CLOSING_PLAIN not in agent.briefs[0]
-    assert ANSWERABLE_QUESTION not in agent.briefs[0]
+    for word in INVITATION_WORDS:
+        assert word in agent.briefs[0]
 
 
 @pytest.mark.asyncio
 async def test_an_obedient_narrator_passes_the_checked_turn(patch_loop) -> None:
-    """Case 3, first half. A draft that only affirms told-and-checked is not refused.
+    """Case 3. O convite que o fechamento mandou dar atravessa o validador e é falado.
 
-    This only proves the loop still runs end to end on this turn shape — none of the
-    Validator double's three rules read the closing at all, so this case cannot tell a
-    working `CLOSING_CHECKED` from a broken one either. Cases 1 and 2 carry that weight.
-
-    The mirror half of case 3 — a draft that still asks "Como vocês se sentem?" — is not
-    written here. `ValidatorReadsOnlyItsOwnPrompt` judges three things read straight out of
-    its own prompt: a claim about the telling-back with no evidence for it, a destination
-    the brief never named, and a name the team never said. None of its three rules read the
-    closing's own instruction not to ask, so it cannot fail a draft on that basis, and a test
-    asserting a fail-safe there would not be testing this change — it would be testing
-    against a rule the double does not have. Reported as a gap, not filled with a test that
-    would look like coverage of it.
+    `ValidatorReadsOnlyItsOwnPrompt` recusa um destino que o briefing não nomeou, que é a
+    linha 24 do prompt do validador de verdade. O último passo é um destino como qualquer
+    outro: com um fechamento que manda parar por ali, esta mesma fala é improviso e a equipe
+    ouve uma fala de emergência no lugar dela.
     """
-    outcome, _ = await _checked_turn_with_loop("A passagem foi contada e conferida.", patch_loop)
+    outcome, _ = await _checked_turn_with_loop(HER_CLEAN_TURN, patch_loop)
 
     assert outcome.used_fail_safe is False
-    assert outcome.speech == "A passagem foi contada e conferida."
+    assert outcome.speech == HER_CLEAN_TURN
 
 
 def test_a_turn_that_is_not_the_checked_one_keeps_asking() -> None:
