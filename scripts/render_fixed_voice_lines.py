@@ -4,9 +4,12 @@ A fail-safe is the sentence the team hears when the model failed or the network 
 ElevenLabs for it at that moment is the worst possible time to need a network call, so these
 lines are synthesized once, here, and travel inside the app.
 
-    uv run python scripts/render_fixed_voice_lines.py --out <app checkout>/assets/audio
-    uv run python scripts/render_fixed_voice_lines.py --out ... --check        # did it drift
-    uv run python scripts/render_fixed_voice_lines.py --out ... --language pt  # one language
+Every run is told where the app's bundle is; there is nothing here that could know it.
+
+    OUT=<app checkout>/assets/audio
+    uv run python scripts/render_fixed_voice_lines.py --out "$OUT"              # what is missing
+    uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --check      # did it drift
+    uv run python scripts/render_fixed_voice_lines.py --out "$OUT" --language pt
 
 `--check` is the guard against silent freezing: edit a line in the authored prompt and the
 manifest no longer matches, so it reports the drift and exits non-zero until someone renders

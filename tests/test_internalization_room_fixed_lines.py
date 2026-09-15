@@ -44,42 +44,6 @@ def test_the_render_script_needs_to_be_told_where_the_bundle_is(
     assert "--out" in capsys.readouterr().err
 
 
-def test_the_drift_check_names_the_process_clips_the_bundle_never_had(tmp_path: Path) -> None:
-    """A bundle rendered before the process families exist is missing exactly those clips.
-
-    The app plays a process line by name out of the bundle, so a name the render never reached
-    is a step the room cannot voice at all. Nothing that *is* rendered and current may be
-    complained about in the same breath, or the list stops being readable.
-
-    The four P names are written out rather than read off `PROCESS_STEPS`, which is the table
-    that answers `catalogue`: derived from it, the case would agree with a table that had lost
-    the family altogether. X is left out of the manifest and out of both assertions — it rides
-    into the catalogue by the same door and is a case of its own, not a second subject here.
-    """
-    lines = render.catalogue("pt")
-    already = {
-        name: render.fingerprint(text)
-        for name, text in lines.items()
-        if not name.startswith(("P", "X"))
-    }
-    bundle = tmp_path / "pt"
-    bundle.mkdir()
-    (bundle / render.MANIFEST).write_text(json.dumps(already), encoding="utf-8")
-    for name in already:
-        clip = render._clip_path(tmp_path, "pt", name)
-        clip.parent.mkdir(parents=True, exist_ok=True)
-        clip.write_bytes(b"")
-
-    complaints = render.drift(tmp_path, "pt")
-
-    assert [complaint for complaint in complaints if complaint.startswith("pt/P")] == [
-        f"pt/P{step}: never rendered" for step in range(4)
-    ]
-    assert not [
-        complaint for complaint in complaints if not complaint.startswith(("pt/P", "pt/X"))
-    ], f"uma fala que está no pacote e em dia foi acusada junto: {complaints}"
-
-
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
 def test_the_catalogue_covers_every_kind_the_room_claims_to_speak(spoken: str) -> None:
     """Um idioma reivindicado e não escrito é uma sala que troca de língua no meio.

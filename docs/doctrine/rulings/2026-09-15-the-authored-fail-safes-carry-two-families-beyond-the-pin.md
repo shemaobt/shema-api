@@ -1,9 +1,9 @@
 # The authored fail-safes carry two families beyond the pin
 
 pin: 533b6e3f338f1a0077c025a8de0edd89f5a4f4cd
-governs: app/services/internalization_room/prompts/fail_safe_utterances.md, against its vendored copy
-word: "Ruled by Marcia 2026-09-04 late evening — the Portuguese texts are hers, verbatim."
-written: the §X block of the authored file, and the `fail_safe_utterances.md` line of DOCTRINE_PIN
+governs: the authored fail-safe utterances, against the vendored copy at the pin
+word: as the authored file cites her — "Ruled by Marcia 2026-09-04 late evening — the Portuguese texts are hers, verbatim." Her sentence is not at the pin; what is recorded here is the citation.
+written: the §X block of the authored fail_safe_utterances.md, carrying her dates of 2026-09-04 and 2026-09-08
 
 The authored file and the vendored one differ in exactly two places, both additions: **G**
 (confidently detected speech outside the bridge language) and **X** (the process lines of the

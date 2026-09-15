@@ -23,10 +23,6 @@ from tests.room_harness import (
     the_room_speaks,
 )
 
-#: What the Speaker double answers with. The case is about the instruction the room gave, so
-#: the words that come back are fixed and only have to prove the room voiced them.
-CLEAN_DRAFT = "Vocês contaram bem."
-
 #: The promise of another round of telling back. There is none after this turn, and the last
 #: step the team is invited to is not one.
 CONTINUES_TELLING_BACK = "finish the telling-back again"
@@ -60,7 +56,12 @@ async def test_a_clean_check_orders_the_last_listening_and_the_approval(
     briefs: list[str],
     spoken: list[str],
 ) -> None:
-    """The rule, at the door: the passage confers and the Speaker is told to name one step."""
+    """The rule, at the door: the passage confers and the Speaker is told to name one step.
+
+    What the room said is read off the route's own answer and off the count of lines voiced,
+    never off the words: the double was told what to say, so an assertion on them would be
+    the case agreeing with its own fixture.
+    """
     session, parts = await rehearsed_in_parts(db_session, 3)
 
     answered = await press_terminei(
@@ -74,4 +75,5 @@ async def test_a_clean_check_orders_the_last_listening_and_the_approval(
     assert "approve" in briefs[-1]
     assert "final draft" in briefs[-1]
     assert CONTINUES_TELLING_BACK not in briefs[-1]
-    assert spoken == [CLEAN_DRAFT]
+    assert answered.json()["used_fail_safe"] is False
+    assert len(spoken) == 1

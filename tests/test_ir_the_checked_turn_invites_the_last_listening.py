@@ -38,8 +38,10 @@ FINAL_TRANSLATION = "final translation"
 #: gained the invitation and lost these would be the original defect turned around, and the
 #: constant as a whole cannot say so: `CLOSING_CHECKED in spoken_to` agrees with any wording.
 PROHIBITIONS = (
+    "Do not ask them to answer anything out loud",
     "do not ask how the team feels",
     "do not say goodbye",
+    "That invitation is the only next step you name — no other gesture and no other screen",
     "Never a checklist, never a speech",
 )
 
@@ -127,10 +129,10 @@ async def test_the_validator_is_shown_the_checked_closing_not_the_plain_one(
     passo seguinte que o rascunho dá contra o bloco de fechamento, e um bloco que não pede o
     convite transforma a fala limpa em improviso.
 
-    `FINAL_TRANSLATION` is deliberately not asserted against here, and the symmetry with case
-    1 is the trap: line 25 of the Validator's own prompt carries those words in order to
-    forbid them, so the brief holds them however the closing is written. Case 1 is where the
-    assertion means something.
+    `FINAL_TRANSLATION` não é afirmado aqui de propósito, e a simetria com o caso 1 é a
+    armadilha: a linha 25 do prompt dela carrega essas palavras justamente para proibi-las, de
+    modo que o briefing as contém seja qual for o fechamento. O caso 1 é onde a afirmação
+    quer dizer alguma coisa.
     """
     _, agent = await _checked_turn_with_loop("A passagem foi contada e conferida.", patch_loop)
 
