@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 
-from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.db.models.internalization_room import IRPromptKey, IRSegment
 from app.services.internalization_room._default_prompts import default_prompt
@@ -34,13 +33,21 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
+from tests.turn_harness import (
+    GUIDE,
+    SPEAKER,
+    VALIDATOR,
+    P,
+    ValidatorReadsOnlyItsOwnPrompt,
+    settings,
+    stretch,
+    the_loop_answers,
+    the_speaker_answers,
+    told_stretches,
+)
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
-GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
-SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
 CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
-VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
-P = "P03"
 PARSER_LOGGER = "app.services.internalization_room.back_translation"
 #: The wire names an older reply may still carry. No prompt of ours may ask for one.
 RETIRED_WIRE_NAMES = (
@@ -96,30 +103,6 @@ MARCIAS_DO_NOT_DECIDE = "(a do_not_decide item), say so in the note"
 MARCIAS_MARKED_SILENCE = "your notes must never name the withheld content itself"
 
 
-def _settings() -> Settings:
-    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
-
-
-def _segment(number: int, text: str) -> IRSegment:
-    """One stretch, as far as the analyst is concerned: an address and what was told."""
-    return IRSegment(
-        id=f"segmento-{number}",
-        session_id="sessao-1",
-        ordinal=number,
-        take_id="ensaio-1",
-        starts_ms=(number - 1) * 9000,
-        ends_ms=number * 9000,
-        transcript=text,
-    )
-
-
-def _told() -> list[IRSegment]:
-    return [
-        _segment(1, "Noemi mandou Rute voltar."),
-        _segment(2, "Rute disse que ia junto."),
-    ]
-
-
 def _addition_on(chunk: int, segment_id: str | None, note: str = "o pedido das noras") -> Finding:
     return Finding(kind=FindingKind.ADDITION, note=note, segment_id=segment_id, chunk=chunk)
 
@@ -158,26 +141,14 @@ def patch_analyst(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def patch_speaker(monkeypatch: pytest.MonkeyPatch):
-    module = sys.modules["app.services.internalization_room.run_turn"]
-
     def _install(draft: str):
-        seen: list[str] = []
-
-        async def agent(*, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-            seen.append(system_prompt)
-            if "corrected_response" in system_prompt:
-                return json.dumps({"verdict": "pass", "issues": []})
-            return draft
-
-        agent.seen = seen  # type: ignore[attr-defined]
-        monkeypatch.setattr(module, "call_agent", agent)
-        return agent
+        return the_speaker_answers(monkeypatch, draft)
 
     return _install
 
 
 def test_the_chunks_go_to_the_analyst_in_listening_order() -> None:
-    block = segments_block(_told())
+    block = segments_block(told_stretches())
 
     assert block.splitlines()[0].startswith("1. Noemi")
     assert block.splitlines()[1].startswith("2. Rute")
@@ -192,11 +163,11 @@ async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> No
     patch_analyst(json.dumps({"findings": []}))
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None
@@ -217,11 +188,11 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
     )
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None
@@ -240,11 +211,11 @@ async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
     patch_analyst("desculpe, não consigo")
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is None
@@ -310,7 +281,7 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
         messages=[],
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.speech == "No que você me contou, Orfa não apareceu."
@@ -322,7 +293,7 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
 
 
 def test_a_verdict_is_not_bought_twice_for_the_same_telling_back() -> None:
-    told = _told()
+    told = told_stretches()
     state = BackTranslationState(scope=P)
 
     assert not state.already_analysed(told)
@@ -333,11 +304,11 @@ def test_a_verdict_is_not_bought_twice_for_the_same_telling_back() -> None:
 
 
 def test_one_more_piece_told_back_earns_a_fresh_reading() -> None:
-    told = _told()
+    told = told_stretches()
     state = BackTranslationState(scope=P)
     state.analysed_segment_ids = [segment.id for segment in told]
 
-    assert not state.already_analysed([*told, _segment(3, "e voltaram juntas")])
+    assert not state.already_analysed([*told, stretch(3, "e voltaram juntas")])
 
 
 def test_a_stretch_told_back_again_earns_a_fresh_reading_at_the_same_count() -> None:
@@ -346,11 +317,11 @@ def test_a_stretch_told_back_again_earns_a_fresh_reading_at_the_same_count() -> 
     Replacing one stretch leaves the number of stretches exactly where it was, so a verdict
     keyed on "how many" would be served again for a telling-back the analyst has never read.
     """
-    told = _told()
+    told = told_stretches()
     state = BackTranslationState(scope=P)
     state.analysed_segment_ids = [segment.id for segment in told]
 
-    told[1] = _segment(9, "Rute disse que ia junto, e para onde.")
+    told[1] = stretch(9, "Rute disse que ia junto, e para onde.")
 
     assert len(told) == 2
     assert not state.already_analysed(told)
@@ -366,11 +337,11 @@ async def test_the_analyst_pointer_is_resolved_to_the_stretch_it_names(patch_ana
     patch_analyst('{"findings":[{"kind":"missing","chunk":2,"note":"nao contaram a fome"}]}')
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None
@@ -396,14 +367,14 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
         '{"kind":"addition","chunk":1,"note":"d"},'
         '{"kind":"unclear","chunk":9,"note":"e"}]}'
     )
-    four = [_segment(number, f"trecho {number}") for number in range(1, 5)]
+    four = [stretch(number, f"trecho {number}") for number in range(1, 5)]
 
     analysis = await analyse_telling_back(
         segments=four,
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None
@@ -428,11 +399,11 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     )
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None
@@ -460,11 +431,11 @@ async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) ->
     try:
         with pytest.raises(UpstreamServiceError):
             await analyse_telling_back(
-                segments=_told(),
+                segments=told_stretches(),
                 scope=P,
                 pericope_num=P,
                 analyst_prompt=ANALYST,
-                settings=_settings(),
+                settings=settings(),
             )
     finally:
         monkey.undo()
@@ -504,11 +475,11 @@ async def test_a_retired_kind_reads_as_addition(
 
     with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
         analysis = await analyse_telling_back(
-            segments=_told(),
+            segments=told_stretches(),
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
-            settings=_settings(),
+            settings=settings(),
         )
 
     assert analysis is not None
@@ -533,11 +504,11 @@ async def test_one_malformed_finding_rejects_the_whole_reading(patch_analyst) ->
     )
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is None
@@ -554,11 +525,11 @@ async def test_a_thin_reading_that_names_no_difference_is_no_finding(patch_analy
     patch_analyst(json.dumps({"evidence_sufficient": False, "findings": []}))
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None
@@ -583,11 +554,11 @@ async def test_an_evidence_flag_of_any_shape_is_read_and_ignored(patch_analyst) 
     )
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None
@@ -617,11 +588,11 @@ async def test_the_retired_evidence_kind_is_dropped_and_the_rest_of_the_reply_ke
 
     with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
         analysis = await analyse_telling_back(
-            segments=_told(),
+            segments=told_stretches(),
             scope=P,
             pericope_num=P,
             analyst_prompt=ANALYST,
-            settings=_settings(),
+            settings=settings(),
         )
 
     assert analysis is not None
@@ -652,13 +623,13 @@ async def test_the_retired_evidence_kind_is_dropped_from_a_correction_too(
     with caplog.at_level(logging.INFO, logger=PARSER_LOGGER):
         check = await verify_correction(
             findings=[Finding(kind=FindingKind.MISSING, note="Orfa", segment_id="segmento-1")],
-            earlier=_segment(1, "Noemi mandou Rute voltar."),
-            corrected=_segment(2, "Noemi mandou Rute voltar para a casa da mãe."),
+            earlier=stretch(1, "Noemi mandou Rute voltar."),
+            corrected=stretch(2, "Noemi mandou Rute voltar para a casa da mãe."),
             chunk=1,
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
-            settings=_settings(),
+            settings=settings(),
         )
 
     assert check is not None, "a correção é verificada, não descartada"
@@ -746,7 +717,7 @@ async def _verdict_for(findings: list[Finding], patch_speaker) -> str:
         messages=[],
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
     return str(agent.seen[0])
 
@@ -892,7 +863,7 @@ async def test_the_validator_judges_the_same_block_the_speaker_was_handed(patch_
         messages=[],
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
 
     judged = [seen for seen in agent.seen if "corrected_response" in seen]
@@ -1001,7 +972,7 @@ async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> Non
             messages=[],
             speaker_prompt=stored_before_this_slot_existed,
             validator_prompt=VALIDATOR,
-            settings=_settings(),
+            settings=settings(),
         )
 
 
@@ -1040,7 +1011,7 @@ async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker)
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
         session_language="Swahili",
-        settings=_settings(),
+        settings=settings(),
     )
 
     spoken_to = str(agent.seen[0])
@@ -1232,13 +1203,6 @@ TEAM_UTTERANCE_HEADING = (
 
 #: Where a draft can send the team, and the words that would show the app ordered it. A
 #: destination whose warrant is nowhere in the brief was improvised by the Guide.
-DESTINATIONS = {
-    "aqui na tela": "on screen",
-    "no microfone daquela": "tap the microphone",
-    "gravar o que ainda falta": "record what is still missing",
-    "no WhatsApp": "on WhatsApp",
-}
-
 #: A draft that does exactly what `CLOSING_ON_SCREEN` orders: names what did not appear, asks
 #: nothing, and hands the choice between the two microphones to the screen. This is the draft
 #: the room fell into fail-safe over three times in a row, back when the Validator judged it
@@ -1261,94 +1225,13 @@ UNSUPPORTED_CLAIM_DRAFT = (
     "Você contou que Noemi ficou em Moabe."
 )
 
-_ATTRIBUTION = re.compile(r"[Vv]ocê contou que ([^.?!]+)")
-_PROPER_NAME = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕ][\wáéíóúâêôãõç]+")
-
-
-class ValidatorReadsOnlyItsOwnPrompt:
-    """The loop's two models: the Speaker hands back one fixed draft, the Validator judges it.
-
-    The Validator double decides from the prompt it was handed and from nothing else, which
-    is the whole of what the incident was: the real Validator reasoned correctly from
-    evidence the room had never given it. A double answering `pass` unconditionally could
-    not reproduce that at all, and one answering `regenerate` would be dictating the outcome
-    the case claims to observe.
-
-    Three rules, each of them a lookup in its own prompt:
-
-    * a draft that speaks about the telling-back needs the telling-back in front of it;
-    * a draft that sends the team somewhere needs its brief to name that destination;
-    * a draft that attributes words to the team needs those words in the telling-back.
-
-    The draft under judgment is subtracted from the prompt before any lookup: a draft is
-    quoted into `DRAFTED_RESPONSE`, and a rule reading that back would find every claim
-    supported by the claim itself.
-    """
-
-    def __init__(self, draft: str, told: list[IRSegment]) -> None:
-        self.draft = draft
-        self.told = told
-        #: Each Validator system prompt with the draft taken out — what the room actually
-        #: showed it, as opposed to what the Guide wrote.
-        self.briefs: list[str] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        if "corrected_response" not in system_prompt:
-            return self.draft
-        brief = system_prompt.replace(self.draft, "")
-        self.briefs.append(brief)
-        return json.dumps(self._verdict(brief))
-
-    def _verdict(self, brief: str) -> dict[str, Any]:
-        shown = "\n".join(
-            segment.transcript for segment in self.told if segment.transcript in brief
-        )
-        issues: list[dict[str, str]] = []
-        if "me contou de volta" in self.draft and not shown:
-            issues.append(
-                {
-                    "claim": "No que você me contou de volta",
-                    "problem": "conversational_mismatch",
-                    "explanation": "nada aqui mostra que a equipe contou alguma coisa de volta",
-                }
-            )
-        for destination, warrant in DESTINATIONS.items():
-            if destination in self.draft and warrant not in brief:
-                issues.append(
-                    {
-                        "claim": destination,
-                        "problem": "workflow_policy_violation",
-                        "explanation": "essa navegação não foi a que o app mandou dar",
-                    }
-                )
-        for name in self._attributed_names():
-            if name not in shown:
-                issues.append(
-                    {
-                        "claim": name,
-                        "problem": "conversational_mismatch",
-                        "explanation": "a equipe não contou isso",
-                    }
-                )
-        if issues:
-            return {"verdict": "regenerate", "issues": issues}
-        return {"verdict": "pass", "issues": []}
-
-    def _attributed_names(self) -> list[str]:
-        """The people and places the draft says the team told back."""
-        attributed = _ATTRIBUTION.search(self.draft)
-        return _PROPER_NAME.findall(attributed.group(1)) if attributed else []
-
 
 @pytest.fixture
 def patch_loop(monkeypatch: pytest.MonkeyPatch):
-    """Both ends of the draft-and-gate loop, with a Validator that judges by its evidence."""
-    module = sys.modules["app.services.internalization_room.run_turn"]
+    """Both ends of the draft-and-gate loop, for the cases in this module."""
 
     def _install(draft: str, told: list[IRSegment]) -> ValidatorReadsOnlyItsOwnPrompt:
-        agent = ValidatorReadsOnlyItsOwnPrompt(draft, told)
-        monkeypatch.setattr(module, "call_agent", agent)
-        return agent
+        return the_loop_answers(monkeypatch, draft, told)
 
     return _install
 
@@ -1368,7 +1251,7 @@ async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
     The team rehearsed and told back, and the telling-back is collected outside the room's
     exchanges — so `messages` is empty, which is the real session shape this fails in.
     """
-    told = _told()
+    told = told_stretches()
     agent = patch_loop(draft, told)
     finding = _the_missing_death()
     outcome = await run_verdict_turn(
@@ -1382,7 +1265,7 @@ async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
         telling_back=segments_block(told),
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
     return outcome, agent
 
@@ -1483,7 +1366,7 @@ async def test_an_ordinary_conversation_turn_is_untouched(patch_loop) -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is False
@@ -1504,7 +1387,7 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
     which is exactly how this failed the first time, silently, in front of a team. A loud
     failure here is worth more than a fail-safe line there.
     """
-    told = _told()
+    told = told_stretches()
     patch_loop(OBEDIENT_DRAFT, told)
     finding = _the_missing_death()
     stored_before_these_slots_existed = VALIDATOR.replace("{{TELLING_BACK}}", "")
@@ -1521,7 +1404,7 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
             telling_back=segments_block(told),
             speaker_prompt=SPEAKER,
             validator_prompt=stored_before_these_slots_existed,
-            settings=_settings(),
+            settings=settings(),
         )
 
 
@@ -1599,7 +1482,7 @@ async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_
     `{{CLOSING}}` — a narrator naming the big microphone and the green button is obeying an
     order the Validator can see, not inventing a gesture of its own.
     """
-    told = _told()
+    told = told_stretches()
     finding = _missing(None)
     obedient_draft = (
         "No que você me contou de volta, o fim da história ainda não apareceu. "
@@ -1620,7 +1503,7 @@ async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_
         telling_back=segments_block(told),
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is False
@@ -1693,7 +1576,7 @@ async def test_the_validator_is_handed_the_closing_that_was_ordered(
     is what the assertion on the outcome would catch. Missing and addition now close the same
     way on a stretch; homeless is the one still asked to close differently.
     """
-    told = _told()
+    told = told_stretches()
     agent = patch_loop(obedient_draft, told)
 
     outcome = await run_verdict_turn(
@@ -1707,7 +1590,7 @@ async def test_the_validator_is_handed_the_closing_that_was_ordered(
         telling_back=segments_block(told),
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is False
@@ -1885,11 +1768,11 @@ async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehear
     patch_analyst('{"findings":[{"kind":"missing","chunk":1,"note":"a fome não apareceu"}]}')
 
     analysis = await analyse_telling_back(
-        segments=_told(),
+        segments=told_stretches(),
         scope=P,
         pericope_num=P,
         analyst_prompt=ANALYST,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert analysis is not None

@@ -998,7 +998,6 @@ def fully_supported_comprehension(pericope: str) -> ComprehensionState:
             for index, checkpoint in enumerate(checkpoints_for(pericope))
         ],
         practiced_scene_ids=scene_ids_for(pericope),
-        recording_consent_given=True,
     )
 
 

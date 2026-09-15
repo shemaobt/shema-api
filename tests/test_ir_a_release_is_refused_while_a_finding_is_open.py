@@ -66,13 +66,17 @@ from tests.baker import (
     make_user_app_role,
 )
 from tests.release_harness import (
+    KEY,
+    PREFIX,
+    TABLET,
+    a_claimed_device,
     one_stretch,
     ready_session,
+    releases_of,
     reported_playback,
     supported_comprehension,
+    team_headers,
 )
-from tests.test_ir_a_release_is_a_numbered_row import TABLET, _releases_of, _team
-from tests.test_ir_project_id import KEY, PREFIX, a_claimed_device
 
 APP_KEY = "internalization-room"
 
@@ -236,11 +240,11 @@ async def test_a_p02_telling_with_the_swapped_cause_is_refused_by_name(client, d
     project, credential = await a_claimed_device(db_session)
     session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
 
-    refused = await client.post(_team_release(session.id), headers=_team(credential))
+    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
 
     assert refused.status_code == 409, refused.text
     assert "telling_back_not_checked" in refused.json()["detail"]
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
 
 
 async def test_a_force_with_nothing_to_waive_is_still_recorded_as_one(client, db_session, room_app):
@@ -263,7 +267,7 @@ async def test_a_force_with_nothing_to_waive_is_still_recorded_as_one(client, db
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
     assert forced.json()["forced_at"] is not None
-    (row,) = await _releases_of(db_session, session.id)
+    (row,) = await releases_of(db_session, session.id)
     assert row.forced_by == facilitator.id
     assert row.forced_at is not None
     assert row.forced_open_findings == [], "vazio é uma resposta, e não a ausência de uma"
@@ -298,14 +302,14 @@ async def test_the_facilitator_forces_past_a_rehearsal_only_half_heard(
     )
     desk, _facilitator = await _at_the_desk(db_session, room_app, project)
 
-    refused = await client.post(_team_release(session.id), headers=_team(credential))
+    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
     forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
 
     assert refused.status_code == 409, refused.text
     assert "playback_did_not_cover_the_clip" in refused.json()["detail"]
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
-    (row,) = await _releases_of(db_session, session.id)
+    (row,) = await releases_of(db_session, session.id)
     assert row.forced_at is not None
     assert row.forced_open_findings == [], (
         "nada estava em aberto: o que foi forçado foi a escuta, e o registro diz isso"
@@ -331,7 +335,7 @@ async def test_the_facilitator_forces_the_release_and_the_row_says_so(client, db
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
     assert forced.json()["forced_at"] is not None
-    (row,) = await _releases_of(db_session, session.id)
+    (row,) = await releases_of(db_session, session.id)
     assert row.forced_by == facilitator.id
     assert row.forced_at is not None
     assert row.device_id is None
@@ -425,7 +429,7 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
 
     assert refused.status_code == 409, refused.text
     assert blocker in refused.json()["detail"]
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
 
 
 async def test_a_panorama_is_never_forced(client, db_session, room_app):
@@ -438,7 +442,7 @@ async def test_a_panorama_is_never_forced(client, db_session, room_app):
 
     assert refused.status_code == 409, refused.text
     assert "panorama_sessions_never_release" in refused.json()["detail"]
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
 
 
 @pytest.mark.parametrize("body", [{}, {"force": False}])
@@ -463,7 +467,7 @@ async def test_a_facilitator_post_without_force_has_nothing_to_force(
     assert refused.json()["code"] == "NOTHING_TO_FORCE"
     assert absent.status_code == 409, absent.text
     assert absent.json()["code"] == "NOTHING_TO_FORCE"
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
 
 
 async def test_the_team_route_never_reads_force(client, db_session):
@@ -479,17 +483,17 @@ async def test_the_team_route_never_reads_force(client, db_session):
     clean = await ready_session(db_session, project_id=project.id)
 
     refused = await client.post(
-        _team_release(disputed.id), headers=_team(credential), json={"force": True}
+        _team_release(disputed.id), headers=team_headers(credential), json={"force": True}
     )
     approved = await client.post(
-        _team_release(clean.id), headers=_team(credential), json={"force": True}
+        _team_release(clean.id), headers=team_headers(credential), json={"force": True}
     )
 
     assert refused.status_code == 409, refused.text
     assert "telling_back_not_checked" in refused.json()["detail"]
     assert approved.status_code == 200, approved.text
     assert approved.json()["version"] == 1
-    (row,) = await _releases_of(db_session, clean.id)
+    (row,) = await releases_of(db_session, clean.id)
     assert row.forced_by is None
     assert row.forced_at is None
     assert row.forced_open_findings is None
@@ -504,10 +508,10 @@ async def test_the_teams_approval_records_the_device(client, db_session):
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
 
-    approved = await client.post(_team_release(session.id), headers=_team(credential))
+    approved = await client.post(_team_release(session.id), headers=team_headers(credential))
 
     assert approved.status_code == 200, approved.text
-    (row,) = await _releases_of(db_session, session.id)
+    (row,) = await releases_of(db_session, session.id)
     assert row.device_id == TABLET
 
 
@@ -526,7 +530,7 @@ async def test_forcing_again_with_nothing_changed_returns_the_same_release(
     assert again.status_code == 200, again.text
     assert again.json()["release_id"] == first.json()["release_id"]
     assert again.json()["version"] == 1
-    assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
+    assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
 async def test_forcing_what_the_team_already_approved_returns_the_teams_release(
@@ -543,14 +547,14 @@ async def test_forcing_what_the_team_already_approved_returns_the_teams_release(
     session = await ready_session(db_session, project_id=project.id)
     desk, _facilitator = await _at_the_desk(db_session, room_app, project)
 
-    approved = await client.post(_team_release(session.id), headers=_team(credential))
+    approved = await client.post(_team_release(session.id), headers=team_headers(credential))
     forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
 
     assert approved.status_code == 200, approved.text
     assert forced.status_code == 200, forced.text
     assert forced.json()["release_id"] == approved.json()["release_id"]
     assert forced.json()["forced_at"] is None
-    assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
+    assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
 async def test_the_desks_read_still_builds_under_the_whole_list(client, db_session, room_app):
@@ -589,7 +593,7 @@ async def test_the_desk_reads_a_forced_release_by_its_version(client, db_session
     assert forced.json()["version"] == 1
     assert read.status_code == 200, read.text
     body = read.json()
-    stored = await _releases_of(db_session, session.id)
+    stored = await releases_of(db_session, session.id)
     assert json.dumps(body, sort_keys=True) == json.dumps(stored[0].packet, sort_keys=True), (
         "o pacote servido tem que ser o guardado, e não um recomposto que por acaso coincide"
     )
@@ -663,8 +667,8 @@ async def test_the_version_read_is_this_teams_and_never_the_other_teams(
     theirs = await ready_session(db_session, project_id=project_b.id)
     desk, _facilitator = await _at_the_desk(db_session, room_app, project_a)
 
-    our_first = await client.post(_team_release(ours.id), headers=_team(credential_a))
-    their_first = await client.post(_team_release(theirs.id), headers=_team(credential_b))
+    our_first = await client.post(_team_release(ours.id), headers=team_headers(credential_a))
+    their_first = await client.post(_team_release(theirs.id), headers=team_headers(credential_b))
     read = await client.get(_desk_release_at(ours.id, 1), headers=desk)
 
     assert our_first.status_code == 200, our_first.text
@@ -686,9 +690,9 @@ async def test_the_stored_packet_is_served_as_approved_not_rebuilt(client, db_se
     session = await ready_session(db_session, project_id=project.id)
     desk, _facilitator = await _at_the_desk(db_session, room_app, project)
 
-    first = await client.post(_team_release(session.id), headers=_team(credential))
+    first = await client.post(_team_release(session.id), headers=team_headers(credential))
     await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
-    second = await client.post(_team_release(session.id), headers=_team(credential))
+    second = await client.post(_team_release(session.id), headers=team_headers(credential))
 
     one = await client.get(_desk_release_at(session.id, 1), headers=desk)
     two = await client.get(_desk_release_at(session.id, 2), headers=desk)
@@ -698,7 +702,7 @@ async def test_the_stored_packet_is_served_as_approved_not_rebuilt(client, db_se
     assert second.json()["version"] == 2
     assert one.status_code == 200, one.text
     assert two.status_code == 200, two.text
-    rows = await _releases_of(db_session, session.id)
+    rows = await releases_of(db_session, session.id)
     assert [row.version for row in rows] == [1, 2]
     assert one.json()["package_sha256"] == rows[0].package_sha256
     assert two.json()["package_sha256"] == rows[1].package_sha256
@@ -724,9 +728,9 @@ async def test_the_teams_approval_after_a_force_returns_the_forced_release(
     session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
     desk, _facilitator = await _at_the_desk(db_session, room_app, project)
 
-    refused = await client.post(_team_release(session.id), headers=_team(credential))
+    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
     forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
-    again = await client.post(_team_release(session.id), headers=_team(credential))
+    again = await client.post(_team_release(session.id), headers=team_headers(credential))
 
     assert refused.status_code == 409, refused.text
     assert "telling_back_not_checked" in refused.json()["detail"]
@@ -734,7 +738,7 @@ async def test_the_teams_approval_after_a_force_returns_the_forced_release(
     assert again.status_code == 200, again.text
     assert again.json()["release_id"] == forced.json()["release_id"]
     assert again.json()["version"] == 1
-    (row,) = await _releases_of(db_session, session.id)
+    (row,) = await releases_of(db_session, session.id)
     await db_session.refresh(row)
     assert row.forced_at is not None
     assert row.device_id is None
@@ -756,12 +760,12 @@ async def test_a_changed_and_still_blocked_session_is_refused_after_a_force(
 
     forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
     await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
-    refused = await client.post(_team_release(session.id), headers=_team(credential))
+    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
 
     assert forced.status_code == 200, forced.text
     assert refused.status_code == 409, refused.text
     assert "telling_back_not_checked" in refused.json()["detail"]
-    assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
+    assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
     forced_again = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
 
@@ -799,13 +803,13 @@ async def test_a_changed_and_clean_session_after_a_force_mints_the_next_version(
 
     forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
     await reported_playback(db_session, session, back_translation_of(session))
-    approved = await client.post(_team_release(session.id), headers=_team(credential))
+    approved = await client.post(_team_release(session.id), headers=team_headers(credential))
 
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
     assert approved.status_code == 200, approved.text
     assert approved.json()["version"] == 2
-    rows = await _releases_of(db_session, session.id)
+    rows = await releases_of(db_session, session.id)
     assert [row.version for row in rows] == [1, 2]
     assert rows[1].forced_at is None
     assert rows[1].device_id == TABLET
@@ -820,11 +824,11 @@ async def test_a_panorama_is_refused_before_any_release_is_compared(client, db_s
     project, credential = await a_claimed_device(db_session)
     session = await create_session(db_session, pericope="OV", project_id=project.id)
 
-    refused = await client.post(_team_release(session.id), headers=_team(credential))
+    refused = await client.post(_team_release(session.id), headers=team_headers(credential))
 
     assert refused.status_code == 409, refused.text
     assert "panorama_sessions_never_release" in refused.json()["detail"]
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
 
 
 def _body_fields(route) -> set[str]:
