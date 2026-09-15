@@ -407,6 +407,19 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             "owner_expects": 409,
         },
         {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/releases/1", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/releases/1", {}),
+            "ids": (session_id, absent),
+            #: The owner is refused too, and again by a different door: this session has
+            #: approved nothing, so there is no version 1 of its passage to read back. The
+            #: message says that, where a stranger is told the session does not exist —
+            #: which is the scoping, and is what the case above measures. Asserting 200
+            #: would mean approving a release inside a scope audit, for the reason the
+            #: read beside this one gives.
+            "owner_expects": 404,
+        },
+        {
             "method": "POST",
             "owned": (f"{IR}/facilitator/sessions/{force_id}/release", FORCE),
             "absent": (f"{IR}/facilitator/sessions/{absent}/release", FORCE),
@@ -437,6 +450,7 @@ def _shape(body, *ids: str):
 REFUSING_TEMPLATES = {
     ("POST", f"{DESK}/devices/claim"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),

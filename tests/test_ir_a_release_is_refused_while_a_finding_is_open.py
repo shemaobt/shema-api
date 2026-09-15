@@ -19,6 +19,7 @@ has to be what the tablet actually receives.
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import get_args
 
@@ -64,7 +65,12 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
-from tests.release_harness import ready_session, supported_comprehension
+from tests.release_harness import (
+    one_stretch,
+    ready_session,
+    reported_playback,
+    supported_comprehension,
+)
 from tests.test_ir_a_release_is_a_numbered_row import TABLET, _releases_of, _team
 from tests.test_ir_project_id import KEY, PREFIX, a_claimed_device
 
@@ -153,6 +159,10 @@ def _team_release(session_id: str) -> str:
 
 def _desk_release(session_id: str) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/release"
+
+
+def _desk_release_at(session_id: str, version: int) -> str:
+    return f"{PREFIX}/facilitator/sessions/{session_id}/releases/{version}"
 
 
 async def _a_p02_telling_with_the_swapped_cause(db: AsyncSession, project) -> IRSession:
@@ -557,6 +567,264 @@ async def test_the_desks_read_still_builds_under_the_whole_list(client, db_sessi
 
     assert read.status_code == 409, read.text
     assert "telling_back_not_checked" in read.json()["detail"]
+
+
+async def test_the_desk_reads_a_forced_release_by_its_version(client, db_session, room_app):
+    """The stored packet, served as it was approved, under the number it was approved as.
+
+    Nothing served `ir_releases.packet` until now: the only facilitator read rebuilt the
+    packet live, which on a forced session is the refusal the team saw and not the draft the
+    Desk minted. The two routes are contrasted here once — the live read still answers 409
+    over the very session whose version 1 reads back whole.
+    """
+    project, _credential = await a_claimed_device(db_session)
+    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    read = await client.get(_desk_release_at(session.id, 1), headers=desk)
+    live = await client.get(_desk_release(session.id), headers=desk)
+
+    assert forced.status_code == 200, forced.text
+    assert forced.json()["version"] == 1
+    assert read.status_code == 200, read.text
+    body = read.json()
+    stored = await _releases_of(db_session, session.id)
+    assert json.dumps(body, sort_keys=True) == json.dumps(stored[0].packet, sort_keys=True), (
+        "o pacote servido tem que ser o guardado, e não um recomposto que por acaso coincide"
+    )
+    assert body["version"] == 1
+    assert body["release_id"] == forced.json()["release_id"]
+    assert body["back_translation"]["checked"] is False
+    assert body["back_translation"]["findings"]
+    assert live.status_code == 409, live.text
+
+
+async def test_a_version_that_was_never_minted_is_not_found(client, db_session, room_app):
+    """A number nobody approved is nothing, and the room says so rather than composing one.
+
+    The minted version is read first on purpose: three 404s from a route that does not exist
+    read exactly like three 404s from a route that refuses, and only a 200 beside them says
+    which of the two answered.
+    """
+    project, _credential = await a_claimed_device(db_session)
+    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    never = await ready_session(db_session, project_id=project.id)
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    minted = await client.get(_desk_release_at(session.id, 1), headers=desk)
+    after = await client.get(_desk_release_at(session.id, 2), headers=desk)
+    before = await client.get(_desk_release_at(session.id, 0), headers=desk)
+    none_at_all = await client.get(_desk_release_at(never.id, 1), headers=desk)
+
+    assert forced.status_code == 200, forced.text
+    assert minted.status_code == 200, minted.text
+    assert after.status_code == 404, after.text
+    assert before.status_code == 404, before.text
+    assert none_at_all.status_code == 404, none_at_all.text
+
+
+async def test_another_teams_facilitator_does_not_read_the_release(client, db_session, room_app):
+    """A **Version** is per pericope per team, and another team's is never served.
+
+    What hangs off a release is the whole of what a team recorded — every finding, every
+    quote — so the refusal has to be a refusal and not a packet with fewer keys in it.
+    """
+    project_a, _credential_a = await a_claimed_device(db_session, email="a@example.com")
+    project_b, _credential_b = await a_claimed_device(db_session, email="b@example.com")
+    session = await _a_p02_telling_with_the_swapped_cause(db_session, project_a)
+    desk_a, _facilitator_a = await _at_the_desk(db_session, room_app, project_a)
+    desk_b, _facilitator_b = await _at_the_desk(db_session, room_app, project_b)
+
+    forced = await client.post(_desk_release(session.id), headers=desk_a, json={"force": True})
+    owner = await client.get(_desk_release_at(session.id, 1), headers=desk_a)
+    stranger = await client.get(_desk_release_at(session.id, 1), headers=desk_b)
+
+    assert forced.status_code == 200, forced.text
+    assert owner.status_code == 200, owner.text
+    assert stranger.status_code == 404, stranger.text
+    assert "schema_version" not in stranger.json()
+
+
+async def test_the_version_read_is_this_teams_and_never_the_other_teams(
+    client, db_session, room_app
+):
+    """Two teams on one passage each have a version 1, and neither is the other's.
+
+    The scoping of the session is what refuses a stranger; this is the other half, on a
+    facilitator who is asking about their own session. A **Version** is per pericope per
+    project, so the number alone names two rows here — and a read that went by the number
+    would either hand a team the other team's packet or fail over having found both.
+    """
+    project_a, credential_a = await a_claimed_device(db_session, email="a@example.com")
+    project_b, credential_b = await a_claimed_device(db_session, email="b@example.com")
+    ours = await ready_session(db_session, project_id=project_a.id)
+    theirs = await ready_session(db_session, project_id=project_b.id)
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project_a)
+
+    our_first = await client.post(_team_release(ours.id), headers=_team(credential_a))
+    their_first = await client.post(_team_release(theirs.id), headers=_team(credential_b))
+    read = await client.get(_desk_release_at(ours.id, 1), headers=desk)
+
+    assert our_first.status_code == 200, our_first.text
+    assert their_first.status_code == 200, their_first.text
+    assert their_first.json()["version"] == 1, "as duas equipes têm uma versão 1 desta passagem"
+    assert read.status_code == 200, read.text
+    assert read.json()["release_id"] == our_first.json()["release_id"]
+    assert read.json()["session_id"] == ours.id
+
+
+async def test_the_stored_packet_is_served_as_approved_not_rebuilt(client, db_session, room_app):
+    """Version 1 goes on reading as version 1 after the team changed the passage.
+
+    A rebuilt packet would answer both numbers with today's content, which is exactly the
+    thing the numbered row exists to prevent: Marcia's comments hang off a draft, and a draft
+    that silently becomes the next one carries them onto a passage nobody reviewed.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id)
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    first = await client.post(_team_release(session.id), headers=_team(credential))
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    second = await client.post(_team_release(session.id), headers=_team(credential))
+
+    one = await client.get(_desk_release_at(session.id, 1), headers=desk)
+    two = await client.get(_desk_release_at(session.id, 2), headers=desk)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert second.json()["version"] == 2
+    assert one.status_code == 200, one.text
+    assert two.status_code == 200, two.text
+    rows = await _releases_of(db_session, session.id)
+    assert [row.version for row in rows] == [1, 2]
+    assert one.json()["package_sha256"] == rows[0].package_sha256
+    assert two.json()["package_sha256"] == rows[1].package_sha256
+    assert one.json()["package_sha256"] != two.json()["package_sha256"]
+    assert one.json()["version"] == 1
+    assert two.json()["version"] == 2
+
+
+async def test_the_teams_approval_after_a_force_returns_the_forced_release(
+    client, db_session, room_app
+):
+    """ADR 0014 reaches the team route too: an unchanged packet returns the release that exists.
+
+    The team asked, was refused, and a person answered the raised hand by forcing the draft.
+    Asking again with nothing changed since is the same question the Desk already answered —
+    and the tablet used to get the old refusal back, with a numbered draft of that very
+    passage sitting in the table.
+
+    The row is returned and not rewritten: the force keeps its clock and the team's device is
+    not stamped over an act that was not the team's.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    refused = await client.post(_team_release(session.id), headers=_team(credential))
+    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    again = await client.post(_team_release(session.id), headers=_team(credential))
+
+    assert refused.status_code == 409, refused.text
+    assert "telling_back_not_checked" in refused.json()["detail"]
+    assert forced.status_code == 200, forced.text
+    assert again.status_code == 200, again.text
+    assert again.json()["release_id"] == forced.json()["release_id"]
+    assert again.json()["version"] == 1
+    (row,) = await _releases_of(db_session, session.id)
+    await db_session.refresh(row)
+    assert row.forced_at is not None
+    assert row.device_id is None
+
+
+async def test_a_changed_and_still_blocked_session_is_refused_after_a_force(
+    client, db_session, room_app
+):
+    """Compare-first never becomes a team force: what is compared is the packet, not the gate.
+
+    One more stretch told back moves the content while `checked` stays false, so the hash no
+    longer matches the forced row and the blocker is judged with nothing waived. The force
+    afterwards is the measurement of the premise: it mints version 2, which it could only do
+    because the content really did change.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    refused = await client.post(_team_release(session.id), headers=_team(credential))
+
+    assert forced.status_code == 200, forced.text
+    assert refused.status_code == 409, refused.text
+    assert "telling_back_not_checked" in refused.json()["detail"]
+    assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
+
+    forced_again = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+
+    assert forced_again.status_code == 200, forced_again.text
+    assert forced_again.json()["version"] == 2, (
+        "a premissa do caso: o conteúdo mudou, e por isso a recusa acima não foi uma comparação"
+    )
+
+
+async def test_a_changed_and_clean_session_after_a_force_mints_the_next_version(
+    client, db_session, room_app
+):
+    """The other side of compare-first: changed and clean is a new draft, and the team's own.
+
+    The Desk forced past a rehearsal the team had not heard through; the team then played it
+    through and asked. Nothing stands in the way now and the content is not what was forced,
+    so this is version 2 — stamped with the tablet that approved it and with no force on it.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await _a_p02_telling_with_the_swapped_cause(db_session, project)
+    state = back_translation_of(session)
+    state.checked = True
+    state.findings = []
+    await report_playback(
+        db_session,
+        session,
+        state,
+        played_by_take=[
+            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
+        ],
+        played_ranges=[[0, 20000]],
+        clip_duration_ms=CLIP_MS,
+    )
+    desk, _facilitator = await _at_the_desk(db_session, room_app, project)
+
+    forced = await client.post(_desk_release(session.id), headers=desk, json={"force": True})
+    await reported_playback(db_session, session, back_translation_of(session))
+    approved = await client.post(_team_release(session.id), headers=_team(credential))
+
+    assert forced.status_code == 200, forced.text
+    assert forced.json()["version"] == 1
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["version"] == 2
+    rows = await _releases_of(db_session, session.id)
+    assert [row.version for row in rows] == [1, 2]
+    assert rows[1].forced_at is None
+    assert rows[1].device_id == TABLET
+
+
+async def test_a_panorama_is_refused_before_any_release_is_compared(client, db_session):
+    """The one blocker raised before the list is out of reach of the comparison too.
+
+    A panorama is not a draft of a passage at all, so there is no packet to compare and no
+    number to hand back. The force has its own case beside this one; this is the team's.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, pericope="OV", project_id=project.id)
+
+    refused = await client.post(_team_release(session.id), headers=_team(credential))
+
+    assert refused.status_code == 409, refused.text
+    assert "panorama_sessions_never_release" in refused.json()["detail"]
+    assert await _releases_of(db_session, session.id) == []
 
 
 def _body_fields(route) -> set[str]:
