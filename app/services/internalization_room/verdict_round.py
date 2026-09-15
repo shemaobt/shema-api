@@ -15,6 +15,7 @@ first, so a voice that fails leaves no verdict behind claiming to have been spok
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -87,8 +88,9 @@ async def check_the_telling_back(
     the wheel for good, so a passage blessed because the analyst was unreachable would be
     finished by an outage.
 
-    `state` is mutated in place — the findings, the addresses already read and `checked` — and
-    writing it is the caller's, in the same transaction as whatever else it decides.
+    `state` is mutated in place — the findings, the addresses already read, `checked` and the
+    moment it was decided — and writing it is the caller's, in the same transaction as whatever
+    else it decides.
     """
     read_this_round: list[Finding] = []
     correction = correction_to_verify(state, told, retired)
@@ -149,6 +151,7 @@ async def check_the_telling_back(
     current = current_findings(state)
     finding = the_finding_that_leads(state)
     state.checked = finding is None
+    state.checked_at = datetime.now(UTC)
 
     outcome = await run_verdict_turn(
         findings_text=findings_block(current),

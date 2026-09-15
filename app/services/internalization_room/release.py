@@ -42,6 +42,7 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.internalization_room.back_translation import (
+    BackTranslationState,
     findings_remaining,
     rehearsed_parts,
     unheard_parts,
@@ -85,6 +86,10 @@ SCHEMA_VERSION = "tripod.internalization-release.v0.5"
 #: two a person can disagree about after looking at them. Every other blocker is missing
 #: material: there is nothing in a rehearsal nobody recorded for anybody to overrule.
 FORCEABLE_BLOCKERS = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
+
+#: Where the facilitator and the consultant read everything the check learned about a session.
+#: The route is a later slice's; the packet says where it will be so the two land together.
+RETRO_ROUTE = "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao"
 
 
 class InternalizationReleaseBlocked(ConflictError):
@@ -140,6 +145,77 @@ def _take_view(take: IRTake) -> dict[str, Any]:
         "content_type": take.content_type,
         "verified": take.verified_at is not None,
         "recorded_at": take.created_at.isoformat() if take.created_at else None,
+    }
+
+
+def _check_status(conferida: bool, forced: bool) -> str:
+    """The one place the three words are chosen, for the composer and for the approval alike.
+
+    ``conferida`` outranks the force. The status says whether the check happened and the flag
+    beside it says whether a person overruled the gate, so a session checked clean over a part
+    nobody heard reads ``conferida`` with ``forced`` true: calling it ``forcada`` would report
+    a check that did run as one that did not.
+
+    ``sem_conferencia`` is the rest — never analysed, or analysed and still carrying something
+    open — and it is one word rather than two because Marcia's format has three.
+    """
+    if conferida:
+        return "conferida"
+    return "forcada" if forced else "sem_conferencia"
+
+
+def _check_block(
+    telling_back: BackTranslationState,
+    told: list[IRSegment],
+    session_id: str,
+    *,
+    heard_complete: bool,
+    version: int | None,
+    forced: bool,
+) -> dict[str, Any]:
+    """What the check of this session amounts to, in her names and with none of the analyst's.
+
+    ``version`` and ``forced`` are facts of the release row, which is written after the packet
+    is built, so they are the caller's to hand in: null and false on the live read, the row's
+    own on the approval (ADR 0020).
+
+    ``heardComplete`` is handed in rather than asked again: the composer asks the listening
+    once and both the refusal and this read the one answer, so they cannot disagree about it.
+
+    A finding's ``frase`` is its stretch's position in ``told`` — the enumeration this packet
+    freezes into ``segments`` and the analyst was numbered off — and never ``chunk``, the
+    number the analyst gave: a missing element placed after frase N resolves to the stretch
+    after it (ADR 0007), so the two differ by one exactly where it matters. A finding pointing
+    at a stretch this reading does not carry, which is what a division or a retelling leaves
+    behind, keeps its ``idx`` and has no number to give: the key is absent rather than null,
+    and ``clipKey`` is null, because both are read off the list beside it. The stretch itself
+    is in ``divided_segments`` or ``superseded_segments`` with its recording named, so nothing
+    is lost by not repeating it here.
+
+    The note never enters. What is open is a kind and an address; why it is open is the
+    consultant's material and travels in the retroverification file.
+    """
+    frase_of = {stretch.id: frase for frase, stretch in enumerate(told, start=1)}
+    take_of = {stretch.id: stretch.take_id for stretch in told}
+    findings: list[dict[str, Any]] = []
+    for finding in telling_back.findings:
+        entry: dict[str, Any] = {
+            "kind": finding.kind.value,
+            "idx": finding.segment_id,
+            "clipKey": take_of.get(finding.segment_id) if finding.segment_id else None,
+        }
+        if finding.segment_id in frase_of:
+            entry["frase"] = frase_of[finding.segment_id]
+        findings.append(entry)
+    return {
+        "version": version,
+        "status": _check_status(telling_back.checked, forced),
+        "conferida": telling_back.checked,
+        "forced": forced,
+        "heardComplete": heard_complete,
+        "lastCheckAt": telling_back.checked_at.isoformat() if telling_back.checked_at else None,
+        "findings": findings,
+        "retroUrl": RETRO_ROUTE.format(session_id=session_id),
     }
 
 
@@ -249,12 +325,14 @@ async def _compose_internalization_release(
     restated, so what counts as words stays one sentence in one place: the analyst is numbered
     off that same list, and the two must not drift.
 
-    ``package_sha256`` is taken before ``created_at``, ``release_id`` and ``version`` are
-    written into the returned dict, so the hash covers none of the three. ``created_at``
-    records when this read happened and not what the session holds; the other two say which
-    approval this content became. All three would move without the content moving, and two
-    reads of an unchanged session must carry one hash. A consumer verifying the fingerprint
-    drops those three keys and hashes the rest.
+    ``package_sha256`` is taken before ``created_at``, ``release_id``, ``version`` and
+    ``check`` are written into the returned dict, so the hash covers none of the four.
+    ``created_at`` records when this read happened and not what the session holds; the two
+    after it say which approval this content became; ``check`` is a view of that approval's
+    row, which is written later still and so is derived here with no version and no force
+    (ADR 0020). All four would move without the content moving, and two reads of an unchanged
+    session must carry one hash. A consumer verifying the fingerprint drops those four keys
+    and hashes the rest.
     """
     blockers: list[str] = []
     if is_panorama(session.pericope):
@@ -294,7 +372,8 @@ async def _compose_internalization_release(
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = rehearsed_parts(stretches)
-    if rehearsed and unheard_parts(telling_back, rehearsed):
+    unheard = unheard_parts(telling_back, rehearsed)
+    if rehearsed and unheard:
         blockers.append("playback_did_not_cover_the_clip")
 
     by_id = {checkpoint.id: checkpoint for checkpoint in checkpoints}
@@ -380,6 +459,9 @@ async def _compose_internalization_release(
     artifact["release_id"] = approved.id if approved else None
     artifact["version"] = approved.version if approved else None
     artifact["created_at"] = datetime.now(UTC).isoformat()
+    artifact["check"] = _check_block(
+        telling_back, told, session.id, heard_complete=not unheard, version=None, forced=False
+    )
     return artifact, blockers
 
 
@@ -537,6 +619,13 @@ async def approve_release(
     retried: the tablet asks again and the second ask returns the release the first one
     wrote, because by then the winner is what ``_latest_release`` reads.
 
+    The check block is stamped here and nowhere else, from the row this call is writing: the
+    composer could not know the version or the force, because neither exists until the number
+    is allocated. Only those two and the status they derive are rewritten — the rest of the
+    block is about the telling-back, which the compare-first read has already established is
+    the same telling-back. The early return above writes nothing, so a packet a facilitator
+    forced comes back saying so however many times the team asks again (ADR 0020).
+
     The house loop for this shape retries the allocation instead — ``tier_a_service`` and
     ``speaker_service`` walk the next number, ``working_time`` re-reads and answers with the
     winner. Rejected here on purpose: those allocate a number nobody is waiting on, while a
@@ -558,8 +647,12 @@ async def approve_release(
 
     release_id = str(uuid.uuid4())
     version = latest.version + 1 if latest is not None else 1
+    forced = forced_by is not None
     packet["release_id"] = release_id
     packet["version"] = version
+    packet["check"]["version"] = version
+    packet["check"]["forced"] = forced
+    packet["check"]["status"] = _check_status(packet["check"]["conferida"], forced)
     release = IRRelease(
         id=release_id,
         session_id=session.id,

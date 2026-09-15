@@ -39,6 +39,7 @@ from tests.release_harness import (
     ready_session,
     reported_playback,
     retro_take,
+    told_back_with_an_open_finding,
 )
 
 
@@ -91,6 +92,7 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     sealed.pop("created_at")
     sealed.pop("release_id")
     sealed.pop("version")
+    sealed.pop("check")
     assert len(stamp) == 64
     from app.services.internalization_room.release import _package_sha256
 
@@ -306,33 +308,6 @@ async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
     ], "sem ordinal, o pacote lista pela passada e depois pela chegada"
 
 
-async def _told_back_with_an_open_finding(
-    db: AsyncSession, session: IRSession
-) -> BackTranslationState:
-    """A telling-back the team finished and chose not to resolve.
-
-    `analysed_segment_ids` names the stretch because the analyst did read it — that is what
-    makes the finding open rather than the verdict unasked.
-
-    `checked` is written as `finding is None`, so an open finding makes it false — which is
-    the whole state this slice is about.
-    """
-    told = await one_stretch(db, session)
-    return BackTranslationState(
-        scope=P,
-        findings=[
-            Finding(
-                kind=FindingKind.ADDITION,
-                note="a equipe disse que Noemi voltou alegre",
-                segment_id=told.id,
-                chunk=1,
-            )
-        ],
-        checked=False,
-        analysed_segment_ids=[told.id],
-    )
-
-
 @pytest.mark.asyncio
 async def test_a_session_carrying_an_open_finding_is_refused(
     db_session: AsyncSession,
@@ -351,7 +326,7 @@ async def test_a_session_carrying_an_open_finding_is_refused(
     """
     session = await ready_session(db_session)
     await reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
@@ -371,7 +346,7 @@ async def test_a_never_analysed_telling_back_is_named_before_the_open_finding(
     that was never raised, and would find the room had never been asked.
     """
     session = await ready_session(db_session)
-    state = await _told_back_with_an_open_finding(db_session, session)
+    state = await told_back_with_an_open_finding(db_session, session)
     state.analysed_segment_ids = None
     await reported_playback(db_session, session, state)
 
@@ -419,7 +394,7 @@ async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
     """
     session = await ready_session(db_session, project_id="time-que-discordou")
     await reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
     release = await approve_release(db_session, session, forced_by="a-facilitadora")
@@ -437,7 +412,7 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     """One item leaves the list; its neighbours are not loosened with it."""
     session = await ready_session(db_session)
     await reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
     await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
@@ -522,7 +497,7 @@ async def _a_row_written_before_the_taxonomy_shrank(db: AsyncSession, session: I
     is bound to the rehearsal exactly as it is in the field, and only the kinds are then set
     to the names the older server wrote.
     """
-    state = await _told_back_with_an_open_finding(db, session)
+    state = await told_back_with_an_open_finding(db, session)
     state.superseded = [
         SupersededAttempt(findings=[Finding(kind=FindingKind.ADDITION, note="trocaram quem pediu")])
     ]
@@ -609,7 +584,7 @@ async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
 ) -> None:
     session = await ready_session(db_session)
     await reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
     artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
@@ -628,7 +603,7 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
     reads that headline to decide how much of the draft still needs a person.
     """
     session = await ready_session(db_session)
-    state = await _told_back_with_an_open_finding(db_session, session)
+    state = await told_back_with_an_open_finding(db_session, session)
     state.findings = [
         *state.findings,
         Finding(
@@ -674,7 +649,7 @@ async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
 ) -> None:
     session = await ready_session(db_session, carry_one=True)
     await reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
     artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
