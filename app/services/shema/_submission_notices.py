@@ -43,6 +43,8 @@ product's client-facing wording is one of GATE-03's own open ends
 
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
@@ -59,6 +61,8 @@ from app.services.shema._scope import (
     reaches,
     scope_from_roles,
 )
+
+logger = logging.getLogger(__name__)
 
 #: Who is told that a Pulse arrived — FE-44 §5.8's ``field`` audience, verbatim.
 ARRIVAL_ROLES = (COORDINATOR_ROLE, OBT_LAB_ROLE)
@@ -115,7 +119,17 @@ async def notify_submission(
     language = submission.language_name or project.language_name or project.id
 
     told = 0
-    for user in await _recipients(db, app_key, ARRIVAL_ROLES, project):
+    arrival_recipients = await _recipients(db, app_key, ARRIVAL_ROLES, project)
+    if not arrival_recipients:
+        logger.warning(
+            "shema submission arrived and reached nobody",
+            extra={
+                "shema_operation": "notify_submission",
+                "shema_project_id": project.id,
+                "shema_region": project.region_key.value,
+            },
+        )
+    for user in arrival_recipients:
         await create_notification(
             db,
             user_id=user.id,
@@ -131,7 +145,17 @@ async def notify_submission(
         told += 1
 
     if carries_prayer and reaches_prayer_wall(project):
-        for user in await _recipients(db, app_key, PRAYER_ROLES, project):
+        prayer_recipients = await _recipients(db, app_key, PRAYER_ROLES, project)
+        if not prayer_recipients:
+            logger.warning(
+                "shema submission carried a prayer request and reached nobody",
+                extra={
+                    "shema_operation": "notify_submission",
+                    "shema_project_id": project.id,
+                    "shema_region": project.region_key.value,
+                },
+            )
+        for user in prayer_recipients:
             await create_notification(
                 db,
                 user_id=user.id,
