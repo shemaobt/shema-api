@@ -16,6 +16,7 @@ from anthropic.types import (
 )
 
 from app.core.config import Settings, get_settings
+from app.core.exceptions import UpstreamServiceError
 from app.services.internalization_room.usage import cost_of, record
 
 logger = logging.getLogger(__name__)
@@ -165,9 +166,9 @@ async def call_agent(
                 system=_system_blocks(system_prompt),
                 messages=messages,
             )
-        except anthropic.NotFoundError:
+        except anthropic.NotFoundError as refusal:
             if model == rungs[-1]:
-                raise
+                raise _unavailable(model, refusal) from refusal
             logger.warning(
                 "This key cannot use %s; the room steps down to %s",
                 model,
@@ -175,6 +176,8 @@ async def call_agent(
                 extra={"rung": model, "next_rung": rungs[rungs.index(model) + 1]},
             )
             continue
+        except anthropic.APIError as failure:
+            raise _unavailable(model, failure) from failure
         _SETTLED[rungs[0]] = model
         _report_spend(
             response,
@@ -188,6 +191,26 @@ async def call_agent(
         _report_unfinished(response, max_output_tokens)
         return _spoken_text(response)
     raise AssertionError("unreachable: the last rung either answers or raises")
+
+
+def _unavailable(model: str, failure: anthropic.APIError) -> UpstreamServiceError:
+    """The usage line for a call that was refused, and the error the turn rises with.
+
+    The same logger as `_report_spend`, so a session's calls read as one ledger: which rung
+    each one asked, and for the one that failed, the status and the provider's own reason.
+    A credit or quota failure is diagnosed from here, not from the team's report of a room
+    that kept saying the same sentence. No token counts, because none were spent — which is
+    also what keeps this line out of the text seam's per-call tally.
+    """
+    status = getattr(failure, "status_code", None)
+    logger.warning(
+        "[llm-usage] failed on %s: status=%s %s",
+        model,
+        status,
+        failure,
+        extra={"rung": model, "status": status, "cause": type(failure).__name__},
+    )
+    return UpstreamServiceError(f"o modelo não respondeu em {model}: {failure}")
 
 
 def _from_the_settled_rung(rungs: list[str]) -> list[str]:
