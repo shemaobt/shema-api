@@ -29,7 +29,10 @@ async def get_shema_app_id(db: AsyncSession) -> str:
     the pair honest is ``tests/test_shema/test_needs.py::
     test_the_app_key_the_notifier_uses_is_the_module_s_own``, which asserts this constant
     against ``_deps.APP_KEY`` so the two cannot drift apart in silence — the check the
-    sibling's ``test_notifications.py`` already makes for its own.
+    sibling's ``test_notifications.py`` already makes for its own. BE-12 asserts the same
+    pair from its own side in
+    ``tests/test_shema/test_forms.py::test_the_app_key_here_is_the_modules_own``, because a
+    submission that notifies nobody is the failure OBT-401 spends a paragraph on.
     """
     stmt = select(App.id).where(App.app_key == SHEMA_APP_KEY)
     result = await db.execute(stmt)
