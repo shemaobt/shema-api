@@ -8,6 +8,7 @@ silent freeze is this file.
 
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -20,21 +21,63 @@ from app.services.internalization_room._default_prompts import (
 from app.services.internalization_room.fail_safe import FailSafe, choose, localized
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 
-BUNDLE = Path(__file__).resolve().parents[2] / "internalization-room/assets/audio"
+
+def test_the_render_script_needs_to_be_told_where_the_bundle_is(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The bundle lives in the app's checkout, and the script has no way of knowing where.
+
+    It used to guess it as a sibling of this repository. From a worktree the guess lands on a
+    folder that does not exist, and `--check` then reports every clip as never rendered — the
+    loudest possible answer, saying nothing about the bundle and hiding real drift inside it.
+
+    The refusal is read for the argument it names, not only for argparse's exit code: that
+    code answers any bad invocation, and would go on answering if some other flag were the
+    one made required.
+    """
+    monkeypatch.setattr(sys, "argv", ["render_fixed_voice_lines.py", "--check"])
+
+    with pytest.raises(SystemExit) as refused:
+        render.main()
+
+    assert refused.value.code == 2
+    assert "--out" in capsys.readouterr().err
 
 
-@pytest.mark.skip(
-    reason="paused by decision: re-rendering after a prompt edit is a person's job for now. "
-    "Re-enable with `uv run python scripts/render_fixed_voice_lines.py --check`, which still "
-    "works and still exits non-zero on drift."
-)
-@pytest.mark.parametrize("spoken", ROOM_LANGUAGES)
-def test_every_line_the_room_can_speak_is_rendered_and_current(spoken: str) -> None:
-    complaints = render.drift(BUNDLE, spoken)
-    assert complaints == [], (
-        "as falas fixas saíram de sincronia com o prompt — rode "
-        "`uv run python scripts/render_fixed_voice_lines.py`"
-    )
+def test_the_drift_check_names_the_process_clips_the_bundle_never_had(tmp_path: Path) -> None:
+    """A bundle rendered before the process families exist is missing exactly those clips.
+
+    The app plays a process line by name out of the bundle, so a name the render never reached
+    is a step the room cannot voice at all. Nothing that *is* rendered and current may be
+    complained about in the same breath, or the list stops being readable.
+
+    The four P names are written out rather than read off `PROCESS_STEPS`, which is the table
+    that answers `catalogue`: derived from it, the case would agree with a table that had lost
+    the family altogether. X is left out of the manifest and out of both assertions — it rides
+    into the catalogue by the same door and is a case of its own, not a second subject here.
+    """
+    lines = render.catalogue("pt")
+    already = {
+        name: render.fingerprint(text)
+        for name, text in lines.items()
+        if not name.startswith(("P", "X"))
+    }
+    bundle = tmp_path / "pt"
+    bundle.mkdir()
+    (bundle / render.MANIFEST).write_text(json.dumps(already), encoding="utf-8")
+    for name in already:
+        clip = render._clip_path(tmp_path, "pt", name)
+        clip.parent.mkdir(parents=True, exist_ok=True)
+        clip.write_bytes(b"")
+
+    complaints = render.drift(tmp_path, "pt")
+
+    assert [complaint for complaint in complaints if complaint.startswith("pt/P")] == [
+        f"pt/P{step}: never rendered" for step in range(4)
+    ]
+    assert not [
+        complaint for complaint in complaints if not complaint.startswith(("pt/P", "pt/X"))
+    ], f"uma fala que está no pacote e em dia foi acusada junto: {complaints}"
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)

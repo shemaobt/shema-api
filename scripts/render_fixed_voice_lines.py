@@ -4,14 +4,15 @@ A fail-safe is the sentence the team hears when the model failed or the network 
 ElevenLabs for it at that moment is the worst possible time to need a network call, so these
 lines are synthesized once, here, and travel inside the app.
 
-    uv run python scripts/render_fixed_voice_lines.py                    # what is missing
-    uv run python scripts/render_fixed_voice_lines.py --check            # did the text drift
-    uv run python scripts/render_fixed_voice_lines.py --language pt      # one language only
+    uv run python scripts/render_fixed_voice_lines.py --out <app checkout>/assets/audio
+    uv run python scripts/render_fixed_voice_lines.py --out ... --check        # did it drift
+    uv run python scripts/render_fixed_voice_lines.py --out ... --language pt  # one language
 
 `--check` is the guard against silent freezing: edit a line in the authored prompt and the
-manifest no longer matches, so the suite refuses until someone renders it again. It covers
-every language the room claims, because a line edited in one of them is as frozen as a line
-edited in any other.
+manifest no longer matches, so it reports the drift and exits non-zero until someone renders
+it again. It covers every language the room claims, because a line edited in one of them is
+as frozen as a line edited in any other. Re-rendering after a prompt edit is a person's job:
+nothing in the suite does it, and nothing in the suite reads the bundle.
 
 One bundle per language, each rendered in that language's own voice. A team never hears two
 languages in one session, so a language whose lines are unwritten is not filled in from
@@ -40,7 +41,6 @@ from app.services.internalization_room.synthesize_facilitator_speech import (
     synthesize_facilitator_speech,
 )
 
-DEFAULT_OUT = Path(__file__).resolve().parents[2] / "internalization-room/assets/audio"
 MANIFEST = "manifest.json"
 
 #: Lines the app plays outside a turn: they are not fail-safes and do not live in the prompt,
@@ -218,7 +218,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="report drift, render nothing")
     parser.add_argument("--force", action="store_true", help="re-render every line")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="the audio folder of the app checkout the bundle ships in",
+    )
     parser.add_argument(
         "--language",
         default=",".join(ROOM_LANGUAGES),
