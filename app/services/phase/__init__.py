@@ -1,8 +1,8 @@
 from app.services.phase.add_dependency import add_dependency
-from app.services.phase.attach_phase_to_project import attach_phase_to_project
+from app.services.phase.attach_all_phases_to_project import attach_all_phases_to_project
+from app.services.phase.attach_phase_to_all_projects import attach_phase_to_all_projects
 from app.services.phase.create_phase import create_phase
 from app.services.phase.delete_phase import delete_phase
-from app.services.phase.detach_phase_from_project import detach_phase_from_project
 from app.services.phase.get_phase_by_id import get_phase_by_id
 from app.services.phase.get_phase_or_404 import get_phase_or_404
 from app.services.phase.list_all_phases_with_deps import list_all_phases_with_deps
@@ -17,10 +17,10 @@ from app.services.phase.update_project_phase_status import update_project_phase_
 
 __all__ = [
     "add_dependency",
-    "attach_phase_to_project",
+    "attach_all_phases_to_project",
+    "attach_phase_to_all_projects",
     "create_phase",
     "delete_phase",
-    "detach_phase_from_project",
     "get_phase_by_id",
     "get_phase_or_404",
     "list_all_phases_with_deps",

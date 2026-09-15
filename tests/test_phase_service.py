@@ -1,8 +1,9 @@
 import pytest
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.db.models.phase import PhaseStatus
 from app.models.phase import PhaseCreate, PhaseUpdate
-from app.services import phase_service
+from app.services import phase_service, project_service
 from tests.baker import (
     make_language,
     make_phase,
@@ -22,6 +23,41 @@ async def test_create_phase_without_project(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_phase_attaches_it_to_every_existing_project(db_session) -> None:
+    lang = await make_language(db_session, code="tst")
+    p1 = await make_project(db_session, language_id=lang.id, name="Proj1")
+    p2 = await make_project(db_session, language_id=lang.id, name="Proj2")
+
+    phase = await phase_service.create_phase(db_session, PhaseCreate(name="Global"))
+
+    project_ids = await phase_service.list_projects_for_phase(db_session, phase.id)
+    assert set(project_ids) == {p1.id, p2.id}
+
+
+@pytest.mark.asyncio
+async def test_create_project_attaches_every_existing_phase(db_session) -> None:
+    lang = await make_language(db_session, code="tst")
+    a = await make_phase(db_session, name="A")
+    b = await make_phase(db_session, name="B")
+
+    project = await project_service.create_project(db_session, name="New", language_id=lang.id)
+
+    phases = await phase_service.list_phases(db_session, project_id=project.id)
+    assert {p.id for p in phases} == {a.id, b.id}
+
+
+@pytest.mark.asyncio
+async def test_new_project_phases_start_not_started(db_session) -> None:
+    lang = await make_language(db_session, code="tst")
+    await make_phase(db_session, name="A")
+
+    project = await project_service.create_project(db_session, name="New", language_id=lang.id)
+
+    links = await phase_service.list_project_phases_with_details(db_session, project.id)
+    assert [link.status for link in links] == [PhaseStatus.NOT_STARTED]
+
+
+@pytest.mark.asyncio
 async def test_list_phases_empty(db_session) -> None:
     phases = await phase_service.list_phases(db_session)
     assert phases == []
@@ -38,7 +74,7 @@ async def test_list_phases_all(db_session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_phases_by_project_id_after_attach(db_session) -> None:
+async def test_list_phases_by_project_id(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id, name="P1")
     phase = await make_phase(db_session, name="Phase One")
@@ -47,49 +83,6 @@ async def test_list_phases_by_project_id_after_attach(db_session) -> None:
     assert len(phases) == 1
     assert phases[0].id == phase.id
     assert phases[0].name == "Phase One"
-
-
-@pytest.mark.asyncio
-async def test_attach_phase_to_project(db_session) -> None:
-    lang = await make_language(db_session, code="tst")
-    project = await make_project(db_session, language_id=lang.id)
-    phase = await make_phase(db_session, name="Shared Phase")
-    link = await phase_service.attach_phase_to_project(db_session, project.id, phase.id)
-    assert link.project_id == project.id
-    assert link.phase_id == phase.id
-
-
-@pytest.mark.asyncio
-async def test_attach_same_phase_to_multiple_projects(db_session) -> None:
-    lang = await make_language(db_session, code="tst")
-    p1 = await make_project(db_session, language_id=lang.id, name="Proj1")
-    p2 = await make_project(db_session, language_id=lang.id, name="Proj2")
-    phase = await make_phase(db_session, name="Shared")
-    await phase_service.attach_phase_to_project(db_session, p1.id, phase.id)
-    await phase_service.attach_phase_to_project(db_session, p2.id, phase.id)
-    project_ids = await phase_service.list_projects_for_phase(db_session, phase.id)
-    assert set(project_ids) == {p1.id, p2.id}
-
-
-@pytest.mark.asyncio
-async def test_attach_phase_already_attached_raises(db_session) -> None:
-    lang = await make_language(db_session, code="tst")
-    project = await make_project(db_session, language_id=lang.id)
-    phase = await make_phase(db_session, name="Phase")
-    await phase_service.attach_phase_to_project(db_session, project.id, phase.id)
-    with pytest.raises(ConflictError, match="already attached"):
-        await phase_service.attach_phase_to_project(db_session, project.id, phase.id)
-
-
-@pytest.mark.asyncio
-async def test_detach_phase_from_project(db_session) -> None:
-    lang = await make_language(db_session, code="tst")
-    project = await make_project(db_session, language_id=lang.id)
-    phase = await make_phase(db_session, name="Phase")
-    await make_project_phase(db_session, project.id, phase.id)
-    await phase_service.detach_phase_from_project(db_session, project.id, phase.id)
-    project_ids = await phase_service.list_projects_for_phase(db_session, phase.id)
-    assert project_ids == []
 
 
 @pytest.mark.asyncio
@@ -122,6 +115,31 @@ async def test_delete_phase_cascades_links_and_dependencies(db_session) -> None:
     assert phases[0].id == other.id
     project_ids = await phase_service.list_projects_for_phase(db_session, other.id)
     assert project_ids == []
+
+
+@pytest.mark.asyncio
+async def test_update_project_phase_status(db_session) -> None:
+    lang = await make_language(db_session, code="tst")
+    project = await make_project(db_session, language_id=lang.id)
+    phase = await make_phase(db_session, name="Phase")
+    await make_project_phase(db_session, project.id, phase.id)
+
+    link = await phase_service.update_project_phase_status(
+        db_session, project.id, phase.id, PhaseStatus.IN_PROGRESS
+    )
+    assert link.status == PhaseStatus.IN_PROGRESS
+
+
+@pytest.mark.asyncio
+async def test_update_project_phase_status_raises_when_pair_missing(db_session) -> None:
+    lang = await make_language(db_session, code="tst")
+    project = await make_project(db_session, language_id=lang.id)
+    phase = await make_phase(db_session, name="Phase")
+
+    with pytest.raises(NotFoundError, match="not attached"):
+        await phase_service.update_project_phase_status(
+            db_session, project.id, phase.id, PhaseStatus.COMPLETED
+        )
 
 
 @pytest.mark.asyncio
@@ -170,22 +188,3 @@ async def test_remove_dependency(db_session) -> None:
     await phase_service.remove_dependency(db_session, a.id, b.id)
     deps = await phase_service.list_dependencies(db_session, a.id)
     assert deps == []
-
-
-@pytest.mark.asyncio
-async def test_attach_phase_to_project_raises_when_project_not_found(db_session) -> None:
-    phase = await make_phase(db_session, name="Phase")
-    with pytest.raises(NotFoundError, match=r"Project .* not found"):
-        await phase_service.attach_phase_to_project(
-            db_session, "00000000-0000-0000-0000-000000000000", phase.id
-        )
-
-
-@pytest.mark.asyncio
-async def test_attach_phase_to_project_raises_when_phase_not_found(db_session) -> None:
-    lang = await make_language(db_session, code="tst")
-    project = await make_project(db_session, language_id=lang.id)
-    with pytest.raises(NotFoundError, match=r"Phase .* not found"):
-        await phase_service.attach_phase_to_project(
-            db_session, project.id, "00000000-0000-0000-0000-000000000000"
-        )

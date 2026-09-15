@@ -2,14 +2,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
-from app.db.models.phase import ProjectPhase
+from app.db.models.phase import PhaseStatus, ProjectPhase
 
 
 async def update_project_phase_status(
     db: AsyncSession,
     project_id: str,
     phase_id: str,
-    status: str,
+    status: PhaseStatus,
 ) -> ProjectPhase:
     stmt = select(ProjectPhase).where(
         ProjectPhase.project_id == project_id,
