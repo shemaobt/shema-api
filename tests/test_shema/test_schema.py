@@ -40,7 +40,7 @@ from app.db.types import UtcDateTime
 #: Every revision this module owns, oldest first. **A glob and not one filename**: BE-02
 #: built sixteen tables in ``20260911_shema01`` and twelve issues author migrations in waves
 #: beside each other, so a test pinned to the first revision goes green while the second one's
-#: table is in no migration at all. BE-13 widened it on adding ``shema02``.
+#: table is in no migration at all. BE-13 widened it on adding ``shema07``.
 _REVISIONS = sorted(
     (Path(__file__).resolve().parents[2] / "alembic" / "versions").glob("*_shema[0-9][0-9]_*.py")
 )

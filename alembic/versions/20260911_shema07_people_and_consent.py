@@ -1,6 +1,6 @@
 """shema people: the seat's account link, consent per context, and a person's sensitive flag
 
-Revision ID: 20260911_shema02
+Revision ID: 20260911_shema07
 Revises: 20260911_shema01
 Create Date: 2026-09-11
 
@@ -10,6 +10,15 @@ asks for rather than a value carried over from the design. BE-04 runs beside thi
 the same base and the wave declared it first; if it lands with a migration of its own, this
 one re-points at its revision, and the pull request body says so where the person merging
 can see it.
+
+**Renumbered from `20260911_shema02` to `20260911_shema07` in this pull request.** The id
+this issue coined already belonged to `20260911_shema02_record_lifecycle.py` from BE-06,
+written against the same `shema01` — two different files sharing one `revision`, which
+Alembic answers with a UserWarning and two heads rather than an error (`docs/database.md`).
+`down_revision` stays `20260911_shema01`: it is where this migration was actually written,
+and keeping it is what leaves the two lines sibling lines instead of one re-pointed chain. A
+merge revision that joins them lands when this branch meets `dev` — it is not this PR's to
+write.
 
 Three changes, one issue:
 
@@ -45,7 +54,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "20260911_shema02"
+revision = "20260911_shema07"
 down_revision = "20260911_shema01"
 branch_labels = None
 depends_on = None
