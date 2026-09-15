@@ -13,6 +13,40 @@ class EntryProvenance(StrEnum):
     HUMAN = "human"
 
 
+class ParticipantType(StrEnum):
+    NAMED = "named"
+    UNNAMED = "unnamed"
+    GROUP = "group"
+    DIVINE = "divine"
+    ROLE = "role"
+
+
+class ParticipantEntityType(StrEnum):
+    PERSON = "person"
+    PERSON_COMMON = "person_common"
+    AMBIGUOUS = "ambiguous"
+
+
+class PlaceType(StrEnum):
+    CITY = "city"
+    COUNTRY = "country"
+    REGION = "region"
+    DISTRICT = "district"
+    EMPIRE = "empire"
+    VILLAGE = "village"
+    MOUNTAIN = "mountain"
+    VALLEY = "valley"
+    RIVER = "river"
+    WELL = "well"
+    FIELD = "field"
+    ROAD = "road"
+    GATE = "gate"
+    TOWER = "tower"
+    WALL = "wall"
+    STRUCTURE = "structure"
+    OTHER = "other"
+
+
 class VerseRef(BaseModel):
     chapter: int
     verse: int
@@ -33,8 +67,8 @@ class BCDParticipantEntry(BaseModel):
 
     name: str
     english_gloss: str = ""
-    entity_type: str = "person"
-    type: str = "named"
+    entity_type: ParticipantEntityType = ParticipantEntityType.PERSON
+    type: ParticipantType = ParticipantType.NAMED
     entry_verse: VerseRef
     exit_verse: VerseRef | None = None
     appears_in: list[VerseRef] = Field(default_factory=list)
@@ -66,7 +100,7 @@ class BCDPlace(BaseModel):
     english_gloss: str = ""
     entity_type: str = "place"
     first_appears: VerseRef
-    type: str = ""
+    type: PlaceType = PlaceType.OTHER
     meaning_and_function: str = ""
     appears_in: list[VerseRef] = Field(default_factory=list)
     appearance_count: int = 0
