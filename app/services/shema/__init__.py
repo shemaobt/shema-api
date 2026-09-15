@@ -68,6 +68,7 @@ anything is written anywhere; and ``import_submission.py`` writes the record thr
 ``save_project`` with a ``ProgressSource``, which is BE-06's seam used rather than worked
 around — an imported progress change and a typed one are one path, which is what makes them
 indistinguishable afterwards.
+
 **BE-07 landed the health assessment**, and it is four files for the reasons above rather than
 for a new one. ``append_assessment.py`` is the **only** writer of
 ``shema_health_assessments`` and the only thing that moves the record's seven flat health
@@ -77,6 +78,18 @@ narrower question than who may open the record, and it answers it once for the r
 for the recipient list so the two cannot drift; ``_health_notice.py`` owns what a notice about a
 struggling team may say, which is the part of that feature that actually needed deciding; and
 ``list_assessments.py`` is the history behind the narrower gate.
+
+**BE-15 landed the panel, the preferences and the read state** — the three things
+``docs/shema.md`` §5.10 gives it, and none of them is a second delivery path. The panel is
+``list_notification_panel.py``, which lists what BE-07, BE-08 and BE-12 already staged through
+``create_notification`` for one recipient and adds the one kind with no discrete event —
+staleness — computed fresh off ``browse_projects``'s own stale preset, already scoped and
+already redacted. ``get_notification_prefs.py`` and ``save_notification_prefs.py`` are one
+table's read and write, split for the reason every other pair in this module is; a channel
+recorded there sends nothing, because no e-mail, push or WhatsApp sender exists anywhere in
+``app/services/notifications/`` (§4.6). ``mark_notifications_read.py`` is the one write a mixed
+batch of delivered and derived ids needs, and the only thing that ever writes
+``shema_notification_reads``.
 
 ``docs/shema.md`` §6 is why each is one file, and §3.3 is where every other concern
 lands under the layering rules.
@@ -141,6 +154,7 @@ from app.services.shema._needs import (
     NEEDS_FIELD_KEY,
     URGENT_NEED_EVENT,
     URGENT_NEED_ROLES,
+    Notice,
     apply_needs,
     moves,
     notify_urgent,
@@ -176,6 +190,7 @@ from app.services.shema.append_assessment import append_assessment
 from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
+from app.services.shema.get_notification_prefs import get_notification_prefs
 from app.services.shema.get_project import get_project
 from app.services.shema.get_region_team import get_region_team
 from app.services.shema.get_session import get_session
@@ -183,6 +198,7 @@ from app.services.shema.import_submission import apply_submission, import_submis
 from app.services.shema.list_assessments import list_assessments
 from app.services.shema.list_intake_links import list_intake_links
 from app.services.shema.list_intercessors import list_intercessors
+from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
 from app.services.shema.list_projects import list_projects
 from app.services.shema.list_regions import list_regions
 from app.services.shema.list_role_changes import list_role_changes
@@ -191,6 +207,7 @@ from app.services.shema.list_unacknowledged_needs import (
     list_unacknowledged_needs,
     unacknowledged_needs,
 )
+from app.services.shema.mark_notifications_read import mark_notifications_read
 from app.services.shema.media_download_url import (
     MediaLink,
     material_download_url,
@@ -203,6 +220,7 @@ from app.services.shema.receive_submission import receive_submission
 from app.services.shema.remove_intercessor import remove_intercessor
 from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
 from app.services.shema.revoke_intake_link import revoke_intake_link
+from app.services.shema.save_notification_prefs import save_notification_prefs
 from app.services.shema.save_project import RecordVersionConflict, create_project, save_project
 from app.services.shema.save_region_team import save_region_team
 from app.services.shema.set_intercessor_consent import (
@@ -220,6 +238,7 @@ __all__ = [
     "MAX_LINK_DAYS",
     "MAX_PAYLOAD_BYTES",
     "NEEDS_FIELD_KEY",
+    "PANEL_CAP",
     "UNACKNOWLEDGED_AFTER_DAYS",
     "URGENT_NEED_EVENT",
     "URGENT_NEED_ROLES",
@@ -227,6 +246,7 @@ __all__ = [
     "ChangesSince",
     "LeavingPerson",
     "MediaLink",
+    "Notice",
     "ProgressSource",
     "RecordVersionConflict",
     "RegionScope",
@@ -253,6 +273,7 @@ __all__ = [
     "expires_on",
     "field_changes",
     "form_fields",
+    "get_notification_prefs",
     "get_project",
     "get_region_team",
     "get_session",
@@ -266,12 +287,14 @@ __all__ = [
     "list_assessments",
     "list_intake_links",
     "list_intercessors",
+    "list_notification_panel",
     "list_projects",
     "list_regions",
     "list_role_changes",
     "list_submissions",
     "list_unacknowledged_needs",
     "log_reference",
+    "mark_notifications_read",
     "material_download_url",
     "media_download_url",
     "mint_token",
@@ -302,6 +325,7 @@ __all__ = [
     "reveal_intercessor_contact",
     "revoke_intake_link",
     "roll_up",
+    "save_notification_prefs",
     "save_project",
     "save_region_team",
     "searchable_text",
