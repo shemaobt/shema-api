@@ -13,10 +13,20 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
+from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
+from app.core.enums import ProjectRole
+from app.db.models.internalization_room import (
+    IRRelease,
+    IRSession,
+    IRTake,
+    IRTakeKind,
+)
+from app.db.models.project import Project
 from app.models.internalization_room import PlayedTake
+from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
@@ -36,8 +46,49 @@ from app.services.internalization_room.sessions import (
     report_playback,
     save_comprehension,
 )
+from tests.baker import make_language, make_project, make_project_user_access, make_user
 
 P = "P03"
+
+PREFIX = "/api/internalization-room"
+KEY = "sala-de-teste"
+
+#: The tablet the team approves from. Self-issued and unauthenticated like every other
+#: room write: it says which device did this and never which team, which the credential
+#: beside it is what answers.
+TABLET = "tablet-da-sala"
+
+
+def team_headers(credential: str) -> dict[str, str]:
+    """What a tablet calls the room's own routes with."""
+    return {
+        "X-Room-Key": KEY,
+        DEVICE_CREDENTIAL_HEADER: credential,
+        "X-Room-Device": TABLET,
+    }
+
+
+async def a_claimed_device(
+    db: AsyncSession, *, email: str = "fac@example.com"
+) -> tuple[Project, str]:
+    """A device linked to a project, and the credential it calls the room with."""
+    user = await make_user(db, email=email)
+    language = await make_language(db, name=f"Lang {email}", code=email[:3])
+    project = await make_project(db, language.id, name=f"Team {email}")
+    await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
+    minted = await create_device(db)
+    claimed = await claim_device_as_facilitator(
+        db, user=user, code=minted.claim_code, project_id=project.id
+    )
+    return project, claimed.credential
+
+
+async def releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
+    """Every release this session wrote, in the order it numbered them."""
+    rows = await db.execute(
+        select(IRRelease).where(IRRelease.session_id == session_id).order_by(IRRelease.version)
+    )
+    return list(rows.scalars().all())
 
 
 def supported_comprehension(pericope: str, *, carry_one: bool = False) -> ComprehensionState:
@@ -179,6 +230,32 @@ async def reported_playback(
     )
 
 
+async def rehearsed_session(
+    db: AsyncSession,
+    *,
+    project_id: str | None = None,
+    language: str | None = None,
+    **comprehension_kwargs,
+) -> tuple[IRSession, IRTake]:
+    """A session that has done everything a release needs except tell the passage back.
+
+    Comprehension supported, coverage satisfied, the passage rehearsed. The take comes back
+    beside the session because the stage after this one is told *about* a recording, and a
+    case that has to name the part it played cannot find it by guessing.
+
+    ``language`` is which language the room speaks to this team. It is named here only by the
+    cases that were opened naming it: a session that names none takes the floor, and changing
+    that under a case would change what the room answers rather than what it is asked.
+    """
+    session = await create_session(db, pericope=P, project_id=project_id, language=language)
+    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
+    await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
+    take = ensaio_take(session.id)
+    db.add(take)
+    await db.commit()
+    return session, take
+
+
 async def ready_session(
     db: AsyncSession,
     *,
@@ -187,6 +264,9 @@ async def ready_session(
     **comprehension_kwargs,
 ):
     """A session carrying everything the packet refuses to travel without.
+
+    The rehearsed stage above, and then what it is missing: the passage told back and the
+    team's report of having played it through.
 
     ``project_id`` is the team whose conversation this is. It stays optional because most of
     these cases are about the packet and not about whose it is; the release is numbered per
@@ -197,10 +277,6 @@ async def ready_session(
     several stretches passes its own and inherits the rest of the scaffold rather than
     rebuilding it, which is the only part of this that ever differs.
     """
-    session = await create_session(db, pericope=P, project_id=project_id)
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
-    db.add(ensaio_take(session.id))
-    await db.commit()
+    session, _take = await rehearsed_session(db, project_id=project_id, **comprehension_kwargs)
     await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session

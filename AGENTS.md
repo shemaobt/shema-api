@@ -40,6 +40,8 @@ Every schema change is an Alembic migration, and nothing is applied by hand. Rou
 
 All repository documentation — this file, `CONTEXT.md`, the ADRs, `README.md` and `docs/` — is written in English. Code identifiers and model prompts are not touched.
 
+What one test module lends another lives in a `tests/*_harness.py`, which exports plain builders and constants. Fixtures never travel: each module keeps its own three-line fixture calling the builder. A package's own `conftest` is the only import between test modules there is, and `tests/test_the_harness_is_the_only_door_between_test_modules.py` holds that line.
+
 ## Staging
 
 A push to `dev` deploys the `tripod-backend-staging` Cloud Run service. It has no domain of

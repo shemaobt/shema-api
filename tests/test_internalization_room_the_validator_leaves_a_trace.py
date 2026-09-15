@@ -21,21 +21,25 @@ import pytest
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.run_turn import MAX_REDRAFTS, run_turn
-from tests.test_internalization_room_turn import (
+from tests.turn_harness import (
     GUIDE,
     VALIDATOR,
     FakeAgent,
     P,
-    _settings,
-    patch_agent,
+    settings,
+    the_agent_answers,
 )
 
-#: Re-exported so pytest resolves it as a fixture here too — `patch_agent` is a fixture
-#: function, not a side-effect import, so silencing the unused-import warning alone (this
-#: codebase's usual idiom for an unused import) still leaves every test parameter of the
-#: same name looking like a redefinition of it to ruff. `__all__` marks the name genuinely
-#: used.
-__all__ = ["patch_agent"]
+
+@pytest.fixture
+def patch_agent(monkeypatch: pytest.MonkeyPatch):
+    """The fake in place of the model, for the cases in this module."""
+
+    def _install(agent: FakeAgent) -> FakeAgent:
+        return the_agent_answers(monkeypatch, agent)
+
+    return _install
+
 
 LOGGER_NAME = "app.services.internalization_room.run_turn"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
@@ -68,7 +72,7 @@ async def _a_turn(session_id: str, **overrides: Any):
         "guide_prompt": GUIDE,
         "validator_prompt": VALIDATOR,
         "pericope_num": P,
-        "settings": _settings(),
+        "settings": settings(),
     }
     kwargs.update(overrides)
     return await run_turn(**kwargs)

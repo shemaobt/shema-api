@@ -26,7 +26,7 @@ from tests.baker import (
     make_project,
     make_user,
 )
-from tests.test_oc_recording_description_rule import SHARED_VECTOR
+from tests.oral_collector_harness import SHARED_VECTOR
 
 pytest.importorskip("app.inngest")
 

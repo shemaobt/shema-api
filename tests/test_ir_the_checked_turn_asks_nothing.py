@@ -1,5 +1,6 @@
 import pytest
 
+from app.db.models.internalization_room import IRSegment
 from app.services.internalization_room.back_translation import (
     CLOSING_CHECKED,
     CLOSING_PLAIN,
@@ -10,20 +11,35 @@ from app.services.internalization_room.back_translation import (
     segments_block,
 )
 from app.services.internalization_room.run_turn import run_verdict_turn
-from tests.test_internalization_room_back_translation import (
+from tests.turn_harness import (
     SPEAKER,
     VALIDATOR,
     P,
-    _settings,
-    _told,
-    patch_loop,
-    patch_speaker,
+    ValidatorReadsOnlyItsOwnPrompt,
+    settings,
+    the_loop_answers,
+    the_speaker_answers,
+    told_stretches,
 )
 
-#: Silences an unused-import lint warning: pytest discovers these fixtures by name because
-#: they are imported into this module's namespace, not because anything here calls them
-#: directly.
-_FIXTURES = (patch_loop, patch_speaker)
+
+@pytest.fixture
+def patch_loop(monkeypatch: pytest.MonkeyPatch):
+    """Both ends of the draft-and-gate loop, for the cases in this module."""
+
+    def _install(draft: str, told: list[IRSegment]) -> ValidatorReadsOnlyItsOwnPrompt:
+        return the_loop_answers(monkeypatch, draft, told)
+
+    return _install
+
+
+@pytest.fixture
+def patch_speaker(monkeypatch: pytest.MonkeyPatch):
+    def _install(draft: str):
+        return the_speaker_answers(monkeypatch, draft)
+
+    return _install
+
 
 #: The phrase every kind but this one still closes with. Its absence is half of what "asks
 #: nothing" means here.
@@ -53,14 +69,14 @@ async def _checked_turn_for(draft: str, patch_speaker) -> str:
         messages=[],
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
     return str(agent.seen[0])
 
 
 async def _checked_turn_with_loop(draft: str, patch_loop):
     """Same turn, through the draft-and-gate loop so the Validator's own brief is visible."""
-    told = _told()
+    told = told_stretches()
     agent = patch_loop(draft, told)
     outcome = await run_verdict_turn(
         session_language="Portuguese",
@@ -73,7 +89,7 @@ async def _checked_turn_with_loop(draft: str, patch_loop):
         telling_back=segments_block(told),
         speaker_prompt=SPEAKER,
         validator_prompt=VALIDATOR,
-        settings=_settings(),
+        settings=settings(),
     )
     return outcome, agent
 
