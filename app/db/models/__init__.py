@@ -74,6 +74,31 @@ from app.db.models.resource_request import (
     RRSnapshot,
     RRStage,
 )
+from app.db.models.shema import ShemaProject
+from app.db.models.shema_enums import (
+    ShemaEtenCreditSource,
+    ShemaHealthLevel,
+    ShemaMaterialKind,
+    ShemaMediaKind,
+    ShemaNeedStatus,
+    ShemaNeedUrgency,
+    ShemaPrayerVisibility,
+    ShemaProjectStatus,
+    ShemaRegionKey,
+    ShemaRoleKey,
+    ShemaYesNo,
+)
+from app.db.models.shema_eten import ShemaEtenCredit
+from app.db.models.shema_form import ShemaIntakeLink, ShemaSubmission
+from app.db.models.shema_health import ShemaHealthAssessment
+from app.db.models.shema_intercessor import ShemaIntercessor
+from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
+from app.db.models.shema_meeting import ShemaMeetingLogEntry
+from app.db.models.shema_need import ShemaNeed
+from app.db.models.shema_notification import ShemaNotificationPrefs, ShemaNotificationRead
+from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
+from app.db.models.shema_progress import ShemaProgressEntry
+from app.db.models.shema_region import ShemaUserRegion
 from app.db.models.sound_necklace import (
     GranularityLevel,
     SessionStatus,
@@ -163,6 +188,33 @@ __all__ = [
     "RolePermission",
     "SessionStatus",
     "SessionStep",
+    "ShemaEtenCredit",
+    "ShemaEtenCreditSource",
+    "ShemaHealthAssessment",
+    "ShemaHealthLevel",
+    "ShemaIntakeLink",
+    "ShemaIntercessor",
+    "ShemaMaterial",
+    "ShemaMaterialKind",
+    "ShemaMediaItem",
+    "ShemaMediaKind",
+    "ShemaMeetingLogEntry",
+    "ShemaNeed",
+    "ShemaNeedStatus",
+    "ShemaNeedUrgency",
+    "ShemaNotificationPrefs",
+    "ShemaNotificationRead",
+    "ShemaPrayerVisibility",
+    "ShemaProgressEntry",
+    "ShemaProject",
+    "ShemaProjectStatus",
+    "ShemaRegionKey",
+    "ShemaRegionTeam",
+    "ShemaRoleChange",
+    "ShemaRoleKey",
+    "ShemaSubmission",
+    "ShemaUserRegion",
+    "ShemaYesNo",
     "SnSession",
     "SnSessionState",
     "THAgentPrompt",
