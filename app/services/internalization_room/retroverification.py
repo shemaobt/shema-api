@@ -47,6 +47,7 @@ from app.services.internalization_room.hard_stretches import hard_stretches_of
 from app.services.internalization_room.release import releases_of_passage
 from app.services.internalization_room.segments import (
     current_segments,
+    divided_segments,
     final_segments,
     retired_segments,
     told_back,
@@ -103,7 +104,10 @@ def _release_view(release: IRRelease) -> RetroverificationRelease:
         device_id=release.device_id,
         forced_by=release.forced_by,
         forced_at=_moment(release.forced_at),
-        forced_open_findings=release.forced_open_findings or [],
+        forced_open_findings=[
+            RetroverificationFinding.model_validate(finding)
+            for finding in release.forced_open_findings or []
+        ],
         package_sha256=release.package_sha256,
     )
 
@@ -236,6 +240,12 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     a live reading is numbered by the enumeration the analyst was given, and a stretch with
     nothing said on it was not in that.
 
+    A stretch the team divided is standing and is not a leaf, so it is in neither of those:
+    `divided` is its list, in the room's own row order and in the shape of a stretch entry with
+    no number. Without it, what the team said about the whole stretch left the document — and
+    took every telling before it along, because the row that replaced those is not a leaf and
+    so gave them no history to sit in.
+
     `superseded_attempts` keeps the listening each attempt reported and its findings with their
     notes; `abandoned` keeps the rows of a chain nothing took over. Neither is inside a
     stretch's history, because neither is history *of* anything standing now.
@@ -243,6 +253,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     telling_back = back_translation_of(session)
     stretches = await final_segments(db, session.id)
     counting = await current_segments(db, session.id)
+    cut_in_two = await divided_segments(db, session.id)
     retired = await retired_segments(db, session.id)
     takes = await takes_of(db, session.id)
     releases = (
@@ -261,22 +272,26 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     replaced_by = {row.id: row.superseded_by_id for row in retired}
     replaces = {row.superseded_by_id: row for row in retired if row.superseded_by_id}
 
-    numbered = []
-    for stretch in stretches:
-        numbered.append(
-            RetroverificationStretch(
-                segment_id=stretch.id,
-                frase=frozen.get(stretch.id) if frozen is not None else live.get(stretch.id),
-                take_id=stretch.take_id,
-                starts_ms=stretch.starts_ms,
-                ends_ms=stretch.ends_ms,
-                pass_number=stretch.pass_number,
-                tellings=stretch.tellings,
-                transcript=stretch.transcript,
-                parent_segment_id=stretch.parent_id,
-                history=_history_of(stretch, replaces),
-            )
+    def _stretch_view(stretch: IRSegment, frase: int | None) -> RetroverificationStretch:
+        return RetroverificationStretch(
+            segment_id=stretch.id,
+            frase=frase,
+            take_id=stretch.take_id,
+            starts_ms=stretch.starts_ms,
+            ends_ms=stretch.ends_ms,
+            pass_number=stretch.pass_number,
+            tellings=stretch.tellings,
+            transcript=stretch.transcript,
+            parent_segment_id=stretch.parent_id,
+            history=_history_of(stretch, replaces),
         )
+
+    numbered = [
+        _stretch_view(
+            stretch, frozen.get(stretch.id) if frozen is not None else live.get(stretch.id)
+        )
+        for stretch in stretches
+    ]
 
     return RetroverificationFile(
         session_id=session.id,
@@ -295,6 +310,7 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
         checked=telling_back.checked,
         checked_at=_moment(telling_back.checked_at),
         stretches=numbered,
+        divided=[_stretch_view(stretch, None) for stretch in cut_in_two],
         abandoned=[
             _telling_view(row)
             for row in retired

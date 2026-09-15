@@ -20,6 +20,7 @@ write paths. Nothing reaches into the assembly.
 
 from __future__ import annotations
 
+import json
 from hashlib import sha256
 
 import httpx
@@ -447,6 +448,46 @@ async def test_an_abandoned_telling_back_is_listed_apart(
     assert retired.superseded_by_id is None
     assert [one["transcript"] for one in file["stretches"]] == [SECOND_TELLING]
     assert file["stretches"][0]["history"] == []
+
+
+async def test_a_stretch_the_team_divided_keeps_what_was_said_before_the_cut(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    """A divided stretch is standing and is not a unit, so it needs a list of its own.
+
+    What the team said about the whole stretch, before they heard two ideas in it, is theirs
+    and it is the consultant's material. Listed nowhere, it took the telling before it down as
+    well: the earlier row was in no `history`, because the row that replaced it is not a leaf,
+    and in no `abandoned`, because that row is standing. Both tellings left the document.
+
+    It is the debt `divided_segments` already carries in the **Packet**, for the same reason
+    and in the same words (`segments.py`): hearing a stretch again and finding two ideas in it
+    is the team working, not the team erring.
+    """
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    first = (await final_segments(db_session, session.id))[0]
+    before_the_cut = await _a_retro_take(db_session, session, "antes-do-corte")
+    await _tell_again(db_session, session, first, before_the_cut, SECOND_TELLING)
+    whole = (await final_segments(db_session, session.id))[0]
+    halves = await divide_segment(db_session, session, whole, at_ms=30000)
+    for index, half in enumerate(halves, start=1):
+        retro = await _a_retro_take(db_session, session, f"metade-{index}")
+        await _tell_again(db_session, session, half, retro, f"a metade {index}")
+
+    file = await _the_file(client, session.id, desk)
+
+    assert [one["transcript"] for one in file["stretches"]] == ["a metade 1", "a metade 2"]
+    (cut,) = file["divided"]
+    assert cut["segment_id"] == whole.id
+    assert cut["transcript"] == SECOND_TELLING
+    assert cut["parent_segment_id"] is None
+    assert "frase" not in cut
+    assert [one["segment_id"] for one in cut["history"]] == [first.id]
+    assert cut["history"][0]["transcript"] == FIRST_TELLING
+    assert file["abandoned"] == []
+    assert FIRST_TELLING in json.dumps(file)
 
 
 async def test_a_chain_that_ends_on_a_stretch_the_team_divided_was_not_abandoned(

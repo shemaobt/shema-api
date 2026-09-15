@@ -884,29 +884,6 @@ class QuestionAudioResponse(BaseModel):
     expires_at: str
 
 
-class RetroverificationRelease(BaseModel):
-    """One approved draft of the passage, as the consultant's file lists it.
-
-    Every release of the passage and not only this session's: that is what a **Version** is
-    per, so a number another conversation about this passage minted names a draft of the same
-    passage. `session_id` is which conversation wrote it, which is the fact a list scoped to
-    one session could not carry.
-
-    `forced_open_findings` is the row's own dump, the analyst's words included. The **Packet**
-    beside it says what was open as a kind and an address; this is where the why lives.
-    """
-
-    version: int
-    session_id: str
-    #: ISO-8601 with an offset, like every other instant this module serves.
-    approved_at: str
-    device_id: str | None = None
-    forced_by: str | None = None
-    forced_at: str | None = None
-    forced_open_findings: list[dict[str, Any]] = Field(default_factory=list)
-    package_sha256: str
-
-
 class RetroverificationFinding(BaseModel):
     """What the analyst raised, with the words they wrote it in.
 
@@ -921,6 +898,32 @@ class RetroverificationFinding(BaseModel):
     chunk: int | None = None
     fills_silence: bool = False
     raised_by_check: bool = False
+
+
+class RetroverificationRelease(BaseModel):
+    """One approved draft of the passage, as the consultant's file lists it.
+
+    Every release of the passage and not only this session's: that is what a **Version** is
+    per, so a number another conversation about this passage minted names a draft of the same
+    passage. `session_id` is which conversation wrote it, which is the fact a list scoped to
+    one session could not carry.
+
+    `forced_open_findings` is the row's own dump, the analyst's words included. The **Packet**
+    beside it says what was open as a kind and an address; this is where the why lives. It is
+    typed rather than served as bare rows: what the approval wrote there is a **Finding**
+    dumped, which is the model beside this one, so a consultant's client reads a field instead
+    of a string key.
+    """
+
+    version: int
+    session_id: str
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    approved_at: str
+    device_id: str | None = None
+    forced_by: str | None = None
+    forced_at: str | None = None
+    forced_open_findings: list[RetroverificationFinding] = Field(default_factory=list)
+    package_sha256: str
 
 
 class RetroverificationAttempt(BaseModel):
@@ -1053,6 +1056,12 @@ class RetroverificationFile(BaseModel):
     checked: bool
     checked_at: str | None = None
     stretches: list[RetroverificationStretch] = Field(default_factory=list)
+    #: The stretches the team divided: standing, and no longer a unit. They fall between the
+    #: two lists beside them — not final, because they were divided, and not retired, because
+    #: nothing replaced them — so what the team said about the whole stretch before they heard
+    #: two ideas in it, and every telling before that, had nowhere to go. They carry no `frase`:
+    #: a divided stretch was in no reading the analyst was numbered off.
+    divided: list[RetroverificationStretch] = Field(default_factory=list)
     abandoned: list[RetroverificationTelling] = Field(default_factory=list)
     findings: list[RetroverificationFinding] = Field(default_factory=list)
     superseded_attempts: list[RetroverificationAttempt] = Field(default_factory=list)
