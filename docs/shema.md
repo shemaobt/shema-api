@@ -1261,6 +1261,55 @@ presentation, and which the server neither sees nor should decide. If the client
 the base may travel, the change is one line in `BASE_FIELDS` rather than a sweep of consumers,
 which is the property that made deciding now cheap enough to do.
 
+### 9.5 The fifth gate, which has no issue either: **which countries are sensitive** — open, and BE-16 is running fail-closed against it
+
+> Added by BE-16 ([OBT-405](https://linear.app/shema-obt/issue/OBT-405)). The gate was always
+> there — OBT-405's own text says *get the list from the client, in writing* — and it had no
+> section of its own, which is how a pending client answer becomes a value somebody assumes.
+
+**The list has not arrived.** Until it does, the 127 imported records carry
+`sensitive_country = true` — **all of them** — because the rule OBT-405's DoD states is
+*an unrecognised country is sensitive until confirmed*, and a list nobody has written
+recognises nothing.
+
+What the gate costs, and what it does not:
+
+| | |
+|---|---|
+| **Costs nothing in schema** | The column is BE-02's and it is a boolean. The answer changes 127 rows, not one line of DDL. |
+| **Costs nothing in code** | `scripts/import_shema_projects.py` takes the list as `--countries <path>`, a JSON file **outside this repository**. The day it arrives is a re-run, not a change. |
+| **Costs the product its map, meanwhile** | Every record is withheld, so §6.4's redaction applies to all of them: the Atlas plots 127 region centroids, cards show a region in place of a country, and the withheld count is the whole collection. That is the intended reading of a pending gate and not a bug to work around — **do not clear flags to make a screen look right.** |
+
+**The file the client's answer becomes**, so the shape is decided before the answer is:
+
+```json
+{"confirmed_on": "…", "confirmed_by": "…",
+ "countries": {"Brazil": "not-sensitive", "Egypt": "sensitive"}}
+```
+
+Keys are the **export's own spellings** (§6.1's map is keyed the same way), and the verdicts
+are spelled out rather than `true`/`false` so a truncated file fails loudly instead of reading
+as a country cleared for publication. **A country the file does not name is unrecognised, and
+unrecognised is sensitive** — so the answer has to be complete, and the import's report lists
+every country the export names for exactly that reason.
+
+**Two one-way rules the gate does not get to override**, both of them BE-16's and both argued
+in that script's docstring. The export may **raise** the flag and may never lower it —
+**one of the two records the export marks** `Confidential` **is in Mexico**, where seven other
+records are `Unrestricted`, so a list keyed by country cannot express what that record already
+states — and which record it is belongs in the import's report, which lives outside the
+repository, not in a design document. And
+clearing a flag needs `--allow-lowering` on top of `--apply`: raising protects and lowering
+exposes, so only one of the two directions is allowed to happen by momentum.
+
+**And a third rule, which is about people rather than about the gate.** The reconcile
+re-derives `region_key` only while `location` still holds what was imported, and it lowers a
+flag only while `sensitivity` — the free text beside the flag, writable on
+`ShemaProjectUpdate` — still holds what was imported. Same question in both places: *has a
+person been in the column this value is read from?* What the question cannot reach is
+`sensitive_country` itself, because a boolean keeps no provenance and a coordinator's `true`
+is the import's `true`; that is §10's question 12, and it belongs to the write path.
+
 ---
 
 ## 10. Open questions, each with the issue that owns it
@@ -1269,17 +1318,18 @@ Deliberately not answered here: each has an owner with evidence this issue does 
 
 | # | Question | Owner |
 |---|---|---|
-| 1 | ~~Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each.~~ **Answered by BE-02, in opposite directions, because the pairs are not the same shape.** `team` and `ywamBase` are **one column**: they are one concept in two languages, identical on all 127 records, and collapsing removes the drift instead of policing it. `sensitivity` and `sensitive_country` **stay two**, with the boolean authoritative: the text is a free-text export column that agrees with the flag by accident of the data, so collapsing would delete evidence. | ~~BE-02~~ **closed** |
+| 1 | ~~Whether `team`/`ywamBase` and `sensitivity`/`sensitive_country` stay as two columns each.~~ **Answered by BE-02, in opposite directions, because the pairs are not the same shape.** `team` and `ywamBase` are **one column**: they are one concept in two languages, identical on all 127 records, and collapsing removes the drift instead of policing it. `sensitivity` and `sensitive_country` **stay two**, with the boolean authoritative: the text is a free-text export column that agrees with the flag by accident of the data, so collapsing would delete evidence. **BE-16 departs from one half-sentence of that answer:** BE-02 expected the import to *derive the flag from the text*, and it does not — §9.5's client list is where the flag comes from, and the export's text and boolean may only **raise** it. The columns and their ownership are unchanged; what changed is that the export is never read as permission. | ~~BE-02~~ **closed**, amended by BE-16 |
 | 2 | ~~Whether `region_key` is stored as a maintained derived column or computed per query.~~ **Answered by BE-02: stored, maintained, indexed — and deliberately not a generated column,** because the derivation is a lookup over 25 country strings kept in Python and expressing it in DDL would be a second copy of a map whose whole value is that there is one. | ~~BE-02~~ **closed** |
 | 3 | ~~The Shemá `app_url` for `seed_apps_roles.py`, and the matching `cors_origins` entry.~~ **Answered by BE-03: `https://shema.shemaywam.com`, and the same value added to `cors_origins`.** There was no deployment to read — the console is wave 1, with no deploy workflow, no environment file beyond `VITE_API_PROXY_TARGET`, and no host named in either repository — so this follows the eight rows already in `SEED_APPS`, every one of them the product's name lowercased with no separators. Leaving it empty was the alternative and is worse: `request_password_reset` then builds the reset link from `http://localhost:5173` in production, which is the silent failure §2.3 warns about, while a conventional hostname that turns out wrong fails on the first click and is a one-row UPDATE to correct. | ~~BE-03~~ **closed** |
 | 4 | ~~Whether `GET /api/shema/session` falls back to `users.display_name` for `globalStrategist`, which has no org-chart seat (§6.3).~~ **Answered by BE-03: yes**, and generalised to one rule — the seat is read when the role has one, the scope names exactly one region and the seat is filled; everything else falls back. §6.3 carries the argument. | ~~BE-03~~ **closed** |
 | 5 | Whether the intercessor network belongs to BE-09 or BE-13 — FE-44 §9.6 and the issue titles disagree (§1.3 C3). | **BE-09 / BE-13** — §11 puts it on both; they settle it before either writes the table |
 | 6 | Whether a `NeedItem` gets a server-side id. It has none today; a derived notification identifies one by `(project, category, submittedAt)`. A real id would be better and would change the shape, which is why it is named rather than done quietly. | **BE-08** (FE-44 §12.5) |
-| 7 | Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1). **All three answers are now free of a migration**: BE-02 gave `shema_projects` an `approved_units_unverified` column, which is the only one of the three that needed schema. | **BE-16**, with BE-11 needing the answer |
+| 7 | ~~Whether `approvedUnits` is migrated as-is, as zero, or flagged unverified (§9.1).~~ **Answered by BE-16: as-is, with `approved_units_unverified` set on every migrated record.** Zero would have discarded the only number there is, and as-is alone would have credited approvals nobody made; the flag says the number came from the export rather than from an approval, which is true of all 127 and needs no second rule for the 105 where it is zero anyway. **BE-11 reads it to tell a migrated count from a typed one**, and the write path that lets somebody approve a chapter for real is the one that clears it. | ~~BE-16~~ **closed** |
 | 8 | The three privacy questions the intercessor network cannot ship without: what consent was given and how it is evidenced; how someone outside the platform asks to be removed when they cannot log in; what happens to a contact nobody has used in a year. **Shipping the storage before answering them is how silent retention starts.** | **BE-09**, or whoever item 5's boundary gives the network to — and they are not engineering questions |
 | 9 | Whether drafts move to the server. `localStorage` today, which means a coordinator who fills half a record and opens another browser has lost it. A real cost; no issue owns it. | unowned (FE-44 §12.7) |
 | 10 | Whether `permissions`/`role_permissions` should ever be wired into the guards — a repository-wide question the sibling also declined (§4.10). | unowned, repository-wide |
 | 11 | Fixing `env.py` so `alembic revision --autogenerate` stops seeing zero tables — repository-wide, touching eight applications' migration workflow ([`docs/resource_requests.md`](resource_requests.md) §8.1). | unowned, repository-wide |
+| 12 | Whether `sensitive_country` records **who** raised it. Today it does not, and the import cannot tell a flag a coordinator ticked from the `true` it wrote itself fail-closed — so a hand-raised flag is cleared by the next `--apply --allow-lowering`. BE-16 gates the lowering on the one column that can answer (`sensitivity`, compared against `source`) and names every lowering in its report, which narrows the hole without closing it. Closing it is a write-path decision — an audit column, a `sensitive_country_source`, or a rule that the import never lowers what it did not insert — and it is not a migration script's to take, least of all on a model and a migration ten sibling branches already build on. | **BE-03** (§4.2's write path), with **BE-02** if it costs a column |
 
 ---
 
