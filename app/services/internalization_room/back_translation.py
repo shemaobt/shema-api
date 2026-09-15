@@ -6,6 +6,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -187,6 +188,16 @@ class BackTranslationState(BaseModel):
     scope: str = ""
     findings: list[Finding] = Field(default_factory=list)
     checked: bool = False
+    #: When the check last ran, stamped where `checked` is stamped: at the verdict, clean or
+    #: not. It is not when it came out clean — a team that came out with a finding also has an
+    #: answer to when the analyst last read them, and that is the question the packet's
+    #: `lastCheckAt` asks.
+    #:
+    #: `None` for a telling-back no verdict has reached, and for every row written before this
+    #: field existed: the state is a JSON column revalidated on every request, so an older row
+    #: loads with it absent and nothing was migrated (the precedent `chunk` set). The restart
+    #: builds a fresh state, which resets this with everything else.
+    checked_at: datetime | None = None
     superseded: list[SupersededAttempt] = Field(default_factory=list)
     #: What the team listened to, one entry per rehearsal part, each in that part's own
     #: milliseconds. This is the report, and the only one the gate reads: a part carries its own
