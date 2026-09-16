@@ -164,11 +164,11 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
 
-    The scenario carries calibration, evidence and practice, and none of them is what
-    holds it up today: with every bead engaged, the practice reading is met on the beads
-    alone, which is what the strict xfail above this says out loud. They are kept because
-    ENG-803 is about to make them load-bearing again. What is asserted here is unchanged
-    either way — that the close is *stamped*, not what it takes to reach one.
+    The scenario carries calibration, evidence and practice, and `_fully_supported_comprehension`
+    is what holds it up: its `practiced_scene_ids` reports every scene, which is the one
+    thing the readiness gate reads since ENG-780 killed the engaged-scene substitution. What
+    is asserted here is unchanged either way — that the close is *stamped*, not what it
+    takes to reach one.
     """
     session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
@@ -203,12 +203,14 @@ async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
     would grow the conversation's length after the team had finished.
     """
     session = await create_session(db_session, pericope=P)
+    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     session = await apply_coverage(db_session, session.id, whole)
     closed_at = session.ended_at
 
     session = await apply_coverage(db_session, session.id, whole)
 
+    assert closed_at is not None
     assert session.ended_at == closed_at
 
 
