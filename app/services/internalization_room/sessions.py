@@ -10,11 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.auth import User
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTake, IRTakeKind
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     SupersededAttempt,
+    findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_map
@@ -42,7 +43,12 @@ from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
-from app.services.internalization_room.segments import final_segments, retire_every_segment
+from app.services.internalization_room.segments import (
+    final_segments,
+    retire_every_segment,
+    retire_the_segments_of,
+)
+from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
@@ -645,3 +651,71 @@ async def begin_back_translation_again(
         BackTranslationState(scope=state.scope, superseded=superseded),
     )
     return back_translation_of(session)
+
+
+async def retire_the_part_recorded_again(
+    db: AsyncSession, session: IRSession, take: IRTake
+) -> None:
+    """A rehearsal take landing under a number an earlier take holds is that part again.
+
+    The verb has no route of its own and no flag: the tablet already sends every part under
+    `parte-N` with the number beside it, so a second take under N is the team recording part N
+    again and nothing else could be. It sits here rather than in `store_take`, which is a
+    storage primitive two other callers depend on — the text seam declares its parts through
+    one of them, and the **Rebuild** stores a passage that carries the number of the recording
+    it was built from and must retire none of the stretches it is about to re-address.
+
+    What it takes: the stretches whose recording is one of the *other* takes of that number,
+    divided parents and their pieces alike; the findings that pointed at them, a **Swap** whole;
+    and the check, which starts over because the passage the team is standing on has changed.
+    Zero is a number the text seam uses, so it counts; a take with none is the whole recording,
+    whose route is `begin_back_translation_again` and whose verb is still all of it.
+
+    What it leaves: the other parts' stretches, their words and their listening. A part recorded
+    again is unheard by construction — a new take is a recording nobody has played — so the
+    gate reopens for it without anything being cleared here. `analysed_segment_ids` is left
+    where it is: the reading it names no longer matches the stretches that stand, so the next
+    `terminei` asks the analyst again, which is the answer this wants.
+
+    **Only the take that is the part now.** The tablet re-sends bytes without asking whether
+    they landed and its outbox drains whenever the link comes back, so what arrives here can be
+    a recording the team replaced long ago — `store_take` answers it with the row that already
+    exists, which is indistinguishable from a fresh one. Read as a re-recording it would abandon
+    the part standing now and take the check with it, which is the team losing the work they had
+    just done to a request carrying nothing new. Which take is the part is `current_parts`, the
+    same answer the **Packet** is built on, and it is asked here before anything is retired.
+
+    **A part whose stretches did not move leaves the check alone.** Re-sending the bytes of the
+    part that *is* standing reaches here and finds the earlier takes already retired; so does a
+    part recorded twice before anybody told it back. Neither changed the reading, so neither
+    un-checks it.
+
+    The rows and the state commit together. Apart, a failure between them leaves the room
+    carrying findings about audio nobody will hear again, which is the state this exists to
+    make unreachable.
+    """
+    if take.kind is not IRTakeKind.ENSAIO or take.ordinal is None:
+        return
+
+    takes = await takes_of(db, session.id)
+    if take.id not in {part.id for part in current_parts(takes)}:
+        return
+
+    earlier = {
+        other.id
+        for other in takes
+        if other.kind is IRTakeKind.ENSAIO and other.ordinal == take.ordinal and other.id != take.id
+    }
+    retired = await retire_the_segments_of(db, session.id, take_ids=earlier, commit=False)
+    if not retired:
+        return
+
+    state = back_translation_of(session)
+    state.findings = findings_after_a_part_is_recorded_again(
+        state.findings, {row.id for row in retired}
+    )
+    state.checked = False
+    state.verdict = None
+    await save_back_translation(db, session, state, commit=False)
+    await db.commit()
+    await db.refresh(session)

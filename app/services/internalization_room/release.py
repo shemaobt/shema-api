@@ -70,7 +70,7 @@ from app.services.internalization_room.sessions import (
     comprehension_of,
     is_panorama,
 )
-from app.services.internalization_room.takes import takes_of
+from app.services.internalization_room.takes import current_parts, takes_of
 
 #: Bumped from v0.1 with the telling-back's ``chunks`` array: a stretch is addressed rather
 #: than counted now, so the entries carry an id and the recording they are a slice of, and the
@@ -105,6 +105,17 @@ class InternalizationReleaseBlocked(ConflictError):
 def _package_sha256(artifact: dict[str, Any]) -> str:
     canonical = json.dumps(artifact, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _recording_grain(parts: list[IRTake]) -> str:
+    """Whether the rehearsal that reached here was told whole or in parts.
+
+    Read off the parts' own numbers, because that is the one place the answer is: the tablet
+    numbers a part it recorded and sends nothing at all for the passage told in one go. It was
+    the literal ``"whole"``, so a rehearsal the team told in five parts was described to Refine
+    as one recording, and the description was of a file that never existed.
+    """
+    return "parts" if any(part.ordinal is not None for part in parts) else "whole"
 
 
 def _segment_view(segment: IRSegment) -> dict[str, Any]:
@@ -264,15 +275,22 @@ def _judge(blockers: list[str], waived: frozenset[str]) -> None:
         raise InternalizationReleaseBlocked(standing)
 
 
-async def _compose_internalization_release(
+async def compose_internalization_release(
     db: AsyncSession, session: IRSession
 ) -> tuple[dict[str, Any], list[str]]:
     """The packet this session composes right now, and everything standing in its way.
 
     Composing and judging are two acts, and separating them is what lets the approval ask
     whether the content changed before it asks whether the gate is shut. The hash never
-    depended on the gate — a waived blocker filters the refusal and not a single key of the
+    depended on the gate — a blocker filters the refusal and not a single key of the
     artifact — so a packet composed here is the same packet either caller would have got.
+
+    It is a name anyone may say. `build_internalization_release` used to take a set of
+    blockers to waive, which no caller in the application ever passed: what wanted it was a
+    reader that had already decided the gate was not its subject, and that reader is asking
+    for the composition and not for a softer judgement. Answering with the two apart says so,
+    and it is the only door onto a blocked session's live packet — the Desk's own route
+    rebuilds under the whole list and refuses.
 
     ``panorama_sessions_never_release`` is raised rather than listed, before anything is
     read, because a panorama is not a draft of a passage at all: there is nothing to compose
@@ -389,6 +407,7 @@ async def _compose_internalization_release(
     takes = await takes_of(db, session.id)
     ensaio_takes = [take for take in takes if take.kind is IRTakeKind.ENSAIO]
     retro_takes = [take for take in takes if take.kind is IRTakeKind.RETRO]
+    parts = current_parts(takes)
 
     if readiness.evaluation.outcome.value == "needs_more_work":
         blockers.append("comprehension_needs_more_work")
@@ -454,8 +473,8 @@ async def _compose_internalization_release(
             "open_points": open_points,
         },
         "audio": {
-            "recording_grain": "whole",
-            "rehearsal_takes": [_take_view(take) for take in ensaio_takes],
+            "recording_grain": _recording_grain(parts),
+            "rehearsal_takes": [_take_view(take) for take in parts],
         },
         "back_translation": {
             "scope": telling_back.scope,
@@ -496,9 +515,7 @@ async def _compose_internalization_release(
     return artifact, blockers
 
 
-async def build_internalization_release(
-    db: AsyncSession, session: IRSession, *, waived: frozenset[str] = frozenset()
-) -> dict[str, Any]:
+async def build_internalization_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """Build the closed-world release for one session, or refuse with typed blockers.
 
     The gate is Marcia's, whole: "Adote o meu portão inteiro, agora: sem achado em aberto e
@@ -515,9 +532,9 @@ async def build_internalization_release(
 
     The team that disagrees has a road, and it is older than this one: the raised hand, active
     the whole session, answered by a person. If that person agrees with the team, a facilitator
-    forces the release with their own code, and the force is recorded on the row. ``waived`` is
-    how a caller that has already taken that decision names what it sets aside, and
-    ``FORCEABLE_BLOCKERS`` is the whole of what it may name;
+    forces the release with their own code, and the force is recorded on the row.
+    ``FORCEABLE_BLOCKERS`` is the whole of what a force sets aside, and ``approve_release`` is
+    where it is named, because that is where somebody decided it;
     ``panorama_sessions_never_release`` is raised by the composer before the list exists and so
     is out of reach of any of it, because a panorama is not a draft of a passage at all.
 
@@ -526,13 +543,12 @@ async def build_internalization_release(
     it honestly is, and the decision that it may travel anyway was a person's and is recorded
     on the release rather than dressed up here.
 
-    Composing and judging in one call is what every caller here wants: the packet, or the
-    refusal. ``approve_release`` is the one that wants the two apart, because it has to ask
-    whether the content changed before it asks whether the gate is shut, and it reaches for
-    the composer and the judge itself rather than through this.
+    This judges under the whole list and sets nothing aside. A caller that wants the packet of
+    a session the gate refuses is not asking for a softer judgement: it is asking for the
+    composition, and ``compose_internalization_release`` is where it says so.
     """
-    artifact, blockers = await _compose_internalization_release(db, session)
-    _judge(blockers, waived)
+    artifact, blockers = await compose_internalization_release(db, session)
+    _judge(blockers, frozenset())
     return artifact
 
 
@@ -690,7 +706,7 @@ async def approve_release(
             "this session names no project, so a release for it cannot be numbered"
         )
 
-    packet, blockers = await _compose_internalization_release(db, session)
+    packet, blockers = await compose_internalization_release(db, session)
     latest = await _latest_release(db, session.project_id, session.pericope)
     if latest is not None and latest.package_sha256 == packet["package_sha256"]:
         return latest

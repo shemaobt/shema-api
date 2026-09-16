@@ -1,6 +1,8 @@
 """The Refine handoff artifact: fail-closed gates and a closed-world package."""
 
+import json
 from datetime import UTC, datetime
+from hashlib import sha256
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,11 +17,12 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.release import (
-    FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
+    compose_internalization_release,
 )
+from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import (
     capture_segment,
     divide_segment,
@@ -32,6 +35,7 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from tests.release_harness import (
+    CLIP_MS,
     P,
     checked_telling_back,
     ensaio_take,
@@ -75,6 +79,12 @@ async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
 async def test_a_ready_session_releases_a_labeled_sealed_package(
     db_session: AsyncSession,
 ) -> None:
+    """The fingerprint is recomputed the way a consumer would, from the packet it received.
+
+    Asked of the module's own helper, the case agreed with whatever that helper did and could
+    not have caught it drifting from the contract Refine reads: what the hash has to be is
+    the canonical dump of the sealed content, and that is what is written out here.
+    """
     session = await ready_session(db_session)
 
     artifact = await build_internalization_release(db_session, session)
@@ -85,7 +95,7 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
     assert [entry["played_ranges"] for entry in artifact["back_translation"]["played_by_take"]] == [
-        [[0, 61000]]
+        [[0, CLIP_MS]]
     ]
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
@@ -93,10 +103,9 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     sealed.pop("release_id")
     sealed.pop("version")
     sealed.pop("check")
+    canonical = json.dumps(sealed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert len(stamp) == 64
-    from app.services.internalization_room.release import _package_sha256
-
-    assert stamp == _package_sha256(sealed)
+    assert stamp == sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class _FixedClock:
@@ -223,18 +232,19 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
 async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     db_session: AsyncSession,
 ) -> None:
-    """A re-record starts the parts at one again, so the rehearsal the team abandoned and
-    the one they kept both reach here as `parte-1`, chunk 1, and the audio is addressed by
-    its own hash, so both rows stay.
+    """Two takes under part one: the packet carries the newest, and the file carries both.
 
-    The pass is the only label that separates them, and the order has to come from it: the
-    tablet's outbox drains whenever the link comes back, so the abandoned take can be
-    written down after the take that replaced it.
+    The rehearsal the team abandoned and the one they kept both arrive as `parte-1`, and the
+    audio is addressed by its own hash, so both rows stay. What Refine is handed is the draft
+    the team is working on — one take per part — and the earlier one is history, which the
+    **Retroverification file** is where the facilitator and the consultant read.
 
-    The whole-passage take `ready_session` leaves carries neither an ordinal nor a pass, and
-    it is read here too: it comes first on every engine now that `takes_of` says where a
-    NULL belongs, which is the same reading order — the undivided recording before the
-    parts, and a take from before the room sent a pass before the ones that carry it.
+    Which of the two is the part is the pass the tablet counted, and not the moment the upload
+    landed: the outbox drains whenever the link comes back, so the abandoned take can be written
+    down *after* the take that replaced it, and it is written down that way here on purpose.
+
+    The whole-passage take `ready_session` leaves is a part of its own: it carries no number,
+    and the undivided recording reads before the numbered parts on either engine.
     """
     session = await ready_session(db_session)
     db_session.add(
@@ -260,15 +270,20 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     await db_session.commit()
 
     artifact = await build_internalization_release(db_session, session)
+    file = await retroverification_file(db_session, session)
 
     seen = [
         (take["ordinal"], take["pass_number"], take["sha256"])
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
-    assert seen == [(None, None, "a" * 64), (1, 1, "b" * 64), (1, 2, "c" * 64)], (
-        "sem a passada, quem abrisse a passagem no Refine ouvia o ensaio abandonado como "
-        "o primeiro da equipe, e pela chegada a ordem sairia trocada"
+    assert seen == [(None, None, "a" * 64), (1, 2, "c" * 64)], (
+        "o ensaio que a equipe abandonou viajava para o Refine ao lado do que ficou, e nada "
+        "nos rótulos dizia qual era qual; e pela chegada a escolha sairia trocada, porque a "
+        "passada 1 foi anotada depois da 2"
+    )
+    assert "b" * 64 in [take.sha256 for take in file.takes], (
+        "e a tomada abandonada continua inteira no arquivo de retroverificação"
     )
 
 
@@ -539,7 +554,7 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
     session = await ready_session(db_session)
     await _a_row_written_before_the_taxonomy_shrank(db_session, session)
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
 
     assert [f["kind"] for f in artifact["back_translation"]["findings"]] == ["addition"]
     assert [
@@ -581,7 +596,7 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     session.back_translation = stored
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
 
     package = artifact["back_translation"]
     assert "evidence_sufficient" not in package
@@ -600,7 +615,7 @@ async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
         db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
 
     assert artifact["open_questions"] == 1
 
@@ -628,7 +643,7 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
     ]
     await reported_playback(db_session, session, state)
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
 
     assert [finding["kind"] for finding in artifact["back_translation"]["findings"]] == [
         "addition",
@@ -665,6 +680,6 @@ async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
         db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
 
     assert artifact["open_questions"] == 2

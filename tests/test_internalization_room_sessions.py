@@ -361,8 +361,6 @@ async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(
             "practice_scene_ids": [],
         },
         "practiced_scene_ids": ["S1"],
-        "recording_handoff_paused": True,
-        "recording_handoff_paused_turns": 2,
     }
     await db_session.commit()
 

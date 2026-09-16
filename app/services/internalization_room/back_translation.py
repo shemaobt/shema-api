@@ -1177,6 +1177,39 @@ def _the_current_swap(findings: list[Finding]) -> list[int]:
     return [leads]
 
 
+def findings_after_a_part_is_recorded_again(
+    findings: list[Finding], retired_segment_ids: set[str]
+) -> list[Finding]:
+    """The findings that survive a **Part** being recorded again, in the order they were read.
+
+    A finding about a stretch the team has just recorded over is about audio nobody will hear
+    again: it names a frase of a reading that no longer exists, and left standing it would be
+    raised against a telling the team never made.
+
+    **A Swap leaves whole.** Its two halves are joined by the frase the analyst numbered, and a
+    missing element placed *after* that frase resolves to the *next* stretch — which is a slice
+    of the next part. Dropping only the half that sits on the part recorded again would leave
+    the other on its own, and the team would meet it the round after as a thing of its own.
+
+    A finding pointing at no stretch is untouched, because no part can take away what names
+    none: a **Missing without an address** says the team has not recorded something at all,
+    which one part recorded again neither answers nor makes untrue. It is never half of a swap
+    either — both halves must point at a stretch (ADR 0018) — so the rule above never reaches
+    for it.
+
+    Filtered rather than rebuilt, so what is left keeps the analyst's own order: `state.findings`
+    is what the packet, the resume and the correction check all read, and the **Priority** is
+    taken at the pick and never at storage.
+    """
+    leaving = {
+        at for at, finding in enumerate(findings) if finding.segment_id in retired_segment_ids
+    }
+    for addition, missing in _swaps(findings):
+        if addition in leaving or missing in leaving:
+            leaving |= {addition, missing}
+    return [finding for at, finding in enumerate(findings) if at not in leaving]
+
+
 def current_findings(state: BackTranslationState) -> list[Finding]:
     """What the Speaker is allowed to voice this turn: one finding, or one swap of one frase.
 

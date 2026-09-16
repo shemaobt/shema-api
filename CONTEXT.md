@@ -56,8 +56,8 @@ The slice of the passage checked in one reading by the analyst, which can be sma
 _Avoid_: stretch (the persistent object; a scope is one reading's slice of the passage), trecho, window, Escopo
 
 **Take**:
-An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's scope is that part; the earlier ones stay as history.
-_Avoid_: recording, audio, clip
+An audio file recorded by the team, of one of two kinds: rehearsal (`ensaio`, one **Part** of the passage in the mother tongue, or the whole passage told as one part) or back-translation (`retro`, a stretch told in the bridge language). The newest rehearsal take under a part's number is that part; the earlier ones stay as history.
+_Avoid_: recording, audio, clip, scope (a part is named by its number, and the text seam declares every part under the pericope)
 
 **Mother tongue**:
 The team's language, the one the rehearsal is recorded in and that nobody on the server understands.
@@ -94,6 +94,10 @@ _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 **Part**:
 One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part.
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
+
+**Recording grain** (`recording_grain`):
+Whether the rehearsal reaching Refine was told whole or in parts, read off the current parts' numbers.
+_Avoid_: granularity, mode, shape, Granularidade
 
 **Meaning Map**:
 The canonical content of the pericope that the analyst compares against, including preservation rules and the marked silence that is never revealed.
