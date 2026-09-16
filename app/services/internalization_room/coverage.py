@@ -34,8 +34,8 @@ def is_panorama(pericope: str) -> bool:
 
 _RANK = {
     CoverageStatus.NOT_ENCOUNTERED: 0,
-    CoverageStatus.SURFACED: 1,
-    CoverageStatus.PARTIALLY_ENGAGED: 2,
+    CoverageStatus.PARTIALLY_ENGAGED: 1,
+    CoverageStatus.SURFACED: 2,
     CoverageStatus.ENGAGED: 3,
 }
 
@@ -93,7 +93,6 @@ def merge(
     *,
     pericope_num: str,
     surfaced: Iterable[str] = (),
-    partially_engaged: Iterable[str] = (),
     engaged: Iterable[str] = (),
 ) -> dict[str, str]:
     """Advance coverage. Movement is one-way: a status never drops back.
@@ -104,7 +103,6 @@ def merge(
     merged = {**initial_state(pericope_num), **state}
     buckets = (
         (surfaced, CoverageStatus.SURFACED),
-        (partially_engaged, CoverageStatus.PARTIALLY_ENGAGED),
         (engaged, CoverageStatus.ENGAGED),
     )
     for keys, status in buckets:
@@ -139,18 +137,12 @@ def counts(state: dict[str, str]) -> dict[str, int]:
     """Two numbers, meaning what they have always meant.
 
     `engaged` is the beads the team worked in their own words; `surfaced` is the cumulative
-    "encountered at least" figure and so takes in the partly worked ones too. Because the
-    completion floor now admits `partially_engaged`, a session can reach `done` with
-    `engaged` short of `total` — visible to the facilitator, and the coverage route's to
-    render.
+    "encountered at least" figure — everything above `not_encountered`, which takes in a
+    row still written under the retired status. The necklace fills a bead on `engaged`
+    alone, so a passage the team only echoed shows every bead waiting.
     """
     engaged = sum(1 for value in state.values() if value == CoverageStatus.ENGAGED)
-    encountered = (
-        CoverageStatus.SURFACED,
-        CoverageStatus.PARTIALLY_ENGAGED,
-        CoverageStatus.ENGAGED,
-    )
-    surfaced = sum(1 for value in state.values() if value in encountered)
+    surfaced = sum(1 for value in state.values() if value != CoverageStatus.NOT_ENCOUNTERED)
     return {"engaged": engaged, "surfaced": surfaced, "total": len(state)}
 
 
@@ -167,9 +159,8 @@ def coverage_view(session: IRSession) -> CoverageView:
 def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
     """What the team has not worked yet, with labels the Guide can act on.
 
-    A partly worked element stays on this list even though it satisfies the completion
-    floor: the floor being met is not the same as the work being finished. It is also the
-    only way the element can still be promoted — the classifier is shown this list and
+    A bead short of `engaged` stays on this list whatever word it stands at, because this
+    is the only way it can still be promoted — the classifier is shown this list and
     nothing else, so a bead dropped from it is frozen at whatever status it left with.
     """
     merged = {**initial_state(pericope_num), **state}
@@ -180,32 +171,35 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
     ]
 
 
-_AXES = frozenset({ElementKind.ARC, ElementKind.CONTEXT, ElementKind.TONE, ElementKind.FUNCTION})
+_EXITS_AT_SURFACED = frozenset({"arc", "context", "tone", "function"})
 
 
 def floor_met(state: dict[str, str], pericope_num: str) -> bool:
-    """Every element worked with, at least in part — and the four axes at least raised.
+    """Every concrete element engaged; a Level-1 axis at least surfaced.
 
-    Her floor requires every scene, being, place, significant absence and preserved element
-    engaged, and the four Level-1 elements at least `surfaced`: a session is not to be held
-    forever on one stubborn abstract element. The maps do expose those elements — §2.1 to
-    §2.4 of every passage — and `elements_of` strings them first, so they are the one kind
-    the floor lets out early.
+    Hard Rule #2 of her design: "**Only** `engaged` **counts for coverage.** `surfaced`
+    (Guide mentioned it) is not enough. If `surfaced` ever counts as covered, sessions
+    complete hollow" (`marcia/CLAUDE.md:31`). The floor once came down a step to meet the
+    echo, on the argument that a preservation rule is mostly engaged as the team taking up
+    the Guide's noticing and that demanding more of all five of Ruth 1's made a passage
+    that never closes. Her classifier settles that at the other end: the echo of a silence
+    is written `engaged`, so the floor asks the full reading of every bead and the silences
+    are the beads a team can fill by taking them up. A bead still standing at the retired
+    `partially_engaged` is one the ledger has not seen the team take up, and it holds the
+    floor like `surfaced` does.
 
-    What the floor does not demand of the concrete beads is the strong reading of every one
-    of them. A passage's preservation rules are engaged by noticing a silence, which mostly
-    reaches the room as the team taking up the Guide's noticing rather than arriving at it
-    themselves; requiring the unprompted version from all of Ruth 1's is how a passage
-    becomes one that never closes.
-
-    `surfaced` remains below the floor for everything concrete, so a session where the Guide
-    did the talking still cannot complete. Biased against completing hollow: anything unknown
-    counts as not met.
+    The floor is a ledger fact. Nothing the room says reads it; what does is
+    `session_is_done` — the `done` a turn answers with, and the stamp progression follows —
+    and the release. Biased against completing hollow: anything unknown counts as not met.
     """
     merged = {**initial_state(pericope_num), **state}
     for element in elements_for(pericope_num):
+        bar = (
+            CoverageStatus.SURFACED
+            if element.kind.value in _EXITS_AT_SURFACED
+            else CoverageStatus.ENGAGED
+        )
         standing = CoverageStatus(merged.get(element.key, CoverageStatus.NOT_ENCOUNTERED))
-        bar = CoverageStatus.SURFACED if element.kind in _AXES else CoverageStatus.PARTIALLY_ENGAGED
         if _RANK[standing] < _RANK[bar]:
             return False
     return True

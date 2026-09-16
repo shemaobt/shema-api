@@ -39,7 +39,7 @@ def test_a_state_that_reaches_the_enum_without_a_rank_is_named() -> None:
     """The case the guard exists for: the enum grew and the map did not."""
     a_map_left_behind = {
         CoverageStatus.NOT_ENCOUNTERED: 0,
-        CoverageStatus.SURFACED: 1,
+        CoverageStatus.SURFACED: 2,
         CoverageStatus.ENGAGED: 3,
     }
 
@@ -78,7 +78,7 @@ def test_the_module_refuses_to_import_with_a_holed_scale(tmp_path) -> None:
     from pathlib import Path
 
     source = Path("app/services/internalization_room/coverage.py").read_text(encoding="utf-8")
-    holed = source.replace("    CoverageStatus.PARTIALLY_ENGAGED: 2,\n", "")
+    holed = source.replace("    CoverageStatus.PARTIALLY_ENGAGED: 1,\n", "")
     assert holed != source, "o mapa mudou de forma; este caso não está mais furando nada"
 
     copy = tmp_path / "coverage_holed.py"

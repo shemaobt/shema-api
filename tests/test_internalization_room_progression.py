@@ -56,7 +56,6 @@ from tests.baker import (
 
 _codes = itertools.count()
 
-PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
 SURFACED = CoverageStatus.SURFACED.value
 ENGAGED = CoverageStatus.ENGAGED.value
 
@@ -76,7 +75,7 @@ LAST = WALKABLE[-1]
 
 def at_the_floor(pericope: str) -> dict[str, str]:
     """Every bead of a passage at the floor — which no longer finishes anything."""
-    return dict.fromkeys(element_keys(pericope), PARTIALLY_ENGAGED)
+    return dict.fromkeys(element_keys(pericope), ENGAGED)
 
 
 def one_bead_short(pericope: str) -> dict[str, str]:
@@ -270,13 +269,13 @@ async def test_a_floor_met_across_two_evenings_does_not_close_the_passage(
         db_session,
         project_id=team.id,
         pericope=FIRST,
-        moved=dict.fromkeys(half, PARTIALLY_ENGAGED),
+        moved=dict.fromkeys(half, ENGAGED),
     )
     await a_session_that_moved(
         db_session,
         project_id=team.id,
         pericope=FIRST,
-        moved=dict.fromkeys(rest, PARTIALLY_ENGAGED),
+        moved=dict.fromkeys(rest, ENGAGED),
     )
 
     assert await active_passage(db_session, project_id=team.id) == FIRST
@@ -486,7 +485,7 @@ async def test_a_passage_that_never_closes_holds_the_team_and_says_which_bead(
 
     team = await a_team(db_session, name="Emperrada")
     stuck = element_keys(FIRST)[-1]
-    worked = {key: PARTIALLY_ENGAGED for key in element_keys(FIRST) if key != stuck}
+    worked = {key: ENGAGED for key in element_keys(FIRST) if key != stuck}
 
     await a_session_that_moved(db_session, project_id=team.id, pericope=FIRST, moved=worked)
 

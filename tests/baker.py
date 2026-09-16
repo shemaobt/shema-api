@@ -1004,9 +1004,9 @@ def fully_supported_comprehension(pericope: str) -> ComprehensionState:
 async def having_finished_the_passage(db: AsyncSession, session: IRSession) -> IRSession:
     """Take one conversation to the end of its passage the way the room does.
 
-    Three facts, because the room asks for three and they are not the same fact. The beads
-    worked at least in part and the comprehension gate met are what `session_is_done` reads,
-    and what lets the room send the team to record. The recording kept is what finishes the
+    Three facts, because the room asks for three and they are not the same fact. Every bead
+    engaged and the comprehension gate met are what `session_is_done` reads, and what lets
+    the room send the team to record. The recording kept is what finishes the
     passage — the ledger informs, it never ends the conversation.
 
     Written through `apply_coverage`, `save_comprehension` and `store_take` rather than by
@@ -1017,7 +1017,7 @@ async def having_finished_the_passage(db: AsyncSession, session: IRSession) -> I
     settled = await apply_coverage(
         db,
         session.id,
-        dict.fromkeys(element_keys(session.pericope), CoverageStatus.PARTIALLY_ENGAGED.value),
+        dict.fromkeys(element_keys(session.pericope), CoverageStatus.ENGAGED.value),
     )
     await keep_a_take(db, settled)
     return settled

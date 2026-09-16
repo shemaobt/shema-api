@@ -46,7 +46,7 @@ from tests.baker import (
 )
 
 TEAM_NOT_FOUND = "Team not found"
-PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
+ENGAGED = CoverageStatus.ENGAGED.value
 
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND, THIRD = CANON[0], CANON[1], CANON[2]
@@ -97,7 +97,7 @@ async def a_facilitator(db: AsyncSession, *, email: str, tongue: str = "Terena")
 
 async def moved(db: AsyncSession, team, *, pericope: str, keys: list[str]):
     session = await open_ir_session(db, pericope=pericope, project_id=team.id)
-    await room.apply_coverage(db, session.id, dict.fromkeys(keys, PARTIALLY_ENGAGED))
+    await room.apply_coverage(db, session.id, dict.fromkeys(keys, ENGAGED))
     return session
 
 

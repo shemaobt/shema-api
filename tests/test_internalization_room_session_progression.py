@@ -47,8 +47,6 @@ from tests.baker import (
 
 _codes = itertools.count()
 
-PARTIALLY_ENGAGED = CoverageStatus.PARTIALLY_ENGAGED.value
-
 CANON = [meaning_map.pericope_num for meaning_map in load_book(ROOM_BOOK)]
 FIRST, SECOND = CANON[0], CANON[1]
 
@@ -62,10 +60,6 @@ WALKABLE = [
 async def a_team(db: AsyncSession, *, name: str):
     language = await make_language(db, name=name, code=f"s{next(_codes):02d}")
     return await make_project(db, language.id, name=name)
-
-
-def at_the_floor(pericope: str) -> dict[str, str]:
-    return dict.fromkeys(element_keys(pericope), PARTIALLY_ENGAGED)
 
 
 async def having_finished(db: AsyncSession, team, *pericopes: str) -> None:
