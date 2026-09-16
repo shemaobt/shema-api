@@ -264,7 +264,9 @@ async def _land(db: AsyncSession, session: IRSession, values: dict[str, Any]) ->
     )
     landed = (await db.execute(stmt)).scalar_one_or_none()
     if landed is None:
-        await db.rollback()
+        # Nothing matched, so nothing is pending: leave the transaction to the caller's
+        # teardown rather than rolling back a session shared with the rest of the request,
+        # the way autosave_state.py's own version conflict does.
         raise ConflictError("This session was written to by another turn.")
     await db.commit()
     await db.refresh(session)
