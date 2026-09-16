@@ -44,7 +44,7 @@ from app.services.internalization_room.comprehension.session_readiness import (
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.fail_safe import FailSafe, choose
-from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.hearing import HeardSpeech, spoken_words_only
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.run_turn import (
     TurnOutcome,
@@ -59,12 +59,25 @@ class ComprehensionTurn:
     state: ComprehensionState
 
 
-def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | None:
-    """The first scene whose own coverage is not fully engaged.
+def has_substantive_team_history(messages: list[dict[str, Any]]) -> bool:
+    return any(
+        message.get("role") == "team" and spoken_words_only(message.get("text", ""))
+        for message in messages
+    )
+
+
+def current_scene_id(
+    coverage_state: dict[str, Any], pericope: str, messages: list[dict[str, Any]]
+) -> str | None:
+    """The first scene whose own coverage is not fully engaged — once the team has spoken.
 
     It is what the rehearsal the Guide invites is read against: the Guide opens the scene
-    the pointer names, and it never selects a scene itself.
+    the pointer names, and it never selects a scene itself. On a session where nobody has
+    said a word there is no scene to name: the app declines to assert one rather than tell
+    the Guide the team is in Scene 1 before they have opened their mouths.
     """
+    if not has_substantive_team_history(messages):
+        return None
     by_scene: dict[int, bool] = {}
     for element in elements_for(pericope):
         if element.scene is None:
@@ -110,7 +123,7 @@ async def run_comprehension_turn(
     empty = not transcript.strip()
     reliable = not uncertain and not mother_tongue
 
-    scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
+    scene_pointer = current_scene_id(session.coverage_state or {}, pericope, messages)
     practiced_now = scenes_practiced_by_the_telling_the_guide_invited(
         prior_probe, last_guide, transcript, reliable, scene_pointer
     )

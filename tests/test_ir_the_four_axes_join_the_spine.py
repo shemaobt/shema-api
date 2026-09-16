@@ -5,6 +5,10 @@ from app.services.internalization_room.canon.elements import ElementKind, elemen
 from app.services.internalization_room.canon.parse_map import MAPS_DIR, load_map, parse_map
 from app.services.internalization_room.classify_coverage import _unresolved_block
 from app.services.internalization_room.coverage import CoverageStatus, floor_met, initial_state
+from app.services.internalization_room.live_turn import (
+    current_scene_id,
+    has_substantive_team_history,
+)
 
 P01 = "P01"
 
@@ -97,3 +101,21 @@ def test_the_classifier_is_shown_each_axis_with_the_maps_own_prose() -> None:
         "só tinha o nome do eixo para reconhecer isso na fala"
     )
     assert lines[4] == "- [scene:1] Famine and exile to Moab"
+
+
+def test_the_scene_pointer_is_null_until_the_team_has_said_something() -> None:
+    nothing_worked = initial_state(P01)
+    opening_only = [{"role": "guide", "text": "abertura da passagem inteira"}]
+
+    assert current_scene_id(nothing_worked, P01, opening_only) is None, (
+        "no turno zero o Guia lia CURRENT SCENE = Scene 1, uma cena em que a equipe nunca esteve"
+    )
+
+    the_team_spoke = [*opening_only, {"role": "team", "text": "conta de novo"}]
+    assert current_scene_id(nothing_worked, P01, the_team_spoke) == "S1"
+
+
+def test_a_transcribers_note_alone_is_not_the_team_speaking() -> None:
+    assert has_substantive_team_history([{"role": "team", "text": "[inaudible]"}]) is False
+    assert has_substantive_team_history([{"role": "team", "text": "   "}]) is False
+    assert has_substantive_team_history([{"role": "team", "text": "a fome veio"}]) is True
