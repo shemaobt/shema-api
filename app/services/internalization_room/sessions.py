@@ -706,7 +706,7 @@ async def retire_the_part_recorded_again(
         for other in takes
         if other.kind is IRTakeKind.ENSAIO and other.ordinal == take.ordinal and other.id != take.id
     }
-    retired = await retire_the_segments_of(db, session.id, take_ids=earlier, commit=False)
+    retired = await retire_the_segments_of(db, session.id, take_ids=earlier)
     if not retired:
         return
 

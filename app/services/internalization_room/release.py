@@ -117,9 +117,9 @@ def _recording_grain(parts: list[IRTake]) -> RecordingGrain:
     """Whether the rehearsal that reached here was told whole or in parts.
 
     Read off the parts' own numbers, because that is the one place the answer is: the tablet
-    numbers a part it recorded and sends nothing at all for the passage told in one go. It was
-    the literal ``"whole"``, so a rehearsal the team told in five parts was described to Refine
-    as one recording, and the description was of a file that never existed.
+    numbers a part it recorded and sends nothing at all for the passage told in one go. Asked of
+    anything else it would be a second answer to a question the numbers already settle, and the
+    two would drift.
     """
     return "parts" if any(part.ordinal is not None for part in parts) else "whole"
 

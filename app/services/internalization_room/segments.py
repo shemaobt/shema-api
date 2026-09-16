@@ -294,9 +294,10 @@ async def divided_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
     The same class of loss as a replaced stretch, which the handoff carries on purpose. The
     verb that creates the state is what has to carry it.
 
-    In the order the reading walks them, which is where a parent comes before its own pieces.
-    Listed in row order a piece is numbered among its own siblings, so a stretch of a later
-    part cut in two, one piece cut again, read out before the stretch it came out of.
+    In the order the reading walks them, so a stretch comes before the pieces it was cut into.
+    A piece is numbered among its own siblings and not over the passage, so in row order a
+    piece of a later part sorted ahead of the stretch it came out of — and a reader of the list
+    met the child before its own parent.
     """
     rows = await current_segments(db, session_id)
     return [row for row, divided in _read_in_order(rows) if divided]
@@ -404,27 +405,45 @@ async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
 
 
 async def retire_the_segments_of(
-    db: AsyncSession, session_id: str, *, take_ids: set[str], commit: bool = True
+    db: AsyncSession, session_id: str, *, take_ids: set[str]
 ) -> list[IRSegment]:
     """Stop the stretches of these recordings counting, and answer with which ones went.
 
     Recording one **Part** again is the narrow case of the verb above: what goes is the
-    stretches that are slices of the takes the new one replaces, divided parents and their
-    pieces alike, and what stands is every other part. The caller needs to know which rows went
-    because the findings that pointed at them go too.
+    stretches that are slices of the takes the new one replaces, and what stands is every other
+    part. The caller needs to know which rows went, because the findings that pointed at them go
+    too.
 
-    ``commit=False`` leaves the transaction open: the retired rows and the telling-back state
-    they empty are one fact about one upload, and committed apart a failure between them leaves
-    the room carrying findings about audio nobody will hear again.
+    **A piece of a stretch that goes is a piece of that part, whatever recording it now sits
+    on.** A stretch re-recorded in the mother tongue moves onto the take carrying the new audio,
+    and when the passage could not be rebuilt around it the piece stays there — on a recording
+    with no part number of its own. Taken by the take alone, it would outlive its own parent: a
+    row still counting whose parent is abandoned, which the reading walks from the top and never
+    reaches, so it would vanish from the packet, the check block, the analyst's list and the
+    listening gate while the row went on saying it counts.
+
+    The transaction is left open, because the retired rows and the telling-back state they empty
+    are one fact about one upload: committed apart, a failure between them leaves the room
+    carrying findings about audio nobody will hear again.
     """
-    going = [row for row in await current_segments(db, session_id) if row.take_id in take_ids]
+    rows = await current_segments(db, session_id)
+    children: dict[str | None, list[IRSegment]] = {}
+    for row in rows:
+        children.setdefault(row.parent_id, []).append(row)
+
+    leaving = {row.id for row in rows if row.take_id in take_ids}
+    walking = [row for row in rows if row.id in leaving]
+    while walking:
+        for piece in children.get(walking.pop().id, []):
+            if piece.id not in leaving:
+                leaving.add(piece.id)
+                walking.append(piece)
+
+    going = [row for row in rows if row.id in leaving]
     if not going:
         return going
     _stop_counting(going)
-    if commit:
-        await db.commit()
-    else:
-        await db.flush()
+    await db.flush()
     return going
 
 

@@ -72,12 +72,25 @@ next *terminei* pays for a whole re-read. It is the right answer — the passage
 standing on is not the one that was read — and it is written here so the next person does not
 read the extra reading as a defect.
 
-Two things this does not close, both of them about a number the tablet does not send. Two
-uploads of one part carrying the *same* pass, drained out of order, still pick the one that
-landed last: the pass separates a recording from the one it replaced, and it cannot separate two
-the app counted alike. And a mother-tongue correction take is a rehearsal take with no number at
-all, so it is a part of its own here — in a session told in parts it is listed beside them, and
-in one told whole whose rebuild failed it is the newest of the unnumbered group and the packet
-names the fragment as the rehearsal, with its stretch reading first. Both want the correction
-take to carry the number of the part it corrects, the way the rebuilt passage already carries the
-number of the recording it was built from, and that is the tablet's contract rather than this.
+A part whose stretches did not move leaves the check alone. Two uploads reach the verb with an
+earlier take of their number and nothing to retire — the team re-sending bytes of the part that
+is standing, and a part recorded twice before anybody told it back — and neither changed the
+reading, so neither un-checks it.
+
+**A mother-tongue correction take carries no number, and must not.** It is a rehearsal take like
+any other, uploaded through the same route, and under a number it would be read as that part
+recorded again: the verb would retire the very stretch the correction is about to replace, and
+the call that follows would meet *this stretch no longer counts* and lose the team their
+correction outright. So the invariant is the opposite of a fix — the correction upload sends no
+`chunk_index`, and nothing here may start giving it one.
+
+The price of that invariant is two gaps, recorded as facts. In a session told in parts, the
+correction take is a part of its own and the packet lists the fragment beside the real parts. In
+a session told whole whose rebuild failed, the correction take is the newest of the unnumbered
+group, so the packet names the fragment as the rehearsal and its stretch reads first. The way out
+is not a number on the correction take: it is ENG-845 removing the per-stretch correction, and
+that is the Definer's to time.
+
+Two uploads of one part carrying the *same* pass, drained out of order, still pick the one that
+landed last: the pass separates a recording from the one it replaced, and cannot separate two the
+app counted alike.

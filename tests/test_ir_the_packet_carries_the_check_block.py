@@ -134,6 +134,15 @@ async def _live_view(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     return packet
 
 
+async def _the_desk_reads(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+    """The packet the Desk's own route serves, judged under the whole list.
+
+    For a session the gate lets through, which is the stronger question: read past the gate, a
+    case about a clean session would go on passing after the session stopped being clean.
+    """
+    return await build_internalization_release(db, await get_session(db, session.id))
+
+
 async def _three_stretches_told(db: AsyncSession, session: IRSession) -> BackTranslationState:
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         await capture_segment(
@@ -264,8 +273,15 @@ async def test_a_never_analysed_session_reads_sem_conferencia(db_session: AsyncS
     """
     session = await ready_session(db_session, tell=never_analysed_telling_back)
 
-    check = (await _live_view(db_session, session))["check"]
+    packet, blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
+    check = packet["check"]
 
+    assert blockers == ["telling_back_never_analysed"], (
+        "é o único que está de pé: qualquer outro seria outra sessão, e o bloco abaixo "
+        "estaria descrevendo um estado que não é este"
+    )
     assert check["status"] == "sem_conferencia"
     assert check["conferida"] is False
     assert check["forced"] is False
@@ -391,8 +407,8 @@ async def test_the_check_block_sits_outside_the_hash(
     )
 
     assert pressed.status_code == 200, pressed.text
-    first = await _live_view(db_session, unchanged)
-    second = await _live_view(db_session, unchanged)
+    first = await _the_desk_reads(db_session, unchanged)
+    second = await _the_desk_reads(db_session, unchanged)
 
     assert first["check"]["lastCheckAt"] is not None, "senão a igualdade abaixo é None == None"
     assert first["package_sha256"] == second["package_sha256"]
@@ -436,7 +452,7 @@ async def test_the_verdict_stamps_when_the_check_ran(
     stamped = await stored_telling_back(db_session, clean)
     assert stamped.checked is True
     assert stamped.checked_at is not None
-    packet = await _live_view(db_session, clean)
+    packet = await _the_desk_reads(db_session, clean)
     assert packet["check"]["lastCheckAt"] == stamped.checked_at.isoformat()
     assert packet["check"]["status"] == "conferida"
 

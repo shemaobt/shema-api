@@ -39,6 +39,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
+from app.services.internalization_room.takes import take_by_id
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
     KEY,
@@ -271,6 +272,19 @@ async def another_rehearsal_take(
     db.add(take)
     await db.commit()
     return take
+
+
+async def the_upload_landed_at(db: AsyncSession, take_id: str, moment: datetime) -> None:
+    """Move a stored take's arrival back in time, so a case can say which upload came first.
+
+    SQLite stamps `now()` to the second and the tablet sends no pass with a rehearsal part, so
+    two uploads of one part inside a case land on the same instant under the same pass — and
+    which of them is the part would be the engine's row order answering, not the rule. A case
+    that records one part twice says so here rather than relying on that.
+    """
+    take = await take_by_id(db, take_id)
+    take.created_at = moment
+    await db.commit()
 
 
 async def stretch_on(db: AsyncSession, session: IRSession, take: IRTake) -> IRSegment:

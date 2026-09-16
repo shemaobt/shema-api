@@ -23,6 +23,7 @@ everything.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import httpx
@@ -38,7 +39,11 @@ from app.services.internalization_room.back_translation import (
     VoicedVerdict,
 )
 from app.services.internalization_room.release import compose_internalization_release
-from app.services.internalization_room.segments import current_segments, divide_segment
+from app.services.internalization_room.segments import (
+    capture_segment,
+    current_segments,
+    divide_segment,
+)
 from app.services.internalization_room.sessions import (
     back_translation_of,
     get_session,
@@ -59,6 +64,8 @@ from tests.release_harness import (
 )
 from tests.room_harness import (
     PART_MS,
+    REHEARSED_AT,
+    another_rehearsal_take,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -66,6 +73,7 @@ from tests.room_harness import (
     tell_back_about,
     the_bucket_is_in_memory,
     the_room_speaks,
+    the_upload_landed_at,
     upload_a_part,
 )
 
@@ -422,6 +430,60 @@ async def test_findings_on_the_old_part_leave_and_the_check_starts_over(
     ], "read again whole, and in the order the passage is read"
 
 
+async def test_a_checked_passage_stops_being_checked(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """A passage the analyst read clean is no longer that passage once a part is recorded again.
+
+    The check is about a reading, and the reading changed. Left standing it would tell the team
+    a passage they have just changed is settled, and the stored verdict would be said aloud
+    again about stretches that no longer count.
+    """
+    session, _parts = await rehearsed_in_parts(db_session, 3)
+    await _with_findings(db_session, session, [], verdict=True)
+    was = await stored_telling_back(db_session, session)
+    assert was.checked is True and was.verdict is not None, "the case starts from a clean check"
+
+    await _recorded_again(client, session, part=2)
+
+    after = await stored_telling_back(db_session, session)
+    assert after.checked is False
+    assert after.verdict is None
+
+
+async def test_a_piece_re_recorded_onto_another_take_goes_with_its_part(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """A piece of a divided stretch is a piece of that part, whatever take it now sits on.
+
+    A stretch re-recorded in the mother tongue moves onto the take that carries the new audio,
+    and when the passage could not be rebuilt around it the piece stays there — on a recording
+    with no part number of its own. Kept by the take alone, it would survive its own parent: a
+    current row whose parent is abandoned, which the reading walks past and never reaches, and
+    which no list the room serves would ever show again.
+    """
+    session, (one, two, three) = await rehearsed_in_parts(db_session, 3)
+    standing = await _by_part(db_session, session.id)
+    head, _tail = await divide_segment(db_session, session, standing[two.id], at_ms=PART_MS // 2)
+    elsewhere = await another_rehearsal_take(db_session, session, sha256="f" * 64)
+    moved = await capture_segment(
+        db_session,
+        session,
+        take_id=elsewhere.id,
+        starts_ms=0,
+        ends_ms=PART_MS // 2,
+        replaces=head,
+    )
+
+    await _recorded_again(client, session, part=2)
+
+    assert (await _stored(db_session, moved)).superseded_at is not None
+    assert await _standing_ids(db_session, session.id) == [
+        standing[one.id].id,
+        standing[three.id].id,
+    ]
+
+
 async def test_a_swap_on_the_old_part_leaves_whole(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -591,9 +653,15 @@ async def test_a_retry_of_a_replaced_take_leaves_the_part_that_replaced_it(
 
     Which take is the part is the one question the takes can answer, and it is the same answer
     the **Packet** is built on.
+
+    The first re-record is moved back in time on purpose: the tablet sends no pass with a
+    rehearsal part and SQLite stamps the second, so two uploads inside one case are the same
+    instant under the same pass, and the case would be asking the engine's row order rather
+    than the rule.
     """
     session, _parts = await rehearsed_in_parts(db_session, 3)
     replaced = await _recorded_again(client, session, part=2, audio=b"a primeira regravacao")
+    await the_upload_landed_at(db_session, replaced, REHEARSED_AT + timedelta(hours=1))
     await _told_on(db_session, session, replaced, transcript="a parte dois, primeira vez")
     standing = await _recorded_again(client, session, part=2, audio=b"a segunda regravacao")
     told = await _told_on(db_session, session, standing)

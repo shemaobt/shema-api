@@ -17,6 +17,7 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.release import (
+    FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
@@ -554,7 +555,12 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
     session = await ready_session(db_session)
     await _a_row_written_before_the_taxonomy_shrank(db_session, session)
 
-    artifact, _blockers = await compose_internalization_release(db_session, session)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert [f["kind"] for f in artifact["back_translation"]["findings"]] == ["addition"]
     assert [
@@ -596,7 +602,12 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     session.back_translation = stored
     await db_session.commit()
 
-    artifact, _blockers = await compose_internalization_release(db_session, session)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     package = artifact["back_translation"]
     assert "evidence_sufficient" not in package
@@ -615,7 +626,12 @@ async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
         db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact, _blockers = await compose_internalization_release(db_session, session)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert artifact["open_questions"] == 1
 
@@ -643,7 +659,12 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
     ]
     await reported_playback(db_session, session, state)
 
-    artifact, _blockers = await compose_internalization_release(db_session, session)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert [finding["kind"] for finding in artifact["back_translation"]["findings"]] == [
         "addition",
@@ -680,6 +701,11 @@ async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
         db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact, _blockers = await compose_internalization_release(db_session, session)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert artifact["open_questions"] == 2
