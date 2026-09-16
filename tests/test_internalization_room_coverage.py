@@ -2,6 +2,8 @@ import enum
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import coverage
 from app.services.internalization_room._default_prompts import (
@@ -297,6 +299,20 @@ def test_a_level_one_axis_meets_the_floor_at_surfaced_and_nothing_else_does() ->
         assert floor_met(
             {**with_the_axis, "arc": "not_encountered", concrete.key: "engaged"}, P
         ) is (False)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="ENG-752 adds arc, context, tone and function to ElementKind; drop this mark there",
+)
+def test_the_four_axes_the_floor_exempts_are_kinds_the_enum_names() -> None:
+    """The exemption is keyed on four strings the enum does not hold yet.
+
+    Nothing else ties the two: if ENG-752 spells an axis kind any other way, the four beads
+    silently need `engaged`, the passage stops closing, and every other test stays green.
+    Strict, so the day the values arrive this goes XPASS and the mark has to come off.
+    """
+    assert {kind.value for kind in ElementKind} >= coverage._EXITS_AT_SURFACED
 
 
 def test_a_partly_worked_bead_stays_in_the_set_the_classifier_is_shown() -> None:
