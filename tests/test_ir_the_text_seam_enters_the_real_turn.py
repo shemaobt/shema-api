@@ -317,20 +317,27 @@ async def test_every_model_call_of_the_turn_comes_back_with_its_rung_and_tokens(
         )
     assert body["usage"] == [
         {
+            "role": "guide",
             "rung": "claude-fable-5-1",
             "input_tokens": 1200,
             "output_tokens": len(GUIDE_LINE),
             "cache_read_tokens": 896000,
             "cache_write_tokens": 0,
+            "cost_usd": 0.23895,
         },
         {
+            "role": "validator",
             "rung": "claude-fable-5-1",
             "input_tokens": 1200,
             "output_tokens": len('{"verdict": "pass", "issues": []}'),
             "cache_read_tokens": 896000,
             "cache_write_tokens": 0,
+            "cost_usd": 0.23765,
         },
-    ], "o custo de um turno ficava só no log do servidor, longe do runner que compara com o dela"
+    ], (
+        "o custo de um turno ficava só no log do servidor, longe do runner que compara com o "
+        "dela; e sem o papel as três chamadas de um turno eram indistinguíveis na linha de uso"
+    )
     assert body["turnMs"] >= 0
 
 
