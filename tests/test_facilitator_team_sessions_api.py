@@ -441,7 +441,7 @@ async def test_a_bead_names_itself_in_every_language_the_desk_offers(client, db_
 
     assert set(bead) == {"key", "kind", "label_pt", "label_en", "label_es", "status"}
     assert bead["label_en"]
-    assert bead["kind"] == "scene"
+    assert bead["kind"] == "arc"
 
 
 async def test_a_panorama_is_kept_in_the_history_with_nothing_to_draw(client, db_session):

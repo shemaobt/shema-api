@@ -1,5 +1,25 @@
 {
   "P01": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": "El arco del pasaje entero",
+      "pt": "O arco da passagem inteira"
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": "Dónde está el pasaje en la historia",
+      "pt": "Onde a passagem está na história"
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": "El tono y el ritmo del relato",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": "Para qué se cuenta el pasaje",
+      "pt": "Para que a passagem é contada"
+    },
     "absence:1": {
       "en": "No word of God acting",
       "es": "Ninguna palabra de Dios actuando",
@@ -147,6 +167,26 @@
     }
   },
   "P02": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": "El arco del pasaje entero",
+      "pt": "O arco da passagem inteira"
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": "Dónde está el pasaje en la historia",
+      "pt": "Onde a passagem está na história"
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": "El tono y el ritmo del relato",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": "Para qué se cuenta el pasaje",
+      "pt": "Para que a passagem é contada"
+    },
     "absence:1": {
       "en": "God gives bread; Naomi gets up on her own",
       "es": "Dios da pan; Noemí se levanta por sí misma",
@@ -269,6 +309,26 @@
     }
   },
   "P03": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "Moab unnamed, and its gods too",
       "es": null,
@@ -371,6 +431,26 @@
     }
   },
   "P04": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "Why Naomi is barely recognised",
       "es": null,
@@ -493,6 +573,26 @@
     }
   },
   "P05": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": "El arco del pasaje entero",
+      "pt": "O arco da passagem inteira"
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": "Dónde está el pasaje en la historia",
+      "pt": "Onde a passagem está na história"
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": "El tono y el ritmo del relato",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": "Para qué se cuenta el pasaje",
+      "pt": "Para que a passagem é contada"
+    },
     "absence:1": {
       "en": "Boaz is named, and nothing more",
       "es": "Booz es nombrado, y nada más",
@@ -665,6 +765,26 @@
     }
   },
   "P06": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "Boaz never gives his name",
       "es": null,
@@ -857,6 +977,26 @@
     }
   },
   "P07": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "Nothing is withheld here",
       "es": null,
@@ -1064,6 +1204,26 @@
     }
   },
   "P08": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "The plan never says marriage",
       "es": null,
@@ -1136,6 +1296,26 @@
     }
   },
   "P09": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "No word spoken all night",
       "es": null,
@@ -1268,6 +1448,26 @@
     }
   },
   "P10": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "No farewell, and the measure unnamed",
       "es": null,
@@ -1365,6 +1565,26 @@
     }
   },
   "P11": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "The nearer redeemer has no name",
       "es": null,
@@ -1522,6 +1742,26 @@
     }
   },
   "P12": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "Named at the gate, and not there",
       "es": null,
@@ -1694,6 +1934,26 @@
     }
   },
   "P13": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": null,
+      "pt": null
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": null,
+      "pt": null
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": null,
+      "pt": null
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": null,
+      "pt": null
+    },
     "absence:1": {
       "en": "No wedding, no waiting, no birth told",
       "es": null,
@@ -1816,6 +2076,26 @@
     }
   },
   "P14": {
+    "arc": {
+      "en": "The arc of the whole passage",
+      "es": "El arco del pasaje entero",
+      "pt": "O arco da passagem inteira"
+    },
+    "context": {
+      "en": "Where the passage stands in the story",
+      "es": "Dónde está el pasaje en la historia",
+      "pt": "Onde a passagem está na história"
+    },
+    "tone": {
+      "en": "The tone and pace of the telling",
+      "es": "El tono y el ritmo del relato",
+      "pt": "O tom e o ritmo da narração"
+    },
+    "function": {
+      "en": "What the passage is told for",
+      "es": "Para qué se cuenta el pasaje",
+      "pt": "Para que a passagem é contada"
+    },
     "absence:1": {
       "en": "No mother is named, and David gets no comment",
       "es": "No se nombra a ninguna madre, y de David no se dice nada",

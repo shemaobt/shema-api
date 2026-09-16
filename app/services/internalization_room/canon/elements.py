@@ -19,6 +19,15 @@ class Element(BaseModel):
     label: str
     kind: ElementKind
     scene: int | None = None
+    detail: str = ""
+
+
+_AXES = (
+    (ElementKind.ARC, "arc_prose"),
+    (ElementKind.CONTEXT, "context_prose"),
+    (ElementKind.TONE, "tone_prose"),
+    (ElementKind.FUNCTION, "function_prose"),
+)
 
 
 def _slug(text: str) -> str:
@@ -105,7 +114,15 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
     Level 3 is deliberately not used here. Its atoms are the payload for verification; making
     them the conversation's spine would turn a session into a forty-item interrogation.
     """
-    elements: list[Element] = []
+    elements: list[Element] = [
+        Element(
+            key=kind.value,
+            label=f"Level-1 {kind.value}",
+            kind=kind,
+            detail=" ".join(getattr(meaning_map, section).split()),
+        )
+        for kind, section in _AXES
+    ]
     seen: set[str] = set()
 
     for scene in meaning_map.scenes:

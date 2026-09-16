@@ -58,11 +58,14 @@ NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
 #: Written out rather than derived from `elements_for`, so a canon that silently loses a bead
 #: fails here instead of agreeing with itself.
 PILOT = {
-    "P01": {"elements": 29, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P02": {"elements": 24, "scenes": [1, 2, 3], "preserved": 4},
-    "P05": {"elements": 34, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P14": {"elements": 10, "scenes": [1], "preserved": 0},
+    "P01": {"elements": 33, "scenes": [1, 2, 3, 4], "preserved": 5},
+    "P02": {"elements": 28, "scenes": [1, 2, 3], "preserved": 4},
+    "P05": {"elements": 38, "scenes": [1, 2, 3, 4], "preserved": 5},
+    "P14": {"elements": 14, "scenes": [1], "preserved": 0},
 }
+
+#: The four Level-1 axes open every passage, and like a preservation rule they sit in no scene.
+AXES = ("arc", "context", "tone", "function")
 
 #: Real canon, no labels written for it. Ten of Ruth's fourteen are in this position.
 UNLABELLED = "P03"
@@ -212,7 +215,9 @@ async def test_a_pilot_passage_serves_its_exact_beads(
     preserved = [e for e in body if e["kind"] == ElementKind.PRESERVED.value]
     assert len(preserved) == expected["preserved"]
     assert all(e["scene"] is None for e in preserved)
-    assert all(e["scene"] is not None for e in body if e not in preserved)
+    assert [e["key"] for e in body[:4]] == list(AXES)
+    assert all(e["scene"] is None for e in body[:4])
+    assert all(e["scene"] is not None for e in body[4:] if e not in preserved)
 
 
 async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncSession) -> None:
@@ -354,7 +359,7 @@ async def test_an_untouched_bead_says_so_and_names_no_session(
 
     body = (await client.get(coverage_url(project.id, "P14"), headers=headers)).json()
 
-    assert len(body) == 10
+    assert len(body) == PILOT["P14"]["elements"]
     assert {e["status"] for e in body} == {NOT_ENCOUNTERED}
     assert all(e["touched_in_session"] is None for e in body)
 
@@ -470,7 +475,7 @@ async def test_the_whole_necklace_costs_one_query(client, db_session: AsyncSessi
         response = await client.get(coverage_url(project.id, "P05"), headers=headers)
 
     assert response.status_code == 200
-    assert len(response.json()) == 34
+    assert len(response.json()) == PILOT["P05"]["elements"]
     assert len(counted.against("ir_coverage_events")) == 1
 
 

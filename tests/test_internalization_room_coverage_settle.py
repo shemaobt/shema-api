@@ -14,7 +14,7 @@ from app.models.internalization_room import CoverageFrame, CoverageView
 from app.services.internalization_room import background
 from app.services.internalization_room import sessions as service
 from app.services.internalization_room._default_prompts import default_prompt
-from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.canon.elements import absence_index, element_keys
 from app.services.internalization_room.classify_coverage import (
     _parse,
     _unresolved_block,
@@ -480,7 +480,9 @@ async def test_a_settled_turn_reaches_every_subscriber_of_its_session_and_no_oth
         announced = CoverageFrame(
             turn_id="turn-7",
             status="settled",
-            coverage=CoverageView(engaged=1, surfaced=1, total=20, absence_index=6),
+            coverage=CoverageView(
+                engaged=1, surfaced=1, total=len(keys), absence_index=absence_index(P)
+            ),
         )
         assert first.get_nowait() == second.get_nowait() == announced, (
             "o settle gravava a cobertura e ficava calado, e o app só a via "

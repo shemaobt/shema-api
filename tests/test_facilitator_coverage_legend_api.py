@@ -172,6 +172,10 @@ async def test_a_kind_nobody_has_named_is_refused_rather_than_served_raw(
     client, db_session, monkeypatch
 ):
     class GrownKind(enum.StrEnum):
+        ARC = "arc"
+        CONTEXT = "context"
+        TONE = "tone"
+        FUNCTION = "function"
         SCENE = "scene"
         BEING = "being"
         PLACE = "place"
