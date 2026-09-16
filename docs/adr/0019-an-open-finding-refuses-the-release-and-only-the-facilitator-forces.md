@@ -20,7 +20,7 @@ Decided: the blocker `telling_back_not_checked` returns beside the playback bloc
 of their own, `POST /facilitator/sessions/{session_id}/release`, whose body must say
 `force: true` and which exists for that act alone; without the flag it refuses with
 `nothing_to_force`. The force waives exactly the two blockers of her gate — the open finding
-and the unheard part — and no other: consent, coverage, rehearsal audio, a telling-back, its
+and the unheard part — and no other: coverage, rehearsal audio, a telling-back, its
 reading, an untold stretch and the panorama are missing material, not a dispute. The forced
 release is a **Forced release**: the row records who forced it, when, and the findings open
 at that moment, because a forced approval that shows only in the server log is the failure
