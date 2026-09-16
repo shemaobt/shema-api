@@ -58,7 +58,7 @@ NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
 #: Written out rather than derived from `elements_for`, so a canon that silently loses a bead
 #: fails here instead of agreeing with itself.
 PILOT = {
-    "P01": {"elements": 46, "scenes": [1, 2, 3, 4], "preserved": 5},
+    "P01": {"elements": 44, "scenes": [1, 2, 3, 4], "preserved": 3},
     "P02": {"elements": 39, "scenes": [1, 2, 3], "preserved": 4},
     "P05": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 5},
     "P14": {"elements": 14, "scenes": [1], "preserved": 0},
@@ -616,7 +616,9 @@ async def test_a_preservation_rule_still_belongs_to_no_scene(
 
     body = (await client.get(coverage_url(project.id, "P01"), headers=headers)).json()
 
-    assert [bead["scene"] for bead in body if bead["kind"] == "preserved"] == [None] * 5
+    assert [bead["scene"] for bead in body if bead["kind"] == "preserved"] == [None] * PILOT["P01"][
+        "preserved"
+    ]
 
 
 # ---------------------------------------------- behaviour 7: non-enumeration, and its ordering

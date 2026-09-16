@@ -190,16 +190,6 @@
       "es": "Las pérdidas dichas de un aliento, los hijos primero",
       "pt": "As perdas ditas de um fôlego, os filhos primeiro"
     },
-    "preserved:R6": {
-      "en": "God is never named as the cause",
-      "es": "Dios nunca es nombrado como causa",
-      "pt": "Deus nunca é nomeado como causa"
-    },
-    "preserved:R7": {
-      "en": "No grief is added where the text is silent",
-      "es": "No se añade duelo donde el texto calla",
-      "pt": "Nenhum luto é acrescentado onde o texto cala"
-    },
     "scene:1": {
       "en": "Famine and exile to Moab",
       "es": "Hambre y salida a Moab",
@@ -1474,11 +1464,6 @@
     },
     "preserved:R1": {
       "en": "The leftover from the field reaches Naomi",
-      "es": null,
-      "pt": null
-    },
-    "preserved:R13": {
-      "en": "Naomi names the role and stops",
       "es": null,
       "pt": null
     },

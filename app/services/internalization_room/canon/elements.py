@@ -10,7 +10,10 @@ from pydantic import BaseModel
 #: the file. It is defined in `core` because `app/models` needs it too, and a DTO module
 #: importing this package would run its `__init__` and close an import cycle.
 from app.core.room_enums import ElementKind
-from app.services.internalization_room.canon.book_material import preservation_rules
+from app.services.internalization_room.canon.book_material import (
+    PreservationRule,
+    preservation_rules,
+)
 from app.services.internalization_room.canon.parse_map import Entity, MeaningMap, load_map
 
 
@@ -84,7 +87,10 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
     The four Level-1 axes first, then one bead per scene, per entity in each scene, per
     significant absence, and per preserved element. An entity is a bead in every scene it
     appears in, labelled with that scene's own line: Naomi in scene 4 of Ruth 1 is "the
-    woman", and the team saying "Naomi" in scene 1 does not answer for her there.
+    woman", and the team saying "Naomi" in scene 1 does not answer for her there. A
+    preservation rule about the same silence as a scene's absence rides on that absence
+    bead — the teaching prose and the hard constraint are one thing to notice, not two —
+    and only the rules that fold into no scene keep a bead of their own.
 
     Level 3 is deliberately not used here. Its atoms are the payload for verification; making
     them the conversation's spine would turn a session into a forty-item interrogation.
@@ -98,6 +104,13 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
         )
         for kind, section in _AXES
     ]
+
+    rules = (
+        [rule for rule in preservation_rules(book) if rule.pericope == meaning_map.pericope_num]
+        if book
+        else []
+    )
+    folded: set[str] = set()
 
     for scene in meaning_map.scenes:
         elements.append(
@@ -125,27 +138,32 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
                     )
                 )
         if scene.absence:
+            related = [rule for rule in rules if rule.folds_into(scene.absence)]
+            folded.update(rule.rule_id for rule in related)
             elements.append(
                 Element(
                     key=f"{ElementKind.ABSENCE}:{scene.number}",
-                    label=scene.absence,
+                    label=" — ".join([scene.absence, *(_rule_label(rule) for rule in related)]),
                     kind=ElementKind.ABSENCE,
                     scene=scene.number,
                 )
             )
 
-    if book:
-        for rule in preservation_rules(book):
-            if rule.pericope != meaning_map.pericope_num:
-                continue
-            elements.append(
-                Element(
-                    key=f"{ElementKind.PRESERVED}:{rule.rule_id}",
-                    label=f"{rule.kind}: {rule.note}",
-                    kind=ElementKind.PRESERVED,
-                )
+    for rule in rules:
+        if rule.rule_id in folded:
+            continue
+        elements.append(
+            Element(
+                key=f"{ElementKind.PRESERVED}:{rule.rule_id}",
+                label=_rule_label(rule),
+                kind=ElementKind.PRESERVED,
             )
+        )
     return elements
+
+
+def _rule_label(rule: PreservationRule) -> str:
+    return f"{rule.kind}: {rule.note}"
 
 
 @lru_cache(maxsize=32)

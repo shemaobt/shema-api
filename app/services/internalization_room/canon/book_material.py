@@ -29,6 +29,25 @@ class PreservationRule(BaseModel):
     def render(self) -> str:
         return f"- [{self.pericope}] {self.rule_id} ({self.kind}): {self.note}"
 
+    def folds_into(self, absence_text: str) -> bool:
+        """Whether this rule is about the silence one scene's absence describes.
+
+        A structural-absence rule and a scene absence about the *same* silence are one thing
+        for the team to work, not two. Matched against this scene's own silence only: a
+        multi-scene rule's own wording would make every absence appear related merely because
+        the rule mentions its theme globally.
+        """
+        if not self.kind.startswith("STRUCTURAL_ABSENCE_"):
+            return False
+        text = absence_text.lower()
+        if "DIVINE_AGENCY" in self.kind:
+            return bool(re.search(r"\bgod\b|yhwh|divine|cause|causation|sent|agent", text))
+        if re.search(r"GRIEF|MOURNING|FUNERAL", self.kind):
+            return bool(re.search(r"grief|grieving|mourn|mourning|funeral|lament|wept|weep", text))
+        if re.search(r"OFFSPRING|CHILD", self.kind):
+            return bool(re.search(r"child|children|offspring|heir|born|birth", text))
+        return False
+
 
 def _extract_audit(text: str) -> list[dict]:
     """Pull the high_risk_register_audit array out of a Compilation Log.
