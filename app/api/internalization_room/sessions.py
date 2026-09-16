@@ -232,9 +232,12 @@ async def create_session(
 
     The opening is written ahead only for a panorama the team has not yet gone on from:
     that is the team about to enter the book, and the line is the passage's first. A team
-    already inside the book that chose to hear the panorama again is not about to enter
-    anything, and the line prepared for it was a model call and a clip spent on a row
-    nothing would ever hand over.
+    already inside the book that chose to hear the panorama again is there for the book's
+    shape, not for the door into a passage, so nothing is written for it. What that costs
+    is stated rather than waved away: `hand_over` would move the line to a bead opened after
+    the second panorama too, and a team that does leave it into a passage hears an opening
+    written live, with the wait the prepared one spares. A model call and a clip on every
+    second hearing, most of which end on the wheel, is the dearer side of that trade.
     """
     session = await room.create_session(
         db,

@@ -3,8 +3,11 @@
 The app asks for `"OV"` at every launch, and the server honoured it every time without
 looking at anything: a team reopening the tablet on the passage they were working heard the
 whole panorama again before reaching their own passage. The server never inserts a panorama
-on its own, so the decision belongs where the request lands — one question, asked once,
-before the request is honoured. `create_session` is the only caller.
+on its own, so the decision belongs where the request lands — one question, asked before
+the request is honoured. `create_session` asks it to decide what the launch is answered
+with; the session route asks it again, after the session exists, to decide whether an
+opening is written ahead for a panorama. Both only read, and neither writes anything the
+other could then read differently.
 
 **Derived, never stored** — `progression`'s rule, and the same one. There is no "seen"
 column, counter or event, and there should not be one: a flag would be a second opinion
