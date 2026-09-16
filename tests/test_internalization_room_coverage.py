@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room._default_prompts import (
     default_prompt,
@@ -20,6 +22,7 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 
 P = "P03"
+_VENDOR = Path("app/services/internalization_room/prompts/vendor")
 
 
 def test_a_fresh_session_has_encountered_nothing() -> None:
@@ -185,7 +188,6 @@ _SCALE = [
 
 _BUCKET = {
     CoverageStatus.SURFACED: "surfaced",
-    CoverageStatus.PARTIALLY_ENGAGED: "partially_engaged",
     CoverageStatus.ENGAGED: "engaged",
 }
 
@@ -199,8 +201,9 @@ def _with(overrides: dict[str, CoverageStatus]) -> dict[str, str]:
 
 
 def test_a_merge_moves_a_bead_forward_or_leaves_it_across_the_whole_scale() -> None:
-    """Every ordered pair, not three hand-picked ones. The fourth state has two neighbours,
-    and a scale is only monotonic if it is monotonic everywhere.
+    """Every ordered pair, not three hand-picked ones — the two buckets the room still writes
+    against every state a row can hold, and a scale is only monotonic if it is monotonic
+    everywhere.
     """
     key = element_keys(P)[0]
 
@@ -305,22 +308,32 @@ def test_a_tracker_written_before_the_fourth_state_reads_the_same() -> None:
     assert merge(old_row, pericope_num=P, surfaced=[keys[1]])[keys[1]] == "engaged"
 
 
-def test_the_classifier_prompt_carries_the_whole_scale() -> None:
-    """A state the prompt does not name is a state the classifier cannot assign."""
-    prompt = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
+def test_the_classifier_prompt_is_her_three_status_text() -> None:
+    """Every line between her markers, and nothing of ours.
 
-    for status in CoverageStatus:
-        assert f"`{status.value}`" in prompt, f"{status.value} não está escrito no prompt"
+    The fourth status was ours: a band for the echo, and a floor lowered to meet it. What
+    is served now is the vendored copy read back between `=== BEGIN SYSTEM PROMPT ===` and
+    `=== END SYSTEM PROMPT ===`, so a word of ours creeping back in is a diff against her
+    file, not a judgment call.
+    """
+    vendored = (_VENDOR / "classifier_system_prompt.md").read_text(encoding="utf-8")
+    hers = vendored.split("`=== BEGIN SYSTEM PROMPT ===`", 1)[1]
+    hers = hers.split("`=== END SYSTEM PROMPT ===`", 1)[0].strip("\n") + "\n"
+
+    assert default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"] == hers
 
 
-def test_the_classifier_prompt_draws_both_borders_of_the_partial_state() -> None:
-    """Named but not delimited is a state the model guesses at. The issue asks for the
-    distinction written down, not implied by examples.
+def test_the_classifier_prompt_makes_an_echoed_silence_engaged() -> None:
+    """Her rule for the absences, word for word, and the legacy state nowhere in it.
+
+    Ours said the opposite: taking up the Guide's noticing was `partially_engaged`, and only
+    noticing the silence unprompted was `engaged` — which is how the five silences of Ruth 1
+    became beads a team could never fill.
     """
     prompt = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
-    blocks = [block for block in prompt.split("\n\n") if "`partially_engaged`" in block]
 
-    assert blocks
-    assert any("`surfaced`" in block and "`engaged`" in block for block in blocks), (
-        "nenhum bloco compara o estado parcial com os dois vizinhos"
-    )
+    assert (
+        'The Guide raising "notice the story never says God did this" = surfaced; '
+        "the team responding to or echoing that noticing = engaged."
+    ) in prompt, "a regra do eco de ausência não é a dela"
+    assert "partially_engaged" not in prompt, "o quarto estado voltou ao prompt"

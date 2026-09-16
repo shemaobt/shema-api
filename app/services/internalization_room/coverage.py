@@ -93,7 +93,6 @@ def merge(
     *,
     pericope_num: str,
     surfaced: Iterable[str] = (),
-    partially_engaged: Iterable[str] = (),
     engaged: Iterable[str] = (),
 ) -> dict[str, str]:
     """Advance coverage. Movement is one-way: a status never drops back.
@@ -104,7 +103,6 @@ def merge(
     merged = {**initial_state(pericope_num), **state}
     buckets = (
         (surfaced, CoverageStatus.SURFACED),
-        (partially_engaged, CoverageStatus.PARTIALLY_ENGAGED),
         (engaged, CoverageStatus.ENGAGED),
     )
     for keys, status in buckets:
