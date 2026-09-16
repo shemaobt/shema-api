@@ -119,7 +119,7 @@ async def judge_session(
 
 
 #: The three dimensions her rule puts a floor of 3 under; every other one only has to be above 0.
-_FLOORED = ("containment", "answers_requests_to_understand", "rehearsal_and_honest_checking")
+FLOORED = ("containment", "answers_requests_to_understand", "rehearsal_and_honest_checking")
 
 
 def passes(verdict: dict[str, Any]) -> bool:
@@ -133,7 +133,7 @@ def passes(verdict: dict[str, Any]) -> bool:
     """
     scores: dict[str, int] = verdict["scores"]
     return (
-        all(scores[dimension] >= 3 for dimension in _FLOORED)
+        all(scores[dimension] >= 3 for dimension in FLOORED)
         and all(score > 0 for score in scores.values())
         and not any(incident["severity"] == "blocker" for incident in verdict["incidents"])
     )

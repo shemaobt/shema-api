@@ -124,6 +124,10 @@ def _args(sessions: Path, out: Path, **over: Any) -> argparse.Namespace:
     return argparse.Namespace(**{**given, **over})
 
 
+def _approving() -> dict[str, Any]:
+    return {**A_VERDICT, "scores": dict.fromkeys(A_VERDICT["scores"], 4), "incidents": []}
+
+
 async def test_one_command_plays_every_session_and_a_refused_one_does_not_stop_the_rest(
     over_the_seam, her_sessions: Path, tmp_path: Path, capsys
 ) -> None:
@@ -143,7 +147,11 @@ async def test_one_command_plays_every_session_and_a_refused_one_does_not_stop_t
     assert "| J01-frame-before-elicit | — | recusada | 400 " in readme, (
         "a recusa é uma linha do README, não o fim da rodada"
     )
-    row = "| P01-understand-first | — | 1 | turn 1: verbatim repeat of the previous guide turn |"
+    row = (
+        "| P01-understand-first | FAIL | 1 | turn 1: verbatim repeat of the previous guide turn; "
+        "juiz: answers_requests_to_understand 1; "
+        "juiz: turn 1 · blocker · redirect_on_request_to_understand |"
+    )
     assert row in readme, "a coluna mecânica é a dela: uma contagem, e o que caiu, por turno"
     assert exit_code == 1, "uma sessão recusada ou um aviso mecânico é a rodada vermelha"
     assert "0/2 golden sessions pass" in capsys.readouterr().out, (
@@ -193,8 +201,9 @@ async def test_a_session_the_room_refused_after_it_played_is_not_judged(
 
 
 async def test_a_clean_run_exits_zero_and_only_the_named_session_is_played(
-    over_the_seam, her_sessions: Path, tmp_path: Path
+    over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    the_judge_answers(monkeypatch, json.dumps(_approving()))
     out = tmp_path / "reports"
     args = _args(her_sessions, out, only="P01-understand-first", turns=1)
 
@@ -253,7 +262,11 @@ def test_the_readme_adds_the_money_up_by_role_and_times_the_voice_apart_from_the
         turnMs=33000,
         usage=[_call("guide", 0.30, 29000), _call("validator", 0.05, 4000)],
     )
-    results = [golden_runner.SessionResult("P01-understand-first", "s-1", [first, second])]
+    results = [
+        golden_runner.SessionResult(
+            "P01-understand-first", "s-1", [first, second], verdict=_approving()
+        )
+    ]
 
     readme = golden_runner.summary(
         results,
@@ -268,12 +281,12 @@ def test_the_readme_adds_the_money_up_by_role_and_times_the_voice_apart_from_the
         "`http://127.0.0.1:8047/api/internalization-room/text-seam/`\n"
         "\n"
         "Rodada `2026-09-16T18-00-00` de `scripts/golden_runner.py` sobre os roteiros dela "
-        "(roteiros e doutrina no pin `533b6e3` · cânon `7372ec0`): **1/1 sem aviso mecânico "
-        "(juiz ainda não ligado), 0 avisos mecânicos, 0 fail-safes em 2 turnos reais.**\n"
+        "(roteiros e doutrina no pin `533b6e3` · cânon `7372ec0`): **1/1 aprovadas pelo juiz, "
+        "0 avisos mecânicos, 0 fail-safes em 2 turnos reais.**\n"
         "\n"
         "| Sessão | Juiz | Mecânico | Observação |\n"
         "|---|---|---|---|\n"
-        "| P01-understand-first | — | 0 |  |\n"
+        "| P01-understand-first | PASS | 0 |  |\n"
         "\n"
         "Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ 0.61 — classifier "
         "US$ 0.01 · guide US$ 0.50 · validator US$ 0.10.\n"
@@ -320,7 +333,7 @@ def test_a_session_refused_after_it_played_keeps_its_faults_on_its_own_row() -> 
         [refused], base_url="http://test/", stamp="2026-09-16T18-00-00", tip="x", pins="p"
     )
 
-    assert "**0/1 sem aviso mecânico (juiz ainda não ligado), 1 avisos mecânicos" in readme
+    assert "**0/1 aprovadas pelo juiz, 1 avisos mecânicos" in readme
     assert (
         "| P01-understand-first | — | recusada · 1 | 502 o modelo não respondeu; "
         "turn 0: religious farewell of its own |"
@@ -351,3 +364,50 @@ def test_a_call_the_table_never_priced_is_counted_out_loud_beside_the_total() ->
         "Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ 0.05 — validator "
         "US$ 0.05; 1 chamada sem preço de tabela (claude-opus-6), fora da soma.\n"
     ) in readme, "uma chamada sem preço saía da soma como se fosse de graça, sem uma palavra"
+
+
+async def test_a_session_the_judge_approved_with_a_mechanical_fault_still_does_not_pass(
+    over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    the_judge_answers(monkeypatch, json.dumps(_approving()))
+    out = tmp_path / "reports"
+
+    exit_code = await golden_runner.run(_args(her_sessions, out, only="P01-understand-first"))
+
+    assert "| P01-understand-first | PASS | 1 | turn 1: verbatim repeat" in (
+        out / "README.md"
+    ).read_text(encoding="utf-8")
+    assert "0/1 golden sessions pass" in capsys.readouterr().out, (
+        "passa é a regra dela (run.ts:206): juiz aprovou E zero avisos mecânicos"
+    )
+    assert exit_code == 1
+
+
+def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:
+    warned = golden_runner.Played(idx=0, team="Oi.", guide="Vão com Deus!", outcome="pass")
+    warned.mechanical = ["religious farewell of its own"]
+    clean = golden_runner.Played(idx=1, team="Explica.", guide=GUIDE_LINE, outcome="pass")
+    results = [
+        golden_runner.SessionResult(
+            "P01-spoilers-and-boundaries", "s-1", [warned], verdict=_approving()
+        ),
+        golden_runner.SessionResult("P01-understand-first", "s-2", [clean], verdict=A_VERDICT),
+    ]
+
+    readme = golden_runner.summary(
+        results, base_url="http://test/", stamp="2026-09-16T18-00-00", tip="x", pins="p"
+    )
+
+    assert (
+        "**1/2 aprovadas pelo juiz, 1 avisos mecânicos, 0 fail-safes em 2 turnos reais.**" in readme
+    ), "o cabeçalho é o do README dela de 03/09: o juiz conta as suas, o mecânico as dele"
+    assert (
+        "| P01-spoilers-and-boundaries | PASS | 1 | turn 0: religious farewell of its own |"
+        in readme
+    ), "um aviso mecânico não vira reprovação do juiz"
+    assert (
+        "| P01-understand-first | FAIL | 0 | juiz: answers_requests_to_understand 1; "
+        "juiz: turn 1 · blocker · redirect_on_request_to_understand |"
+    ) in readme, (
+        "uma reprovação do juiz não vira aviso mecânico — e a linha diz por que o portão fechou"
+    )

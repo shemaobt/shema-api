@@ -48,7 +48,7 @@ from typing import Any
 
 import httpx
 
-from app.services.internalization_room.golden_judge import judge_session
+from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
 from scripts.golden_checks import mechanical_checks
 from scripts.sync_doctrine import read_pin
 
@@ -132,6 +132,40 @@ class SessionResult:
     @property
     def faults(self) -> list[str]:
         return [f"turn {turn.idx}: {fault}" for turn in self.played for fault in turn.mechanical]
+
+    @property
+    def judged(self) -> str:
+        """The judge's column: her verdict by her rule, or a dash where no verdict was reached."""
+        if self.verdict is None:
+            return "—"
+        return "PASS" if passes(self.verdict) else "FAIL"
+
+    @property
+    def objections(self) -> list[str]:
+        """Why the judge closed the gate, in the row: the score under its floor, the blocker quoted.
+
+        The whole verdict is in the file beside the transcript; this is the part of it that
+        decided, so a reader of the README knows what to open.
+        """
+        if self.verdict is None:
+            return []
+        scores: dict[str, int] = self.verdict["scores"]
+        under = [
+            f"juiz: {dimension} {score}"
+            for dimension, score in scores.items()
+            if score == 0 or (dimension in FLOORED and score < 3)
+        ]
+        blockers = [
+            f"juiz: turn {incident['turn']} · blocker · {incident['kind']}"
+            for incident in self.verdict["incidents"]
+            if incident["severity"] == "blocker"
+        ]
+        return under + blockers
+
+    @property
+    def passed(self) -> bool:
+        """Her rule for the run's own line: the judge approved and nothing mechanical tripped."""
+        return self.judged == "PASS" and not self.faults and not self.refused
 
 
 def load_script(path: Path) -> Script:
@@ -392,15 +426,16 @@ def _seconds(values: list[int]) -> str:
 def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str, pins: str) -> str:
     """The run's README, in the shape of hers: the verdict line, the table, the money, the clock.
 
-    The judge's column is a dash on every row until the judge is wired; the mechanical column
-    is hers exactly, a count kept apart from any verdict so a warning is never laundered into
-    a judge failure in either direction. What her table's last column says by hand, ours says
-    by listing the faults, or the room's refusal.
+    Two columns, as her reports keep them: the judge's PASS or FAIL by her rule, and the
+    mechanical count, each read from its own source so a warning is never laundered into a
+    judge failure nor a judge failure into a warning, in either direction. What her table's
+    last column says by hand, ours says by listing the faults, the judge's objections, or
+    the room's refusal.
     """
     played = [turn for result in results for turn in result.played]
     faults = sum(len(result.faults) for result in results)
     refused = [result for result in results if result.refused]
-    clean = sum(1 for result in results if not result.faults and not result.refused)
+    approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
     by_role: dict[str, float] = {}
     unpriced: list[str] = []
@@ -418,8 +453,8 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         f"# Sessões-ouro — {stamp[:10]}, esta sala em `{tip}`, `{base_url}`",
         "",
         f"Rodada `{stamp}` de `scripts/golden_runner.py` sobre os roteiros dela ({pins}): "
-        f"**{clean}/{len(results)} sem aviso mecânico (juiz ainda não ligado), {faults} avisos "
-        f"mecânicos, {fail_safes} fail-safes em {len(played)} turnos reais"
+        f"**{approved}/{len(results)} aprovadas pelo juiz, {faults} avisos mecânicos, "
+        f"{fail_safes} fail-safes em {len(played)} turnos reais"
         f"{f', {len(refused)} sessões recusadas' if refused else ''}.**",
         "",
         "| Sessão | Juiz | Mecânico | Observação |",
@@ -429,8 +464,10 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         column = "recusada" if result.refused else str(len(result.faults))
         if result.refused and result.faults:
             column = f"recusada · {len(result.faults)}"
-        noted = "; ".join(([result.refused] if result.refused else []) + result.faults)
-        lines.append(f"| {result.name} | — | {column} | {noted} |")
+        noted = "; ".join(
+            ([result.refused] if result.refused else []) + result.faults + result.objections
+        )
+        lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
     if by_role:
         total = sum(by_role.values())
@@ -477,10 +514,13 @@ async def run(args: argparse.Namespace) -> int:
         summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins()),
         encoding="utf-8",
     )
-    passed = sum(1 for result in results if not result.faults and not result.refused)
+    passed = sum(1 for result in results if result.passed)
     for result in results:
-        verdict = "REFUSED" if result.refused else ("PASS" if not result.faults else "FAIL")
-        print(f"  {verdict} · {result.name} · mechanical={len(result.faults)}")
+        verdict = "REFUSED" if result.refused else ("PASS" if result.passed else "FAIL")
+        print(
+            f"  {verdict} · {result.name} · judge={result.judged.lower().replace('—', 'n/a')} "
+            f"· mechanical={len(result.faults)}"
+        )
     print(f"\n{passed}/{len(results)} golden sessions pass · {out / 'README.md'}")
     return 0 if passed == len(results) else 1
 
