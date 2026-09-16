@@ -1,11 +1,15 @@
+import enum
 from pathlib import Path
+from unittest.mock import patch
 
 from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room import coverage
 from app.services.internalization_room._default_prompts import (
     default_prompt,
     fail_safe_utterances,
 )
 from app.services.internalization_room.canon.elements import (
+    Element,
     ElementKind,
     element_keys,
     elements_for,
@@ -181,8 +185,8 @@ def test_two_readings_of_the_same_spine_keep_the_further_one() -> None:
 
 _SCALE = [
     CoverageStatus.NOT_ENCOUNTERED,
-    CoverageStatus.SURFACED,
     CoverageStatus.PARTIALLY_ENGAGED,
+    CoverageStatus.SURFACED,
     CoverageStatus.ENGAGED,
 ]
 
@@ -231,7 +235,10 @@ def test_the_further_of_two_readings_wins_across_the_whole_scale() -> None:
             )
 
 
-def test_the_floor_accepts_a_bead_the_team_only_partly_worked() -> None:
+def test_the_floor_refuses_a_bead_the_team_only_partly_worked() -> None:
+    """Hard Rule #2: only `engaged` counts for coverage. A bead written under the retired
+    status is a bead the team took up on the Guide's terms, and that is `surfaced`.
+    """
     keys = element_keys(P)
     half = len(keys) // 2
     mixed = _with(
@@ -241,18 +248,19 @@ def test_the_floor_accepts_a_bead_the_team_only_partly_worked() -> None:
         }
     )
 
-    assert floor_met(mixed, P) is True
-    assert floor_met(_spine_at(CoverageStatus.PARTIALLY_ENGAGED), P) is True
-    assert floor_met({**mixed, keys[0]: CoverageStatus.SURFACED.value}, P) is False
-    assert floor_met({**mixed, keys[0]: CoverageStatus.NOT_ENCOUNTERED.value}, P) is False
+    assert floor_met(mixed, P) is False
+    assert floor_met(_spine_at(CoverageStatus.PARTIALLY_ENGAGED), P) is False
+    assert floor_met(_spine_at(CoverageStatus.SURFACED), P) is False
+    assert floor_met(_spine_at(CoverageStatus.ENGAGED), P) is True
 
 
-def test_a_preservation_rule_the_team_only_echoed_still_closes_the_passage() -> None:
-    """The case the fourth state exists for.
+def test_a_preservation_rule_the_team_only_echoed_does_not_close_the_passage() -> None:
+    """The case the fourth state existed for, reversed.
 
-    A team engages a preservation rule by noticing a silence, which mostly happens as an echo
-    of the Guide noticing it first. Demanding the unprompted version of that from all five
-    rules is how Ruth 1 becomes a passage that never closes.
+    A team engages a preservation rule by noticing a silence, and the echo of the Guide's
+    noticing is that engagement — her classifier writes it `engaged`, so the floor has no
+    reason left to meet the echo halfway. What still stands at the retired status is a bead
+    the ledger has not seen the team take up.
     """
     preserved = [e.key for e in elements_for(P) if e.kind is ElementKind.PRESERVED]
     others = [key for key in element_keys(P) if key not in preserved]
@@ -264,18 +272,36 @@ def test_a_preservation_rule_the_team_only_echoed_still_closes_the_passage() -> 
     )
 
     assert preserved
-    assert floor_met(echoed, P) is True
+    assert floor_met(echoed, P) is False
 
 
-def test_the_floor_being_met_is_not_the_work_being_finished() -> None:
-    """A partly worked bead stays in the unresolved set the classifier is shown.
+def test_a_level_one_axis_meets_the_floor_at_surfaced_and_nothing_else_does() -> None:
+    """Her one exemption: "all four Level-1 elements at least `surfaced`" (build_spec.md:333).
 
-    Dropping it there would leave the classifier unable to ever promote it — it only sees
-    what is unresolved — and the bead would be frozen at partial for the rest of the session.
+    The enum does not hold the four kinds yet — that slice is ENG-752 — so the exemption
+    is read off the kind's value, and this case hands the floor a kind this build does
+    not know, the way the ledger will receive it.
     """
+
+    class AxisKind(enum.StrEnum):
+        ARC = "arc"
+
+    axis = Element.model_construct(key="arc", label="Level-1 arc", kind=AxisKind.ARC, scene=None)
+    concrete = elements_for(P)[0]
+    spine = [axis, concrete]
+    with_the_axis = {**initial_state(P), "arc": CoverageStatus.SURFACED.value}
+
+    with patch.object(coverage, "elements_for", return_value=spine):
+        assert floor_met({**with_the_axis, concrete.key: "engaged"}, P) is True
+        assert floor_met({**with_the_axis, concrete.key: "surfaced"}, P) is False
+        assert floor_met(
+            {**with_the_axis, "arc": "not_encountered", concrete.key: "engaged"}, P
+        ) is (False)
+
+
+def test_a_partly_worked_bead_stays_in_the_set_the_classifier_is_shown() -> None:
     state = _spine_at(CoverageStatus.PARTIALLY_ENGAGED)
 
-    assert floor_met(state, P) is True
     assert {element.key for element in remaining(state, P)} == set(element_keys(P))
 
 
@@ -294,8 +320,7 @@ def test_a_partly_worked_bead_counts_as_encountered_but_not_as_worked() -> None:
 
 def test_a_tracker_written_before_the_fourth_state_reads_the_same() -> None:
     """What a stored row holds is these three strings, because nothing had yet written the
-    fourth. The floor moved down one step, not two: an all-surfaced session still does not
-    close.
+    fourth — and nothing writes it again. An all-surfaced session still does not close.
     """
     keys = element_keys(P)
     old_row = {**dict.fromkeys(keys, "not_encountered"), keys[0]: "surfaced", keys[1]: "engaged"}
