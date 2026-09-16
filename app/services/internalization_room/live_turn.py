@@ -37,9 +37,6 @@ from app.services.internalization_room.comprehension.practice import (
 from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
-from app.services.internalization_room.comprehension.session_readiness import (
-    render_comprehension_status,
-)
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
@@ -49,6 +46,7 @@ from app.services.internalization_room.run_turn import (
     run_turn,
 )
 from app.services.internalization_room.sessions import comprehension_of
+from app.services.internalization_room.turn.context import render_context
 from app.services.internalization_room.turn.scene_view import current_scene_id
 
 
@@ -97,15 +95,13 @@ async def run_comprehension_turn(
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
 
-    comprehension_status = render_comprehension_status(
+    context = render_context(
         checkpoints=checkpoints,
         scene_ids=scene_ids,
-        ledger=state.ledger,
-        practiced_scene_ids=projected_practice,
-        current_scene=scene_pointer,
+        state=state,
+        projected_practice=projected_practice,
+        scene_pointer=scene_pointer,
     )
-
-    app_context = comprehension_status
 
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
@@ -135,7 +131,7 @@ async def run_comprehension_turn(
             opening=opening,
             settings=settings,
             session_id=session.id,
-            app_context=app_context,
+            app_context=context.app_context,
             ask_for_movements=opening and not messages,
         )
 
