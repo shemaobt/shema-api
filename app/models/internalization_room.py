@@ -1,8 +1,8 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
@@ -471,7 +471,17 @@ class PlayedTake(BaseModel):
     """
 
     take_id: str
-    played_ranges: list[list[int]] = Field(default_factory=list)
+    #: A span is a start and an end, and exactly those two. Typed as a bare list of ints it
+    #: crossed the door in any shape, and the covering arithmetic that unpacks it raised at
+    #: release time instead — a stored report the team can no longer change turned every
+    #: release attempt into a 500.
+    #:
+    #: The type binds on the way out of the database as well as on the way in, because the
+    #: stored state is this same model: a row already holding a malformed span would now fail
+    #: to load on every route of that session rather than only at the handoff. Nothing has
+    #: written one — the app has always sent pairs, and no build is in a store yet (ADR 0017)
+    #: — and reading leniently would mean carrying a shape the arithmetic cannot use.
+    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
     clip_duration_ms: int = Field(default=0, ge=0)
 
 
@@ -495,7 +505,7 @@ class FinishBackTranslationRequest(BaseModel):
     """
 
     played_by_take: list[PlayedTake] = Field(default_factory=list)
-    played_ranges: list[list[int]] = Field(default_factory=list)
+    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
     clip_duration_ms: int | None = Field(default=None, ge=0)
 
 
@@ -517,6 +527,13 @@ class BackTranslationVerdictResponse(BaseModel):
     #: inference that cost a team their morning — the app had no address, inferred "start
     #: over", and threw away every recording of the passage.
     untold_segment_id: str | None = None
+    #: Which parts of the rehearsal the report does not cover, by the take each was played
+    #: from, sorted; empty when the team has heard the whole of it. Its own field for the
+    #: reason `untold_segment_id` is its own: the two are different errands, and an app that
+    #: read one from the absence of the other would send the team to record again when what
+    #: they owe is a clip to play. Empty on every answer that is not this refusal, so the app
+    #: decides by the field and never by what is missing from the body.
+    unheard_take_ids: list[str] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
 
@@ -865,3 +882,210 @@ class QuestionAudioResponse(BaseModel):
     #: ISO-8601 with an offset, like every other instant this module serves. A bare local
     #: time here would be a promise nobody can compare against their own clock.
     expires_at: str
+
+
+class RetroverificationFinding(BaseModel):
+    """What the analyst raised, with the words they wrote it in.
+
+    The note lives here and nowhere else. `chunk` is the number the analyst gave, kept beside
+    the stretch it resolved to, because a missing element placed after frase N resolves to the
+    stretch after it and the two halves of one swap would otherwise look unrelated (ADR 0018).
+    """
+
+    kind: str
+    note: str
+    segment_id: str | None = None
+    chunk: int | None = None
+    fills_silence: bool = False
+    raised_by_check: bool = False
+
+
+class RetroverificationRelease(BaseModel):
+    """One approved draft of the passage, as the consultant's file lists it.
+
+    Every release of the passage and not only this session's: that is what a **Version** is
+    per, so a number another conversation about this passage minted names a draft of the same
+    passage. `session_id` is which conversation wrote it, which is the fact a list scoped to
+    one session could not carry.
+
+    `forced_open_findings` is what was open when a person overruled the gate, the analyst's
+    words included. The **Packet** beside it says what was open as a kind and an address; this
+    is where the why lives.
+
+    It is a **view of** the stored row and not the row itself: typed as the finding model
+    beside this one, so a consultant's client reads a field instead of a string key, which
+    means a key the row happens to carry and this model does not is dropped, and a row with no
+    `note` would be refused rather than served. Every row any version of the approval has
+    written validates — `Finding.note` has always existed and is always dumped, and the other
+    five fields carry defaults.
+    """
+
+    version: int
+    session_id: str
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    approved_at: str
+    device_id: str | None = None
+    forced_by: str | None = None
+    forced_at: str | None = None
+    forced_open_findings: list[RetroverificationFinding] = Field(default_factory=list)
+    package_sha256: str
+
+
+class RetroverificationAttempt(BaseModel):
+    """A telling-back the team replaced, and what it reported having listened to.
+
+    Read as history and never as evidence about the recording standing now: the report cannot
+    be restated per part after the fact, because there is nothing left to key it to (ADR 0017).
+
+    **Both shapes travel**, which is the exception ADR 0017 wrote for exactly these rows. An
+    attempt archived before the parts were named carries only the flat pair, and a view serving
+    `played_by_take` alone would report that reading as having listened to nothing — which is
+    not what the row holds.
+
+    Its findings keep the analyst's words, like the current ones: an archived reading is the
+    material this file exists to carry.
+    """
+
+    findings: list[RetroverificationFinding] = Field(default_factory=list)
+    played_by_take: list[PlayedTake] = Field(default_factory=list)
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = None
+
+
+class RetroverificationTelling(BaseModel):
+    """One earlier version of a stretch: what the team said that time, and when it stopped.
+
+    A **Correction** is a new row for the same position (ADR 0004), so what the team said
+    before is a row of its own rather than an edit that erased it. `bridge_take_id` is the
+    recording of them saying it, which is reachable in `takes` like any other.
+    """
+
+    segment_id: str
+    transcript: str | None = None
+    pass_number: int
+    tellings: int
+    bridge_take_id: str | None = None
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    created_at: str | None = None
+    superseded_at: str | None = None
+
+
+class RetroverificationStretch(BaseModel):
+    """One stretch standing now, with its number, its slice and everything told before it.
+
+    `frase` is the number the latest **Version** froze for this stretch, or the position in
+    the reading of right now when nothing has been approved. **It is absent rather than null**
+    for a stretch the frozen reading does not carry — a stretch told after the approval was in
+    no reading that version numbered, and the number an older reading might have given it is
+    recoverable from nothing. A reader asking for it meets the failure instead of a silence
+    that looks like an answer, which is the rule the **Packet** applies to the same question.
+    """
+
+    segment_id: str
+    frase: int | None = None
+    take_id: str
+    starts_ms: int
+    ends_ms: int
+    pass_number: int
+    tellings: int
+    transcript: str | None = None
+    parent_segment_id: str | None = None
+    history: list[RetroverificationTelling] = Field(default_factory=list)
+
+    @model_serializer(mode="wrap")
+    def _a_number_it_does_not_have_is_absent(self, handler: Any) -> dict[str, Any]:
+        served: dict[str, Any] = handler(self)
+        if self.frase is None:
+            served.pop("frase", None)
+        return served
+
+
+class RetroverificationListening(BaseModel):
+    """What the team played of one part of the rehearsal, and whether that covered it.
+
+    One entry per part, in that part's own milliseconds: a part is its own recording, so what
+    was heard of one is judged against that part alone (ADR 0017). A part no report names
+    carries nothing played and is not heard.
+    """
+
+    take_id: str
+    played_ranges: list[tuple[int, int]] = Field(default_factory=list)
+    clip_duration_ms: int = 0
+    heard: bool
+
+
+class RetroverificationHardStretch(BaseModel):
+    """One **Hard stretch** mark, placed on the stretch it is about now.
+
+    The row names the first telling of the chain and is cleared by nothing, so it cannot move
+    with the stretch; the file walks the chain forward and says both. `segment_id` is null when
+    the chain was abandoned — the mark stands, and there is no stretch left to point at.
+
+    A chain that ended on a stretch the team divided names a stretch that is standing and is
+    not a unit, so that id is found in `divided` and not in `stretches`. A reader resolving one
+    looks in both lists.
+    """
+
+    segment_id: str | None = None
+    first_telling_id: str
+    tellings: int
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    crossed_at: str
+
+
+class RetroverificationTake(BaseModel):
+    """One recording of the session, and where to hear it.
+
+    `url` is the path of the facilitator's own audio route and never a signed link: a signed
+    URL expires in minutes and this document outlives it. That route already serves a
+    recording a retelling replaced, because a take is never superseded.
+    """
+
+    take_id: str
+    kind: str
+    scope: str
+    ordinal: int | None = None
+    pass_number: int | None = None
+    sha256: str
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    recorded_at: str | None = None
+    url: str
+
+
+class RetroverificationFile(BaseModel):
+    """Everything the check learned about one session, for the facilitator and the consultant.
+
+    `numbering` says what the numbers beside the stretches are worth: `frozen` when a
+    **Version** exists and `live` when the reading of right now is all there is. `notices`
+    says the same thing in the consultant's own language, beside the flags a program reads —
+    a file that only carried the booleans would leave the person reading it to work out what
+    a missing number means.
+    """
+
+    session_id: str
+    pericope: str
+    project_id: str | None = None
+    #: ISO-8601 with an offset, like every other instant this module serves.
+    generated_at: str
+    releases: list[RetroverificationRelease] = Field(default_factory=list)
+    numbering: Literal["frozen", "live"]
+    notices: list[str] = Field(default_factory=list)
+    approved: bool
+    analysed: bool
+    checked: bool
+    checked_at: str | None = None
+    stretches: list[RetroverificationStretch] = Field(default_factory=list)
+    #: The stretches the team divided: standing, and no longer a unit. They fall between the
+    #: two lists beside them — not final, because they were divided, and not retired, because
+    #: nothing replaced them — so what the team said about the whole stretch before they heard
+    #: two ideas in it, and every telling before that, had nowhere to go. Each carries the
+    #: `frase` the frozen reading gave it, when it was in one: nothing refuses dividing a
+    #: stretch after the team approved, and that is the case freezing exists for — a comment
+    #: filed against that number was filed before the cut.
+    divided: list[RetroverificationStretch] = Field(default_factory=list)
+    abandoned: list[RetroverificationTelling] = Field(default_factory=list)
+    findings: list[RetroverificationFinding] = Field(default_factory=list)
+    superseded_attempts: list[RetroverificationAttempt] = Field(default_factory=list)
+    listening: list[RetroverificationListening] = Field(default_factory=list)
+    hard_stretches: list[RetroverificationHardStretch] = Field(default_factory=list)
+    takes: list[RetroverificationTake] = Field(default_factory=list)

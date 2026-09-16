@@ -77,6 +77,14 @@ async def keep_take(
     sends is its own position in its own list, and the ordinal is the stretch's — written
     where a stretch is captured, which this route never does. A rehearsal take keeps the
     number it was sent with: that one is a part of the passage, not a telling of a stretch.
+
+    **A rehearsal take under a number the session already has is that part recorded again**,
+    and this call is the whole of that verb: the app says which part it is recording by the
+    number it sends, so nothing else has to be asked of it. What follows from it — which
+    stretches stop counting, which findings go with them, and that the check starts over — is
+    one service, called once the bytes are safe. It does not live inside the storing: the same
+    primitive stores a **Rebuild**, which carries the number of the recording it was built from
+    and must retire none of the stretches it is about to re-address.
     """
     session = await room.get_session(db, session_id)
     take_kind = _kind(kind)
@@ -93,6 +101,7 @@ async def keep_take(
         ordinal=None if take_kind is IRTakeKind.RETRO else chunk_index,
         content_type=file.content_type or "audio/mp4",
     )
+    await room.retire_the_part_recorded_again(db, session, take)
     return _view(take)
 
 

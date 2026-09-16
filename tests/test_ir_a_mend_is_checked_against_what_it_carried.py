@@ -36,6 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -246,10 +247,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _tell_that_stretch_again(
@@ -289,7 +293,7 @@ async def _a_finding_raised_on_the_first_stretch(
             ],
         }
     )
-    first = await _finish(client, session_id)
+    first = await _finish(client, db, session_id)
     assert first.status_code == 200, first.text
     assert analyst.full_readings, "a primeira leitura tem de ter acontecido"
     standing = await service.final_segments(db, session_id)
@@ -314,7 +318,7 @@ async def _a_correction_verified_as(
     analyst.verification = reply
     analyst.answer = '{"evidence_sufficient": true, "findings": []}'
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db, session_id)
     assert answered.status_code == 200, answered.text
     assert analyst.verifications, "a correção tem de ter sido verificada, não relida"
     corrected = (await service.final_segments(db, session_id))[0]

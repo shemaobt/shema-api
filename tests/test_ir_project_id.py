@@ -18,17 +18,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
-from app.core.enums import ProjectRole
 from app.db.models.internalization_room import IRTakeKind
-from app.services.device import claim_device_as_facilitator, create_device
 from app.services.internalization_room import questions as room_questions
 from app.services.internalization_room import sessions as room_sessions
 from app.services.internalization_room import takes as room_takes
 from app.services.platform.storage import StoredObject
-from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.release_harness import KEY, PREFIX, a_claimed_device
 
-PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
 SELF_ISSUED_DEVICE = "a" * 32
 
 
@@ -80,19 +76,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     transport = ASGITransport(app=test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
-
-
-async def a_claimed_device(db: AsyncSession, *, email="fac@example.com"):
-    """A device linked to a project. Returns (project, credential)."""
-    user = await make_user(db, email=email)
-    language = await make_language(db, name=f"Lang {email}", code=email[:3])
-    project = await make_project(db, language.id, name=f"Team {email}")
-    await make_project_user_access(db, project.id, user.id, role=ProjectRole.FACILITATOR)
-    minted = await create_device(db)
-    claimed = await claim_device_as_facilitator(
-        db, user=user, code=minted.claim_code, project_id=project.id
-    )
-    return project, claimed.credential
 
 
 # Behaviour 1 — a session opened by a linked device carries its project.

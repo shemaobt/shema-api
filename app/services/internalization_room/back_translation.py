@@ -6,6 +6,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -187,6 +188,16 @@ class BackTranslationState(BaseModel):
     scope: str = ""
     findings: list[Finding] = Field(default_factory=list)
     checked: bool = False
+    #: When the check last ran, stamped where `checked` is stamped: at the verdict, clean or
+    #: not. It is not when it came out clean — a team that came out with a finding also has an
+    #: answer to when the analyst last read them, and that is the question the packet's
+    #: `lastCheckAt` asks.
+    #:
+    #: `None` for a telling-back no verdict has reached, and for every row written before this
+    #: field existed: the state is a JSON column revalidated on every request, so an older row
+    #: loads with it absent and nothing was migrated (the precedent `chunk` set). The restart
+    #: builds a fresh state, which resets this with everything else.
+    checked_at: datetime | None = None
     superseded: list[SupersededAttempt] = Field(default_factory=list)
     #: What the team listened to, one entry per rehearsal part, each in that part's own
     #: milliseconds. This is the report, and the only one the gate reads: a part carries its own
@@ -197,6 +208,11 @@ class BackTranslationState(BaseModel):
     #: nothing. Numbers with no subject say a clip was played through without saying which clip,
     #: so they went on reading as proof after the team threw that recording away and started the
     #: telling-back over on a new one (ADR 0017).
+    #:
+    #: Read leniently, where the door above is strict. Nothing measures this pair — the covering
+    #: arithmetic is asked of `played_by_take` and of nothing else — so a shape it cannot use is
+    #: no danger here, while refusing it on the way out of the database would stop a row written
+    #: by an older build from loading on every route of that session.
     played_ranges: list[list[int]] = Field(default_factory=list)
     clip_duration_ms: int | None = None
     #: Which rehearsal recordings the flat report above was stored against, stamped by the
@@ -278,7 +294,9 @@ class BackTranslationState(BaseModel):
 PLAYBACK_TOLERANCE_MS = 750
 
 
-def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: int | None) -> bool:
+def played_ranges_cover_clip(
+    played_ranges: list[tuple[int, int]], clip_duration_ms: int | None
+) -> bool:
     """Whether the reported playback reached the whole clip, within tolerance.
 
     A telling-back is a check of what was actually heard, not of what the team remembers,
@@ -287,7 +305,7 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     at either edge or between stretches. This is the arithmetic only: an absent report is
     not a short one, so it is not this function's to judge and comes back True. Whether a
     report exists at all, and whether it is about the recording still in play, is
-    `playback_confirms_rehearsal`, which is what the release gate asks.
+    `unheard_parts`, which is what the release gate asks.
 
     The merged reach has to *land on* the clip's end, not merely reach it: a report that
     runs past the end by more than the same slack cannot be a report about this clip at
@@ -309,9 +327,18 @@ def played_ranges_cover_clip(played_ranges: list[list[int]], clip_duration_ms: i
     return abs(cursor - clip_duration_ms) <= PLAYBACK_TOLERANCE_MS
 
 
-def playback_confirms_rehearsal(
-    state: BackTranslationState, rehearsal_take_ids: list[str]
-) -> list[str]:
+def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
+    """The parts of the rehearsal the current stretches are slices of, sorted.
+
+    The subject of the listening question, and the one both askers have to agree on: the check
+    refuses on it before the analyst, and the release blocks on it at the handoff. Asked of the
+    stretches that count — a stretch whose audio was replaced names a recording no part is any
+    more — so a part leaves the question by being recorded over and by nothing else.
+    """
+    return sorted({stretch.take_id for stretch in stretches})
+
+
+def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) -> list[str]:
     """Which parts of the rehearsal the team has no evidence of having heard, sorted.
 
     Empty is heard. The question is asked once per part and answered per part, because that is
@@ -1150,6 +1177,39 @@ def _the_current_swap(findings: list[Finding]) -> list[int]:
     return [leads]
 
 
+def findings_after_a_part_is_recorded_again(
+    findings: list[Finding], retired_segment_ids: set[str]
+) -> list[Finding]:
+    """The findings that survive a **Part** being recorded again, in the order they were read.
+
+    A finding about a stretch the team has just recorded over is about audio nobody will hear
+    again: it names a frase of a reading that no longer exists, and left standing it would be
+    raised against a telling the team never made.
+
+    **A Swap leaves whole.** Its two halves are joined by the frase the analyst numbered, and a
+    missing element placed *after* that frase resolves to the *next* stretch — which is a slice
+    of the next part. Dropping only the half that sits on the part recorded again would leave
+    the other on its own, and the team would meet it the round after as a thing of its own.
+
+    A finding pointing at no stretch is untouched, because no part can take away what names
+    none: a **Missing without an address** says the team has not recorded something at all,
+    which one part recorded again neither answers nor makes untrue. It is never half of a swap
+    either — both halves must point at a stretch (ADR 0018) — so the rule above never reaches
+    for it.
+
+    Filtered rather than rebuilt, so what is left keeps the analyst's own order: `state.findings`
+    is what the packet, the resume and the correction check all read, and the **Priority** is
+    taken at the pick and never at storage.
+    """
+    leaving = {
+        at for at, finding in enumerate(findings) if finding.segment_id in retired_segment_ids
+    }
+    for addition, missing in _swaps(findings):
+        if addition in leaving or missing in leaving:
+            leaving |= {addition, missing}
+    return [finding for at, finding in enumerate(findings) if at not in leaving]
+
+
 def current_findings(state: BackTranslationState) -> list[Finding]:
     """What the Speaker is allowed to voice this turn: one finding, or one swap of one frase.
 
@@ -1197,8 +1257,8 @@ def findings_block(findings: list[Finding]) -> str:
 #: What every closing below promises except `CLOSING_CHECKED`: the process goes on. It used
 #: to be a static line in the prompt template itself, right under `{{CLOSING}}` and outside
 #: any branch — true of every verdict turn there was, until `CLOSING_CHECKED` gave the
-#: process an ending. Left there it would have sat right after "there is no next turn" and
-#: said the opposite in the same breath, so it now lives inside each closing that still has
+#: process an ending. Left there it would have promised another round of telling back beside
+#: the one step that closes the passage, so it now lives inside each closing that still has
 #: a next round instead, and not in the one that does not.
 _NEXT_ROUND = "After the team acts on this one, they will finish the telling-back again."
 
@@ -1222,13 +1282,17 @@ CLOSING_PLAIN = (
 #: at all affirms and names the badge; both other closings explain themselves in terms of *this
 #: finding*, and there is none — `findings_block` is saying so in the same prompt.
 
-CLOSING_CHECKED = """- Say plainly that the passage is told and checked, then stop there. Do \
-not ask a question, do not invite them to answer anything, do not ask how the team feels, and \
-do not say goodbye. There is no next turn on this passage — the screen takes the team on from \
-here. Never a checklist, never a speech."""
+CLOSING_CHECKED = """- Say plainly that this passage is translated and checked. Then name \
+the one step that is left: invite the team to listen to their own recording once more, from \
+beginning to end, without stopping, and, if it sounds right to their ears, to approve it as \
+the team's final draft. That invitation is the only next step you name — no other gesture and \
+no other screen. Do not ask them to answer anything out loud, do not ask how the team feels, \
+and do not say goodbye. Call it the team's final draft and nothing more than that: what they \
+approve here is what OBT Refine works from. Never a checklist, never a speech."""
 #: The one turn with no finding that also has no next round: `state.checked` closes the
-#: passage for good, so a question here would ask for an answer nobody will ever read — and,
-#: unlike every other closing, this one may not carry `_NEXT_ROUND` either.
+#: passage for good. The step it names is the team's own — their last listening and their
+#: approval — and not another turn of this conversation, so, unlike every other closing,
+#: this one may not carry `_NEXT_ROUND` either.
 
 CLOSING_SPOKEN = (
     "- End with exactly one answerable question or invitation, and let them answer in words. "

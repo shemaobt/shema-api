@@ -554,8 +554,10 @@ async def test_the_packet_for_refine_carries_the_rebuilt_passage(
     """Whoever reviews the session downstream resolves stretches against the recording named.
 
     A packet that named the old one would send a reviewer to audio the team had already
-    corrected, and nothing in it would say so. The recordings the session went through stay
-    listed: they are the history of how the team got there, and the room deletes no take.
+    corrected, and nothing in it would say so. The rebuilt passage takes the placement of the
+    recording it was built from, so it *is* that part now and the packet lists it alone; the
+    recording it replaced is deleted by nothing and stays whole in the **Retroverification
+    file**, which is where a session's history is read.
     """
     session_id = await _releasable_session(client, db_session)
     answered, _ = await _correct_the_second_stretch(client, session_id)
@@ -568,8 +570,10 @@ async def test_the_packet_for_refine_carries_the_rebuilt_passage(
     told = packet["back_translation"]["segments"]
     assert len(told) == 3
     assert {one["take_id"] for one in told} == {rebuilt}
-    rehearsals = [one for one in packet["audio"]["rehearsal_takes"] if one["take_id"] == rebuilt]
-    assert len(rehearsals) == 1, "a passagem refeita viaja como ensaio, e é uma só"
+    assert [one["take_id"] for one in packet["audio"]["rehearsal_takes"]] == [rebuilt], (
+        "a passagem refeita viaja como ensaio, e é a única: a gravação que ela refez é "
+        "história, e história se lê no arquivo de retroverificação"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.release import (
     approve_release,
     build_internalization_release,
+    release_by_version,
 )
 from app.utils.stored_time import as_utc
 
@@ -49,6 +50,28 @@ async def internalization_release(
     """
     session = await room.get_session_for_facilitator(db, user, session_id)
     return await build_internalization_release(db, session)
+
+
+@router.get("/facilitator/sessions/{session_id}/releases/{version}")
+async def facilitator_release_by_version(
+    session_id: str, version: int, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> dict[str, Any]:
+    """One approved draft of this session's passage, exactly as it was approved.
+
+    The stored packet is the contract (ADR 0014): what a **Version** means is that this
+    content was approved under that number, so it is served verbatim and never rebuilt. A
+    forced draft reads back here whole — its open findings listed and `checked` false — which
+    is the one thing the route beside this cannot do. That one is a live rebuild under the
+    whole list, and on a session a facilitator had to force it answers with the refusal
+    rather than with the draft the Desk minted.
+
+    A number nobody approved is 404, and so is a session this facilitator does not
+    facilitate: the scoping is the same one the read beside it does, and a release carries
+    the whole of what a team recorded.
+    """
+    session = await room.get_session_for_facilitator(db, user, session_id)
+    release = await release_by_version(db, session, version)
+    return release.packet
 
 
 @router.post(

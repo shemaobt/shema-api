@@ -20,19 +20,19 @@ from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
-from app.models.internalization_room import PlayedTake
+from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.services import internalization_room as room
-from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.coverage import initial_state, merge
-from app.services.internalization_room.release import build_internalization_release
 from app.services.platform.storage import StoredObject
-from tests.test_internalization_room_release import _supported_comprehension
-
-PREFIX = "/api/internalization-room"
-KEY = "sala-de-teste"
-DEVICE = "tablet-da-equipe-1"
-PASSAGE = "P01"
+from tests.hard_stretch_harness import ready_for_release as _ready_for_release
+from tests.take_harness import (
+    DEVICE,
+    KEY,
+    PREFIX,
+    a_failed_capture_then_two_good_ones,
+    open_session,
+    record,
+    tell_back,
+)
 
 
 class MemoryStore:
@@ -104,42 +104,6 @@ async def client(db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pyt
         yield c
 
 
-async def _open_session(client: httpx.AsyncClient) -> str:
-    created = await client.post(
-        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": PASSAGE}
-    )
-    assert created.status_code == 200, created.text
-    return str(created.json()["session_id"])
-
-
-async def _record(client: httpx.AsyncClient, session_id: str, audio: bytes) -> str:
-    kept = await client.post(
-        f"{PREFIX}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": PASSAGE},
-        files={"file": ("tomada.m4a", audio, "audio/mp4")},
-    )
-    assert kept.status_code == 200, kept.text
-    return str(kept.json()["take_id"])
-
-
-async def _tell_back(
-    client: httpx.AsyncClient,
-    session_id: str,
-    *,
-    take_id: str,
-    starts_ms: int,
-    ends_ms: int,
-    audio: bytes,
-) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
-        data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
-        files={"file": ("trecho.m4a", audio, "audio/mp4")},
-    )
-
-
 async def _replace(
     client: httpx.AsyncClient,
     session_id: str,
@@ -196,67 +160,6 @@ async def _retro_take_by_id(db: AsyncSession, take_id: str) -> IRTake:
     return result.scalar_one()
 
 
-async def _a_failed_capture_then_two_good_ones(client: httpx.AsyncClient) -> str:
-    """One session: a stretch told back three times, the first attempt inaudible.
-
-    The retry over the same slice is what takes the first place; the third call is a new
-    stretch. Three different byte strings, so the dedupe by hash never enters into it.
-    """
-    session_id = await _open_session(client)
-    take_id = await _record(client, session_id, b"a equipe ensaiou a passagem inteira")
-
-    client.said.extend(["", "Noemi ouve que", "e decide voltar"])  # type: ignore[attr-defined]
-    await _tell_back(
-        client, session_id, take_id=take_id, starts_ms=0, ends_ms=9000, audio=b"tentativa muda"
-    )
-    await _tell_back(
-        client, session_id, take_id=take_id, starts_ms=0, ends_ms=9000, audio=b"tentativa boa"
-    )
-    await _tell_back(
-        client, session_id, take_id=take_id, starts_ms=9000, ends_ms=21000, audio=b"terceiro trecho"
-    )
-    return session_id
-
-
-async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, Any]:
-    """Everything `build_internalization_release` asks for besides the telling-back itself.
-
-    What the caller told back is left exactly as they told it: only comprehension, coverage
-    and the playback report are added here, and none of them is what these cases are about —
-    they are about which takes the packet lists, and under which numbers.
-
-    The analyst is stood in for rather than run, which is what `analysed_segment_ids` below has
-    always done: these sessions tell back through the room's own routes and never press
-    `terminei`, so nothing here ever asked the analyst anything. `checked` is the other half of
-    that same stand-in and is set for the same reason — the session these cases mean is one
-    that came out clean, and a release refused over a finding nobody ever raised would fail
-    them on a gate they are not watching (ENG-882).
-    """
-    session.coverage_state = merge(
-        initial_state(PASSAGE), pericope_num=PASSAGE, engaged=element_keys(PASSAGE)
-    )
-    await room.save_comprehension(db, session, _supported_comprehension(PASSAGE))
-
-    told = await room.final_segments(db, session.id)
-    state = room.back_translation_of(session)
-    state.analysed_segment_ids = [segment.id for segment in told]
-    state.checked = True
-    clip_end = max((segment.ends_ms for segment in told), default=0)
-    await room.report_playback(
-        db,
-        session,
-        state,
-        played_by_take=[
-            PlayedTake(take_id=take_id, played_ranges=[[0, clip_end]], clip_duration_ms=clip_end)
-            for take_id in sorted({segment.take_id for segment in told})
-        ],
-        played_ranges=[[0, clip_end]],
-        clip_duration_ms=clip_end,
-    )
-
-    return await build_internalization_release(db, session)
-
-
 # ---------------------------------------------------------------------------
 # 1. A failed capture claims no place, and the next one takes the first
 # ---------------------------------------------------------------------------
@@ -265,7 +168,7 @@ async def _ready_for_release(db: AsyncSession, session: IRSession) -> dict[str, 
 async def test_a_failed_capture_claims_no_place_and_the_next_one_takes_the_first(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session_id = await _a_failed_capture_then_two_good_ones(client)
+    session_id = await a_failed_capture_then_two_good_ones(client)
 
     mute = await _retro_take_by_audio(db_session, session_id, b"tentativa muda")
     assert mute.ordinal is None, (
@@ -291,7 +194,7 @@ async def test_a_failed_capture_claims_no_place_and_the_next_one_takes_the_first
 async def test_the_packet_never_shows_two_takes_at_one_place(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session_id = await _a_failed_capture_then_two_good_ones(client)
+    session_id = await a_failed_capture_then_two_good_ones(client)
     session = await room.get_session(db_session, session_id)
 
     artifact = await _ready_for_release(db_session, session)
@@ -312,11 +215,11 @@ async def test_the_packet_never_shows_two_takes_at_one_place(
 async def test_re_recording_a_stretch_keeps_its_number(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session_id = await _open_session(client)
-    take_id = await _record(client, session_id, b"a equipe ensaiou a passagem inteira")
+    session_id = await open_session(client)
+    take_id = await record(client, session_id, b"a equipe ensaiou a passagem inteira")
 
     client.said.append("Noemi mandou Rute voltar.")  # type: ignore[attr-defined]
-    await _tell_back(
+    await tell_back(
         client, session_id, take_id=take_id, starts_ms=0, ends_ms=9000, audio=b"primeiro trecho"
     )
     segment = (await _told_so_far(client, session_id))[0]

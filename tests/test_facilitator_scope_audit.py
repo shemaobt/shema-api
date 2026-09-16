@@ -400,11 +400,35 @@ async def refusing_routes(db: AsyncSession, owner: Facilitator, tag: str) -> lis
             #: over. That is the answer to somebody who *is* the owner — a stranger gets
             #: 404, the same as for an id that never existed. The two codes differing is
             #: what scoping means here, and asserting 200 would mean building a
-            #: release-ready session inside a scope audit: bridge calibrated,
-            #: comprehension evaluated, consent given, floor met, rehearsal audio and a
-            #: telling-back. The audit would then fail whenever any of those changed,
+            #: release-ready session inside a scope audit: comprehension evaluated,
+            #: the floor met, rehearsal audio, a telling-back read by the analyst and a
+            #: report of playback. The audit would then fail whenever any of those changed,
             #: which is every one of them except scope.
             "owner_expects": 409,
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/releases/1", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/releases/1", {}),
+            "ids": (session_id, absent),
+            #: The owner is refused too, and again by a different door: this session has
+            #: approved nothing, so there is no version 1 of its passage to read back. The
+            #: message says that, where a stranger is told the session does not exist —
+            #: which is the scoping, and is what the case above measures. Asserting 200
+            #: would mean approving a release inside a scope audit, for the reason the
+            #: read beside this one gives.
+            "owner_expects": 404,
+        },
+        {
+            "method": "GET",
+            "owned": (f"{IR}/facilitator/sessions/{session_id}/retroverificacao", {}),
+            "absent": (f"{IR}/facilitator/sessions/{absent}/retroverificacao", {}),
+            #: The owner reaches this one, unlike the three reads above: the file is the record
+            #: of whatever the check learned, and a session that recorded almost nothing has a
+            #: file saying almost nothing rather than none at all. Nothing has to be built for
+            #: it — no gate, no version, no analyst — so asking for 200 costs this audit
+            #: nothing and is what makes the refusal beside it mean scope.
+            "ids": (session_id, absent),
         },
         {
             "method": "POST",
@@ -437,6 +461,8 @@ def _shape(body, *ids: str):
 REFUSING_TEMPLATES = {
     ("POST", f"{DESK}/devices/claim"),
     ("GET", f"{IR}/facilitator/sessions/{{session_id}}/release"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/releases/{{version}}"),
+    ("GET", f"{IR}/facilitator/sessions/{{session_id}}/retroverificacao"),
     ("POST", f"{IR}/facilitator/sessions/{{session_id}}/release"),
     ("PATCH", f"{DESK}/devices/{{device_id}}"),
     ("DELETE", f"{DESK}/devices/{{device_id}}"),

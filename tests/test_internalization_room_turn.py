@@ -1,15 +1,10 @@
-import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 import app.services.internalization_room as internalization_room
-from app.core.config import Settings
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRPromptKey
-from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.practice import (
     guide_invited_mother_tongue_practice,
@@ -25,47 +20,22 @@ from app.services.internalization_room.run_turn import (
     run_turn,
     split_opening_movements,
 )
-
-GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
-VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
-P = "P03"
-
-
-def _settings() -> Settings:
-    return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")
-
-
-class FakeAgent:
-    """Stands in for the LLM: alternates Guide draft, Validator verdict, Guide draft…"""
-
-    def __init__(self, verdicts: list[dict[str, Any]], drafts: list[str] | None = None):
-        self.verdicts = verdicts
-        self.drafts = drafts or [f"rascunho {i}" for i in range(len(verdicts) + 1)]
-        self.calls: list[str] = []
-        self.guide_inputs: list[str] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        is_validator = "corrected_response" in system_prompt
-        self.calls.append("validator" if is_validator else "guide")
-        if not is_validator:
-            self.guide_inputs.append(user_content)
-        if is_validator:
-            return json.dumps(self.verdicts[len([c for c in self.calls if c == "validator"]) - 1])
-        return self.drafts[len([c for c in self.calls if c == "guide"]) - 1]
+from tests.turn_harness import (
+    GUIDE,
+    VALIDATOR,
+    FakeAgent,
+    P,
+    settings,
+    the_agent_answers,
+)
 
 
 @pytest.fixture
 def patch_agent(monkeypatch: pytest.MonkeyPatch):
-    """Swap `call_agent` for a fake inside the turn module.
-
-    The package re-exports the `run_turn` function, which shadows the module of the same
-    name, so the dotted-string form of setattr would patch the function object.
-    """
-    module = sys.modules["app.services.internalization_room.run_turn"]
+    """The fake in place of the model, for the cases in this module."""
 
     def _install(agent: FakeAgent) -> FakeAgent:
-        monkeypatch.setattr(module, "call_agent", agent)
-        return agent
+        return the_agent_answers(monkeypatch, agent)
 
     return _install
 
@@ -251,7 +221,7 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is True
@@ -278,7 +248,7 @@ async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.speech == "Ensaiem essa parte entre vocês."
@@ -311,7 +281,7 @@ async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.speech == "Vamos ficar com o que a passagem conta."
@@ -340,7 +310,7 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is True
@@ -377,7 +347,7 @@ async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
@@ -416,7 +386,7 @@ async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> Non
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     assert outcome.used_fail_safe is True
@@ -444,7 +414,7 @@ async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_ag
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=_settings(),
+        settings=settings(),
     )
 
     first_call, second_call = agent.guide_inputs[0], agent.guide_inputs[1]
