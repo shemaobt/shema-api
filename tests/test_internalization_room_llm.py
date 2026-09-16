@@ -7,6 +7,7 @@ import httpx2
 import pytest
 
 from app.core.config import Settings
+from app.core.exceptions import UpstreamServiceError
 from app.services.internalization_room import llm
 
 
@@ -240,7 +241,7 @@ async def test_a_rung_that_refuses_outright_hands_the_request_to_the_next(
 async def test_a_rate_limit_keeps_the_rung_it_is_on(ladder_client) -> None:
     messages = ladder_client("nunca", anthropic.RateLimitError)
 
-    with pytest.raises(anthropic.RateLimitError):
+    with pytest.raises(UpstreamServiceError):
         await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
 
     assert messages.asked == ["claude-fable-5-1"], (
