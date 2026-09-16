@@ -385,7 +385,6 @@ async def test_mother_tongue_speech_is_an_ordinary_guide_turn_that_credits_nothi
     )
     assert turn.state.practiced_scene_ids == []
     assert all(event.kind != "evidence" for event in turn.state.ledger)
-    assert all(event.kind != "evidence" for event in turn.state.ledger)
 
 
 @pytest.mark.asyncio
