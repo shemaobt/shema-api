@@ -24,7 +24,14 @@ from app.api.internalization_room import text_seam
 from app.core.config import get_settings
 from app.services import internalization_room as room
 from scripts import golden_runner
-from tests.text_seam_harness import GUIDE_LINE, RUNNER_KEY, the_app, the_models_answer
+from tests.text_seam_harness import (
+    A_VERDICT,
+    GUIDE_LINE,
+    RUNNER_KEY,
+    the_app,
+    the_judge_answers,
+    the_models_answer,
+)
 
 BASE_URL = "http://test/api/internalization-room/text-seam/"
 STAMP = "2026-09-16T18-00-00"
@@ -36,6 +43,7 @@ def seam_app(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
     )
     the_models_answer(monkeypatch)
+    the_judge_answers(monkeypatch)
 
     async def _settled(**_: Any) -> None:
         return None
@@ -144,6 +152,46 @@ async def test_one_command_plays_every_session_and_a_refused_one_does_not_stop_t
     )
 
 
+async def test_a_played_session_is_judged_and_the_verdict_sits_beside_its_transcript(
+    over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    out = tmp_path / "reports"
+
+    await golden_runner.run(_args(her_sessions, out))
+
+    verdict = out / f"P01-understand-first.{STAMP}.verdict.json"
+    assert json.loads(verdict.read_text(encoding="utf-8")) == A_VERDICT, (
+        "o JSON do juiz — notas, incidentes com turno, gravidade e citação, resumo — fica ao "
+        "lado do transcript, como o dela; a lista de incidentes é o que se age em cima"
+    )
+    transcript = (out / f"P01-understand-first.{STAMP}.transcript.txt").read_text(encoding="utf-8")
+    assert judge.asked[0]["user_content"].endswith(transcript.rstrip("\n")), (
+        "o juiz lê exatamente o bloco de transcript que foi exportado"
+    )
+
+
+async def test_a_session_the_room_refused_after_it_played_is_not_judged(
+    over_the_seam, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    _script(sessions, "P01-kickoff-twice", "P01", [{"team": "Oi."}, {"kickoff": True}])
+    out = tmp_path / "reports"
+
+    exit_code = await golden_runner.run(_args(sessions, out))
+
+    assert judge.asked == [], (
+        "uma sessão que a sala recusou no meio não é inteira: julgá-la custa e não compara com nada"
+    )
+    assert not list(out.glob("*.verdict.json"))
+    assert "| P01-kickoff-twice | — | recusada | 409 " in (out / "README.md").read_text(
+        encoding="utf-8"
+    )
+    assert exit_code == 1
+
+
 async def test_a_clean_run_exits_zero_and_only_the_named_session_is_played(
     over_the_seam, her_sessions: Path, tmp_path: Path
 ) -> None:
@@ -156,6 +204,7 @@ async def test_a_clean_run_exits_zero_and_only_the_named_session_is_played(
     assert sorted(p.name for p in out.iterdir()) == [
         f"P01-understand-first.{STAMP}.json",
         f"P01-understand-first.{STAMP}.transcript.txt",
+        f"P01-understand-first.{STAMP}.verdict.json",
         "README.md",
     ]
 

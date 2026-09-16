@@ -9,61 +9,19 @@ judge's column beside the mechanical one, never one laundered into the other.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
 
 from app.services.internalization_room import golden_judge
 from scripts.sync_doctrine import REPO_ROOT, VENDORED, digest
+from tests.text_seam_harness import A_VERDICT, the_judge_answers
 
 TRANSCRIPT = (
     "[turn 0]\nTEAM: Oi. Podemos começar?\nGUIDE (pass): Oi! Eu sou o Facilitador Digital.\n\n"
     "[turn 1]\nTEAM: Explica de novo, a gente não entendeu.\n"
     "GUIDE (pass): Vamos ficar dentro da passagem."
 )
-
-A_VERDICT: dict[str, Any] = {
-    "scores": {
-        "understands_team": 3,
-        "answers_requests_to_understand": 1,
-        "frames_before_eliciting": 3,
-        "rehearsal_and_honest_checking": 3,
-        "silences_as_content": 4,
-        "containment": 4,
-        "register": 3,
-        "adaptivity": 2,
-    },
-    "incidents": [
-        {
-            "turn": 1,
-            "severity": "blocker",
-            "kind": "redirect_on_request_to_understand",
-            "quote": "Vamos ficar dentro da passagem.",
-            "why": "A equipe pediu para entender e o guia redirecionou.",
-        }
-    ],
-    "pass": False,
-    "summary": "O guia redirecionou um pedido de entender.",
-}
-
-
-class Judge:
-    """The model behind the judge, answering what the case set and keeping what it was asked."""
-
-    def __init__(self, reply: str = json.dumps(A_VERDICT)) -> None:
-        self.reply = reply
-        self.asked: list[dict[str, Any]] = []
-
-    async def __call__(self, **kwargs: Any) -> str:
-        self.asked.append(kwargs)
-        return self.reply
-
-
-def the_judge_answers(monkeypatch: pytest.MonkeyPatch, reply: str = json.dumps(A_VERDICT)) -> Judge:
-    judge = Judge(reply)
-    monkeypatch.setattr(golden_judge, "call_agent", judge)
-    return judge
 
 
 HER_JUDGE_PROMPT = "4a03febee00949c40207ada18b84600ac7897353fcc3eccd2d49feef85b8f026"

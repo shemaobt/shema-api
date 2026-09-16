@@ -48,6 +48,7 @@ from typing import Any
 
 import httpx
 
+from app.services.internalization_room.golden_judge import judge_session
 from scripts.golden_checks import mechanical_checks
 from scripts.sync_doctrine import read_pin
 
@@ -126,6 +127,7 @@ class SessionResult:
     session_id: str | None
     played: list[Played]
     refused: str | None = None
+    verdict: dict[str, Any] | None = None
 
     @property
     def faults(self) -> list[str]:
@@ -345,6 +347,17 @@ async def play_session(
             script, session_id=session_id, base_url=base_url, played=played, out=out, stamp=stamp
         )
         print(f"  {report}\n  {transcript}")
+    if result.refused is None:
+        result.verdict = await judge_session(
+            pericope=script.pericopeId,
+            language=script.language,
+            transcript=judge_transcript(played),
+        )
+        verdict = out / f"{script.name}.{stamp}.verdict.json"
+        verdict.write_text(
+            json.dumps(result.verdict, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        print(f"  {verdict}")
     return result
 
 
