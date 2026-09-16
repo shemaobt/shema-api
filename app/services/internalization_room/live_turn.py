@@ -26,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -42,7 +41,6 @@ from app.services.internalization_room.comprehension.session_readiness import (
     render_comprehension_status,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -51,30 +49,13 @@ from app.services.internalization_room.run_turn import (
     run_turn,
 )
 from app.services.internalization_room.sessions import comprehension_of
+from app.services.internalization_room.turn.scene_view import current_scene_id
 
 
 @dataclass
 class ComprehensionTurn:
     outcome: TurnOutcome
     state: ComprehensionState
-
-
-def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | None:
-    """The first scene whose own coverage is not fully engaged.
-
-    It is what the rehearsal the Guide invites is read against: the Guide opens the scene
-    the pointer names, and it never selects a scene itself.
-    """
-    by_scene: dict[int, bool] = {}
-    for element in elements_for(pericope):
-        if element.scene is None:
-            continue
-        engaged = coverage_state.get(element.key) == CoverageStatus.ENGAGED.value
-        by_scene[element.scene] = by_scene.get(element.scene, True) and engaged
-    for scene in sorted(by_scene):
-        if not by_scene[scene]:
-            return f"S{scene}"
-    return None
 
 
 async def run_comprehension_turn(
@@ -173,3 +154,6 @@ async def run_comprehension_turn(
         practiced_scene_ids=projected_practice,
     )
     return ComprehensionTurn(outcome=outcome, state=new_state)
+
+
+__all__ = ["ComprehensionTurn", "current_scene_id", "run_comprehension_turn"]
