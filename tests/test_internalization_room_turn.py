@@ -360,11 +360,11 @@ def test_the_g_line_is_chosen_only_from_the_teams_own_speech_never_the_guides_dr
     """Category G is what the team hears, so only the team-detection branch may reach for it."""
     package_dir = Path(internalization_room.__file__).resolve().parent
     callers = sorted(
-        path.name
-        for path in package_dir.glob("*.py")
+        path.relative_to(package_dir).as_posix()
+        for path in package_dir.rglob("*.py")
         if "FailSafe.OFF_BRIDGE_LANGUAGE" in path.read_text()
     )
-    assert callers == ["live_turn.py"]
+    assert callers == ["turn/speech.py"]
 
 
 @pytest.mark.asyncio

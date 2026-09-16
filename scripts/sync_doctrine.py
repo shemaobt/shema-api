@@ -13,6 +13,11 @@ conflict rather than a decision. Her prompts land beside ours — `prompts/vendo
 would throw away the tickets that ported her text, and the vendoring exists so that "how does
 our Guide prompt differ from hers" is a `diff` instead of an argument.
 
+Her five golden sessions travel the same door, at their own path, because a script that drifts
+from hers grades this room against its own homework: `scripts/golden_runner.py` plays the
+vendored copy, and a run is only comparable to her 5/5 of 2026-09-03 — vendored beside ours —
+while the bytes and the canon pin the judge's map comes from are the ones her branch names.
+
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,
 when she has ruled. Point it at a checkout of `fia/pilot-2026-09`.
@@ -55,6 +60,36 @@ VENDORED = {
     "prompts/fail_safe_utterances.md": (
         "app/services/internalization_room/prompts/vendor/fail_safe_utterances.md"
     ),
+    "golden/sessions/J01-frame-before-elicit.json": (
+        "golden/sessions/J01-frame-before-elicit.json"
+    ),
+    "golden/sessions/P01-opening-and-mother-tongue.json": (
+        "golden/sessions/P01-opening-and-mother-tongue.json"
+    ),
+    "golden/sessions/P01-retelling-gaps-and-additions.json": (
+        "golden/sessions/P01-retelling-gaps-and-additions.json"
+    ),
+    "golden/sessions/P01-spoilers-and-boundaries.json": (
+        "golden/sessions/P01-spoilers-and-boundaries.json"
+    ),
+    "golden/sessions/P01-understand-first.json": "golden/sessions/P01-understand-first.json",
+    "golden/reports/2026-09-03/README.md": "golden/reports/2026-09-03/README.md",
+    "golden/reports/2026-09-03/J01-frame-before-elicit.md": (
+        "golden/reports/2026-09-03/J01-frame-before-elicit.md"
+    ),
+    "golden/reports/2026-09-03/P01-opening-and-mother-tongue.md": (
+        "golden/reports/2026-09-03/P01-opening-and-mother-tongue.md"
+    ),
+    "golden/reports/2026-09-03/P01-retelling-gaps-and-additions.md": (
+        "golden/reports/2026-09-03/P01-retelling-gaps-and-additions.md"
+    ),
+    "golden/reports/2026-09-03/P01-spoilers-and-boundaries.md": (
+        "golden/reports/2026-09-03/P01-spoilers-and-boundaries.md"
+    ),
+    "golden/reports/2026-09-03/P01-understand-first.md": (
+        "golden/reports/2026-09-03/P01-understand-first.md"
+    ),
+    "VENDOR_PIN": "docs/doctrine/vendor/VENDOR_PIN",
 }
 
 PIN_FILE = REPO_ROOT / "docs/doctrine/DOCTRINE_PIN"

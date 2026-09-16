@@ -313,6 +313,33 @@ class IRTake(Base):
     )
 
 
+class IRTurn(Base):
+    """One turn the room has already answered, kept so a resend costs a read.
+
+    ``turn_id`` is the client's own string and means nothing here beyond "the same turn" —
+    read the way ``IRTake.storage_key`` and ``SnSessionTick.client_tick_id`` are read by
+    their own tables. The unique constraint with the session is what turns a resent POST
+    into a lookup instead of a second pass through transcription, the Guide, the Validator
+    and synthesis.
+
+    ``response`` is kept whole rather than recomputed, because a repeat is answered from
+    the session as it stood the moment this turn landed, not as it stands now —
+    recomputing it from the session's current state would silently disagree the moment a
+    later turn has moved it on.
+    """
+
+    __tablename__ = "ir_turns"
+    __table_args__ = (UniqueConstraint("session_id", "turn_id", name="uq_ir_turns_session_turn"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    turn_id: Mapped[str] = mapped_column(String(64))
+    response: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+
+
 class IRSegment(Base):
     """One stretch of a rehearsal recording, as a thing with its own address.
 
