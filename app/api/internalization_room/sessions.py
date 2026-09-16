@@ -39,6 +39,7 @@ from app.services.internalization_room.canon.book_material import build_book_mat
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
     prepare_opening,
@@ -228,6 +229,12 @@ async def create_session(
 
     After the session exists, so a `create_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
+
+    The opening is written ahead only for a panorama the team has not yet gone on from:
+    that is the team about to enter the book, and the line is the passage's first. A team
+    already inside the book that chose to hear the panorama again is not about to enter
+    anything, and the line prepared for it was a model call and a clip spent on a row
+    nothing would ever hand over.
     """
     session = await room.create_session(
         db,
@@ -243,7 +250,9 @@ async def create_session(
         previous = await room.get_session(db, payload.after_session)
         if hand_over(previous, session):
             await db.commit()
-    elif is_panorama(session.pericope):
+    elif is_panorama(session.pericope) and not await heard_panorama(
+        db, project_id=project_id, book=book_of(session.pericope)
+    ):
         background.add_task(prepare_opening, session.id)
     return await _state(db, session)
 

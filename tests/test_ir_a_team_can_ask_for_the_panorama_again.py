@@ -6,7 +6,9 @@ under a member who joined late or a team that forgot the shape of the book — i
 opens a panorama session, heard or not. The difference travels on the request and nowhere
 else: `heard_panorama` stays derived from the rows, and nothing is stored to say "asked".
 
-A second panorama is a fresh conversation, as her design reopens it from zero.
+A second panorama is a fresh conversation, as her design reopens it from zero. It is not
+about to hand the team into a passage, so the opening `prepare_opening` writes ahead for a
+first panorama is not written for it.
 """
 
 from __future__ import annotations
@@ -71,9 +73,16 @@ async def test_a_team_that_asks_for_the_panorama_hears_it_even_after_the_book_wa
 
 
 @pytest.fixture()
-async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+def prepared() -> list[str]:
+    """Which sessions the route asked to have an opening written ahead for."""
+    return []
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, prepared: list[str]):
     """The room over HTTP, with the panorama's model and voice stood in for: what the
-    Guide says is not the question here, only that a chosen panorama is opened and spoken."""
+    Guide says is not the question here, only that a chosen panorama is opened and spoken.
+    The background preparation is stood in for too, and only its being asked is kept."""
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
 
     async def _panorama(**_: Any) -> TurnOutcome:
@@ -96,12 +105,12 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         )
         return entry, False
 
-    async def _nothing(*_: Any, **__: Any) -> None:
-        return None
+    async def _remember(session_id: str, *_: Any, **__: Any) -> None:
+        prepared.append(session_id)
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
-    monkeypatch.setattr(sessions_api, "prepare_opening", _nothing)
+    monkeypatch.setattr(sessions_api, "prepare_opening", _remember)
 
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=PREFIX)
@@ -160,3 +169,21 @@ async def test_over_http_a_chosen_panorama_opens_and_the_room_speaks_it(
     assert asked["session_id"] != launched["session_id"]
     opening = await the_room_opens(client, tablet, asked["session_id"])
     assert opening["audio_url"].startswith(f"{PREFIX}/voice/")
+
+
+@pytest.mark.asyncio
+async def test_a_second_panorama_spends_no_prepared_opening(
+    client, db_session: AsyncSession, prepared: list[str]
+) -> None:
+    """The first panorama writes the passage's opening ahead, because the team is about to
+    enter it. A team already inside the book asking to hear the panorama again is not
+    about to enter anything, so no opening is written for it to discard."""
+    team = await a_team(db_session, name="Sem abertura à toa")
+    tablet = await a_tablet_of(db_session, team)
+    launched = await the_app_posts(client, tablet, {"pericope": "OV"})
+    await the_app_posts(client, tablet, {"after_session": launched["session_id"]})
+
+    asked = await the_app_posts(client, tablet, {"pericope": "OV", "chosen": True})
+
+    assert room.is_panorama(asked["pericope"])
+    assert prepared == [launched["session_id"]]
