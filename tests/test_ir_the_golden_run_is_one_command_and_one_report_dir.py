@@ -256,3 +256,49 @@ def test_a_rung_the_table_never_priced_still_leaves_the_clock_in_the_readme() ->
         "Latência Guia+Validador por turno: 15 a 15 s (mediana ≈ 15 s); turno inteiro, com o "
         "classificador em linha: 17 a 17 s (mediana ≈ 17 s).\n"
     ), "o preço e o relógio são dois campos: um degrau sem preço de tabela não apaga a latência"
+
+
+def test_a_session_refused_after_it_played_keeps_its_faults_on_its_own_row() -> None:
+    played = golden_runner.Played(
+        idx=0, team="Oi.", guide="Vão com Deus!", outcome="pass", turnMs=17000
+    )
+    played.mechanical = ["religious farewell of its own"]
+    refused = golden_runner.SessionResult(
+        "P01-understand-first", "s-1", [played], refused="502 o modelo não respondeu"
+    )
+
+    readme = golden_runner.summary(
+        [refused], base_url="http://test/", stamp="2026-09-16T18-00-00", tip="x", pins="p"
+    )
+
+    assert "**0/1 sem aviso mecânico (juiz ainda não ligado), 1 avisos mecânicos" in readme
+    assert (
+        "| P01-understand-first | — | recusada · 1 | 502 o modelo não respondeu; "
+        "turn 0: religious farewell of its own |"
+    ) in readme, "o cabeçalho contava um aviso que nenhuma linha da tabela mostrava"
+
+
+def test_a_call_the_table_never_priced_is_counted_out_loud_beside_the_total() -> None:
+    unpriced = _call("guide", None, 10000)
+    unpriced.rung = "claude-opus-6"
+    turn = golden_runner.Played(
+        idx=0,
+        team="Oi.",
+        guide=GUIDE_LINE,
+        outcome="pass",
+        turnMs=17000,
+        usage=[unpriced, _call("validator", 0.05, 5000)],
+    )
+
+    readme = golden_runner.summary(
+        [golden_runner.SessionResult("P01-understand-first", "s-1", [turn])],
+        base_url="http://test/",
+        stamp="2026-09-16T18-00-00",
+        tip="x",
+        pins="p",
+    )
+
+    assert (
+        "Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ 0.05 — validator "
+        "US$ 0.05; 1 chamada sem preço de tabela (claude-opus-6), fora da soma.\n"
+    ) in readme, "uma chamada sem preço saía da soma como se fosse de graça, sem uma palavra"

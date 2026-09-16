@@ -87,6 +87,13 @@ class Usage:
 
     @classmethod
     def from_wire(cls, call: dict[str, Any]) -> Usage:
+        """The seam's `ModelCall` at this commit, every field; her app sends no `usage` at all.
+
+        Read by key and not by `.get`, so a room that reports usage in another shape — a
+        deployment older than the seam's `role` and `cost_usd` — is a `KeyError` on turn 0 and
+        not a README that silently prices the run wrong. The runner and the room it tallies
+        move together.
+        """
         return cls(
             role=call["role"],
             rung=call["rung"],
@@ -383,8 +390,11 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
     clean = sum(1 for result in results if not result.faults and not result.refused)
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
     by_role: dict[str, float] = {}
+    unpriced: list[str] = []
     for call in (call for turn in played for call in turn.usage):
-        if call.cost_usd is not None:
+        if call.cost_usd is None:
+            unpriced.append(call.rung)
+        else:
             by_role[call.role] = by_role.get(call.role, 0.0) + call.cost_usd
     voice = [
         sum(call.latency_ms or 0 for call in turn.usage if call.role in ("guide", "validator"))
@@ -403,19 +413,24 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         "|---|---|---|---|",
     ]
     for result in results:
-        if result.refused:
-            lines.append(f"| {result.name} | — | recusada | {result.refused} |")
-        else:
-            lines.append(
-                f"| {result.name} | — | {len(result.faults)} | {'; '.join(result.faults)} |"
-            )
+        column = "recusada" if result.refused else str(len(result.faults))
+        if result.refused and result.faults:
+            column = f"recusada · {len(result.faults)}"
+        noted = "; ".join(([result.refused] if result.refused else []) + result.faults)
+        lines.append(f"| {result.name} | — | {column} | {noted} |")
     lines.append("")
     if by_role:
         total = sum(by_role.values())
         split = " · ".join(f"{role} US$ {cost:.2f}" for role, cost in sorted(by_role.items()))
+        free = (
+            f"; {len(unpriced)} chamada{'s' if len(unpriced) > 1 else ''} sem preço de tabela "
+            f"({', '.join(sorted(set(unpriced)))}), fora da soma"
+            if unpriced
+            else ""
+        )
         lines.append(
             f"Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ {total:.2f} "
-            f"— {split}."
+            f"— {split}{free}."
         )
     else:
         lines.append("A sala não informou custo por chamada nesta rodada.")
