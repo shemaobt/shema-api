@@ -383,6 +383,27 @@ async def test_a_session_the_judge_approved_with_a_mechanical_fault_still_does_n
     assert exit_code == 1
 
 
+async def test_a_judge_that_returns_no_verdict_fails_the_session_and_the_run_goes_on(
+    over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    the_judge_answers(monkeypatch, "não é um JSON")
+    out = tmp_path / "reports"
+
+    exit_code = await golden_runner.run(_args(her_sessions, out))
+
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "**0/2 aprovadas pelo juiz, 1 avisos mecânicos" in readme
+    assert (
+        "| P01-understand-first | — | 1 | turn 1: verbatim repeat of the previous guide turn; "
+        "juiz sem veredito: Expecting value: line 1 column 1 (char 0) |"
+    ) in readme, "sem veredito não é aprovação nem aviso mecânico: é uma linha que diz o motivo"
+    assert not list(out.glob("*.verdict.json")), "um veredito que não veio não é gravado"
+    assert "FAIL · P01-understand-first · judge=n/a · mechanical=1" in capsys.readouterr().out, (
+        "a linha do console é a dela: judge=n/a quando o juiz não respondeu (run.ts:208)"
+    )
+    assert exit_code == 1
+
+
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:
     warned = golden_runner.Played(idx=0, team="Oi.", guide="Vão com Deus!", outcome="pass")
     warned.mechanical = ["religious farewell of its own"]

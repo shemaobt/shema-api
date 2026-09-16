@@ -128,6 +128,7 @@ class SessionResult:
     played: list[Played]
     refused: str | None = None
     verdict: dict[str, Any] | None = None
+    unjudged: str | None = None
 
     @property
     def faults(self) -> list[str]:
@@ -148,7 +149,7 @@ class SessionResult:
         decided, so a reader of the README knows what to open.
         """
         if self.verdict is None:
-            return []
+            return [f"juiz sem veredito: {self.unjudged}"] if self.unjudged else []
         scores: dict[str, int] = self.verdict["scores"]
         under = [
             f"juiz: {dimension} {score}"
@@ -382,17 +383,33 @@ async def play_session(
         )
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
+        await judge(script, result, out=out, stamp=stamp)
+    return result
+
+
+async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str) -> None:
+    """Her judge on the session, and its verdict written beside the transcript — or the reason not.
+
+    A judge that fails — a provider down, a reply outside the shape it was bound to — is a
+    session without a verdict, which her runner treats as a session that did not pass, and
+    the run goes on to the next script: the transcript already paid for is on disk, and the
+    row says what the judge did not say. A verdict that never came is not written.
+    """
+    try:
         result.verdict = await judge_session(
             pericope=script.pericopeId,
             language=script.language,
-            transcript=judge_transcript(played),
+            transcript=judge_transcript(result.played),
         )
-        verdict = out / f"{script.name}.{stamp}.verdict.json"
-        verdict.write_text(
-            json.dumps(result.verdict, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
-        print(f"  {verdict}")
-    return result
+    except Exception as failed:
+        result.unjudged = str(failed)
+        print(f"  [judge] failed — no verdict for this session: {failed}")
+        return
+    verdict = out / f"{script.name}.{stamp}.verdict.json"
+    verdict.write_text(
+        json.dumps(result.verdict, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"  {verdict}")
 
 
 def _refusal(refused: httpx.HTTPStatusError) -> str:
