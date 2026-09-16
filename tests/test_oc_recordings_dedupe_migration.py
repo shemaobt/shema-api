@@ -54,6 +54,7 @@ async def _seed(database_url: str) -> dict[str, str]:
     older_id = str(uuid.uuid4())
     newer_id = str(uuid.uuid4())
     exempt_id = str(uuid.uuid4())
+    archived_id = str(uuid.uuid4())
 
     async with engine.begin() as conn:
         for row_id, created_at, splitting_status, split_from_id in (
@@ -61,6 +62,8 @@ async def _seed(database_url: str) -> dict[str, str]:
             (newer_id, "2026-01-02 00:00:00", "none", None),
             # Exempt: split-derived, so it may keep the same title as the others.
             (exempt_id, "2026-01-03 00:00:00", "none", older_id),
+            # Exempt: an archived split parent, the other half of the index's WHERE.
+            (archived_id, "2026-01-04 00:00:00", "archived_after_split", None),
         ):
             await conn.execute(
                 text(_INSERT_RECORDING),
@@ -80,6 +83,7 @@ async def _seed(database_url: str) -> dict[str, str]:
         "older_id": older_id,
         "newer_id": newer_id,
         "exempt_id": exempt_id,
+        "archived_id": archived_id,
     }
 
 
@@ -130,9 +134,21 @@ async def test_the_exempt_split_derived_row_keeps_its_original_title(duplicate_d
     )
 
 
+async def test_the_archived_split_parent_keeps_its_original_title(duplicate_database):
+    url = duplicate_database["url"]
+    archived_id = duplicate_database["archived_id"]
+
+    assert run_alembic(url, "upgrade", TARGET_REVISION).returncode == 0
+
+    assert (
+        await scalar(url, "SELECT title FROM oc_recordings WHERE id = :id", {"id": archived_id})
+        == "História24_Alcino"
+    )
+
+
 async def test_no_row_is_lost_by_the_dedupe(duplicate_database):
     url = duplicate_database["url"]
 
     assert run_alembic(url, "upgrade", TARGET_REVISION).returncode == 0
 
-    assert await scalar(url, "SELECT count(*) FROM oc_recordings", {}) == 3
+    assert await scalar(url, "SELECT count(*) FROM oc_recordings", {}) == 4
