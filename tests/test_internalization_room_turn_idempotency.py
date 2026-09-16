@@ -15,7 +15,7 @@ import pytest
 
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.sessions import create_session, get_session
+from app.services.internalization_room.sessions import append_exchange, create_session, get_session
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
@@ -137,3 +137,43 @@ async def test_two_different_turn_ids_each_run_their_own_fan_out(
 
     assert fan_out["hearing"].calls == 2
     assert fan_out["voice"].calls == 2
+
+
+async def test_a_turn_id_over_the_column_width_is_refused_before_any_work_runs(
+    client, db_session, fan_out
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    too_long = "x" * 65
+
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers={"X-Room-Key": KEY},
+        data={"turn_id": too_long},
+        files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
+    )
+
+    assert refused.status_code == 422, refused.text[:300]
+    assert fan_out["hearing"].calls == 0
+    assert fan_out["model"].calls == 0
+    assert fan_out["voice"].calls == 0
+
+
+async def test_the_audio_less_walk_back_in_echoes_the_turn_id_too(
+    client, db_session, fan_out
+) -> None:
+    """The third door out of the route, and the one the PR's own note to ENG-627 forgot."""
+    session = await create_session(db_session, language="pt", pericope=P)
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response=GUIDE_LINE
+    )
+
+    again = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers={"X-Room-Key": KEY},
+        data={"turn_id": "turno-de-volta"},
+    )
+
+    assert again.status_code == 200, again.text[:300]
+    assert again.json()["turn_id"] == "turno-de-volta"
+    assert fan_out["hearing"].calls == 0
+    assert fan_out["model"].calls == 0

@@ -410,7 +410,7 @@ async def a_person_arrived(
     )
 
 
-async def _say_it_again(session: IRSession) -> TurnResponse:
+async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnResponse:
     """Where the room already was, for a team walking back in.
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
@@ -437,6 +437,7 @@ async def _say_it_again(session: IRSession) -> TurnResponse:
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
+        turn_id=turn_id or "",
     )
 
 
@@ -450,7 +451,7 @@ async def take_turn(
     background: BackgroundTasks,
     response: Response,
     file: UploadFile | None = File(default=None),
-    turn_id: str | None = Form(default=None),
+    turn_id: str | None = Form(default=None, max_length=64),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -495,7 +496,7 @@ async def take_turn(
     transcript = speech_heard.text
 
     if file is None and not opening:
-        return await _say_it_again(session)
+        return await _say_it_again(session, turn_id=turn_id)
 
     ready = await take_prepared(db, session) if opening else None
     if ready is not None:
