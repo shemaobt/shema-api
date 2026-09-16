@@ -140,12 +140,13 @@ def _section(prompt: str, start: str, end: str | None) -> str:
 #: of. It is taken out before the elements are read, because a scene title is passage content
 #: and carries the passage's own names — P01 scene 1 is *Fome e ida para Moabe* — so a double
 #: reading proper names off the whole section would count the room's address as something the
-#: analyst reported.
-_THE_ADDRESS = re.compile(r" \[[^\]]*\]")
+#: analyst reported. Anchored to the shape the block writes, kind and bracket and colon, so a
+#: note of the analyst's own that happens to carry brackets is not mutilated with it.
+_THE_ADDRESS = re.compile(r"^(- \w+) \[[^\]]*\](:)", re.M)
 
 
 def _without_the_address(finding: str) -> str:
-    return _THE_ADDRESS.sub("", finding)
+    return _THE_ADDRESS.sub(r"\1\2", finding)
 
 
 def _names(text: str) -> set[str]:

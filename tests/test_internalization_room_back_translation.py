@@ -32,7 +32,7 @@ from app.services.internalization_room.back_translation import (
     with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.coverage import initial_state
-from app.services.internalization_room.part_names import no_addresses
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.run_turn import run_turn, run_verdict_turn
 from tests.turn_harness import (
     GUIDE,
@@ -236,7 +236,7 @@ def test_an_addition_with_a_missing_on_another_frase_goes_alone() -> None:
         ]
     )
 
-    block = findings_block(current_findings(state), no_addresses())
+    block = findings_block(current_findings(state), Addresses())
 
     assert "primeiro" in block
     assert "segundo" not in block
@@ -264,7 +264,7 @@ def test_a_row_written_before_the_frase_number_existed_never_pairs() -> None:
 
 
 def test_no_findings_reads_as_complete() -> None:
-    assert "nenhum achado" in findings_block([], no_addresses())
+    assert "nenhum achado" in findings_block([], Addresses())
 
 
 @pytest.mark.asyncio
@@ -275,7 +275,7 @@ async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> No
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block([finding], no_addresses()),
+        findings_text=findings_block([finding], Addresses()),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -630,7 +630,7 @@ async def test_the_retired_evidence_kind_is_dropped_from_a_correction_too(
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
-            addresses=no_addresses(),
+            addresses=Addresses(),
             settings=settings(),
         )
 
@@ -712,7 +712,7 @@ async def _verdict_for(findings: list[Finding], patch_speaker) -> str:
     await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(findings, no_addresses()),
+        findings_text=findings_block(findings, Addresses()),
         closing=closing_block(findings[0] if findings else None),
         scope=P,
         pericope_num=P,
@@ -833,10 +833,8 @@ async def test_an_addition_alone_is_voiced_as_today(patch_speaker) -> None:
     spoken_to = await _verdict_for(voiced, patch_speaker)
 
     assert voiced == state.findings
-    assert "o pedido das noras" in findings_block(voiced, no_addresses())
-    assert "\n" not in findings_block(voiced, no_addresses()), (
-        "uma linha só, como antes desta regra"
-    )
+    assert "o pedido das noras" in findings_block(voiced, Addresses())
+    assert "\n" not in findings_block(voiced, Addresses()), "uma linha só, como antes desta regra"
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") in spoken_to
     assert findings_remaining(state.findings) == 1
 
@@ -860,7 +858,7 @@ async def test_the_validator_judges_the_same_block_the_speaker_was_handed(patch_
     await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block(voiced, no_addresses()),
+        findings_text=findings_block(voiced, Addresses()),
         closing=closing_block(voiced[0]),
         scope=P,
         pericope_num=P,
@@ -969,7 +967,7 @@ async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> Non
 
     with pytest.raises(ValidationError):
         await run_verdict_turn(
-            findings_text=findings_block([_on_a_stretch(FindingKind.ADDITION)], no_addresses()),
+            findings_text=findings_block([_on_a_stretch(FindingKind.ADDITION)], Addresses()),
             closing=closing_block(_on_a_stretch(FindingKind.ADDITION)),
             scope=P,
             pericope_num=P,
@@ -1007,7 +1005,7 @@ async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker)
     finding = _on_a_stretch(FindingKind.ADDITION)
 
     await run_verdict_turn(
-        findings_text=findings_block([finding], no_addresses()),
+        findings_text=findings_block([finding], Addresses()),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -1259,7 +1257,7 @@ async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block([finding], no_addresses()),
+        findings_text=findings_block([finding], Addresses()),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -1398,7 +1396,7 @@ async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loo
         await run_verdict_turn(
             session_language="Portuguese",
             language_code="pt",
-            findings_text=findings_block([finding], no_addresses()),
+            findings_text=findings_block([finding], Addresses()),
             closing=closing_block(finding),
             scope=P,
             pericope_num=P,
@@ -1497,7 +1495,7 @@ async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block([finding], no_addresses()),
+        findings_text=findings_block([finding], Addresses()),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,
@@ -1584,7 +1582,7 @@ async def test_the_validator_is_handed_the_closing_that_was_ordered(
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block([finding], no_addresses()),
+        findings_text=findings_block([finding], Addresses()),
         closing=closing_block(finding),
         scope=P,
         pericope_num=P,

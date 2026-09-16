@@ -31,7 +31,7 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     verify_correction,
 )
-from app.services.internalization_room.part_names import no_addresses
+from app.services.internalization_room.part_names import Addresses
 
 LOGGER_NAME = "app.services.internalization_room.back_translation"
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
@@ -148,7 +148,7 @@ async def test_an_accepted_correction_reading_leaves_an_info_record(
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
-            addresses=no_addresses(),
+            addresses=Addresses(),
             settings=_settings(),
             session_id=SESSION_ID,
         )
@@ -193,7 +193,7 @@ async def test_the_teams_own_words_do_not_reach_this_logger(
             scope=P,
             pericope_num=P,
             correction_prompt=CORRECTION,
-            addresses=no_addresses(),
+            addresses=Addresses(),
             settings=_settings(),
             session_id=SESSION_ID,
         )

@@ -29,11 +29,17 @@ recording.
 position in that list. The **Frase number** frozen on a **Version** is the packet's, and the
 two must not be confused — what the address says is what the team just heard the voice say.
 
-**The count is the only guard there is.** The room directs the team to record the passage whole
-or scene by scene and nothing enforces it, so a team that merged scenes 1 and 2 and split
-scene 3 has four parts over three scenes and part 2 is not scene 2. The frase range therefore
-stays even when the title is said: a misaligned title is recoverable when the team is also told
-which frases the part carries.
+**The count is the only guard there is, and it counts the numbered parts.** The room directs
+the team to record the passage whole or scene by scene and nothing enforces it, so a team that
+merged scenes 1 and 2 and split scene 3 has four parts over three scenes and part 2 is not
+scene 2. The frase range therefore stays even when the title is said: a misaligned title is
+recoverable when the team is also told which frases the part carries.
+
+A take with no number is not counted against the map, because it is not a scene: it is the
+rehearsal recorded whole, or a mother-tongue correction, and it is already spoken as *a
+gravação inteira* rather than as a part. Three numbered parts over a three-scene passage are
+the map's scenes whatever else the session happens to hold, and counting the unnumbered take
+with them would drop every title for a reason no team would ever hear.
 
 Rejected: **the scene name as the part's identity** (Marcia's app can do it because her
 recording screen records under the scene names; the server holds no join from a part to a
@@ -86,6 +92,11 @@ fixture told — never against a title written into the test:
 | a missing with no address: frase, no part | `test_a_missing_without_an_address_names_no_part` |
 | a row from before `chunk` existed: no frase slot | `test_a_finding_from_before_the_frase_number_existed_leaves_that_slot_out` |
 | a stretch whose part is no longer one | `test_a_finding_on_a_part_that_is_no_longer_one_names_the_frase_alone` |
+| a take with no number beside numbered ones | `test_a_whole_recording_beside_numbered_parts_does_not_shift_their_numbers` |
+| and the titles it must not cost | `test_a_part_with_no_number_beside_the_scenes_does_not_cost_the_titles` |
+| a holed catalogue: the title goes, the verdict does not | `test_a_holed_catalogue_costs_the_title_and_not_the_verdict` |
+| the **Correction check** reading a stretch a retelling replaced | `test_the_correction_check_reads_the_address` |
+| every language of `ROOM_LANGUAGES` speaks it in its own words | `test_every_language_the_room_speaks_has_its_own_address_words` |
 
 A sweep over those same inputs checking each address against a regex of permitted shapes was
 written first and removed: over one input, equality with the catalogue's own answer is strictly

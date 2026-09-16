@@ -10,7 +10,7 @@ from app.services.internalization_room.back_translation import (
     findings_block,
     segments_block,
 )
-from app.services.internalization_room.part_names import no_addresses
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.run_turn import run_verdict_turn
 from tests.turn_harness import (
     CONTINUES_TELLING_BACK,
@@ -75,7 +75,7 @@ async def _checked_turn_for(draft: str, patch_speaker) -> str:
     await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block([], no_addresses()),
+        findings_text=findings_block([], Addresses()),
         closing=closing_block(None, checked=True),
         scope=P,
         pericope_num=P,
@@ -94,7 +94,7 @@ async def _checked_turn_with_loop(draft: str, patch_loop):
     outcome = await run_verdict_turn(
         session_language="Portuguese",
         language_code="pt",
-        findings_text=findings_block([], no_addresses()),
+        findings_text=findings_block([], Addresses()),
         closing=closing_block(None, checked=True),
         scope=P,
         pericope_num=P,

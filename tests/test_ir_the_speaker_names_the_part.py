@@ -38,7 +38,12 @@ from app.services.internalization_room.canon.labels import (
     ElementLabelsBroken,
     labelled_elements,
 )
-from app.services.internalization_room.part_names import Addresses, addresses_for, words_for
+from app.services.internalization_room.languages import ROOM_LANGUAGES
+from app.services.internalization_room.part_names import (
+    Addresses,
+    addresses_for,
+    words_for,
+)
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import get_session
 from tests.room_harness import (
@@ -54,13 +59,28 @@ from tests.room_harness import (
 from tests.text_seam_harness import RUNNER_KEY, Analyst, the_app
 from tests.text_seam_harness import the_analyst_reads as the_seam_analyst_is_scripted
 
-#: The three-scene passage the catalogue names in Portuguese, and the three-scene passage it
-#: names only in English. The rule turns on exactly that difference, so both are named here
-#: rather than inside the cases that read them.
+#: The three-scene passage the catalogue names in Portuguese. Written down because the seam
+#: cases and the expected labels both need one passage to stand on, and three scenes is the
+#: smallest rehearsal in which a part can be neither the first nor the last.
 TITLED = "P02"
-UNTITLED_IN_PORTUGUESE = "P03"
 
 SEAM = "/api/internalization-room/text-seam/back-translation"
+
+
+def _a_passage_with_no_portuguese_titles(scenes: int = 3) -> str:
+    """A passage of `scenes` scenes the catalogue has not translated into Portuguese.
+
+    Asked of the catalogue rather than written down. Ten of the fourteen are untranslated
+    today and `P03` is one of them, but naming it here would make this case go red on the day
+    somebody translates it — which is work being done, not a rule breaking.
+    """
+    for pericope in (f"P{number:02d}" for number in range(1, 15)):
+        scene_labels = [
+            element for element in labelled_elements(pericope) if element.key.startswith("scene:")
+        ]
+        if len(scene_labels) == scenes and all(one.label_pt is None for one in scene_labels):
+            return pericope
+    pytest.skip(f"every {scenes}-scene passage now has Portuguese scene titles: the rule is moot")
 
 
 def _scene_title(pericope: str, scene: int, language: str) -> str | None:
@@ -197,17 +217,15 @@ async def test_a_passage_without_portuguese_titles_names_the_number_alone(
     Her own fail-safe rule: a voiced line never mixes languages, so the English title of a
     passage nobody has translated is not a fallback — it is a sentence the team cannot read.
     """
-    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=UNTITLED_IN_PORTUGUESE)
+    untitled = _a_passage_with_no_portuguese_titles()
+    session, _ = await rehearsed_in_parts_of(db_session, [3, 4, 2], pericope=untitled)
     analyst.readings = [{"findings": [_missing(5)]}]
 
     answered = await _checked(client, db_session, session.id)
 
     assert answered.status_code == 200, answered.text
-    assert _scene_title(UNTITLED_IN_PORTUGUESE, 2, "pt") is None, (
-        "the case needs a passage the catalogue leaves untranslated"
-    )
     assert _addresses(room.briefs[-1]) == ["frase 5 — a parte 2, das frases 4 a 7"]
-    in_english = _scene_title(UNTITLED_IN_PORTUGUESE, 2, "en")
+    in_english = _scene_title(untitled, 2, "en")
     assert in_english and in_english not in _block(room.briefs[-1])
 
 
@@ -226,6 +244,58 @@ async def test_a_rehearsal_told_whole_is_the_whole_recording(
 
     assert answered.status_code == 200, answered.text
     assert _addresses(room.briefs[-1]) == ["frase 5 — a gravação inteira"]
+
+
+@pytest.mark.parametrize("language", ROOM_LANGUAGES)
+def test_every_language_the_room_speaks_has_its_own_address_words(language: str) -> None:
+    """A language the room claims speaks the whole address in itself, or it is not claimed.
+
+    The module says *one entry per language of `ROOM_LANGUAGES`* and nothing held it. A third
+    language added to the room with no words of its own falls back to the floor: it would speak
+    its address in English while the scene title came back in its own — the crossing this module
+    exists to prevent, arriving in silence.
+
+    Asked as *no language borrows another's words* rather than as *this one differs from the
+    floor*, because English **is** the floor: the borrowed case and the right case agree there,
+    and the borrowing language is the one that would go unmeasured.
+    """
+    words = words_for(language)
+
+    for shape in (words.frase, words.whole, words.part, words.span, words.one):
+        assert shape, f"{language} has no word for part of an address"
+    for other in (one for one in ROOM_LANGUAGES if one != language):
+        assert words != words_for(other), (
+            f"{language} and {other} speak an address in the same words, so one of them is "
+            f"borrowing: an unclaimed language falls back to the floor and says it in English"
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_part_with_no_number_beside_the_scenes_does_not_cost_the_titles(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    analyst: ScriptedAnalyst,
+    room: Room,
+) -> None:
+    """A take with no number is not a scene, so it is not counted against the map either.
+
+    Three numbered parts over a three-scene passage are the map's scenes whatever else the
+    session is holding — a rehearsal recorded whole before the team split it, or a mother
+    tongue correction — and the title is still the team's own address for that part. Counting
+    the unnumbered take against the scenes would drop every title for a reason the team would
+    never hear.
+    """
+    session, _ = await rehearsed_in_parts_of(
+        db_session, [2, 3, 4, 2], pericope=TITLED, unnumbered_first=True
+    )
+    analyst.readings = [{"findings": [_missing(7)]}]
+
+    answered = await _checked(client, db_session, session.id)
+
+    assert answered.status_code == 200, answered.text
+    title = _scene_title(TITLED, 2, "pt")
+    assert title, "the case needs a passage the catalogue names in Portuguese"
+    assert _addresses(room.briefs[-1]) == [f"frase 7 — a parte 2 — {title}, das frases 6 a 9"]
 
 
 @pytest.mark.asyncio

@@ -335,21 +335,24 @@ async def rehearsed_in_parts_of(
 
     parts = []
     told = 0
+    numbered = 0
     for index, count in enumerate(frases):
         whole = told_whole or (unnumbered_first and index == 0)
+        if not whole:
+            numbered += 1
         take = IRTake(
             session_id=session.id,
             project_id=session.project_id,
             device_id=TABLET,
             pericope=pericope,
             kind=IRTakeKind.ENSAIO,
-            scope="passagem-inteira" if whole else f"parte-{index}",
+            scope="passagem-inteira" if whole else f"parte-{numbered}",
             storage_key=f"takes/{session.id}/ensaio/{chr(ord('a') + index) * 8}",
             size_bytes=2048,
             sha256=chr(ord("a") + index) * 64,
             crc32c="AAAAAAA=",
             content_type="audio/mp4",
-            ordinal=None if whole else index + (0 if unnumbered_first else 1),
+            ordinal=None if whole else numbered,
             created_at=REHEARSED_AT + timedelta(minutes=index),
         )
         db.add(take)

@@ -998,8 +998,8 @@ async def verify_correction(
     scope: str,
     pericope_num: str,
     correction_prompt: str,
-    session_language: str = "Portuguese",
     addresses: Addresses,
+    session_language: str = "Portuguese",
     settings: Settings | None = None,
     session_id: str = "",
 ) -> CorrectionCheck | None:
@@ -1264,10 +1264,10 @@ def findings_block(findings: list[Finding], addresses: Addresses) -> str:
     rehearsal of five parts asks a team to work out which one, and the cost of getting it wrong
     is a re-recording of the wrong scene.
 
-    `addresses` is required and has no default. A caller with no takes in hand says so —
-    `no_addresses(language)` — rather than being quietly answered the line as it read before
-    this rule: the address going missing for a caller nobody thought about is the defect this
-    whole slice exists to remove, and it has already been in front of a team once.
+    `addresses` is required and has no default. A caller with no takes in hand hands in an
+    empty `Addresses()` and says so, rather than being quietly answered the line as it read
+    before this rule: the address going missing for a caller nobody thought about is the defect
+    this whole slice exists to remove, and it has already been in front of a team once.
     """
     if not findings:
         return "(nenhum achado — a tradução está completa)"

@@ -50,6 +50,9 @@ class AddressWords:
     one: str
 
 
+#: One entry per language of `ROOM_LANGUAGES`, and the two tables here are read together: a
+#: language claimed with words but without a scene title would speak its address in one language
+#: and name the scene in another, which is the crossing this module exists to prevent.
 _WORDS: dict[str, AddressWords] = {
     "pt": AddressWords(
         frase="frase {number}",
@@ -66,9 +69,6 @@ _WORDS: dict[str, AddressWords] = {
         one="sentence {first}",
     ),
 }
-#: One entry per language of `ROOM_LANGUAGES`, and the two tables are read together: a language
-#: claimed here without a scene title in `scene_titles` below would speak its address in one
-#: language and name the scene in another, which is the crossing this module exists to prevent.
 
 
 def words_for(language_code: str) -> AddressWords:
@@ -113,11 +113,6 @@ class Addresses:
         return " — ".join(said)
 
 
-def no_addresses(language_code: str = FLOOR) -> Addresses:
-    """What a caller with no takes in hand gives: every finding carries its frase and no part."""
-    return Addresses(words=words_for(language_code))
-
-
 def scene_titles(session: IRSession) -> list[str | None]:
     """The passage's scenes in scene order, each named in the language the room is speaking.
 
@@ -151,7 +146,7 @@ def addresses_for(
     told: list[IRSegment],
     parts: list[IRTake],
     titles: list[str | None],
-    language_code: str = FLOOR,
+    language_code: str,
     *,
     superseded: list[IRSegment],
 ) -> Addresses:
