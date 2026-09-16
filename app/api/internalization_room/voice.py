@@ -1,44 +1,16 @@
-import base64
 from hashlib import sha256
 
 from fastapi import APIRouter, Response
 
 from app.api.internalization_room._deps import room_caller_dep
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ValidationError
-from app.models.internalization_room import (
-    FacilitatorSpeakRequest,
-    FacilitatorSpeakResponse,
-)
-from app.services.internalization_room import synthesize_facilitator_speech
-from app.services.internalization_room.languages import normalize
+from app.core.exceptions import NotFoundError
 from app.services.internalization_room.questions import AUDIO_MIME
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform.storage import GcsPlatformStore
 from app.services.platform.tts import MIME_TYPE, fetch_clip
 
 router = APIRouter()
-
-
-@router.post(
-    "/voice/speak",
-    response_model=FacilitatorSpeakResponse,
-    dependencies=[room_caller_dep],
-)
-async def speak(payload: FacilitatorSpeakRequest, response: Response) -> FacilitatorSpeakResponse:
-    spoken = None if payload.language is None else normalize(payload.language)
-    if payload.language is not None and spoken is None:
-        raise ValidationError(f"The room does not speak {payload.language!r}")
-    entry, cached = await synthesize_facilitator_speech(payload.text, language=spoken)
-    response.headers["ETag"] = entry.etag
-    response.headers["X-Tts-Cached"] = "1" if cached else "0"
-    return FacilitatorSpeakResponse(
-        audio_base64=base64.b64encode(entry.audio).decode("ascii"),
-        mime_type=entry.mime_type,
-        etag=entry.etag,
-        cached=cached,
-    )
-
 
 IMMUTABLE = "private, max-age=31536000, immutable"
 

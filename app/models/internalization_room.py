@@ -7,21 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_serializer
 from app.core.enums import SessionState
 from app.core.room_enums import CoverageStatus, ElementKind
 
-MAX_TTS_CHARS = 3000
-
-
-class FacilitatorSpeakRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=MAX_TTS_CHARS)
-    #: Which language to speak it in. Absent takes the floor, English.
-    language: str | None = Field(default=None, max_length=8)
-
-
-class FacilitatorSpeakResponse(BaseModel):
-    audio_base64: str
-    mime_type: str = "audio/mpeg"
-    etag: str
-    cached: bool = False
-
 
 class LabelledElement(BaseModel):
     """One bead, named in each language the Desk offers.
