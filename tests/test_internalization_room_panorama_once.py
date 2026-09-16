@@ -1,10 +1,10 @@
-"""ENG-453 — the panorama plays once per passage, not once per launch.
+"""ENG-453 — the panorama plays once per book, not once per launch.
 
 The app asks for `"OV"` at every launch and the room honoured it every time, so a team
 reopening the tablet on the passage they were already working heard the book's panorama
 again before reaching their own passage. The decision now lives where the request lands:
-a panorama the team has already heard for the passage they stand on is answered with that
-passage instead.
+a panorama the team has already heard for the book is answered with the passage they stand
+on instead.
 
 None of these assert on storage. They look at the session the room hands back — which
 passage, and whether it is a panorama — the same thing the tablet reads. The one exception is
@@ -107,23 +107,21 @@ async def test_a_team_that_heard_the_panorama_for_this_passage_is_not_played_it_
 
 
 @pytest.mark.asyncio
-async def test_a_team_reaching_a_new_passage_hears_the_panorama_once(
+async def test_a_team_reaching_a_new_passage_is_not_played_the_book_again(
     db_session: AsyncSession,
 ) -> None:
-    """Case 2. Per pericope: a passage the team has not heard it for earns one hearing."""
+    """Case 2. Per book: the panorama is the book's, so a team that went on from it into the
+    first passage and finished that passage arrives at the second without sitting through
+    the whole of Ruth again. The session handed back is the only one minted, so a launch
+    answered with the passage is a launch that minted no panorama."""
     team = await a_team(db_session, name="Chegou na segunda")
     await having_heard_the_panorama(db_session, team)
     await having_closed(db_session, team, FIRST)
 
     arriving = await the_app_launches(db_session, team)
-    assert room.is_panorama(arriving.pericope)
-    entered = await the_bead_opens_the_passage(db_session, team)
-    assert entered.pericope == SECOND
 
-    reopened = await the_app_launches(db_session, team)
-
-    assert not room.is_panorama(reopened.pericope)
-    assert reopened.pericope == SECOND
+    assert not room.is_panorama(arriving.pericope)
+    assert arriving.pericope == SECOND
 
 
 @pytest.mark.asyncio

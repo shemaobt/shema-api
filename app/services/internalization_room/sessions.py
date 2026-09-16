@@ -131,8 +131,8 @@ async def create_session(
     own bias.
 
     A request for the panorama is a request and not an instruction. The app asks for it at
-    every launch, and a team that already heard it for the passage they stand on is answered
-    with that passage instead, opened as any other session and not as one that follows a
+    every launch, and a team that already heard the book's panorama is answered with the
+    passage they stand on instead, opened as any other session and not as one that follows a
     panorama — no panorama played, so the greeting must not say one did. Whether they heard
     it is `heard_panorama`'s to say and is derived, never stored. A team standing on no
     passage — the walkable book closed — is given the panorama as before: the decision puts
@@ -154,7 +154,7 @@ async def create_session(
     if is_panorama(pericope):
         standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
         if standing is not None and await heard_panorama(
-            db, project_id=project_id, pericope=standing
+            db, project_id=project_id, book=book_of(pericope)
         ):
             pericope, after_panorama = standing, False
     panorama = is_panorama(pericope)
