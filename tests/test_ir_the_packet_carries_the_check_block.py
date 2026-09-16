@@ -32,10 +32,10 @@ from app.services.internalization_room.back_translation import (
     SupersededAttempt,
 )
 from app.services.internalization_room.release import (
-    FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
+    compose_internalization_release,
 )
 from app.services.internalization_room.segments import (
     capture_segment,
@@ -120,16 +120,27 @@ async def room_app(db_session: AsyncSession):
     return app
 
 
-async def _live_view(
-    db: AsyncSession, session: IRSession, *, waived: frozenset[str] = FORCEABLE_BLOCKERS
-) -> dict[str, Any]:
+async def _live_view(db: AsyncSession, session: IRSession) -> dict[str, Any]:
     """The packet this session composes right now, read past the gate the case is not about.
 
-    The composer is what both the live facilitator read and the approval call, so this is the
-    view the block is derived from, with `version` null and `forced` false by rule.
+    The composer is what both the live facilitator read and the approval call are built on, so
+    this is the view the block is derived from, with `version` null and `forced` false by rule.
+    It answers with the artifact and the blockers apart, which is why a case whose subject is
+    what the packet says can read one and leave the other: the Desk's own route rebuilds under
+    the whole list and answers 409, so a blocked session's live packet has no door but this.
     """
     fresh = await get_session(db, session.id)
-    return await build_internalization_release(db, fresh, waived=waived)
+    packet, _blockers = await compose_internalization_release(db, fresh)
+    return packet
+
+
+async def _the_desk_reads(db: AsyncSession, session: IRSession) -> dict[str, Any]:
+    """The packet the Desk's own route serves, judged under the whole list.
+
+    For a session the gate lets through, which is the stronger question: read past the gate, a
+    case about a clean session would go on passing after the session stopped being clean.
+    """
+    return await build_internalization_release(db, await get_session(db, session.id))
 
 
 async def _three_stretches_told(db: AsyncSession, session: IRSession) -> BackTranslationState:
@@ -262,10 +273,15 @@ async def test_a_never_analysed_session_reads_sem_conferencia(db_session: AsyncS
     """
     session = await ready_session(db_session, tell=never_analysed_telling_back)
 
-    check = (
-        await _live_view(db_session, session, waived=frozenset({"telling_back_never_analysed"}))
-    )["check"]
+    packet, blockers = await compose_internalization_release(
+        db_session, await get_session(db_session, session.id)
+    )
+    check = packet["check"]
 
+    assert blockers == ["telling_back_never_analysed"], (
+        "é o único que está de pé: qualquer outro seria outra sessão, e o bloco abaixo "
+        "estaria descrevendo um estado que não é este"
+    )
     assert check["status"] == "sem_conferencia"
     assert check["conferida"] is False
     assert check["forced"] is False
@@ -391,8 +407,8 @@ async def test_the_check_block_sits_outside_the_hash(
     )
 
     assert pressed.status_code == 200, pressed.text
-    first = await _live_view(db_session, unchanged, waived=frozenset())
-    second = await _live_view(db_session, unchanged, waived=frozenset())
+    first = await _the_desk_reads(db_session, unchanged)
+    second = await _the_desk_reads(db_session, unchanged)
 
     assert first["check"]["lastCheckAt"] is not None, "senão a igualdade abaixo é None == None"
     assert first["package_sha256"] == second["package_sha256"]
@@ -436,7 +452,7 @@ async def test_the_verdict_stamps_when_the_check_ran(
     stamped = await stored_telling_back(db_session, clean)
     assert stamped.checked is True
     assert stamped.checked_at is not None
-    packet = await _live_view(db_session, clean, waived=frozenset())
+    packet = await _the_desk_reads(db_session, clean)
     assert packet["check"]["lastCheckAt"] == stamped.checked_at.isoformat()
     assert packet["check"]["status"] == "conferida"
 

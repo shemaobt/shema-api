@@ -262,7 +262,8 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     nothing said on it was not in that.
 
     A stretch the team divided is standing and is not a leaf, so it is in neither of those:
-    `divided` is its list, in the room's own row order and in the shape of a stretch entry.
+    `divided` is its list, in the order the reading walks it — a stretch before the pieces it
+    was cut into — and in the shape of a stretch entry.
     Without it, what the team said about the whole stretch left the document — and took every
     telling before it along, because the row that replaced those is not a leaf and so gave them
     no history to sit in. It keeps the number the frozen reading gave it, when it was in one:

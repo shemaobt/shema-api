@@ -154,7 +154,7 @@ async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi v
         session,
         take_id="ensaio-1",
         starts_ms=0,
-        ends_ms=61000,
+        ends_ms=CLIP_MS,
         bridge_take_id="retro-1",
         transcript=text,
     )
@@ -218,9 +218,17 @@ def ensaio_take(
     ordinal: int | None = None,
     sha256: str = "a" * 64,
     created_at: datetime | None = None,
+    project_id: str | None = None,
 ) -> IRTake:
+    """A rehearsal take as a row, for a case that needs one without an upload.
+
+    ``project_id`` is whose work it is. The facilitator's audio route refuses a take naming no
+    team before it reads anything else, so a session assembled here could never be listened to
+    by behaviour: the builders that know the team name it.
+    """
     take = IRTake(
         session_id=session_id,
+        project_id=project_id,
         device_id="tablet-1",
         pericope=P,
         kind=IRTakeKind.ENSAIO,
@@ -246,9 +254,11 @@ def retro_take(
     ordinal: int | None = None,
     sha256: str = "a" * 64,
     created_at: datetime | None = None,
+    project_id: str | None = None,
 ) -> IRTake:
     take = IRTake(
         session_id=session_id,
+        project_id=project_id,
         device_id="tablet-1",
         pericope=P,
         kind=IRTakeKind.RETRO,
@@ -272,7 +282,7 @@ async def reported_playback(
     state: BackTranslationState,
     *,
     played_ranges: list[list[int]] | None = None,
-    clip_duration_ms: int | None = 61000,
+    clip_duration_ms: int | None = CLIP_MS,
 ) -> None:
     """Store the telling-back together with the team's report of what the tablet played.
 
@@ -288,7 +298,7 @@ async def reported_playback(
     The defaults describe a part played through; a case about a report that falls short says
     so by naming the numbers it means.
     """
-    spans = [[0, 61000]] if played_ranges is None else played_ranges
+    spans = [[0, CLIP_MS]] if played_ranges is None else played_ranges
     told = await final_segments(db, session.id)
     await report_playback(
         db,
@@ -323,7 +333,7 @@ async def rehearsed_session(
     session = await create_session(db, pericope=P, project_id=project_id, language=language)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
-    take = ensaio_take(session.id)
+    take = ensaio_take(session.id, project_id=session.project_id)
     db.add(take)
     await db.commit()
     return session, take
@@ -369,6 +379,7 @@ async def a_p02_telling_with_the_swapped_cause(db: AsyncSession, project: Projec
     db.add(
         IRTake(
             session_id=session.id,
+            project_id=project.id,
             device_id=TABLET,
             pericope=P02,
             kind=IRTakeKind.ENSAIO,
