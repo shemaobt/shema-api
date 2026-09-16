@@ -92,7 +92,7 @@ The recording of the whole passage in the mother tongue, and the station where i
 _Avoid_: recording, `ensaio` (in prose; it is the stored take kind)
 
 **Part**:
-One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part.
+One rehearsal take of a passage: the unit the team listens to, tells stretches from and records again. A rehearsal told whole has one part. **The number the voice says is the part's position among the session's current parts**, never the number as stored: the tablet numbers its parts from one and the text seam from zero, and both mean the same first part. The voice adds the scene's own title only when the rehearsal has as many current parts as the passage has scenes and the catalogue holds that title in the session's language.
 _Avoid_: clip (Marcia's word for it), chunk, segment, Parte
 
 **Recording grain** (`recording_grain`):
@@ -117,7 +117,7 @@ that one file.
 _Avoid_: range, offset, position, Endereço
 
 **Frase number** (`frase`):
-The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam). A cut or a fresh telling after the approval changes nothing in that version.
+The 1-based number a stretch had in the reading the team heard, the one the voice says; frozen per **Version** beside the stretch id (`segment_id` in the packet, `idx` in the **Check block**, `stretchId` in the text seam). A cut or a fresh telling after the approval changes nothing in that version. Freezing is what a **Version** does to the number, not a property of the number itself: where no version exists — the verdict, as the round is being decided — it is the stretch's position in the reading the analyst was just given, which is the one the team just heard. The entry names the concept and the spellings it carries on the wire; the word a team hears for it follows the session's language (*frase* in Portuguese, *sentence* in English).
 _Avoid_: ordinal (per sibling group, never per passage), position, index, n (her listener number), Número da frase
 
 **Divided stretch** (`parent_id`, `ordinal`):

@@ -24,7 +24,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSegment, IRSession, IRTake
+from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.coverage import initial_state, merge
@@ -89,6 +89,40 @@ def the_analyst_reads(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     return reader
 
 
+class ScriptedAnalyst:
+    """The analyst answering the findings a case wrote, one entry per whole reading.
+
+    A case about what the room does *with* a finding has to put one there, and the counting
+    double above cannot: it answers the same clean reading every time. The correction check is
+    told apart by the heading only its prompt carries, the way a reader would, and it keeps
+    what it was shown and passes: a case that needs it to refuse, or to raise something of its
+    own, sets that up here when there is one — buttons nobody presses are a double agreeing
+    with itself. The seam has a double of the same shape (`text_seam_harness.Analyst`) and the
+    two are deliberately not merged: this module is where `CORRECTION_MARK` lives, so importing
+    that one back would close an import cycle.
+    """
+
+    def __init__(self) -> None:
+        self.readings: list[dict[str, Any]] = []
+        self.verifications: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
+        if CORRECTION_MARK in system_prompt:
+            self.verifications.append(system_prompt)
+            return json.dumps({"resolved": True, "findings": []})
+        read = self.readings.pop(0) if self.readings else {"findings": []}
+        return json.dumps({"evidence_sufficient": True, **read})
+
+
+def the_analyst_is_scripted(monkeypatch: pytest.MonkeyPatch) -> ScriptedAnalyst:
+    """Put an analyst answering a case's own findings in place of the model call."""
+    from app.services.internalization_room import back_translation as bt_service
+
+    reader = ScriptedAnalyst()
+    monkeypatch.setattr(bt_service, "call_agent", reader)
+    return reader
+
+
 def the_bucket_is_in_memory(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     """Keep the takes where a case can reach them, so a route that stores audio needs no bucket.
 
@@ -112,20 +146,29 @@ def the_transcriber_says(monkeypatch: pytest.MonkeyPatch, said: list[str]) -> No
     monkeypatch.setattr(bt_api, "heard", heard)
 
 
-def the_room_speaks(
-    monkeypatch: pytest.MonkeyPatch, *, briefs: list[str] | None = None
-) -> list[str]:
-    """The Speaker and the synthesizer, and every line the room was asked to say.
+class Room:
+    """What the room was asked to say, and what it showed the two models to get there.
 
-    Kept because the answer carries a clip name and never the words: what the room actually
-    said is not readable from the response at all.
+    `said` is every line handed to the synthesizer, kept because the answer carries a clip
+    name and never the words: what the room actually said is not readable from the response
+    at all. `briefs` is every system prompt the Speaker was given, for a case whose subject
+    is the instruction the room ordered rather than the words that came back, and `judged` is
+    every one the Validator was — told apart by the field it is asked to answer with.
 
-    `briefs` collects what the Speaker was told, for a case whose subject is the instruction
-    the room ordered rather than the words that came back. The Validator's own brief is not
-    one of them — it is judging a draft, not being told how to end a turn — and it is told
-    apart here by the field it is asked to answer with.
+    One object rather than a returned list and a second filled by keyword: the three are one
+    idea, what the room handed to whom on this turn, and a case wanting two of them had to
+    hold that idea in two shapes.
     """
-    said_aloud: list[str] = []
+
+    def __init__(self) -> None:
+        self.said: list[str] = []
+        self.briefs: list[str] = []
+        self.judged: list[str] = []
+
+
+def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
+    """The Speaker, the Validator and the synthesizer, and everything they were shown."""
+    room = Room()
 
     from app.api.internalization_room import back_translation as bt_api
 
@@ -133,19 +176,19 @@ def the_room_speaks(
 
     async def speaker(*, system_prompt: str, user_content: str, **_: Any) -> str:
         if "corrected_response" in system_prompt:
+            room.judged.append(system_prompt)
             return json.dumps({"verdict": "pass", "issues": []})
-        if briefs is not None:
-            briefs.append(system_prompt)
+        room.briefs.append(system_prompt)
         return "Vocês contaram bem."
 
     monkeypatch.setattr(turn_module, "call_agent", speaker)
 
     async def voice(text: str, *_: Any, **__: Any):
-        said_aloud.append(text)
-        return (type("Voiced", (), {"key": f"clipe-{len(said_aloud)}"})(), 0)
+        room.said.append(text)
+        return (type("Voiced", (), {"key": f"clipe-{len(room.said)}"})(), 0)
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", voice)
-    return said_aloud
+    return room
 
 
 @asynccontextmanager
@@ -247,6 +290,81 @@ async def rehearsed_in_parts(
             bridge_take_id=f"retro-{index}",
             transcript=f"parte {index} contada de volta",
         )
+        parts.append(take)
+    return session, parts
+
+
+async def rehearsed_in_parts_of(
+    db: AsyncSession,
+    frases: list[int],
+    *,
+    pericope: str = P,
+    language: str = "pt",
+    told_whole: bool = False,
+    unnumbered_first: bool = False,
+) -> tuple[IRSession, list[IRTake]]:
+    """A rehearsal of `pericope` whose parts carry the stretches a case needs to number.
+
+    `frases[i]` is how many stretches the part in position i+1 was told in, so a case says
+    *frases 1 to 3, then 4 to 7, then 8 and 9* by asking for `[3, 4, 2]`. The builder beside
+    this one gives every part exactly one stretch, which cannot say anything about a range.
+
+    Each stretch is its own slice of its part's recording, so the reading order is the one
+    the room reads by — the part's number, then the milliseconds inside it (ADR 0021).
+
+    `told_whole` is the rehearsal recorded in one go: one take carrying no number at all,
+    which is what the tablet sends for the whole passage, and `frases` then names the one
+    part's stretches. It refuses more than one, because a part *is* its number: two takes with
+    no number are one part under the same null, and the second would quietly swallow the first.
+
+    `unnumbered_first` puts one take with no number *before* the numbered ones, carrying the
+    stretches of `frases[0]`. The tablet sends `chunk_index` only when it has one, so a team
+    that recorded the passage whole and then recorded parts of it leaves a session holding
+    both — and `takes_of` reads the unnumbered one first.
+    """
+    if told_whole and len(frases) != 1:
+        raise ValueError("a rehearsal told whole is one part: name its stretches in one entry")
+    if unnumbered_first and told_whole:
+        raise ValueError("a rehearsal told whole has no numbered part to come after it")
+
+    session = await create_session(db, pericope=pericope, language=language)
+    session.coverage_state = merge(
+        initial_state(pericope), pericope_num=pericope, engaged=element_keys(pericope)
+    )
+    await save_comprehension(db, session, supported_comprehension(pericope))
+
+    parts = []
+    told = 0
+    for index, count in enumerate(frases):
+        whole = told_whole or (unnumbered_first and index == 0)
+        take = IRTake(
+            session_id=session.id,
+            project_id=session.project_id,
+            device_id=TABLET,
+            pericope=pericope,
+            kind=IRTakeKind.ENSAIO,
+            scope="passagem-inteira" if whole else f"parte-{index}",
+            storage_key=f"takes/{session.id}/ensaio/{chr(ord('a') + index) * 8}",
+            size_bytes=2048,
+            sha256=chr(ord("a") + index) * 64,
+            crc32c="AAAAAAA=",
+            content_type="audio/mp4",
+            ordinal=None if whole else index + (0 if unnumbered_first else 1),
+            created_at=REHEARSED_AT + timedelta(minutes=index),
+        )
+        db.add(take)
+        await db.commit()
+        for slice_at in range(count):
+            told += 1
+            await capture_segment(
+                db,
+                session,
+                take_id=take.id,
+                starts_ms=slice_at * 1000,
+                ends_ms=(slice_at + 1) * 1000,
+                bridge_take_id=f"retro-{told}",
+                transcript=f"a frase {told}, contada de volta",
+            )
         parts.append(take)
     return session, parts
 

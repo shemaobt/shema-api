@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.room_harness import (
     Analyst,
+    Room,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -30,28 +31,22 @@ def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
     return the_analyst_reads(monkeypatch)
 
 
-@pytest.fixture()
-def briefs() -> list[str]:
-    return []
-
-
 @pytest.fixture(autouse=True)
-def spoken(monkeypatch: pytest.MonkeyPatch, briefs: list[str]) -> list[str]:
-    return the_room_speaks(monkeypatch, briefs=briefs)
+def room(monkeypatch: pytest.MonkeyPatch) -> Room:
+    return the_room_speaks(monkeypatch)
 
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
-    async with room_client(db_session, monkeypatch) as room:
-        yield room
+    async with room_client(db_session, monkeypatch) as door:
+        yield door
 
 
 @pytest.mark.asyncio
 async def test_a_clean_check_orders_the_last_listening_and_the_approval(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
-    briefs: list[str],
-    spoken: list[str],
+    room: Room,
 ) -> None:
     """The rule, at the door: the passage confers and the Speaker is told to name one step.
 
@@ -68,7 +63,7 @@ async def test_a_clean_check_orders_the_last_listening_and_the_approval(
     assert answered.status_code == 200, answered.text
     assert answered.json()["checked"] is True
     for word in INVITATION_WORDS:
-        assert word in briefs[-1]
-    assert CONTINUES_TELLING_BACK not in briefs[-1]
+        assert word in room.briefs[-1]
+    assert CONTINUES_TELLING_BACK not in room.briefs[-1]
     assert answered.json()["used_fail_safe"] is False
-    assert len(spoken) == 1
+    assert len(room.said) == 1
