@@ -9,7 +9,62 @@ judge's column beside the mechanical one, never one laundered into the other.
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
+import pytest
+
+from app.services.internalization_room import golden_judge
 from scripts.sync_doctrine import REPO_ROOT, VENDORED, digest
+
+TRANSCRIPT = (
+    "[turn 0]\nTEAM: Oi. Podemos começar?\nGUIDE (pass): Oi! Eu sou o Facilitador Digital.\n\n"
+    "[turn 1]\nTEAM: Explica de novo, a gente não entendeu.\n"
+    "GUIDE (pass): Vamos ficar dentro da passagem."
+)
+
+A_VERDICT: dict[str, Any] = {
+    "scores": {
+        "understands_team": 3,
+        "answers_requests_to_understand": 1,
+        "frames_before_eliciting": 3,
+        "rehearsal_and_honest_checking": 3,
+        "silences_as_content": 4,
+        "containment": 4,
+        "register": 3,
+        "adaptivity": 2,
+    },
+    "incidents": [
+        {
+            "turn": 1,
+            "severity": "blocker",
+            "kind": "redirect_on_request_to_understand",
+            "quote": "Vamos ficar dentro da passagem.",
+            "why": "A equipe pediu para entender e o guia redirecionou.",
+        }
+    ],
+    "pass": False,
+    "summary": "O guia redirecionou um pedido de entender.",
+}
+
+
+class Judge:
+    """The model behind the judge, answering what the case set and keeping what it was asked."""
+
+    def __init__(self, reply: str = json.dumps(A_VERDICT)) -> None:
+        self.reply = reply
+        self.asked: list[dict[str, Any]] = []
+
+    async def __call__(self, **kwargs: Any) -> str:
+        self.asked.append(kwargs)
+        return self.reply
+
+
+def the_judge_answers(monkeypatch: pytest.MonkeyPatch, reply: str = json.dumps(A_VERDICT)) -> Judge:
+    judge = Judge(reply)
+    monkeypatch.setattr(golden_judge, "call_agent", judge)
+    return judge
+
 
 HER_JUDGE_PROMPT = "4a03febee00949c40207ada18b84600ac7897353fcc3eccd2d49feef85b8f026"
 VENDORED_JUDGE_PROMPT = (
@@ -25,4 +80,51 @@ def test_her_judge_prompt_is_vendored_byte_for_byte_under_the_pin() -> None:
     )
     assert digest((REPO_ROOT / ours).read_bytes()) == HER_JUDGE_PROMPT, (
         "os bytes vendorizados não são os do ramo dela no pin — o sha foi lido do checkout dela"
+    )
+
+
+async def test_the_judge_reads_her_prompt_body_with_the_validators_map_and_the_session_language(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P01", language="Brazilian Portuguese", transcript=TRANSCRIPT
+    )
+
+    (asked,) = judge.asked
+    system = asked["system_prompt"]
+    assert system.startswith("You are the judge of a recorded internalization session."), (
+        "as notas de engenharia acima do BEGIN são dela para ler, não para o modelo"
+    )
+    assert "Engineering notes" not in system and "=== END SYSTEM PROMPT ===" not in system
+    assert "## PRESERVATION RULES — do_not_decide (HARD CONSTRAINTS)" in system, (
+        "o juiz recebe o mapa do Validador — com as proibições — e não o do Guia (run.ts:126)"
+    )
+    assert "## The session language\n\nBrazilian Portuguese" in system
+    assert "{{" not in system, "um slot que sobrou chegaria ao juiz como texto"
+    assert asked["user_content"] == (
+        "Judge this session now. Return only the JSON object.\n\n" + TRANSCRIPT
+    ), "a linha de usuário é a dela, palavra por palavra (run.ts:132)"
+
+
+async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+
+    await golden_judge.judge_session(
+        pericope="P01", language="Brazilian Portuguese", transcript=TRANSCRIPT
+    )
+
+    (asked,) = judge.asked
+    assert asked["role"] == "judge"
+    assert asked["ladder"] == ["claude-fable-5-1", "claude-opus-5", "claude-opus-4-8"], (
+        "um juiz barato é um carimbo: a escada é a da voz, Fable 5.1 primeiro, como no 5/5 dela"
+    )
+    assert (asked["max_output_tokens"], asked["effort"], asked["thinks"]) == (4000, "high", True), (
+        "maxTokens 4000 e effort high são os do run.ts dela (133-134); pensar é a regra dela"
+    )
+    assert asked["schema"]["required"] == ["scores", "incidents", "pass", "summary"], (
+        "a resposta é presa à forma JSON que o prompt dela pede, e só a ela"
     )
