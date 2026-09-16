@@ -67,6 +67,10 @@ DRAFT_NOT_APPROVED = (
 )
 READING_MOVED = "A leitura mudou desde a versão {version}: frases sem número não estavam nela"
 NEVER_ANALYSED = "O analista nunca leu esta tradução: não houve conferência"
+BEFORE_THE_FREEZE = (
+    "A versão {version} foi aprovada antes de as frases serem congeladas: a numeração abaixo é "
+    "a da leitura de agora"
+)
 
 
 def _moment(when: datetime | None) -> str | None:
@@ -131,15 +135,21 @@ def _frozen_numbers(latest: IRRelease | None) -> dict[str, int] | None:
     Read out of the stored packet rather than recomputed from the rows, which is the whole
     point of freezing it: every reading renumbers, and a comment filed against frase 3 has to
     go on meaning the stretch it meant.
+
+    A release whose packet carries no number at all answers nothing rather than an empty map.
+    They exist — the packets minted before the number was frozen — and read as a frozen reading
+    that matches nothing, they made the file say the reading had moved since that version about
+    a reading that had not moved.
     """
     if latest is None:
         return None
     frozen = latest.packet.get("back_translation", {}).get("segments", [])
-    return {
+    numbered = {
         entry["segment_id"]: entry["frase"]
         for entry in frozen
         if entry.get("segment_id") and entry.get("frase") is not None
     }
+    return numbered or None
 
 
 def _walked_forward(
@@ -208,10 +218,21 @@ def _listening(
     return listened
 
 
-def _notices(*, latest: IRRelease | None, reading_moved: bool, never_analysed: bool) -> list[str]:
+def _notices(
+    *, latest: IRRelease | None, frozen: bool, reading_moved: bool, never_analysed: bool
+) -> list[str]:
+    """What the file says to the consultant in her own language, beside the flags.
+
+    Three states of the numbering and one of the check, and they are said in words because the
+    booleans beside them cannot tell a person what a missing number means. An approved draft
+    whose version predates the freeze is its own line and not the "not approved" one: it was
+    approved, and what it has no answer for is the numbering alone.
+    """
     said = []
     if latest is None:
         said.append(DRAFT_NOT_APPROVED)
+    elif not frozen:
+        said.append(BEFORE_THE_FREEZE.format(version=latest.version))
     elif reading_moved:
         said.append(READING_MOVED.format(version=latest.version))
     if never_analysed:
@@ -241,10 +262,11 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
     nothing said on it was not in that.
 
     A stretch the team divided is standing and is not a leaf, so it is in neither of those:
-    `divided` is its list, in the room's own row order and in the shape of a stretch entry with
-    no number. Without it, what the team said about the whole stretch left the document — and
-    took every telling before it along, because the row that replaced those is not a leaf and
-    so gave them no history to sit in.
+    `divided` is its list, in the room's own row order and in the shape of a stretch entry.
+    Without it, what the team said about the whole stretch left the document — and took every
+    telling before it along, because the row that replaced those is not a leaf and so gave them
+    no history to sit in. It keeps the number the frozen reading gave it, when it was in one:
+    nothing refuses dividing a stretch the team has already approved.
 
     `superseded_attempts` keeps the listening each attempt reported and its findings with their
     notes; `abandoned` keeps the rows of a chain nothing took over. Neither is inside a
@@ -299,9 +321,10 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
         project_id=session.project_id,
         generated_at=datetime.now(UTC).isoformat(),
         releases=[_release_view(release) for release in releases],
-        numbering="frozen" if latest is not None else "live",
+        numbering="frozen" if frozen is not None else "live",
         notices=_notices(
             latest=latest,
+            frozen=frozen is not None,
             reading_moved=any(one.frase is None for one in numbered),
             never_analysed=telling_back.never_analysed,
         ),
@@ -310,7 +333,10 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
         checked=telling_back.checked,
         checked_at=_moment(telling_back.checked_at),
         stretches=numbered,
-        divided=[_stretch_view(stretch, None) for stretch in cut_in_two],
+        divided=[
+            _stretch_view(stretch, frozen.get(stretch.id) if frozen is not None else None)
+            for stretch in cut_in_two
+        ],
         abandoned=[
             _telling_view(row)
             for row in retired
@@ -321,6 +347,8 @@ async def retroverification_file(db: AsyncSession, session: IRSession) -> Retrov
             RetroverificationAttempt(
                 findings=[_finding_view(finding) for finding in attempt.findings],
                 played_by_take=list(attempt.played_by_take),
+                played_ranges=[list(span) for span in attempt.played_ranges],
+                clip_duration_ms=attempt.clip_duration_ms,
             )
             for attempt in telling_back.superseded
         ],

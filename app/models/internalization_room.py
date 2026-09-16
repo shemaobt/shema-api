@@ -908,11 +908,16 @@ class RetroverificationRelease(BaseModel):
     passage. `session_id` is which conversation wrote it, which is the fact a list scoped to
     one session could not carry.
 
-    `forced_open_findings` is the row's own dump, the analyst's words included. The **Packet**
-    beside it says what was open as a kind and an address; this is where the why lives. It is
-    typed rather than served as bare rows: what the approval wrote there is a **Finding**
-    dumped, which is the model beside this one, so a consultant's client reads a field instead
-    of a string key.
+    `forced_open_findings` is what was open when a person overruled the gate, the analyst's
+    words included. The **Packet** beside it says what was open as a kind and an address; this
+    is where the why lives.
+
+    It is a **view of** the stored row and not the row itself: typed as the finding model
+    beside this one, so a consultant's client reads a field instead of a string key, which
+    means a key the row happens to carry and this model does not is dropped, and a row with no
+    `note` would be refused rather than served. Every row any version of the approval has
+    written validates — `Finding.note` has always existed and is always dumped, and the other
+    five fields carry defaults.
     """
 
     version: int
@@ -931,10 +936,20 @@ class RetroverificationAttempt(BaseModel):
 
     Read as history and never as evidence about the recording standing now: the report cannot
     be restated per part after the fact, because there is nothing left to key it to (ADR 0017).
+
+    **Both shapes travel**, which is the exception ADR 0017 wrote for exactly these rows. An
+    attempt archived before the parts were named carries only the flat pair, and a view serving
+    `played_by_take` alone would report that reading as having listened to nothing — which is
+    not what the row holds.
+
+    Its findings keep the analyst's words, like the current ones: an archived reading is the
+    material this file exists to carry.
     """
 
     findings: list[RetroverificationFinding] = Field(default_factory=list)
     played_by_take: list[PlayedTake] = Field(default_factory=list)
+    played_ranges: list[list[int]] = Field(default_factory=list)
+    clip_duration_ms: int | None = None
 
 
 class RetroverificationTelling(BaseModel):
@@ -1005,6 +1020,10 @@ class RetroverificationHardStretch(BaseModel):
     The row names the first telling of the chain and is cleared by nothing, so it cannot move
     with the stretch; the file walks the chain forward and says both. `segment_id` is null when
     the chain was abandoned — the mark stands, and there is no stretch left to point at.
+
+    A chain that ended on a stretch the team divided names a stretch that is standing and is
+    not a unit, so that id is found in `divided` and not in `stretches`. A reader resolving one
+    looks in both lists.
     """
 
     segment_id: str | None = None
@@ -1059,8 +1078,10 @@ class RetroverificationFile(BaseModel):
     #: The stretches the team divided: standing, and no longer a unit. They fall between the
     #: two lists beside them — not final, because they were divided, and not retired, because
     #: nothing replaced them — so what the team said about the whole stretch before they heard
-    #: two ideas in it, and every telling before that, had nowhere to go. They carry no `frase`:
-    #: a divided stretch was in no reading the analyst was numbered off.
+    #: two ideas in it, and every telling before that, had nowhere to go. Each carries the
+    #: `frase` the frozen reading gave it, when it was in one: nothing refuses dividing a
+    #: stretch after the team approved, and that is the case freezing exists for — a comment
+    #: filed against that number was filed before the cut.
     divided: list[RetroverificationStretch] = Field(default_factory=list)
     abandoned: list[RetroverificationTelling] = Field(default_factory=list)
     findings: list[RetroverificationFinding] = Field(default_factory=list)

@@ -21,6 +21,7 @@ write paths. Nothing reaches into the assembly.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from hashlib import sha256
 
 import httpx
@@ -29,7 +30,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 from app.models.internalization_room import PlayedTake
-from app.services.internalization_room.back_translation import BackTranslationState
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    Finding,
+    FindingKind,
+    SupersededAttempt,
+)
 from app.services.internalization_room.segments import (
     capture_segment,
     divide_segment,
@@ -67,6 +73,7 @@ from tests.release_harness import (
     never_analysed_telling_back,
     ready_session,
     releases_of,
+    reported_playback,
     retro_take,
     team_headers,
     team_release,
@@ -91,6 +98,10 @@ AUDIO_ROUTE = "/api/internalization-room/facilitator/takes/{take_id}/audio"
 NOT_APPROVED = "Este rascunho não foi aprovado: a numeração das frases é a da leitura de agora"
 READING_MOVED = "A leitura mudou desde a versão 1: frases sem número não estavam nela"
 NEVER_READ = "O analista nunca leu esta tradução: não houve conferência"
+BEFORE_THE_FREEZE = (
+    "A versão 1 foi aprovada antes de as frases serem congeladas: a numeração abaixo é a da "
+    "leitura de agora"
+)
 
 #: One rehearsal told back in two stretches, so an approval can freeze two numbers and a third
 #: stretch told afterwards can have none.
@@ -98,6 +109,10 @@ TWO_STRETCHES = (
     ("Noemi ouviu que o Senhor tinha visitado o seu povo", 0, 30000),
     ("ela saiu do lugar onde estava com as duas noras", 30000, CLIP_MS),
 )
+
+#: A note no other string in the file contains, so a case can ask where the analyst's words
+#: travelled without matching anything else by accident.
+THE_ANALYSTS_NOTE = "NOTA-DO-ANALISTA-4b71"
 
 FIRST_TELLING = "Noemi voltou para Juda"
 SECOND_TELLING = "Noemi voltou para Juda com Rute"
@@ -111,7 +126,17 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     The cases that tell a stretch again do it through the tablet's own route, which stores
     audio and speaks back; the cases that write rows directly need none of it and are not
     harmed by it.
+
+    `listen_url` is stood in for because a signed address needs a bucket this suite has none
+    of. What the case following a link is about is that the path the file served reaches the
+    route and the route redirects — never what storage puts on the other side of it.
     """
+    from app.api.internalization_room import takes as take_routes
+
+    async def _signed(take, **_: object) -> str:
+        return f"https://bucket.example/{take.storage_key}"
+
+    monkeypatch.setattr(take_routes, "listen_url", _signed)
     said: list[str] = []
     the_transcriber_says(monkeypatch, said)
     the_bucket_is_in_memory(monkeypatch)
@@ -138,6 +163,19 @@ async def _a_retro_take(db: AsyncSession, session: IRSession, name: str) -> IRTa
     db.add(take)
     await db.commit()
     return take
+
+
+async def _takes_name_their_team(db: AsyncSession, session: IRSession, project_id: str) -> None:
+    """Stamp the team on the session's takes, as the upload route does in the field.
+
+    The release harness writes take rows straight into the table and leaves `project_id` null,
+    and the facilitator's audio route resolves a take by the team that owns it. A link served
+    off those rows answers 404 for a reason that is about the scaffold and not about the file,
+    so the case that follows one stamps them first.
+    """
+    for take in await takes_of(db, session.id):
+        take.project_id = project_id
+    await db.commit()
 
 
 async def _read(db: AsyncSession, session: IRSession) -> BackTranslationState:
@@ -216,6 +254,10 @@ async def test_a_facilitator_reads_the_file_of_a_clean_session(
     Every part of it is read against the rows and against the stored packet — the numbers are
     the ones the **Version** froze and not a fresh enumeration, and every take of the session
     is reachable by a link of its own.
+
+    The link is followed rather than only compared against a string: two constants agreeing
+    with each other would go on agreeing after the route they both spell was renamed, and what
+    the file promises is a reachable recording.
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id, tell=_told_once)
@@ -233,6 +275,7 @@ async def test_a_facilitator_reads_the_file_of_a_clean_session(
     assert file["notices"] == []
     assert file["findings"] == []
     frozen = {one["segment_id"]: one["frase"] for one in row.packet["back_translation"]["segments"]}
+    assert [one["frase"] for one in file["stretches"]] == [1]
     assert [one["frase"] for one in file["stretches"]] == [
         frozen[one["segment_id"]] for one in file["stretches"]
     ]
@@ -243,6 +286,9 @@ async def test_a_facilitator_reads_the_file_of_a_clean_session(
         AUDIO_ROUTE.format(take_id=take.id) for take in await takes_of(db_session, session.id)
     ]
     assert [one["heard"] for one in file["listening"]] == [True]
+    await _takes_name_their_team(db_session, session, project.id)
+    reached = await client.get(file["takes"][0]["url"], headers=desk, follow_redirects=False)
+    assert reached.status_code == 307, reached.text
 
 
 async def test_the_file_lists_every_version_of_the_passage_whoever_minted_it(
@@ -490,6 +536,102 @@ async def test_a_stretch_the_team_divided_keeps_what_was_said_before_the_cut(
     assert FIRST_TELLING in json.dumps(file)
 
 
+async def test_a_stretch_divided_after_the_approval_keeps_the_number_the_version_froze(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    """Dividing is not what makes a stretch unnumbered — being outside the frozen reading is.
+
+    A stretch that was a told leaf when the team approved is in that **Version**'s reading with
+    a number of its own, and the team may divide it afterwards: nothing refuses that. It is the
+    case freezing exists for, because a listener's comment against frase 1 was filed before the
+    cut and has to go on meaning the stretch it meant. Served with no number, the one entry
+    that could answer that comment answered nothing.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    whole = (await final_segments(db_session, session.id))[0]
+    await _approved_by_the_team(client, session.id, credential)
+    await divide_segment(db_session, session, whole, at_ms=30000)
+
+    file = await _the_file(client, session.id, desk)
+
+    (row,) = await releases_of(db_session, session.id)
+    frozen = {one["segment_id"]: one["frase"] for one in row.packet["back_translation"]["segments"]}
+    (cut,) = file["divided"]
+    assert cut["segment_id"] == whole.id
+    assert cut["frase"] == 1
+    assert cut["frase"] == frozen[whole.id]
+    assert [one.get("frase") for one in file["stretches"]] == [None, None]
+
+
+async def test_an_archived_attempt_keeps_the_flat_report_an_older_build_sent(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    """A **Superseded** attempt is the record of what an older build reported, whole.
+
+    ADR 0017 keeps both shapes on an archived attempt on purpose: the report cannot be restated
+    per part after the fact, because the recording it was about no longer exists. An attempt
+    archived before that deploy carries only the flat pair, so a file serving `played_by_take`
+    and nothing else says that reading reported no listening at all — which is not what the
+    row holds.
+    """
+    project, _credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    state = await _read(db_session, session)
+    state.superseded = [
+        SupersededAttempt(
+            findings=[
+                Finding(kind=FindingKind.MISSING, note=THE_ANALYSTS_NOTE, segment_id=None, chunk=1)
+            ],
+            played_ranges=[[0, CLIP_MS]],
+            clip_duration_ms=CLIP_MS,
+        )
+    ]
+    await reported_playback(db_session, session, state)
+
+    file = await _the_file(client, session.id, desk)
+
+    (attempt,) = file["superseded_attempts"]
+    assert attempt["played_by_take"] == []
+    assert attempt["played_ranges"] == [[0, CLIP_MS]]
+    assert attempt["clip_duration_ms"] == CLIP_MS
+    assert attempt["findings"][0]["note"] == THE_ANALYSTS_NOTE
+
+
+async def test_a_version_approved_before_the_frases_were_frozen_says_so(
+    client: httpx.AsyncClient, db_session: AsyncSession, room_app
+) -> None:
+    """A stored packet with no numbers in it is not a reading that moved.
+
+    Releases minted before the **Frase number** was frozen carry `segments` without one, and
+    read as a frozen reading nothing matches, the file said the reading had changed since that
+    version — about a reading that had not changed at all. There is nothing frozen to serve, so
+    the numbers are the reading of right now and a line says which version that is about.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await ready_session(db_session, project_id=project.id, tell=_told_in_two_stretches)
+    desk, _facilitator = await at_the_desk(db_session, room_app, project)
+    await _approved_by_the_team(client, session.id, credential)
+    (row,) = await releases_of(db_session, session.id)
+    packet = deepcopy(row.packet)
+    packet["back_translation"]["segments"] = [
+        {key: value for key, value in one.items() if key != "frase"}
+        for one in packet["back_translation"]["segments"]
+    ]
+    row.packet = packet
+    await db_session.commit()
+
+    file = await _the_file(client, session.id, desk)
+
+    assert file["approved"] is True
+    assert file["numbering"] == "live"
+    assert [one["frase"] for one in file["stretches"]] == [1, 2]
+    assert file["notices"] == [BEFORE_THE_FREEZE]
+    assert READING_MOVED not in file["notices"]
+
+
 async def test_a_chain_that_ends_on_a_stretch_the_team_divided_was_not_abandoned(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -643,7 +785,8 @@ async def test_the_listening_report_names_each_part(
     A part is its own recording, so what the team heard of one is judged against that part
     alone (ADR 0017). An attempt the team replaced keeps the listening it reported at the
     time, which is the record of what that reading stood on and is never evidence about the
-    recording standing now.
+    recording standing now — and it keeps its findings **with** the analyst's words, because
+    an archived reading is exactly the material this file exists to carry.
     """
     project, _credential = await a_claimed_device(db_session)
     session, (first, second, third) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
@@ -653,6 +796,10 @@ async def test_the_listening_report_names_each_part(
         for part in (first, second)
     ]
     state = await _read(db_session, session)
+    state.checked = False
+    state.findings = [
+        Finding(kind=FindingKind.ADDITION, note=THE_ANALYSTS_NOTE, segment_id=None, chunk=1)
+    ]
     await report_playback(
         db_session,
         session,
@@ -681,3 +828,5 @@ async def test_the_listening_report_names_each_part(
 
     (attempt,) = archived["superseded_attempts"]
     assert [entry["take_id"] for entry in attempt["played_by_take"]] == [first.id, second.id]
+    assert attempt["findings"][0]["note"] == THE_ANALYSTS_NOTE
+    assert THE_ANALYSTS_NOTE in json.dumps(archived)
