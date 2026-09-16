@@ -49,26 +49,31 @@ def test_every_kind_the_completion_floor_names_is_present() -> None:
     assert ElementKind.PRESERVED in kinds
 
 
-def test_an_entity_in_three_scenes_is_one_bead() -> None:
-    """Naomi appears in every scene of P03; the team works with her once."""
+def test_an_entity_in_three_scenes_is_a_bead_in_each_of_them() -> None:
+    """Naomi appears in every scene of P03; the team works with her in each."""
     beings = [e for e in elements_for(P) if e.kind is ElementKind.BEING]
 
     assert len(beings) == len({e.key for e in beings})
-    assert any(e.key == "being:B3" for e in beings)
+    assert [e.scene for e in beings if e.key.endswith(":B3")] == [1, 2, 3]
+    assert not any(e.key == "being:B3" for e in beings)
 
 
-def test_the_same_place_written_differently_is_one_bead() -> None:
+def test_the_same_place_written_differently_is_one_road_in_each_scene() -> None:
     """`the road (implied; continues from P02)` and `the road (continued)` are one road."""
     places = [e for e in elements_for(P) if e.kind is ElementKind.PLACE]
 
-    assert sum(1 for e in places if e.key == "place:the-road") == 1
+    assert [e.key for e in places if e.key.endswith(":the-road")] == [
+        "place:S1:the-road",
+        "place:S2:the-road",
+        "place:S3:the-road",
+    ]
 
 
 def test_coverage_never_moves_backwards() -> None:
-    state = merge(initial_state(P), pericope_num=P, engaged=["being:B9"])
-    state = merge(state, pericope_num=P, surfaced=["being:B9"])
+    state = merge(initial_state(P), pericope_num=P, engaged=["being:S1:B9"])
+    state = merge(state, pericope_num=P, surfaced=["being:S1:B9"])
 
-    assert state["being:B9"] == "engaged"
+    assert state["being:S1:B9"] == "engaged"
 
 
 def test_surfaced_counts_elements_the_team_has_not_worked_yet() -> None:

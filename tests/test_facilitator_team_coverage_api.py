@@ -58,9 +58,9 @@ NOT_ENCOUNTERED = CoverageStatus.NOT_ENCOUNTERED.value
 #: Written out rather than derived from `elements_for`, so a canon that silently loses a bead
 #: fails here instead of agreeing with itself.
 PILOT = {
-    "P01": {"elements": 33, "scenes": [1, 2, 3, 4], "preserved": 5},
-    "P02": {"elements": 28, "scenes": [1, 2, 3], "preserved": 4},
-    "P05": {"elements": 38, "scenes": [1, 2, 3, 4], "preserved": 5},
+    "P01": {"elements": 46, "scenes": [1, 2, 3, 4], "preserved": 5},
+    "P02": {"elements": 39, "scenes": [1, 2, 3], "preserved": 4},
+    "P05": {"elements": 47, "scenes": [1, 2, 3, 4], "preserved": 5},
     "P14": {"elements": 14, "scenes": [1], "preserved": 0},
 }
 
@@ -229,7 +229,9 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
     tell two beads apart by reading them.
 
     What is deliberately *not* asserted is that the three languages differ. `being:B10` is
-    Rute in all three, and demanding a difference would demand a mistranslation.
+    Rute in all three, and demanding a difference would demand a mistranslation. Nor that a
+    name is unique across the passage: Ruth is a bead in each of P02's three scenes, told
+    apart by the scene column, so the names are distinct within a scene.
     """
     _user, project, headers = await a_facilitator(db_session, email="b1lang@x.com")
 
@@ -241,7 +243,7 @@ async def test_every_bead_is_named_in_three_languages(client, db_session: AsyncS
             named = element[f"label_{language}"]
             assert named.strip()
             assert named != element["key"]
-    assert len({element["label_pt"] for element in body}) == len(body)
+    assert len({(element["scene"], element["label_pt"]) for element in body}) == len(body)
 
 
 # ------------------------------------------------------------- behaviour 2: touched_in_session

@@ -44,40 +44,16 @@ def _slug(text: str) -> str:
 
 @lru_cache(maxsize=64)
 def scene_of(pericope_num: str, book: str = "Ruth") -> dict[str, int]:
-    """The scene each bead belongs to — and only for the beads that belong to just one.
+    """The scene each bead belongs to, for every bead that belongs to one.
 
-    `elements_of` dedupes entities across the passage on purpose: Naomi in three scenes is one
-    thing for the team to work with, not three. The bead she gets therefore carries the scene
-    she **first** appeared in, which is fine for drawing a necklace in order and wrong for
-    answering where a team is standing — five of P01's beads span scenes and every one of them
-    says `1`.
-
-    So a bead that appears in more than one scene is absent from this map rather than present
-    with its first. A caller asking "which scene is this" gets no answer instead of a confident
-    wrong one, which is the only difference that matters when the answer is a position.
-
-    Preservation rules are absent too, and for the older reason: they belong to the passage and
-    to none of its scenes.
+    Preservation rules and the Level-1 axes are absent: they belong to the passage and to
+    none of its scenes.
     """
-    appearances: dict[str, set[int]] = {}
-    for scene in load_map(pericope_num).scenes:
-        for kind, entities in (
-            (ElementKind.BEING, scene.beings),
-            (ElementKind.PLACE, scene.places),
-            (ElementKind.OBJECT, scene.objects),
-            (ElementKind.TIME, scene.times),
-        ):
-            for entity in entities:
-                appearances.setdefault(_entity_key(kind, entity), set()).add(scene.number)
-
-    single = {}
-    for element in elements_for(pericope_num, book):
-        if element.scene is None:
-            continue
-        spans = appearances.get(element.key)
-        if spans is None or len(spans) == 1:
-            single[element.key] = element.scene
-    return single
+    return {
+        element.key: element.scene
+        for element in elements_for(pericope_num, book)
+        if element.scene is not None
+    }
 
 
 def scene_key(number: int) -> str:
@@ -91,9 +67,9 @@ def scene_key(number: int) -> str:
     return f"{ElementKind.SCENE}:{number}"
 
 
-def _entity_key(kind: ElementKind, entity: Entity) -> str:
+def _entity_key(kind: ElementKind, scene_number: int, entity: Entity) -> str:
     """Stable across sessions: coverage is persisted under these keys."""
-    return f"{kind}:{entity.code or _slug(_label(entity))}"
+    return f"{kind}:S{scene_number}:{entity.code or _slug(_label(entity))}"
 
 
 def _label(entity: Entity) -> str:
@@ -105,11 +81,10 @@ def _label(entity: Entity) -> str:
 def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Element]:
     """The passage's coverage spine, derived from its map.
 
-    One bead per scene, per distinct entity, per significant absence, and per preserved
-    element — which is the completion floor named in *Tripod Internalization · Interaction
-    Flows* (`internalization-room/docs/spec/interaction-flows.md`, §3). Entities are deduped
-    across the passage on purpose: Naomi appearing in three scenes is one thing for the team
-    to work with, not three.
+    The four Level-1 axes first, then one bead per scene, per entity in each scene, per
+    significant absence, and per preserved element. An entity is a bead in every scene it
+    appears in, labelled with that scene's own line: Naomi in scene 4 of Ruth 1 is "the
+    woman", and the team saying "Naomi" in scene 1 does not answer for her there.
 
     Level 3 is deliberately not used here. Its atoms are the payload for verification; making
     them the conversation's spine would turn a session into a forty-item interrogation.
@@ -123,7 +98,6 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
         )
         for kind, section in _AXES
     ]
-    seen: set[str] = set()
 
     for scene in meaning_map.scenes:
         elements.append(
@@ -142,12 +116,13 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
         )
         for kind, entities in groups:
             for entity in entities:
-                key = _entity_key(kind, entity)
-                if key in seen:
-                    continue
-                seen.add(key)
                 elements.append(
-                    Element(key=key, label=_label(entity), kind=kind, scene=scene.number)
+                    Element(
+                        key=_entity_key(kind, scene.number, entity),
+                        label=_label(entity),
+                        kind=kind,
+                        scene=scene.number,
+                    )
                 )
         if scene.absence:
             elements.append(

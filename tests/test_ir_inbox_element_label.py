@@ -46,13 +46,13 @@ INBOX_URL = "/api/internalization-room/facilitator/questions"
 #: implementation reads. Deriving both from one source would let the two agree while both
 #: drifted from what a facilitator sees, and this text **is** what they see.
 PILOT = "P01"
-PILOT_KEY = "being:B3"
+PILOT_KEY = "being:S1:B3"
 PILOT_PT, PILOT_EN, PILOT_ES = "Noemi", "Naomi", "Noemí"
 
 #: One of the ten. English is filled in and the other two are null for every bead in the
 #: passage — the path the pilot's four never take.
 UNTRANSLATED = "P06"
-UNTRANSLATED_KEY = "being:B13"
+UNTRANSLATED_KEY = "being:S1:B13"
 UNTRANSLATED_EN = "Boaz"
 
 #: A key of the right shape that the catalogue does not have. It arrives on the wire as a

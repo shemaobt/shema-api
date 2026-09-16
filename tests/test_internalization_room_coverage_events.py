@@ -351,8 +351,8 @@ async def test_one_passage_does_not_accumulate_into_another(db_session: AsyncSes
     it is genuinely the later of the two.
     """
     other = "P05"
-    shared = "being:B3"
-    only_there = "being:B13"
+    shared = "being:S1:B3"
+    only_there = "being:S1:B13"
     assert shared in element_keys(P) and shared in element_keys(other)
     assert only_there not in element_keys(P)
 
