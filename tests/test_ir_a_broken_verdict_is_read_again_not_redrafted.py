@@ -17,7 +17,7 @@ from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.run_turn import run_turn
 from app.services.internalization_room.validator_reply import _parse_verdict
-from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_agent_answers
+from tests.turn_harness import GUIDE, VALIDATOR, FakeAgent, P, settings, the_agent_answers
 
 PASS = {"verdict": "pass", "issues": []}
 PROSE = "desculpe, não consigo"
@@ -44,8 +44,8 @@ class ScriptedValidator:
 def patch_agent(monkeypatch: pytest.MonkeyPatch):
     """The fake in place of the model, for the cases in this module."""
 
-    def _install(agent: ScriptedValidator) -> ScriptedValidator:
-        return the_agent_answers(monkeypatch, agent)  # type: ignore[arg-type]
+    def _install(agent: Any) -> Any:
+        return the_agent_answers(monkeypatch, agent)
 
     return _install
 
@@ -122,3 +122,43 @@ def test_a_correction_with_nothing_to_say_is_refused_and_is_not_a_regenerate() -
 
     assert refusal is not None
     assert verdict.get("verdict") != "regenerate"
+
+
+async def test_a_firing_keeps_the_last_draft_and_the_verdict_that_refused_it(
+    patch_agent,
+) -> None:
+    regenerate = {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}
+    patch_agent(FakeAgent(verdicts=[regenerate] * 3, drafts=["um", "dois", "três"]))
+
+    outcome = await _a_turn()
+
+    assert outcome.used_fail_safe is True
+    assert outcome.draft == "três"
+    assert outcome.verdict == "regenerate"
+    assert outcome.issues == [{"problem": "imported_knowledge"}]
+
+
+async def test_a_firing_on_an_unreadable_reply_keeps_the_draft_and_no_verdict(
+    patch_agent,
+) -> None:
+    patch_agent(ScriptedValidator([PROSE, PROSE]))
+
+    outcome = await _a_turn()
+
+    assert outcome.draft == "rascunho"
+    assert outcome.verdict == ""
+
+
+async def test_a_voiced_turn_keeps_the_verdict_that_let_it_through(patch_agent) -> None:
+    patch_agent(
+        FakeAgent(
+            verdicts=[{"verdict": "correct", "issues": [], "corrected_response": "mendado"}],
+            drafts=["torto"],
+        )
+    )
+
+    outcome = await _a_turn()
+
+    assert outcome.speech == "mendado"
+    assert outcome.draft == "torto"
+    assert outcome.verdict == "correct"

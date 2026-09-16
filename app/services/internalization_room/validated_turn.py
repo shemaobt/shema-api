@@ -68,6 +68,11 @@ class TurnOutcome:
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
     needs_person: bool = False
+    #: The last words the Guide drafted and the last verdict the Validator gave on them, as
+    #: it wrote it — empty when no draft was asked for, or when no reply could be read.
+    #: They are what the record keeps of a firing, so a fail-safe can be read back later.
+    draft: str = ""
+    verdict: str = ""
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
@@ -370,6 +375,8 @@ async def _voiced_after_validation(
                     redrafts=attempt,
                     issues=issues,
                     movements=movements,
+                    draft=draft,
+                    verdict=str(verdict["verdict"]),
                 ),
                 started,
                 session_id,
@@ -389,6 +396,8 @@ async def _voiced_after_validation(
             redrafts=attempt,
             issues=issues,
             fixed_line=line,
+            draft=draft,
+            verdict=str(verdict.get("verdict", "")),
         ),
         started,
         session_id,
