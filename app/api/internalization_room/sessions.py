@@ -235,6 +235,7 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
+        chosen=payload.chosen,
     )
     if caller is not None:
         await clear_needs_person(db, caller.id)

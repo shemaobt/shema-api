@@ -281,6 +281,11 @@ class CreateSessionRequest(BaseModel):
     #: whether to play the panorama again — so naming it for any other session would mark that
     #: passage heard.
     after_session: str | None = Field(default=None, max_length=36)
+    #: Whether the team chose this session themselves — the panorama's spoke on the wheel —
+    #: rather than the app asking for the panorama at launch. A launch request for a book
+    #: the team has heard is answered with the passage they stand on; a request they chose
+    #: opens the panorama again. Nothing stores it: the next launch reads the rows as before.
+    chosen: bool = False
     #: Which language the room should speak to this team, read by the app off the tablet.
     #: Named once here and fixed for the session's lifetime. Absent takes the floor, English;
     #: a language the room does not speak is refused rather than quietly answered in another.
