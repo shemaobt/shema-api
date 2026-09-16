@@ -82,25 +82,6 @@ def guide_invites(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(module, "call_agent", InvitingAgent())
 
 
-class InvitingAgentPT:
-    """The same Guide, in the language the room is actually speaking."""
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return (
-            "Uma fome chega, e uma família sai de Belém para os campos de Moabe. "
-            "Agora ensaiem esta cena juntos na língua de vocês; quando terminarem, "
-            "venham me contar em português o que vocês entenderam."
-        )
-
-
-@pytest.fixture
-def guide_invites_pt(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = sys.modules["app.services.internalization_room.run_turn"]
-    monkeypatch.setattr(module, "call_agent", InvitingAgentPT())
-
-
 class LongWindedAgent:
     """A Guide that opens at length — introduce, give the whole, invite — and is approved."""
 
@@ -585,16 +566,9 @@ async def test_the_closing_word_the_guide_asked_for_closes_the_scene(
 
 
 @pytest.mark.asyncio
-async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
+async def test_the_retelling_the_invitation_asked_for_is_the_guides_to_check_not_a_credit(
     db_session: AsyncSession, guide_invites: None
 ) -> None:
-    """Session 735b5eda: the opening carried no invitation, so the fixed line arrived after.
-
-    The Guide closed the scene with a passage question and the app said its own sentence a
-    turn later, asking for the same rehearsal under a different contract. The invitation
-    belongs at the end of the opening, in the Guide's voice, and it asks the team to come
-    back telling in the bridge language what it understood — so that telling is what
-    finishes the practice, and the fixed line has nothing left to add."""
     session = await create_session(db_session, language="en", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="opening"
@@ -607,14 +581,14 @@ async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
     await db_session.commit()
 
     opening = await _say(db_session, session, "we can start")
-    assert opening != FIXED_PRACTICE_INVITATION
     assert guide_invited_mother_tongue_practice(opening)
 
-    answer = await _say(
-        db_session, session, "A famine came and a family left Bethlehem to live in Moab"
+    await _say(db_session, session, "A famine came and a family left Bethlehem to live in Moab")
+
+    assert comprehension_of(session).practiced_scene_ids == [], (
+        "um reconto em inglês marcava a cena como ensaiada: o app creditava um ensaio que "
+        "nunca ouviu"
     )
-    assert answer != FIXED_PRACTICE_INVITATION
-    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
 
 
 class RecordingInvitingAgent:
@@ -632,91 +606,3 @@ class RecordingInvitingAgent:
             "Rehearse this scene together in your own language; when you have finished, "
             "come back and tell me in English what you understood."
         )
-
-
-@pytest.mark.asyncio
-async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_exists(
-    db_session: AsyncSession, guide_invites: None
-) -> None:
-    """Session 23520187: the team did exactly what it was asked and it counted for nothing.
-
-    The invitation is said at the end of the opening, a turn before the planner has any
-    reason to raise a practice probe for that scene. A team that obeys answers on the very
-    next turn — so requiring a standing probe threw away the one reply the invitation had
-    asked for. The scene stayed unpractised, the probe was raised afterwards, and the room
-    went back to asking for the rehearsal the team had already told, until the validator
-    started refusing the Guide's drafts for not honouring a contract nobody could satisfy.
-    """
-    session = await create_session(db_session, language="en", pericope=P)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="opening"
-    )
-
-    invitation = await _say(db_session, session, "we can start")
-    assert guide_invited_mother_tongue_practice(invitation)
-    assert comprehension_of(session).active_probe is None
-
-    await _say(
-        db_session,
-        session,
-        "A famine came, and Elimelech took Naomi and their two sons from Bethlehem to Moab",
-    )
-
-    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
-    assert comprehension_of(session).active_probe is None
-
-
-@pytest.mark.asyncio
-async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
-    db_session: AsyncSession, guide_invites_pt: None
-) -> None:
-    """The first scene is opened by the passage opening; nothing opened the second.
-
-    With the first scene worked through, the planner walked straight into a checkpoint
-    question about a scene the room had never told, and the app's fixed line — which may
-    carry no passage content — could not have opened it either. The Guide opens it and
-    invites the rehearsal in the same turn, and the telling that comes back closes it.
-    """
-    session = await create_session(db_session, language="pt", pericope=P)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="abertura"
-    )
-    session.coverage_state = {
-        **(session.coverage_state or {}),
-        **{e.key: "engaged" for e in elements_for(P) if e.scene == 1},
-    }
-    await db_session.commit()
-
-    opening = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(text="entendemos a primeira cena"),
-        opening=False,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=_settings(),
-    )
-
-    assert opening.state.active_probe is None
-    assert opening.outcome.speech != FIXED_PRACTICE_INVITATION
-    assert guide_invited_mother_tongue_practice(opening.outcome.speech)
-
-    await save_comprehension(db_session, session, opening.state)
-    session = await append_exchange(
-        db_session,
-        session,
-        team_utterance="entendemos a primeira cena",
-        guide_response=opening.outcome.speech,
-    )
-
-    told_back = await run_comprehension_turn(
-        db_session,
-        session,
-        speech=HeardSpeech(text="ensaiamos e entendemos que a família volta para Belém"),
-        opening=False,
-        guide_prompt=GUIDE,
-        validator_prompt=VALIDATOR,
-        settings=_settings(),
-    )
-
-    assert "S2" in told_back.state.practiced_scene_ids
