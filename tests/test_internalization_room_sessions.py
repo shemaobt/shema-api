@@ -99,11 +99,6 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ENG-803 redefines done as the Guide's send-off plus a rehearsal take that was "
-    "kept; until it lands the floor closes the session on its own",
-)
 @pytest.mark.asyncio
 async def test_the_coverage_floor_alone_no_longer_closes_the_session(
     db_session: AsyncSession,
@@ -113,10 +108,11 @@ async def test_the_coverage_floor_alone_no_longer_closes_the_session(
 
     What held this shut was the recording-consent flag, and only by accident: the room's own
     question was the flag's one writer, so a session that had never been asked could not
-    close. ENG-777 took the question away, and the premise is left with nothing implementing
-    it — the ledger the calibration was written around went with the Assessor (ENG-831), and
-    a fully engaged scene already reads as a rehearsed one. It is ENG-803 that puts the
-    premise back on its feet, in the terms Marcia gave it.
+    close. ENG-777 took the question away, and until ENG-780 the premise still had one thing
+    implementing it: a fully engaged necklace read as a rehearsed one, so the floor alone
+    could still close a session nobody had reported practicing in. With that substitution
+    gone, an untouched comprehension state keeps the passage in `needs_more_work` and the
+    floor being met changes nothing about that.
     """
     session = await create_session(db_session, pericope=P)
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))

@@ -519,20 +519,20 @@ _UNUSABLE_SPEECH = (
 
 
 @pytest.mark.asyncio
-async def test_a_scene_the_team_worked_to_the_last_bead_needs_no_closing_word(
+async def test_a_scene_worked_to_its_last_bead_is_not_a_mother_tongue_rehearsal(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    """A necklace fully engaged is the practice, whether or not anyone announced it.
+    """Engagement is the ledger painting beads; rehearsal is what the team reports.
 
-    The report was only ever recorded when the team said the closing word out loud, so a
-    room that told every scene in its own language and simply moved on stayed one scene
-    short forever: the readiness gate kept the passage in rehearsal and the room answered
-    the team's own "we are finished" with yet another invitation to retell."""
+    Marcia's answer 8: the ledger informs, it never ends the conversation (DOCTRINE.md §4).
+    A necklace can go fully engaged through the bridge language alone, so a scene worked to
+    its last bead without the team ever switching into their own language stays a passage
+    still owed its first rehearsal — the gate keeps waiting on the report, not the beads."""
     session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
 
     await _say(db_session, session, "acho que já falamos de tudo")
 
-    assert session_is_done(session)
+    assert not session_is_done(session)
 
 
 class InvitingAgentAskingForTheWord:

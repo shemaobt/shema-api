@@ -42,10 +42,7 @@ from app.services.internalization_room.comprehension.session_readiness import (
     render_comprehension_status,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import (
-    CoverageStatus,
-    engaged_scene_ids,
-)
+from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -118,14 +115,12 @@ async def run_comprehension_turn(
         prior_probe, last_guide, transcript, reliable, scene_pointer
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
-    engaged_scenes = engaged_scene_ids(session.coverage_state or {}, pericope)
 
     comprehension_status = render_comprehension_status(
         checkpoints=checkpoints,
         scene_ids=scene_ids,
         ledger=state.ledger,
         practiced_scene_ids=projected_practice,
-        engaged_scene_ids=engaged_scenes,
         current_scene=scene_pointer,
     )
 
