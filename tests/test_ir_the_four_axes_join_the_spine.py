@@ -3,7 +3,8 @@ import pytest
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon.elements import ElementKind, elements_for
 from app.services.internalization_room.canon.parse_map import MAPS_DIR, load_map, parse_map
-from app.services.internalization_room.coverage import CoverageStatus, floor_met
+from app.services.internalization_room.classify_coverage import _unresolved_block
+from app.services.internalization_room.coverage import CoverageStatus, floor_met, initial_state
 
 P01 = "P01"
 
@@ -84,3 +85,15 @@ def test_the_floor_lets_the_four_axes_out_at_surfaced_and_nothing_else() -> None
 
     a_concrete_bead_only_surfaced = {**axes_surfaced, "scene:4": CoverageStatus.SURFACED.value}
     assert floor_met(a_concrete_bead_only_surfaced, P01) is False
+
+
+def test_the_classifier_is_shown_each_axis_with_the_maps_own_prose() -> None:
+    lines = _unresolved_block(initial_state(P01), P01).splitlines()
+
+    assert lines[0].startswith("- [arc] Level-1 arc — The passage opens wide, on a whole era")
+    assert lines[2].startswith("- [tone] Level-1 tone — The tone is held-in and plain")
+    assert "never says God did any of it" in lines[2], (
+        "o classificador julga um eixo pelo que a equipe demonstra, e sem a prosa da seção "
+        "só tinha o nome do eixo para reconhecer isso na fala"
+    )
+    assert lines[4] == "- [scene:1] Famine and exile to Moab"
