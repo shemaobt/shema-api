@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+import json
+from typing import Any
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import live_turn
 from app.services.internalization_room.canon.parse_map import load_map
@@ -13,9 +16,39 @@ from app.services.internalization_room.comprehension.checkpoints import (
     scene_ids_for,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn import scene_view
 from app.services.internalization_room.turn.context import render_context
-from tests.turn_harness import P
+from app.services.internalization_room.turn.speech import speak_back
+from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_agent_answers
+
+OFF_BRIDGE_LINE = (
+    "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas "
+    "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
+)
+SECOND_INAUDIBLE_LINE = "Essa me escapou. Podem dizer de novo?"
+STATUS_BLOCK = "BLOCO DE TESTE: o que a sala sabe"
+
+
+class RecordingAgent:
+    """Speaks one draft, passes it, and keeps every system prompt it was handed."""
+
+    def __init__(self, draft: str):
+        self.draft = draft
+        self.systems: list[str] = []
+        self.calls = 0
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        self.calls += 1
+        self.systems.append(system_prompt)
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return self.draft
+
+
+@pytest.fixture
+def agent(monkeypatch: pytest.MonkeyPatch) -> RecordingAgent:
+    return the_agent_answers(monkeypatch, RecordingAgent("A fome chegou a Belém."))  # type: ignore[arg-type]
 
 
 def test_the_scene_pointer_lives_in_its_own_module_and_live_turn_still_names_it() -> None:
@@ -37,3 +70,64 @@ def test_the_context_phase_hands_the_models_the_status_block_and_nothing_can_rew
     assert "MOTHER-TONGUE PRACTICE REPORTED: S1" in context.app_context.splitlines()
     with pytest.raises(dataclasses.FrozenInstanceError):
         context.app_context = ""  # type: ignore[misc]
+
+
+async def _speak(session: Any, **overrides: Any) -> Any:
+    given: dict[str, Any] = {
+        "mother_tongue": False,
+        "session": session,
+        "messages": [],
+        "transcript": "a fome chegou",
+        "opening": False,
+        "empty": False,
+        "uncertain": False,
+        "book": load_map(P).book,
+        "guide_prompt": GUIDE,
+        "validator_prompt": VALIDATOR,
+        "pericope": P,
+        "settings": settings(),
+        "app_context": STATUS_BLOCK,
+    }
+    return await speak_back(**{**given, **overrides})
+
+
+async def test_speech_in_the_teams_own_language_meets_the_g_line_without_waking_a_model(
+    db_session: AsyncSession, agent: RecordingAgent
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    outcome = await _speak(
+        session, mother_tongue=True, transcript="koeti yoko vitukeovo enepone itukovo"
+    )
+
+    assert outcome.speech == OFF_BRIDGE_LINE
+    assert outcome.fixed_line == "G0"
+    assert outcome.used_fail_safe is True
+    assert outcome.degraded is False
+    assert agent.calls == 0
+
+
+async def test_speech_the_room_could_not_hear_draws_the_d_line_the_turn_count_points_at(
+    db_session: AsyncSession, agent: RecordingAgent
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    four_exchanges = [{"role": "guide", "text": "…"}] * 4
+
+    outcome = await _speak(session, uncertain=True, transcript="mmm ne", messages=four_exchanges)
+
+    assert outcome.speech == SECOND_INAUDIBLE_LINE
+    assert outcome.fixed_line == "D1"
+    assert outcome.degraded is True
+    assert agent.calls == 0
+
+
+async def test_everything_else_reaches_the_guide_with_the_status_block_in_hand(
+    db_session: AsyncSession, agent: RecordingAgent
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    outcome = await _speak(session)
+
+    assert outcome.speech == "A fome chegou a Belém."
+    assert outcome.used_fail_safe is False
+    assert STATUS_BLOCK in agent.systems[0]

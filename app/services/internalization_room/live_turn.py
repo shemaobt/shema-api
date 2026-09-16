@@ -38,16 +38,12 @@ from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.run_turn import (
-    TurnOutcome,
-    run_turn,
-)
+from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
 from app.services.internalization_room.turn.context import render_context
 from app.services.internalization_room.turn.scene_view import current_scene_id
+from app.services.internalization_room.turn.speech import speak_back
 
 
 @dataclass
@@ -103,37 +99,21 @@ async def run_comprehension_turn(
         scene_pointer=scene_pointer,
     )
 
-    if mother_tongue:
-        line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
-        outcome = TurnOutcome(
-            speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
-        )
-    elif not opening and (empty or uncertain):
-        line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
-        outcome = TurnOutcome(
-            speech=line,
-            transcript=transcript,
-            used_fail_safe=True,
-            degraded=True,
-            fixed_line=fixed,
-        )
-    else:
-        outcome = await run_turn(
-            transcript=transcript,
-            coverage_state=session.coverage_state or {},
-            messages=messages,
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            guide_prompt=guide_prompt,
-            validator_prompt=validator_prompt,
-            pericope_num=pericope,
-            book=book,
-            opening=opening,
-            settings=settings,
-            session_id=session.id,
-            app_context=context.app_context,
-            ask_for_movements=opening and not messages,
-        )
+    outcome = await speak_back(
+        mother_tongue=mother_tongue,
+        session=session,
+        messages=messages,
+        transcript=transcript,
+        opening=opening,
+        empty=empty,
+        uncertain=uncertain,
+        book=book,
+        guide_prompt=guide_prompt,
+        validator_prompt=validator_prompt,
+        pericope=pericope,
+        settings=settings,
+        app_context=context.app_context,
+    )
 
     final_probe = select_probe_after_oral_turn(
         outcome="fail_safe" if outcome.used_fail_safe else "pass",
