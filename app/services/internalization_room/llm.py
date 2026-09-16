@@ -154,6 +154,7 @@ async def call_agent(
     client = anthropic.AsyncAnthropic(
         api_key=settings.anthropic_api_key, default_headers=_workspace_header(settings)
     )
+    refused_above = False
     for model in _from_the_settled_rung(rungs):
         started = time.monotonic()
         try:
@@ -175,7 +176,6 @@ async def call_agent(
                 extra={"rung": model, "next_rung": rungs[rungs.index(model) + 1]},
             )
             continue
-        _SETTLED[rungs[0]] = model
         _report_spend(
             response,
             model,
@@ -186,8 +186,36 @@ async def call_agent(
             latency_ms=round((time.monotonic() - started) * 1000),
         )
         _report_unfinished(response, max_output_tokens)
+        if _refused_outright(response) and model != rungs[-1]:
+            logger.warning(
+                "%s refused this request outright; the room asks %s instead",
+                model,
+                rungs[rungs.index(model) + 1],
+                extra={"rung": model, "next_rung": rungs[rungs.index(model) + 1]},
+            )
+            refused_above = True
+            continue
+        if not refused_above:
+            _SETTLED[rungs[0]] = model
         return _spoken_text(response)
     raise AssertionError("unreachable: the last rung either answers or raises")
+
+
+def _refused_outright(response: Message) -> bool:
+    """A reply that is a refusal with nothing in it — not an answer, and not this key's fault.
+
+    Found on 2026-09-16, on the back-translation correction check: the first rung answered
+    ``stop_reason: refusal`` with zero output tokens, five times in a row, in under two seconds
+    each — the request never reached the model, a classifier turned it away at the door. The
+    ladder only stepped down for a key that *cannot* use a rung, so the check failed five
+    times, the session fell to needs-a-person, and the team was asked to fetch someone for a
+    turn in which they had done everything right. A refusal is about this request on this
+    rung, not about the key, so the next rung is asked and nothing is settled on: the rung
+    that refused stays first for the next request, which it will most likely answer.
+    """
+    return response.stop_reason == "refusal" and not any(
+        block.type == "text" and block.text for block in response.content
+    )
 
 
 def _from_the_settled_rung(rungs: list[str]) -> list[str]:

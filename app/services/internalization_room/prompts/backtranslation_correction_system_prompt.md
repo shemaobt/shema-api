@@ -1,4 +1,4 @@
-## Your role
+## Task
 
 A translation team recorded this passage in their own language — a language no one here can
 understand. One of them listened to that recording piece by piece and told back, in
