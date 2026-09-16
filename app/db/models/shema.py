@@ -67,9 +67,18 @@ line in the shape that leaves and no rule for anybody to forget. Nothing is lost
 authoritative**. They are not one fact in two spellings — the boolean is the safety flag the
 redaction reads and the text is a free-text export column with nine values, which agrees with
 the flag today by accident of the data rather than by construction. The text is provenance:
-no screen edits it, nothing reads it for a safety decision, and BE-16 derives the flag from it
-on import. Collapsing here would delete evidence; keeping the flag the only reader is what
-stops them drifting.
+no screen edits it, nothing reads it for a safety decision. Collapsing here would delete
+evidence; keeping the flag the only reader is what stops them drifting.
+
+**The flag is not derived from that text, and BE-16 amended this paragraph to say so**
+(``docs/shema.md`` §9.5, §10 item 1). This issue expected the import to read the boolean off
+``sensitivity``; OBT-405's own requirement is the opposite — *do not infer them from the CSV,
+from country names, or from anything in the prototype* — so the flag comes from the client's
+written list of countries, and the export's text and boolean may only **raise** it, never
+clear it. One of the two records the export marks ``Confidential`` is why: it sits in
+**Mexico**, where seven other records are ``Unrestricted``, which a list keyed by country
+cannot express. The columns below are unchanged; what changed is that nothing reads the
+export as permission.
 
 **The three prayer columns are guarded, not private.** ``prayer_requests``,
 ``prayer_visibility`` and ``prayer_requests_audio`` have exactly one reader —
@@ -98,9 +107,10 @@ would be a second copy of a map whose whole value is that there is one. Never a 
 field.
 
 **``source`` is BE-16's, and it is here so BE-16 does not need a migration.** The seed
-interprets: ``DD/MM/YYYY`` becomes a real date, the free-text ``sensitivity`` becomes a
-boolean, ``[0, 0]`` becomes *no coordinate*. Where a column is an interpretation, the
-uninterpreted row has to survive somewhere or the interpretation cannot be audited or redone.
+interprets: ``DD/MM/YYYY`` becomes a real date, ``team`` and ``ywamBase`` become one column,
+and ``sensitive_country`` is decided by a list the export does not contain. Where a column is
+an interpretation, the uninterpreted row has to survive somewhere or the interpretation
+cannot be audited or redone.
 One JSON column holding the export row as it arrived answers that for every field at once,
 which per-field ``*_source`` columns would not — and it is NULL for records born in the
 product, which is the honest difference between *migrated* and *typed*.

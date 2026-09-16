@@ -242,14 +242,34 @@ class Derivations:
     region: ShemaRegionKey
 
 
+def countries_named(location: str) -> tuple[str, ...]:
+    """Every country the free-text ``location`` names, in the order it names them.
+
+    ``location`` is free text and five records name more than one country — ``China, Laos,
+    Vietnam``, ``Canada, United States``, ``India, Nepal``, ``Mexico, United States``,
+    ``Colombia, Peru``. The frontend has no function for this: ``getCountry`` takes the
+    first and the region follows from it alone (§7.6), which is right for a region and
+    wrong for a safety question. **BE-16's fail-closed flag asks about all of them**, so the
+    split lives here, once, beside the reader that uses its first element — rather than
+    twice, with a seed script holding its own copy of what a comma means.
+
+    The separator is the comma and only the comma. ``&`` and ``/`` separate people in this
+    export, never places, and the record's own fields keep them unsplit for that reason.
+    """
+    return tuple(part.strip() for part in location.split(",") if part.strip())
+
+
 def get_country(location: str) -> str:
-    """The country a ``location`` names — ``location.split(",")[0].trim()``.
+    """The country a ``location`` names — the first one, or ``""`` when it names none.
 
     Free text that may name several countries (``China, Laos, Vietnam``); the first is the
     one the region is read from. Nothing is normalised, title-cased or transliterated: the
-    keys of :data:`COUNTRY_REGION` are the export's own spellings.
+    keys of :data:`COUNTRY_REGION` are the export's own spellings. The split itself belongs
+    to :func:`countries_named`, so *what a comma means* has one definition and BE-16's
+    fail-closed flag cannot drift from the region derived here.
     """
-    return location.split(",")[0].strip()
+    named = countries_named(location)
+    return named[0] if named else ""
 
 
 def get_region(location: str) -> ShemaRegionKey:
