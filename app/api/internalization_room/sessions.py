@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
@@ -47,6 +47,7 @@ from app.services.internalization_room.prepare_opening import (
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sessions import book_of, is_panorama
+from app.services.internalization_room.turn_dedup import answered_turn, remember_turn
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from app.services.project.facilitated_scope import facilitated_project_ids
@@ -449,6 +450,7 @@ async def take_turn(
     background: BackgroundTasks,
     response: Response,
     file: UploadFile | None = File(default=None),
+    turn_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -473,6 +475,11 @@ async def take_turn(
     """
     session = await room.get_session(db, session_id)
 
+    if turn_id:
+        replay = await answered_turn(db, session.id, turn_id)
+        if replay is not None:
+            return TurnResponse(**replay)
+
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])
     if file is not None:
@@ -495,15 +502,20 @@ async def take_turn(
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
         session = await room.append_exchange(db, session, team_utterance="", guide_response=speech)
-        return TurnResponse(
+        reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
             transcript="",
             peer_cue=outcome.peer_cue,
             coverage=coverage_view(session),
             done=False,
-            turn_id=str(uuid.uuid4()),
+            turn_id=turn_id or str(uuid.uuid4()),
         )
+        if turn_id:
+            await remember_turn(
+                db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
+            )
+        return reply
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
@@ -546,18 +558,18 @@ async def take_turn(
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
-    turn_id = str(uuid.uuid4())
+    response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
     if _worth_settling(outcome, speech_heard):
         pending = _settle_later(
             background,
             session,
-            turn_id=turn_id,
+            turn_id=response_turn_id,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
         )
 
-    return TurnResponse(
+    reply = TurnResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",
         fixed_line=outcome.fixed_line,
@@ -568,6 +580,11 @@ async def take_turn(
         coverage=coverage_view(session),
         done=(False if is_panorama(session.pericope) else room.session_is_done(session)),
         segments=segments,
-        turn_id=turn_id,
+        turn_id=response_turn_id,
         classification_pending=pending,
     )
+    if turn_id:
+        await remember_turn(
+            db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
+        )
+    return reply
