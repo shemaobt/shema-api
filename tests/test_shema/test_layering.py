@@ -74,9 +74,18 @@ def _called_names(tree: ast.AST) -> set[str]:
     same defect, and resolving which object a name is bound to would be an import graph this
     test does not need in order to say *no*.
     """
+    # A decorator is not a call the handler makes: ``@router.delete(...)`` names an HTTP verb,
+    # and BE-13's erasure routes are the first in the module to carry it. Skipping the
+    # decorator list keeps ``delete`` in the set above for the ``sa.delete(...)`` it is there for.
+    decorators = {
+        id(decorator)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        for decorator in node.decorator_list
+    }
     called: set[str] = set()
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, ast.Call) or id(node) in decorators:
             continue
         if isinstance(node.func, ast.Attribute):
             called.add(node.func.attr)

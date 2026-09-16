@@ -39,8 +39,10 @@ from app.api.shema._deps import APP_KEY
 from app.api.shema.forms import intake as intake_router
 from app.api.shema.forms import router as forms_router
 from app.api.shema.health_assessments import router as health_assessments_router
+from app.api.shema.intercessors import router as intercessors_router
 from app.api.shema.notifications import router as notifications_router
 from app.api.shema.projects import router as projects_router
+from app.api.shema.regions import router as regions_router
 from app.api.shema.session import router as session_router
 from app.core.access_control import require_app_access
 
@@ -52,6 +54,8 @@ router = APIRouter()
 authenticated = APIRouter(dependencies=[require_app_access(APP_KEY)])
 
 authenticated.include_router(session_router)  # BE-03
+authenticated.include_router(regions_router)  # BE-13
+authenticated.include_router(intercessors_router)  # BE-13
 authenticated.include_router(projects_router)  # BE-05
 authenticated.include_router(health_assessments_router)  # BE-07
 authenticated.include_router(forms_router)  # BE-12

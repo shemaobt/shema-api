@@ -29,6 +29,15 @@ by every response model that leaves coordination, from
 ``app/models/shema_privacy.py``, because ``app/models/`` may not import ``app/services/``
 and because a rule a service has to call is a rule the next service forgets.
 
+**BE-13 landed the people.** Two aggregates that are both directories of human beings and
+are deliberately not one model: the org chart (``list_regions``, ``get_region_team``,
+``save_region_team``, ``list_role_changes``) and the intercessor network. ``docs/shema.md``
+§5.7 forbids a reference between them in either direction, so there is none — not a foreign
+key, not a shared row, not a shared service. ``_directory.py`` is the sole owner of the
+network's contact column, of its sensitive-country flag and of every read and write of
+``shema_intercessor_consents``, and ``tests/test_shema/test_people_privacy.py`` globs this
+package and ``app/api/shema/`` to keep it sole — the fourth owner beside BE-04's three.
+
 **BE-08 landed the needs and the money they carry.** ``_needs.py`` is the batch's own
 rules, and it is a step of ``save_project`` rather than an endpoint because a need travels
 with its project (``docs/shema.md`` §5.4) — one write path, one version guard, one
@@ -99,6 +108,11 @@ from app.services.shema._consent import (
     reaches_prayer_wall,
     shared_prayer_audio,
     shared_prayer_text,
+)
+from app.services.shema._directory import (
+    LeavingPerson,
+    leaving_directory,
+    leaving_person,
 )
 from app.services.shema._form_definitions import (
     current_definition,
@@ -171,18 +185,23 @@ from app.services.shema._scope import (
 )
 from app.services.shema._submission_archive import MAX_PAYLOAD_BYTES, archived_answers
 from app.services.shema._submission_notices import notify_submission
+from app.services.shema.add_intercessor import add_intercessor
 from app.services.shema.append_assessment import append_assessment
 from app.services.shema.browse_projects import browse_projects
 from app.services.shema.count_projects import count_projects, count_projects_by_region
 from app.services.shema.create_intake_link import create_intake_link
 from app.services.shema.get_notification_prefs import get_notification_prefs
 from app.services.shema.get_project import get_project
+from app.services.shema.get_region_team import get_region_team
 from app.services.shema.get_session import get_session
 from app.services.shema.import_submission import apply_submission, import_submission
 from app.services.shema.list_assessments import list_assessments
 from app.services.shema.list_intake_links import list_intake_links
+from app.services.shema.list_intercessors import list_intercessors
 from app.services.shema.list_notification_panel import PANEL_CAP, list_notification_panel
 from app.services.shema.list_projects import list_projects
+from app.services.shema.list_regions import list_regions
+from app.services.shema.list_role_changes import list_role_changes
 from app.services.shema.list_unacknowledged_needs import (
     UNACKNOWLEDGED_AFTER_DAYS,
     list_unacknowledged_needs,
@@ -198,10 +217,18 @@ from app.services.shema.read_intake_form import form_fields, read_intake_form
 from app.services.shema.read_record import build_record, read_changes_since, read_record
 from app.services.shema.read_submission import as_received, list_submissions, read_submission
 from app.services.shema.receive_submission import receive_submission
+from app.services.shema.remove_intercessor import remove_intercessor
+from app.services.shema.reveal_intercessor_contact import reveal_intercessor_contact
 from app.services.shema.revoke_intake_link import revoke_intake_link
 from app.services.shema.save_notification_prefs import save_notification_prefs
 from app.services.shema.save_project import RecordVersionConflict, create_project, save_project
+from app.services.shema.save_region_team import save_region_team
+from app.services.shema.set_intercessor_consent import (
+    set_intercessor_consent,
+    withdraw_intercessor_consent,
+)
 from app.services.shema.set_region_scope import set_region_scope
+from app.services.shema.update_intercessor import update_intercessor
 
 __all__ = [
     "DEFAULT_LINK_DAYS",
@@ -217,11 +244,13 @@ __all__ = [
     "URGENT_NEED_ROLES",
     "Aggregates",
     "ChangesSince",
+    "LeavingPerson",
     "MediaLink",
     "Notice",
     "ProgressSource",
     "RecordVersionConflict",
     "RegionScope",
+    "add_intercessor",
     "append_assessment",
     "apply_needs",
     "apply_submission",
@@ -246,16 +275,22 @@ __all__ = [
     "form_fields",
     "get_notification_prefs",
     "get_project",
+    "get_region_team",
     "get_session",
     "holders_reaching",
     "import_submission",
     "is_authorized",
     "is_withheld",
+    "leaving_directory",
+    "leaving_person",
     "link_status",
     "list_assessments",
     "list_intake_links",
+    "list_intercessors",
     "list_notification_panel",
     "list_projects",
+    "list_regions",
+    "list_role_changes",
     "list_submissions",
     "list_unacknowledged_needs",
     "log_reference",
@@ -285,22 +320,28 @@ __all__ = [
     "record_update",
     "recorded_decision",
     "region_scope",
+    "remove_intercessor",
     "require_reads_assessments",
+    "reveal_intercessor_contact",
     "revoke_intake_link",
     "roll_up",
     "save_notification_prefs",
     "save_project",
+    "save_region_team",
     "searchable_text",
+    "set_intercessor_consent",
     "set_region_scope",
     "shared_prayer_audio",
     "shared_prayer_text",
     "storage_key",
     "unacknowledged_needs",
+    "update_intercessor",
     "validate_submission",
     "validated_answers",
     "verify_intake_token",
     "visible_projects",
     "with_rolled_aggregates",
+    "withdraw_intercessor_consent",
     "withheld_note",
     "within_scope",
 ]

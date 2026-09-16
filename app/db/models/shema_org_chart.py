@@ -19,7 +19,7 @@ service that writes today is a rule the second writer will not have.
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Index, String, event
+from sqlalchemy import ForeignKey, Index, String, event
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -44,11 +44,31 @@ class ShemaRegionTeam(Base):
     ``holder_name`` is free text and **empty is a real state**, not a gap: twenty-one seats
     ship unassigned and a region with nobody in a seat is a fact the screen shows.
 
-    There is no ``holder_user_id``. A seat is not an account — the chart names the person the
-    product points at, and ``GET /api/shema/session`` (``docs/shema.md`` §6.3) resolves a
-    caller's name by their granted role and their region scope, which needs no reference from
-    this side. Whether a seat should also point at an account is BE-13's question, with the
-    screen in front of it; adding the column now would answer it silently.
+    ``holder_user_id`` is **BE-13's answer to the question this docstring used to leave
+    open**, and the shape of the answer is narrower than the question. The issue's first DoD
+    line asks that people be *related to existing users where such a user exists*, and its
+    fourth paragraph asks that no second user system be built. A nullable reference does both:
+    the seat holder who has a Tripod account is identifiable as that account, the seat holder
+    who has none is a name and nothing else, and neither case grows an identity model.
+
+    **It is not the name, and it never becomes the name.** ``holder_name`` stays the single
+    source FE-44 §5.3 freezes, with four consumers reading it by reference and the session
+    among them. Resolving the seat's name through the account instead would move the fact into
+    ``users.display_name``, where renaming a role-holder would be a different act from
+    renaming the chart — two owners for one string, which is the defect the whole section
+    exists to prevent. The reference answers *which account is this*, and nothing else asks
+    it a question.
+
+    **The link belongs to the holder, not to the slot**, so writing a different
+    ``holder_name`` clears it in the same statement. That is ``docs/shema.md`` §5.5's rule for
+    media authorization — *replacing the artifact resets the decision to undecided* — read on
+    a seat: an account left pointing at a name it no longer belongs to is worse than an empty
+    column, because it reads as a verified identity. ``app/services/shema/save_region_team.py``
+    is where the clearing happens and it is the only writer.
+
+    ``ON DELETE SET NULL``: deleting an account empties the reference and leaves the chart
+    standing. A seat is an office of the organisation and an office does not vacate itself
+    because somebody's login was removed.
     """
 
     __tablename__ = "shema_region_teams"
@@ -56,6 +76,10 @@ class ShemaRegionTeam(Base):
     region_key: Mapped[ShemaRegionKey] = mapped_column(REGION_KEY, primary_key=True)
     role: Mapped[ShemaRoleKey] = mapped_column(ROLE_KEY, primary_key=True)
     holder_name: Mapped[str] = mapped_column(String(200), default="", server_default="")
+    #: The Tripod account of whoever holds the seat, when they have one. Never a name source.
+    holder_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
