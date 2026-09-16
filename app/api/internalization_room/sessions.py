@@ -39,6 +39,7 @@ from app.services.internalization_room.canon.book_material import build_book_mat
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.prepare_opening import (
     hand_over,
     prepare_opening,
@@ -107,6 +108,13 @@ async def _voice_the_turn(
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def _scene_of(session: IRSession) -> str | None:
+    """The scene the turn was read against, for the record; a panorama has none."""
+    if is_panorama(session.pericope):
+        return None
+    return current_scene_id(session.coverage_state or {}, session.pericope)
 
 
 def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
@@ -555,6 +563,8 @@ async def take_turn(
         session,
         team_utterance=outcome.transcript,
         guide_response=outcome.speech,
+        outcome=outcome,
+        scene=_scene_of(session),
     )
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
