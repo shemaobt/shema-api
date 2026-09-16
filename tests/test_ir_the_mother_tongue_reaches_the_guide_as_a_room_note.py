@@ -158,6 +158,20 @@ async def test_words_the_room_could_not_make_out_draw_the_d_line_and_travel_no_f
     assert agent.guide_inputs == []
 
 
+def test_no_fixed_line_answers_the_mother_tongue_in_any_language_the_room_speaks() -> None:
+    import re
+
+    from app.services.internalization_room._default_prompts import fail_safe_utterances
+    from app.services.internalization_room.fail_safe import FailSafe
+
+    assert "G" not in {str(kind) for kind in FailSafe}, (
+        "a família G seguia no catálogo depois de a Marcia a ter abolido"
+    )
+    assert re.findall(r"^### G(-[a-z]{2})?\.", fail_safe_utterances(), re.M) == [], (
+        "o arquivo autorado ainda carregava a seção G, que o vendorizado dela não tem"
+    )
+
+
 @pytest.fixture()
 async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(

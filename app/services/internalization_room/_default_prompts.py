@@ -40,10 +40,10 @@ def fail_safe_utterances() -> str:
 
     The authored file is concatenated with our own supplements, one per language, kept in
     files of their own so that a language is added or dropped without touching the authored
-    text. That text is not the project's vendored copy either: it carries the G and X
-    families beyond it, recorded in the ruling of 2026-09-15 — X hers, G `unruled`. Order
-    matters only in that the reader prefers a language-tagged block, and each section has at
-    most one per language.
+    text. That text is not the project's vendored copy either: it carries the X family
+    beyond it, hers by the ruling of 2026-09-15; the G family it also carried was ours and
+    went on her word, in the ruling of 2026-09-16. Order matters only in that the reader
+    prefers a language-tagged block, and each section has at most one per language.
 
     **Named off the languages the room claims, never globbed.** A glob made being read the
     default: the Spanish draft sat beside the authored file marked "nothing here has been

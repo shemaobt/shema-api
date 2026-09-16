@@ -21,10 +21,6 @@ telling the team to ask the app. Rendered as *el facilitador de ustedes* to lean
 same lean the Portuguese took with *o facilitador de vocês*. If that still reads ambiguously
 in the field, the alternative is to drop the term: *la persona que los acompaña*.
 
-⚠ Section G names the session's own language inside the line, the way each block does: the
-English says "tell me in English", the Portuguese "me contar em português", so the Spanish
-says *decirme en español*. It is the language the room is speaking, never a fixed one.
-
 ### A-es. (Español)
 
 - "Vamos a detenernos un momento aquí y mirar de nuevo lo que está pasando en esta parte del pasaje."
@@ -58,10 +54,6 @@ says *decirme en español*. It is the language the room is speaking, never a fix
 - "Bien."
 - "Mmm — déjenme pensarlo un momento."
 - "Claro."
-
-### G-es. (Español)
-
-- "Qué bueno — lo intentaron en su propia lengua. Yo no puedo revisar esas palabras directamente. Ahora, ¿alguien me puede decir en español lo que dijeron?"
 
 ### H-es. (Español)
 
