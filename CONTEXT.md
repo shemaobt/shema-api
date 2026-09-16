@@ -207,7 +207,7 @@ _Avoid_: version, merge, recomposition, Reconstrução
 ### Verdict closings
 
 **Closing**:
-How the Speaker ends the verdict turn: handing the choice back to the screen, with a question, without a question because the passage is checked, asking for a spoken answer, or sending the team to record more and go back to the rehearsal.
+How the Speaker ends the verdict turn: handing the choice back to the screen, with a question, inviting the last listening and the approval because the passage is checked, asking for a spoken answer, or sending the team to record more and go back to the rehearsal.
 _Avoid_: ending, other, Fechamento
 
 ### Session states

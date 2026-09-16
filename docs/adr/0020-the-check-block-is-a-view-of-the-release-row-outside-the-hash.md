@@ -5,7 +5,7 @@ date: 2026-09-15
 
 # The check block is a view of the release row, outside the hash
 
-Marcia's Refine manifest carries a `check` block (version, status, forced, heardComplete,
+Marcia's Refine manifest carries a `check` block (version, status, conferida, forced, heardComplete,
 lastCheckAt, findings, retroUrl) and asked us to sign the same names. Two of its facts, the
 force and the version, live on the `ir_releases` row, which is written after the **Packet** is
 built and hashed; and ADR 0014 mints a **Version** only when the hashed content changed, which
