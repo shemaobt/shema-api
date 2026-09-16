@@ -41,6 +41,7 @@ from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -379,10 +380,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _four_stretches_told(client: httpx.AsyncClient) -> str:
@@ -402,13 +406,13 @@ async def _resumed(client: httpx.AsyncClient, session_id: str) -> dict[str, Any]
 
 @pytest.mark.asyncio
 async def test_the_valid_finding_reaches_the_session(
-    client: httpx.AsyncClient, analyst: Analyst
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
     """Case 1, at the route. The team hears about 'tios', and the passage is not blessed."""
     analyst.reply = CAPTURED_REPLY
     session_id = await _four_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     body = answered.json()
@@ -430,6 +434,7 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     analyst: Analyst,
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """Case 3. The analyst answered; the room could not read it. Say that, not the other thing.
 
@@ -449,7 +454,7 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     session_id = await _four_stretches_told(client)
 
     with caplog.at_level(logging.WARNING):
-        answered = await _finish(client, session_id)
+        answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 502, answered.text
     body = answered.json()
@@ -463,20 +468,23 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     assert resumed["checked"] is False
     assert resumed["finding_kind"] is None, "e nada foi guardado no estado que o tablet retoma"
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
     assert analyst.readings == 2, "nada foi salvo: o próximo terminei pergunta de novo"
 
 
 @pytest.mark.asyncio
 async def test_a_provider_that_is_down_is_still_an_upstream_failure(
-    client: httpx.AsyncClient, analyst: Analyst, caplog: pytest.LogCaptureFixture
+    client: httpx.AsyncClient,
+    analyst: Analyst,
+    caplog: pytest.LogCaptureFixture,
+    db_session: AsyncSession,
 ) -> None:
     """Case 5. The other side of case 3, and what keeps it from being a loosening."""
     analyst.failure = RuntimeError("gemini fora do ar")
     session_id = await _four_stretches_told(client)
 
     with caplog.at_level(logging.WARNING):
-        answered = await _finish(client, session_id)
+        answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 502, answered.text
     assert answered.json()["code"] == ERROR_CODE_UPSTREAM
@@ -536,7 +544,7 @@ async def test_a_session_in_flight_with_a_retired_kind_still_loads_and_still_voi
     resumed = await _resumed(client, session_id)
     assert resumed["finding_kind"] == FindingKind.ADDITION.value
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["checked"] is True, (
@@ -546,7 +554,7 @@ async def test_a_session_in_flight_with_a_retired_kind_still_loads_and_still_voi
 
 @pytest.mark.asyncio
 async def test_a_garbled_stretch_is_one_unclear_and_does_not_confer(
-    client: httpx.AsyncClient, analyst: Analyst
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
     """Marcia's first case. A frase too garbled to judge is a finding, and the round waits.
 
@@ -558,7 +566,7 @@ async def test_a_garbled_stretch_is_one_unclear_and_does_not_confer(
     )
     session_id = await _four_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     body = answered.json()
@@ -573,7 +581,7 @@ async def test_a_garbled_stretch_is_one_unclear_and_does_not_confer(
 
 @pytest.mark.asyncio
 async def test_a_thin_but_legible_telling_back_confers(
-    client: httpx.AsyncClient, analyst: Analyst
+    client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
     """Marcia's fourth case, and the cost she accepted, on purpose.
 
@@ -586,7 +594,7 @@ async def test_a_thin_but_legible_telling_back_confers(
     analyst.reply = json.dumps({"evidence_sufficient": False, "findings": []})
     session_id = await _four_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     body = answered.json()
@@ -720,7 +728,7 @@ async def test_a_verdict_about_thin_evidence_is_not_served_again(
         [{"kind": "insufficient_evidence", "note": "contaram pouco", "segment_id": None}],
     )
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     body = answered.json()
@@ -755,7 +763,7 @@ async def test_a_finding_that_survives_the_drop_is_what_the_room_says(
         ],
     )
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     body = answered.json()

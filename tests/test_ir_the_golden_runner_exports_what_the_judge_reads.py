@@ -21,11 +21,11 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
 from scripts.golden_runner import Played, export, load_script, open_session, play
-from tests.test_ir_the_text_seam_enters_the_real_turn import (
+from tests.text_seam_harness import (
     GUIDE_LINE,
     RUNNER_KEY,
     TEAM_LINE,
-    _the_models_answer,
+    the_models_answer,
 )
 
 OPENING_NOTE = (
@@ -49,7 +49,7 @@ async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         get_settings(), "internalization_room_runner_key", RUNNER_KEY, raising=False
     )
-    _the_models_answer(monkeypatch)
+    the_models_answer(monkeypatch)
 
     async def _settled(**_: Any) -> None:
         return None

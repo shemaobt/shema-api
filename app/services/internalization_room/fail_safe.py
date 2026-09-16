@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import re
 from functools import lru_cache
+from typing import Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
 from app.services.internalization_room.languages import FLOOR
@@ -24,6 +25,8 @@ class FailSafe(enum.StrEnum):
     STRETCH_TO_CORRECT = "I"
 
 
+ProcessFamily = Literal["P", "X"]
+
 _SECTION = re.compile(r"^### ([A-Z])(-([a-z]{2}))?\.", re.M)
 _BULLET = re.compile(r'^- "(.+)"$', re.M)
 
@@ -40,7 +43,7 @@ def _sections() -> dict[tuple[str, str | None], list[str]]:
     return parsed
 
 
-def utterances(kind: FailSafe, language_code: str = FLOOR) -> list[str]:
+def utterances(kind: FailSafe | ProcessFamily, language_code: str = FLOOR) -> list[str]:
     """The pre-approved lines for one situation, in the session language when written.
 
     These are application strings and not a model call, which is the whole point of a
@@ -61,7 +64,7 @@ def utterances(kind: FailSafe, language_code: str = FLOOR) -> list[str]:
     return sections.get((str(kind), None), [])
 
 
-def localized(kind: FailSafe, language_code: str) -> list[str]:
+def localized(kind: FailSafe | ProcessFamily, language_code: str) -> list[str]:
     """The lines written *for this language*, and nothing borrowed from another.
 
     ``utterances`` never comes back empty, because it falls back to the authored block —
@@ -100,9 +103,59 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
     The name is what the app plays: these lines are shipped as audio inside the app, so a
     failure costs no synthesis and needs no network — which matters, because the network is
     often what failed.
+
+    It takes a ``FailSafe`` and never a process family, so that a step cannot be handed to
+    the one reader that rotates: ``choose("X", turn=7)`` would answer X-whole where the step
+    means the retelling, and the type is what refuses it. The lookup underneath is closed to
+    the same two sets, so the refusal does not end here and turn into silence one call down.
     """
     lines = utterances(kind, language_code)
     if not lines:
         return "", ""
     index = turn % len(lines)
     return lines[index], f"{kind}{index}"
+
+
+class UnknownProcessLine(LookupError):
+    """A process line was asked for by a family or a step nobody wrote.
+
+    Every other lookup in this module answers a miss with ``""`` or ``[]``, because a
+    fail-safe that cannot find its block is better silent than wrong — the team is already
+    meeting a failure and a wrong sentence would make it worse. A process step is the
+    opposite case: the caller is the app walking its own steps, so a name that is not in
+    the tables is a bug of ours, and a step served as silence would stall a screen with no
+    trace of why. It is a ``LookupError`` and not one of the errors in ``app.core``: those
+    are registered to become a status code, and a step nobody wrote must not reach a team
+    standing in a room as a 404 about their own session.
+    """
+
+
+PROCESS_STEPS: dict[ProcessFamily, tuple[str, ...]] = {
+    "P": ("start", "tell", "unheard", "approved"),
+    "X": ("open", "retell", "whole", "frases", "thanks"),
+}
+
+
+def process_line(family: ProcessFamily, step: str, language_code: str = FLOOR) -> tuple[str, str]:
+    """The line for one step of the telling-back or of the external check, and its name.
+
+    A fail-safe answers a failure and rotates, on the authored file's own instruction. A
+    process line marks a step, and her prose says of both families that *"the order is
+    fixed and read by position"*: rotating them would voice the thanks where the step means
+    the invitation. So there is no ``turn`` here, and the same step always answers the same.
+
+    The language resolution is ``choose``'s, unchanged — regional, then primary, then the
+    authored English — and so is the shape of the answer, because the two consumers want
+    different halves of it: a step spoken by the server needs the text, and a step played
+    from the app's bundle needs the name.
+    """
+    steps = PROCESS_STEPS.get(family)
+    if steps is None or step not in steps:
+        raise UnknownProcessLine(f"no process line is written for {family!r} step {step!r}")
+    position = steps.index(step)
+    lines = utterances(family, language_code)
+    if position >= len(lines):
+        raise UnknownProcessLine(
+            f"family {family!r} has no line at position {position} in {language_code!r}"
+        )
+    return lines[position], f"{family}{position}"

@@ -34,6 +34,7 @@ from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -271,10 +272,13 @@ async def _record(client: httpx.AsyncClient, session_id: str) -> str:
     return str(kept.json()["take_id"])
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _five_stretches_told(client: httpx.AsyncClient) -> str:
@@ -327,7 +331,7 @@ async def _findings_now(db: AsyncSession, session_id: str) -> list[Any]:
 
 
 async def _the_missing_listed_before_the_addition(
-    client: httpx.AsyncClient, analyst: ReaderOfTellings
+    client: httpx.AsyncClient, db: AsyncSession, analyst: ReaderOfTellings
 ) -> tuple[str, dict[str, Any]]:
     """The reading the ticket's acceptance criterion is written over, and the turn it voiced."""
     session_id = await _five_stretches_told(client)
@@ -339,7 +343,7 @@ async def _the_missing_listed_before_the_addition(
             ]
         }
     )
-    first = await _finish(client, session_id)
+    first = await _finish(client, db, session_id)
     assert first.status_code == 200, first.text
     return session_id, dict(first.json())
 
@@ -361,7 +365,7 @@ async def test_a_missing_listed_first_loses_to_an_addition(
     the body names a kind and an address, and the prompt is where a note the order did not
     pick would still reach the team's ears.
     """
-    session_id, voiced = await _the_missing_listed_before_the_addition(client, analyst)
+    session_id, voiced = await _the_missing_listed_before_the_addition(client, db_session, analyst)
     standing = await service.final_segments(db_session, session_id)
 
     assert voiced["finding_kind"] == "addition"
@@ -381,10 +385,10 @@ async def test_the_replay_and_the_resume_name_the_finding_that_was_spoken(
     resumes on each recompute it from the stored list. Anything that ordered at one of them
     would leave a team hearing about frase 5 and looking at a screen rebuilt on frase 2.
     """
-    session_id, voiced = await _the_missing_listed_before_the_addition(client, analyst)
+    session_id, voiced = await _the_missing_listed_before_the_addition(client, db_session, analyst)
     standing = await service.final_segments(db_session, session_id)
 
-    replayed = (await _finish(client, session_id)).json()
+    replayed = (await _finish(client, db_session, session_id)).json()
     resumed = await _resumed(client, session_id)
 
     assert voiced["finding_kind"] == "addition"
@@ -421,10 +425,10 @@ async def test_a_filled_silence_is_raised_before_a_missing_and_still_reads_as_ad
             ]
         }
     )
-    standing_first = await _finish(client, session_id)
+    standing_first = await _finish(client, db_session, session_id)
     assert standing_first.status_code == 200, standing_first.text
     standing = await service.final_segments(db_session, session_id)
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
     findings = await _findings_now(db_session, session_id)
     for_the_packet = [finding.model_dump(mode="json") for finding in findings]
 
@@ -445,11 +449,11 @@ async def _the_check_raised_an_unclear_on_the_stretch_just_retold(
     in the **Priority**, so what leads the round after is decided by whether a Correction
     check's finding keeps the front.
     """
-    session_id, _ = await _the_missing_listed_before_the_addition(client, analyst)
+    session_id, _ = await _the_missing_listed_before_the_addition(client, db, analyst)
     standing = await service.final_segments(db, session_id)
     analyst.raised_by_the_check = [{"kind": "unclear", "note": THE_UNCLEAR}]
     await _tell_that_stretch_again(client, session_id, standing[4], saying=THE_ADDITION_MENDED)
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db, session_id)
     assert answered.status_code == 200, answered.text
     assert analyst.verifications, "a correção tinha de ser verificada, não relida"
     return session_id, (await service.final_segments(db, session_id))[4]
@@ -470,7 +474,7 @@ async def test_what_a_correction_broke_leads_over_a_higher_finding_elsewhere(
     session_id, corrected = await _the_check_raised_an_unclear_on_the_stretch_just_retold(
         client, db_session, analyst
     )
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["finding_kind"] == "unclear"
     assert body["finding_segment_id"] == corrected.id
@@ -495,7 +499,7 @@ async def test_an_unresolved_correction_keeps_the_front(
     )
     analyst.raised_by_the_check = []
     await _tell_that_stretch_again(client, session_id, corrected, saying="hmm...")
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
     standing = await service.final_segments(db_session, session_id)
 
     assert body["finding_kind"] == "unclear"
@@ -520,13 +524,13 @@ async def test_a_loss_the_count_found_leads_over_an_unclear_the_same_check_raise
     room would ask about the sound of a frase while a piece of the story it used to carry is
     the thing that went missing in the same retelling.
     """
-    session_id, _ = await _the_missing_listed_before_the_addition(client, analyst)
+    session_id, _ = await _the_missing_listed_before_the_addition(client, db_session, analyst)
     standing = await service.final_segments(db_session, session_id)
     analyst.raised_by_the_check = [{"kind": "unclear", "note": THE_CHECKS_UNCLEAR}]
     analyst.counted = [{"element": THE_ELEMENT_THE_COUNT_LOST, "still_told": False}]
 
     await _tell_that_stretch_again(client, session_id, standing[4], saying=THE_ADDITION_MENDED)
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
     corrected = (await service.final_segments(db_session, session_id))[4]
     findings = await _findings_now(db_session, session_id)
 
@@ -553,7 +557,7 @@ async def test_a_silence_a_check_raised_leads_over_an_addition_it_also_raised(
 
     Listed second on purpose: first, and list position alone would pass this.
     """
-    session_id, _ = await _the_missing_listed_before_the_addition(client, analyst)
+    session_id, _ = await _the_missing_listed_before_the_addition(client, db_session, analyst)
     standing = await service.final_segments(db_session, session_id)
     analyst.raised_by_the_check = [
         {"kind": "addition", "note": THE_CHECKS_ADDITION},
@@ -561,7 +565,7 @@ async def test_a_silence_a_check_raised_leads_over_an_addition_it_also_raised(
     ]
 
     await _tell_that_stretch_again(client, session_id, standing[4], saying=THE_ADDITION_MENDED)
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
     findings = await _findings_now(db_session, session_id)
     raised_by_the_check = [finding for finding in findings if finding.raised_by_check]
 

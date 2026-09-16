@@ -23,7 +23,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
-from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.database import Base
 from app.core.enums import ProjectRole
 from app.db.models.auth import Role
@@ -38,15 +37,24 @@ from tests.baker import (
     make_user,
     make_user_app_role,
 )
-from tests.test_internalization_room_release import P, _one_stretch, _ready_session
-from tests.test_ir_project_id import KEY, PREFIX, a_claimed_device
+from tests.release_harness import (
+    KEY,
+    PREFIX,
+    TABLET,
+    P,
+    a_claimed_device,
+    one_stretch,
+    ready_session,
+    releases_of,
+    team_headers,
+)
 
 APP_KEY = "internalization-room"
 
 #: What the packet says it is. One constant because the number moves for reasons that have
 #: nothing to do with this rule, and a version written into six assertions is six places to
 #: forget.
-SCHEMA_VERSION = "tripod.internalization-release.v0.5"
+SCHEMA_VERSION = "tripod.internalization-release.v0.6"
 
 REVISION = "20260910_rel01"
 PREVIOUS_REVISION = "20260910_hard01"
@@ -86,20 +94,6 @@ async def room_app(db_session: AsyncSession):
     return app
 
 
-#: The tablet the team approves from. Self-issued and unauthenticated like every other room
-#: write: it says which device did this and never which team, which the credential beside it
-#: is what answers.
-TABLET = "tablet-da-sala"
-
-
-def _team(credential: str) -> dict[str, str]:
-    return {
-        "X-Room-Key": KEY,
-        DEVICE_CREDENTIAL_HEADER: credential,
-        "X-Room-Device": TABLET,
-    }
-
-
 async def _facilitator(db: AsyncSession, room_app, project=None) -> dict[str, str]:
     """A Desk caller who facilitates ``project``, or nobody's team when it is None."""
     from app.services.auth.issue_tokens import issue_tokens
@@ -117,19 +111,12 @@ async def _facilitator(db: AsyncSession, room_app, project=None) -> dict[str, st
     return {"Authorization": f"Bearer {access}"}
 
 
-async def _releases_of(db: AsyncSession, session_id: str) -> list[IRRelease]:
-    rows = await db.execute(
-        select(IRRelease).where(IRRelease.session_id == session_id).order_by(IRRelease.version)
-    )
-    return list(rows.scalars().all())
-
-
 async def test_a_credentialed_team_that_approves_gets_version_one(client, db_session):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
     approved = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
 
     assert approved.status_code == 200, approved.text
@@ -138,7 +125,7 @@ async def test_a_credentialed_team_that_approves_gets_version_one(client, db_ses
     assert len(body["package_sha256"]) == 64
     assert set(body["package_sha256"]) <= set("0123456789abcdef")
     assert body["approved_at"]
-    stored = await _releases_of(db_session, session.id)
+    stored = await releases_of(db_session, session.id)
     assert [row.version for row in stored] == [1]
     assert body["package_sha256"] == stored[0].package_sha256
     assert body["release_id"] == stored[0].id
@@ -149,17 +136,21 @@ async def test_a_credentialed_team_that_approves_gets_version_one(client, db_ses
 
 async def test_approving_again_with_nothing_changed_returns_the_same_release(client, db_session):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
-    first = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
-    second = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
+    first = await client.post(
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
+    )
+    second = await client.post(
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
+    )
 
     assert first.status_code == 200, first.text
     assert second.status_code == 200, second.text
     assert second.json()["release_id"] == first.json()["release_id"]
     assert first.json()["version"] == 1
     assert second.json()["version"] == 1
-    assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
+    assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
 async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_one(
@@ -173,14 +164,18 @@ async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_on
     the rule; `compose.py` owns the rebuild path and its own tests.
     """
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
-    first = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
-    version_one = (await _releases_of(db_session, session.id))[0]
+    first = await client.post(
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
+    )
+    version_one = (await releases_of(db_session, session.id))[0]
     as_approved = json.dumps(version_one.packet, sort_keys=True)
 
-    await _one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
-    second = await client.post(f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential))
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    second = await client.post(
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
+    )
 
     assert second.status_code == 200, second.text
     assert second.json()["version"] == 2
@@ -196,15 +191,15 @@ async def test_the_packet_names_its_release_and_says_which_schema_it_is(
     client, db_session, room_app
 ):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
     desk = await _facilitator(db_session, room_app, project)
 
     before = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
     approved = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
     after = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
-    await _one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
     redrafted = await client.get(
         f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk
     )
@@ -245,11 +240,11 @@ async def test_two_approvals_cannot_take_one_number(db_session):
 
 async def test_the_version_is_never_the_callers(client, db_session):
     project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session, project_id=project.id)
+    session = await ready_session(db_session, project_id=project.id)
 
     approved = await client.post(
         f"{PREFIX}/sessions/{session.id}/release",
-        headers=_team(credential),
+        headers=team_headers(credential),
         json={"version": 7},
     )
 
@@ -261,7 +256,7 @@ async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
     client, db_session, room_app
 ):
     project, _credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     desk = await _facilitator(db_session, room_app, project)
 
     refused = await client.post(
@@ -272,7 +267,7 @@ async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
 
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "RELEASE_WITHOUT_PROJECT"
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
     assert read.status_code == 404, (
         "a leitura do facilitador para uma sessão sem projeto continua sendo 404, como na main"
     )
@@ -289,12 +284,12 @@ async def test_a_passage_the_packet_refuses_is_not_approved_either(client, db_se
     session = await create_session(db_session, pericope=P, project_id=project.id)
 
     refused = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
 
     assert refused.status_code == 409, refused.text
     assert "no_telling_back" in refused.json()["detail"]
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
 
 
 async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numbered(
@@ -309,7 +304,7 @@ async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numb
     refuses it.
     """
     project, credential = await a_claimed_device(db_session)
-    session_id = (await _ready_session(db_session, project_id=project.id)).id
+    session_id = (await ready_session(db_session, project_id=project.id)).id
     winner = IRRelease(
         session_id=session_id,
         project_id=project.id,
@@ -326,7 +321,7 @@ async def test_an_approval_that_loses_the_race_for_a_number_is_answered_not_numb
 
     monkeypatch.setattr(release_module, "_latest_release", _as_it_was_before_the_winner)
     refused = await client.post(
-        f"{PREFIX}/sessions/{session_id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{session_id}/release", headers=team_headers(credential)
     )
 
     assert refused.status_code == 409, refused.text
@@ -349,17 +344,17 @@ async def test_a_second_conversation_about_one_passage_shares_the_sequence(clien
     not the draft it approved before.
     """
     project, credential = await a_claimed_device(db_session)
-    first_session = await _ready_session(db_session, project_id=project.id)
-    second_session = await _ready_session(db_session, project_id=project.id)
+    first_session = await ready_session(db_session, project_id=project.id)
+    second_session = await ready_session(db_session, project_id=project.id)
 
     first = await client.post(
-        f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{first_session.id}/release", headers=team_headers(credential)
     )
     second = await client.post(
-        f"{PREFIX}/sessions/{second_session.id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{second_session.id}/release", headers=team_headers(credential)
     )
     again = await client.post(
-        f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{first_session.id}/release", headers=team_headers(credential)
     )
 
     assert [first.json()["version"], second.json()["version"]] == [1, 2]
@@ -379,15 +374,19 @@ async def test_a_packet_stops_naming_its_release_once_the_passage_moved_on(
     is the exact case where a session-scoped read and a project-scoped approval disagree.
     """
     project, credential = await a_claimed_device(db_session)
-    first_session = await _ready_session(db_session, project_id=project.id)
-    second_session = await _ready_session(db_session, project_id=project.id)
+    first_session = await ready_session(db_session, project_id=project.id)
+    second_session = await ready_session(db_session, project_id=project.id)
     desk = await _facilitator(db_session, room_app, project)
 
-    await client.post(f"{PREFIX}/sessions/{first_session.id}/release", headers=_team(credential))
+    await client.post(
+        f"{PREFIX}/sessions/{first_session.id}/release", headers=team_headers(credential)
+    )
     named = await client.get(
         f"{PREFIX}/facilitator/sessions/{first_session.id}/release", headers=desk
     )
-    await client.post(f"{PREFIX}/sessions/{second_session.id}/release", headers=_team(credential))
+    await client.post(
+        f"{PREFIX}/sessions/{second_session.id}/release", headers=team_headers(credential)
+    )
     moved_on = await client.get(
         f"{PREFIX}/facilitator/sessions/{first_session.id}/release", headers=desk
     )
@@ -410,33 +409,33 @@ async def test_a_credentialed_tablet_is_refused_by_name_on_a_session_with_no_pro
     which is the one thing that is not true.
     """
     _project, credential = await a_claimed_device(db_session)
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
 
     refused = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential)
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
 
     assert refused.status_code == 409, refused.text
     assert refused.json()["code"] == "RELEASE_WITHOUT_PROJECT"
-    assert await _releases_of(db_session, session.id) == []
+    assert await releases_of(db_session, session.id) == []
 
 
 async def test_no_team_writes_a_release_on_another_teams_passage(client, db_session):
     """There is no team route that reads a release, so writing is the whole of the rule here."""
     project_a, credential_a = await a_claimed_device(db_session, email="a@example.com")
     _project_b, credential_b = await a_claimed_device(db_session, email="b@example.com")
-    session = await _ready_session(db_session, project_id=project_a.id)
+    session = await ready_session(db_session, project_id=project_a.id)
 
     stranger = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential_b)
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential_b)
     )
     owner = await client.post(
-        f"{PREFIX}/sessions/{session.id}/release", headers=_team(credential_a)
+        f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential_a)
     )
 
     assert stranger.status_code == 404, stranger.text
     assert owner.status_code == 200, owner.text
-    assert [row.version for row in await _releases_of(db_session, session.id)] == [1]
+    assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
 @pytest.fixture()

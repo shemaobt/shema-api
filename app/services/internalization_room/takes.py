@@ -262,6 +262,35 @@ async def takes_of(db: AsyncSession, session_id: str) -> list[IRTake]:
     return list(result.scalars().all())
 
 
+def current_parts(takes: list[IRTake]) -> list[IRTake]:
+    """The rehearsal takes that *are* the session's parts: the newest under each number.
+
+    A **Part** is one rehearsal take of the passage, and its identity is the number the tablet
+    sent with it — never the scope string, which the text seam writes as the pericope for every
+    part it declares. Recording a part again stores a second take under that number; the newest
+    of them is the part, and the earlier ones stay as history, which the **Retroverification
+    file** is where anybody reads.
+
+    A take with no number is the rehearsal told whole, which is one part of its own.
+
+    **The newest is the last of its number in the order it was given**, which is `takes_of`'s:
+    the pass the tablet counted, and then the moment the upload landed. Keyed on the moment
+    alone it would be wrong, and this module says why two functions up: that stamp is when the
+    upload landed, and the outbox drains whenever the link comes back, so the rehearsal that
+    arrives last is sometimes the one the team abandoned. The pass is the tablet's own count of
+    its own recordings and does not move with the link.
+
+    So this must be handed the list in that order — `takes_of`'s — and it answers in it, so the
+    parts come back in the reading order and no caller sorts them again.
+    """
+    newest: dict[int | None, IRTake] = {}
+    for take in takes:
+        if take.kind is IRTakeKind.ENSAIO:
+            newest[take.ordinal] = take
+    chosen = {take.id for take in newest.values()}
+    return [take for take in takes if take.id in chosen]
+
+
 #: Where a declared part's key lives, and the device a text seam speaks for. A part declared
 #: through the seam has no bytes and no bucket object: it is the address a stretch is a slice
 #: of, and nothing else, so the key carries the name her script gave it.
@@ -280,10 +309,10 @@ async def declare_rehearsal_parts(
     """Her draft clips as real rehearsal takes, declared rather than uploaded.
 
     A **Part** the room can address is a row, not a file: `current_stretch_at`,
-    `report_playback` and `playback_confirms_rehearsal` all read the row and the report, and
-    none of them opens the audio. So the seam writes the row and stores nothing — the bucket
-    is never touched, and the size and checksums say what they are, which is that there are no
-    bytes to describe.
+    `report_playback` and `unheard_parts` all read the row and the report, and none of them
+    opens the audio. So the seam writes the row and stores nothing — the bucket is never
+    touched, and the size and checksums say what they are, which is that there are no bytes
+    to describe.
 
     `store_take` is deliberately not reused: it exists to put bytes somewhere and read them
     back, and it refuses a take with no audio. What they share is the row, and the row is

@@ -32,15 +32,15 @@ from app.db.models.internalization_room import IRTake, IRTakeKind
 from app.services import internalization_room as room
 from app.services.platform.storage import StoredObject
 from tests.alembic_harness import columns_of, run_alembic, scalar
-from tests.test_ir_a_take_is_numbered_by_its_stretch import (
+from tests.hard_stretch_harness import ready_for_release as _ready_for_release
+from tests.take_harness import (
     DEVICE,
     KEY,
     PASSAGE,
     PREFIX,
-    _a_failed_capture_then_two_good_ones,
-    _open_session,
-    _ready_for_release,
-    _record,
+    a_failed_capture_then_two_good_ones,
+    open_session,
+    record,
 )
 
 REVISION = "20260910_take01"
@@ -159,8 +159,8 @@ async def _listed(client: httpx.AsyncClient, session_id: str, take_id: str) -> d
 async def test_the_generic_route_keeps_no_number_for_a_retro_take(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session_id = await _open_session(client)
-    await _record(client, session_id, b"a equipe ensaiou a passagem inteira")
+    session_id = await open_session(client)
+    await record(client, session_id, b"a equipe ensaiou a passagem inteira")
 
     kept = await _keep(
         client,
@@ -195,7 +195,7 @@ async def test_the_generic_route_keeps_a_rehearsal_takes_number(
     A rehearsal take is a part of the passage, and its number is how the tablet finds again,
     on resume, which part a rebuilt recording answers for.
     """
-    session_id = await _open_session(client)
+    session_id = await open_session(client)
 
     kept = await _keep(
         client,
@@ -222,7 +222,7 @@ async def test_the_generic_route_keeps_a_rehearsal_takes_number(
 async def test_the_packet_says_ordinal_and_never_chunk_index(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    session_id = await _a_failed_capture_then_two_good_ones(client)
+    session_id = await a_failed_capture_then_two_good_ones(client)
     session = await room.get_session(db_session, session_id)
 
     artifact = await _ready_for_release(db_session, session)

@@ -15,29 +15,23 @@ Nothing on the voice path may read either. The team never hears that the room co
 
 from __future__ import annotations
 
-import base64
 from typing import Any
 
 import httpx
 import pytest
-from google_crc32c import Checksum
 from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
 from app.db.models.internalization_room import (
-    IRHardStretch,
     IRPromptKey,
     IRSegment,
-    IRSession,
     IRSessionStatus,
     IRTakeKind,
 )
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
-from app.services.platform.storage import StoredObject
-from app.services.platform.tts import SynthesizedSpeech
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -45,50 +39,53 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.hard_stretch_harness import (
+    AUDIO,
+    DESK,
+    DEVICE,
+    FROM_THE_DATABASE,
+    IR,
+    ROOM_KEY,
+    Facilitator,
+    P,
+)
+from tests.hard_stretch_harness import (
+    MemoryStore as _MemoryStore,
+)
+from tests.hard_stretch_harness import (
+    a_session as _a_session,
+)
+from tests.hard_stretch_harness import (
+    attend as _attend,
+)
+from tests.hard_stretch_harness import (
+    current as _current,
+)
+from tests.hard_stretch_harness import (
+    marks as _marks,
+)
+from tests.hard_stretch_harness import (
+    ready_for_release as _ready_for_release,
+)
+from tests.hard_stretch_harness import (
+    rehearse as _rehearse,
+)
+from tests.hard_stretch_harness import (
+    row as _row,
+)
+from tests.hard_stretch_harness import (
+    tell as _tell,
+)
+from tests.hard_stretch_harness import (
+    told as _told,
+)
+from tests.hard_stretch_harness import (
+    voice as _voice,
+)
+from tests.room_harness import heard_every_part, press_terminei
 
-IR = "/api/internalization-room"
-DESK = "/api/facilitator/teams"
-ROOM_KEY = "sala-de-teste"
-DEVICE = "tablet-da-equipe-1"
-P = "P01"
-AUDIO = b"a equipe explicou este trecho em portugues"
 WARNING = "warning"
 BLOCKING = "blocking"
-
-#: The stretches the helpers below tell, as slices of the one rehearsal recording.
-SLICES = [(0, 9000), (9000, 18000), (18000, 27000)]
-
-
-class _MemoryStore:
-    def __init__(self) -> None:
-        self.objects: dict[str, bytes] = {}
-
-    async def get(self, key: str) -> bytes | None:
-        return self.objects.get(key)
-
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        self.objects[key] = data
-
-    async def stat(self, key: str) -> StoredObject | None:
-        stored = self.objects.get(key)
-        if stored is None:
-            return None
-        checksum = Checksum()
-        checksum.update(stored)
-        return StoredObject(
-            size=len(stored), crc32c=base64.b64encode(checksum.digest()).decode("ascii")
-        )
-
-
-async def _voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
-    entry = SynthesizedSpeech(
-        audio=b"audio",
-        mime_type="audio/mpeg",
-        etag="e",
-        cached=False,
-        key=f"tts/voice/m/f/{abs(hash(text))}.mp3",
-    )
-    return entry, False
 
 
 @pytest.fixture()
@@ -160,13 +157,6 @@ def the_room_answers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verdict_round, "run_verdict_turn", _speaker)
 
 
-class Facilitator:
-    def __init__(self, user_id: str, team_id: str, headers: dict[str, str]) -> None:
-        self.id = user_id
-        self.team_id = team_id
-        self.headers = headers
-
-
 @pytest.fixture()
 async def facilitator(db_session: AsyncSession) -> Facilitator:
     from app.services.auth.issue_tokens import issue_tokens
@@ -183,57 +173,6 @@ async def facilitator(db_session: AsyncSession) -> Facilitator:
 # --- what the team does ---------------------------------------------------------------
 
 
-async def _a_session(db: AsyncSession, *, team_id: str | None = None) -> str:
-    """A session, named by its id: the reads below expire the identity map."""
-    session = await room.create_session(db, pericope=P, project_id=team_id)
-    return str(session.id)
-
-
-async def _rehearse(client: httpx.AsyncClient, session_id: str) -> str:
-    kept = await client.post(
-        f"{IR}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": P},
-        files={"file": ("ensaio.m4a", b"a equipe ensaiou a passagem inteira", "audio/mp4")},
-    )
-    assert kept.status_code == 200, kept.text
-    return str(kept.json()["take_id"])
-
-
-async def _tell(
-    client: httpx.AsyncClient,
-    session_id: str,
-    take_id: str,
-    stretch: int,
-    *,
-    again: bool = False,
-    saying: str | None = None,
-) -> httpx.Response:
-    """Tell stretch `stretch` (1-based) back, as a first telling or as one more.
-
-    `saying=None` is the transcriber coming back with nothing, which is the shape of an
-    outage and the case Marcia named by name.
-    """
-    starts, ends = SLICES[stretch - 1]
-    client.said.append(saying if saying is not None else "")  # type: ignore[attr-defined]
-    data = {"take_id": take_id, "starts_ms": str(starts), "ends_ms": str(ends)}
-    if again:
-        data["retelling"] = "true"
-    return await client.post(
-        f"{IR}/sessions/{session_id}/back-translation/chunks",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-        data=data,
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-    )
-
-
-async def _told(client: httpx.AsyncClient, session_id: str, take_id: str, how_many: int) -> None:
-    """A first telling of the first `how_many` stretches, each with words in it."""
-    for stretch in range(1, how_many + 1):
-        answered = await _tell(client, session_id, take_id, stretch, saying=f"o trecho {stretch}")
-        assert answered.status_code == 200, answered.text
-
-
 async def _units(client: httpx.AsyncClient, session_id: str) -> list[dict[str, Any]]:
     state = await client.get(f"{IR}/sessions/{session_id}", headers={"X-Room-Key": ROOM_KEY})
     assert state.status_code == 200, state.text
@@ -243,53 +182,12 @@ async def _units(client: httpx.AsyncClient, session_id: str) -> list[dict[str, A
 # --- what the room and the Desk say -----------------------------------------------------
 
 
-#: The routes wrote through this same session, so an instance left unexpired would answer from
-#: the identity map and an assertion could pass without anything having reached the column.
-#: `populate_existing` refreshes the rows this read returns and leaves every other one alone,
-#: which `expire_all` does not: expiring the session object mid-test makes the next read of its
-#: id a query from outside the async context.
-FROM_THE_DATABASE = {"populate_existing": True}
-
-
-async def _row(db: AsyncSession, session_id: str) -> IRSession:
-    result = await db.execute(
-        select(IRSession).where(IRSession.id == session_id).execution_options(**FROM_THE_DATABASE)
-    )
-    return result.scalar_one()
-
-
-async def _current(db: AsyncSession, session_id: str) -> list[IRSegment]:
-    result = await db.execute(
-        select(IRSegment)
-        .where(IRSegment.session_id == session_id, IRSegment.superseded_at.is_(None))
-        .order_by(IRSegment.ordinal)
-        .execution_options(**FROM_THE_DATABASE)
-    )
-    return list(result.scalars().all())
-
-
-async def _marks(db: AsyncSession, session_id: str) -> list[IRHardStretch]:
-    result = await db.execute(
-        select(IRHardStretch)
-        .where(IRHardStretch.session_id == session_id)
-        .order_by(IRHardStretch.crossed_at, IRHardStretch.segment_id)
-        .execution_options(**FROM_THE_DATABASE)
-    )
-    return list(result.scalars().all())
-
-
 async def _queued(
     client: httpx.AsyncClient, who: Facilitator, session_id: str
 ) -> dict[str, Any] | None:
     listed = await client.get(f"{IR}/facilitator/sessions", headers=who.headers)
     assert listed.status_code == 200, listed.text
     return next((row for row in listed.json()["sessions"] if row["session_id"] == session_id), None)
-
-
-async def _attend(client: httpx.AsyncClient, session_id: str, who: Facilitator) -> httpx.Response:
-    return await client.post(
-        f"{IR}/facilitator/sessions/{session_id}/attended", headers=who.headers
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -542,10 +440,8 @@ async def test_the_voice_path_is_byte_identical_with_and_without_a_mark(
             for _ in range(2):
                 await _tell(client, session_id, take_id, 2, again=True, saying="o trecho 2")
             assert await _marks(db_session, session_id), "o gêmeo marcado não foi marcado"
-        answered = await client.post(
-            f"{IR}/sessions/{session_id}/back-translation/finish",
-            headers={"X-Room-Key": ROOM_KEY},
-            json={},
+        answered = await press_terminei(
+            client, session_id, report=await heard_every_part(db_session, session_id)
         )
         assert answered.status_code == 200, answered.text
         return answered.json()
@@ -782,7 +678,6 @@ async def test_the_packet_carries_no_count_of_retells(
     Consultant material does not travel to Refine, and this number never was any: it was the
     room's own bookkeeping, read by nobody on the other side.
     """
-    from tests.test_ir_a_take_is_numbered_by_its_stretch import _ready_for_release
 
     session_id = await _a_session(db_session)
     take_id = await _rehearse(client, session_id)

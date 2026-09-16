@@ -34,6 +34,7 @@ from app.services.internalization_room.fail_safe import FailSafe, first, localiz
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -263,10 +264,13 @@ async def _tell_back(
     assert told.status_code == 200, told.text
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _two_stretches_told(
@@ -382,7 +386,7 @@ def test_no_other_family_changed(language: str) -> None:
 
 @pytest.mark.asyncio
 async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_one(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """The heart of it: the sentence reaches the team in the breath that names the finding.
 
@@ -393,7 +397,7 @@ async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_on
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["finding_segment_id"], "o veredito tem de estar apontando um trecho"
@@ -406,7 +410,7 @@ async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_on
 
 @pytest.mark.asyncio
 async def test_the_verdict_is_still_said_first(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """The request is added to the verdict, never said instead of it.
 
@@ -416,7 +420,7 @@ async def test_the_verdict_is_still_said_first(
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     assert room.said[-1].startswith(VERDICT_DRAFT)
 
@@ -428,12 +432,12 @@ async def test_the_verdict_is_still_said_first(
 
 @pytest.mark.asyncio
 async def test_a_clean_verdict_asks_for_nothing_to_be_told_over(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """Nothing to correct, so a correction instruction is noise on the badge turn."""
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["finding_segment_id"] is None
     assert not _asked_for_the_whole_stretch(room.said[-1])
@@ -451,7 +455,7 @@ async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
     session_id, take_id = await _two_stretches_told(client)
     await _re_record_the_native(db_session, session_id, take_id=take_id)
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     assert analyst.readings == 0
     assert not _asked_for_the_whole_stretch(room.said[-1])
@@ -459,7 +463,7 @@ async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
 
 @pytest.mark.asyncio
 async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """No address, so no stretch on screen, so no microphone that replaces anything.
 
@@ -470,7 +474,7 @@ async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
     analyst.found("missing", chunk=None)
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["finding_segment_id"] is None
     assert not _asked_for_the_whole_stretch(room.said[-1])
@@ -478,7 +482,7 @@ async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
 
 @pytest.mark.asyncio
 async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
-    client: httpx.AsyncClient, analyst: Analyst, room: Room
+    client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
     """`unclear` names a stretch and still hands nothing to the screen.
 
@@ -489,7 +493,7 @@ async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
     analyst.found("unclear", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
 
     assert answered.json()["finding_segment_id"], "o achado aponta um trecho"
     assert not _asked_for_the_whole_stretch(room.said[-1])
@@ -522,7 +526,7 @@ async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert body["used_fail_safe"], "este caso só vale se o turno tiver mesmo degradado"
     assert body["finding_segment_id"], "e o achado continua apontando um trecho"
@@ -545,7 +549,7 @@ async def test_what_the_room_said_is_what_the_session_remembers(
     analyst.found("missing", chunk=1)
     session_id, _ = await _two_stretches_told(client)
 
-    await _finish(client, session_id)
+    await _finish(client, db_session, session_id)
 
     session = await get_session(db_session, session_id)
 

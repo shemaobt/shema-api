@@ -34,6 +34,7 @@ from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
+from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -271,10 +272,13 @@ async def _record(client: httpx.AsyncClient, session_id: str) -> str:
     return str(kept.json()["take_id"])
 
 
-async def _finish(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
-    return await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/finish", headers={"X-Room-Key": KEY}
-    )
+async def _finish(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> httpx.Response:
+    """Press `terminei` with the team reporting every current part played through.
+
+    The room refuses the check before the analyst is called while any part of the rehearsal
+    is unheard, so a case about what the reading answers has to get the team past that door.
+    """
+    return await press_terminei(client, session_id, report=await heard_every_part(db, session_id))
 
 
 async def _three_stretches_told(client: httpx.AsyncClient) -> str:
@@ -331,7 +335,7 @@ async def _the_swap_raised(
     """The room reads the whole telling-back once and raises the swap on frase 1."""
     session_id = await _three_stretches_told(client)
     analyst.answer = _the_pair_on_the_first_frase(where)
-    first = await _finish(client, session_id)
+    first = await _finish(client, db, session_id)
     assert first.status_code == 200, first.text
     assert analyst.full_readings, "a primeira leitura tem de ter acontecido"
     standing = await service.final_segments(db, session_id)
@@ -365,7 +369,7 @@ async def test_the_swap_reaches_the_team_as_one_thing(
     is one thing, and a case that pressed once would have watched only one of them.
     """
     session_id, _ = await _the_swap_raised(client, db_session, analyst)
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert THE_ADDITION in speaker[0]
     assert THE_MISSING in speaker[0]
@@ -388,7 +392,7 @@ async def test_the_pair_is_checked_and_cleared_as_one(
 
     await _tell_that_stretch_again(client, session_id, first, saying=THE_SWAP_MENDED)
     analyst.answer = json.dumps({"findings": []})
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     body = answered.json()
 
     assert analyst.verifications, "a correção tinha de ser verificada, não relida"
@@ -412,7 +416,7 @@ async def test_an_unresolved_pair_stays_on_the_corrected_stretch(
     session_id, first = await _the_swap_raised(client, db_session, analyst)
 
     await _tell_that_stretch_again(client, session_id, first, saying=THE_CAUSE_STILL_THERE)
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     standing = await service.final_segments(db_session, session_id)
     findings = await _findings_now(db_session, session_id)
 
@@ -433,7 +437,7 @@ async def test_a_missing_placed_after_the_frase_is_still_the_same_swap(
     sent to is the addition's — the part where the swap happened.
     """
     session_id, first = await _the_swap_raised(client, db_session, analyst, where="after")
-    body = (await _finish(client, session_id)).json()
+    body = (await _finish(client, db_session, session_id)).json()
 
     assert THE_ADDITION in speaker[0]
     assert THE_MISSING in speaker[0]
@@ -454,7 +458,7 @@ async def test_a_pair_raised_by_a_correction_pairs_next_turn(
     session_id, first = await _the_swap_raised(client, db_session, analyst)
 
     await _tell_that_stretch_again(client, session_id, first, saying=THE_SWAP_MENDED_BADLY)
-    answered = await _finish(client, session_id)
+    answered = await _finish(client, db_session, session_id)
     findings = await _findings_now(db_session, session_id)
 
     assert len(findings) == 2, f"a verificação tinha de reportar dois achados: {findings}"
@@ -483,7 +487,7 @@ async def test_a_resumed_tablet_is_sent_to_the_stretch_of_the_swap(
             ]
         }
     )
-    voiced = (await _finish(client, session_id)).json()
+    voiced = (await _finish(client, db_session, session_id)).json()
     standing = await service.final_segments(db_session, session_id)
 
     resumed = await _resumed(client, session_id)

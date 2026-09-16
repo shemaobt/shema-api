@@ -12,8 +12,6 @@ the synthesiser, exactly as on the Guide's door.
 
 from __future__ import annotations
 
-import importlib
-import json
 import logging
 from typing import Any
 
@@ -24,16 +22,33 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import router
 from app.core.config import get_settings
-from app.core.database import get_db
-from app.core.exceptions import register_exception_handlers
 from app.db.models.internalization_room import IRTakeKind
 from app.services import internalization_room as room
-from app.services.internalization_room.back_translation import playback_confirms_rehearsal
+from app.services.internalization_room.back_translation import unheard_parts
 from app.services.internalization_room.takes import takes_of
-from tests.test_ir_a_correction_is_verified_on_its_own import CORRECTION_MARK
+from tests.text_seam_harness import (
+    RUNNER_KEY,
+    THE_EXTRA_CAUSE,
+    Analyst,
+    Speaker,
+    the_analyst_reads,
+    the_app,
+    the_speaker_says,
+)
 
 SEAM = "/api/internalization-room/text-seam/back-translation"
-RUNNER_KEY = "runner-de-teste"
+
+
+@pytest.fixture()
+def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
+    return the_analyst_reads(monkeypatch)
+
+
+@pytest.fixture()
+def speaker(monkeypatch: pytest.MonkeyPatch) -> Speaker:
+    return the_speaker_says(monkeypatch)
+
+
 PASSAGE = "P02"
 LANGUAGE = "Brazilian Portuguese"
 
@@ -145,83 +160,6 @@ FAITHFUL_FRASE_ONE = {
     "supersedes": 0,
 }
 
-THE_EXTRA_CAUSE = (
-    "A tradução diz que Noemi decidiu voltar porque as noras pediram; a história conta apenas "
-    "que ela ouviu a notícia do pão."
-)
-THE_VOICE = (
-    "Vocês traduziram bem quase tudo. Na frase 1 vocês disseram que as noras pediram. Isso "
-    "está no áudio de vocês, ou entrou agora na tradução?"
-)
-
-
-class Analyst:
-    """The analyst in its two modes, each answering what the case set.
-
-    The whole reading answers the next entry of `readings`; the correction check answers
-    `resolves` and whatever `broke` carries. The two are told apart by the heading only the
-    correction prompt has, the way a reader would — not by counting calls.
-    """
-
-    def __init__(self) -> None:
-        self.readings: list[dict[str, Any]] = []
-        self.verifications: list[str] = []
-        self.answered: list[str] = []
-        self.resolves = True
-        self.broke: list[dict[str, str]] = []
-
-    async def __call__(self, *, system_prompt: str, user_content: str, **_: Any) -> str:
-        if CORRECTION_MARK in system_prompt:
-            self.verifications.append(system_prompt)
-            return json.dumps({"resolved": self.resolves, "findings": self.broke})
-        reply = json.dumps(self.readings.pop(0) if self.readings else {"findings": []})
-        self.answered.append(reply)
-        return reply
-
-
-class Speaker:
-    """The verdict Speaker and the Validator behind it, saying what the case set."""
-
-    def __init__(self) -> None:
-        self.line = THE_VOICE
-
-    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
-        if "corrected_response" in system_prompt:
-            return json.dumps({"verdict": "pass", "issues": []})
-        return self.line
-
-
-@pytest.fixture()
-def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
-    from app.services.internalization_room import back_translation as bt_service
-
-    reader = Analyst()
-    monkeypatch.setattr(bt_service, "call_agent", reader)
-    return reader
-
-
-@pytest.fixture()
-def speaker(monkeypatch: pytest.MonkeyPatch) -> Speaker:
-    turn_module = importlib.import_module("app.services.internalization_room.run_turn")
-
-    voice = Speaker()
-    monkeypatch.setattr(turn_module, "call_agent", voice)
-    return voice
-
-
-def _the_app(db_session: AsyncSession):
-    from fastapi import FastAPI
-
-    test_app = FastAPI()
-    test_app.include_router(router, prefix="/api/internalization-room")
-    register_exception_handlers(test_app)
-
-    async def _get_db():
-        yield db_session
-
-    test_app.dependency_overrides[get_db] = _get_db
-    return test_app
-
 
 @pytest.fixture()
 async def client(
@@ -240,7 +178,7 @@ async def client(
     monkeypatch.setattr(room, "synthesize_facilitator_speech", _never_voiced)
 
     async with httpx.AsyncClient(
-        transport=ASGITransport(app=_the_app(db_session)),
+        transport=ASGITransport(app=the_app(db_session)),
         base_url="http://test",
         headers={"X-Access-Code": RUNNER_KEY},
     ) as c:
@@ -316,7 +254,7 @@ async def test_the_door_is_not_published_in_the_openapi_schema(db_session) -> No
         "schema não prova nada"
     )
 
-    paths = _the_app(db_session).openapi()["paths"]
+    paths = the_app(db_session).openapi()["paths"]
 
     assert [path for path in paths if "text-seam" in path] == [], (
         "a costura é um instrumento de teste; publicada no schema ela vira uma superfície de "
@@ -343,7 +281,7 @@ async def test_a_declared_session_has_her_parts_heard(client, db_session) -> Non
     assert [take.kind for take in takes] == [IRTakeKind.ENSAIO] * 3
     state = room.back_translation_of(session)
     assert [entry.clip_duration_ms for entry in state.played_by_take] == [20000, 25000, 45000]
-    assert playback_confirms_rehearsal(state, [take.id for take in takes]) == [], (
+    assert unheard_parts(state, [take.id for take in takes]) == [], (
         "o roteiro dela marca cada clipe como ouvido por inteiro antes da primeira rodada; "
         "sem isso a passagem nunca fecha e a rodada dela mede outra coisa"
     )

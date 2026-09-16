@@ -13,6 +13,7 @@ it is captured.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -260,6 +261,29 @@ async def segment_for_session(db: AsyncSession, session_id: str, segment_id: str
     return segment
 
 
+def _read_in_order(rows: list[IRSegment]) -> Iterator[tuple[IRSegment, bool]]:
+    """Every stretch in the order the passage is read, each with whether it was divided.
+
+    The walk the reading is: a stretch, then the stretches it was divided into, in the order
+    the rows arrive — which `current_segments` has already put in the part's number and the
+    milliseconds inside it. Written once because the two questions asked of it disagree about
+    which rows they want and must never disagree about the order: the leaves are the reading,
+    and the stretches that are not leaves are the ones the team cut in two.
+    """
+    children: dict[str | None, list[IRSegment]] = {}
+    for row in rows:
+        children.setdefault(row.parent_id, []).append(row)
+
+    def walk(parent_id: str | None) -> Iterator[tuple[IRSegment, bool]]:
+        for row in children.get(parent_id, []):
+            divided = bool(children.get(row.id))
+            yield row, divided
+            if divided:
+                yield from walk(row.id)
+
+    yield from walk(None)
+
+
 async def divided_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     """The stretches that were divided: current, and no longer a leaf.
 
@@ -269,40 +293,28 @@ async def divided_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
 
     The same class of loss as a replaced stretch, which the handoff carries on purpose. The
     verb that creates the state is what has to carry it.
+
+    In the order the reading walks them, so a stretch comes before the pieces it was cut into.
+    A piece is numbered among its own siblings and not over the passage, so in row order a
+    piece of a later part sorted ahead of the stretch it came out of — and a reader of the list
+    met the child before its own parent.
     """
     rows = await current_segments(db, session_id)
-    divided = {row.parent_id for row in rows if row.parent_id is not None}
-    return [row for row in rows if row.id in divided]
+    return [row for row, divided in _read_in_order(rows) if divided]
 
 
 async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
     """The stretches that count, in the order the team told them.
 
-    Current and leaf, which is the whole selection rule of the room in one place. The order is
-    a walk of the hierarchy rather than a column, so a replacement written long after its
-    neighbours still reads where its position is — the order the team told in, not the order
-    the rows landed in.
-
-    Ordered here rather than in SQL because a session holds tens of rows and the walk is the
-    same on both databases. `takes_of` is the reminder: an ordering left to the engine read one
-    way on SQLite and upside down on the one that serves a real team.
+    Current and leaf, which is the whole selection rule of the room in one place. Where a
+    stretch reads is where its audio sits — the part it is a slice of, then the milliseconds
+    inside that part — so a stretch written long after its neighbours still reads in its own
+    place, and a replacement reads where the row it replaced did. `current_segments` is where
+    that order is asked of the database; the hierarchy is walked here, because a stretch the
+    team divided is read as its pieces and the walk is the same on both databases.
     """
     rows = await current_segments(db, session_id)
-    children: dict[str | None, list[IRSegment]] = {}
-    for row in rows:
-        children.setdefault(row.parent_id, []).append(row)
-
-    ordered: list[IRSegment] = []
-
-    def walk(parent_id: str | None) -> None:
-        for row in children.get(parent_id, []):
-            if children.get(row.id):
-                walk(row.id)
-            else:
-                ordered.append(row)
-
-    walk(None)
-    return ordered
+    return [row for row, divided in _read_in_order(rows) if not divided]
 
 
 def told_back(segments: list[IRSegment]) -> list[IRSegment]:
@@ -370,31 +382,100 @@ async def parent_of(db: AsyncSession, segment: IRSegment) -> IRSegment | None:
     return await segment_by_id(db, segment.parent_id)
 
 
-async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
-    """Stop every current stretch of a session counting, with nothing taking its place.
+def _stop_counting(segments: list[IRSegment]) -> None:
+    """Stamp one moment on every one of them, with nothing taking their place.
 
-    This is a telling-back started over on a recording the team threw away, so there is no
-    successor to name — which is why what stops a stretch counting and what replaced it are
-    two separate facts.
+    What stops a stretch counting and what replaced it are two separate facts, and here there
+    is no successor to name: these are **Abandoned** rows. One moment for the lot, because it
+    is one act.
     """
     at = datetime.now(UTC)
-    for segment in await current_segments(db, session_id):
+    for segment in segments:
         segment.superseded_at = at
+
+
+async def retire_every_segment(db: AsyncSession, session_id: str) -> None:
+    """Stop every current stretch of a session counting.
+
+    This is a telling-back started over on a recording the team threw away: the whole rehearsal
+    went, so the whole reading goes with it.
+    """
+    _stop_counting(await current_segments(db, session_id))
     await db.commit()
 
 
+async def retire_the_segments_of(
+    db: AsyncSession, session_id: str, *, take_ids: set[str]
+) -> list[IRSegment]:
+    """Stop the stretches of these recordings counting, and answer with which ones went.
+
+    Recording one **Part** again is the narrow case of the verb above: what goes is the
+    stretches that are slices of the takes the new one replaces, and what stands is every other
+    part. The caller needs to know which rows went, because the findings that pointed at them go
+    too.
+
+    **A piece of a stretch that goes is a piece of that part, whatever recording it now sits
+    on.** A stretch re-recorded in the mother tongue moves onto the take carrying the new audio,
+    and when the passage could not be rebuilt around it the piece stays there — on a recording
+    with no part number of its own. Taken by the take alone, it would outlive its own parent: a
+    row still counting whose parent is abandoned, which the reading walks from the top and never
+    reaches, so it would vanish from the packet, the check block, the analyst's list and the
+    listening gate while the row went on saying it counts.
+
+    The transaction is left open, because the retired rows and the telling-back state they empty
+    are one fact about one upload: committed apart, a failure between them leaves the room
+    carrying findings about audio nobody will hear again.
+    """
+    rows = await current_segments(db, session_id)
+    children: dict[str | None, list[IRSegment]] = {}
+    for row in rows:
+        children.setdefault(row.parent_id, []).append(row)
+
+    leaving = {row.id for row in rows if row.take_id in take_ids}
+    walking = [row for row in rows if row.id in leaving]
+    while walking:
+        for piece in children.get(walking.pop().id, []):
+            if piece.id not in leaving:
+                leaving.add(piece.id)
+                walking.append(piece)
+
+    going = [row for row in rows if row.id in leaving]
+    if not going:
+        return going
+    _stop_counting(going)
+    await db.flush()
+    return going
+
+
 async def current_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
-    """Every stretch of a session that still counts, divided ones included.
+    """Every stretch of a session that still counts, divided ones included, in reading order.
 
     One step short of `final_segments`, which keeps only the leaves. What wants this rather
     than that is what is about the rows and not about the reading: the ordinal a new stretch
     takes, and the re-addressing of a passage that was rebuilt, where a stretch the team
     divided has to move with its own children or stop describing them.
+
+    **The order is the part's number, then the milliseconds inside it** (ADR 0021). The stretch
+    ordinal is one past the last of its own current siblings, which held while the only way to
+    retire a stretch was to retire every one of them at once; recording one **Part** again
+    retires that part alone, and the telling that follows took the next free number and read
+    after every part later in the passage.
+
+    The join is outer because a stretch names a take across an app boundary and nothing at the
+    database level says the row is there (ADR 0006). `nulls_first` is named rather than left to
+    the engine, for the reason `takes_of` says it: SQLite sorts a NULL first and PostgreSQL
+    last, and the whole recording — the part with no number — reads before the numbered ones.
     """
     result = await db.execute(
         select(IRSegment)
+        .outerjoin(IRTake, IRSegment.take_id == IRTake.id)
         .where(IRSegment.session_id == session_id, IRSegment.superseded_at.is_(None))
-        .order_by(IRSegment.ordinal, IRSegment.created_at)
+        .order_by(
+            IRTake.ordinal.asc().nulls_first(),
+            IRSegment.starts_ms,
+            IRSegment.ordinal,
+            IRSegment.created_at,
+        )
     )
     return list(result.scalars().all())
 

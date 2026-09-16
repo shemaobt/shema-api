@@ -199,6 +199,45 @@ async def test_a_model_this_key_cannot_use_steps_down_to_the_next_rung(ladder_cl
     assert text == "ok"
 
 
+class RefusingMessages:
+    """A first rung that turns the request away at the door, and a second that answers."""
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.asked.append(kwargs["model"])
+        if kwargs["model"] == "claude-fable-5-1":
+            reply = _reply("", stop_reason="refusal")
+            reply.content = []
+            return reply
+        return _reply("ok")
+
+
+async def test_a_rung_that_refuses_outright_hands_the_request_to_the_next(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    messages = RefusingMessages()
+    monkeypatch.setattr(
+        llm.anthropic,
+        "AsyncAnthropic",
+        lambda **options: SimpleNamespace(messages=messages, options=options),
+    )
+
+    text = await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert messages.asked == ["claude-fable-5-1", "claude-opus-5"], (
+        "um degrau que recusava a pedido inteiro (stop_reason refusal, zero tokens) era "
+        "devolvido como resposta vazia; a verificação da correção falhava cinco vezes e a "
+        "sessão pedia uma pessoa por um turno em que a equipe acertou tudo"
+    )
+    assert text == "ok"
+    assert llm._SETTLED == {}, (
+        "uma recusa é sobre este pedido, não sobre a chave: o degrau de cima continua sendo "
+        "o primeiro a ser perguntado no próximo turno"
+    )
+
+
 async def test_a_rate_limit_keeps_the_rung_it_is_on(ladder_client) -> None:
     messages = ladder_client("nunca", anthropic.RateLimitError)
 

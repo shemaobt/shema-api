@@ -83,7 +83,7 @@ async def declare_back_translation_session(
     Her runner marks each clip fully listened to before round one, because the rehearsal a
     team never heard cannot be checked and the passage would never close. The report is the
     real one: one entry per part, each in that part's own milliseconds, which is what
-    `playback_confirms_rehearsal` reads (ADR 0017).
+    `unheard_parts` reads (ADR 0017).
     """
     keys = [clip.key for clip in payload.clips]
     if len(set(keys)) != len(keys):
@@ -99,7 +99,7 @@ async def declare_back_translation_session(
         played_by_take=[
             PlayedTake(
                 take_id=take.id,
-                played_ranges=[[0, clip.durationMs]],
+                played_ranges=[(0, clip.durationMs)],
                 clip_duration_ms=clip.durationMs,
             )
             for take, clip in zip(parts, payload.clips, strict=True)
@@ -135,9 +135,11 @@ async def play_a_round(
 
     The verdict is the one `terminei` reaches, from the Correction check to the Speaker's
     words, and it is voiced as text: the seam synthesizes nothing, so the clip key it records
-    is empty and only the words are kept. What it does not carry are the three answers
-    `terminei` gives before that point — the untold-stretch halt, the empty telling-back and
-    the cached verdict of a second press — because they are about a tablet and a team. A round
+    is empty and only the words are kept. What it does not carry are the four answers
+    `terminei` gives before that point — the untold-stretch halt, the unheard-part halt, the
+    empty telling-back and the cached verdict of a second press — because they are about a
+    tablet and a team. The unheard part is the one it could never meet anyway: the session
+    declares every clip listened to through before round one. A round
     with no frases is refused here instead: read as a telling-back, it would ask the analyst to
     compare nothing against the map, get no findings back, and report a golden round as
     `conferida` that nobody ever told.
@@ -219,7 +221,6 @@ async def _capture(
                 f"frase {number} supersedes a telling, and no stretch stands at "
                 f"{frase.clipKey} {frase.coversFrom}-{frase.coversTo}s"
             )
-    state.scope = state.scope or session.pericope
     await room.capture_and_note_a_hard_stretch(
         db,
         session,

@@ -1,12 +1,13 @@
 """The Refine handoff artifact: fail-closed gates and a closed-world package."""
 
+import json
 from datetime import UTC, datetime
+from hashlib import sha256
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSession, IRTake, IRTakeKind
-from app.models.internalization_room import PlayedTake
+from app.db.models.internalization_room import IRSession
 from app.services.internalization_room import release as release_module
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
@@ -14,24 +15,15 @@ from app.services.internalization_room.back_translation import (
     FindingKind,
     SupersededAttempt,
 )
-from app.services.internalization_room.canon.elements import element_keys
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.evidence import (
-    EvidenceMethod,
-    EvidenceObservation,
-    EvidenceResult,
-)
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.release import (
     FORCEABLE_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
+    compose_internalization_release,
 )
+from app.services.internalization_room.retroverification import retroverification_file
 from app.services.internalization_room.segments import (
     capture_segment,
     divide_segment,
@@ -40,169 +32,20 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     create_session,
-    report_playback,
     save_back_translation,
     save_comprehension,
 )
-
-P = "P03"
-
-
-def _supported_comprehension(pericope: str, *, carry_one: bool = False) -> ComprehensionState:
-    checkpoints = list(checkpoints_for(pericope))
-    ledger = []
-    for index, checkpoint in enumerate(checkpoints):
-        result = (
-            EvidenceResult.CARRY_TO_REFINE
-            if carry_one and index == 0
-            else EvidenceResult.DEMONSTRATED
-        )
-        ledger.append(
-            EvidenceObservation(
-                id=f"ev-{index}",
-                unit_id=checkpoint.id,
-                probe_id=f"probe-{index}",
-                method=EvidenceMethod.MICRO_TELLBACK,
-                result=result,
-            )
-        )
-    return ComprehensionState(
-        ledger=list(ledger),
-        practiced_scene_ids=scene_ids_for(pericope),
-    )
-
-
-async def _one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):
-    return await capture_segment(
-        db,
-        session,
-        take_id="ensaio-1",
-        starts_ms=0,
-        ends_ms=61000,
-        bridge_take_id="retro-1",
-        transcript=text,
-    )
-
-
-async def _checked_telling_back(db: AsyncSession, session: IRSession) -> BackTranslationState:
-    told = await _one_stretch(db, session)
-    return BackTranslationState(
-        scope=P,
-        findings=[],
-        checked=True,
-        analysed_segment_ids=[told.id],
-    )
-
-
-def _ensaio_take(
-    session_id: str,
-    *,
-    scope: str = "passagem-inteira",
-    pass_number: int | None = None,
-    ordinal: int | None = None,
-    sha256: str = "a" * 64,
-    created_at: datetime | None = None,
-) -> IRTake:
-    take = IRTake(
-        session_id=session_id,
-        device_id="tablet-1",
-        pericope=P,
-        kind=IRTakeKind.ENSAIO,
-        scope=scope,
-        pass_number=pass_number,
-        ordinal=ordinal,
-        storage_key=f"takes/{session_id}/ensaio/{sha256}",
-        size_bytes=2048,
-        sha256=sha256,
-        crc32c="AAAAAAA=",
-        content_type="audio/mp4",
-    )
-    if created_at is not None:
-        take.created_at = created_at
-    return take
-
-
-def _retro_take(
-    session_id: str,
-    *,
-    scope: str = P,
-    pass_number: int | None = None,
-    ordinal: int | None = None,
-    sha256: str = "a" * 64,
-    created_at: datetime | None = None,
-) -> IRTake:
-    take = IRTake(
-        session_id=session_id,
-        device_id="tablet-1",
-        pericope=P,
-        kind=IRTakeKind.RETRO,
-        scope=scope,
-        pass_number=pass_number,
-        ordinal=ordinal,
-        storage_key=f"takes/{session_id}/retro/{sha256}",
-        size_bytes=2048,
-        sha256=sha256,
-        crc32c="AAAAAAA=",
-        content_type="audio/mp4",
-    )
-    if created_at is not None:
-        take.created_at = created_at
-    return take
-
-
-async def _reported_playback(
-    db: AsyncSession,
-    session: IRSession,
-    state: BackTranslationState,
-    *,
-    played_ranges: list[list[int]] | None = None,
-    clip_duration_ms: int | None = 61000,
-) -> None:
-    """Store the telling-back together with the team's report of what the tablet played.
-
-    Through the room's own write path rather than by filling the fields, because the room
-    binds a report to the rehearsal it is about at the moment it arrives. A report assembled
-    here would name no recording, which is a state the release is entitled to refuse.
-
-    One entry per part the session's stretches name, each carrying the numbers this call was
-    given. These sessions rehearse in one part, so the numbers that used to describe the whole
-    passage are the numbers that part is measured by, and every case here keeps the verdict it
-    had. The flat pair travels beside it, as a tablet still in the field sends it.
-
-    The defaults describe a part played through; a case about a report that falls short says
-    so by naming the numbers it means.
-    """
-    spans = [[0, 61000]] if played_ranges is None else played_ranges
-    told = await final_segments(db, session.id)
-    await report_playback(
-        db,
-        session,
-        state,
-        played_by_take=[
-            PlayedTake(take_id=take_id, played_ranges=spans, clip_duration_ms=clip_duration_ms or 0)
-            for take_id in sorted({stretch.take_id for stretch in told})
-        ],
-        played_ranges=spans,
-        clip_duration_ms=clip_duration_ms,
-    )
-
-
-async def _ready_session(
-    db: AsyncSession, *, project_id: str | None = None, **comprehension_kwargs
-):
-    """A session carrying everything the packet refuses to travel without.
-
-    ``project_id`` is the team whose conversation this is. It stays optional because most of
-    these cases are about the packet and not about whose it is; the release is numbered per
-    project, so the cases about the number name one.
-    """
-    session = await create_session(db, pericope=P, project_id=project_id)
-    session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    await save_comprehension(db, session, _supported_comprehension(P, **comprehension_kwargs))
-    db.add(_ensaio_take(session.id))
-    await db.commit()
-    await _reported_playback(db, session, await _checked_telling_back(db, session))
-    return session
+from tests.release_harness import (
+    CLIP_MS,
+    P,
+    checked_telling_back,
+    ensaio_take,
+    one_stretch,
+    ready_session,
+    reported_playback,
+    retro_take,
+    told_back_with_an_open_finding,
+)
 
 
 @pytest.mark.asyncio
@@ -237,7 +80,13 @@ async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
 async def test_a_ready_session_releases_a_labeled_sealed_package(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session)
+    """The fingerprint is recomputed the way a consumer would, from the packet it received.
+
+    Asked of the module's own helper, the case agreed with whatever that helper did and could
+    not have caught it drifting from the contract Refine reads: what the hash has to be is
+    the canonical dump of the sealed content, and that is what is written out here.
+    """
+    session = await ready_session(db_session)
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -247,17 +96,17 @@ async def test_a_ready_session_releases_a_labeled_sealed_package(
     assert artifact["audio"]["rehearsal_takes"][0]["sha256"] == "a" * 64
     assert artifact["back_translation"]["checked"] is True
     assert [entry["played_ranges"] for entry in artifact["back_translation"]["played_by_take"]] == [
-        [[0, 61000]]
+        [[0, CLIP_MS]]
     ]
     sealed = dict(artifact)
     stamp = sealed.pop("package_sha256")
     sealed.pop("created_at")
     sealed.pop("release_id")
     sealed.pop("version")
+    sealed.pop("check")
+    canonical = json.dumps(sealed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert len(stamp) == 64
-    from app.services.internalization_room.release import _package_sha256
-
-    assert stamp == _package_sha256(sealed)
+    assert stamp == sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class _FixedClock:
@@ -274,7 +123,7 @@ class _FixedClock:
 async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     first_instant = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
     second_instant = datetime(2026, 9, 10, 9, 0, tzinfo=UTC)
     monkeypatch.setattr(release_module, "datetime", _FixedClock([first_instant, second_instant]))
@@ -293,12 +142,12 @@ async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
 async def test_one_more_stretch_told_changes_the_packet_hash(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     frozen = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
     monkeypatch.setattr(release_module, "datetime", _FixedClock([frozen, frozen]))
 
     before = await build_internalization_release(db_session, session)
-    await _one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
+    await one_stretch(db_session, session, text="Rute espigou no campo de Boaz")
     after = await build_internalization_release(db_session, session)
 
     assert before["package_sha256"] != after["package_sha256"], (
@@ -310,7 +159,7 @@ async def test_one_more_stretch_told_changes_the_packet_hash(
 async def test_a_carried_point_travels_with_its_canonical_material(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session, carry_one=True)
+    session = await ready_session(db_session, carry_one=True)
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -324,9 +173,9 @@ async def test_a_carried_point_travels_with_its_canonical_material(
 
 @pytest.mark.asyncio
 async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession) -> None:
-    session = await _ready_session(db_session)
-    state = await _checked_telling_back(db_session, session)
-    await _reported_playback(db_session, session, state, played_ranges=[[0, 20000]])
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
+    await reported_playback(db_session, session, state, played_ranges=[[0, 20000]])
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -344,9 +193,9 @@ async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_rele
     61-second stretch it is filed against, because the clip is 37 seconds long. The
     package that carries it must not travel.
     """
-    session = await _ready_session(db_session)
-    state = await _checked_telling_back(db_session, session)
-    await _reported_playback(db_session, session, state, clip_duration_ms=37000)
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
+    await reported_playback(db_session, session, state, clip_duration_ms=37000)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -356,16 +205,16 @@ async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_rele
 
 @pytest.mark.asyncio
 async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSession) -> None:
-    session = await _ready_session(db_session)
-    state = await _checked_telling_back(db_session, session)
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
     state.superseded = [
         SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
     ]
-    await _reported_playback(db_session, session, state)
+    await reported_playback(db_session, session, state)
     await retire_every_segment(db_session, session.id)
-    abandoned = await _one_stretch(db_session, session, "tentativa antiga")
+    abandoned = await one_stretch(db_session, session, "tentativa antiga")
     await retire_every_segment(db_session, session.id)
-    kept = await _one_stretch(db_session, session)
+    kept = await one_stretch(db_session, session)
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -384,22 +233,23 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
 async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     db_session: AsyncSession,
 ) -> None:
-    """A re-record starts the parts at one again, so the rehearsal the team abandoned and
-    the one they kept both reach here as `parte-1`, chunk 1, and the audio is addressed by
-    its own hash, so both rows stay.
+    """Two takes under part one: the packet carries the newest, and the file carries both.
 
-    The pass is the only label that separates them, and the order has to come from it: the
-    tablet's outbox drains whenever the link comes back, so the abandoned take can be
-    written down after the take that replaced it.
+    The rehearsal the team abandoned and the one they kept both arrive as `parte-1`, and the
+    audio is addressed by its own hash, so both rows stay. What Refine is handed is the draft
+    the team is working on — one take per part — and the earlier one is history, which the
+    **Retroverification file** is where the facilitator and the consultant read.
 
-    The whole-passage take `_ready_session` leaves carries neither an ordinal nor a pass, and
-    it is read here too: it comes first on every engine now that `takes_of` says where a
-    NULL belongs, which is the same reading order — the undivided recording before the
-    parts, and a take from before the room sent a pass before the ones that carry it.
+    Which of the two is the part is the pass the tablet counted, and not the moment the upload
+    landed: the outbox drains whenever the link comes back, so the abandoned take can be written
+    down *after* the take that replaced it, and it is written down that way here on purpose.
+
+    The whole-passage take `ready_session` leaves is a part of its own: it carries no number,
+    and the undivided recording reads before the numbered parts on either engine.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     db_session.add(
-        _ensaio_take(
+        ensaio_take(
             session.id,
             scope="parte-1",
             pass_number=2,
@@ -409,7 +259,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
         )
     )
     db_session.add(
-        _ensaio_take(
+        ensaio_take(
             session.id,
             scope="parte-1",
             pass_number=1,
@@ -421,15 +271,20 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     await db_session.commit()
 
     artifact = await build_internalization_release(db_session, session)
+    file = await retroverification_file(db_session, session)
 
     seen = [
         (take["ordinal"], take["pass_number"], take["sha256"])
         for take in artifact["audio"]["rehearsal_takes"]
     ]
 
-    assert seen == [(None, None, "a" * 64), (1, 1, "b" * 64), (1, 2, "c" * 64)], (
-        "sem a passada, quem abrisse a passagem no Refine ouvia o ensaio abandonado como "
-        "o primeiro da equipe, e pela chegada a ordem sairia trocada"
+    assert seen == [(None, None, "a" * 64), (1, 2, "c" * 64)], (
+        "o ensaio que a equipe abandonou viajava para o Refine ao lado do que ficou, e nada "
+        "nos rótulos dizia qual era qual; e pela chegada a escolha sairia trocada, porque a "
+        "passada 1 foi anotada depois da 2"
+    )
+    assert "b" * 64 in [take.sha256 for take in file.takes], (
+        "e a tomada abandonada continua inteira no arquivo de retroverificação"
     )
 
 
@@ -437,20 +292,20 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
 async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session)
-    told_last = _retro_take(
+    session = await ready_session(db_session)
+    told_last = retro_take(
         session.id,
         pass_number=2,
         sha256="d" * 64,
         created_at=datetime(2026, 8, 23, 9, 0, tzinfo=UTC),
     )
-    told_first = _retro_take(
+    told_first = retro_take(
         session.id,
         pass_number=1,
         sha256="e" * 64,
         created_at=datetime(2026, 8, 23, 10, 0, tzinfo=UTC),
     )
-    told_second = _retro_take(
+    told_second = retro_take(
         session.id,
         pass_number=1,
         sha256="f" * 64,
@@ -469,33 +324,6 @@ async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
     ], "sem ordinal, o pacote lista pela passada e depois pela chegada"
 
 
-async def _told_back_with_an_open_finding(
-    db: AsyncSession, session: IRSession
-) -> BackTranslationState:
-    """A telling-back the team finished and chose not to resolve.
-
-    `analysed_segment_ids` names the stretch because the analyst did read it — that is what
-    makes the finding open rather than the verdict unasked.
-
-    `checked` is written as `finding is None`, so an open finding makes it false — which is
-    the whole state this slice is about.
-    """
-    told = await _one_stretch(db, session)
-    return BackTranslationState(
-        scope=P,
-        findings=[
-            Finding(
-                kind=FindingKind.ADDITION,
-                note="a equipe disse que Noemi voltou alegre",
-                segment_id=told.id,
-                chunk=1,
-            )
-        ],
-        checked=False,
-        analysed_segment_ids=[told.id],
-    )
-
-
 @pytest.mark.asyncio
 async def test_a_session_carrying_an_open_finding_is_refused(
     db_session: AsyncSession,
@@ -512,9 +340,9 @@ async def test_a_session_carrying_an_open_finding_is_refused(
     The way out is still there and it is a person's: the raised hand, answered, and then the
     facilitator's code.
     """
-    session = await _ready_session(db_session)
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
@@ -533,10 +361,10 @@ async def test_a_never_analysed_telling_back_is_named_before_the_open_finding(
     reading. Named `telling_back_not_checked`, a facilitator would go looking for a finding
     that was never raised, and would find the room had never been asked.
     """
-    session = await _ready_session(db_session)
-    state = await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session)
+    state = await told_back_with_an_open_finding(db_session, session)
     state.analysed_segment_ids = None
-    await _reported_playback(db_session, session, state)
+    await reported_playback(db_session, session, state)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -549,7 +377,7 @@ async def test_a_session_that_never_told_anything_back_is_still_refused(
     db_session: AsyncSession,
 ) -> None:
     """The door that has to stay shut: nothing was told back at all."""
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     await save_back_translation(db_session, session, BackTranslationState(scope=P))
     await retire_every_segment(db_session, session.id)
 
@@ -561,7 +389,7 @@ async def test_a_session_that_never_told_anything_back_is_still_refused(
 
 @pytest.mark.asyncio
 async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSession) -> None:
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -571,7 +399,7 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
 
 
 @pytest.mark.asyncio
-async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
+async def test_the_forced_row_keeps_the_note_the_packet_lost(
     db_session: AsyncSession,
 ) -> None:
     """A forced packet that does not name the finding is worse than the refusal it replaced.
@@ -579,28 +407,41 @@ async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
     The release exists because a person overruled the room, so what they overruled has to be
     inside it and on the row beside it. Without that the question reaches Refine unseen, and
     unlike a blocked release that looks resolved.
+
+    What the two say about it differs by one key, and only one. The packet names the kind and
+    the address, because Refine is where the team works; the row keeps the analyst's own words,
+    because a facilitator reading back what was overruled is reading the consultant's material.
+    The row is dumped from the state the packet was composed from and not from the packet's own
+    list, which is what lets one lose the note while the other keeps it.
     """
-    session = await _ready_session(db_session, project_id="time-que-discordou")
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    overruled = "a equipe disse que Noemi voltou alegre"
+    session = await ready_session(db_session, project_id="time-que-discordou")
+    await reported_playback(
+        db_session,
+        session,
+        await told_back_with_an_open_finding(db_session, session, note=overruled),
     )
 
     release = await approve_release(db_session, session, forced_by="a-facilitadora")
 
     carried = release.packet["back_translation"]["findings"]
     assert [finding["kind"] for finding in carried] == ["addition"]
-    assert carried[0]["note"] == "a equipe disse que Noemi voltou alegre"
     assert carried[0]["segment_id"] is not None
     assert carried[0]["chunk"] == 1
-    assert release.forced_open_findings == carried
+    assert "note" not in carried[0]
+    assert release.forced_open_findings[0]["note"] == overruled
+    assert [
+        {key: value for key, value in finding.items() if key != "note"}
+        for finding in release.forced_open_findings
+    ] == carried
 
 
 @pytest.mark.asyncio
 async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     """One item leaves the list; its neighbours are not loosened with it."""
-    session = await _ready_session(db_session)
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
     await save_comprehension(db_session, session, ComprehensionState())
     session.coverage_state = {}
@@ -625,13 +466,13 @@ async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     telling-back, and its defaults — no findings, evidence sufficient — are the same
     package a clean check produces.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     await save_back_translation(
         db_session,
         session,
         BackTranslationState(scope=P),
     )
-    await _one_stretch(db_session, session)
+    await one_stretch(db_session, session)
 
     with pytest.raises(InternalizationReleaseBlocked) as blocked:
         await build_internalization_release(db_session, session)
@@ -651,7 +492,7 @@ async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     hearing their own recording again and finding two ideas in it, which is them working, so
     the first telling is kept rather than the division being refused.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     whole = (await final_segments(db_session, session.id))[0]
     for half in await divide_segment(db_session, session, whole, at_ms=30000):
         await capture_segment(
@@ -685,11 +526,11 @@ async def _a_row_written_before_the_taxonomy_shrank(db: AsyncSession, session: I
     is bound to the rehearsal exactly as it is in the field, and only the kinds are then set
     to the names the older server wrote.
     """
-    state = await _told_back_with_an_open_finding(db, session)
+    state = await told_back_with_an_open_finding(db, session)
     state.superseded = [
         SupersededAttempt(findings=[Finding(kind=FindingKind.ADDITION, note="trocaram quem pediu")])
     ]
-    await _reported_playback(db, session, state)
+    await reported_playback(db, session, state)
     stored = dict(session.back_translation)
     stored["findings"] = [dict(stored["findings"][0], kind="meaning_change")]
     stored["superseded"] = [
@@ -711,10 +552,15 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
     A retired name reaching the packet would put a kind nobody downstream defines in front
     of the people who have to act on it, on a session the team started before the change.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     await _a_row_written_before_the_taxonomy_shrank(db_session, session)
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert [f["kind"] for f in artifact["back_translation"]["findings"]] == ["addition"]
     assert [
@@ -734,7 +580,7 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     finding beside it is no finding at all. What the package carries is what the team still
     has to answer, and `checked` alone says whether the reading came out clean.
     """
-    session = await _ready_session(db_session)
+    session = await ready_session(db_session)
     told = await final_segments(db_session, session.id)
     stored = dict(session.back_translation)
     stored["evidence_sufficient"] = False
@@ -756,7 +602,12 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     session.back_translation = stored
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     package = artifact["back_translation"]
     assert "evidence_sufficient" not in package
@@ -770,12 +621,17 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
 async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session)
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert artifact["open_questions"] == 1
 
@@ -790,8 +646,8 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
     questions are open on a passage the room told the team has one thing left — and Refine
     reads that headline to decide how much of the draft still needs a person.
     """
-    session = await _ready_session(db_session)
-    state = await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session)
+    state = await told_back_with_an_open_finding(db_session, session)
     state.findings = [
         *state.findings,
         Finding(
@@ -801,9 +657,14 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
             chunk=state.findings[0].chunk,
         ),
     ]
-    await _reported_playback(db_session, session, state)
+    await reported_playback(db_session, session, state)
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert [finding["kind"] for finding in artifact["back_translation"]["findings"]] == [
         "addition",
@@ -816,12 +677,12 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
 async def test_a_superseded_telling_back_is_history_and_counts_nothing(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session)
-    state = await _checked_telling_back(db_session, session)
+    session = await ready_session(db_session)
+    state = await checked_telling_back(db_session, session)
     state.superseded = [
         SupersededAttempt(findings=[Finding(kind=FindingKind.MISSING, note="Orfa")])
     ]
-    await _reported_playback(db_session, session, state)
+    await reported_playback(db_session, session, state)
 
     artifact = await build_internalization_release(db_session, session)
 
@@ -835,11 +696,16 @@ async def test_a_superseded_telling_back_is_history_and_counts_nothing(
 async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
     db_session: AsyncSession,
 ) -> None:
-    session = await _ready_session(db_session, carry_one=True)
-    await _reported_playback(
-        db_session, session, await _told_back_with_an_open_finding(db_session, session)
+    session = await ready_session(db_session, carry_one=True)
+    await reported_playback(
+        db_session, session, await told_back_with_an_open_finding(db_session, session)
     )
 
-    artifact = await build_internalization_release(db_session, session, waived=FORCEABLE_BLOCKERS)
+    artifact, blockers = await compose_internalization_release(db_session, session)
+
+    assert set(blockers) <= FORCEABLE_BLOCKERS, (
+        "o que segura esta sessão é só a porta que um facilitador abre; qualquer outro "
+        "bloqueio seria material faltando, e o pacote abaixo não seria sobre este estado"
+    )
 
     assert artifact["open_questions"] == 2
