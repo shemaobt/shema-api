@@ -107,7 +107,13 @@ def _package_sha256(artifact: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _recording_grain(parts: list[IRTake]) -> str:
+#: The two grains a rehearsal can reach Refine in, and the one place that says so. Closed like
+#: `CheckStatus` below and for the same reason: they are wire words a consumer switches on, and
+#: a third one is a conversation rather than a return statement.
+RecordingGrain = Literal["parts", "whole"]
+
+
+def _recording_grain(parts: list[IRTake]) -> RecordingGrain:
     """Whether the rehearsal that reached here was told whole or in parts.
 
     Read off the parts' own numbers, because that is the one place the answer is: the tablet
