@@ -80,8 +80,13 @@ async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_
     assert asked["ladder"] == ["claude-fable-5-1", "claude-opus-5", "claude-opus-4-8"], (
         "um juiz barato é um carimbo: a escada é a da voz, Fable 5.1 primeiro, como no 5/5 dela"
     )
-    assert (asked["max_output_tokens"], asked["effort"], asked["thinks"]) == (4000, "high", True), (
-        "maxTokens 4000 e effort high são os do run.ts dela (133-134); pensar é a regra dela"
+    assert (asked["max_output_tokens"], asked["effort"], asked["thinks"]) == (
+        16000,
+        "high",
+        True,
+    ), (
+        "effort high é o do run.ts dela (134); pensar é a regra dela; o teto é um que o juiz não "
+        "alcança — os 4000 dela cortaram um veredito em quatro nesta sala"
     )
     assert asked["schema"]["required"] == ["scores", "incidents", "pass", "summary"], (
         "a resposta é presa à forma JSON que o prompt dela pede, e só a ela"

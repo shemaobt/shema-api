@@ -28,7 +28,9 @@ JUDGE_NOW = "Judge this session now. Return only the JSON object."
 
 _MARKER = re.compile(r"^`?=== (BEGIN|END) SYSTEM PROMPT ===`?\s*$", re.M)
 
-_SCORE = {"type": "integer", "minimum": 0, "maximum": 4}
+#: An integer and no more: the API's structured output refuses `minimum`/`maximum` on one, and
+#: the 0-to-4 range is what the prompt asks for and what `passes` reads.
+_SCORE = {"type": "integer"}
 _DIMENSIONS = (
     "understands_team",
     "answers_requests_to_understand",
@@ -93,7 +95,10 @@ async def judge_session(
     Fable 5.1, and a judge on a cheaper rung would be the one place in this system where a
     weaker model is nobody's build failure — so the ladder is the voice's, and the row this
     call takes in `docs/doctrine/MODEL_SEAM` is what stops it being moved quietly. The
-    budget and the effort are the ones her `run.ts` gives it.
+    effort is the one her `run.ts` gives it. The budget is not: her 4000 is spent on
+    thinking and answer together here, and on this room's transcripts it cut one verdict in
+    four mid-string — "never truncation" is her floor, so the ceiling is one the judge
+    does not reach.
     """
     cfg = settings or get_settings()
     system = cache_break_at_end(
@@ -108,7 +113,7 @@ async def judge_session(
         system_prompt=system,
         user_content=f"{JUDGE_NOW}\n\n{transcript}",
         ladder=voice_ladder(cfg),
-        max_output_tokens=4000,
+        max_output_tokens=16000,
         effort="high",
         thinks=True,
         schema=_VERDICT,
