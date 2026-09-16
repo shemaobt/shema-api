@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import statistics
@@ -48,6 +49,7 @@ from typing import Any
 
 import httpx
 
+from app.api.internalization_room.text_seam import _collecting_model_calls
 from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
 from scripts.golden_checks import mechanical_checks
 from scripts.sync_doctrine import read_pin
@@ -129,6 +131,7 @@ class SessionResult:
     refused: str | None = None
     verdict: dict[str, Any] | None = None
     unjudged: str | None = None
+    judge_usage: list[Usage] = field(default_factory=list)
 
     @property
     def faults(self) -> list[str]:
@@ -394,16 +397,28 @@ async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str)
     session without a verdict, which her runner treats as a session that did not pass, and
     the run goes on to the next script: the transcript already paid for is on disk, and the
     row says what the judge did not say. A verdict that never came is not written.
+
+    The call's cost is read the way the seam reads a turn's: off the one usage line
+    `call_agent` writes, through the seam's own collector, so the judge is priced into the
+    run beside the Guide and the Validator — as her US$ 8 counted it — and not from a
+    second ledger. The line is written at INFO and this process configures no logging, so
+    the logger is opened to that level here or the call is silently free.
     """
-    try:
-        result.verdict = await judge_session(
-            pericope=script.pericopeId,
-            language=script.language,
-            transcript=judge_transcript(result.played),
-        )
-    except Exception as failed:
-        result.unjudged = str(failed)
-        print(f"  [judge] failed — no verdict for this session: {failed}")
+    logging.getLogger("app.services.internalization_room.llm").setLevel(logging.INFO)
+    with _collecting_model_calls() as calls:
+        try:
+            result.verdict = await judge_session(
+                pericope=script.pericopeId,
+                language=script.language,
+                transcript=judge_transcript(result.played),
+            )
+        except Exception as failed:
+            result.unjudged = str(failed)
+            print(f"  [judge] failed — no verdict for this session: {failed}")
+    result.judge_usage = [Usage.from_wire(call.model_dump()) for call in calls]
+    for call in result.judge_usage:
+        print(f"    {usage_line(call)}")
+    if result.verdict is None:
         return
     verdict = out / f"{script.name}.{stamp}.verdict.json"
     verdict.write_text(
@@ -456,7 +471,9 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
     by_role: dict[str, float] = {}
     unpriced: list[str] = []
-    for call in (call for turn in played for call in turn.usage):
+    spent = [call for turn in played for call in turn.usage]
+    spent += [call for result in results for call in result.judge_usage]
+    for call in spent:
         if call.cost_usd is None:
             unpriced.append(call.rung)
         else:

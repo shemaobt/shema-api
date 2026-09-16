@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -23,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import text_seam
 from app.core.config import get_settings
 from app.services import internalization_room as room
+from app.services.internalization_room import golden_judge, llm
 from scripts import golden_runner
 from tests.text_seam_harness import (
     A_VERDICT,
@@ -402,6 +404,52 @@ async def test_a_judge_that_returns_no_verdict_fails_the_session_and_the_run_goe
         "a linha do console é a dela: judge=n/a quando o juiz não respondeu (run.ts:208)"
     )
     assert exit_code == 1
+
+
+class _Wire:
+    """The provider behind the real `call_agent`, answering the judge with a priced reply."""
+
+    def __init__(self, reply: str) -> None:
+        self.reply = reply
+        self.messages = self
+
+    async def create(self, **_: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=self.reply)],
+            stop_reason="end_turn",
+            model="claude-fable-5-1",
+            usage=SimpleNamespace(
+                input_tokens=1200,
+                output_tokens=400,
+                cache_read_input_tokens=896000,
+                cache_creation_input_tokens=0,
+            ),
+        )
+
+
+async def test_the_judges_call_is_priced_into_the_run_beside_the_guide_and_the_validator(
+    over_the_seam, her_sessions: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    monkeypatch.setattr(golden_judge, "call_agent", llm.call_agent)
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", lambda **_: _Wire(json.dumps(A_VERDICT)))
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake")
+    out = tmp_path / "reports"
+
+    await golden_runner.run(_args(her_sessions, out, only="P01-understand-first"))
+
+    assert (
+        "Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ 0.26 — judge US$ 0.26."
+    ) in (out / "README.md").read_text(encoding="utf-8"), (
+        "(1200 x 10 + 400 x 50 + 896000 x 0.25) / 1e6 = 0.256, da tabela, à mão; o 5/5 dela "
+        "somou o juiz junto com o Guia e o Validador"
+    )
+    usage_line = (
+        "[llm-usage] judge claude-fable-5-1 in=1200 cache_read=896000 cache_write=0 out=400 "
+        "US$ 0.256 "
+    )
+    assert usage_line in capsys.readouterr().out, (
+        "a chamada do juiz sai na mesma linha de uso que as do turno"
+    )
 
 
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:
