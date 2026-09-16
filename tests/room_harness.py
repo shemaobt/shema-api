@@ -191,13 +191,19 @@ async def tell_back_about(
     )
 
 
-async def rehearsed_in_parts(db: AsyncSession, count: int) -> tuple[IRSession, list[IRTake]]:
+async def rehearsed_in_parts(
+    db: AsyncSession, count: int, *, project_id: str | None = None
+) -> tuple[IRSession, list[IRTake]]:
     """A session the release refuses only for want of a report, rehearsed in `count` parts.
 
     Each part is its own recording with one stretch told over the whole of it, which is the
     smallest session in which the parts can be told apart at all.
+
+    `project_id` is the team whose conversation this is, named only by the cases that reach a
+    facilitator route: those resolve the session by the team that owns it, and one naming no
+    project is refused before anything about the listening is read.
     """
-    session = await create_session(db, pericope=P, language="pt")
+    session = await create_session(db, pericope=P, project_id=project_id, language="pt")
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, supported_comprehension(P))
 

@@ -471,3 +471,7 @@ def desk_release(session_id: str) -> str:
 
 def desk_release_at(session_id: str, version: int) -> str:
     return f"{PREFIX}/facilitator/sessions/{session_id}/releases/{version}"
+
+
+def desk_retro(session_id: str) -> str:
+    return f"{PREFIX}/facilitator/sessions/{session_id}/retroverificacao"

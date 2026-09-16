@@ -243,7 +243,7 @@ The number of a release within its pericope and project, from one, never reused.
 _Avoid_: revision, pass (the count of tellings of a stretch), rebuild (a new passage take), v-number
 
 **Packet**:
-The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content.
+The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
 
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):

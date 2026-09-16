@@ -29,6 +29,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
     FindingKind,
+    SupersededAttempt,
 )
 from app.services.internalization_room.release import (
     FORCEABLE_BLOCKERS,
@@ -290,22 +291,47 @@ async def test_an_open_finding_without_a_force_reads_sem_conferencia(
     assert [entry["kind"] for entry in check["findings"]] == ["addition"]
 
 
-async def test_the_check_block_never_carries_the_analysts_note(db_session: AsyncSession) -> None:
-    """Her block says what is open and never a word of why: the note is the consultant's.
+async def test_the_analysts_note_is_nowhere_in_the_packet(db_session: AsyncSession) -> None:
+    """ENG-892: what is open travels as a kind and an address, and never as why.
 
-    It goes on travelling in `back_translation.findings`, which ENG-892 is the slice that
-    empties. What this pins is that the block never carried it in the first place.
+    The note cites internal rule ids and uses words banned from the team's ears, and Refine is
+    where the team works. It is not deleted — it keeps a reader in the **Retroverification
+    file**, which is the one artifact written for somebody allowed to see them.
+
+    Two greps, and the difference between them is the point. The key is looked for over the
+    whole telling-back rather than over the list the note used to travel in, so a key added to
+    a finding later cannot bring it back in the other list — the superseded attempt is here for
+    exactly that, being a second list of the same thing. It is not looked for over the whole
+    packet because `comprehension` carries a `note` of its own, which is the room's own note
+    about a probe and nothing the analyst ever wrote.
+
+    The analyst's *words* are looked for over the whole packet, and that is the grep that
+    survives a field nobody has written yet: whatever block a future key lands in, the marker
+    is what says the note reached it. What stays on a finding is the address the block shares.
     """
     session = await ready_session(
         db_session, tell=partial(told_back_with_an_open_finding, note=THE_ANALYSTS_NOTE)
     )
+    state = await stored_telling_back(db_session, session)
+    state.superseded = [
+        SupersededAttempt(
+            findings=[Finding(kind=FindingKind.MISSING, note=THE_ANALYSTS_NOTE, chunk=1)]
+        )
+    ]
+    await reported_playback(db_session, session, state)
 
     packet = await _live_view(db_session, session)
 
-    serialised = json.dumps(packet["check"])
-    assert '"note"' not in serialised
-    assert THE_ANALYSTS_NOTE not in serialised
-    assert packet["back_translation"]["findings"][0]["note"] == THE_ANALYSTS_NOTE
+    assert '"note"' not in json.dumps(packet["back_translation"])
+    assert THE_ANALYSTS_NOTE not in json.dumps(packet)
+    assert packet["schema_version"] == "tripod.internalization-release.v0.6"
+    assert set(packet["back_translation"]["findings"][0]) == {
+        "kind",
+        "segment_id",
+        "chunk",
+        "fills_silence",
+        "raised_by_check",
+    }
 
 
 async def test_conferida_and_heard_complete_never_disagree_with_the_gate(

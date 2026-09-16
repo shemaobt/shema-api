@@ -383,7 +383,7 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
 
 
 @pytest.mark.asyncio
-async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
+async def test_the_forced_row_keeps_the_note_the_packet_lost(
     db_session: AsyncSession,
 ) -> None:
     """A forced packet that does not name the finding is worse than the refusal it replaced.
@@ -391,6 +391,12 @@ async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
     The release exists because a person overruled the room, so what they overruled has to be
     inside it and on the row beside it. Without that the question reaches Refine unseen, and
     unlike a blocked release that looks resolved.
+
+    What the two say about it differs by one key, and only one. The packet names the kind and
+    the address, because Refine is where the team works; the row keeps the analyst's own words,
+    because a facilitator reading back what was overruled is reading the consultant's material.
+    The row is dumped from the state the packet was composed from and not from the packet's own
+    list, which is what lets one lose the note while the other keeps it.
     """
     overruled = "a equipe disse que Noemi voltou alegre"
     session = await ready_session(db_session, project_id="time-que-discordou")
@@ -404,10 +410,14 @@ async def test_the_finding_travels_in_the_packet_the_facilitator_forced(
 
     carried = release.packet["back_translation"]["findings"]
     assert [finding["kind"] for finding in carried] == ["addition"]
-    assert carried[0]["note"] == overruled
     assert carried[0]["segment_id"] is not None
     assert carried[0]["chunk"] == 1
-    assert release.forced_open_findings == carried
+    assert "note" not in carried[0]
+    assert release.forced_open_findings[0]["note"] == overruled
+    assert [
+        {key: value for key, value in finding.items() if key != "note"}
+        for finding in release.forced_open_findings
+    ] == carried
 
 
 @pytest.mark.asyncio
