@@ -49,6 +49,7 @@ from typing import Any
 import httpx
 
 from scripts.golden_checks import mechanical_checks
+from scripts.sync_doctrine import read_pin
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SESSIONS_DIR = REPO_ROOT / "golden/sessions"
@@ -72,6 +73,33 @@ class Script:
 
 
 @dataclass
+class Usage:
+    """One model call as this room's seam reports it; her app reports none."""
+
+    role: str
+    rung: str
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int | None
+    cache_write_tokens: int | None
+    latency_ms: int | None
+    cost_usd: float | None
+
+    @classmethod
+    def from_wire(cls, call: dict[str, Any]) -> Usage:
+        return cls(
+            role=call["role"],
+            rung=call["rung"],
+            input_tokens=call["input_tokens"],
+            output_tokens=call["output_tokens"],
+            cache_read_tokens=call["cache_read_tokens"],
+            cache_write_tokens=call["cache_write_tokens"],
+            latency_ms=call["latency_ms"],
+            cost_usd=call["cost_usd"],
+        )
+
+
+@dataclass
 class Played:
     idx: int
     team: str
@@ -79,7 +107,7 @@ class Played:
     outcome: str
     interrupted: bool = False
     turnMs: int = 0
-    usage: list[dict[str, Any]] = field(default_factory=list)
+    usage: list[Usage] = field(default_factory=list)
     mechanical: list[str] = field(default_factory=list)
 
 
@@ -197,7 +225,7 @@ async def play(
             outcome=reply["outcome"],
             interrupted=turn.interrupted,
             turnMs=int(reply.get("turnMs") or round((time.monotonic() - started) * 1000)),
-            usage=list(reply.get("usage") or []),
+            usage=[Usage.from_wire(call) for call in reply.get("usage") or []],
         )
         line.mechanical = mechanical_checks(
             guide=line.guide,
@@ -213,20 +241,18 @@ async def play(
         print(f"  [{idx}] {line.outcome:<9} {line.turnMs} ms  {line.guide[:90]}…{flag}")
 
 
-def usage_line(call: dict[str, Any]) -> str:
+def usage_line(call: Usage) -> str:
     """One model call, spelled the way her `[llm-usage]` line is: who, on what, and the tokens.
 
     Her line ends at the tokens and a person prices the run from a table afterwards; this
     room's seam already prices the call at list price and times it, so both ride along.
     """
-    cost = call.get("cost_usd")
-    priced = f" US$ {cost}" if cost is not None else ""
-    took = f" {call['latency_ms']} ms" if call.get("latency_ms") is not None else ""
+    priced = f" US$ {call.cost_usd}" if call.cost_usd is not None else ""
+    took = f" {call.latency_ms} ms" if call.latency_ms is not None else ""
     return (
-        f"[llm-usage] {call.get('role', '?')} {call.get('rung', '?')} "
-        f"in={call.get('input_tokens', 0)} cache_read={call.get('cache_read_tokens') or 0} "
-        f"cache_write={call.get('cache_write_tokens') or 0} out={call.get('output_tokens', 0)}"
-        f"{priced}{took}"
+        f"[llm-usage] {call.role} {call.rung} in={call.input_tokens} "
+        f"cache_read={call.cache_read_tokens or 0} cache_write={call.cache_write_tokens or 0} "
+        f"out={call.output_tokens}{priced}{took}"
     )
 
 
@@ -320,13 +346,8 @@ def _refusal(refused: httpx.HTTPStatusError) -> str:
 
 
 def _pins() -> str:
-    doctrine = next(
-        line.split()[1]
-        for line in (REPO_ROOT / "docs/doctrine/DOCTRINE_PIN").read_text().splitlines()
-        if line.startswith("commit ")
-    )
     canon = (REPO_ROOT / "app/services/internalization_room/canon/vendor/VENDOR_PIN").read_text()
-    return f"roteiros e doutrina no pin `{doctrine[:7]}` · cânon `{canon.strip()[:7]}`"
+    return f"roteiros e doutrina no pin `{read_pin().commit[:7]}` · cânon `{canon.strip()[:7]}`"
 
 
 def _tip() -> str:
@@ -361,17 +382,12 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
     refused = [result for result in results if result.refused]
     clean = sum(1 for result in results if not result.faults and not result.refused)
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
-    calls = [call for turn in played for call in turn.usage]
     by_role: dict[str, float] = {}
-    for call in calls:
-        if call.get("cost_usd") is not None:
-            by_role[call["role"]] = by_role.get(call["role"], 0.0) + call["cost_usd"]
+    for call in (call for turn in played for call in turn.usage):
+        if call.cost_usd is not None:
+            by_role[call.role] = by_role.get(call.role, 0.0) + call.cost_usd
     voice = [
-        sum(
-            call.get("latency_ms") or 0
-            for call in turn.usage
-            if call["role"] in ("guide", "validator")
-        )
+        sum(call.latency_ms or 0 for call in turn.usage if call.role in ("guide", "validator"))
         for turn in played
         if turn.usage
     ]
@@ -393,18 +409,21 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
             lines.append(
                 f"| {result.name} | — | {len(result.faults)} | {'; '.join(result.faults)} |"
             )
+    lines.append("")
     if by_role:
         total = sum(by_role.values())
         split = " · ".join(f"{role} US$ {cost:.2f}" for role, cost in sorted(by_role.items()))
-        lines += [
-            "",
+        lines.append(
             f"Custo da rodada (linhas `[llm-usage]`, preços de tabela): ≈ US$ {total:.2f} "
-            f"— {split}.",
-            f"Latência Guia+Validador por turno: {_seconds(voice)}; turno inteiro, com o "
-            f"classificador em linha: {_seconds([turn.turnMs for turn in played])}.",
-        ]
+            f"— {split}."
+        )
     else:
-        lines += ["", "A sala não informou custo por chamada nesta rodada."]
+        lines.append("A sala não informou custo por chamada nesta rodada.")
+    if voice:
+        lines.append(
+            f"Latência Guia+Validador por turno: {_seconds(voice)}; turno inteiro, com o "
+            f"classificador em linha: {_seconds([turn.turnMs for turn in played])}."
+        )
     return "\n".join(lines) + "\n"
 
 

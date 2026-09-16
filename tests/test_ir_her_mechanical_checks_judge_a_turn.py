@@ -38,7 +38,7 @@ def test_a_turn_that_opens_the_passage_more_trips_nothing() -> None:
 def test_a_fail_safe_on_a_turn_that_must_be_answered_is_the_first_thing_named() -> None:
     assert _turn(outcome="fail_safe", guide="Vamos com calma. Toquem no círculo de novo.") == [
         "fail_safe voiced in reply to a turn that must be answered"
-    ], "a canned line in reply to a request to understand is the incident the judge hunts by name"
+    ], "uma fala enlatada respondendo a um pedido de entender é o incidente que o juiz procura"
 
 
 def test_a_fail_safe_where_her_script_does_not_forbid_one_is_not_a_mechanical_fault() -> None:

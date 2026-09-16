@@ -160,17 +160,17 @@ async def test_a_clean_run_exits_zero_and_only_the_named_session_is_played(
     ]
 
 
-def _call(role: str, cost: float | None, ms: int) -> dict[str, Any]:
-    return {
-        "role": role,
-        "rung": "claude-fable-5-1",
-        "input_tokens": 1200,
-        "output_tokens": 59,
-        "cache_read_tokens": 896000,
-        "cache_write_tokens": 0,
-        "latency_ms": ms,
-        "cost_usd": cost,
-    }
+def _call(role: str, cost: float | None, ms: int) -> golden_runner.Usage:
+    return golden_runner.Usage(
+        role=role,
+        rung="claude-fable-5-1",
+        input_tokens=1200,
+        output_tokens=59,
+        cache_read_tokens=896000,
+        cache_write_tokens=0,
+        latency_ms=ms,
+        cost_usd=cost,
+    )
 
 
 def test_a_usage_line_is_spelled_the_way_hers_is_with_the_price_and_the_clock_beside() -> None:
@@ -231,3 +231,28 @@ def test_the_readme_adds_the_money_up_by_role_and_times_the_voice_apart_from_the
         "Latência Guia+Validador por turno: 15 a 33 s (mediana ≈ 24 s); turno inteiro, com o "
         "classificador em linha: 17 a 33 s (mediana ≈ 25 s).\n"
     ), "o README é o dela: a linha do veredito, a tabela, o dinheiro e o relógio"
+
+
+def test_a_rung_the_table_never_priced_still_leaves_the_clock_in_the_readme() -> None:
+    turn = golden_runner.Played(
+        idx=0,
+        team="Oi.",
+        guide=GUIDE_LINE,
+        outcome="pass",
+        turnMs=17000,
+        usage=[_call("guide", None, 10000), _call("validator", None, 5000)],
+    )
+
+    readme = golden_runner.summary(
+        [golden_runner.SessionResult("P01-understand-first", "s-1", [turn])],
+        base_url="http://test/",
+        stamp="2026-09-16T18-00-00",
+        tip="9c4e2b34",
+        pins="pins",
+    )
+
+    assert readme.endswith(
+        "A sala não informou custo por chamada nesta rodada.\n"
+        "Latência Guia+Validador por turno: 15 a 15 s (mediana ≈ 15 s); turno inteiro, com o "
+        "classificador em linha: 17 a 17 s (mediana ≈ 17 s).\n"
+    ), "o preço e o relógio são dois campos: um degrau sem preço de tabela não apaga a latência"
