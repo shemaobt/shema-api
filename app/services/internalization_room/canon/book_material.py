@@ -18,7 +18,7 @@ from app.services.internalization_room.canon.parse_map import (
 LOGS_DIR = VENDOR / "compilation-log"
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
-_REGISTER_COMPLETE = re.compile(r'"high_risk_register_complete"\s*:\s*(true|false)')
+_CHECKLIST_BLOCK = re.compile(r'"validation_checklist"\s*:\s*(\{)', re.S)
 
 
 class PreservationRule(BaseModel):
@@ -67,15 +67,50 @@ def _extract_audit(text: str) -> list[dict]:
     return []
 
 
+def _extract_checklist(text: str) -> dict:
+    """Pull the validation_checklist object out of a Compilation Log.
+
+    Same reasoning as `_extract_audit`: located by key and scanned brace by brace, so a quoted
+    field name landing in the document's prose ahead of the real block is never mistaken for it.
+    """
+    found = _CHECKLIST_BLOCK.search(text)
+    if not found:
+        return {}
+    start = found.start(1)
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                checklist: dict = json.loads(text[start : index + 1])
+                return checklist
+    return {}
+
+
 @lru_cache(maxsize=8)
 def _register_complete(book: str) -> dict[str, bool]:
     """The checklist's own `high_risk_register_complete` flag, per pericope, for one book."""
     complete: dict[str, bool] = {}
     for path in sorted(LOGS_DIR.glob(f"*-{book}-*-COMPILATION-LOG.md")):
         pericope = path.name.split("-", 1)[0]
-        found = _REGISTER_COMPLETE.search(path.read_text(encoding="utf-8"))
-        if found:
-            complete[pericope] = found.group(1) == "true"
+        checklist = _extract_checklist(path.read_text(encoding="utf-8"))
+        if "high_risk_register_complete" in checklist:
+            complete[pericope] = bool(checklist["high_risk_register_complete"])
     return complete
 
 
@@ -108,8 +143,8 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
 
     The same refusal, asked rather than raised. The wheel offers the passages a team can
     choose from and the progression names the one it lands on next, and both have to know
-    which passages open at all — a copy of these two conditions in either of them would stop
-    matching this one the day a third signal joins.
+    which passages open at all — a copy of these three conditions in either of them would stop
+    matching this one the day a fourth signal joins.
     """
     pericope = meaning_map.pericope_num
     book = meaning_map.book
@@ -144,7 +179,7 @@ def require_walkable(meaning_map: MeaningMap) -> None:
     and hands Refine a package asserting a floor nobody verified. Refusing costs the team a
     passage; running costs Refine a false assurance, which is the more expensive of the two.
 
-    The two signals are read separately on purpose. Ruth's passages past the edge happen to
+    The three signals are read separately on purpose. Ruth's passages past the edge happen to
     carry both — no preservation layer *and* a pending survey — but agreement is not either
     one being read, and a layer written before the survey closes would otherwise walk.
     """
