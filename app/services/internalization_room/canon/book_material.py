@@ -18,6 +18,7 @@ from app.services.internalization_room.canon.parse_map import (
 LOGS_DIR = VENDOR / "compilation-log"
 
 _AUDIT_BLOCK = re.compile(r'"high_risk_register_audit"\s*:\s*(\[)', re.S)
+_REGISTER_COMPLETE = re.compile(r'"high_risk_register_complete"\s*:\s*(true|false)')
 
 
 class PreservationRule(BaseModel):
@@ -67,6 +68,18 @@ def _extract_audit(text: str) -> list[dict]:
 
 
 @lru_cache(maxsize=8)
+def _register_complete(book: str) -> dict[str, bool]:
+    """The checklist's own `high_risk_register_complete` flag, per pericope, for one book."""
+    complete: dict[str, bool] = {}
+    for path in sorted(LOGS_DIR.glob(f"*-{book}-*-COMPILATION-LOG.md")):
+        pericope = path.name.split("-", 1)[0]
+        found = _REGISTER_COMPLETE.search(path.read_text(encoding="utf-8"))
+        if found:
+            complete[pericope] = found.group(1) == "true"
+    return complete
+
+
+@lru_cache(maxsize=8)
 def preservation_rules(book: str) -> tuple[PreservationRule, ...]:
     """The book's withholdings: audit entries the project marked `do_not_decide`.
 
@@ -105,7 +118,15 @@ def unwalkable(meaning_map: MeaningMap) -> str | None:
             f"{pericope}: no preservation layer in the {book} canon — the passage's "
             "withholdings were never written, so its completion floor cannot be met"
         )
-    if meaning_map.sta_status != SURVEYED_STATUS:
+    survey_complete = meaning_map.sta_status == SURVEYED_STATUS
+    register_complete = _register_complete(book).get(pericope)
+    if register_complete is not None and register_complete != survey_complete:
+        return (
+            f"{pericope}: the checklist says the high-risk register is "
+            f"{'complete' if register_complete else 'incomplete'} but the survey is "
+            f"{meaning_map.sta_status!r} — the register and the survey disagree"
+        )
+    if not survey_complete:
         return (
             f"{pericope}: the map's survey is {meaning_map.sta_status!r}, not "
             f"{SURVEYED_STATUS!r} — the project has not signed this passage off as canon"
