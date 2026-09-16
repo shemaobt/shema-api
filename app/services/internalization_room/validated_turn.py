@@ -65,6 +65,7 @@ class TurnOutcome:
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
     needs_person: bool = False
+    room_note: str = ""
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
@@ -76,7 +77,7 @@ def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     """
     return [
         Turn(
-            role="user" if message.get("role") == "team" else "assistant",
+            role="assistant" if message.get("role") == "guide" else "user",
             text=str(message.get("text", "")),
         )
         for message in messages
