@@ -24,6 +24,24 @@ _ARC = re.compile(
     r"^### 2\.1 [^\n]*\n(.*?)(?=^### 2\.2 )",
     re.M | re.S,
 )
+_CONTEXT = re.compile(
+    r"^### 2\.2 [^\n]*\n(.*?)(?=^### 2\.3 )",
+    re.M | re.S,
+)
+_TONE = re.compile(
+    r"^### 2\.3 [^\n]*\n(.*?)(?=^### 2\.4 )",
+    re.M | re.S,
+)
+_FUNCTION = re.compile(
+    r"^### 2\.4 [^\n]*\n(.*?)(?=^## 3\. Level 2)",
+    re.M | re.S,
+)
+_LEVEL_ONE = (
+    ("arc", _ARC),
+    ("context", _CONTEXT),
+    ("tone", _TONE),
+    ("function", _FUNCTION),
+)
 _SCENE = re.compile(r"^### Scene (\d+) — (.+?) \(([^)]*)\)\s*$", re.M)
 # 3C is written two ways across the corpus — "Objects and Elements" in half the maps and
 # "Objects and Concepts" in the other half. Matching one would drop the other in silence.
@@ -79,6 +97,9 @@ class MeaningMap(BaseModel):
     wheel down with it, including the passages whose survey is finished.
     """
     arc_prose: str
+    context_prose: str
+    tone_prose: str
+    function_prose: str
     scenes: list[Scene]
     propositions: list[Proposition]
     body: str
@@ -210,9 +231,12 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
     if not h1:
         raise ValidationError(f"{source}: no '# <pericope> — <reference>' title line")
 
-    arc = _ARC.search(body)
-    if not arc:
-        raise ValidationError(f"{source}: §2.1 arc prose not found")
+    level_one: dict[str, str] = {}
+    for section, pattern in _LEVEL_ONE:
+        found = pattern.search(body)
+        if not found:
+            raise ValidationError(f"{source}: Level-1 {section} prose not found")
+        level_one[section] = found.group(1).strip()
 
     scenes = _parse_scenes(body)
     if not scenes:
@@ -227,7 +251,10 @@ def parse_map(text: str, *, source: str = "<memory>") -> MeaningMap:
         genre=str(meta.get("genre", "")),
         status=status,
         sta_status=str(meta.get("sta-status", "")),
-        arc_prose=arc.group(1).strip(),
+        arc_prose=level_one["arc"],
+        context_prose=level_one["context"],
+        tone_prose=level_one["tone"],
+        function_prose=level_one["function"],
         scenes=scenes,
         propositions=_parse_propositions(body),
         body=body.strip(),
