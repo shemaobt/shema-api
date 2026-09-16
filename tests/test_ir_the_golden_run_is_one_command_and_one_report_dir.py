@@ -122,6 +122,7 @@ def _args(sessions: Path, out: Path, **over: Any) -> argparse.Namespace:
         "turns": None,
         "access_code": RUNNER_KEY,
         "stamp": STAMP,
+        "rejudge": None,
     }
     return argparse.Namespace(**{**given, **over})
 
@@ -450,6 +451,67 @@ async def test_the_judges_call_is_priced_into_the_run_beside_the_guide_and_the_v
     assert usage_line in capsys.readouterr().out, (
         "a chamada do juiz sai na mesma linha de uso que as do turno"
     )
+
+
+async def test_a_committed_run_is_judged_again_from_its_exports_without_playing_the_room(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "2026-09-16"
+    earlier.mkdir()
+    (earlier / "P01-understand-first.2026-09-16T21-13-26.json").write_text(
+        json.dumps(
+            {
+                "name": "P01-understand-first",
+                "pericopeId": "P01",
+                "language": "Brazilian Portuguese",
+                "baseUrl": "http://127.0.0.1:8047/api/internalization-room/text-seam/",
+                "sessionId": "s-1",
+                "turns": [
+                    {
+                        "idx": 0,
+                        "team": "Oi.",
+                        "guide": GUIDE_LINE,
+                        "outcome": "pass",
+                        "interrupted": False,
+                        "turnMs": 17000,
+                        "usage": [],
+                        "mechanical": [],
+                    },
+                    {
+                        "idx": 1,
+                        "team": "Explica de novo.",
+                        "guide": GUIDE_LINE,
+                        "outcome": "pass",
+                        "interrupted": False,
+                        "turnMs": 12000,
+                        "usage": [],
+                        "mechanical": ["verbatim repeat of the previous guide turn"],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "2026-09-16-rejulgado"
+
+    exit_code = await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
+
+    assert judge.asked[0]["user_content"].endswith(
+        f"[turn 1]\nTEAM: Explica de novo.\nGUIDE (pass): {GUIDE_LINE}"
+    ), "o juiz lê o mesmo bloco que a rodada original exportou, remontado do JSON"
+    verdict = out / "P01-understand-first.2026-09-16T21-13-26.verdict.json"
+    assert json.loads(verdict.read_text(encoding="utf-8")) == A_VERDICT, (
+        "o veredito leva o carimbo da transcrição que julgou, não o de hoje"
+    )
+    readme = (out / "README.md").read_text(encoding="utf-8")
+    assert "`http://127.0.0.1:8047/api/internalization-room/text-seam/`" in readme
+    assert (
+        "| P01-understand-first | FAIL | 1 | turn 1: verbatim repeat of the previous guide turn; "
+        "juiz: answers_requests_to_understand 1; "
+        "juiz: turn 1 · blocker · redirect_on_request_to_understand |"
+    ) in readme, "a coluna mecânica vem do JSON exportado, o juiz da chamada de agora"
+    assert exit_code == 1
 
 
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:

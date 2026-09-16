@@ -527,6 +527,8 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
 
 
 async def run(args: argparse.Namespace) -> int:
+    if args.rejudge:
+        return await rejudge(args)
     scripts = [load_script(path) for path in scripts_to_play(args)]
     if not scripts:
         print(f"golden: no session named {args.only}", file=sys.stderr)
@@ -543,6 +545,61 @@ async def run(args: argparse.Namespace) -> int:
                     script, client, base_url=base_url, out=out, stamp=stamp, turns=args.turns
                 )
             )
+    return close(results, out=out, base_url=base_url, stamp=stamp)
+
+
+def exported(path: Path) -> tuple[Script, SessionResult, str]:
+    """A session as a run left it: the script's head, the turns played, the room it was played on.
+
+    The turns' usage is left out on purpose: those calls were paid for by the run that
+    exported them and are already in its README, and a re-judgement's money is the judge's.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
+    played = [
+        Played(
+            idx=turn["idx"],
+            team=turn["team"],
+            guide=turn["guide"],
+            outcome=turn["outcome"],
+            interrupted=turn["interrupted"],
+            turnMs=turn["turnMs"],
+            mechanical=turn["mechanical"],
+        )
+        for turn in raw["turns"]
+    ]
+    return script, SessionResult(script.name, raw["sessionId"], played), raw["baseUrl"]
+
+
+async def rejudge(args: argparse.Namespace) -> int:
+    """Her judge over a run already on disk, with the room left alone.
+
+    A judge prompt that changes, or a rung that does, changes the verdict and not the
+    transcript; and a run's verdict can be asked for twice without paying the five sessions
+    again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
+    pericope names today, and its verdict written under the same name and stamp into `--out`,
+    so the file still says which transcript it judged. The mechanical column is the one the
+    run exported; the judge's column is this call's.
+    """
+    out = Path(args.out)
+    results: list[SessionResult] = []
+    base_url = ""
+    for path in sorted(Path(args.rejudge).glob("*.json")):
+        if path.name.endswith(".verdict.json"):
+            continue
+        script, result, base_url = exported(path)
+        print(f"\n▶ {script.name} — judging {path.name} again")
+        out.mkdir(parents=True, exist_ok=True)
+        await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
+        results.append(result)
+    if not results:
+        print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
+        return 2
+    stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+    return close(results, out=out, base_url=base_url, stamp=stamp)
+
+
+def close(results: list[SessionResult], *, out: Path, base_url: str, stamp: str) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "README.md").write_text(
         summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins()),
@@ -561,7 +618,8 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", required=True)
+    parser.add_argument("--base-url", default=None)
+    parser.add_argument("--rejudge", default=None)
     parser.add_argument("--script", default=None)
     parser.add_argument("--sessions", default=str(SESSIONS_DIR))
     parser.add_argument("--only", default=None)
@@ -571,7 +629,10 @@ def main() -> int:
     parser.add_argument("--turns", type=int, default=None)
     parser.add_argument("--stamp", default=None)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
-    return asyncio.run(run(parser.parse_args()))
+    args = parser.parse_args()
+    if not args.base_url and not args.rejudge:
+        parser.error("--base-url names the room to play, or --rejudge <dir> a run to judge again")
+    return asyncio.run(run(args))
 
 
 if __name__ == "__main__":
