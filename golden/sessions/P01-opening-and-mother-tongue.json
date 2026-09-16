@@ -1,0 +1,23 @@
+{
+  "name": "P01-opening-and-mother-tongue",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "The voice opens the session (introduces itself, says how to talk to it, begins with the whole); Terena spoken on the mic reaches the Guide only as a room-note and is welcomed as rehearsal, never treated as words or as a problem; an interruption is answered, not repeated; a harmless paraphrase in a retelling is NOT nagged as a gap.",
+  "turns": [
+    { "kickoff": true,
+      "expect": { "no_fail_safe": true, "no_rehearsal_invite": true } },
+    { "team": "Bom dia. Somos a equipe Terena: o Jean, o Daniel e o Suzuki. Pode continuar.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Entendemos o começo. Vamos ensaiar essa primeira parte entre nós." },
+    { "motherTongue": 40,
+      "expect": { "no_fail_safe": true } },
+    { "team": "Pronto. Em português: no tempo em que os juízes mandavam, faltou comida na terra. Um homem de Belém de Judá foi morar em Moabe com a esposa e os dois meninos. Ele era Elimeleque, ela Noemi, os meninos Malom e Quiliom, gente de Efrata, de Belém.",
+      "expect": { "no_fail_safe": true, "no_nag_on_paraphrase": true } },
+    { "team": "E a próxima parte?",
+      "expect": { "no_fail_safe": true } },
+    { "interrupted": true, "team": "Espera, espera. Antes disso: a Noemi ficou sozinha ou ficou com os filhos quando o marido morreu?",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Tá. Então ela ficou com os dois filhos. Pode seguir.",
+      "expect": { "no_fail_safe": true } }
+  ]
+}
