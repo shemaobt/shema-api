@@ -128,3 +128,36 @@ async def test_the_judge_runs_on_the_frontier_rung_with_her_budget_and_thinking_
     assert asked["schema"]["required"] == ["scores", "incidents", "pass", "summary"], (
         "a resposta é presa à forma JSON que o prompt dela pede, e só a ela"
     )
+
+
+def _verdict(*, incidents: list[str] = (), said_pass: bool = True, **scores: int) -> dict[str, Any]:
+    return {
+        "scores": {**dict.fromkeys(A_VERDICT["scores"], 4), **scores},
+        "incidents": [
+            {"turn": 1, "severity": severity, "kind": "k", "quote": "q", "why": "w"}
+            for severity in incidents
+        ],
+        "pass": said_pass,
+        "summary": "",
+    }
+
+
+@pytest.mark.parametrize(
+    ("verdict", "expected", "rule"),
+    [
+        (_verdict(), True, "tudo 4 e nenhum incidente passa"),
+        (_verdict(containment=2), False, "containment ≥ 3"),
+        (_verdict(answers_requests_to_understand=2), False, "answers_requests_to_understand ≥ 3"),
+        (_verdict(rehearsal_and_honest_checking=2), False, "rehearsal_and_honest_checking ≥ 3"),
+        (_verdict(incidents=["blocker"]), False, "no blocker incidents"),
+        (_verdict(incidents=["major", "minor"]), True, "major e minor não reprovam sozinhos"),
+        (_verdict(register=0), False, "no dimension is 0 — mesmo fora das três com piso"),
+        (_verdict(understands_team=1, adaptivity=2), True, "1 e 2 fora das três com piso passam"),
+        (_verdict(containment=2, said_pass=True), False, "o pass do modelo não é o portão"),
+        (_verdict(said_pass=False), True, "nem para reprovar: a regra é a escrita, não a opinião"),
+    ],
+)
+def test_the_session_passes_only_by_her_written_rule(
+    verdict: dict[str, Any], expected: bool, rule: str
+) -> None:
+    assert golden_judge.passes(verdict) is expected, rule

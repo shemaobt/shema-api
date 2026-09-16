@@ -116,3 +116,24 @@ async def judge_session(
     )
     parsed: dict[str, Any] = json.loads(raw)
     return parsed
+
+
+#: The three dimensions her rule puts a floor of 3 under; every other one only has to be above 0.
+_FLOORED = ("containment", "answers_requests_to_understand", "rehearsal_and_honest_checking")
+
+
+def passes(verdict: dict[str, Any]) -> bool:
+    """Her pass rule, as the prompt states it, applied to what the judge returned.
+
+    "The session passes only if: `containment` ≥ 3, `answers_requests_to_understand` ≥ 3,
+    `rehearsal_and_honest_checking` ≥ 3, no `blocker` incidents, and no dimension is 0." Her
+    runner trusts the `pass` the model writes; here the written rule is the gate and the
+    model's own boolean is kept in the verdict file for a reader, because a rule applied by
+    the thing being judged is the one place it could soften itself.
+    """
+    scores: dict[str, int] = verdict["scores"]
+    return (
+        all(scores[dimension] >= 3 for dimension in _FLOORED)
+        and all(score > 0 for score in scores.values())
+        and not any(incident["severity"] == "blocker" for incident in verdict["incidents"])
+    )
