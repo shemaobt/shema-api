@@ -39,6 +39,10 @@ def test_the_spine_is_the_passage_itself_not_a_fixed_list() -> None:
 def test_every_kind_the_completion_floor_names_is_present() -> None:
     kinds = {element.kind for element in elements_for(P)}
 
+    assert ElementKind.ARC in kinds
+    assert ElementKind.CONTEXT in kinds
+    assert ElementKind.TONE in kinds
+    assert ElementKind.FUNCTION in kinds
     assert ElementKind.SCENE in kinds
     assert ElementKind.BEING in kinds
     assert ElementKind.ABSENCE in kinds
@@ -238,10 +242,11 @@ def test_the_floor_accepts_a_bead_the_team_only_partly_worked() -> None:
         }
     )
 
+    concrete = next(key for key in keys if key.startswith("scene:"))
     assert floor_met(mixed, P) is True
     assert floor_met(_spine_at(CoverageStatus.PARTIALLY_ENGAGED), P) is True
-    assert floor_met({**mixed, keys[0]: CoverageStatus.SURFACED.value}, P) is False
-    assert floor_met({**mixed, keys[0]: CoverageStatus.NOT_ENCOUNTERED.value}, P) is False
+    assert floor_met({**mixed, concrete: CoverageStatus.SURFACED.value}, P) is False
+    assert floor_met({**mixed, concrete: CoverageStatus.NOT_ENCOUNTERED.value}, P) is False
 
 
 def test_a_preservation_rule_the_team_only_echoed_still_closes_the_passage() -> None:

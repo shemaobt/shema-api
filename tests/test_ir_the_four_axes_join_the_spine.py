@@ -3,6 +3,7 @@ import pytest
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon.elements import ElementKind, elements_for
 from app.services.internalization_room.canon.parse_map import MAPS_DIR, load_map, parse_map
+from app.services.internalization_room.coverage import CoverageStatus, floor_met
 
 P01 = "P01"
 
@@ -57,3 +58,29 @@ def test_each_axis_carries_its_own_section_of_the_map_as_detail() -> None:
     assert "never says God did any of it" in by_key["tone"].detail
     assert by_key["function"].detail.endswith("how the emptying began.")
     assert by_key["scene:1"].detail == ""
+
+
+AXES = ["arc", "context", "tone", "function"]
+
+
+def _spine(axes_at: CoverageStatus, the_rest_at: CoverageStatus) -> dict[str, str]:
+    return {
+        element.key: (axes_at if element.key in AXES else the_rest_at).value
+        for element in elements_for(P01)
+    }
+
+
+def test_the_floor_lets_the_four_axes_out_at_surfaced_and_nothing_else() -> None:
+    axes_surfaced = _spine(CoverageStatus.SURFACED, CoverageStatus.ENGAGED)
+    assert floor_met(axes_surfaced, P01) is True, (
+        "os quatro eixos abstratos são a única exceção do piso dela, e o piso pedia o "
+        "engajamento forte de uma conta que a equipe demonstra, não nomeia"
+    )
+
+    an_axis_never_raised = {**axes_surfaced, "tone": CoverageStatus.NOT_ENCOUNTERED.value}
+    assert floor_met(an_axis_never_raised, P01) is False, (
+        "uma sessão fechava sem que o tom da passagem tivesse sido levantado uma vez"
+    )
+
+    a_concrete_bead_only_surfaced = {**axes_surfaced, "scene:4": CoverageStatus.SURFACED.value}
+    assert floor_met(a_concrete_bead_only_surfaced, P01) is False

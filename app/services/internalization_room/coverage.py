@@ -180,27 +180,33 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
     ]
 
 
+_AXES = frozenset({ElementKind.ARC, ElementKind.CONTEXT, ElementKind.TONE, ElementKind.FUNCTION})
+
+
 def floor_met(state: dict[str, str], pericope_num: str) -> bool:
-    """Every element worked with, at least in part.
+    """Every element worked with, at least in part — and the four axes at least raised.
 
-    *Tripod Internalization · Interaction Flows*
-    (`internalization-room/docs/spec/interaction-flows.md`, §3) lets only the four abstract
-    Level-1 axes exit at `surfaced`; the maps expose no such elements, so every bead here is
-    concrete and none is exempt. What the floor does not demand is the strong reading of every
-    one of them. A passage's preservation rules are engaged by noticing a silence, which mostly
+    Her floor requires every scene, being, place, significant absence and preserved element
+    engaged, and the four Level-1 elements at least `surfaced`: a session is not to be held
+    forever on one stubborn abstract element. The maps do expose those elements — §2.1 to
+    §2.4 of every passage — and `elements_of` strings them first, so they are the one kind
+    the floor lets out early.
+
+    What the floor does not demand of the concrete beads is the strong reading of every one
+    of them. A passage's preservation rules are engaged by noticing a silence, which mostly
     reaches the room as the team taking up the Guide's noticing rather than arriving at it
-    themselves; requiring the unprompted version from all five of Ruth 1's is how a passage
-    becomes one that never closes. Since `done` is what moves a team on to the next passage, a
-    floor that cannot be reached does not hold a team to a higher standard — it holds them
-    still.
+    themselves; requiring the unprompted version from all of Ruth 1's is how a passage
+    becomes one that never closes.
 
-    `surfaced` remains below the floor, so a session where the Guide did the talking still
-    cannot complete. Biased against completing hollow: anything unknown counts as not met.
+    `surfaced` remains below the floor for everything concrete, so a session where the Guide
+    did the talking still cannot complete. Biased against completing hollow: anything unknown
+    counts as not met.
     """
     merged = {**initial_state(pericope_num), **state}
     for element in elements_for(pericope_num):
         standing = CoverageStatus(merged.get(element.key, CoverageStatus.NOT_ENCOUNTERED))
-        if _RANK[standing] < _RANK[CoverageStatus.PARTIALLY_ENGAGED]:
+        bar = CoverageStatus.SURFACED if element.kind in _AXES else CoverageStatus.PARTIALLY_ENGAGED
+        if _RANK[standing] < _RANK[bar]:
             return False
     return True
 
