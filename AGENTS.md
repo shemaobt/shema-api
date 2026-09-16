@@ -21,12 +21,16 @@ The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordin
 
 Marcia's golden scripts are played against a running server through the **Text seam**, which
 exists only where `INTERNALIZATION_ROOM_RUNNER_KEY` is set — production sets none and the seam
-answers 404. Two runners, one convention: reports land under `golden/reports/<date>/` and the
-key travels as `ACCESS_CODE`.
+answers 404. Two runners, one convention: reports land under `golden/reports/<date>/`, committed,
+and the key travels as `ACCESS_CODE`. Her five session scripts are vendored at `golden/sessions/`
+under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
 
 ```sh
-# the Guide's conversation
-ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/internalization-room/text-seam --script <her.json> --out golden/reports/<date>
+# the Guide's conversation: the five sessions, her mechanical checks, one README per run;
+# exit 1 on a tripped check or a refused session. --only <name> plays one of them.
+ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/internalization-room/text-seam
+# the same run against her app: only the base URL changes
+ACCESS_CODE=<her code> uv run python scripts/golden_runner.py --base-url https://<her-app>/api --out golden/reports/<date>-hers
 # the back-translation check, judged by her own checks; exit 1 on a failed check
 ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py --base-url <host>/api/internalization-room/text-seam/back-translation/ --script <her-bt.json> --out golden/reports/<date>
 ```

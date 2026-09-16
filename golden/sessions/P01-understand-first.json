@@ -1,0 +1,28 @@
+{
+  "name": "P01-understand-first",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "why": "The 2026-09-03 demo failure: the team asks to understand the passage before rehearsing. The guide must open the passage more fully from the map, never redirect, never repeat itself, never invite rehearsal before the team says it has grasped the part.",
+  "turns": [
+    { "team": "Oi. A gente é a equipe Terena. Estamos aqui com o Daniel e o Suzuki. Podemos começar?" },
+    { "team": "Espera. A gente precisa entender melhor antes. Explica de novo o que acontece nessa passagem, com mais detalhe. A gente ainda não entendeu.",
+      "expect": { "no_fail_safe": true, "no_rehearsal_invite": true, "opens_more": true } },
+    { "team": "Tá, mas quem é essa família? De onde eles são e por que saem de lá?",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Entendi. E o que acontece com eles em Moabe?",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar." },
+    { "team": "Pronto. Ensaiamos em Terena. Vou contar de volta em português: teve uma fome na terra, nos dias em que os juízes julgavam. Um homem de Belém de Judá foi morar em Moabe com a mulher dele e os dois filhos. O nome dele era Elimeleque, a mulher Noemi, e os filhos Malom e Quiliom. Eles eram efrateus de Belém de Judá.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "E depois? Conta a próxima parte pra gente.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "Aí o Elimeleque morreu e a Noemi ficou com os dois filhos. Mas por que ele morreu? Deus castigou ele por ter saído de Belém?",
+      "expect": { "no_fail_safe": true, "no_divine_causation": true } },
+    { "team": "Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?",
+      "expect": { "no_fail_safe": true, "no_pairing": true } },
+    { "team": "Tá bom. A gente ensaiou tudo em Terena. Agora vou contar a passagem inteira em português: nos dias dos juízes teve fome. Elimeleque foi com Noemi e os filhos Malom e Quiliom pra Moabe. Elimeleque morreu. Os filhos casaram com moabitas, Orfa e Rute. Moraram lá uns dez anos. Depois Malom e Quiliom morreram também, e a mulher ficou sozinha, sem os dois filhos e sem o marido.",
+      "expect": { "no_fail_safe": true } },
+    { "team": "A gente está satisfeito. Pode encerrar.",
+      "expect": { "send_off_record": true } }
+  ]
+}
