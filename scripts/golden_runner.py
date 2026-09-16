@@ -20,14 +20,23 @@ one line of the report, not the end of the run.
 `--out` defaults to `golden/reports/<date>/`, committed, so two runs a week apart can be
 compared by a person who was not in the room. Per session it holds `<name>.<stamp>.json`, one
 entry per turn with the four fields the judge is defined against (turn index, team turn,
-guide turn, outcome tag), the mechanical faults and what the room said each turn cost; and
+guide turn, outcome tag), the mechanical faults and what the room said each turn cost;
 `<name>.<stamp>.transcript.txt`, the transcript block exactly as her runner pastes it into
-`prompts/golden_judge_system_prompt.md`. `README.md` is the run's summary in the shape of
-her `golden/reports/2026-09-03/README.md`: a row per session, the mechanical column, cost
-and latency beside her ≈US$ 8 and median 27 s. The judge's column waits for the judge.
+`prompts/golden_judge_system_prompt.md`; and `<name>.<stamp>.verdict.json`, what her judge
+answered — the eight scores, every incident with its turn, severity and quote, the summary.
+`README.md` is the run's summary in the shape of her `golden/reports/2026-09-03/README.md`:
+a row per session, the judge's column and the mechanical column kept apart, cost and
+latency beside her ≈US$ 8 and median 27 s.
 
-The exit code is the gate: 1 when any session tripped a check or was refused, 2 when there was
-nothing to play, 0 when every session played clean.
+The judge is her prompt, unedited, on the voice ladder — Fable 5.1, the same rung the run
+itself is on — handed the Validator's map and the session language from this repo's pin.
+It runs in this process, so the runner needs `ANTHROPIC_API_KEY` (and the workspace id when
+the key is identity-bound) where the room does. `--rejudge <dir>` judges the exports of an
+earlier run again, without playing the room.
+
+The exit code is the gate, by her rule: a session passes when the judge passed it and no
+mechanical check tripped. 1 when any session failed or was refused, 2 when there was
+nothing to play, 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
 """
 
 from __future__ import annotations
@@ -490,6 +499,11 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         f"**{approved}/{len(results)} aprovadas pelo juiz, {faults} avisos mecânicos, "
         f"{fail_safes} fail-safes em {len(played)} turnos reais"
         f"{f', {len(refused)} sessões recusadas' if refused else ''}.**",
+        "",
+        "Este portão vale para o release, não só para o CI (DOCTRINE §5.2): nada que toque "
+        "prompt, laço de turno, modelo ou tela chega à equipe sem as sessões-ouro aprovadas "
+        "pelo juiz e sem aviso mecânico — uma suíte verde não basta para publicar uma mudança "
+        "de prompt.",
         "",
         "| Sessão | Juiz | Mecânico | Observação |",
         "|---|---|---|---|",
