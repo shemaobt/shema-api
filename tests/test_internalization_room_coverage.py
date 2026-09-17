@@ -1,9 +1,17 @@
+import enum
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
 from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room import coverage
 from app.services.internalization_room._default_prompts import (
     default_prompt,
     fail_safe_utterances,
 )
 from app.services.internalization_room.canon.elements import (
+    Element,
     ElementKind,
     element_keys,
     elements_for,
@@ -20,6 +28,7 @@ from app.services.internalization_room.coverage import (
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 
 P = "P03"
+_VENDOR = Path("app/services/internalization_room/prompts/vendor")
 
 
 def test_a_fresh_session_has_encountered_nothing() -> None:
@@ -178,14 +187,13 @@ def test_two_readings_of_the_same_spine_keep_the_further_one() -> None:
 
 _SCALE = [
     CoverageStatus.NOT_ENCOUNTERED,
-    CoverageStatus.SURFACED,
     CoverageStatus.PARTIALLY_ENGAGED,
+    CoverageStatus.SURFACED,
     CoverageStatus.ENGAGED,
 ]
 
 _BUCKET = {
     CoverageStatus.SURFACED: "surfaced",
-    CoverageStatus.PARTIALLY_ENGAGED: "partially_engaged",
     CoverageStatus.ENGAGED: "engaged",
 }
 
@@ -199,8 +207,9 @@ def _with(overrides: dict[str, CoverageStatus]) -> dict[str, str]:
 
 
 def test_a_merge_moves_a_bead_forward_or_leaves_it_across_the_whole_scale() -> None:
-    """Every ordered pair, not three hand-picked ones. The fourth state has two neighbours,
-    and a scale is only monotonic if it is monotonic everywhere.
+    """Every ordered pair, not three hand-picked ones — the two buckets the room still writes
+    against every state a row can hold, and a scale is only monotonic if it is monotonic
+    everywhere.
     """
     key = element_keys(P)[0]
 
@@ -228,7 +237,10 @@ def test_the_further_of_two_readings_wins_across_the_whole_scale() -> None:
             )
 
 
-def test_the_floor_accepts_a_bead_the_team_only_partly_worked() -> None:
+def test_the_floor_refuses_a_bead_the_team_only_partly_worked() -> None:
+    """Hard Rule #2: only `engaged` counts for coverage. A bead written under the retired
+    status is a bead the team took up on the Guide's terms, and that is `surfaced`.
+    """
     keys = element_keys(P)
     half = len(keys) // 2
     mixed = _with(
@@ -238,18 +250,19 @@ def test_the_floor_accepts_a_bead_the_team_only_partly_worked() -> None:
         }
     )
 
-    assert floor_met(mixed, P) is True
-    assert floor_met(_spine_at(CoverageStatus.PARTIALLY_ENGAGED), P) is True
-    assert floor_met({**mixed, keys[0]: CoverageStatus.SURFACED.value}, P) is False
-    assert floor_met({**mixed, keys[0]: CoverageStatus.NOT_ENCOUNTERED.value}, P) is False
+    assert floor_met(mixed, P) is False
+    assert floor_met(_spine_at(CoverageStatus.PARTIALLY_ENGAGED), P) is False
+    assert floor_met(_spine_at(CoverageStatus.SURFACED), P) is False
+    assert floor_met(_spine_at(CoverageStatus.ENGAGED), P) is True
 
 
-def test_a_preservation_rule_the_team_only_echoed_still_closes_the_passage() -> None:
-    """The case the fourth state exists for.
+def test_a_preservation_rule_the_team_only_echoed_does_not_close_the_passage() -> None:
+    """The case the fourth state existed for, reversed.
 
-    A team engages a preservation rule by noticing a silence, which mostly happens as an echo
-    of the Guide noticing it first. Demanding the unprompted version of that from all five
-    rules is how Ruth 1 becomes a passage that never closes.
+    A team engages a preservation rule by noticing a silence, and the echo of the Guide's
+    noticing is that engagement — her classifier writes it `engaged`, so the floor has no
+    reason left to meet the echo halfway. What still stands at the retired status is a bead
+    the ledger has not seen the team take up.
     """
     preserved = [e.key for e in elements_for(P) if e.kind is ElementKind.PRESERVED]
     others = [key for key in element_keys(P) if key not in preserved]
@@ -261,18 +274,50 @@ def test_a_preservation_rule_the_team_only_echoed_still_closes_the_passage() -> 
     )
 
     assert preserved
-    assert floor_met(echoed, P) is True
+    assert floor_met(echoed, P) is False
 
 
-def test_the_floor_being_met_is_not_the_work_being_finished() -> None:
-    """A partly worked bead stays in the unresolved set the classifier is shown.
+def test_a_level_one_axis_meets_the_floor_at_surfaced_and_nothing_else_does() -> None:
+    """Her one exemption: "all four Level-1 elements at least `surfaced`" (build_spec.md:333).
 
-    Dropping it there would leave the classifier unable to ever promote it — it only sees
-    what is unresolved — and the bead would be frozen at partial for the rest of the session.
+    The enum does not hold the four kinds yet — that slice is ENG-752 — so the exemption
+    is read off the kind's value, and this case hands the floor a kind this build does
+    not know, the way the ledger will receive it.
     """
+
+    class AxisKind(enum.StrEnum):
+        ARC = "arc"
+
+    axis = Element.model_construct(key="arc", label="Level-1 arc", kind=AxisKind.ARC, scene=None)
+    concrete = elements_for(P)[0]
+    spine = [axis, concrete]
+    with_the_axis = {**initial_state(P), "arc": CoverageStatus.SURFACED.value}
+
+    with patch.object(coverage, "elements_for", return_value=spine):
+        assert floor_met({**with_the_axis, concrete.key: "engaged"}, P) is True
+        assert floor_met({**with_the_axis, concrete.key: "surfaced"}, P) is False
+        assert floor_met(
+            {**with_the_axis, "arc": "not_encountered", concrete.key: "engaged"}, P
+        ) is (False)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="ENG-752 adds arc, context, tone and function to ElementKind; drop this mark there",
+)
+def test_the_four_axes_the_floor_exempts_are_kinds_the_enum_names() -> None:
+    """The exemption is keyed on four strings the enum does not hold yet.
+
+    Nothing else ties the two: if ENG-752 spells an axis kind any other way, the four beads
+    silently need `engaged`, the passage stops closing, and every other test stays green.
+    Strict, so the day the values arrive this goes XPASS and the mark has to come off.
+    """
+    assert {kind.value for kind in ElementKind} >= coverage._EXITS_AT_SURFACED
+
+
+def test_a_partly_worked_bead_stays_in_the_set_the_classifier_is_shown() -> None:
     state = _spine_at(CoverageStatus.PARTIALLY_ENGAGED)
 
-    assert floor_met(state, P) is True
     assert {element.key for element in remaining(state, P)} == set(element_keys(P))
 
 
@@ -291,8 +336,7 @@ def test_a_partly_worked_bead_counts_as_encountered_but_not_as_worked() -> None:
 
 def test_a_tracker_written_before_the_fourth_state_reads_the_same() -> None:
     """What a stored row holds is these three strings, because nothing had yet written the
-    fourth. The floor moved down one step, not two: an all-surfaced session still does not
-    close.
+    fourth — and nothing writes it again. An all-surfaced session still does not close.
     """
     keys = element_keys(P)
     old_row = {**dict.fromkeys(keys, "not_encountered"), keys[0]: "surfaced", keys[1]: "engaged"}
@@ -305,22 +349,32 @@ def test_a_tracker_written_before_the_fourth_state_reads_the_same() -> None:
     assert merge(old_row, pericope_num=P, surfaced=[keys[1]])[keys[1]] == "engaged"
 
 
-def test_the_classifier_prompt_carries_the_whole_scale() -> None:
-    """A state the prompt does not name is a state the classifier cannot assign."""
-    prompt = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
+def test_the_classifier_prompt_is_her_three_status_text() -> None:
+    """Every line between her markers, and nothing of ours.
 
-    for status in CoverageStatus:
-        assert f"`{status.value}`" in prompt, f"{status.value} não está escrito no prompt"
+    The fourth status was ours: a band for the echo, and a floor lowered to meet it. What
+    is served now is the vendored copy read back between `=== BEGIN SYSTEM PROMPT ===` and
+    `=== END SYSTEM PROMPT ===`, so a word of ours creeping back in is a diff against her
+    file, not a judgment call.
+    """
+    vendored = (_VENDOR / "classifier_system_prompt.md").read_text(encoding="utf-8")
+    hers = vendored.split("`=== BEGIN SYSTEM PROMPT ===`", 1)[1]
+    hers = hers.split("`=== END SYSTEM PROMPT ===`", 1)[0].strip("\n") + "\n"
+
+    assert default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"] == hers
 
 
-def test_the_classifier_prompt_draws_both_borders_of_the_partial_state() -> None:
-    """Named but not delimited is a state the model guesses at. The issue asks for the
-    distinction written down, not implied by examples.
+def test_the_classifier_prompt_makes_an_echoed_silence_engaged() -> None:
+    """Her rule for the absences, word for word, and the legacy state nowhere in it.
+
+    Ours said the opposite: taking up the Guide's noticing was `partially_engaged`, and only
+    noticing the silence unprompted was `engaged` — which is how the five silences of Ruth 1
+    became beads a team could never fill.
     """
     prompt = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
-    blocks = [block for block in prompt.split("\n\n") if "`partially_engaged`" in block]
 
-    assert blocks
-    assert any("`surfaced`" in block and "`engaged`" in block for block in blocks), (
-        "nenhum bloco compara o estado parcial com os dois vizinhos"
-    )
+    assert (
+        'The Guide raising "notice the story never says God did this" = surfaced; '
+        "the team responding to or echoing that noticing = engaged."
+    ) in prompt, "a regra do eco de ausência não é a dela"
+    assert "partially_engaged" not in prompt, "o quarto estado voltou ao prompt"

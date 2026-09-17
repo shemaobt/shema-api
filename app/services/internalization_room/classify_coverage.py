@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 _BRACKETED_KEY = re.compile(r"^-?\s*\[([^\]]+)\]")
 
-#: The shape the classifier is bound to answer in, and the same one `_parse` reads. The three
-#: statuses are named here rather than left to the prompt's prose because a fourth word coming
+#: The shape the classifier is bound to answer in, and the same one `_parse` reads. The two
+#: statuses are named here rather than left to the prompt's prose because a third word coming
 #: back is a bead that quietly does not move: `_parse` has no bucket for it, and the session it
 #: stalls looks from outside like a team that simply never covered the passage.
 _DECISIONS: dict[str, Any] = {
@@ -32,7 +32,7 @@ _DECISIONS: dict[str, Any] = {
                     "element_id": {"type": "string"},
                     "new_status": {
                         "type": "string",
-                        "enum": ["surfaced", "partially_engaged", "engaged"],
+                        "enum": ["surfaced", "engaged"],
                     },
                 },
                 "required": ["element_id", "new_status"],
@@ -103,24 +103,23 @@ def _scenes_block(pericope_num: str) -> str:
 
 
 def _parse(raw: str) -> dict[str, list[str]]:
-    """Bucket the classifier's decisions into the three lists `merge` advances.
+    """Bucket the classifier's decisions into the two lists `merge` advances.
 
     The reply's shape belongs to `prompts/classifier_system_prompt.md`, which asks for a
     `decisions` array. Reading two top-level status keys instead left both buckets empty on
     every well-formed reply, so no bead ever moved and no session ever reached done.
 
     The table carries one slot per status the prompt can send, and it is the same table on
-    every exit. It held two while the prompt sent three, and `partially_engaged` — the one
-    status the completion floor was lowered to accept — fell through to the log on its way
-    out. A passage the team worked on the Guide's terms could not close, which is most of
-    how the preservation rules are worked at all.
+    every exit. A status the prompt no longer names — `partially_engaged`, the band an echo
+    used to land in — falls through to the log and moves nothing: a model still answering
+    with it is a stale prompt, not a bead the team earned.
 
     It is built once and every exit answers that one. The caller indexes the result, so an
     exit answering a shorter dict raises `KeyError` out of the one path whose whole job is
     to leave coverage untouched — which is what three hand-written copies of the same
     literal were waiting to do the next time the scale grew.
     """
-    verdict: dict[str, list[str]] = {"surfaced": [], "partially_engaged": [], "engaged": []}
+    verdict: dict[str, list[str]] = {"surfaced": [], "engaged": []}
     text = raw.strip()
     fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
     if fenced:
@@ -193,6 +192,5 @@ async def classify_coverage(
         coverage_state,
         pericope_num=pericope_num,
         surfaced=verdict["surfaced"],
-        partially_engaged=verdict["partially_engaged"],
         engaged=verdict["engaged"],
     )
