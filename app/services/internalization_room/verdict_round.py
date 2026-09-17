@@ -68,6 +68,8 @@ class TellingBackVerdict:
     outcome: TurnOutcome
     checked: bool
     findings_remaining: int
+    #: The stretches as the Validator was shown them — what the team said this round.
+    told_back: str
 
 
 async def check_the_telling_back(
@@ -169,13 +171,14 @@ async def check_the_telling_back(
     state.checked = finding is None
     state.checked_at = datetime.now(UTC)
 
+    told_back = segments_block(told)
     outcome = await run_verdict_turn(
         findings_text=findings_block(current, addresses),
         closing=closing_block(finding, checked=state.checked),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,
         messages=session.messages or [],
-        telling_back=segments_block(told),
+        telling_back=told_back,
         speaker_prompt=get_prompt_text(IRPromptKey.BT_VERDICT_SPEAKER),
         validator_prompt=get_prompt_text(IRPromptKey.VALIDATOR),
         session_language=LANGUAGE_NAMES[session.language],
@@ -198,6 +201,7 @@ async def check_the_telling_back(
         outcome=outcome,
         checked=state.checked,
         findings_remaining=findings_remaining(state.findings),
+        told_back=told_back,
     )
 
 
@@ -208,8 +212,8 @@ async def save_the_spoken_verdict(
     *,
     said: str,
     clip_key: str,
-    used_fail_safe: bool,
-    fixed_line: str,
+    outcome: TurnOutcome,
+    told_back: str,
 ) -> IRSession:
     """Write the turn the room just spoke: the exchange, the verdict and the state behind it.
 
@@ -217,9 +221,11 @@ async def save_the_spoken_verdict(
     A verdict stored before its clip would be served back by the repeat-press guard as a turn
     the team heard, when what they heard was the error.
     """
-    session = await append_exchange(db, session, team_utterance="", guide_response=said)
+    session = await append_exchange(
+        db, session, team_utterance="", guide_response=said, outcome=outcome, told_back=told_back
+    )
     state.verdict = VoicedVerdict(
-        clip_key=clip_key, fixed_line=fixed_line, used_fail_safe=used_fail_safe
+        clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
     )
     await save_back_translation(db, session, state)
     return session
