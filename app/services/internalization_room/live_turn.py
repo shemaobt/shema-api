@@ -88,7 +88,7 @@ async def run_comprehension_turn(
     empty = not transcript.strip()
     reliable = not uncertain and not mother_tongue
 
-    scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
+    scene_pointer = current_scene_id(session.coverage_state or {}, pericope, messages)
     practiced_now = scenes_practiced_by_the_telling_the_guide_invited(
         prior_probe,
         last_guide,

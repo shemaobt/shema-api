@@ -299,41 +299,23 @@ async def test_the_scene_is_served_as_a_key_and_not_as_a_number(client, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_a_bead_that_spans_scenes_cannot_say_which_one_they_are_in(
-    client, db_session
-) -> None:
-    """The case every other one here walks past, because they all move a *scene* bead.
+async def test_a_person_moved_in_scene_four_puts_the_team_in_scene_four(client, db_session) -> None:
+    """The case the dedupe used to walk past.
 
-    `elements_of` dedupes entities across the passage — Naomi in three scenes is one thing for
-    the team to work with, not three — so an entity's bead carries the scene it **first**
-    appeared in. Five of P01's beads are like that, and `being:B3` spans scenes 1 to 4 while
-    saying `1`. Reading its scene as the team's position answers `scene:1` for a team that may
-    be anywhere in the passage, which is the opposite of what the field claims.
-
-    So a bead that belongs to more than one scene does not answer, and the most recent one that
-    does answers instead. Here the team moved scene 3's own bead and then Naomi: the answer
-    stays `scene:3`, because Naomi cannot say and scene 3 can.
+    An entity is a bead in every scene it appears in, so Naomi in scene 4 of P01 — "the woman"
+    — is her own bead with her own scene. Here the team moved scene 3's own bead and then her:
+    the answer is `scene:4`, because the bead that moved last knows where it sits.
     """
     _user, team, headers = await a_facilitator(db_session, email="abrange@x.com")
 
     await moved(db_session, team, pericope=FIRST, keys=keys_in_scene(FIRST, 3)[:1])
-    await moved(db_session, team, pericope=FIRST, keys=["being:B3"])
+    await moved(db_session, team, pericope=FIRST, keys=["being:S4:B3"])
 
     body = (await client.get(team_url(team.id), headers=headers)).json()
 
-    assert body["scene_the_team_is_in"] == "scene:3"
-
-
-@pytest.mark.asyncio
-async def test_a_team_whose_only_movement_spans_scenes_is_in_no_scene(client, db_session) -> None:
-    """`None` rather than the first appearance, which would be a confident wrong answer."""
-    _user, team, headers = await a_facilitator(db_session, email="so-abrange@x.com")
-
-    await moved(db_session, team, pericope=FIRST, keys=["being:B3"])
-
-    assert (await client.get(team_url(team.id), headers=headers)).json()[
-        "scene_the_team_is_in"
-    ] is None
+    assert body["scene_the_team_is_in"] == "scene:4", (
+        "a conta de Naomi atravessava as quatro cenas dizendo '1', e por isso não respondia"
+    )
 
 
 @pytest.mark.asyncio

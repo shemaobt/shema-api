@@ -91,7 +91,10 @@ def _unresolved_block(coverage_state: dict[str, str], pericope_num: str) -> str:
     left = remaining(coverage_state, pericope_num)
     if not left:
         return "(no elements pending)"
-    return "\n".join(f"- [{element.key}] {element.label}" for element in left)
+    return "\n".join(
+        f"- [{element.key}] {element.label}" + (f" — {element.detail}" if element.detail else "")
+        for element in left
+    )
 
 
 def _scenes_block(pericope_num: str) -> str:

@@ -202,22 +202,26 @@ def test_a_missing_catalogue_file_names_itself_not_the_full_deploy_path(tmp_path
 
 
 @pytest.mark.parametrize("pericope_num", PILOT)
-def test_two_beads_on_one_screen_never_read_the_same(pericope_num):
-    """A necklace is read across, so a repeated label is two beads a facilitator cannot tell apart.
+def test_two_beads_of_one_scene_never_read_the_same(pericope_num):
+    """A scene is read across, so a repeated label is two beads a facilitator cannot tell apart.
 
     P14 shipped four of these: the canon separates `CB_0047-Obed-Name` from the man, and the
     first translation flattened both onto "Obed". Nothing else in the slice can see it — the
     key is present either way and every label is a real sentence.
+
+    Within a scene, not across the passage: an entity is a bead in every scene it appears in,
+    and Naomi reads "Noemi" in three of P01's four scenes on purpose. The scene column is what
+    tells those apart.
     """
     for language in LANGUAGES:
-        said: dict[str, str] = {}
+        said: dict[tuple[int | None, str], str] = {}
         for element in labelled_elements(pericope_num):
             text = getattr(element, f"label_{language}")
-            clash = said.get(text)
+            clash = said.get((element.scene, text))
             assert clash is None, (
                 f"{pericope_num} {language}: {clash} and {element.key} both read {text!r}"
             )
-            said[text] = element.key
+            said[(element.scene, text)] = element.key
 
 
 def test_a_language_nobody_added_a_field_for_is_refused_rather_than_dropped():
@@ -605,15 +609,15 @@ def test_the_ten_keep_the_promises_the_pilot_keeps(pericope_num):
 
 
 @pytest.mark.parametrize("pericope_num", TEN)
-def test_two_beads_of_the_ten_never_read_the_same_on_one_screen(pericope_num):
+def test_two_beads_of_one_scene_of_the_ten_never_read_the_same(pericope_num):
     """The defect the writer measured twice and found again on the mechanical pass."""
-    seen: dict[str, str] = {}
+    seen: dict[tuple[int | None, str], str] = {}
     for element in labelled_elements(pericope_num):
-        clash = seen.get(element.label_en)
+        clash = seen.get((element.scene, element.label_en))
         assert clash is None, (
             f"{pericope_num}: {element.key} and {clash} both read {element.label_en!r}"
         )
-        seen[element.label_en] = element.key
+        seen[(element.scene, element.label_en)] = element.key
 
 
 @pytest.mark.parametrize("pericope_num", TEN)

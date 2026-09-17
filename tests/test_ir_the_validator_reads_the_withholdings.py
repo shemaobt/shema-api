@@ -155,9 +155,12 @@ async def test_the_withholdings_reach_the_validator_as_constraints_not_only_as_b
         "o mapa do Guia é a fonte da narração, não a lista de proibições — o desenho dela "
         "separa os dois papéis exatamente aqui"
     )
-    assert "- [preserved:R6] " in guide_system, (
+    assert (
+        "- [absence:1] " in guide_system and "STRUCTURAL_ABSENCE_OF_DIVINE_AGENCY" in guide_system
+    ), (
         "o Guia já via R6, mas como conta a trabalhar na lista REMAINING, que some quando a "
-        "equipe engaja a conta; era essa a única passagem da regra pelo prompt"
+        "equipe engaja a conta; era essa a única passagem da regra pelo prompt — hoje ela "
+        "viaja dobrada na ausência da cena 1"
     )
 
 
