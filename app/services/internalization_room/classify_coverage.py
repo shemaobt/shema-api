@@ -21,8 +21,6 @@ from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
 
-_BRACKETED_KEY = re.compile(r"^-?\s*\[([^\]]+)\]")
-
 #: The shape the classifier is bound to answer in, and the same one `_parse` reads. The two
 #: statuses are named here rather than left to the prompt's prose because a third word coming
 #: back is a bead that quietly does not move: `_parse` has no bucket for it, and the session it
@@ -54,22 +52,6 @@ _DECISIONS: dict[str, Any] = {
 #: Composed in English like every other backend instruction (ENG-822) — only
 #: {{SESSION_LANGUAGE}} carries what language the team speaks.
 _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
-
-
-def _element_id(named: str) -> str:
-    """The element's key, whether the model sent it bare or as the list prints it.
-
-    The unresolved set reaches the model as `- [being:B3] נָעֳמִי / Naomi`, and the output
-    contract asks for "the id from the provided list". Read against that list, the id is the
-    whole line, and that is what comes back. The key is its bracketed head; `merge` drops
-    every other spelling as an element the passage does not hold.
-
-    The list marker is admitted with it. Production echoes the line without the dash, so
-    nothing today turns on this — but what is being fixed here is a spelling nobody thought
-    to accept, and the dash is how the line is printed.
-    """
-    bracketed = _BRACKETED_KEY.match(named.strip())
-    return bracketed.group(1).strip() if bracketed else named.strip()
 
 
 def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -> None:
@@ -147,7 +129,7 @@ def _offered(
 
 def _unresolved_block(coverage_state: dict[str, str], offered: list[Element]) -> str:
     if not offered:
-        return "(no elements pending)"
+        return "[]"
     return json.dumps(
         [
             {
@@ -217,7 +199,7 @@ def _parse(raw: str) -> dict[str, list[str]]:
         element_id = entry.get("element_id") if isinstance(entry, dict) else None
         new_status = entry.get("new_status") if isinstance(entry, dict) else None
         if isinstance(element_id, str) and isinstance(new_status, str) and new_status in verdict:
-            verdict[new_status].append(_element_id(element_id))
+            verdict[new_status].append(element_id.strip())
         else:
             logger.warning("Coverage classifier returned an unusable decision: %s", entry)
     return verdict

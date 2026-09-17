@@ -15,11 +15,7 @@ from app.services.internalization_room import background
 from app.services.internalization_room import sessions as service
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import absence_index, element_keys
-from app.services.internalization_room.classify_coverage import (
-    _parse,
-    _unresolved_block,
-    classify_coverage,
-)
+from app.services.internalization_room.classify_coverage import _parse, classify_coverage
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
     scene_ids_for,
@@ -30,7 +26,7 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceResult,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import CoverageStatus, initial_state, remaining
+from app.services.internalization_room.coverage import CoverageStatus, initial_state
 from app.services.internalization_room.coverage_channel import subscribe
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
@@ -334,75 +330,6 @@ async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) 
     assert missing == [], (
         "o parser lia chaves que o prompt nunca pediu, e nenhum teste olhava as duas "
         "pontas ao mesmo tempo, que é como a deriva atravessou dois releases"
-    )
-
-
-def _as_the_list_prints_it(pericope: str, key: str) -> str:
-    """The element's id exactly as the classifier is shown it, read off the real renderer."""
-    nothing_worked = initial_state(pericope)
-    for entry in json.loads(_unresolved_block(nothing_worked, remaining(nothing_worked, pericope))):
-        if entry["id"] == key:
-            return entry["id"]
-    raise AssertionError(f"{key} is not in the unresolved block for {pericope}")
-
-
-@pytest.mark.parametrize(
-    "named",
-    [
-        "object:O1",
-        "[object:O1] רָעָב / famine",
-        "- [object:O1] רָעָב / famine",
-    ],
-)
-def test_the_key_is_read_out_of_the_line_the_model_echoes_back(named: str) -> None:
-    reply = json.dumps(
-        {
-            "decisions": [
-                {
-                    "element_id": named,
-                    "new_status": "engaged",
-                    "evidence": "nomearam a fome com as próprias palavras",
-                }
-            ]
-        }
-    )
-
-    assert _parse(reply)["engaged"] == ["object:O1"], (
-        "o prompt pede o id da lista fornecida e a lista imprime `- [chave] rótulo`, "
-        "então era a linha inteira que voltava"
-    )
-
-
-async def test_an_element_named_the_way_the_list_prints_it_still_moves_the_bead(
-    patch_classifier,
-) -> None:
-    keys = element_keys(P)
-    patch_classifier(
-        json.dumps(
-            {
-                "decisions": [
-                    {
-                        "element_id": _as_the_list_prints_it(P, keys[0]),
-                        "new_status": "engaged",
-                        "evidence": "contaram a cena",
-                    }
-                ]
-            }
-        )
-    )
-
-    settled = await classify_coverage(
-        coverage_state=initial_state(P),
-        team_utterance="a equipe contou a cena",
-        guide_response="o Guia devolveu a pergunta",
-        classifier_prompt=CLASSIFIER,
-        pericope_num=P,
-        settings=_settings(),
-    )
-
-    assert settled[keys[0]] == CoverageStatus.ENGAGED.value, (
-        "toda decisão caía como elemento desconhecido no merge, então o classificador "
-        "acertava a troca e o colar não movia uma conta em sessão nenhuma"
     )
 
 

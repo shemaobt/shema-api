@@ -370,7 +370,7 @@ async def test_the_classifier_composes_english_when_nobody_has_spoken_and_nothin
     )
 
     assert captured["TEAM_UTTERANCE"] == "(the team has not spoken yet)"
-    assert captured["COVERAGE_ELEMENTS"] == "(no elements pending)"
+    assert captured["COVERAGE_ELEMENTS"] == "[]"
     assert captured["user_content"] == "Classify this exchange now. Return only the JSON object."
 
 
