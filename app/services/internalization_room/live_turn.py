@@ -26,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -38,46 +37,22 @@ from app.services.internalization_room.comprehension.practice import (
 from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
-from app.services.internalization_room.comprehension.session_readiness import (
-    render_comprehension_status,
-)
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import (
-    CoverageStatus,
-    engaged_scene_ids,
-)
-from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.hearing import HeardSpeech
-from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.run_turn import (
-    TurnOutcome,
-    run_turn,
-)
+from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
+from app.services.internalization_room.turn.context import render_context
+from app.services.internalization_room.turn.scene_view import (
+    current_scene_id,
+    scene_the_invitation_is_about,
+)
+from app.services.internalization_room.turn.speech import speak_back
 
 
 @dataclass
 class ComprehensionTurn:
     outcome: TurnOutcome
     state: ComprehensionState
-
-
-def current_scene_id(coverage_state: dict[str, Any], pericope: str) -> str | None:
-    """The first scene whose own coverage is not fully engaged.
-
-    It is what the rehearsal the Guide invites is read against: the Guide opens the scene
-    the pointer names, and it never selects a scene itself.
-    """
-    by_scene: dict[int, bool] = {}
-    for element in elements_for(pericope):
-        if element.scene is None:
-            continue
-        engaged = coverage_state.get(element.key) == CoverageStatus.ENGAGED.value
-        by_scene[element.scene] = by_scene.get(element.scene, True) and engaged
-    for scene in sorted(by_scene):
-        if not by_scene[scene]:
-            return f"S{scene}"
-    return None
 
 
 async def run_comprehension_turn(
@@ -115,53 +90,37 @@ async def run_comprehension_turn(
 
     scene_pointer = current_scene_id(session.coverage_state or {}, pericope)
     practiced_now = scenes_practiced_by_the_telling_the_guide_invited(
-        prior_probe, last_guide, transcript, reliable, scene_pointer
+        prior_probe,
+        last_guide,
+        transcript,
+        reliable,
+        scene_the_invitation_is_about(scene_pointer, pericope, state.practiced_scene_ids),
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
-    engaged_scenes = engaged_scene_ids(session.coverage_state or {}, pericope)
 
-    comprehension_status = render_comprehension_status(
+    context = render_context(
         checkpoints=checkpoints,
         scene_ids=scene_ids,
-        ledger=state.ledger,
-        practiced_scene_ids=projected_practice,
-        engaged_scene_ids=engaged_scenes,
-        current_scene=scene_pointer,
+        state=state,
+        projected_practice=projected_practice,
+        scene_pointer=scene_pointer,
     )
 
-    app_context = comprehension_status
-
-    if mother_tongue:
-        line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
-        outcome = TurnOutcome(
-            speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
-        )
-    elif not opening and (empty or uncertain):
-        line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
-        outcome = TurnOutcome(
-            speech=line,
-            transcript=transcript,
-            used_fail_safe=True,
-            degraded=True,
-            fixed_line=fixed,
-        )
-    else:
-        outcome = await run_turn(
-            transcript=transcript,
-            coverage_state=session.coverage_state or {},
-            messages=messages,
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            guide_prompt=guide_prompt,
-            validator_prompt=validator_prompt,
-            pericope_num=pericope,
-            book=book,
-            opening=opening,
-            settings=settings,
-            session_id=session.id,
-            app_context=app_context,
-            ask_for_movements=opening and not messages,
-        )
+    outcome = await speak_back(
+        mother_tongue=mother_tongue,
+        session=session,
+        messages=messages,
+        transcript=transcript,
+        opening=opening,
+        empty=empty,
+        uncertain=uncertain,
+        book=book,
+        guide_prompt=guide_prompt,
+        validator_prompt=validator_prompt,
+        pericope=pericope,
+        settings=settings,
+        app_context=context.app_context,
+    )
 
     final_probe = select_probe_after_oral_turn(
         outcome="fail_safe" if outcome.used_fail_safe else "pass",
@@ -178,3 +137,6 @@ async def run_comprehension_turn(
         practiced_scene_ids=projected_practice,
     )
     return ComprehensionTurn(outcome=outcome, state=new_state)
+
+
+__all__ = ["ComprehensionTurn", "current_scene_id", "run_comprehension_turn"]

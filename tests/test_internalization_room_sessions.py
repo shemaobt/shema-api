@@ -99,11 +99,6 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ENG-803 redefines done as the Guide's send-off plus a rehearsal take that was "
-    "kept; until it lands the floor closes the session on its own",
-)
 @pytest.mark.asyncio
 async def test_the_coverage_floor_alone_no_longer_closes_the_session(
     db_session: AsyncSession,
@@ -113,10 +108,11 @@ async def test_the_coverage_floor_alone_no_longer_closes_the_session(
 
     What held this shut was the recording-consent flag, and only by accident: the room's own
     question was the flag's one writer, so a session that had never been asked could not
-    close. ENG-777 took the question away, and the premise is left with nothing implementing
-    it — the ledger the calibration was written around went with the Assessor (ENG-831), and
-    a fully engaged scene already reads as a rehearsed one. It is ENG-803 that puts the
-    premise back on its feet, in the terms Marcia gave it.
+    close. ENG-777 took the question away, and until ENG-780 the premise still had one thing
+    implementing it: a fully engaged necklace read as a rehearsed one, so the floor alone
+    could still close a session nobody had reported practicing in. With that substitution
+    gone, an untouched comprehension state keeps the passage in `needs_more_work` and the
+    floor being met changes nothing about that.
     """
     session = await create_session(db_session, pericope=P)
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
@@ -168,11 +164,11 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     indistinguishable from an abandoned one, and the Desk would call every completed session
     abandoned.
 
-    The scenario carries calibration, evidence and practice, and none of them is what
-    holds it up today: with every bead engaged, the practice reading is met on the beads
-    alone, which is what the strict xfail above this says out loud. They are kept because
-    ENG-803 is about to make them load-bearing again. What is asserted here is unchanged
-    either way — that the close is *stamped*, not what it takes to reach one.
+    The scenario carries calibration, evidence and practice, and `_fully_supported_comprehension`
+    is what holds it up: its `practiced_scene_ids` reports every scene, which is the one
+    thing the readiness gate reads since ENG-780 killed the engaged-scene substitution. What
+    is asserted here is unchanged either way — that the close is *stamped*, not what it
+    takes to reach one.
     """
     session = await create_session(db_session, pericope=P)
     session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
@@ -207,12 +203,14 @@ async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
     would grow the conversation's length after the team had finished.
     """
     session = await create_session(db_session, pericope=P)
+    session = await save_comprehension(db_session, session, _fully_supported_comprehension(P))
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     session = await apply_coverage(db_session, session.id, whole)
     closed_at = session.ended_at
 
     session = await apply_coverage(db_session, session.id, whole)
 
+    assert closed_at is not None
     assert session.ended_at == closed_at
 
 

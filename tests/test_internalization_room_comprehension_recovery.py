@@ -242,6 +242,98 @@ def test_a_reflexive_se_in_the_telling_is_not_a_condition() -> None:
     ) == ["S1"]
 
 
+_INVITATION_FOR_THE_LAST_TWO_SCENES = (
+    "Entendo. E vocês têm razão numa coisa: vocês já entenderam a história inteira. Isso "
+    "ficou claro no que me contaram.\n\n"
+    "Mas entender é só uma parte. A outra parte é a história viver na boca de vocês, na "
+    "língua de vocês. As duas últimas cenas ainda não passaram por aí. Não leva muito tempo.\n\n"
+    "Então façam assim. Ensaiem juntos, na língua de vocês, a cena dos casamentos e dos dez "
+    "anos, e depois a cena em que Malom e Quiliom morrem e Noemi fica sozinha, sem os dois "
+    "filhos e sem o marido. Podem fazer as duas cenas seguidas. Quando terminarem, voltem e "
+    "me contem em português, bem curto, o que vocês disseram no ensaio.\n\n"
+    "Depois disso, vamos pro próximo passo."
+)
+_TELLING_OF_THE_LOSS = (
+    "A gente ensaiou juntos na nossa língua a cena dos casamentos e dos 10 anos, e depois a "
+    "cena em que Malone e Kleon morrer-morreram, e Noemí fica sozinha, sem os filhos e sem o "
+    "marido."
+)
+#: The same session's earlier telling, with its "certo?" tags taken off: it opens "no tempo
+#: dos juízes", and it names what the story keeps silent about — no child, no mourning,
+#: nothing said of God.
+_TELLING_WITH_THE_STORYS_SILENCES = (
+    "Tudo isso aconteceu no tempo que os juízes julgavam Israel, antes de ter rei. Os dois "
+    "filhos tomaram esposas dentre as mulheres de Moabe, Orfa e Rute, e moraram lá uns dez "
+    "anos. A história não fala de nenhum filho nascido nesses casamentos, nenhuma criança é "
+    "mencionada. Quando Elimeleque morre, Noemi ficou com os dois filhos, e quando Malom e "
+    "Quiliom morreram ela sobrou sozinha, sem os dois filhos e sem o marido. A história não "
+    "descreve o luto, nenhum choro, nem nada de enterro, e não diz que Deus fez nada disso."
+)
+#: Tellers in the first person negating the story, not the doing.
+_TELLING_THAT_FORGETS_A_NAME = (
+    "A gente ensaiou a cena dos casamentos. Os dois filhos casaram com mulheres de Moabe, "
+    "uma era Rute, eu não lembro o nome da outra, e eles moraram lá uns dez anos."
+)
+_TELLING_THAT_KEEPS_THE_STORYS_SILENCE = (
+    "The two sons married women from Moab, Orpah and Ruth, and lived there about ten years. "
+    "We didn't hear which son married which woman, the story keeps that quiet, and we never "
+    "heard why the famine came."
+)
+
+
+def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
+    """Session dce19a6b, in Portuguese, on the pilot device: the scene came back told and
+    stayed unpractised.
+
+    Ruth 1:3-5 is a story of loss, and a team telling it says so: Noemi is left "sem os
+    filhos e sem o marido"; the story "não fala de nenhum filho", "não diz que Deus fez
+    nada disso". The reader took every one of those for a denial — the same word list that
+    catches "ainda não ensaiamos" — and filed the telling the invitation had asked for as a
+    team that had done nothing. What the story takes away is content the team told back.
+
+    The denial the reader guards is the team refusing the doing, and a told scene comes
+    back in the third person, about the family — so inside a telling the negation that
+    still refuses is the team's own: on the rehearsal ("não ensaiamos", "contamos sem
+    ensaiar"), in the first person ("a gente não teve tempo", "nós não conseguimos", "we
+    didn't do it"), or nobody's doing at all ("não deu", "ainda não", "no time"). The first
+    person is bound to the doing, because a teller says "eu não lembro o nome" and "we
+    didn't hear who married whom" about the story. A short reply keeps the flat reading,
+    where any negation is the team declining. "No tempo dos juízes" is how the passage
+    opens, and it is not "no time"."""
+    for told in (
+        _TELLING_OF_THE_LOSS,
+        _TELLING_WITH_THE_STORYS_SILENCES,
+        _TELLING_THAT_FORGETS_A_NAME,
+    ):
+        assert bridge_language_retelling_completes_practice(
+            _INVITATION_FOR_THE_LAST_TWO_SCENES, told, True
+        ), told
+    assert bridge_language_retelling_completes_practice(
+        INVITATION["en"], _TELLING_THAT_KEEPS_THE_STORYS_SILENCE, True
+    )
+    for declined in (
+        "ainda não",
+        "não ensaiamos ainda",
+        "a gente não conseguiu ensaiar, ficou difícil",
+        "a gente não ensaiou na nossa língua, mas entendemos que Elimeleque morreu e Noemi "
+        "ficou sozinha com os dois filhos em Moabe",
+        "contamos sem ensaiar: a família saiu de Belém por causa da fome e foi morar em "
+        "Moabe como estrangeiros",
+        "A gente não teve tempo de fazer isso agora",
+        "a gente não fez ainda, a gente só conversou sobre a história em português",
+        "ainda não deu, ficou pra depois",
+        "nós não conseguimos, ficou difícil combinar quem fala primeiro",
+        "we didn't have time to do it now",
+        "we couldn't do it now, we only talked it through in English",
+        "We never got around to it, we only talked the story through in English",
+        "we had no time to do it before the tablet went off",
+        "no tuvimos tiempo de hacerlo ahora",
+    ):
+        assert not bridge_language_retelling_completes_practice(
+            _INVITATION_FOR_THE_LAST_TWO_SCENES, declined, True
+        ), declined
+
+
 def test_a_condition_that_opens_the_clause_holds_the_telling_back_without_a_subject() -> None:
     """ "Se quiserem a gente ensaia" names nobody and is still a condition.
 

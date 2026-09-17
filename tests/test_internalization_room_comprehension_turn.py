@@ -519,20 +519,87 @@ _UNUSABLE_SPEECH = (
 
 
 @pytest.mark.asyncio
-async def test_a_scene_the_team_worked_to_the_last_bead_needs_no_closing_word(
+async def test_a_scene_worked_to_its_last_bead_is_not_a_mother_tongue_rehearsal(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    """A necklace fully engaged is the practice, whether or not anyone announced it.
+    """Engagement is the ledger painting beads; rehearsal is what the team reports.
 
-    The report was only ever recorded when the team said the closing word out loud, so a
-    room that told every scene in its own language and simply moved on stayed one scene
-    short forever: the readiness gate kept the passage in rehearsal and the room answered
-    the team's own "we are finished" with yet another invitation to retell."""
+    Marcia's answer 8: the ledger informs, it never ends the conversation (DOCTRINE.md §4).
+    A necklace can go fully engaged through the bridge language alone, so a scene worked to
+    its last bead without the team ever switching into their own language stays a passage
+    still owed its first rehearsal — the gate keeps waiting on the report, not the beads."""
     session = await _session_at_the_recording_handoff(db_session, practice_reported=False)
 
     await _say(db_session, session, "acho que já falamos de tudo")
 
-    assert session_is_done(session)
+    assert not session_is_done(session)
+
+
+_THE_INVITATION_FOR_THE_LAST_TWO_SCENES = (
+    "Entendo. E vocês têm razão numa coisa: vocês já entenderam a história inteira. Isso "
+    "ficou claro no que me contaram.\n\n"
+    "Mas entender é só uma parte. A outra parte é a história viver na boca de vocês, na "
+    "língua de vocês. As duas últimas cenas ainda não passaram por aí. Não leva muito tempo.\n\n"
+    "Então façam assim. Ensaiem juntos, na língua de vocês, a cena dos casamentos e dos dez "
+    "anos, e depois a cena em que Malom e Quiliom morrem e Noemi fica sozinha, sem os dois "
+    "filhos e sem o marido. Podem fazer as duas cenas seguidas. Quando terminarem, voltem e "
+    "me contem em português, bem curto, o que vocês disseram no ensaio.\n\n"
+    "Depois disso, vamos pro próximo passo."
+)
+_THE_TELLING_OF_BOTH = (
+    "A gente ensaiou juntos na nossa língua a cena dos casamentos e dos 10 anos, e depois a "
+    "cena em que Malone e Kleon morrer-morreram, e Noemí fica sozinha, sem os filhos e sem o "
+    "marido."
+)
+
+
+@pytest.mark.asyncio
+async def test_a_full_necklace_still_lets_the_telling_mark_the_scene_it_reported(
+    db_session: AsyncSession, approve_all: None
+) -> None:
+    """Session dce19a6b, on the pilot device, the day #431 was tested: every bead engaged,
+    one scene reported, and the room could no longer record a rehearsal at all.
+
+    The scene a telling is read against was the coverage pointer — the first scene not yet
+    fully engaged — and with the necklace full there is none, so the reply the invitation
+    had asked for marked nothing, the Guide sent the team to record on what it had heard,
+    and the gate held the session open on a practice record that could never grow again.
+    Before ENG-780 the full necklace itself counted as practiced, so this had no way to show.
+
+    With nothing left to open, the invitation can only be about a rehearsal still owed, and
+    the telling marks the first scene the room told the Guide was still needed. One scene
+    per telling: the Guide here invited two, and the app cannot read that off its prose —
+    the second stays on the STILL NEEDED line for the Guide to invite again. Had the fix
+    been in from the session's start, the second scene's own telling would already have
+    been recorded and this one would land on the third."""
+    passage = "P01"
+    session = await create_session(db_session, language="pt", pericope=passage)
+    session = await save_comprehension(
+        db_session, session, ComprehensionState(practiced_scene_ids=["S1"])
+    )
+    session = await apply_coverage(
+        db_session,
+        session.id,
+        merge(initial_state(passage), pericope_num=passage, engaged=element_keys(passage)),
+    )
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="Pra ser sincero, eu acho que a gente já cobriu tudo, tá bom?",
+        guide_response=_THE_INVITATION_FOR_THE_LAST_TWO_SCENES,
+    )
+
+    turn = await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text=_THE_TELLING_OF_BOTH),
+        opening=False,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        settings=_settings(),
+    )
+
+    assert turn.state.practiced_scene_ids == ["S1", "S2"]
 
 
 class InvitingAgentAskingForTheWord:
