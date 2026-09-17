@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_minutes: int = 60 * 24 * 7
 
-    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com,https://translationhelper.shemaywam.com,https://annotationstudio.shemaywam.com,https://soundnecklace.shemaywam.com"
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://oralcollector.shemaywam.com,https://tripod-console.shemaywam.com,https://translationhelper.shemaywam.com,https://annotationstudio.shemaywam.com,https://soundnecklace.shemaywam.com,https://shema.shemaywam.com"
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: str | None = None
@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     recaptcha_secret_key: str = ""
     google_embedding_model: str = "gemini-embedding-001"
     google_llm_model: str = "gemini-3.1-pro-preview"
+    #: The two Gemini tiers every feature speaks through. They were literals in nine
+    #: modules, so the model behind Translation Helper, Project Health, the
+    #: Internalization Room, Sound Necklace and i18n could only be changed by editing and
+    #: deploying nine files — and all nine named a preview. A preview is withdrawn without
+    #: notice, and with no alerting in front of them the first sign would have been five
+    #: features failing at once. Here, moving off one is an environment variable.
+    gemini_fast_model: str = "gemini-3-flash-preview"
+    gemini_quality_model: str = "gemini-3-flash-preview"
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5
@@ -38,6 +46,26 @@ class Settings(BaseSettings):
 
     ph_elevenlabs_api_key: str = ""
 
+    internalization_room_api_key: str = ""
+    #: The room bills its own voice. Empty falls back to the shared key.
+    internalization_room_elevenlabs_api_key: str = ""
+    #: The room's Portuguese voice. One native voice per language it speaks, never one
+    #: multilingual voice for all of them: a voice keeps its accent in any language, and a
+    #: Brazilian-cloned voice reading English is the failure ``platform/voices.py`` argues
+    #: against at length.
+    internalization_room_voice_id: str = "83Nae6GFQiNslSbuzmE7"
+    internalization_room_voice_id_en: str = "x52Gqgso2pdbdr7KngsJ"
+    internalization_room_voice_id_es: str = "fYypSok4m8xKqKsDwS7O"
+    #: What a caller that names no language gets. Not "the language the room speaks" any
+    #: more — the app names that on the session, because it is the tablet that knows which
+    #: language the team in front of it reads its own settings in.
+    internalization_room_default_language: str = "en"
+    internalization_room_tts_model: str = "eleven_turbo_v2_5"
+    internalization_room_voice_stability: float = 0.45
+    internalization_room_voice_similarity: float = 0.85
+    internalization_room_voice_style: float = 0.10
+    internalization_room_voice_speed: float = 0.96
+
     gcs_bucket_name: str = ""
     # Generic platform bucket (TTS cache). Server-side only: no browser reaches it, so it
     # needs neither CORS nor public access.
@@ -49,15 +77,27 @@ class Settings(BaseSettings):
 
     inngest_event_key: str = ""
     inngest_signing_key: str = ""
+    #: The app Inngest registers this deploy under. It was a literal, which made every
+    #: service built from this image the same app: the sync writes the serve endpoint of
+    #: the id it is given, so a second service registering as `tripod-backend` takes
+    #: production's endpoint and production's events start arriving at it. Staging sets
+    #: this; the default is production, so an unset variable deploys what it always did.
+    inngest_app_id: str = "tripod-backend"
 
     password_reset_token_expire_minutes: int = 60
+    access_invite_expire_days: int = 7
     email_provider: str = "log"
     resend_api_key: str = ""
 
     azure_tenant_id: str = ""
     azure_client_id: str = ""
     azure_client_secret: str = ""
-    email_from_address: str = "support@shemaywam.com"
+    #: The address Resend was hard-coded to send from before BE-12 unified both
+    #: providers on this setting. Nothing sets ``EMAIL_FROM_ADDRESS`` in ``deploy.yml``
+    #: or the compose, so this default *is* the production sender: moving it migrates
+    #: the domain's verified sender, and a sender the provider rejects surfaces only
+    #: as a log line, never as an error to the caller.
+    email_from_address: str = "noreply@shemaywam.com"
 
     @property
     def cors_origin_list(self) -> list[str]:

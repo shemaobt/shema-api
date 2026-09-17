@@ -21,6 +21,13 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.device import Device
+from app.db.models.internalization_room import (
+    IRCoverageEvent,
+    IRQuestion,
+    IRSession,
+    IRTake,
+)
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -49,6 +56,52 @@ from app.db.models.project_health import (
     PHReport,
 )
 from app.db.models.public_request import PublicRequest
+from app.db.models.resource_request import (
+    RRBoardTransition,
+    RRBudgetLine,
+    RRCurrency,
+    RRDecision,
+    RREvaluation,
+    RREvaluationAttendee,
+    RREvaluationFieldHistory,
+    RREvaluationScore,
+    RRFund,
+    RRFundMovement,
+    RRMovementKind,
+    RRRequest,
+    RRRequestFieldHistory,
+    RRRequestSections,
+    RRRequestType,
+    RRSnapshot,
+    RRStage,
+)
+from app.db.models.shema import ShemaProject
+from app.db.models.shema_audit import ShemaRecordEdit
+from app.db.models.shema_consent import ShemaConsentContext, ShemaIntercessorConsent
+from app.db.models.shema_enums import (
+    ShemaEtenCreditSource,
+    ShemaHealthLevel,
+    ShemaMaterialKind,
+    ShemaMediaKind,
+    ShemaNeedStatus,
+    ShemaNeedUrgency,
+    ShemaPrayerVisibility,
+    ShemaProjectStatus,
+    ShemaRegionKey,
+    ShemaRoleKey,
+    ShemaYesNo,
+)
+from app.db.models.shema_eten import ShemaEtenCredit
+from app.db.models.shema_form import ShemaFormDefinition, ShemaIntakeLink, ShemaSubmission
+from app.db.models.shema_health import ShemaHealthAssessment
+from app.db.models.shema_intercessor import ShemaIntercessor
+from app.db.models.shema_media import ShemaMaterial, ShemaMediaItem
+from app.db.models.shema_meeting import ShemaMeetingLogEntry
+from app.db.models.shema_need import ShemaNeed
+from app.db.models.shema_notification import ShemaNotificationPrefs, ShemaNotificationRead
+from app.db.models.shema_org_chart import ShemaRegionTeam, ShemaRoleChange
+from app.db.models.shema_progress import ShemaProgressEntry
+from app.db.models.shema_region import ShemaUserRegion
 from app.db.models.sound_necklace import (
     GranularityLevel,
     SessionStatus,
@@ -84,7 +137,12 @@ __all__ = [
     "BibleBook",
     "BookContextDocument",
     "ChatMessageRole",
+    "Device",
     "GranularityLevel",
+    "IRCoverageEvent",
+    "IRQuestion",
+    "IRSession",
+    "IRTake",
     "Language",
     "MeaningMap",
     "MeaningMapFeedback",
@@ -112,11 +170,59 @@ __all__ = [
     "ProjectPhase",
     "ProjectUserAccess",
     "PublicRequest",
+    "RRBoardTransition",
+    "RRBudgetLine",
+    "RRCurrency",
+    "RRDecision",
+    "RREvaluation",
+    "RREvaluationAttendee",
+    "RREvaluationFieldHistory",
+    "RREvaluationScore",
+    "RRFund",
+    "RRFundMovement",
+    "RRMovementKind",
+    "RRRequest",
+    "RRRequestFieldHistory",
+    "RRRequestSections",
+    "RRRequestType",
+    "RRSnapshot",
+    "RRStage",
     "RefreshToken",
     "Role",
     "RolePermission",
     "SessionStatus",
     "SessionStep",
+    "ShemaConsentContext",
+    "ShemaEtenCredit",
+    "ShemaEtenCreditSource",
+    "ShemaFormDefinition",
+    "ShemaHealthAssessment",
+    "ShemaHealthLevel",
+    "ShemaIntakeLink",
+    "ShemaIntercessor",
+    "ShemaIntercessorConsent",
+    "ShemaMaterial",
+    "ShemaMaterialKind",
+    "ShemaMediaItem",
+    "ShemaMediaKind",
+    "ShemaMeetingLogEntry",
+    "ShemaNeed",
+    "ShemaNeedStatus",
+    "ShemaNeedUrgency",
+    "ShemaNotificationPrefs",
+    "ShemaNotificationRead",
+    "ShemaPrayerVisibility",
+    "ShemaProgressEntry",
+    "ShemaProject",
+    "ShemaProjectStatus",
+    "ShemaRecordEdit",
+    "ShemaRegionKey",
+    "ShemaRegionTeam",
+    "ShemaRoleChange",
+    "ShemaRoleKey",
+    "ShemaSubmission",
+    "ShemaUserRegion",
+    "ShemaYesNo",
     "SnSession",
     "SnSessionState",
     "THAgentPrompt",

@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import TypedDict
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -9,8 +10,34 @@ from app.core.database import Base
 from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
 
 
+class ReviewFlag(TypedDict):
+    """One flag as it is stored and served.
+
+    A TypedDict rather than a model because the value has to stay a plain dict: it is
+    written straight into a JSON column and read back out of one, so anything with a
+    constructor would have to be converted on both sides for no gain in what is checked.
+    """
+
+    code: str
+    origin: str
+
+
 class OC_Recording(Base):
     __tablename__ = "oc_recordings"
+    __table_args__ = (
+        Index(
+            "uq_oc_recordings_project_title",
+            "project_id",
+            "title",
+            unique=True,
+            postgresql_where=text(
+                "split_from_id IS NULL AND splitting_status <> 'archived_after_split'"
+            ),
+            sqlite_where=text(
+                "split_from_id IS NULL AND splitting_status <> 'archived_after_split'"
+            ),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     project_id: Mapped[str] = mapped_column(
@@ -50,6 +77,9 @@ class OC_Recording(Base):
     split_from_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     split_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     split_segment_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_flags: Mapped[list[ReviewFlag]] = mapped_column(
+        JSON(none_as_null=True), nullable=False, server_default=text("'[]'"), default=list
+    )
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -1,3 +1,14 @@
+"""A signed, short-lived read of one voice answer, recorded in the audit log.
+
+DORMANT since the 2026-09-01 scope cut — kept deliberately, not by neglect.
+
+The Colar's SPA now ends at the scene and phrase segmentation: no interview, no report, no
+artifact. Nothing has called this module since. This is not dead code and not an oversight — it
+still runs end to end when called, and the module belongs to the interview package the system that
+hosts the interview next will pick up whole. Read ``docs/sound_necklace_interview_package.md``
+before changing or removing anything here.
+"""
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError

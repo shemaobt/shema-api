@@ -1,0 +1,472 @@
+{
+  "source": {
+    "repository": "shemaobt/project-management-ecosystem",
+    "file": "src/constants/bible.ts",
+    "commit": "d4fa47c7df4786770430cb76616620b65f285c0b"
+  },
+  "chapterTotal": 1189,
+  "books": [
+    {
+      "id": "gen",
+      "name": "Gênesis",
+      "en": "Genesis",
+      "chapters": 50,
+      "ot": true
+    },
+    {
+      "id": "exo",
+      "name": "Êxodo",
+      "en": "Exodus",
+      "chapters": 40,
+      "ot": true
+    },
+    {
+      "id": "lev",
+      "name": "Levítico",
+      "en": "Leviticus",
+      "chapters": 27,
+      "ot": true
+    },
+    {
+      "id": "num",
+      "name": "Números",
+      "en": "Numbers",
+      "chapters": 36,
+      "ot": true
+    },
+    {
+      "id": "deu",
+      "name": "Deuteronômio",
+      "en": "Deuteronomy",
+      "chapters": 34,
+      "ot": true
+    },
+    {
+      "id": "jos",
+      "name": "Josué",
+      "en": "Joshua",
+      "chapters": 24,
+      "ot": true
+    },
+    {
+      "id": "jdg",
+      "name": "Juízes",
+      "en": "Judges",
+      "chapters": 21,
+      "ot": true
+    },
+    {
+      "id": "rut",
+      "name": "Rute",
+      "en": "Ruth",
+      "chapters": 4,
+      "ot": true
+    },
+    {
+      "id": "1sa",
+      "name": "1 Samuel",
+      "en": "1 Samuel",
+      "chapters": 31,
+      "ot": true
+    },
+    {
+      "id": "2sa",
+      "name": "2 Samuel",
+      "en": "2 Samuel",
+      "chapters": 24,
+      "ot": true
+    },
+    {
+      "id": "1ki",
+      "name": "1 Reis",
+      "en": "1 Kings",
+      "chapters": 22,
+      "ot": true
+    },
+    {
+      "id": "2ki",
+      "name": "2 Reis",
+      "en": "2 Kings",
+      "chapters": 25,
+      "ot": true
+    },
+    {
+      "id": "1ch",
+      "name": "1 Crônicas",
+      "en": "1 Chronicles",
+      "chapters": 29,
+      "ot": true
+    },
+    {
+      "id": "2ch",
+      "name": "2 Crônicas",
+      "en": "2 Chronicles",
+      "chapters": 36,
+      "ot": true
+    },
+    {
+      "id": "ezr",
+      "name": "Esdras",
+      "en": "Ezra",
+      "chapters": 10,
+      "ot": true
+    },
+    {
+      "id": "neh",
+      "name": "Neemias",
+      "en": "Nehemiah",
+      "chapters": 13,
+      "ot": true
+    },
+    {
+      "id": "est",
+      "name": "Ester",
+      "en": "Esther",
+      "chapters": 10,
+      "ot": true
+    },
+    {
+      "id": "job",
+      "name": "Jó",
+      "en": "Job",
+      "chapters": 42,
+      "ot": true
+    },
+    {
+      "id": "psa",
+      "name": "Salmos",
+      "en": "Psalms",
+      "chapters": 150,
+      "ot": true
+    },
+    {
+      "id": "pro",
+      "name": "Provérbios",
+      "en": "Proverbs",
+      "chapters": 31,
+      "ot": true
+    },
+    {
+      "id": "ecc",
+      "name": "Eclesiastes",
+      "en": "Ecclesiastes",
+      "chapters": 12,
+      "ot": true
+    },
+    {
+      "id": "sng",
+      "name": "Cantares",
+      "en": "Song of Solomon",
+      "chapters": 8,
+      "ot": true
+    },
+    {
+      "id": "isa",
+      "name": "Isaías",
+      "en": "Isaiah",
+      "chapters": 66,
+      "ot": true
+    },
+    {
+      "id": "jer",
+      "name": "Jeremias",
+      "en": "Jeremiah",
+      "chapters": 52,
+      "ot": true
+    },
+    {
+      "id": "lam",
+      "name": "Lamentações",
+      "en": "Lamentations",
+      "chapters": 5,
+      "ot": true
+    },
+    {
+      "id": "ezk",
+      "name": "Ezequiel",
+      "en": "Ezekiel",
+      "chapters": 48,
+      "ot": true
+    },
+    {
+      "id": "dan",
+      "name": "Daniel",
+      "en": "Daniel",
+      "chapters": 12,
+      "ot": true
+    },
+    {
+      "id": "hos",
+      "name": "Oseias",
+      "en": "Hosea",
+      "chapters": 14,
+      "ot": true
+    },
+    {
+      "id": "jol",
+      "name": "Joel",
+      "en": "Joel",
+      "chapters": 3,
+      "ot": true
+    },
+    {
+      "id": "amo",
+      "name": "Amós",
+      "en": "Amos",
+      "chapters": 9,
+      "ot": true
+    },
+    {
+      "id": "oba",
+      "name": "Obadias",
+      "en": "Obadiah",
+      "chapters": 1,
+      "ot": true
+    },
+    {
+      "id": "jon",
+      "name": "Jonas",
+      "en": "Jonah",
+      "chapters": 4,
+      "ot": true
+    },
+    {
+      "id": "mic",
+      "name": "Miqueias",
+      "en": "Micah",
+      "chapters": 7,
+      "ot": true
+    },
+    {
+      "id": "nam",
+      "name": "Naum",
+      "en": "Nahum",
+      "chapters": 3,
+      "ot": true
+    },
+    {
+      "id": "hab",
+      "name": "Habacuque",
+      "en": "Habakkuk",
+      "chapters": 3,
+      "ot": true
+    },
+    {
+      "id": "zep",
+      "name": "Sofonias",
+      "en": "Zephaniah",
+      "chapters": 3,
+      "ot": true
+    },
+    {
+      "id": "hag",
+      "name": "Ageu",
+      "en": "Haggai",
+      "chapters": 2,
+      "ot": true
+    },
+    {
+      "id": "zec",
+      "name": "Zacarias",
+      "en": "Zechariah",
+      "chapters": 14,
+      "ot": true
+    },
+    {
+      "id": "mal",
+      "name": "Malaquias",
+      "en": "Malachi",
+      "chapters": 4,
+      "ot": true
+    },
+    {
+      "id": "mat",
+      "name": "Mateus",
+      "en": "Matthew",
+      "chapters": 28,
+      "ot": false
+    },
+    {
+      "id": "mrk",
+      "name": "Marcos",
+      "en": "Mark",
+      "chapters": 16,
+      "ot": false
+    },
+    {
+      "id": "luk",
+      "name": "Lucas",
+      "en": "Luke",
+      "chapters": 24,
+      "ot": false
+    },
+    {
+      "id": "jhn",
+      "name": "João",
+      "en": "John",
+      "chapters": 21,
+      "ot": false
+    },
+    {
+      "id": "act",
+      "name": "Atos",
+      "en": "Acts",
+      "chapters": 28,
+      "ot": false
+    },
+    {
+      "id": "rom",
+      "name": "Romanos",
+      "en": "Romans",
+      "chapters": 16,
+      "ot": false
+    },
+    {
+      "id": "1co",
+      "name": "1 Coríntios",
+      "en": "1 Corinthians",
+      "chapters": 16,
+      "ot": false
+    },
+    {
+      "id": "2co",
+      "name": "2 Coríntios",
+      "en": "2 Corinthians",
+      "chapters": 13,
+      "ot": false
+    },
+    {
+      "id": "gal",
+      "name": "Gálatas",
+      "en": "Galatians",
+      "chapters": 6,
+      "ot": false
+    },
+    {
+      "id": "eph",
+      "name": "Efésios",
+      "en": "Ephesians",
+      "chapters": 6,
+      "ot": false
+    },
+    {
+      "id": "php",
+      "name": "Filipenses",
+      "en": "Philippians",
+      "chapters": 4,
+      "ot": false
+    },
+    {
+      "id": "col",
+      "name": "Colossenses",
+      "en": "Colossians",
+      "chapters": 4,
+      "ot": false
+    },
+    {
+      "id": "1th",
+      "name": "1 Tessalonicenses",
+      "en": "1 Thessalonians",
+      "chapters": 5,
+      "ot": false
+    },
+    {
+      "id": "2th",
+      "name": "2 Tessalonicenses",
+      "en": "2 Thessalonians",
+      "chapters": 3,
+      "ot": false
+    },
+    {
+      "id": "1ti",
+      "name": "1 Timóteo",
+      "en": "1 Timothy",
+      "chapters": 6,
+      "ot": false
+    },
+    {
+      "id": "2ti",
+      "name": "2 Timóteo",
+      "en": "2 Timothy",
+      "chapters": 4,
+      "ot": false
+    },
+    {
+      "id": "tit",
+      "name": "Tito",
+      "en": "Titus",
+      "chapters": 3,
+      "ot": false
+    },
+    {
+      "id": "phm",
+      "name": "Filemom",
+      "en": "Philemon",
+      "chapters": 1,
+      "ot": false
+    },
+    {
+      "id": "heb",
+      "name": "Hebreus",
+      "en": "Hebrews",
+      "chapters": 13,
+      "ot": false
+    },
+    {
+      "id": "jas",
+      "name": "Tiago",
+      "en": "James",
+      "chapters": 5,
+      "ot": false
+    },
+    {
+      "id": "1pe",
+      "name": "1 Pedro",
+      "en": "1 Peter",
+      "chapters": 5,
+      "ot": false
+    },
+    {
+      "id": "2pe",
+      "name": "2 Pedro",
+      "en": "2 Peter",
+      "chapters": 3,
+      "ot": false
+    },
+    {
+      "id": "1jn",
+      "name": "1 João",
+      "en": "1 John",
+      "chapters": 5,
+      "ot": false
+    },
+    {
+      "id": "2jn",
+      "name": "2 João",
+      "en": "2 John",
+      "chapters": 1,
+      "ot": false
+    },
+    {
+      "id": "3jn",
+      "name": "3 João",
+      "en": "3 John",
+      "chapters": 1,
+      "ot": false
+    },
+    {
+      "id": "jud",
+      "name": "Judas",
+      "en": "Jude",
+      "chapters": 1,
+      "ot": false
+    },
+    {
+      "id": "rev",
+      "name": "Apocalipse",
+      "en": "Revelation",
+      "chapters": 22,
+      "ot": false
+    }
+  ]
+}
