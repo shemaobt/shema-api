@@ -284,3 +284,28 @@ async def test_a_reopen_refused_by_a_lease_that_then_lapsed_is_not_a_stale_versi
 
     assert res.status_code == 409, res.text
     assert res.json()["code"] == "SESSION_LOCK_CHANGED"
+
+
+async def test_a_rename_refused_by_a_lease_that_then_lapsed_is_not_a_silent_no_op(
+    client, alice, bob, project, monkeypatch
+):
+    """The rename write is fenced the same way complete is, so it inherits the same
+    hole: refused by the lease, and by the time it looks for a holder to name there is
+    none. Answering 200 there would report the old name as if it were the new one."""
+    _alice_user, alice_headers = alice
+    _bob_user, bob_headers = bob
+    session_id = await new_session(client, alice_headers, project.id)
+    original = (await client.get(f"{SN}/sessions/{session_id}", headers=alice_headers)).json()[
+        "story_name"
+    ]
+    await client.put(f"{SN}/sessions/{session_id}/lock", headers=bob_headers)
+    lease_lapsed_before_the_diagnosis(monkeypatch, "rename_session")
+
+    res = await client.patch(
+        f"{SN}/sessions/{session_id}", headers=alice_headers, json={"story_name": "Nome Novo"}
+    )
+
+    assert res.status_code == 409, res.text
+    assert res.json()["code"] == "SESSION_LOCK_CHANGED"
+    still = await client.get(f"{SN}/sessions/{session_id}", headers=bob_headers)
+    assert still.json()["story_name"] == original

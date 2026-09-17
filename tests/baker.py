@@ -1,7 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
 from app.db.models.auth import AccessRequest, App, RefreshToken, Role, User, UserAppRole
 from app.db.models.book_context import (
     BCDApproval,
@@ -9,6 +11,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -16,6 +19,9 @@ from app.db.models.meaning_map import (
     MeaningMapFeedback,
     Pericope,
 )
+from app.db.models.oc_genre import OC_Genre, OC_Subcategory
+from app.db.models.oc_recording import OC_Recording
+from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.org import Organization, OrganizationMember
 from app.db.models.phase import Phase, PhaseDependency, ProjectPhase
 from app.db.models.project import (
@@ -31,6 +37,15 @@ from app.db.models.translation_helper import (
     THChatMessage,
 )
 from app.services.auth.hash_password import hash_password
+from app.services.internalization_room.calibration import BridgeMode
+from app.services.internalization_room.canon.elements import ElementKind, elements_for
+from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.coverage import initial_state
+from app.services.internalization_room.sessions import create_session
+from app.services.oral_collector.review_flags import (
+    UNCLASSIFIED_GENRE_ID,
+    recompute_review_flags,
+)
 
 SAMPLE_MM_DATA: dict = {
     "level_1": {"arc": "God creates the heavens and the earth."},
@@ -117,8 +132,9 @@ async def make_app(
     app_key: str = "test-app",
     name: str = "Test App",
     is_active: bool = True,
+    auto_approve: bool = False,
 ) -> App:
-    app = App(app_key=app_key, name=name, is_active=is_active)
+    app = App(app_key=app_key, name=name, is_active=is_active, auto_approve=auto_approve)
     db.add(app)
     await db.commit()
     await db.refresh(app)
@@ -167,6 +183,41 @@ async def make_user_app_role(
     await db.commit()
     await db.refresh(assignment)
     return assignment
+
+
+FACILITATOR_APP_KEY = "internalization-room"
+FACILITATOR_ROLE_KEY = "facilitator"
+
+
+async def grant_facilitator_app_role(db: AsyncSession, user_id: str) -> UserAppRole:
+    """Give a user the app role every facilitator route requires.
+
+    The rows `20260812_room04` registers do not exist here: the suite builds its schema with
+    ``create_all`` and never runs a migration. So the app and the role are created on first
+    use and reused after, which is why this is get-or-create rather than a plain make.
+
+    **The grant itself has no counterpart in production.** `room04` registers the app and the
+    roles and grants them to nobody, and no migration grants `facilitator` to anyone. This
+    helper is what lets a test measure the gate instead of measuring an empty
+    ``user_app_roles`` table; it is not evidence that a real facilitator can get in.
+    """
+    app = (
+        await db.execute(select(App).where(App.app_key == FACILITATOR_APP_KEY))
+    ).scalar_one_or_none()
+    if app is None:
+        app = await make_app(db, app_key=FACILITATOR_APP_KEY, name="Sala de Internalização")
+
+    role = (
+        await db.execute(
+            select(Role).where(Role.app_id == app.id, Role.role_key == FACILITATOR_ROLE_KEY)
+        )
+    ).scalar_one_or_none()
+    if role is None:
+        role = await make_role(
+            db, app.id, role_key=FACILITATOR_ROLE_KEY, label="Facilitador", is_system=True
+        )
+
+    return await make_user_app_role(db, user_id, app.id, role.id)
 
 
 async def make_language(
@@ -242,8 +293,14 @@ async def make_project_user_access(
     db: AsyncSession,
     project_id: str,
     user_id: str,
+    *,
     role: str = "member",
 ) -> ProjectUserAccess:
+    """A project_user_access row. `role` defaults to what the column defaults to.
+
+    Written straight to the table, so it accepts values `grant_user_access` would reject —
+    which is what lets a test seed a row an older code path could have left behind.
+    """
     access = ProjectUserAccess(project_id=project_id, user_id=user_id, role=role)
     db.add(access)
     await db.commit()
@@ -597,6 +654,7 @@ async def grant_app_role(
     role_key: str = "user",
     label: str | None = None,
 ) -> UserAppRole:
+    """Convenience: ensure a role with `role_key` exists for `app` and assign it to `user`."""
     role = await make_role(
         db,
         app.id,
@@ -605,6 +663,175 @@ async def grant_app_role(
         is_system=True,
     )
     return await make_user_app_role(db, user.id, app.id, role.id)
+
+
+async def make_oc_genre(
+    db: AsyncSession,
+    *,
+    name: str = "narrative",
+    sort_order: int = 0,
+    genre_id: str | None = None,
+) -> OC_Genre:
+    """An oral-collector genre. Pass `genre_id` to pin the primary key."""
+    genre = OC_Genre(id=genre_id, name=name, sort_order=sort_order)
+    db.add(genre)
+    await db.commit()
+    await db.refresh(genre)
+    return genre
+
+
+async def make_oc_subcategory(
+    db: AsyncSession,
+    genre_id: str,
+    *,
+    name: str = "folktale",
+    sort_order: int = 0,
+    subcategory_id: str | None = None,
+) -> OC_Subcategory:
+    """An oral-collector subcategory under `genre_id`. Pass `subcategory_id` to pin the key."""
+    subcategory = OC_Subcategory(
+        id=subcategory_id,
+        genre_id=genre_id,
+        name=name,
+        sort_order=sort_order,
+    )
+    db.add(subcategory)
+    await db.commit()
+    await db.refresh(subcategory)
+    return subcategory
+
+
+async def make_oc_taxonomy(
+    db: AsyncSession,
+    *,
+    genre_name: str = "narrative",
+    subcategory_name: str = "folktale",
+) -> tuple[OC_Genre, OC_Subcategory]:
+    """A genre with a single subcategory under it."""
+    genre = await make_oc_genre(db, name=genre_name)
+    subcategory = await make_oc_subcategory(db, genre.id, name=subcategory_name)
+    return genre, subcategory
+
+
+async def make_oc_taxonomy_with_sentinel(
+    db: AsyncSession,
+    *,
+    genre_name: str = "narrative",
+    subcategory_name: str = "folktale",
+) -> tuple[OC_Genre, OC_Subcategory]:
+    """A real genre/subcategory pair plus the `unclassified` sentinel.
+
+    The sentinel exists in production because a seed migration inserts it, and the test
+    database is built from `Base.metadata` without ever running migrations — so a test
+    that needs it has to put it there itself. Only the real pair is returned.
+    """
+    await make_oc_genre(db, name="Unclassified", sort_order=9999, genre_id=UNCLASSIFIED_GENRE_ID)
+    await make_oc_subcategory(
+        db,
+        UNCLASSIFIED_GENRE_ID,
+        name="Unclassified",
+        sort_order=9999,
+        subcategory_id=UNCLASSIFIED_GENRE_ID,
+    )
+    return await make_oc_taxonomy(
+        db,
+        genre_name=genre_name,
+        subcategory_name=subcategory_name,
+    )
+
+
+async def make_oc_storyteller(
+    db: AsyncSession,
+    project_id: str,
+    *,
+    name: str = "Ana",
+    sex: str = "female",
+    age: int | None = None,
+    external_acceptance_confirmed: bool = False,
+    created_by_user_id: str | None = None,
+) -> OC_Storyteller:
+    """A storyteller attached to `project_id`.
+
+    `external_acceptance_confirmed` defaults to False the way the column does; a test that
+    needs a recording to come out unflagged passes True.
+    """
+    storyteller = OC_Storyteller(
+        project_id=project_id,
+        name=name,
+        sex=sex,
+        age=age,
+        external_acceptance_confirmed=external_acceptance_confirmed,
+        created_by_user_id=created_by_user_id,
+    )
+    db.add(storyteller)
+    await db.commit()
+    await db.refresh(storyteller)
+    return storyteller
+
+
+async def make_oc_recording(
+    db: AsyncSession,
+    project_id: str,
+    genre_id: str,
+    subcategory_id: str,
+    *,
+    user_id: str | None = None,
+    register_id: str | None = None,
+    secondary_genre_id: str | None = None,
+    secondary_subcategory_id: str | None = None,
+    secondary_register_id: str | None = None,
+    storyteller_id: str | None = None,
+    title: str | None = "test recording",
+    description: str | None = None,
+    duration_seconds: float = 10.0,
+    file_size_bytes: int = 1024,
+    format: str = "m4a",
+    gcs_url: str | None = None,
+    upload_status: str = UploadStatus.VERIFIED,
+    cleaning_status: str = CleaningStatus.NONE,
+    splitting_status: str = SplittingStatus.NONE,
+    recorded_at: datetime | None = None,
+    recompute_flags: bool = False,
+) -> OC_Recording:
+    """A recording written straight to the table, bypassing `create_recording`.
+
+    `upload_status` defaults to `VERIFIED` rather than the column's `LOCAL`, so seeded rows
+    fall inside `ACTIVE_UPLOAD_STATUSES` and stay visible to `list_recordings` and project
+    stats.
+
+    `recompute_flags` defaults to False, leaving `review_flags` empty; pass True for the
+    flags a live write path would have computed.
+
+    `title` participates in the `uq_oc_recordings_project_title` partial unique index, so
+    two calls sharing a `project_id` and leaving the default in place will collide.
+    """
+    recording = OC_Recording(
+        project_id=project_id,
+        genre_id=genre_id,
+        subcategory_id=subcategory_id,
+        register_id=register_id,
+        secondary_genre_id=secondary_genre_id,
+        secondary_subcategory_id=secondary_subcategory_id,
+        secondary_register_id=secondary_register_id,
+        storyteller_id=storyteller_id,
+        user_id=user_id,
+        title=title,
+        description=description,
+        duration_seconds=duration_seconds,
+        file_size_bytes=file_size_bytes,
+        format=format,
+        gcs_url=gcs_url,
+        upload_status=upload_status,
+        cleaning_status=cleaning_status,
+        splitting_status=splitting_status,
+        recorded_at=recorded_at or datetime.now(UTC),
+    )
+    if recompute_flags:
+        recompute_review_flags(recording)
+    db.add(recording)
+    await db.commit()
+    await db.refresh(recording)
+    return recording
 
 
 async def make_bcd_generation_log(
@@ -633,3 +860,56 @@ async def make_bcd_generation_log(
     await db.commit()
     await db.refresh(log)
     return log
+
+
+def _carries_its_preservation_layer(pericope: str) -> bool:
+    """Whether the canon records withholdings for this passage, read from the canon itself.
+
+    Deliberately not `require_walkable`, and not a caught refusal: a fixture that asked the
+    guard whether the guard would refuse could never notice the guard refusing a passage it
+    should have opened. This reads the same signal the room refuses on — the `preserved:`
+    beads on the passage's coverage spine — from the vendored material, one step away from
+    the code under test.
+    """
+    return any(
+        element.kind is ElementKind.PRESERVED
+        for element in elements_for(pericope, load_map(pericope).book)
+    )
+
+
+async def open_ir_session(
+    db: AsyncSession, *, pericope: str, project_id: str | None = None
+) -> IRSession:
+    """A room session on one passage, opened through the room wherever the room opens it.
+
+    Since ENG-589 the room refuses a passage whose preservation layer nobody wrote, and eight
+    of Ruth's fourteen are in that state. Walking the whole book is therefore a position the
+    production path cannot reach with the canon as vendored today, so the fixtures that need
+    a team standing past P06 have those rows written here rather than pretend the room opened
+    them.
+
+    Which branch a passage takes is decided from the canon *before* calling, never from a
+    caught refusal. A passage that carries its layer goes through `create_session` unguarded:
+    if the room refuses one it should have opened, that raises here and the fixture's own
+    tests go red, which is the whole point. Swallowing it would hide exactly the regression
+    this slice exists to prevent.
+    """
+    if _carries_its_preservation_layer(pericope):
+        return await create_session(db, pericope=pericope, project_id=project_id)
+
+    session = IRSession(
+        project_id=project_id,
+        pericope=pericope,
+        status=IRSessionStatus.IN_PROGRESS,
+        messages=[],
+        after_panorama=False,
+        coverage_state=initial_state(pericope),
+        kept_takes={},
+        back_translation={},
+        bridge_mode=BridgeMode.ADAPTIVE.value,
+        comprehension={},
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return session
