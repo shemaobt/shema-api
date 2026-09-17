@@ -208,8 +208,7 @@ async def save_the_spoken_verdict(
     *,
     said: str,
     clip_key: str,
-    used_fail_safe: bool,
-    fixed_line: str,
+    outcome: TurnOutcome,
 ) -> IRSession:
     """Write the turn the room just spoke: the exchange, the verdict and the state behind it.
 
@@ -217,9 +216,11 @@ async def save_the_spoken_verdict(
     A verdict stored before its clip would be served back by the repeat-press guard as a turn
     the team heard, when what they heard was the error.
     """
-    session = await append_exchange(db, session, team_utterance="", guide_response=said)
+    session = await append_exchange(
+        db, session, team_utterance="", guide_response=said, outcome=outcome
+    )
     state.verdict = VoicedVerdict(
-        clip_key=clip_key, fixed_line=fixed_line, used_fail_safe=used_fail_safe
+        clip_key=clip_key, fixed_line=outcome.fixed_line, used_fail_safe=outcome.used_fail_safe
     )
     await save_back_translation(db, session, state)
     return session

@@ -117,10 +117,8 @@ async def test_the_same_turn_id_posted_twice_runs_the_fan_out_once_and_appends_o
     assert fan_out["voice"].calls == 1, "the line was synthesized twice"
 
     reread = await get_session(db_session, session.id)
-    guide_lines = [m for m in (reread.messages or []) if m.get("role") == "guide"]
-    assert guide_lines == [{"role": "guide", "text": GUIDE_LINE}], (
-        "the resend appended a second exchange to the transcript"
-    )
+    guide_lines = [m["text"] for m in (reread.messages or []) if m.get("role") == "guide"]
+    assert guide_lines == [GUIDE_LINE], "the resend appended a second exchange to the transcript"
 
 
 async def test_two_different_turn_ids_each_run_their_own_fan_out(

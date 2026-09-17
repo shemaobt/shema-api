@@ -24,7 +24,7 @@ from contextvars import ContextVar
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room.sessions import _worth_settling
+from app.api.internalization_room.sessions import _scene_of, _worth_settling
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import (
@@ -223,7 +223,12 @@ async def take_text_turn(
         outcome = turn.outcome
         session = await room.save_comprehension(db, session, turn.state)
         session = await room.append_exchange(
-            db, session, team_utterance=outcome.transcript, guide_response=outcome.speech
+            db,
+            session,
+            team_utterance=outcome.transcript,
+            guide_response=outcome.speech,
+            outcome=outcome,
+            scene=_scene_of(session),
         )
         if _worth_settling(outcome, heard):
             await settle_coverage(

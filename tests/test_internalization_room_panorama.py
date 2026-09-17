@@ -324,10 +324,10 @@ async def test_the_third_turn_still_carries_the_sessions_first_exchange(
 
     opening_exchange = {"role": "guide", "text": "resposta 1."}
     assert seen_messages[0] == [], "a abertura não tem conversa nenhuma atrás dela"
-    assert opening_exchange in seen_messages[2], (
+    assert opening_exchange["text"] in [m["text"] for m in seen_messages[2]], (
         "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
     )
-    assert seen_messages[2] == [
+    assert [{"role": m["role"], "text": m["text"]} for m in seen_messages[2]] == [
         opening_exchange,
         {"role": "team", "text": "pergunta dois"},
         {"role": "guide", "text": "resposta 2."},

@@ -131,7 +131,7 @@ async def test_a_kickoff_is_the_guides_opening_and_no_clip_is_asked_for(client, 
     assert body["transcript"] == ""
     assert body["outcome"] == "pass"
     session = await room.get_session(db_session, session_id)
-    assert session.messages == [{"role": "guide", "text": GUIDE_LINE}], (
+    assert _spoken(session.messages) == [{"role": "guide", "text": GUIDE_LINE}], (
         "a abertura era dita e não ficava na conversa, então o turno seguinte abria de novo"
     )
 
@@ -170,6 +170,10 @@ async def test_a_turn_with_neither_words_nor_kickoff_is_refused(client) -> None:
     answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id})
 
     assert answered.status_code == 400, answered.text
+
+
+def _spoken(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{"role": m["role"], "text": m["text"]} for m in messages]
 
 
 async def _an_open_session(client: httpx.AsyncClient) -> str:
@@ -261,7 +265,7 @@ async def test_the_fourth_turn_is_run_over_every_earlier_exchange_not_a_window(
         answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": words})
         assert answered.status_code == 200, answered.text
 
-    assert seen[-1] == [
+    assert _spoken(seen[-1]) == [
         {"role": "guide", "text": GUIDE_LINE},
         {"role": "team", "text": "Primeira fala."},
         {"role": "guide", "text": GUIDE_LINE},

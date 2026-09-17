@@ -173,8 +173,7 @@ async def play_a_round(
             state,
             said=verdict.said,
             clip_key="",
-            used_fail_safe=verdict.outcome.used_fail_safe,
-            fixed_line=verdict.outcome.fixed_line,
+            outcome=verdict.outcome,
         )
 
     return TextRoundResponse(

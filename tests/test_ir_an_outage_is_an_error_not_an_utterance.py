@@ -316,7 +316,8 @@ async def test_once_the_provider_answers_again_the_next_tap_is_a_normal_turn_on_
     assert body["used_fail_safe"] is False and body["fixed_line"] == ""
     assert spoken == [GUIDE_LINE], "a batida seguinte é um turno normal, sem linha enlatada"
     session = await get_session(db_session, session_id)
-    assert list(session.messages or []) == [{"role": "guide", "text": GUIDE_LINE}], (
+    spoken_lines = [{"role": m["role"], "text": m["text"]} for m in session.messages or []]
+    assert spoken_lines == [{"role": "guide", "text": GUIDE_LINE}], (
         "a sessão é a mesma, e só o turno que respondeu ficou gravado"
     )
 

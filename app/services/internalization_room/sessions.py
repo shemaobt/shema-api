@@ -48,6 +48,7 @@ from app.services.internalization_room.segments import (
     retire_the_segments_of,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.validated_turn import TurnOutcome
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
@@ -286,8 +287,17 @@ async def append_exchange(
     *,
     team_utterance: str,
     guide_response: str,
+    outcome: TurnOutcome | None = None,
+    scene: str | None = None,
 ) -> IRSession:
-    """Append one team/guide turn to the transcript.
+    """Append one team/guide turn to the transcript, and what containment did to it.
+
+    The guide message says whether the draft passed, was mended, or gave way to a fixed
+    line, and how many redrafts it cost. When a fixed line spoke, the message also keeps
+    what her fail-safe spec asks of every firing — the pericope, the scene, the team's
+    words, the Guide's draft, the Validator's verdict and issues, and which family
+    answered — so a session read back later never has to infer any of it. A turn that
+    arrives with no outcome, the prepared opening, is written as it always was.
 
     A turn that lands is the proof a person came back, so it also releases
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
@@ -305,11 +315,34 @@ async def append_exchange(
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
-    messages.append({"role": "guide", "text": guide_response})
+    guide: dict[str, Any] = {"role": "guide", "text": guide_response}
+    if outcome is not None:
+        guide["outcome"] = _containment_of(outcome)
+        guide["redrafts"] = outcome.redrafts
+        if outcome.used_fail_safe:
+            guide.update(
+                category=outcome.fixed_line[:1],
+                fixed_line=outcome.fixed_line,
+                pericope=session.pericope,
+                scene=scene,
+                team_utterance=team_utterance,
+                draft=outcome.draft,
+                verdict=outcome.verdict,
+                issues=outcome.issues,
+            )
+    messages.append(guide)
     values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
     if session.status is IRSessionStatus.NEEDS_PERSON:
         values["status"] = IRSessionStatus.IN_PROGRESS
     return await _land(db, session, values)
+
+
+def _containment_of(outcome: TurnOutcome) -> str:
+    if outcome.used_fail_safe:
+        return "fail_safe"
+    if outcome.verdict == "correct":
+        return "corrected"
+    return "pass"
 
 
 async def apply_coverage(

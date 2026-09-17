@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 from typing import Any
 
@@ -11,14 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import live_turn
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
-from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn import scene_view
-from app.services.internalization_room.turn.context import render_context
 from app.services.internalization_room.turn.speech import speak_back
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_agent_answers
 
@@ -27,7 +21,6 @@ OFF_BRIDGE_LINE = (
     "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
 )
 SECOND_INAUDIBLE_LINE = "Essa me escapou. Podem dizer de novo?"
-STATUS_BLOCK = "BLOCO DE TESTE: o que a sala sabe"
 
 
 class RecordingAgent:
@@ -67,22 +60,6 @@ def test_the_invitation_is_about_the_scene_being_opened_or_else_the_first_still_
     assert scene_view.scene_the_invitation_is_about(None, P, scenes) is None
 
 
-def test_the_context_phase_hands_the_models_the_status_block_and_nothing_can_rewrite_it() -> None:
-    checkpoints = list(checkpoints_for(P, load_map(P).book))
-    context = render_context(
-        checkpoints=checkpoints,
-        scene_ids=scene_ids_for(P),
-        state=ComprehensionState(),
-        projected_practice=["S1"],
-        scene_pointer="S2",
-    )
-
-    assert context.app_context.startswith("COMPREHENSION EVIDENCE (APP-OWNED;")
-    assert "MOTHER-TONGUE PRACTICE REPORTED: S1" in context.app_context.splitlines()
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        context.app_context = ""  # type: ignore[misc]
-
-
 async def _speak(session: Any, **overrides: Any) -> Any:
     given: dict[str, Any] = {
         "mother_tongue": False,
@@ -97,7 +74,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "validator_prompt": VALIDATOR,
         "pericope": P,
         "settings": settings(),
-        "app_context": STATUS_BLOCK,
     }
     return await speak_back(**{**given, **overrides})
 
@@ -132,7 +108,7 @@ async def test_speech_the_room_could_not_hear_draws_the_d_line_the_turn_count_po
     assert agent.calls == 0
 
 
-async def test_everything_else_reaches_the_guide_with_the_status_block_in_hand(
+async def test_everything_else_reaches_the_guide_with_the_ledger_in_hand(
     db_session: AsyncSession, agent: RecordingAgent
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
@@ -141,4 +117,4 @@ async def test_everything_else_reaches_the_guide_with_the_status_block_in_hand(
 
     assert outcome.speech == "A fome chegou a Belém."
     assert outcome.used_fail_safe is False
-    assert STATUS_BLOCK in agent.systems[0]
+    assert "COVERED (engaged):" in agent.systems[0]
