@@ -462,11 +462,12 @@ def scenes_practiced_by_the_telling_the_guide_invited(
     unpractised, the probe arrived afterwards, and the room asked again for a rehearsal
     already told.
 
-    The scope is the scene pointer, because that is what the invitation was about — the
-    Guide opens the scene the pointer names and invites for that one; it never chooses a
-    scene itself. Nothing is marked when there is no pointer, and nothing is marked when
-    the last line was not an invitation, which is what keeps an ordinary answer to an
-    ordinary question from counting as a rehearsal.
+    The scope is the scene the caller says the invitation was about — the one the Guide is
+    opening while beads are still being opened, the first scene still owed a rehearsal once
+    the necklace is full (`turn.scene_view.scene_the_invitation_is_about`); the Guide never
+    chooses a scene itself. Nothing is marked when there is no scene in scope, and nothing
+    is marked when the last line was not an invitation, which is what keeps an ordinary
+    answer to an ordinary question from counting as a rehearsal.
 
     The closing word counts beside the telling, and it has to: a Guide that names one word
     and gets it back has the report it asked for, and the bare word is not a telling by any
