@@ -169,6 +169,7 @@ async def play_a_round(
             said=verdict.said,
             clip_key="",
             outcome=verdict.outcome,
+            told_back=verdict.told_back,
         )
 
     return TextRoundResponse(

@@ -290,6 +290,7 @@ async def append_exchange(
     guide_response: str,
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
+    told_back: str = "",
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -299,6 +300,11 @@ async def append_exchange(
     words, the Guide's draft, the Validator's verdict and issues, and which family
     answered — so a session read back later never has to infer any of it. A turn that
     arrives with no outcome, the prepared opening, is written as it always was.
+
+    In the telling-back round nobody speaks into the conversation, so no team turn is
+    appended; what the team said there is the telling-back itself, and `told_back` is what
+    the record keeps as the team's words when that round fires. It has no scene: the
+    verdict is read against the stretches told, not against a pointer on the map.
 
     A turn that lands is the proof a person came back, so it also releases
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
@@ -326,7 +332,7 @@ async def append_exchange(
                 fixed_line=outcome.fixed_line,
                 pericope=session.pericope,
                 scene=scene,
-                team_utterance=team_utterance,
+                team_utterance=team_utterance or told_back,
                 draft=outcome.draft,
                 verdict=outcome.verdict,
                 issues=outcome.issues,

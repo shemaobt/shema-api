@@ -531,8 +531,12 @@ async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     assert body["used_fail_safe"], "este caso só vale se o turno tiver mesmo degradado"
     assert body["finding_segment_id"], "e o achado continua apontando um trecho"
     assert room.said == [], "nada foi sintetizado: a fala vem do pacote do app"
-    assert not _asked_for_the_whole_stretch(
-        _last_guide_turn(await get_session(db_session, session_id))
+    remembered = await get_session(db_session, session_id)
+    assert not _asked_for_the_whole_stretch(_last_guide_turn(remembered))
+    recorded = remembered.messages[-1]
+    assert recorded["outcome"] == "fail_safe"
+    assert "Noemi" in recorded["team_utterance"], (
+        "a rodada de recontagem disparou e o registro não guardava o que a equipe contou"
     )
 
 

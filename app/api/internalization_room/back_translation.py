@@ -309,6 +309,7 @@ async def finish(
         said=verdict.said,
         clip_key=voiced.key if voiced else "",
         outcome=verdict.outcome,
+        told_back=verdict.told_back,
     )
 
     return BackTranslationVerdictResponse(
