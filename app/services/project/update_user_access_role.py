@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.db.models.project import ProjectUserAccess
+from app.services.project.validate_project_role import validate_project_role
 
 
 async def update_user_access_role(
@@ -11,6 +12,8 @@ async def update_user_access_role(
     user_id: str,
     role: str,
 ) -> ProjectUserAccess:
+    """Change what a user is on a project. ``role`` has to be one of ``ProjectRole``."""
+    validate_project_role(role)
     stmt = select(ProjectUserAccess).where(
         ProjectUserAccess.project_id == project_id,
         ProjectUserAccess.user_id == user_id,

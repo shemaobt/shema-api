@@ -11,6 +11,7 @@ from app.core.exceptions import ValidationError
 from app.services.translation_helper.audio_cache import AudioCache, audio_cache
 from app.services.translation_helper.synthesize_speech import (
     VOICE_MAP,
+    _anchor_for,
     aggregate_sentence_marks,
     split_sentences,
     synthesize_speech,
@@ -378,3 +379,212 @@ def test_audio_cache_lru_eviction() -> None:
     assert cache.get("a") is None
     assert cache.get("b") is not None
     assert cache.get("c") is not None
+
+
+def test_aggregate_sentence_marks_anchors_on_the_whole_opening_word() -> None:
+    """A sentence anchors where it really starts, not on a stray matching letter.
+
+    Reported from the Joseph story: the highlight ran ahead of the voice and lit the
+    wrong sentence. Anchoring on a single character finds the first `d` after the
+    previous anchor, and "Does he think..." is preceded by "...does this boy think he
+    is?" — so the mark landed on that earlier `does` and every later sentence drifted
+    further ahead. Matching the opening word puts the anchor back on the sentence.
+    """
+    text = "Who does this boy think he is? Does he think he will rule over us?"
+    chars = list(text)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+
+    assert [m for m, _ in marks] == ["s0", "s1"]
+    # The second sentence begins at the "D" of "Does", index 31 — not at the "d" of
+    # "does" inside the first sentence, which sits at index 4.
+    assert marks[1][1] == pytest.approx(starts[text.index("Does he")])
+
+
+def test_aggregate_sentence_marks_keeps_anchors_moving_forward() -> None:
+    """Repeated openings must not collapse onto the same early position."""
+    text = "Go now. Go again. Go once more."
+    chars = list(text)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+
+    times = [t for _, t in marks]
+    assert times == sorted(times)
+    assert len(set(times)) == 3
+
+
+class _MemoryStore:
+    """In-memory bucket — the seam that replaces GCS in tests."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+        self.writes = 0
+
+    async def get(self, key: str) -> bytes | None:
+        return self.objects.get(key)
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.writes += 1
+        self.objects[key] = data
+
+
+class _BrokenStore:
+    """A bucket that is missing, unreachable, or missing its IAM binding."""
+
+    async def get(self, key: str) -> bytes | None:
+        raise RuntimeError("bucket unreachable")
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        raise RuntimeError("bucket unreachable")
+
+
+def _tts_payload(audio: bytes = b"ID3-audio", text: str = "Alpha. Beta.") -> dict[str, Any]:
+    return {
+        "audio_base64": base64.b64encode(audio).decode("ascii"),
+        "alignment": {
+            "characters": list(text),
+            "character_start_times_seconds": [i * 0.1 for i in range(len(text))],
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_clip_in_the_bucket_is_not_synthesized_again() -> None:
+    """The durable cache is the point: a cold worker must not re-pay ElevenLabs.
+
+    The in-process cache alone could never do this — tripod-backend runs up to twenty
+    instances and empties every one of them on deploy, so a second click routinely landed
+    somewhere cold and bought the same audio twice.
+    """
+    audio_cache.clear()
+    store = _MemoryStore()
+    client = SimpleNamespace(post=AsyncMock(side_effect=[_ok(_tts_payload())]))
+
+    first, was_cached = await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+    assert was_cached is False
+    assert client.post.await_count == 1
+
+    audio_cache.clear()  # a different instance, or the same one after a deploy
+    second, was_cached = await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+
+    assert was_cached is True
+    assert client.post.await_count == 1, "ElevenLabs was called again for a cached clip"
+    assert second.audio == first.audio
+    assert second.timepoints == first.timepoints, "karaoke marks must survive the bucket"
+
+
+@pytest.mark.asyncio
+async def test_a_broken_bucket_still_returns_audio() -> None:
+    """Caching is an optimisation. Losing it must not lose the request.
+
+    ElevenLabs has already been paid by this point; failing here would bill the synthesis
+    and hand the caller nothing.
+    """
+    audio_cache.clear()
+    client = SimpleNamespace(post=AsyncMock(side_effect=[_ok(_tts_payload())]))
+
+    entry, was_cached = await synthesize_speech(
+        "Alpha. Beta.",
+        language_code="en-US",
+        settings=_settings(),
+        client=client,
+        store=_BrokenStore(),
+    )
+
+    assert was_cached is False
+    assert entry.audio == b"ID3-audio"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_marks_still_serve_the_audio() -> None:
+    """Corrupt sentence marks cost the highlight on one clip, never the sound."""
+    audio_cache.clear()
+    store = _MemoryStore()
+    client = SimpleNamespace(post=AsyncMock(side_effect=[_ok(_tts_payload())]))
+    await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+    marks_key = next(k for k in store.objects if k.endswith(".marks.json"))
+    store.objects[marks_key] = b"{not json"
+
+    audio_cache.clear()
+    entry, was_cached = await synthesize_speech(
+        "Alpha. Beta.", language_code="en-US", settings=_settings(), client=client, store=store
+    )
+
+    assert was_cached is True
+    assert entry.audio == b"ID3-audio"
+    assert entry.timepoints == []
+
+
+def test_a_reshaped_word_does_not_lose_the_whole_sentence() -> None:
+    """The anchor shortens the phrase before giving up.
+
+    The phrase is matched against a stream the model has already normalized. Here the third
+    opening word is a numeral the model spoke as a word, so the four- and three-word phrases
+    cannot match; the two-word prefix still puts the anchor exactly where the sentence
+    starts. Without shortening, this sentence fell to the proportional guess and the
+    highlight landed nowhere near the voice.
+    """
+    text = "The team listened. We recorded 8 stories that year."
+    spoken = "The team listened. We recorded eight stories that year."
+    chars = list(spoken)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+
+    assert marks[1][1] == pytest.approx(starts[spoken.index("We recorded")])
+
+
+def test_a_one_word_sentence_still_anchors() -> None:
+    """The truncation floor governs how far a phrase may be cut, not how short a sentence is.
+
+    "Yes." and "Thank you." are whole sentences. An earlier version of the shortening applied
+    the two-word floor to the sentence itself, so a one-word sentence produced no attempt at
+    all and fell to the proportional guess.
+
+    The one-word sentence sits second on purpose: at index 0 the proportional fallback is
+    exactly 0.0, which is also the right answer, so a test there passes whether the sentence
+    anchored or not. `_anchor_for` is asserted directly for the same reason.
+    """
+    text = "We finished Ruth last year. Yes. The team was glad."
+    chars = list(text)
+    starts = [i * 0.1 for i in range(len(chars))]
+
+    assert _anchor_for("Yes.", chars, 0, len(chars)) == text.index("Yes.")
+
+    marks = aggregate_sentence_marks(text, chars, starts)
+    assert marks[1][1] == pytest.approx(starts[text.index("Yes.")])
+
+
+def test_the_cache_key_changes_with_the_output_format() -> None:
+    """Every input that changes the bytes belongs in the key.
+
+    While the cache lived in one process for a day, omitting the format self-healed. Once
+    clips went to the bucket it would have served the old shape forever, with the hardcoded
+    audio/mpeg hiding the mismatch.
+    """
+    from app.services.translation_helper.synthesize_speech import _key_variant
+
+    mp3 = _settings()
+    other = _settings()
+    other.elevenlabs_output_format = "pcm_16000"
+
+    assert _key_variant(mp3, None, None, None) != _key_variant(other, None, None, None)
+
+
+def test_the_cache_key_ignores_the_order_tuning_was_written_in() -> None:
+    """The same tuning in a different order is the same audio, and must not be bought twice."""
+    from app.services.translation_helper.synthesize_speech import _key_variant
+
+    cfg = _settings()
+    one = _key_variant(cfg, None, None, {"stability": 0.4, "speed": 0.9})
+    two = _key_variant(cfg, None, None, {"speed": 0.9, "stability": 0.4})
+
+    assert one == two

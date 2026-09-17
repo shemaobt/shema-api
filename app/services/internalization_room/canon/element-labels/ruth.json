@@ -1,0 +1,1835 @@
+{
+  "P01": {
+    "absence:1": {
+      "en": "No word of God acting",
+      "es": "Ninguna palabra de Dios actuando",
+      "pt": "Nenhuma palavra de Deus agindo"
+    },
+    "absence:2": {
+      "en": "A death with no cause and no grief",
+      "es": "Una muerte sin causa y sin duelo",
+      "pt": "Uma morte sem causa e sem luto"
+    },
+    "absence:3": {
+      "en": "Ten years and no child",
+      "es": "Diez años y ningún hijo",
+      "pt": "Dez anos e nenhum filho"
+    },
+    "absence:4": {
+      "en": "The line stops, and no one mourns",
+      "es": "El linaje se detiene, y nadie llora",
+      "pt": "A linhagem para, e ninguém chora"
+    },
+    "being:B1": {
+      "en": "The judges",
+      "es": "Los jueces",
+      "pt": "Os juízes"
+    },
+    "being:B2": {
+      "en": "Elimelech",
+      "es": "Elimélec",
+      "pt": "Elimeleque"
+    },
+    "being:B3": {
+      "en": "Naomi",
+      "es": "Noemí",
+      "pt": "Noemi"
+    },
+    "being:B4": {
+      "en": "Mahlon",
+      "es": "Mahlón",
+      "pt": "Malom"
+    },
+    "being:B5": {
+      "en": "Chilion",
+      "es": "Quelión",
+      "pt": "Quiliom"
+    },
+    "being:B6": {
+      "en": "Ephrathites",
+      "es": "Efrateos",
+      "pt": "Efrateus"
+    },
+    "being:B7": {
+      "en": "The women of Moab",
+      "es": "Las mujeres moabitas",
+      "pt": "As mulheres moabitas"
+    },
+    "being:B8": {
+      "en": "Orpah",
+      "es": "Orfa",
+      "pt": "Orfa"
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": "Rut",
+      "pt": "Rute"
+    },
+    "object:CB_0030": {
+      "en": "Living as a foreigner",
+      "es": "Vivir como extranjero",
+      "pt": "Morar como estrangeiro"
+    },
+    "object:O1": {
+      "en": "The famine",
+      "es": "El hambre",
+      "pt": "A fome"
+    },
+    "object:TH_TEN_YEARS_APPROXIMATELY": {
+      "en": "About ten years",
+      "es": "Unos diez años",
+      "pt": "Cerca de dez anos"
+    },
+    "place:PL1": {
+      "en": "Bethlehem of Judah",
+      "es": "Belén de Judá",
+      "pt": "Belém de Judá"
+    },
+    "place:PL2": {
+      "en": "The fields of Moab",
+      "es": "Los campos de Moab",
+      "pt": "Os campos de Moabe"
+    },
+    "place:PL_LAND_OF_JUDAH": {
+      "en": "The land",
+      "es": "La tierra",
+      "pt": "A terra"
+    },
+    "preserved:R10": {
+      "en": "Which wife married which son is withheld",
+      "es": "No se dice cuál esposa es de cuál hijo",
+      "pt": "Não se diz qual esposa é de qual filho"
+    },
+    "preserved:R3": {
+      "en": "The same words for both deaths",
+      "es": "Las mismas palabras en ambas muertes",
+      "pt": "As mesmas palavras nas duas mortes"
+    },
+    "preserved:R5": {
+      "en": "The losses named in one breath, children first",
+      "es": "Las pérdidas dichas de un aliento, los hijos primero",
+      "pt": "As perdas ditas de um fôlego, os filhos primeiro"
+    },
+    "preserved:R6": {
+      "en": "God is never named as the cause",
+      "es": "Dios nunca es nombrado como causa",
+      "pt": "Deus nunca é nomeado como causa"
+    },
+    "preserved:R7": {
+      "en": "No grief is added where the text is silent",
+      "es": "No se añade duelo donde el texto calla",
+      "pt": "Nenhum luto é acrescentado onde o texto cala"
+    },
+    "scene:1": {
+      "en": "Famine and exile to Moab",
+      "es": "Hambre y salida a Moab",
+      "pt": "Fome e ida para Moabe"
+    },
+    "scene:2": {
+      "en": "The death of Elimelech",
+      "es": "La muerte de Elimélec",
+      "pt": "A morte de Elimeleque"
+    },
+    "scene:3": {
+      "en": "Marriages, and ten years pass",
+      "es": "Bodas, y pasan diez años",
+      "pt": "Casamentos, e dez anos se passam"
+    },
+    "scene:4": {
+      "en": "The deaths of the sons",
+      "es": "La muerte de los hijos",
+      "pt": "A morte dos filhos"
+    },
+    "time:TM_PERIOD_OF_JUDGES": {
+      "en": "The days of the judges",
+      "es": "Los días de los jueces",
+      "pt": "Os dias dos juízes"
+    }
+  },
+  "P02": {
+    "absence:1": {
+      "en": "God gives bread; Naomi gets up on her own",
+      "es": "Dios da pan; Noemí se levanta por sí misma",
+      "pt": "Deus dá pão; Noemi se levanta por si"
+    },
+    "absence:2": {
+      "en": "The kindness is assumed, never told",
+      "es": "La bondad se supone, nunca se cuenta",
+      "pt": "A bondade é suposta, nunca contada"
+    },
+    "absence:3": {
+      "en": "Orpah turns back, and no one answers Naomi",
+      "es": "Orfa se vuelve, y nadie responde a Noemí",
+      "pt": "Orfa volta atrás, e ninguém responde a Noemi"
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": "YHWH",
+      "pt": "YHWH"
+    },
+    "being:B2": {
+      "en": "The dead — Elimelech, Mahlon and Chilion",
+      "es": "Los muertos — Elimélec, Mahlón y Quelión",
+      "pt": "Os mortos — Elimeleque, Malom e Quiliom"
+    },
+    "being:B3": {
+      "en": "Naomi",
+      "es": "Noemí",
+      "pt": "Noemi"
+    },
+    "being:B31": {
+      "en": "His people",
+      "es": "Su pueblo",
+      "pt": "O seu povo"
+    },
+    "being:B8": {
+      "en": "Orpah",
+      "es": "Orfa",
+      "pt": "Orfa"
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": "Rut",
+      "pt": "Rute"
+    },
+    "object:CB_0008": {
+      "en": "The blessing",
+      "es": "La bendición",
+      "pt": "A bênção"
+    },
+    "object:CB_0011": {
+      "en": "Hesed",
+      "es": "Hesed",
+      "pt": "Hesed"
+    },
+    "object:CB_0012": {
+      "en": "Bread",
+      "es": "El pan",
+      "pt": "O pão"
+    },
+    "object:CB_0014": {
+      "en": "Rest",
+      "es": "El descanso",
+      "pt": "O descanso"
+    },
+    "place:PL2": {
+      "en": "The fields of Moab",
+      "es": "Los campos de Moab",
+      "pt": "Os campos de Moabe"
+    },
+    "place:PL_EACH_HER_MOTHERS_HOUSE": {
+      "en": "Each to her mother's house",
+      "es": "Cada una a la casa de su madre",
+      "pt": "Cada uma à casa de sua mãe"
+    },
+    "place:PL_LAND_OF_JUDAH": {
+      "en": "The land of Judah",
+      "es": "La tierra de Judá",
+      "pt": "A terra de Judá"
+    },
+    "place:the-road": {
+      "en": "The road",
+      "es": "El camino",
+      "pt": "O caminho"
+    },
+    "preserved:R1": {
+      "en": "God acts here for the first time",
+      "es": "Dios actúa aquí por primera vez",
+      "pt": "Deus age aqui pela primeira vez"
+    },
+    "preserved:R14": {
+      "en": "Two acts on one verse, and the paths divide",
+      "es": "Dos gestos en un versículo, y los caminos se separan",
+      "pt": "Dois gestos num versículo, e os caminhos se separam"
+    },
+    "preserved:R3": {
+      "en": "Naomi names YHWH as the one against her",
+      "es": "Noemí nombra a YHWH como quien está contra ella",
+      "pt": "Noemi nomeia YHWH como quem está contra ela"
+    },
+    "preserved:R5": {
+      "en": "Which wife married which son is still withheld",
+      "es": "Aún no se dice cuál esposa es de cuál hijo",
+      "pt": "Ainda não se diz qual esposa é de qual filho"
+    },
+    "scene:1": {
+      "en": "Hearing the news, and setting out",
+      "es": "Oír la noticia y ponerse en camino",
+      "pt": "Ouvir a notícia e pôr-se a caminho"
+    },
+    "scene:2": {
+      "en": "The first appeal, and the refusal",
+      "es": "La primera súplica y la negativa",
+      "pt": "O primeiro apelo e a recusa"
+    },
+    "scene:3": {
+      "en": "The second appeal, and the parting",
+      "es": "La segunda súplica y la separación",
+      "pt": "O segundo apelo e a separação"
+    }
+  },
+  "P03": {
+    "absence:1": {
+      "en": "Moab unnamed, and its gods too",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "No one calls Ruth the Moabite here",
+      "es": null,
+      "pt": null
+    },
+    "absence:3": {
+      "en": "Naomi's silence after the vow",
+      "es": null,
+      "pt": null
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Naomi",
+      "es": null,
+      "pt": null
+    },
+    "being:B31": {
+      "en": "Your people",
+      "es": null,
+      "pt": null
+    },
+    "being:B8": {
+      "en": "Orpah",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": null,
+      "pt": null
+    },
+    "place:PL2": {
+      "en": "Fields of Moab",
+      "es": null,
+      "pt": null
+    },
+    "place:the-road": {
+      "en": "The road",
+      "es": null,
+      "pt": null
+    },
+    "place:where-wherever": {
+      "en": "The open «wherever» of the vow",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R1": {
+      "en": "Six bindings, sealed by an oath",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R10": {
+      "en": "Naomi's inside is not reported",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "Dying and burial stay two bindings",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R4": {
+      "en": "The oath formula, unsoftened",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R5": {
+      "en": "YHWH first named on Ruth's lips",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R7": {
+      "en": "The Moabite epithet stays away",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "Naomi's last appeal",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "Ruth's vow",
+      "es": null,
+      "pt": null
+    },
+    "scene:3": {
+      "en": "Naomi's silence",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P04": {
+    "absence:1": {
+      "en": "Why Naomi is barely recognised",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "The women answer nothing",
+      "es": null,
+      "pt": null
+    },
+    "absence:3": {
+      "en": "Nothing of what the harvest will bring",
+      "es": null,
+      "pt": null
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": null,
+      "pt": null
+    },
+    "being:B12": {
+      "en": "Shaddai",
+      "es": null,
+      "pt": null
+    },
+    "being:B24": {
+      "en": "The ones who ask",
+      "es": null,
+      "pt": null
+    },
+    "being:B28": {
+      "en": "All the city",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Naomi",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0026": {
+      "en": "Barley harvest",
+      "es": null,
+      "pt": null
+    },
+    "place:PL1": {
+      "en": "Bethlehem",
+      "es": null,
+      "pt": null
+    },
+    "place:PL2": {
+      "en": "Fields of Moab",
+      "es": null,
+      "pt": null
+    },
+    "place:out-back-the-going-and-coming-in": {
+      "en": "Out and back, in Naomi's words",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R1": {
+      "en": "Shaddai named for the first time",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R10": {
+      "en": "The Moabite epithet comes back",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R12": {
+      "en": "The cause is withheld, not filled",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R2": {
+      "en": "Four divine namings in two verses",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "Naomi refuses her name for Mara",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R5": {
+      "en": "Full going out, empty coming back",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R9": {
+      "en": "The narrator keeps calling her Naomi",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "Arrival, city stirred, women's question",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "Naomi's renaming lament",
+      "es": null,
+      "pt": null
+    },
+    "scene:3": {
+      "en": "The return to Bethlehem",
+      "es": null,
+      "pt": null
+    },
+    "time:at-the-beginning-of-the-barley-h": {
+      "en": "The start of the barley harvest",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P05": {
+    "absence:1": {
+      "en": "Boaz is named, and nothing more",
+      "es": "Booz es nombrado, y nada más",
+      "pt": "Boaz é nomeado, e nada mais"
+    },
+    "absence:2": {
+      "en": "Naomi names no field, and no kinsman",
+      "es": "Noemí no señala campo ni pariente",
+      "pt": "Noemi não aponta campo nem parente"
+    },
+    "absence:3": {
+      "en": "No one says God led her there",
+      "es": "Nadie dice que Dios la llevó allí",
+      "pt": "Ninguém diz que Deus a levou ali"
+    },
+    "absence:4": {
+      "en": "The foreman never says her name",
+      "es": "El capataz nunca dice su nombre",
+      "pt": "O capataz nunca diz o nome dela"
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": "YHWH",
+      "pt": "YHWH"
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": "Booz",
+      "pt": "Boaz"
+    },
+    "being:B14": {
+      "en": "The harvesters",
+      "es": "Los segadores",
+      "pt": "Os ceifeiros"
+    },
+    "being:B15": {
+      "en": "The man set over the harvesters",
+      "es": "El encargado de los segadores",
+      "pt": "O encarregado dos ceifeiros"
+    },
+    "being:B2": {
+      "en": "Elimelech",
+      "es": "Elimélec",
+      "pt": "Elimeleque"
+    },
+    "being:B29": {
+      "en": "The clan of Elimelech",
+      "es": "La familia de Elimélec",
+      "pt": "A família de Elimeleque"
+    },
+    "being:B3": {
+      "en": "Naomi",
+      "es": "Noemí",
+      "pt": "Noemi"
+    },
+    "being:B9": {
+      "en": "Ruth the Moabitess",
+      "es": "Rut, la moabita",
+      "pt": "Rute, a moabita"
+    },
+    "object:CB_0008": {
+      "en": "The blessing",
+      "es": "La bendición",
+      "pt": "A bênção"
+    },
+    "object:CB_0032": {
+      "en": "Chayil",
+      "es": "Chayil",
+      "pt": "Chayil"
+    },
+    "object:CB_0033": {
+      "en": "Favor",
+      "es": "El favor",
+      "pt": "O favor"
+    },
+    "object:CB_0034": {
+      "en": "Gleaning",
+      "es": "El espigueo",
+      "pt": "A respiga"
+    },
+    "object:CB_0035": {
+      "en": "Chance",
+      "es": "El azar",
+      "pt": "O acaso"
+    },
+    "object:from-morning-until-now-how-long-": {
+      "en": "From morning until now",
+      "es": "Desde la mañana hasta ahora",
+      "pt": "Desde a manhã até agora"
+    },
+    "place:PL1": {
+      "en": "Bethlehem",
+      "es": "Belén",
+      "pt": "Belém"
+    },
+    "place:PL2": {
+      "en": "The fields of Moab, spoken of",
+      "es": "Los campos de Moab, mencionados",
+      "pt": "Os campos de Moabe, mencionados"
+    },
+    "place:PL5": {
+      "en": "The field",
+      "es": "El campo",
+      "pt": "O campo"
+    },
+    "place:PL5_BOAZ_PORTION": {
+      "en": "Boaz's portion of the field",
+      "es": "La parcela del campo que es de Booz",
+      "pt": "A parte do campo que é de Boaz"
+    },
+    "place:PL_HA_BAYIT_FIELD_SHELTER": {
+      "en": "The shelter at the field",
+      "es": "El cobertizo del campo",
+      "pt": "O abrigo do campo"
+    },
+    "place:PL_NAOMIS_DWELLING": {
+      "en": "Where Naomi is staying",
+      "es": "Donde vive Noemí",
+      "pt": "Onde Noemi está morando"
+    },
+    "place:the-field-the-place-she-means-to": {
+      "en": "The field she means to go to",
+      "es": "El campo adonde ella quiere ir",
+      "pt": "O campo aonde ela quer ir"
+    },
+    "preserved:R10": {
+      "en": "On the foreman's lips she is the Moabite, not Ruth",
+      "es": "En boca del capataz ella es la moabita, no Rut",
+      "pt": "Na boca do capataz ela é a moabita, não Rute"
+    },
+    "preserved:R12": {
+      "en": "Boaz asks, and nothing is said of what he feels",
+      "es": "Booz pregunta, y nada se dice de lo que siente",
+      "pt": "Boaz pergunta, e nada se diz do que ele sente"
+    },
+    "preserved:R13": {
+      "en": "How long she rested is uncertain, and stays uncertain",
+      "es": "Cuánto descansó es incierto, y así queda",
+      "pt": "Quanto ela descansou é incerto, e assim fica"
+    },
+    "preserved:R3": {
+      "en": "The audience knows Boaz; Naomi does not say him",
+      "es": "El público conoce a Booz; Noemí no lo nombra",
+      "pt": "A plateia conhece Boaz; Noemi não o nomeia"
+    },
+    "preserved:R4": {
+      "en": "Chance or providence — the text will not say",
+      "es": "Azar o providencia — el texto no lo dice",
+      "pt": "Acaso ou providência — o texto não diz"
+    },
+    "scene:1": {
+      "en": "The narrator introduces Boaz",
+      "es": "El narrador presenta a Booz",
+      "pt": "O narrador apresenta Boaz"
+    },
+    "scene:2": {
+      "en": "Ruth asks to go and glean",
+      "es": "Rut pide ir a espigar",
+      "pt": "Rute pede para ir respigar"
+    },
+    "scene:3": {
+      "en": "She comes by chance to Boaz's portion",
+      "es": "Llega por azar a la parcela de Booz",
+      "pt": "Ela chega por acaso à parte de Boaz"
+    },
+    "scene:4": {
+      "en": "Boaz asks, and the foreman answers",
+      "es": "Booz pregunta, y el capataz responde",
+      "pt": "Boaz pergunta, e o capataz responde"
+    }
+  },
+  "P06": {
+    "absence:1": {
+      "en": "Boaz never gives his name",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "Moab unnamed, and the pairing withheld",
+      "es": null,
+      "pt": null
+    },
+    "absence:3": {
+      "en": "No word at the meal",
+      "es": null,
+      "pt": null
+    },
+    "absence:4": {
+      "en": "The order is given over Ruth's head",
+      "es": null,
+      "pt": null
+    },
+    "being:B10": {
+      "en": "YHWH the God of Israel",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": null,
+      "pt": null
+    },
+    "being:B14": {
+      "en": "The harvesters",
+      "es": null,
+      "pt": null
+    },
+    "being:B16": {
+      "en": "My young women",
+      "es": null,
+      "pt": null
+    },
+    "being:B17": {
+      "en": "The young men",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Your mother-in-law",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": null,
+      "pt": null
+    },
+    "being:ruth-s-deceased-husband-your-hus": {
+      "en": "Your husband",
+      "es": null,
+      "pt": null
+    },
+    "being:ruth-s-father-and-mother-your-fa": {
+      "en": "Your father and your mother",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0008": {
+      "en": "A formal blessing",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0012": {
+      "en": "The bread",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0033": {
+      "en": "Favor in your eyes",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0034": {
+      "en": "To glean",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0037": {
+      "en": "To take refuge under his wings",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0038": {
+      "en": "Foreigner",
+      "es": null,
+      "pt": null
+    },
+    "object:O10": {
+      "en": "Roasted grain",
+      "es": null,
+      "pt": null
+    },
+    "object:O11": {
+      "en": "Sheaves; bundles",
+      "es": null,
+      "pt": null
+    },
+    "object:O9": {
+      "en": "The vinegar",
+      "es": null,
+      "pt": null
+    },
+    "place:PL5_BOAZ_PORTION": {
+      "en": "This field",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_OTHER_FIELD": {
+      "en": "Another field",
+      "es": null,
+      "pt": null
+    },
+    "place:a-people-you-did-not-know": {
+      "en": "A people you did not know",
+      "es": null,
+      "pt": null
+    },
+    "place:among-the-sheaves": {
+      "en": "Among the sheaves",
+      "es": null,
+      "pt": null
+    },
+    "place:the-land-of-your-birth": {
+      "en": "The land of your birth",
+      "es": null,
+      "pt": null
+    },
+    "place:the-vessels": {
+      "en": "The vessels",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R1": {
+      "en": "One word for the wing, here and later",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R10": {
+      "en": "Ate, was satisfied, had leftover",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R3": {
+      "en": "The cluster stays spread across the scene",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R4": {
+      "en": "Which son died is still not said",
+      "es": null,
+      "pt": null
+    },
+    "preserved:R6": {
+      "en": "Neither Moab nor Israel is named",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "Boaz's first address to Ruth",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "Ruth asks, and Boaz blesses",
+      "es": null,
+      "pt": null
+    },
+    "scene:3": {
+      "en": "The meal",
+      "es": null,
+      "pt": null
+    },
+    "scene:4": {
+      "en": "Boaz's instructions to the young men",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_MEALTIME": {
+      "en": "Mealtime",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P07": {
+    "absence:1": {
+      "en": "Nothing is withheld here",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "Naomi says nothing at the sight",
+      "es": null,
+      "pt": null
+    },
+    "absence:3": {
+      "en": "Naomi names the redeemer and stops",
+      "es": null,
+      "pt": null
+    },
+    "absence:4": {
+      "en": "Both harvests pass in silence",
+      "es": null,
+      "pt": null
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": null,
+      "pt": null
+    },
+    "being:B16": {
+      "en": "His young women",
+      "es": null,
+      "pt": null
+    },
+    "being:B17": {
+      "en": "The young men",
+      "es": null,
+      "pt": null
+    },
+    "being:B18": {
+      "en": "One of our redeemers",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Her mother-in-law",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": null,
+      "pt": null
+    },
+    "being:the-dead-of-the-household-the-de": {
+      "en": "The dead",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0001": {
+      "en": "The word «redeemer», said of him",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0008": {
+      "en": "Blessed",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0011": {
+      "en": "His hesed",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0018": {
+      "en": "And she stayed close",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0026": {
+      "en": "The barley harvest and the wheat harvest",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0034": {
+      "en": "And she gleaned",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0039": {
+      "en": "The living and the dead",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0041": {
+      "en": "And she beat out",
+      "es": null,
+      "pt": null
+    },
+    "object:O10": {
+      "en": "What she had left over from her satiety",
+      "es": null,
+      "pt": null
+    },
+    "object:O12": {
+      "en": "About an ephah",
+      "es": null,
+      "pt": null
+    },
+    "object:O2": {
+      "en": "Barley",
+      "es": null,
+      "pt": null
+    },
+    "place:PL4": {
+      "en": "The town",
+      "es": null,
+      "pt": null
+    },
+    "place:PL5_BOAZ_PORTION": {
+      "en": "The field",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_NAOMIS_DWELLING": {
+      "en": "Implied",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_OTHER_FIELD": {
+      "en": "In another field",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "Gleaning finished, beaten out, and measured",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "The gleaning carried home",
+      "es": null,
+      "pt": null
+    },
+    "scene:3": {
+      "en": "The name, the blessings, the counsel",
+      "es": null,
+      "pt": null
+    },
+    "scene:4": {
+      "en": "Through both harvests, at home with Naomi",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_EVENING": {
+      "en": "Until the evening",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_EXTENDED_HARVEST_SPAN": {
+      "en": "Until both harvests end",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_TODAY": {
+      "en": "Today",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P08": {
+    "absence:1": {
+      "en": "The plan never says marriage",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "Ruth asks nothing",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Boaz our kinsman",
+      "es": null,
+      "pt": null
+    },
+    "being:B16": {
+      "en": "His young women",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Naomi her mother-in-law",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "My daughter",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0014": {
+      "en": "A resting place",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0042": {
+      "en": "The place of his feet",
+      "es": null,
+      "pt": null
+    },
+    "object:O13": {
+      "en": "Your garments",
+      "es": null,
+      "pt": null
+    },
+    "object:O2": {
+      "en": "The barley",
+      "es": null,
+      "pt": null
+    },
+    "place:PL6": {
+      "en": "The threshing floor",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_NAOMIS_DWELLING": {
+      "en": "Implied",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "The plan spoken",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "The consent",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P09": {
+    "absence:1": {
+      "en": "No word spoken all night",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "Ruth speaks where she was to wait",
+      "es": null,
+      "pt": null
+    },
+    "absence:3": {
+      "en": "Boaz pledges the redeeming, not the marriage",
+      "es": null,
+      "pt": null
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": null,
+      "pt": null
+    },
+    "being:B18": {
+      "en": "A redeemer",
+      "es": null,
+      "pt": null
+    },
+    "being:B19": {
+      "en": "A redeemer nearer than I",
+      "es": null,
+      "pt": null
+    },
+    "being:B21": {
+      "en": "The whole assembly at the gate",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Her mother-in-law",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": null,
+      "pt": null
+    },
+    "being:the-young-men": {
+      "en": "The young men",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0001": {
+      "en": "The word «redeemer»",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0006": {
+      "en": "The words «gate of my people»",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0008": {
+      "en": "Blessed are you of YHWH",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0011": {
+      "en": "Your hesed",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0032": {
+      "en": "A woman of worth",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0037": {
+      "en": "Your wing",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0042": {
+      "en": "The place of his feet",
+      "es": null,
+      "pt": null
+    },
+    "place:PL6": {
+      "en": "The threshing floor",
+      "es": null,
+      "pt": null
+    },
+    "place:PL7": {
+      "en": "The gate",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_END_OF_GRAIN_HEAP": {
+      "en": "The end of the grain heap",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "Down to the floor; the uncovering",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "Midnight: the question and the request",
+      "es": null,
+      "pt": null
+    },
+    "scene:3": {
+      "en": "Boaz's pledge, and the nearer redeemer",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_MIDDLE_OF_THE_NIGHT": {
+      "en": "At half of the night",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_NIGHT_UNTIL_MORNING": {
+      "en": "The night … in the morning",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P10": {
+    "absence:1": {
+      "en": "No farewell, and the measure unnamed",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "Naomi's question gets no answer",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Implied speaker",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Naomi, her mother-in-law",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "The woman",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0024": {
+      "en": "Full and empty, the pair behind the word",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0042": {
+      "en": "The place of his feet",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0043": {
+      "en": "The words «your mother-in-law»",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0044": {
+      "en": "Empty",
+      "es": null,
+      "pt": null
+    },
+    "object:O13": {
+      "en": "The cloak",
+      "es": null,
+      "pt": null
+    },
+    "object:O16": {
+      "en": "Six of barley",
+      "es": null,
+      "pt": null
+    },
+    "object:O19": {
+      "en": "The matter",
+      "es": null,
+      "pt": null
+    },
+    "place:PL4": {
+      "en": "The town",
+      "es": null,
+      "pt": null
+    },
+    "place:PL6": {
+      "en": "The threshing floor",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_NAOMIS_DWELLING": {
+      "en": "Implied",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "Dawn at the floor, and the six measures",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "Home: the report, and «sit still»",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_NIGHT_TO_MORNING": {
+      "en": "Until the morning … before",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_TODAY": {
+      "en": "Today",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P11": {
+    "absence:1": {
+      "en": "The nearer redeemer has no name",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "Ruth is left out of the offer",
+      "es": null,
+      "pt": null
+    },
+    "absence:3": {
+      "en": "The ruin he fears is never explained",
+      "es": null,
+      "pt": null
+    },
+    "absence:4": {
+      "en": "The sandal changes hands off-stage",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": null,
+      "pt": null
+    },
+    "being:B19": {
+      "en": "Friend So-and-so",
+      "es": null,
+      "pt": null
+    },
+    "being:B2": {
+      "en": "Our brother Elimelech",
+      "es": null,
+      "pt": null
+    },
+    "being:B20": {
+      "en": "Ten men of the elders of the town",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Naomi, who returned from the fields of Moab",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth the Moabite, the wife of the dead",
+      "es": null,
+      "pt": null
+    },
+    "being:the-dead-the-dead": {
+      "en": "The dead",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0001": {
+      "en": "The redeemer",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0002": {
+      "en": "To raise the dead man's name on his land",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0003": {
+      "en": "The field-portion at stake",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0004": {
+      "en": "The Moabite",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0005": {
+      "en": "The name of the dead",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0006": {
+      "en": "The gate as the place of the deed",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0007": {
+      "en": "The attestation",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0039": {
+      "en": "The word «the dead», in the bargain",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0045": {
+      "en": "The redeemer of whom Boaz had spoken",
+      "es": null,
+      "pt": null
+    },
+    "object:O26": {
+      "en": "His sandal",
+      "es": null,
+      "pt": null
+    },
+    "place:PL2": {
+      "en": "The fields of Moab",
+      "es": null,
+      "pt": null
+    },
+    "place:PL5_ELIMELECH_PORTION": {
+      "en": "Elimelech's portion of the field",
+      "es": null,
+      "pt": null
+    },
+    "place:PL7": {
+      "en": "The gate",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_ISRAEL": {
+      "en": "In Israel",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "The gate convened: the passer-by and the ten",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "The field, and «I will redeem»",
+      "es": null,
+      "pt": null
+    },
+    "scene:3": {
+      "en": "The second stage: Ruth named, and the decline",
+      "es": null,
+      "pt": null
+    },
+    "scene:4": {
+      "en": "The custom told, and the sandal drawn",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_DAY_OF_PURCHASE": {
+      "en": "On the day you buy",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_FORMER_TIMES": {
+      "en": "Formerly in Israel",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P12": {
+    "absence:1": {
+      "en": "Named at the gate, and not there",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "The blessing is spoken over her, not to her",
+      "es": null,
+      "pt": null
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": null,
+      "pt": null
+    },
+    "being:B2": {
+      "en": "Elimelech",
+      "es": null,
+      "pt": null
+    },
+    "being:B20": {
+      "en": "The elders",
+      "es": null,
+      "pt": null
+    },
+    "being:B21": {
+      "en": "All the people",
+      "es": null,
+      "pt": null
+    },
+    "being:B22": {
+      "en": "Rachel and Leah",
+      "es": null,
+      "pt": null
+    },
+    "being:B23": {
+      "en": "Tamar",
+      "es": null,
+      "pt": null
+    },
+    "being:B27": {
+      "en": "Perez",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Naomi",
+      "es": null,
+      "pt": null
+    },
+    "being:B30": {
+      "en": "Judah",
+      "es": null,
+      "pt": null
+    },
+    "being:B4": {
+      "en": "Mahlon",
+      "es": null,
+      "pt": null
+    },
+    "being:B5": {
+      "en": "Chilion",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth the Moabite, the wife of Mahlon",
+      "es": null,
+      "pt": null
+    },
+    "being:the-dead-the-dead": {
+      "en": "The dead",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0001": {
+      "en": "I have bought",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0002": {
+      "en": "The wife of Mahlon … as wife",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0003": {
+      "en": "Upon his inheritance",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0004": {
+      "en": "The Moabite",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0005": {
+      "en": "To raise up the name of the dead",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0006": {
+      "en": "The words «from the gate of his place»",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0008": {
+      "en": "The people's blessing",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0009": {
+      "en": "The name YHWH, invoked",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0010": {
+      "en": "The house of Israel",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0039": {
+      "en": "The name of the dead … not cut off",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0049": {
+      "en": "The house of Perez",
+      "es": null,
+      "pt": null
+    },
+    "place:PL1": {
+      "en": "Bethlehem",
+      "es": null,
+      "pt": null
+    },
+    "place:PL7": {
+      "en": "The gate of his place",
+      "es": null,
+      "pt": null
+    },
+    "place:PL8": {
+      "en": "Ephrathah",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_ISRAEL": {
+      "en": "Israel",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "Boaz declares the purchase",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "The assembly's witness and blessing",
+      "es": null,
+      "pt": null
+    },
+    "time:TM_TODAY": {
+      "en": "Today",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P13": {
+    "absence:1": {
+      "en": "No wedding, no waiting, no birth told",
+      "es": null,
+      "pt": null
+    },
+    "absence:2": {
+      "en": "The women bless Naomi, and do not name Ruth",
+      "es": null,
+      "pt": null
+    },
+    "absence:3": {
+      "en": "Ruth is absent from her own ending",
+      "es": null,
+      "pt": null
+    },
+    "being:B10": {
+      "en": "YHWH",
+      "es": null,
+      "pt": null
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": null,
+      "pt": null
+    },
+    "being:B24": {
+      "en": "The women",
+      "es": null,
+      "pt": null
+    },
+    "being:B25": {
+      "en": "Obed",
+      "es": null,
+      "pt": null
+    },
+    "being:B26": {
+      "en": "Jesse … David",
+      "es": null,
+      "pt": null
+    },
+    "being:B3": {
+      "en": "Naomi",
+      "es": null,
+      "pt": null
+    },
+    "being:B9": {
+      "en": "Ruth",
+      "es": null,
+      "pt": null
+    },
+    "being:the-child-a-redeemer": {
+      "en": "A redeemer",
+      "es": null,
+      "pt": null
+    },
+    "being:the-child-a-son": {
+      "en": "A son",
+      "es": null,
+      "pt": null
+    },
+    "being:the-child-the-child": {
+      "en": "The child",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0001": {
+      "en": "Implied in the marriage",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0005": {
+      "en": "May his name be called out in Israel",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0008": {
+      "en": "Blessed be YHWH",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0046": {
+      "en": "Better than seven sons",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0047": {
+      "en": "The name «Obed»",
+      "es": null,
+      "pt": null
+    },
+    "object:CB_0048": {
+      "en": "David",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_ISRAEL": {
+      "en": "In Israel",
+      "es": null,
+      "pt": null
+    },
+    "place:PL_NAOMIS_DWELLING": {
+      "en": "Implied",
+      "es": null,
+      "pt": null
+    },
+    "scene:1": {
+      "en": "The marriage, the gift, the birth",
+      "es": null,
+      "pt": null
+    },
+    "scene:2": {
+      "en": "The women's blessing to Naomi",
+      "es": null,
+      "pt": null
+    },
+    "scene:3": {
+      "en": "The child on Naomi's lap; the naming",
+      "es": null,
+      "pt": null
+    }
+  },
+  "P14": {
+    "absence:1": {
+      "en": "No mother is named, and David gets no comment",
+      "es": "No se nombra a ninguna madre, y de David no se dice nada",
+      "pt": "Nenhuma mãe é nomeada, e Davi não recebe comentário"
+    },
+    "being:B13": {
+      "en": "Boaz",
+      "es": "Booz",
+      "pt": "Boaz"
+    },
+    "being:B25": {
+      "en": "Obed",
+      "es": "Obed",
+      "pt": "Obede"
+    },
+    "being:B26": {
+      "en": "Jesse and David",
+      "es": "Isaí y David",
+      "pt": "Jessé e Davi"
+    },
+    "being:B27": {
+      "en": "Perez, Hezron, Ram, Amminadab, Nahshon, Salmon",
+      "es": "Fares, Hezrón, Ram, Aminadab, Naasón, Salmón",
+      "pt": "Perez, Hezrom, Rão, Aminadabe, Naassom, Salmom"
+    },
+    "object:CB_0005": {
+      "en": "The line of names",
+      "es": "La línea de los nombres",
+      "pt": "A linha dos nomes"
+    },
+    "object:CB_0047": {
+      "en": "The name «Obed»",
+      "es": "El nombre «Obed»",
+      "pt": "O nome «Obede»"
+    },
+    "object:CB_0048": {
+      "en": "The name «David»",
+      "es": "El nombre «David»",
+      "pt": "O nome «David»"
+    },
+    "object:CB_0049": {
+      "en": "The formula that opens the list",
+      "es": "La fórmula que abre la lista",
+      "pt": "A fórmula que abre a lista"
+    },
+    "scene:1": {
+      "en": "The generations of Perez",
+      "es": "Las generaciones de Fares",
+      "pt": "As gerações de Perez"
+    }
+  }
+}

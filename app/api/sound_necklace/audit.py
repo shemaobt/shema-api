@@ -9,7 +9,7 @@ reached what is the surveillance §14 forbids, one step removed; and the role al
 enough either, or an admin of one project could read another's.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query
 
@@ -18,9 +18,26 @@ from app.api.sound_necklace._deps import Db, ProjectAdmin
 from app.db.models.sound_necklace import AuditEvent, SnAuditEvent
 from app.models.sound_necklace import AuditEventResponse, AuditListResponse
 from app.services import sound_necklace_service as sn_service
-from app.services.sound_necklace.get_lock_status import as_utc
+from app.utils.stored_time import as_utc
 
 router = APIRouter()
+
+
+def _to_utc(when: datetime) -> datetime:
+    """Normalise a client-supplied bound to UTC before it filters.
+
+    Distinct from ``app.utils.stored_time.as_utc``, which reads a value this codebase
+    **wrote** back out — a naive one from SQLite is already UTC, so an aware one is passed
+    through untouched. Here the value comes from the wire and may legitimately carry any
+    offset, so an aware one is *converted* and only a naive one is assumed UTC.
+
+    That single difference is why this stayed behind when ENG-532 folded six copies of the
+    stored normaliser into one. Collapsing the two would leave a ``-03:00`` bound filtering as
+    though it were UTC — three hours of events on the wrong side of the window, on the screen
+    whose whole job is to be the record. Without it at all, the SQLite bind drops the offset
+    and the window filters by wall-clock under test.
+    """
+    return when.astimezone(UTC) if when.tzinfo is not None else when.replace(tzinfo=UTC)
 
 
 def _event(row: SnAuditEvent) -> AuditEventResponse:
@@ -40,13 +57,24 @@ async def list_audit_events(
     db: Db,
     user: ProjectAdmin,
     since: datetime | None = Query(None, description="Only events at or after this instant"),
+    until: datetime | None = Query(None, description="Only events strictly before this instant"),
     event: AuditEvent | None = Query(None, description="Only this kind of event"),
     limit: int = Query(100, ge=1, le=500),
 ) -> AuditListResponse:
-    """One project's audit trail, newest first.
+    """One project's audit trail, newest first, within the window ``[since, until)``.
 
     An empty list is an answer — a window in which nothing was reached — not an error.
+
+    Both bounds are normalised to UTC before they filter: a client may send an offset, and
+    without this the SQLite bind would drop it and filter by wall-clock time under test.
     """
     await assert_project_access(db, user, project_id)
-    rows = await sn_service.list_audit_events(db, project_id, since=since, event=event, limit=limit)
+    rows = await sn_service.list_audit_events(
+        db,
+        project_id,
+        since=_to_utc(since) if since is not None else None,
+        until=_to_utc(until) if until is not None else None,
+        event=event,
+        limit=limit,
+    )
     return AuditListResponse(events=[_event(r) for r in rows])

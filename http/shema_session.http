@@ -1,0 +1,101 @@
+# Shemá — roles, region scope and the session (BE-03 · OBT-392)
+#
+# This product has no login of its own: it uses the shared /api/auth with the app_key
+# below. What belongs to it are the app_key and its four roles — globalStrategist,
+# coordinator, obtLab, resourceCircle — seeded by scripts/seed_apps_roles.py.
+#
+# Before running: apply the seed, then grant a role.
+#   uv run python scripts/seed_apps_roles.py
+#
+# Grant through app/services/authorization/grant_app_role.py and NEVER through
+# scripts/grant_app_role.py: that script matches on (user_id, app_id) and overwrites
+# role_id (OBT-484), and a Shemá account legitimately holds more than one role.
+#
+#   uv run python -c "
+#   import asyncio
+#   from app.core.database import AsyncSessionLocal
+#   from app.services.authorization import grant_app_role
+#   from app.services.shema import set_region_scope
+#   from app.services.auth.get_user_by_email import get_user_by_email
+#
+#   async def main():
+#       async with AsyncSessionLocal() as db:
+#           user = await get_user_by_email(db, 'coord.local@test.com')
+#           await grant_app_role(db, user.id, 'shema', 'coordinator')
+#           await set_region_scope(db, user.id, ['africa'])
+#   asyncio.run(main())
+#   "
+#
+# The two halves are two calls on purpose: the role is the platform's grant and the
+# region is this module's table. A coordinator with the role and no region reaches
+# NOTHING — docs/shema.md §6.1 and app/services/shema/_scope.py carry the argument.
+
+@baseUrl = http://localhost:8000
+@appKey = shema
+
+### Signup — the regional coordinator test account
+POST {{baseUrl}}/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "coord.local@test.com",
+  "password": "password123",
+  "display_name": "Coordenador Local"
+}
+
+### Signup — a second account, deliberately left without any Shemá role
+POST {{baseUrl}}/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "sempapel.local@test.com",
+  "password": "password123",
+  "display_name": "Sem Papel"
+}
+
+### Login — the coordinator. The token is used by the requests below.
+# @name shema_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "coord.local@test.com",
+  "password": "password123"
+}
+
+### Login — the account with no role, to see the refusal
+# @name shema_outsider_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "sempapel.local@test.com",
+  "password": "password123"
+}
+
+### The session — {role, regionScope, name}
+# regionScope is null for a global caller and a list for a regional one; an empty list
+# is an account holding a regional role with no region granted, which reaches nothing.
+# name comes from the org chart seat (shema_region_teams) and falls back to the
+# account's display_name — all twenty-one seats ship unassigned, so the fallback is the
+# ordinary path on day one.
+GET {{baseUrl}}/api/shema/session
+Authorization: Bearer {{shema_login.response.body.tokens.access_token}}
+
+### The same call from the account with no role — 403, naming the app
+# Deny by default: every route under /api/shema inherits require_app_access from the
+# `authenticated` router in app/api/shema/__init__.py, so this is the answer a route
+# added later gives too, whether or not its author wired a guard.
+GET {{baseUrl}}/api/shema/session
+Authorization: Bearer {{shema_outsider_login.response.body.tokens.access_token}}
+
+### The same call with no token at all — 401, not 403
+GET {{baseUrl}}/api/shema/session
+
+### The platform's own session reads, reused whole — no Shemá equivalent exists
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{shema_login.response.body.tokens.access_token}}
+
+### Why /api/auth/my-roles cannot answer the question above: the grant has no region
+GET {{baseUrl}}/api/auth/my-roles
+Authorization: Bearer {{shema_login.response.body.tokens.access_token}}

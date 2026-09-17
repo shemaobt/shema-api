@@ -9,6 +9,7 @@ from app.db.models.auth import RefreshToken
 from app.services.auth.get_user_by_id import get_user_by_id
 from app.services.auth.hash_refresh_token import hash_refresh_token
 from app.utils.jwt import create_token, decode_token
+from app.utils.stored_time import as_utc
 
 settings = get_settings()
 
@@ -29,10 +30,7 @@ async def refresh_access_token(db: AsyncSession, refresh_token: str) -> str:
     if not token_record:
         raise AuthenticationError("Refresh token revoked or missing")
 
-    expires_at = token_record.expires_at
-    if getattr(expires_at, "tzinfo", None) is None:
-        expires_at = expires_at.replace(tzinfo=UTC)
-    if expires_at < datetime.now(UTC):
+    if as_utc(token_record.expires_at) < datetime.now(UTC):
         raise AuthenticationError("Refresh token expired")
 
     user = await get_user_by_id(db, payload["sub"])

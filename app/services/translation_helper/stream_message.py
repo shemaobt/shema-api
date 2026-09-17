@@ -17,10 +17,10 @@ from app.services.translation_helper.get_agent_prompt import get_system_prompt_t
 from app.services.translation_helper.get_chat_or_404 import get_chat_or_404
 from app.services.translation_helper.list_messages import list_messages
 from app.services.translation_helper.send_message import (
-    CHAT_MODEL,
     _build_contents,
     _fallback_title,
     _generate_title,
+    chat_model,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ async def _stream_chunks(
 ) -> AsyncIterator[str]:
     client = genai.Client(api_key=settings.google_api_key)
     stream = await client.aio.models.generate_content_stream(
-        model=CHAT_MODEL,
+        model=chat_model(settings),
         contents=contents,
         config=types.GenerateContentConfig(system_instruction=system_prompt),
     )
