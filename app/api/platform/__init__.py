@@ -12,9 +12,11 @@ storage). Natural tenants in future PRs: `common/email.py`, `services/storage/up
 
 from fastapi import APIRouter
 
+from app.api.platform.stt import router as stt_router
 from app.api.platform.tts import router as tts_router
 
 router = APIRouter()
 router.include_router(tts_router)
+router.include_router(stt_router)
 
 __all__ = ["router"]

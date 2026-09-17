@@ -30,7 +30,16 @@ def step_for(fields: Mapping[str, Any]) -> SessionStep:
     the document itself is never re-read, only stored.
 
     Only the body is a validated object; every field inside it is an untyped extra, so
-    ``whole`` is whatever the client sent.
+    ``whole`` is whatever the client sent. ``reviewComplete`` is therefore matched
+    against the literal boolean and nothing else: the string ``"false"`` is truthy in
+    Python, and a client that sent one would move a session it meant to leave put.
+
+    What "review complete" means is the SPA's rule, and it stays there. This never
+    checks the flag against the answers it claims to summarize — a second copy of that
+    rule here is exactly the divergence the client's golden tests exist to prevent.
+
+    ``SAVE`` says the session stands at the saving station, not that it is finished;
+    ``status`` is what separates ready-to-save from saved.
     """
     mode = fields.get("mode")
     if mode == "triagem":
@@ -38,7 +47,9 @@ def step_for(fields: Mapping[str, Any]) -> SessionStep:
     if mode == "segmentacao":
         return SessionStep.PHRASES
     if mode == "mapeamento":
-        return SessionStep.CONVERSATION
+        return (
+            SessionStep.SAVE if fields.get("reviewComplete") is True else SessionStep.CONVERSATION
+        )
     whole = fields.get("whole")
     confirmed = whole.get("confirmed") if isinstance(whole, Mapping) else False
     return SessionStep.CUT if confirmed else SessionStep.LISTEN

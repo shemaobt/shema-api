@@ -38,5 +38,14 @@ def resolve_voice(language: str) -> str:
 
 
 def language_hint(language: str) -> str:
-    """The base language (`pt-BR` -> `pt`), as ElevenLabs expects in `language_code`."""
-    return language.split("-")[0].lower()
+    """The base language (`pt-BR` -> `pt`), as ElevenLabs expects in `language_code`.
+
+    A blank locale is refused here rather than at each caller: this is the one function
+    every path funnels through, and a whitespace hint reaches the provider as an empty
+    `language_code` — which is not the same request as sending no hint at all, and is how
+    a Portuguese answer comes back transcribed as phonetic Spanish.
+    """
+    hint = language.split("-")[0].strip().lower()
+    if not hint:
+        raise ValidationError("language must not be empty")
+    return hint
