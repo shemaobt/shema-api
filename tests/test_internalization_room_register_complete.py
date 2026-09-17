@@ -38,6 +38,12 @@ _DISAGREEING_MAP = textwrap.dedent(
     ### 2.2 Context
     None. This passage exists only inside this test.
 
+    ### 2.3 Emotion / Tone / Pace
+    Flat, because nothing happens.
+
+    ### 2.4 Communicative Function
+    To be refused at the door of the room.
+
     ## 3. Level 2 — Scenes / Episodes
 
     ### Scene 1 — The only scene (v.1-2)
