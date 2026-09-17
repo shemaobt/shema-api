@@ -77,19 +77,23 @@ earlier take of their number and nothing to retire — the team re-sending bytes
 is standing, and a part recorded twice before anybody told it back — and neither changed the
 reading, so neither un-checks it.
 
-**A mother-tongue correction take carries no number, and must not.** It is a rehearsal take like
-any other, uploaded through the same route, and under a number it would be read as that part
-recorded again: the verb would retire the very stretch the correction is about to replace, and
-the call that follows would meet *this stretch no longer counts* and lose the team their
-correction outright. So the invariant is the opposite of a fix — the correction upload sends no
-`chunk_index`, and nothing here may start giving it one.
+**History, while the room had a per-stretch mother-tongue correction.** That correction arrived as
+a rehearsal take carrying no number, and it could not be given one: under a number it would have
+been read as that part recorded again, so the verb would have retired the very stretch the
+correction was about to replace, and the call that followed would have met *this stretch no longer
+counts* and lost the team their correction outright. The price of that invariant was two gaps,
+recorded here as facts: in a session told in parts the fragment was a part of its own and the
+packet listed it beside the real parts; in a session told whole whose rebuild failed the fragment
+was the newest of the unnumbered group, so the packet named it as the rehearsal and its stretch
+read first.
 
-The price of that invariant is two gaps, recorded as facts. In a session told in parts, the
-correction take is a part of its own and the packet lists the fragment beside the real parts. In
-a session told whole whose rebuild failed, the correction take is the newest of the unnumbered
-group, so the packet names the fragment as the rehearsal and its stretch reads first. The way out
-is not a number on the correction take: it is ENG-845 removing the per-stretch correction, and
-that is the Definer's to time.
+Both gaps are closed, and not by numbering the fragment. ENG-845 removed the per-stretch
+correction itself: what a team re-records is the unit they rehearsed, and the recording that
+reaches Refine is their own (ADR 0025). The tablet mints no such fragment any more (ENG-848), and
+`replace` takes audio and never nothing, and a version of a stretch is refused unless it sits
+where that stretch sits, so none can move onto a recording of its own (ENG-849). Nothing
+unnumbered arrives that way again; the rows already stored are tolerated as history and travel
+through the packet by the same rule as any other take.
 
 Two uploads of one part carrying the *same* pass, drained out of order, still pick the one that
 landed last: the pass separates a recording from the one it replaced, and cannot separate two the

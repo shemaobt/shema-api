@@ -24,12 +24,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room.sessions import get_session
 from tests.room_harness import (
     Analyst,
-    move_the_mother_tongue,
+    Room,
+    a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
     room_client,
     stored_telling_back,
+    stretch_on,
     the_analyst_reads,
     the_room_speaks,
 )
@@ -47,14 +49,14 @@ def analyst(monkeypatch: pytest.MonkeyPatch) -> Analyst:
 
 
 @pytest.fixture(autouse=True)
-def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+def room(monkeypatch: pytest.MonkeyPatch) -> Room:
     return the_room_speaks(monkeypatch)
 
 
 @pytest.fixture()
 async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
-    async with room_client(db_session, monkeypatch) as room:
-        yield room
+    async with room_client(db_session, monkeypatch) as door:
+        yield door
 
 
 async def _transcript(db: AsyncSession, session_id: str) -> list[Any]:
@@ -66,7 +68,7 @@ async def test_a_part_the_team_never_played_refuses_the_check_and_names_it(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     analyst: Analyst,
-    spoken: list[str],
+    room: Room,
 ) -> None:
     """The rule. A part nobody played is named, her line is said, and nothing is spent.
 
@@ -90,7 +92,7 @@ async def test_a_part_the_team_never_played_refuses_the_check_and_names_it(
     assert body["findings_remaining"] == 0
     assert body["untold_segment_id"] is None
     assert body["audio_url"] != ""
-    assert spoken == [UNHEARD_LINE]
+    assert room.said == [UNHEARD_LINE]
     assert analyst.readings == 0
 
     stored = await stored_telling_back(db_session, session)
@@ -141,7 +143,9 @@ async def test_an_untold_stretch_is_the_first_errand(
     reason.
     """
     session, (first, second, third) = await rehearsed_in_parts(db_session, 3)
-    await move_the_mother_tongue(db_session, session, third, sha256="z" * 64)
+    await a_piece_still_to_be_told(
+        db_session, session, await stretch_on(db_session, session, third)
+    )
 
     answered = await press_terminei(
         client, session.id, report=played_every_part([first.id, second.id])
@@ -200,7 +204,7 @@ async def test_a_flat_report_or_none_is_refused_with_every_part_named(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
     analyst: Analyst,
-    spoken: list[str],
+    room: Room,
 ) -> None:
     """Numbers with no subject, and silence, say the same thing about the parts: nothing.
 
@@ -221,7 +225,7 @@ async def test_a_flat_report_or_none_is_refused_with_every_part_named(
     assert silent.status_code == 200, silent.text
     assert flat.json()["unheard_take_ids"] == every_part
     assert silent.json()["unheard_take_ids"] == every_part
-    assert spoken == [UNHEARD_LINE, UNHEARD_LINE]
+    assert room.said == [UNHEARD_LINE, UNHEARD_LINE]
     assert analyst.readings == 0
 
 

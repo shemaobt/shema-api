@@ -26,17 +26,25 @@ and the key travels as `ACCESS_CODE`. Her five session scripts are vendored at `
 under the pin in `docs/doctrine/DOCTRINE_PIN`, beside her own 5/5 of 2026-09-03.
 
 ```sh
-# the Guide's conversation: the five sessions, her mechanical checks, one README per run;
-# exit 1 on a tripped check or a refused session. --only <name> plays one of them.
+# the Guide's conversation: the five sessions, her mechanical checks, her judge, one README
+# per run; a session passes only when the judge passed it and no check tripped, exit 1
+# otherwise. --only <name> plays one of them. The judge runs in this process on the voice
+# ladder, so it needs ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID for an identity-bound
+# key) and a DATABASE_URL for the settings to load, in the environment or in .env.
 ACCESS_CODE=<key> uv run python scripts/golden_runner.py --base-url <host>/api/internalization-room/text-seam
 # the same run against her app: only the base URL changes
 ACCESS_CODE=<her code> uv run python scripts/golden_runner.py --base-url https://<her-app>/api --out golden/reports/<date>-hers
+# the judge again over a run already committed, without playing the room
+uv run python scripts/golden_runner.py --rejudge golden/reports/<date> --out golden/reports/<date>-rejulgado
 # the back-translation check, judged by her own checks; exit 1 on a failed check
 ACCESS_CODE=<key> uv run python scripts/bt_golden_runner.py --base-url <host>/api/internalization-room/text-seam/back-translation/ --script <her-bt.json> --out golden/reports/<date>
 ```
 
 Each run costs real model calls, so neither is part of the suite. The back-translation run is
-the gate on any change to the two back-translation prompts.
+the gate on any change to the two back-translation prompts. The golden run is the gate on the
+release, not only on CI: `docs/doctrine/vendor/DOCTRINE.md` §5.2 says the golden sessions
+must pass before anything touching prompts, turn loop, model or canvas reaches the team, and
+a green unit suite is not sufficient to ship a prompt change.
 
 ## Rules
 

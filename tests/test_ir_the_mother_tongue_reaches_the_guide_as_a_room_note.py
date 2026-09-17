@@ -172,28 +172,6 @@ def test_no_fixed_line_answers_the_mother_tongue_in_any_language_the_room_speaks
     )
 
 
-def test_a_telling_in_the_bridge_language_is_the_guides_to_check_and_marks_no_rehearsal() -> None:
-    from app.services.internalization_room.comprehension.practice import (
-        scenes_practiced_by_the_telling_the_guide_invited,
-    )
-
-    invitation = (
-        "Rehearse this scene together in your own language; when you have finished, "
-        "come back and tell me in English what you understood."
-    )
-
-    assert (
-        scenes_practiced_by_the_telling_the_guide_invited(
-            None,
-            invitation,
-            "A famine came and a family left Bethlehem to live in Moab",
-            True,
-            "S1",
-        )
-        == []
-    ), "um reconto em português marcava a cena como ensaiada sem ninguém ter ouvido o ensaio"
-
-
 @pytest.fixture()
 async def seam(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(

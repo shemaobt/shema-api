@@ -14,8 +14,12 @@ import unicodedata
 
 from app.services.internalization_room.comprehension.probe import ActiveProbe
 from app.services.internalization_room.oral_decision import (
+    normalize_oral_decision,
     oral_clause_has_negation,
+    oral_clause_is_hedged,
     oral_clause_is_non_committal,
+    oral_clause_reports_the_voice,
+    oral_decision_clause_details,
     oral_decision_clauses,
     oral_utterance_is_interrogative,
 )
@@ -289,6 +293,179 @@ def confirms_completed_mother_tongue_practice(
     return direct_confirmation and any(_AFFIRMATIVE.match(segment) for segment in segments)
 
 
+#: The subject a spoken condition opens on. A condition names who it is about — "se vocês
+#: quiserem", "se a família ficasse", "if you want" — while the same letters against a verb
+#: are the clitic that verb carries: "teve que se mudar", "eles se casaram", "la familia se
+#: mudó". The subjects are listed rather than the verbs because a pronoun or a determiner is
+#: a closed set and the verbs that can carry a clitic are not. Spanish `si` is read here and
+#: `sí` never is, which is why the accent is taken off the text after that word is gone
+#: rather than before.
+_CONDITION_ON_A_SUBJECT = re.compile(
+    r"\b(?:se|si|if)\s+(?:eu|tu|voce|voces|nos|a\s+gente|ele|eles|ela|elas"
+    r"|yo|usted|ustedes|nosotros|vosotros|el|ella|ellos|ellas"
+    r"|i|we|you|they|he|she|it"
+    r"|o|a|os|as|um|uma|un|una|los|las|este|esta|esse|essa|isso|isto|aquele|aquela"
+    r"|the|this|that|there|an)\b"
+)
+_SPANISH_YES = re.compile(r"\bsí\b", re.IGNORECASE)
+#: A condition that opens a short reply is one whether or not it names who it is about:
+#: "se quiserem a gente ensaia", "se der tempo", "if possible we rehearse". It is read only
+#: on a reply that is not a telling, because a told scene opens clauses on the clitic all the
+#: time — "…, mas se mudaram pra Moabe" arrives here as the clause "se mudaram pra Moabe",
+#: and Spanish drops the subject and opens on it outright, "Se mudaron a los campos de Moab".
+_CONDITION_OPENS_THE_CLAUSE = re.compile(r"^(?:se|si|if)\b")
+#: The heads a subjectless condition opens on inside a telling: the verb forms that only a
+#: condition takes ("se quiserem", "se der tempo", "se for possível", "si es posible",
+#: "if possible"). A told clause that opens on "se" followed by a past-tense verb is the
+#: clitic riding it — "se mudaram", "se mudaron" — and is left alone.
+_CONDITION_HEADS = re.compile(
+    r"^(?:se|si|if)\s+(?:quiser|quiserem|quisermos|der|derem|for|forem|puder|puderem"
+    r"|tiver|tiverem|houver|conseguir|conseguirem|precisar|precisarem"
+    r"|quiere|quieren|quisiera|quisieran|puede|pueden|hay|es\s+posible|posible|fuera"
+    r"|possible|needed|necessary|wanted)\b"
+)
+#: The team saying the rehearsal did not happen — the one negation a telling can carry that
+#: is about the doing and not about the story. A told scene comes back in the third person,
+#: about the family; the decline is the team's own. So it is read on the rehearsal ("não
+#: ensaiamos", "no pudimos ensayar", "contamos sem ensaiar"), on the first person refusing
+#: the doing whether or not it names it ("não fizemos", "a gente não fez", "nós não
+#: conseguimos", "eu não consegui", "we didn't do it"), and on nobody's doing at all — the
+#: time there was not, the thing that did not happen, the not-yet that opens a clause ("não
+#: deu tempo", "não rolou", "ainda não", "no time", "no hubo tiempo"). The first person is
+#: bound to the doing, never to the negation alone: a teller says "eu não lembro o nome da
+#: outra" and "we didn't hear who married whom" about the story. What a told Ruth 1 negates
+#: is the story's own — nobody, nothing, without, what it does not say — and none of that
+#: is the team declining. "No tempo dos juízes" is how the passage opens, and the
+#: Portuguese "no" is not the Spanish or English one: the time that was not is read behind
+#: a negation, never behind a preposition.
+_DENIES_THE_REHEARSAL = re.compile(
+    r"\b(?:nao|nunca|jamais|sem|not|never|no|didn'?t|don'?t|couldn'?t|can'?t|cannot|won'?t)"
+    r"(?:\s+\w+){0,3}\s+(?:ensai|ensay|pratic|practi[cs]|recont|rehears|retell)\w*"
+    r"|\b(?:nao|nunca|no)\s+(?:ainda\s+|todavia\s+)?(?:fizemos|fiz|conseguimos|consegui"
+    r"|tivemos|tive|pudemos|pude|terminamos|acabamos|chegamos"
+    r"|hicimos|pudimos|tuvimos|alcanzamos|logramos)\b"
+    r"|\b(?:a\s+gente|nos|eu|nosotros|yo)\s+(?:ainda\s+|todavia\s+)?(?:nao|nunca|jamais|no)"
+    r"\s+(?:fez|fiz|fizemos|conseguiu|consegui|conseguimos|teve|tive|tivemos|pode|pude"
+    r"|pudemos|deu|terminou|terminamos|acabou|acabamos|chegou|chegamos"
+    r"|hizo|hice|hicimos|pudo|pudimos|tuvo|tuve|tuvimos|alcanzo|alcanzamos|logro|logramos)\b"
+    r"|\b(?:we|i)\s+(?:still\s+)?(?:did\s+not|didn'?t|could\s+not|couldn'?t|have\s+not"
+    r"|haven'?t|never)\s+(?:do|did|done|get|got|manage|managed|finish|finished|make|made"
+    r"|have\s+time|had\s+time|get\s+to|got\s+to|get\s+around|got\s+around|do\s+it"
+    r"|done\s+it)\b"
+    r"|\b(?:we|i)\s+had\s+no\s+time\b"
+    r"|\b(?:nao|nunca)\s+(?:deu|rolou)\b"
+    r"|\b(?:nao|not|didn'?t|sem)\b(?:\s+\w+){0,2}\s+(?:tempo|time)\b"
+    r"|\bno\s+(?:hubo|dio|tuvimos|tenemos|hay)\s+tiempo\b"
+    r"|\bno\s+time\b"
+    r"|^(?:ainda\s+nao|todavia\s+no|aun\s+no|not\s+yet)\b"
+)
+
+
+def _the_telling_holds_back(team_utterance: str) -> bool:
+    """Whether a team that came back telling the scene held back from telling it.
+
+    The condition, the hedge and the negation all mean something else inside a telling than
+    they mean inside a decision. A condition that is really one opens its clause and names
+    who it is about; the "se" a whole session of Portuguese or Spanish is made of rides the
+    verb that follows it, and refusing on that refused nearly every telling the invitation
+    ever asked for. A hedge dropped into the middle of a told scene is a person telling a
+    story they half remember, which is the ordinary way a scene comes back — so it only
+    refuses a reply that has no telling around it. A negation inside a told scene is what
+    the story takes away — Noemi "sem os filhos e sem o marido", the famine nobody is said
+    to have sent — and the one negation that still refuses there is the team's own, on the
+    rehearsal: "não ensaiamos", "contamos sem ensaiar", "não fizemos".
+
+    Two clauses of three words or more count as telling for the hedge and the negation.
+    The clitic is relieved one step earlier: a single clause of eight words or more is a
+    scene too — a Spanish telling that drops its subjects can be one long clause from end
+    to end — and the negation is relieved with it, because a told scene of loss is one long
+    clause just as often; but a hedge in a single clause, however long, still refuses,
+    because "acho que…" over one breath is a person unsure, not one telling.
+
+    A reply that is a single short clause keeps the older, flatter reading: the hedge
+    refuses, any negation refuses, and so does a condition anywhere in it, not only one
+    that opens it.
+    """
+    clauses = oral_decision_clause_details(team_utterance)
+    told_in_clauses = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
+    told_at_length = any(len(clause.text.split()) >= 8 for clause in clauses)
+    telling = told_in_clauses or told_at_length
+    for clause in clauses:
+        spoken = normalize_oral_decision(_SPANISH_YES.sub(" ", clause.raw))
+        if _CONDITION_ON_A_SUBJECT.match(spoken) or _CONDITION_HEADS.match(spoken):
+            return True
+        if oral_clause_reports_the_voice(clause.raw):
+            return True
+        if _DENIES_THE_REHEARSAL.search(spoken):
+            return True
+        if not telling and (
+            oral_clause_has_negation(clause.raw) or _CONDITION_OPENS_THE_CLAUSE.match(spoken)
+        ):
+            return True
+        if told_in_clauses:
+            continue
+        if _CONDITION_ON_A_SUBJECT.search(spoken) or oral_clause_is_hedged(clause.raw):
+            return True
+    return False
+
+
+def _echoes_the_line_the_room_just_said(previous_guide_utterance: str, team_utterance: str) -> bool:
+    """Whether what was heard is the room's own voice coming back through the microphone.
+
+    A speaker feeding the invitation back gives a transcript that is the line itself, or
+    the head or tail of it that the microphone caught. None of it is a team telling
+    anything, and all of it would otherwise read as one — the invitation is fluent bridge
+    language, it is long, and it holds no negation, hedge or question.
+    """
+    said = _normalize(previous_guide_utterance)
+    heard = _normalize(team_utterance)
+    if not heard or not said:
+        return False
+    return heard == said or said.startswith(heard) or said.endswith(heard)
+
+
+def bridge_language_retelling_completes_practice(
+    previous_guide_utterance: str, team_utterance: str, reliable_bridge_speech: bool
+) -> bool:
+    """The team came back telling the scene, which is what the invitation asked it to do.
+
+    The invitation names its own contract — rehearse, then tell me in the bridge language
+    what you understood — so the telling is the completion report. The closing word still
+    counts; it is simply no longer the only thing that does, and a team that did the
+    larger thing is no longer refused for skipping the smaller one.
+
+    It stays a process fact. This says the practice happened and nothing at all about what
+    the telling is worth against the map: the probe authorizes no semantic evidence, and
+    reading a retelling here does not change that.
+
+    An announced plan is refused. It is the likeliest reply of all to an
+    invitation the Guide has just given — the team saying it is about to obey — and it is
+    fluent, substantial and holds no question, hedge or denial, so it would otherwise read
+    as the telling itself and mark a rehearsal that had not started. The same patterns
+    that refuse it on the reported-rehearsal path refuse it here.
+
+    What is refused, besides the announced plan, the hedge and the denial, is the room
+    hearing its own voice: the invitation echoed whole, or the head or tail of it a speaker can
+    feed back. A fragment from the middle of the line is not caught here — it would cost
+    the ordinary retelling that reuses the words the Guide just used.
+
+    The denial is read by `_the_telling_holds_back`, beside the hedge and the condition,
+    because all three change meaning inside a told scene.
+    """
+    if not reliable_bridge_speech:
+        return False
+    if not guide_invited_mother_tongue_practice(previous_guide_utterance):
+        return False
+    if _echoes_the_line_the_room_just_said(previous_guide_utterance, team_utterance):
+        return False
+    if oral_utterance_is_interrogative(team_utterance) or _the_telling_holds_back(team_utterance):
+        return False
+    clauses = oral_decision_clauses(team_utterance)
+    if any(pattern.search(clause) for clause in clauses for pattern in _FUTURE_REPORT):
+        return False
+    return not is_semantically_empty_answer(team_utterance)
+
+
 def scenes_practiced_by_the_telling_the_guide_invited(
     prior_probe: ActiveProbe | None,
     previous_guide_utterance: str,
@@ -305,11 +482,12 @@ def scenes_practiced_by_the_telling_the_guide_invited(
     unpractised, the probe arrived afterwards, and the room asked again for a rehearsal
     already told.
 
-    The scope is the scene pointer, because that is what the invitation was about — the
-    Guide opens the scene the pointer names and invites for that one; it never chooses a
-    scene itself. Nothing is marked when there is no pointer, and nothing is marked when
-    the last line was not an invitation, which is what keeps an ordinary answer to an
-    ordinary question from counting as a rehearsal.
+    The scope is the scene the caller says the invitation was about — the one the Guide is
+    opening while beads are still being opened, the first scene still owed a rehearsal once
+    the necklace is full (`turn.scene_view.scene_the_invitation_is_about`); the Guide never
+    chooses a scene itself. Nothing is marked when there is no scene in scope, and nothing
+    is marked when the last line was not an invitation, which is what keeps an ordinary
+    answer to an ordinary question from counting as a rehearsal.
 
     The closing word counts beside the telling, and it has to: a Guide that names one word
     and gets it back has the report it asked for, and the bare word is not a telling by any
@@ -329,9 +507,12 @@ def scenes_practiced_by_the_telling_the_guide_invited(
         return []
     if current_scene is None:
         return []
+    told_back = bridge_language_retelling_completes_practice(
+        previous_guide_utterance, team_utterance, reliable_bridge_speech
+    )
     closing_word = reliable_bridge_speech and confirms_completed_mother_tongue_practice(
         previous_guide_utterance, team_utterance
     )
-    if not closing_word:
+    if not told_back and not closing_word:
         return []
     return [current_scene]

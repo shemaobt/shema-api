@@ -137,6 +137,13 @@ class IRSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    #: Backs the optimistic check on ``messages`` and ``comprehension`` (ENG-643). Both are
+    #: whole-value JSON writes computed from whatever the writer read, so two turns landing
+    #: together for one session would otherwise have the later commit erase the evidence the
+    #: earlier one had just added, with neither writer ever told. `coverage_state` needs no
+    #: such guard — its merge is monotonic by rank (`coverage.furthest`) and cannot regress
+    #: under the same race.
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class IRCoverageEvent(Base):
@@ -354,19 +361,16 @@ class IRSegment(Base):
     a file, subdividing becomes writing rows rather than cutting audio — which is what lets the
     room do it with no connection.
 
-    The address is rewritten on exactly one occasion, and it is not a stretch changing: when a
-    stretch is re-recorded in the mother tongue the room rebuilds the passage around it, and
-    every stretch that was a slice of the recording it rebuilt is re-pointed at the file that
-    came out, at the time it now sits there. The audio under each of them is the same audio;
-    what moved is the file it is inside. Stretches of *another* recording are not touched, and
-    a session can hold more than one — a rebuilding that could not be done leaves the
-    correction on its own file. `compose.py` is where that happens and why it is not a version
-    of anything.
+    The address is never rewritten. It was, on one occasion: the room used to rebuild the
+    passage around a stretch re-recorded in the mother tongue and re-point every stretch of the
+    rebuilt recording at the file that came out. That gesture is gone (ADR 0025) — what a team
+    re-records is the **Part**, which is an upload of its own — so a row written from here on
+    keeps the address it was born with, and the rows that were re-pointed stay as history.
 
     ``take_id`` is the mother tongue; ``bridge_take_id`` and ``transcript`` are the team's own
-    explanation of it in Portuguese, which is the only transcript that exists. The two travel
-    together or not at all: a new version of the native audio is born with neither, because
-    correcting only the native does not exist as a product state.
+    explanation of it in Portuguese, which is the only transcript that exists. A version of a
+    stretch always carries them, because a version *is* the stretch told again; a row standing
+    without them is a piece the team cut out of another stretch and has not told yet.
 
     A version is a new row for the same position, not an edit in place. ``superseded_at`` is
     what stops counting; ``superseded_by_id`` is what took its place, and it is null when the

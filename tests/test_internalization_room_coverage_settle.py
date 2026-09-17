@@ -117,7 +117,7 @@ async def test_a_later_settle_does_not_darken_an_earned_bead(db_session: AsyncSe
     assert session.coverage_state[keys[0]] == CoverageStatus.ENGAGED.value
 
 
-def test_a_decision_lands_in_the_bucket_its_new_status_names() -> None:
+def test_a_decision_lands_in_the_bucket_its_new_status_names(caplog) -> None:
     reply = json.dumps(
         {
             "decisions": [
@@ -128,16 +128,14 @@ def test_a_decision_lands_in_the_bucket_its_new_status_names() -> None:
         }
     )
 
-    verdict = _parse(reply)
+    with caplog.at_level(logging.WARNING):
+        verdict = _parse(reply)
 
-    assert verdict == {
-        "surfaced": ["scene:2"],
-        "partially_engaged": ["scene:3"],
-        "engaged": ["scene:1"],
-    }, (
-        "a mesa de roteamento tinha duas casas e o prompt manda três, então toda decisão "
-        "partially_engaged virava aviso no log em vez de conta movida"
+    assert verdict == {"surfaced": ["scene:2"], "engaged": ["scene:1"]}, (
+        "o quarto estado era a casa do eco, e o piso descia até ela; a conta ecoada "
+        "fica onde está e o status aposentado vira aviso no log"
     )
+    assert "unusable decision" in caplog.text
 
 
 async def test_a_settled_exchange_moves_the_bead_the_classifier_named(patch_classifier) -> None:
@@ -220,9 +218,15 @@ async def test_a_settled_passage_drops_the_coverage_blocker_from_the_release(
     )
 
 
-async def test_a_passage_the_team_only_echoed_closes_like_one_it_worked_on_its_own(
+async def test_a_classifier_still_answering_the_retired_status_moves_nothing(
     db_session: AsyncSession, patch_classifier
 ) -> None:
+    """The word the model was taught for an echo no longer reaches the ledger.
+
+    It used to be the one status the floor was lowered to accept: a whole passage of
+    "sim" and "foi isso mesmo" closed the session. A model that still says it finds no
+    bucket, and the passage stays open.
+    """
     patch_classifier(_whole_passage_partially_engaged(P))
     session = await service.create_session(db_session, pericope=P)
     session = await service.save_comprehension(
@@ -239,14 +243,13 @@ async def test_a_passage_the_team_only_echoed_closes_like_one_it_worked_on_its_o
     )
     session = await service.apply_coverage(db_session, session.id, settled)
 
-    assert session.status is IRSessionStatus.DONE, (
-        "o piso foi rebaixado justamente para aceitar partially_engaged, e o parser "
-        "descartava o único status que o alcançava — a passagem trabalhada na deixa "
-        "do Guia ficava aberta para sempre"
+    assert session.coverage_state == initial_state(P), "uma decisão partially_engaged moveu conta"
+    assert session.status is IRSessionStatus.IN_PROGRESS, (
+        "a passagem inteira em 'sim' e 'foi isso mesmo' fechava a sessão"
     )
 
 
-async def test_a_passage_the_team_only_echoed_drops_the_coverage_blocker_from_the_release(
+async def test_a_passage_the_team_only_echoed_keeps_the_coverage_blocker_on_the_release(
     db_session: AsyncSession, patch_classifier
 ) -> None:
     patch_classifier(_whole_passage_partially_engaged(P))
@@ -268,10 +271,8 @@ async def test_a_passage_the_team_only_echoed_drops_the_coverage_blocker_from_th
     except InternalizationReleaseBlocked as blocked:
         blockers = blocked.blockers
 
-    assert "coverage_floor_not_met" not in blockers, (
-        "as regras de preservação chegam à sala como a equipe assumindo o que o Guia "
-        "notou, e nenhuma delas era escrita — a soltura respondia piso não atingido "
-        "por trabalho que existiu"
+    assert "coverage_floor_not_met" in blockers, (
+        "a soltura deixava de nomear a cobertura numa passagem que a equipe só ecoou"
     )
 
 
@@ -279,7 +280,7 @@ def test_a_reply_with_no_decisions_says_so_instead_of_reading_as_no_change(caplo
     with caplog.at_level(logging.WARNING):
         verdict = _parse(json.dumps({"retelling": {"scope": "S1", "approved": True}}))
 
-    assert verdict == {"surfaced": [], "partially_engaged": [], "engaged": []}
+    assert verdict == {"surfaced": [], "engaged": []}
     assert "no decisions list" in caplog.text, (
         "uma resposta sem o array voltava vazia calada, igualzinho a um turno "
         "em que nada mudou — foi esse silêncio que escondeu o bug por dois releases"
@@ -292,7 +293,7 @@ def test_a_decision_carrying_an_unknown_status_is_named_in_the_log(caplog) -> No
     with caplog.at_level(logging.WARNING):
         verdict = _parse(reply)
 
-    assert verdict == {"surfaced": [], "partially_engaged": [], "engaged": []}
+    assert verdict == {"surfaced": [], "engaged": []}
     assert "unusable decision" in caplog.text, (
         "um status que o parser não roteia sumia sem deixar rastro, "
         "e a conta parada parecia decisão do classificador"
@@ -303,7 +304,7 @@ def test_a_reply_the_parser_cannot_read_buckets_nothing_instead_of_failing() -> 
     unreadable = _parse("desculpa, não consegui classificar")
     not_an_object = _parse(json.dumps(["surfaced", "engaged"]))
 
-    assert unreadable == not_an_object == {"surfaced": [], "partially_engaged": [], "engaged": []}
+    assert unreadable == not_an_object == {"surfaced": [], "engaged": []}
 
 
 async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) -> None:
@@ -325,7 +326,6 @@ async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) 
             "element_id",
             "new_status",
             "surfaced",
-            "partially_engaged",
             "engaged",
         )
         if name not in agent.system

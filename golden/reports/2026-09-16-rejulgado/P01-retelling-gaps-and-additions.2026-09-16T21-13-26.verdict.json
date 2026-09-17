@@ -1,0 +1,30 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 3,
+    "rehearsal_and_honest_checking": 4,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "rehearsal_as_close_of_opening",
+      "quote": "Ficou claro quem são e pra onde vão? Se ficou, ensaiem essa primeira cena juntos na língua de vocês",
+      "why": "O guia abriu a cena e, na mesma vez, já convidou ao ensaio, sem esperar a equipe mostrar que pegou a parte. Foi condicional e a equipe tinha pedido ensaio, por isso é leve, mas segue o padrão de fechar a abertura com ensaio automático."
+    },
+    {
+      "turn": 3,
+      "severity": "minor",
+      "kind": "check_left_unresolved",
+      "quote": "Esse pedacinho da chegada entrou no ensaio na língua de vocês, ou só ficou faltando na explicação?",
+      "why": "O guia apontou a falta da chegada e da permanência em Moabe, a equipe pulou pra frente, e o guia nunca voltou a confirmar se esse pedaço entrou no ensaio. Nas retomadas finais isso não foi checado."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um par à mesa: reagiu a cada fala da equipe, acompanhou quando pularam cenas e abriu cada parte a partir do que a história conta antes de checar. A conferência dos ensaios foi honesta e concreta — apontou o tempo dos juízes que faltou, os efrateus e a ida como estrangeiros, e nunca elogiou como completa uma versão com lacuna. Os silêncios foram tratados como conteúdo com muita firmeza: recusou a doença e o choro de Elimeleque, recusou o par de quem casou com quem, recusou 'Deus deixou', e preservou o eco de 'ficou' e a ordem filhos-depois-marido. A contenção foi total, sem nada fora do mapa e sem 'o mapa' ou bênçãos. Pontos fracos pequenos: no turno 1 o convite ao ensaio veio colado à abertura, e a falta da chegada em Moabe apontada no turno 3 nunca foi fechada. O encerramento mandou gravar o ensaio em Terena, como deve."
+}

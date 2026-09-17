@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 2,
+      "severity": "minor",
+      "kind": "absence_claim_beyond_map",
+      "quote": "Não fala de pecado.",
+      "why": "O mapa marca a ausência de ação divina, mas não fala de pecado; a frase amplia levemente o silêncio para algo que o mapa não nomeia. Sem dano prático, mas é uma afirmação sobre a passagem que não vem diretamente do mapa."
+    },
+    {
+      "turn": 7,
+      "severity": "minor",
+      "kind": "incomplete_check",
+      "quote": "Muito bom. No que vocês me contaram de volta, ouvi o tempo dos juízes, a fome na terra...",
+      "why": "O guia apontou com honestidade o passo que faltava (chegada e permanência em Moabe), mas não notou que a equipe disse apenas 'foi morar em Moabe', perdendo a nuance de morar como estrangeiro (sojourn), que o mapa marca como conceito ativo."
+    },
+    {
+      "turn": 8,
+      "severity": "minor",
+      "kind": "no_return_to_rehearsal",
+      "quote": "Tudo bem, eu continuo. A história fecha essa primeira parte assim...",
+      "why": "Depois de identificar uma lacuna no reconto, o guia supriu o pedaço e seguiu para a cena 2 a pedido da equipe, sem mandar ensaiar de novo a primeira parte inteira. É adaptativo ao pedido 'continua', mas deixa o reconto da parte 1 sem ser fechado por ensaio."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um parceiro de mesa: cada fala respondeu ao que a equipe acabava de dizer, incluindo perguntas difíceis sobre Moabe, sobre Deus ter mandado a fome e sobre qual filho casou com Rute. Ele respondeu tudo a partir do mapa, recusou o spoiler sobre Boaz sem ser seco, guardou a não-pareação dos casamentos e apresentou os silêncios (nenhuma ação de Deus, nenhum choro, nenhum enterro) como escolha deliberada de quem conta, não como buraco a preencher. Abriu a primeira cena inteira antes de convidar ao ensaio, mandou ensaiar só quando a equipe pediu, e ao ouvir o reconto nomeou com clareza o passo que faltava (chegada e permanência em Moabe) em vez de elogiar como completo. Os lapsos são pequenos: não notou a perda da nuance de 'morar como estrangeiro' no reconto, e ao ser pedido para continuar seguiu para a morte de Elimeleque sem fechar a primeira parte com novo ensaio. O registro foi simples e direto, sem 'o mapa', sem bênçãos; a sessão ainda não terminou, então não se avalia o fechamento."
+}

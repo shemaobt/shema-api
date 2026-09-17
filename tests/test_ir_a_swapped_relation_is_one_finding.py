@@ -128,7 +128,8 @@ class ReaderOfTellings:
         now = _section(prompt, CORRECTION_MARK, None)
 
         answered = [
-            _answers(kind, note, now) for kind, note in re.findall(r"^- (\w+): (.+)$", asked, re.M)
+            _answers(kind, note, now)
+            for kind, note in re.findall(r"^- (\w+)(?: \[[^\]]*\])?: (.+)$", asked, re.M)
         ]
 
         findings: list[dict[str, str]] = []

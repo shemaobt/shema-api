@@ -34,7 +34,11 @@ from app.services.internalization_room.fail_safe import FailSafe, first, localiz
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
-from tests.room_harness import heard_every_part, press_terminei
+from tests.room_harness import (
+    a_piece_still_to_be_told,
+    heard_every_part,
+    press_terminei,
+)
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -285,18 +289,11 @@ async def _two_stretches_told(
     return session_id, take_id
 
 
-async def _re_record_the_native(db: AsyncSession, session_id: str, *, take_id: str) -> IRSegment:
-    """Redo one stretch's mother-tongue audio, which leaves it waiting to be told back."""
+async def _leave_it_waiting_to_be_told(db: AsyncSession, session_id: str) -> IRSegment:
+    """Leave one stretch waiting to be told back, by cutting the last one in two."""
     session = await get_session(db, session_id)
-    standing = await service.final_segments(db, session_id)
-    return await service.capture_segment(
-        db,
-        session,
-        take_id=take_id,
-        starts_ms=9000,
-        ends_ms=24000,
-        replaces=standing[-1],
-    )
+    standing = (await service.final_segments(db, session_id))[-1]
+    return await a_piece_still_to_be_told(db, session, standing)
 
 
 def _last_guide_turn(session: IRSession) -> str:
@@ -449,8 +446,8 @@ async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
     What that team owes is the stretch they never told, and the family written for it says
     so. Asking them to tell a stretch *again* would name work they have not done once.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
     await _finish(client, db_session, session_id)
 

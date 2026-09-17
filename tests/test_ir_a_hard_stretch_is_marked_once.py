@@ -28,9 +28,9 @@ from app.db.models.internalization_room import (
     IRPromptKey,
     IRSegment,
     IRSessionStatus,
-    IRTakeKind,
 )
 from app.services.internalization_room import sessions as room
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from tests.baker import (
     grant_facilitator_app_role,
@@ -519,6 +519,7 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
             scope=P,
             pericope_num=P,
             correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
+            addresses=Addresses(),
         )
         return list(said)
 
@@ -820,54 +821,6 @@ async def test_a_retelling_supersedes_the_stretch_it_retells(
     ).scalar_one()
     assert retired.superseded_at is not None
     assert retired.superseded_by_id == current.id
-
-
-async def test_re_recording_the_mother_tongue_is_not_a_telling(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """A new recording under a stretch carries no words, so it counts nothing.
-
-    The team records the stretch again and then tells it back, which is two calls and one
-    telling. Counted on the supersession rather than on the telling, that pair would reach
-    three on the team's second telling and ask for a person a whole telling early.
-    """
-    session_id = await _a_session(db_session)
-    take_id = await _rehearse(client, session_id)
-    await _told(client, session_id, take_id, 1)
-    stretch = (await _units(client, session_id))[0]
-
-    fresh = await client.post(
-        f"{IR}/sessions/{session_id}/takes",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": P},
-        files={"file": ("de-novo.m4a", b"a equipe gravou o trecho de novo", "audio/mp4")},
-    )
-    assert fresh.status_code == 200, fresh.text
-    fresh_take = fresh.json()["take_id"]
-
-    rerecorded = await client.post(
-        f"{IR}/sessions/{session_id}/segments/{stretch['segment_id']}/replace",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-        data={"take_id": fresh_take, "starts_ms": "0", "ends_ms": "9000"},
-    )
-    assert rerecorded.status_code == 200, rerecorded.text
-    waiting = await _current(db_session, session_id)
-    assert [one.tellings for one in waiting] == [1], (
-        "a gravação nova não é uma contagem: ninguém contou nada nela"
-    )
-
-    client.said.append("o trecho contado sobre a gravação nova")  # type: ignore[attr-defined]
-    retold = await client.post(
-        f"{IR}/sessions/{session_id}/segments/{waiting[0].id}/replace",
-        headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-        data={"take_id": fresh_take, "starts_ms": "0", "ends_ms": "9000"},
-        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
-    )
-
-    assert retold.status_code == 200, retold.text
-    assert retold.json()["needs_person"] is False
-    assert [one.tellings for one in await _current(db_session, session_id)] == [2]
-    assert await _marks(db_session, session_id) == []
 
 
 async def test_a_chunk_over_a_divided_stretchs_slice_is_a_first_telling(

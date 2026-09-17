@@ -23,6 +23,7 @@ from app.services.internalization_room.back_translation import (
     analyse_telling_back,
     verify_correction,
 )
+from app.services.internalization_room.part_names import Addresses
 
 ANALYST = default_prompt(IRPromptKey.BT_ANALYST)["prompt"]
 CORRECTION = default_prompt(IRPromptKey.BT_CORRECTION)["prompt"]
@@ -114,6 +115,7 @@ async def test_the_correction_check_reads_on_the_analysis_ladder(recording_clien
         scope="1-5",
         pericope_num=P,
         correction_prompt=CORRECTION,
+        addresses=Addresses(),
         settings=_settings(tripod_analysis_model="modelo-de-analise-sob-teste"),
     )
 
@@ -175,6 +177,7 @@ async def test_the_correction_checks_ceiling_holds_the_thinking_too(recording_cl
         scope="1-5",
         pericope_num=P,
         correction_prompt=CORRECTION,
+        addresses=Addresses(),
         settings=_settings(),
     )
 
