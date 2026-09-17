@@ -94,6 +94,7 @@ async def create_session(
     after_panorama: bool = False,
     project_id: str | None = None,
     language: str | None = None,
+    chosen: bool = False,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
@@ -131,12 +132,19 @@ async def create_session(
     own bias.
 
     A request for the panorama is a request and not an instruction. The app asks for it at
-    every launch, and a team that already heard it for the passage they stand on is answered
-    with that passage instead, opened as any other session and not as one that follows a
+    every launch, and a team that already heard the book's panorama is answered with the
+    passage they stand on instead, opened as any other session and not as one that follows a
     panorama — no panorama played, so the greeting must not say one did. Whether they heard
     it is `heard_panorama`'s to say and is derived, never stored. A team standing on no
     passage — the walkable book closed — is given the panorama as before: the decision puts
     the team's passage in its place, and there is none to put there.
+
+    ``chosen`` is the team asking for the panorama themselves — the spoke on the wheel —
+    rather than the app asking at launch, and a request the team chose is honoured, heard
+    or not: the panorama is a conversation, and a team that has forgotten the shape of the
+    book, or gained a member, has to be able to hold it again. The difference rides on the
+    request and nowhere else. Nothing writes "asked" down, so the next automatic launch is
+    still answered from the rows, exactly as before the team asked.
 
     Raises ``ConflictError`` when the team has closed every passage that opens and none was
     named. That is the end of the book, and it is a defined state rather than a wrap-around:
@@ -151,10 +159,10 @@ async def create_session(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if is_panorama(pericope):
+    if is_panorama(pericope) and not chosen:
         standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
         if standing is not None and await heard_panorama(
-            db, project_id=project_id, pericope=standing
+            db, project_id=project_id, book=book_of(pericope)
         ):
             pericope, after_panorama = standing, False
     panorama = is_panorama(pericope)
