@@ -137,6 +137,13 @@ class IRSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    #: Backs the optimistic check on ``messages`` and ``comprehension`` (ENG-643). Both are
+    #: whole-value JSON writes computed from whatever the writer read, so two turns landing
+    #: together for one session would otherwise have the later commit erase the evidence the
+    #: earlier one had just added, with neither writer ever told. `coverage_state` needs no
+    #: such guard — its merge is monotonic by rank (`coverage.furthest`) and cannot regress
+    #: under the same race.
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class IRCoverageEvent(Base):
