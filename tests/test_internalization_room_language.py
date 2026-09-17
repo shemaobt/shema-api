@@ -378,15 +378,16 @@ def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
     """coverage_status_block feeds the Guide's COVERAGE_STATUS slot directly — a heading and a
     "nothing left" placeholder, neither threaded through the session's language at all
     (ENG-822, item 3/4's "same treatment", the run_turn.py successor of the old status block)."""
-    from app.services.internalization_room.coverage import initial_state, merge
+    from app.services.internalization_room.coverage import current_scene, initial_state, merge
     from app.services.internalization_room.prompt_blocks import coverage_status_block
 
     P = "P01"
-    fully_engaged = merge(initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys()))
+    nothing = initial_state(P)
+    fully_engaged = merge(nothing, pericope_num=P, engaged=list(nothing))
 
-    assert coverage_status_block(fully_engaged, P) == (
+    assert coverage_status_block(fully_engaged, P, current_scene(fully_engaged, P)).endswith(
         "REMAINING: (none — every element has been worked by the team)"
     )
-    assert coverage_status_block(initial_state(P), P).startswith(
-        "REMAINING (not yet worked by the team, in their own words):"
+    assert "REMAINING (not yet worked by the team, in their own words):" in (
+        coverage_status_block(nothing, P, current_scene(nothing, P))
     )

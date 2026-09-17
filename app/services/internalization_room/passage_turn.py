@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.services.internalization_room.coverage import current_scene
 from app.services.internalization_room.fail_safe import FailSafe, choose
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
@@ -53,7 +54,9 @@ async def run_turn(
         )
 
     map_block = meaning_map_block(pericope_num, book)
-    coverage_status = coverage_status_block(coverage_state, pericope_num)
+    coverage_status = coverage_status_block(
+        coverage_state, pericope_num, current_scene(coverage_state, pericope_num)
+    )
     if app_context:
         coverage_status = f"{coverage_status}\n\n{app_context}"
     return await _voiced_after_validation(
