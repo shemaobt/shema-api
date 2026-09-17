@@ -10,10 +10,10 @@ from app.services.internalization_room.classify_coverage import classify_coverag
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.sessions import apply_coverage, get_session
+from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)

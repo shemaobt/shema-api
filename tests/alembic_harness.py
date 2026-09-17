@@ -73,6 +73,20 @@ async def indexes_of(database_url: str, table: str) -> dict[str, tuple[bool, lis
     return {index["name"]: (bool(index["unique"]), list(index["column_names"])) for index in found}
 
 
+async def unique_constraints_of(database_url: str, table: str) -> dict[str, list[str]]:
+    """Every named unique constraint on ``table``, by name, with the columns it covers.
+
+    A separate lookup from ``indexes_of``: SQLite reports a table-level ``UNIQUE`` this way,
+    not as one more row of ``get_indexes``, which a migration test asserting a constraint by
+    name would otherwise miss entirely.
+    """
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        found = await conn.run_sync(lambda sync: inspect(sync).get_unique_constraints(table))
+    await engine.dispose()
+    return {constraint["name"]: list(constraint["column_names"]) for constraint in found}
+
+
 async def scalar(database_url: str, sql: str, params: dict) -> object:
     engine = create_async_engine(database_url)
     async with engine.connect() as conn:

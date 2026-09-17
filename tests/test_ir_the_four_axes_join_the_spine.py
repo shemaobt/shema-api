@@ -12,7 +12,7 @@ from app.services.internalization_room.coverage import (
     initial_state,
     remaining,
 )
-from app.services.internalization_room.live_turn import (
+from app.services.internalization_room.turn.scene_view import (
     current_scene_id,
     has_substantive_team_history,
 )
