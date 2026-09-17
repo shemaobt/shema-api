@@ -17,7 +17,7 @@ from app.core.database import Base
 from tests.alembic_harness import run_alembic
 
 REVISION = "20260916_spine01"
-PREVIOUS_REVISION = "20260916_turn01"
+PREVIOUS_REVISION = "20260916_ver01"
 
 TABLE = "ir_coverage_events"
 WHEN = "2026-09-16 09:00:00"

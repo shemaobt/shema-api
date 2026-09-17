@@ -29,7 +29,7 @@ in that scene, and ``preserved:R6`` reads as not encountered again — under-cou
 is the safe side of the floor.
 
 Revision ID: 20260916_spine01
-Revises: 20260916_turn01
+Revises: 20260916_ver01
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from app.services.internalization_room.canon.parse_map import MeaningMap
 
 revision = "20260916_spine01"
-down_revision = "20260916_turn01"
+down_revision = "20260916_ver01"
 branch_labels = None
 depends_on = None
 
