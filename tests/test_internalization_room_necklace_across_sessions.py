@@ -126,7 +126,7 @@ async def test_a_team_that_closed_the_tablet_mid_passage_finishes_it_on_the_seco
     half, rest = keys[: len(keys) // 2], keys[len(keys) // 2 :]
 
     tuesday = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
-    await room.apply_coverage(db_session, tuesday.id, dict.fromkeys(half, PARTIALLY_ENGAGED))
+    await room.apply_coverage(db_session, tuesday.id, dict.fromkeys(half, ENGAGED))
 
     thursday = await room.create_session(db_session, project_id=team.id)
     assert thursday.pericope == FIRST, "a passagem inacabada deixou de ser a da equipe"
@@ -134,9 +134,7 @@ async def test_a_team_that_closed_the_tablet_mid_passage_finishes_it_on_the_seco
     thursday = await room.save_comprehension(
         db_session, thursday, fully_supported_comprehension(FIRST)
     )
-    thursday = await room.apply_coverage(
-        db_session, thursday.id, dict.fromkeys(rest, PARTIALLY_ENGAGED)
-    )
+    thursday = await room.apply_coverage(db_session, thursday.id, dict.fromkeys(rest, ENGAGED))
 
     assert floor_met(thursday.coverage_state, FIRST), (
         "a segunda noite so tinha metade da passagem no proprio tracker"
