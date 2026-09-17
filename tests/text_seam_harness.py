@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.internalization_room import router
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
+from app.services.internalization_room import golden_judge
 from tests.room_harness import CORRECTION_MARK
 
 RUNNER_KEY = "runner-de-teste"
@@ -115,6 +116,49 @@ def the_speaker_says(monkeypatch: pytest.MonkeyPatch) -> Speaker:
     voice = Speaker()
     monkeypatch.setattr(turn_module, "call_agent", voice)
     return voice
+
+
+A_VERDICT: dict[str, Any] = {
+    "scores": {
+        "understands_team": 3,
+        "answers_requests_to_understand": 1,
+        "frames_before_eliciting": 3,
+        "rehearsal_and_honest_checking": 3,
+        "silences_as_content": 4,
+        "containment": 4,
+        "register": 3,
+        "adaptivity": 2,
+    },
+    "incidents": [
+        {
+            "turn": 1,
+            "severity": "blocker",
+            "kind": "redirect_on_request_to_understand",
+            "quote": "Vamos ficar dentro da passagem.",
+            "why": "A equipe pediu para entender e o guia redirecionou.",
+        }
+    ],
+    "pass": False,
+    "summary": "O guia redirecionou um pedido de entender.",
+}
+
+
+class Judge:
+    """The model behind the judge, answering what the case set and keeping what it was asked."""
+
+    def __init__(self, reply: str = json.dumps(A_VERDICT)) -> None:
+        self.reply = reply
+        self.asked: list[dict[str, Any]] = []
+
+    async def __call__(self, **kwargs: Any) -> str:
+        self.asked.append(kwargs)
+        return self.reply
+
+
+def the_judge_answers(monkeypatch: pytest.MonkeyPatch, reply: str = json.dumps(A_VERDICT)) -> Judge:
+    judge = Judge(reply)
+    monkeypatch.setattr(golden_judge, "call_agent", judge)
+    return judge
 
 
 def the_app(db_session: AsyncSession):

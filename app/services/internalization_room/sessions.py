@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
@@ -95,6 +95,7 @@ async def create_session(
     after_panorama: bool = False,
     project_id: str | None = None,
     language: str | None = None,
+    chosen: bool = False,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
@@ -132,12 +133,19 @@ async def create_session(
     own bias.
 
     A request for the panorama is a request and not an instruction. The app asks for it at
-    every launch, and a team that already heard it for the passage they stand on is answered
-    with that passage instead, opened as any other session and not as one that follows a
+    every launch, and a team that already heard the book's panorama is answered with the
+    passage they stand on instead, opened as any other session and not as one that follows a
     panorama — no panorama played, so the greeting must not say one did. Whether they heard
     it is `heard_panorama`'s to say and is derived, never stored. A team standing on no
     passage — the walkable book closed — is given the panorama as before: the decision puts
     the team's passage in its place, and there is none to put there.
+
+    ``chosen`` is the team asking for the panorama themselves — the spoke on the wheel —
+    rather than the app asking at launch, and a request the team chose is honoured, heard
+    or not: the panorama is a conversation, and a team that has forgotten the shape of the
+    book, or gained a member, has to be able to hold it again. The difference rides on the
+    request and nowhere else. Nothing writes "asked" down, so the next automatic launch is
+    still answered from the rows, exactly as before the team asked.
 
     Raises ``ConflictError`` when the team has closed every passage that opens and none was
     named. That is the end of the book, and it is a defined state rather than a wrap-around:
@@ -152,10 +160,10 @@ async def create_session(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if is_panorama(pericope):
+    if is_panorama(pericope) and not chosen:
         standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
         if standing is not None and await heard_panorama(
-            db, project_id=project_id, pericope=standing
+            db, project_id=project_id, book=book_of(pericope)
         ):
             pericope, after_panorama = standing, False
     panorama = is_panorama(pericope)
@@ -244,6 +252,36 @@ async def get_session_for_room_caller(
     return session
 
 
+async def _land(db: AsyncSession, session: IRSession, values: dict[str, Any]) -> IRSession:
+    """Write ``values`` to this session's row, refusing the write if another turn got there
+    first (ENG-643).
+
+    ``messages`` and ``comprehension`` are both whole-value JSON, computed from whatever the
+    caller had read off ``session`` before calling this — so a plain UPDATE would let a turn
+    that started a moment later, and committed a moment earlier, have its evidence silently
+    written over. The WHERE clause below is the guard: it only lands while ``version`` is
+    still what this ``session`` was read at, and the loser gets a raised conflict instead of
+    a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
+    sound necklace's own document, generalised to whichever columns the caller is writing.
+    """
+    stmt = (
+        update(IRSession)
+        .where(IRSession.id == session.id, IRSession.version == session.version)
+        .values(**values, version=IRSession.version + 1)
+        .returning(IRSession.version)
+        .execution_options(synchronize_session=False)
+    )
+    landed = (await db.execute(stmt)).scalar_one_or_none()
+    if landed is None:
+        # Nothing matched, so nothing is pending: leave the transaction to the caller's
+        # teardown rather than rolling back a session shared with the rest of the request,
+        # the way autosave_state.py's own version conflict does.
+        raise ConflictError("This session was written to by another turn.")
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
 async def append_exchange(
     db: AsyncSession,
     session: IRSession,
@@ -294,13 +332,10 @@ async def append_exchange(
                 issues=outcome.issues,
             )
     messages.append(guide)
-    session.messages = messages
+    values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
     if session.status is IRSessionStatus.NEEDS_PERSON:
-        session.status = IRSessionStatus.IN_PROGRESS
-    session.lifted_halt = None
-    await db.commit()
-    await db.refresh(session)
-    return session
+        values["status"] = IRSessionStatus.IN_PROGRESS
+    return await _land(db, session, values)
 
 
 def _containment_of(outcome: TurnOutcome) -> str:
@@ -374,10 +409,7 @@ def comprehension_of(session: IRSession) -> ComprehensionState:
 async def save_comprehension(
     db: AsyncSession, session: IRSession, state: ComprehensionState
 ) -> IRSession:
-    session.comprehension = state.model_dump(mode="json")
-    await db.commit()
-    await db.refresh(session)
-    return session
+    return await _land(db, session, {"comprehension": state.model_dump(mode="json")})
 
 
 def semantics_ready(session: IRSession) -> bool:
