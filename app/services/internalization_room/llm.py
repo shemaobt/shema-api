@@ -176,6 +176,9 @@ async def call_agent(
                 )
         except TimeoutError as hang:
             raise _timed_out(model, role=role, started=started, bound_s=bound_s) from hang
+        except asyncio.CancelledError:
+            _timed_out(model, role=role, started=started, bound_s=bound_s)
+            raise
         except anthropic.NotFoundError as refusal:
             if model == rungs[-1]:
                 raise _unavailable(model, refusal, role=role, started=started) from refusal
@@ -254,6 +257,11 @@ def _timed_out(model: str, *, role: str, started: float, bound_s: float) -> Upst
     will hear. The line carries the role and the elapsed time like an answered call's, which
     is what makes a slow turn readable afterwards: whether it was the Guide, the Validator
     or the classifier that never came back.
+
+    Written on a cancellation from outside as well, because on a turn that is the bound
+    that fires: the route's clock starts before the call's and is the same length, so a
+    call cut short by it never reaches its own deadline. The turn's error says the turn
+    did not answer; this line is what says who was still waiting when it stopped.
     """
     latency_ms = round((time.monotonic() - started) * 1000)
     logger.warning(

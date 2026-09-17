@@ -166,6 +166,38 @@ async def test_a_provider_that_hangs_is_an_error_inside_the_bound_and_the_reques
     assert 0 <= timed_out[0].latency_ms < 5000
 
 
+async def test_a_call_cut_short_by_the_turns_own_bound_still_says_who_was_waiting(
+    the_client, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The route's bound starts before the call's, so on a turn it is the one that fires.
+
+    The cancellation reaches the call from outside, not from its own clock — and a turn
+    that ended with "o turno não respondeu" and no line under it could not say whether the
+    Guide or the Validator was the one still waiting.
+    """
+    hung = _Hung()
+    the_client(hung)
+
+    with (
+        caplog.at_level(logging.WARNING, logger="app.services.internalization_room.llm"),
+        pytest.raises(TimeoutError),
+    ):
+        await asyncio.wait_for(
+            llm.call_agent(
+                role="validator", system_prompt="s", user_content="u", settings=_settings()
+            ),
+            timeout=0.05,
+        )
+
+    assert hung.let_go is True
+    (cut,) = _usage_lines(caplog)
+    assert cut.outcome == "timeout" and cut.role == "validator" and cut.rung == MODEL, (
+        "o limite da rota disparava antes do da chamada, e a chamada cancelada não deixava "
+        "linha nenhuma: o log dizia que o turno não respondeu, e não quem estava esperando"
+    )
+    assert isinstance(cut.latency_ms, int)
+
+
 def _usage_lines(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
     return [
         record
