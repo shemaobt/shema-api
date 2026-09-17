@@ -31,15 +31,13 @@ async def run_turn(
     opening: bool = False,
     settings: Settings | None = None,
     session_id: str = "?",
-    app_context: str = "",
     ask_for_movements: bool = False,
 ) -> TurnOutcome:
     """One exchange of a passage session: the Guide drafts, the Validator gates.
 
     `opening` is the session's first turn, where the Guide speaks before the team has.
-    `app_context` rides inside the Guide's COVERAGE_STATUS slot: it is app-owned state,
-    never team speech. The Validator is handed none of it — it judges the draft against
-    the map and the team's own words, and nothing else.
+    The coverage block is the whole of what the app tells the Guide, and the Validator is
+    handed none of it — it judges the draft against the map and the team's own words.
     """
     cfg = settings or get_settings()
 
@@ -57,8 +55,6 @@ async def run_turn(
     coverage_status = coverage_status_block(
         coverage_state, pericope_num, current_scene(coverage_state, pericope_num)
     )
-    if app_context:
-        coverage_status = f"{coverage_status}\n\n{app_context}"
     return await _voiced_after_validation(
         speaker_system=render(
             cache_break_before(guide_prompt, "{{COVERAGE_STATUS}}"),

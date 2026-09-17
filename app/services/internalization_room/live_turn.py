@@ -28,18 +28,11 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
 from app.services.internalization_room.comprehension.practice import (
     scenes_practiced_by_the_telling_the_guide_invited,
 )
 from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
-)
-from app.services.internalization_room.comprehension.session_readiness import (
-    render_comprehension_status,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.coverage import CoverageStatus
@@ -108,8 +101,6 @@ async def run_comprehension_turn(
     """
     pericope = session.pericope
     book = load_map(pericope).book
-    checkpoints = list(checkpoints_for(pericope, book))
-    scene_ids = scene_ids_for(pericope)
     messages: list[dict[str, Any]] = list(session.messages or [])
     last_guide = next(
         (m.get("text", "") for m in reversed(messages) if m.get("role") == "guide"), ""
@@ -128,16 +119,6 @@ async def run_comprehension_turn(
         prior_probe, last_guide, transcript, reliable, scene_pointer
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
-
-    comprehension_status = render_comprehension_status(
-        checkpoints=checkpoints,
-        scene_ids=scene_ids,
-        ledger=state.ledger,
-        practiced_scene_ids=projected_practice,
-        current_scene=scene_pointer,
-    )
-
-    app_context = comprehension_status
 
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
@@ -167,7 +148,6 @@ async def run_comprehension_turn(
             opening=opening,
             settings=settings,
             session_id=session.id,
-            app_context=app_context,
             ask_for_movements=opening and not messages,
         )
 

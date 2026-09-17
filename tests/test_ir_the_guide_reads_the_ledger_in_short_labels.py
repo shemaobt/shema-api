@@ -8,10 +8,17 @@ finished scenes, and could read `preserved:R6` aloud into a room with no screen.
 §2.1: the app owns "the coverage ledger … All of it information; none of it instruction."
 """
 
+import json
 import re
+import sys
+from typing import Any
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import Settings
+from app.db.models.internalization_room import IRPromptKey
+from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.canon.elements import (
     ElementKind,
     element_keys,
@@ -23,7 +30,11 @@ from app.services.internalization_room.coverage import (
     initial_state,
     merge,
 )
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.live_turn import run_comprehension_turn
+from app.services.internalization_room.llm import CACHE_BREAK
 from app.services.internalization_room.prompt_blocks import coverage_status_block
+from app.services.internalization_room.sessions import append_exchange, create_session
 
 P = "P01"
 
@@ -176,4 +187,58 @@ def test_no_key_and_no_audit_kind_reaches_the_block(state: dict[str, str]) -> No
     )
     assert AUDIT_KIND.findall(block) == [], (
         "o tipo de auditoria em caixa alta viajava dobrado no rótulo da ausência"
+    )
+
+
+class LedgerReadingGuide:
+    """A Guide keeping every system it was handed, with a Validator passing behind it."""
+
+    def __init__(self) -> None:
+        self.systems: list[str] = []
+
+    async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        self.systems.append(system_prompt)
+        return "A famine comes, and a family leaves Bethlehem. How would you tell that part?"
+
+
+async def test_nothing_but_the_ledger_reaches_the_guide_from_the_app(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """DOCTRINE §2.1: the app hands the Guide the ledger, "information; none of it instruction".
+
+    Underneath the ledger the room used to paste its comprehension evidence — readiness,
+    supported units, practice still needed — the app-owned state the bridge mode and the
+    probe contract once rode in with. Everything past the cache break is what the app
+    composes each turn; it is the ledger and nothing after it.
+    """
+    guide = LedgerReadingGuide()
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
+    )
+    session = await create_session(db_session, language="en", pericope=P)
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+
+    await run_comprehension_turn(
+        db_session,
+        session,
+        speech=HeardSpeech(text="we can start"),
+        opening=False,
+        guide_prompt=default_prompt(IRPromptKey.GUIDE)["prompt"],
+        validator_prompt=default_prompt(IRPromptKey.VALIDATOR)["prompt"],
+        settings=Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake"),
+    )
+
+    composed = guide.systems[0].partition(CACHE_BREAK)[2].strip().splitlines()
+    assert composed[0] == OPENING
+    assert composed[-1] == "  preserved: R3, R5, R10", (
+        "o bloco COMPREHENSION EVIDENCE vinha colado embaixo do ledger, com READINESS e "
+        "unidades semânticas que o Guia era mandado seguir"
+    )
+    assert not any(
+        heading in guide.systems[0].partition(CACHE_BREAK)[2]
+        for heading in ("COMPREHENSION EVIDENCE", "READINESS:", "PROBE", "BRIDGE MODE")
     )
