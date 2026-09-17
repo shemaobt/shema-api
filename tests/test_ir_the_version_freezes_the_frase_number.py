@@ -48,7 +48,6 @@ from app.services.internalization_room.sessions import (
 )
 from tests.release_harness import (
     P,
-    ensaio_take,
     ready_session,
     reported_playback,
     retro_take,
@@ -489,16 +488,14 @@ async def test_a_stretch_recorded_again_and_untold_cannot_be_approved(
     session = await _told_in_three_stretches(db_session)
     first = await approve_release(db_session, session, device_id=TABLET)
 
-    again = ensaio_take(session.id, sha256="b" * 64)
-    db_session.add(again)
-    await db_session.commit()
+    waiting = (await final_segments(db_session, session.id))[0]
     await capture_segment(
         db_session,
         session,
-        take_id=again.id,
-        starts_ms=0,
-        ends_ms=20000,
-        replaces=(await final_segments(db_session, session.id))[0],
+        take_id=waiting.take_id,
+        starts_ms=waiting.starts_ms,
+        ends_ms=waiting.ends_ms,
+        replaces=waiting,
     )
 
     with pytest.raises(InternalizationReleaseBlocked) as refused:

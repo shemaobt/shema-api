@@ -288,17 +288,22 @@ async def _two_stretches_told(
     return session_id, take_id
 
 
-async def _re_record_the_native(db: AsyncSession, session_id: str, *, take_id: str) -> IRSegment:
-    """Redo one stretch's mother-tongue audio, which leaves it waiting to be told back."""
+async def _leave_it_waiting_to_be_told(db: AsyncSession, session_id: str) -> IRSegment:
+    """Leave one stretch waiting to be told back: a version of it that carries no words.
+
+    A version keeps the slice of the stretch it replaces, so what is redone here is the telling
+    and never the audio under it. A recording that was wrong is answered by recording the
+    **Part** again, which is an upload and never arrives as a version (ADR 0023, ADR 0025).
+    """
     session = await get_session(db, session_id)
-    standing = await service.final_segments(db, session_id)
+    waiting = (await service.final_segments(db, session_id))[-1]
     return await service.capture_segment(
         db,
         session,
-        take_id=take_id,
-        starts_ms=9000,
-        ends_ms=24000,
-        replaces=standing[-1],
+        take_id=waiting.take_id,
+        starts_ms=waiting.starts_ms,
+        ends_ms=waiting.ends_ms,
+        replaces=waiting,
     )
 
 
@@ -452,8 +457,8 @@ async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
     What that team owes is the stretch they never told, and the family written for it says
     so. Asking them to tell a stretch *again* would name work they have not done once.
     """
-    session_id, take_id = await _two_stretches_told(client)
-    await _re_record_the_native(db_session, session_id, take_id=take_id)
+    session_id, _ = await _two_stretches_told(client)
+    await _leave_it_waiting_to_be_told(db_session, session_id)
 
     await _finish(client, db_session, session_id)
 

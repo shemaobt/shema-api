@@ -18,8 +18,8 @@ from app.services import internalization_room as room
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import (
     divide_segment,
+    refuse_a_slice_that_is_not_this_stretchs,
     segment_for_session,
-    slice_moved,
 )
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
 
@@ -86,30 +86,20 @@ async def replace(
     take_id: str = Form(...),
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
-    file: UploadFile | None = File(default=None),
+    file: UploadFile = File(...),
     device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
-    """A new version of one stretch: a new explanation, or a new recording under it.
+    """One **Correction**: the same stretch told again, over the recording it already sits in.
 
-    Both of the product's corrections come through here, and which one it is falls out of what
-    the caller sends rather than out of a flag it could get wrong:
+    It is the only correction the room has. A stretch is a listening pause and not a unit
+    anybody rehearsed, so what a team does about a *recording* that is wrong is record the
+    **Part** again — an upload under that part's number, which is a different route (ADR 0023,
+    ADR 0025). Nothing assembled by the server travels to Refine, so this answer names no
+    rebuilt passage.
 
-    - the same slice with audio is the explanation redone over a recording that did not move;
-    - a different slice is the mother tongue re-recorded, and it arrives with no explanation —
-      the one belonging to audio nobody will hear again does not carry over. Sending both is
-      refused by `capture_segment`, which is where that rule lives.
-
-    A stretch left waiting this way is told again by calling this route a second time with its
-    own slice and the new audio. That is the same correction as the first case, which is why
-    there is no third verb.
-
-    A re-recorded mother tongue also rebuilds the recording of the passage around it, and the
-    answer names what it rebuilt. Without that the correction was real and unhearable: the
-    corrected minute lived in a file of its own and the rest of the passage in another, so
-    playing the passage back meant stitching, and the product asked three times for the other
-    thing — one recording, updated. `recompose_passage` is where it happens and why a failure
-    there answers 200 with nothing named rather than losing the team their correction.
+    The audio is therefore not optional: without it there is no correction to express, and a
+    call that omits it is the app's own bug, refused by this signature before any service runs.
 
     The bytes are stored before anything is asked of them, as on the telling-back route: a
     transcriber that times out must not take the recording with it. And when nothing could be
@@ -119,46 +109,18 @@ async def replace(
     no new row to count on: an outage that came free would let a team correcting one stretch
     tell it forever without the room ever offering them a person.
 
-    What is *not* stored first is a request that cannot succeed. A different slice arriving with
-    an explanation is refused by `capture_segment` either way, but only after the recording had
-    been kept and the transcriber paid — and the orphan take then travelled to Refine among the
-    telling-backs. It is knowable from the stretch and the form fields, so it is answered before
-    anything is spent, which is the argument the telling-back route already makes for the slice
+    What is *not* stored first is a request that cannot succeed. A slice that is not this
+    stretch's is refused by `capture_segment` either way, but only after the recording had been
+    kept and the transcriber paid — and the orphan take then travelled to Refine among the
+    telling-backs. It is knowable from the stretch and the form fields, so the same refusal is
+    asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
     """
     session = await room.get_session(db, session_id)
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
-    if file is None:
-        version = await room.capture_segment(
-            db,
-            session,
-            take_id=rehearsal.id,
-            starts_ms=starts_ms,
-            ends_ms=ends_ms,
-            pass_number=segment.pass_number,
-            replaces=segment,
-        )
-        rebuilt = await room.recompose_passage(
-            db,
-            session,
-            device_id=device_id,
-            replaced=segment,
-            corrected=rehearsal,
-            version=version,
-        )
-        return SegmentsResponse(
-            session_id=session.id,
-            segments=await _units(db, session.id),
-            composed_take_id=rebuilt.id if rebuilt is not None else None,
-        )
-
-    if slice_moved(segment, rehearsal.id, starts_ms, ends_ms):
-        raise ValidationError(
-            "A stretch re-recorded in the mother tongue starts with no telling-back: send the "
-            "new recording on its own, and tell it back afterwards"
-        )
+    refuse_a_slice_that_is_not_this_stretchs(segment, rehearsal.id, starts_ms, ends_ms)
 
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:

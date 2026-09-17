@@ -40,7 +40,6 @@ from app.services.internalization_room.back_translation import (
 )
 from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import (
-    capture_segment,
     current_segments,
     divide_segment,
 )
@@ -65,7 +64,6 @@ from tests.release_harness import (
 from tests.room_harness import (
     PART_MS,
     REHEARSED_AT,
-    another_rehearsal_take,
     press_terminei,
     rehearsed_in_parts,
     room_client,
@@ -449,39 +447,6 @@ async def test_a_checked_passage_stops_being_checked(
     after = await stored_telling_back(db_session, session)
     assert after.checked is False
     assert after.verdict is None
-
-
-async def test_a_piece_re_recorded_onto_another_take_goes_with_its_part(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """A piece of a divided stretch is a piece of that part, whatever take it now sits on.
-
-    A stretch re-recorded in the mother tongue moves onto the take that carries the new audio,
-    and when the passage could not be rebuilt around it the piece stays there — on a recording
-    with no part number of its own. Kept by the take alone, it would survive its own parent: a
-    current row whose parent is abandoned, which the reading walks past and never reaches, and
-    which no list the room serves would ever show again.
-    """
-    session, (one, two, three) = await rehearsed_in_parts(db_session, 3)
-    standing = await _by_part(db_session, session.id)
-    head, _tail = await divide_segment(db_session, session, standing[two.id], at_ms=PART_MS // 2)
-    elsewhere = await another_rehearsal_take(db_session, session, sha256="f" * 64)
-    moved = await capture_segment(
-        db_session,
-        session,
-        take_id=elsewhere.id,
-        starts_ms=0,
-        ends_ms=PART_MS // 2,
-        replaces=head,
-    )
-
-    await _recorded_again(client, session, part=2)
-
-    assert (await _stored(db_session, moved)).superseded_at is not None
-    assert await _standing_ids(db_session, session.id) == [
-        standing[one.id].id,
-        standing[three.id].id,
-    ]
 
 
 async def test_a_swap_on_the_old_part_leaves_whole(

@@ -341,10 +341,10 @@ async def test_a_version_another_session_minted_does_not_take_this_ones_numbers(
     assert file["notices"] == []
 
 
-async def test_a_stretch_whose_mother_tongue_was_recorded_again_keeps_what_was_said(
+async def test_a_stretch_waiting_to_be_told_again_keeps_what_was_said(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
-    """Re-recording the native audio leaves a stretch standing with nothing said on it yet.
+    """A stretch whose telling was redone stands with nothing said on it until it is told again.
 
     It is a real unit and the tablet asks for it, and the telling that came before it is the
     team's own words about the passage. Listed as only what was told back, the new row was in
@@ -359,19 +359,19 @@ async def test_a_stretch_whose_mother_tongue_was_recorded_again_keeps_what_was_s
     session = await ready_session(db_session, project_id=project.id, tell=_told_once)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
     told = (await final_segments(db_session, session.id))[0]
-    moved = await capture_segment(
+    waiting = await capture_segment(
         db_session,
         session,
-        take_id="ensaio-2",
-        starts_ms=0,
-        ends_ms=CLIP_MS,
+        take_id=told.take_id,
+        starts_ms=told.starts_ms,
+        ends_ms=told.ends_ms,
         replaces=told,
     )
 
     file = await _the_file(client, session.id, desk)
 
     (standing,) = file["stretches"]
-    assert standing["segment_id"] == moved.id
+    assert standing["segment_id"] == waiting.id
     assert standing["transcript"] is None
     assert "frase" not in standing
     assert [one["segment_id"] for one in standing["history"]] == [told.id]

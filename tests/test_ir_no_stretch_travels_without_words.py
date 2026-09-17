@@ -91,24 +91,43 @@ async def _the_analyst_has_read(
     )
 
 
-async def _re_record_the_mother_tongue(
+async def _leave_it_waiting_to_be_told(
     db: AsyncSession, session: IRSession, stretch: IRSegment
 ) -> IRSegment:
-    """Record the passage again under one stretch, which leaves it waiting to be told.
+    """Leave one stretch waiting to be told back: a version of it that carries no words.
 
-    The recording moves, so the explanation of the audio nobody will hear again does not come
-    with it — `capture_segment` refuses to carry one across, which is the state this is about.
+    A version keeps the slice of the stretch it replaces, so what is redone here is the telling
+    and never the audio under it. A recording that was wrong is answered by recording the
+    **Part** again, which is an upload and never arrives as a version (ADR 0023, ADR 0025).
     """
-    again = ensaio_take(session.id, sha256="b" * 64)
-    db.add(again)
+    return await capture_segment(
+        db,
+        session,
+        take_id=stretch.take_id,
+        starts_ms=stretch.starts_ms,
+        ends_ms=stretch.ends_ms,
+        replaces=stretch,
+    )
+
+
+async def _a_part_nobody_has_played(db: AsyncSession, session: IRSession) -> IRSegment:
+    """One more part of the rehearsal, told back and not yet listened to.
+
+    The listening report was written over the parts that existed when it was pressed, so a part
+    recorded after it is unheard by construction — which is how a session comes to owe both
+    errands at once.
+    """
+    later = ensaio_take(session.id, sha256="b" * 64, scope="parte-2", ordinal=2)
+    db.add(later)
     await db.commit()
     return await capture_segment(
         db,
         session,
-        take_id=again.id,
+        take_id=later.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
-        replaces=stretch,
+        bridge_take_id="retro-2",
+        transcript="a segunda parte contada de volta",
     )
 
 
@@ -138,15 +157,17 @@ async def _blockers(db: AsyncSession, session: IRSession) -> list[str]:
 async def test_a_release_is_refused_while_a_stretch_has_no_words(
     db_session: AsyncSession,
 ) -> None:
-    """Case 1. The team re-recorded the mother tongue under a stretch and has not told it back.
+    """Case 1. A stretch of the telling-back was redone and nobody has told it back yet.
 
     That stretch is current, it is a unit, and it carries nothing the team said. Sent as it is,
-    it reaches Refine with null where their words belong.
+    it reaches Refine with null where their words belong. Beside it a part nobody has played,
+    because the two errands are named together or the team walks back twice.
     """
     session, _ = await _told_back_and_read(db_session)
     standing = (await final_segments(db_session, session.id))[0]
 
-    await _re_record_the_mother_tongue(db_session, session, standing)
+    await _leave_it_waiting_to_be_told(db_session, session, standing)
+    await _a_part_nobody_has_played(db_session, session)
 
     assert await _blockers(db_session, session) == [UNTOLD, "playback_did_not_cover_the_clip"], (
         "duas coisas ficaram por fazer, e nomear só uma manda a equipe voltar duas vezes"

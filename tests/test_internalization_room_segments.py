@@ -358,122 +358,7 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
 
 
 # ---------------------------------------------------------------------------
-# 5. New native audio never sits beside the old translation
-# ---------------------------------------------------------------------------
-
-
-async def test_a_re_recorded_native_stretch_leaves_no_old_translation_behind(
-    db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """**The case that carries the product decision.**
-
-    Correcting only the mother-tongue audio does not exist: touching it always means the
-    explanation in the bridge language is redone. So there must be no state in which the
-    analyst reads the new recording together with the explanation of the old one.
-
-    Two halves, and both are load-bearing: replacing the native audio leaves the stretch with
-    nothing told back about it, and asking to replace the native audio *while handing over a
-    telling-back* is refused outright rather than quietly accepted.
-
-    Refusing every replacement that carries an explanation would be the wrong rule and is
-    tested against below: redoing only the explanation, over audio that did not move, is the
-    product's other correction and has to go on working.
-    """
-    session = await _room_session(db_session)
-    first_take = await _rehearsal(db_session, session, b"o primeiro ensaio")
-    retro = await store_take(
-        db_session,
-        session_id=session.id,
-        device_id=DEVICE,
-        project_id=session.project_id,
-        pericope=session.pericope,
-        kind=IRTakeKind.RETRO,
-        scope=session.pericope,
-        audio=b"a equipe explicou em portugues",
-    )
-    second_take = await _rehearsal(db_session, session, b"o ensaio regravado")
-
-    told = await service.capture_segment(
-        db_session,
-        session,
-        take_id=first_take.id,
-        starts_ms=0,
-        ends_ms=9000,
-        bridge_take_id=retro.id,
-        transcript="a explicação da gravação velha",
-    )
-    regravado = await service.capture_segment(
-        db_session,
-        session,
-        take_id=second_take.id,
-        starts_ms=0,
-        ends_ms=11000,
-        replaces=told,
-    )
-
-    current = await service.final_segments(db_session, session.id)
-
-    assert [one.id for one in current] == [regravado.id]
-    assert current[0].take_id == second_take.id
-    assert current[0].transcript is None, (
-        "o nativo novo não pode chegar acompanhado da explicação do nativo velho"
-    )
-    assert current[0].bridge_take_id is None, (
-        "nem do áudio da explicação velha, que é a mesma coisa dita de outro jeito"
-    )
-
-    import sys
-
-    seen: dict[str, str] = {}
-
-    async def agent(*, system_prompt: str, user_content: str, **_: Any) -> str:
-        seen["prompt"] = system_prompt
-        return '{"evidence_sufficient": true, "findings": []}'
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
-    )
-    await analyse_telling_back(
-        segments=current,
-        scope=PASSAGE,
-        pericope_num=PASSAGE,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
-
-    assert "a explicação da gravação velha" not in seen["prompt"], (
-        "e o estado proibido é sobre o que o analista lê, não sobre o que a linha guarda"
-    )
-
-    third_take = await _rehearsal(db_session, session, b"o ensaio regravado outra vez")
-    with pytest.raises(ValidationError):
-        await service.capture_segment(
-            db_session,
-            session,
-            take_id=third_take.id,
-            starts_ms=0,
-            ends_ms=12000,
-            transcript="a explicação da gravação velha",
-            replaces=regravado,
-        )
-
-    redito = await service.capture_segment(
-        db_session,
-        session,
-        take_id=second_take.id,
-        starts_ms=0,
-        ends_ms=11000,
-        transcript="a explicação refeita, sobre o mesmo áudio",
-        replaces=regravado,
-    )
-
-    assert redito.transcript == "a explicação refeita, sobre o mesmo áudio", (
-        "refazer só a explicação, sobre áudio que não se moveu, é a outra correção do produto"
-    )
-
-
-# ---------------------------------------------------------------------------
-# 6. A stretch knows what it was divided out of
+# 5. A stretch knows what it was divided out of
 # ---------------------------------------------------------------------------
 
 
@@ -627,7 +512,6 @@ async def test_a_stretch_that_was_divided_cannot_be_replaced_as_a_unit(
     """
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
-    other = await _rehearsal(db_session, session, b"o ensaio regravado")
 
     whole = await service.capture_segment(
         db_session, session, take_id=take.id, starts_ms=0, ends_ms=20000, transcript="o todo"
@@ -638,7 +522,7 @@ async def test_a_stretch_that_was_divided_cannot_be_replaced_as_a_unit(
 
     with pytest.raises(ValidationError):
         await service.capture_segment(
-            db_session, session, take_id=other.id, starts_ms=0, ends_ms=21000, replaces=whole
+            db_session, session, take_id=take.id, starts_ms=0, ends_ms=20000, replaces=whole
         )
 
     assert [one.id for one in await service.final_segments(db_session, session.id)] == [head.id]
@@ -657,7 +541,6 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
 
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
-    other = await _rehearsal(db_session, session, b"o ensaio regravado")
 
     kept = await service.capture_segment(
         db_session,
@@ -671,7 +554,12 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
         db_session, session, take_id=take.id, starts_ms=9000, ends_ms=21000, transcript="a refazer"
     )
     await service.capture_segment(
-        db_session, session, take_id=other.id, starts_ms=0, ends_ms=12000, replaces=waiting
+        db_session,
+        session,
+        take_id=waiting.take_id,
+        starts_ms=waiting.starts_ms,
+        ends_ms=waiting.ends_ms,
+        replaces=waiting,
     )
 
     current = await service.final_segments(db_session, session.id)

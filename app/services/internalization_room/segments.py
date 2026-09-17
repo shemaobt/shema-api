@@ -23,16 +23,42 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake
 
 
-def slice_moved(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> bool:
-    """Whether a new version points at different audio from the one it replaces.
+def sits_at(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> bool:
+    """Whether this slice is where the stretch sits: the same recording, the same milliseconds.
 
-    The one expression of "is this the mother tongue re-recorded, or only the explanation
-    redone", used by the invariant below and by the route that has to decide it before it
-    keeps anything.
+    A stretch is addressed relative to one file (ADR 0005), so all three have to match for the
+    slice to be the stretch's own. The one expression of it, asked by the refusal below and by
+    the route that resolves a chunk against the stretch already standing at it.
     """
     return (
-        segment.take_id != take_id or segment.starts_ms != starts_ms or segment.ends_ms != ends_ms
+        segment.take_id == take_id and segment.starts_ms == starts_ms and segment.ends_ms == ends_ms
     )
+
+
+def refuse_a_slice_that_is_not_this_stretchs(
+    segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int
+) -> None:
+    """A version of a stretch sits where that stretch sits.
+
+    A **Correction** is the same stretch told again over the recording it already sits in, so a
+    version naming other audio would be a version of somebody else's seconds under this
+    stretch's id. A team whose *recording* is wrong records the **Part** again, which is an
+    upload under that part's number (ADR 0023) and retires that part's stretches; it never
+    arrives here.
+
+    The message names the two slices and nothing else. What stood here before refused a moved
+    slice only when a telling came with it, and said so by naming the product's two kinds of
+    correction; a team reading that has no way to act on it — where the audio is, they can hear.
+
+    One expression, called from the invariant below and from the route that replaces a stretch,
+    where it runs before any bytes are kept: the combination is knowable from the stretch and
+    the form fields, so nothing is spent on a request that cannot succeed.
+    """
+    if not sits_at(segment, take_id, starts_ms, ends_ms):
+        raise ValidationError(
+            f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} is not this stretch's: "
+            f"it sits from {segment.starts_ms} ms to {segment.ends_ms} ms of {segment.take_id}"
+        )
 
 
 def refuse_a_slice_that_is_not_one(starts_ms: int, ends_ms: int) -> None:
@@ -75,24 +101,18 @@ async def capture_segment(
     counting and names this one as what took its place, and stays exactly where it is.
 
     **The count of tellings follows the chain, and only a telling adds to it.** A version that
-    arrives with a telling-back is one more telling of that stretch; one that arrives without —
-    the mother tongue re-recorded, which is answered by telling it again in a second call —
+    arrives with a telling-back is one more telling of that stretch; one that arrives without
     carries the count across untouched, because nobody told anything into it. Counting the
     supersession instead of the telling would reach three on the team's second telling and ask
     for a person a whole telling early. The pieces of a division keep the count for the reason
     they keep the pass: born on the default, a stretch already told twice would hand the team a
     fresh count on each piece.
 
-    **A version whose mother-tongue slice moved may not carry a telling-back with it.** The
-    product has two corrections and not three: redoing only the explanation, which leaves the
-    native audio exactly where it is, and re-recording the native, which always means the
-    explanation is redone after it. So a new version over an unchanged slice takes its new
-    explanation here, and one that points somewhere else is refused an explanation outright —
-    the old one belongs to audio nobody will hear again.
-
-    Refused rather than defaulted. A default is overridden by the next caller who has an
-    explanation in hand and no reason to think twice; a refusal is what makes the forbidden
-    state unreachable.
+    **A version keeps the slice of the stretch it replaces**, whether or not it brings words:
+    `refuse_a_slice_that_is_not_this_stretchs`. A stretch is one slice of one recording, so a
+    version naming other audio is not another telling of it. The recording the team performed
+    is the one that travels (ADR 0025), and a recording that was wrong is answered by recording
+    the **Part** again, which is an upload and not a version.
 
     What may be replaced at all — not a retired row, not one the team divided — is
     `refuse_a_stretch_that_is_not_a_unit`, which the route that counts an unheard telling asks
@@ -109,17 +129,8 @@ async def capture_segment(
     """
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
 
-    if (
-        replaces is not None
-        and (bridge_take_id is not None or transcript is not None)
-        and slice_moved(replaces, take_id, starts_ms, ends_ms)
-    ):
-        raise ValidationError(
-            "A stretch re-recorded in the mother tongue starts with no telling-back: "
-            "the explanation of the recording it replaces does not carry over"
-        )
-
     if replaces is not None:
+        refuse_a_slice_that_is_not_this_stretchs(replaces, take_id, starts_ms, ends_ms)
         await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
         parent_id = replaces.parent_id
         ordinal = replaces.ordinal
@@ -414,13 +425,14 @@ async def retire_the_segments_of(
     part. The caller needs to know which rows went, because the findings that pointed at them go
     too.
 
-    **A piece of a stretch that goes is a piece of that part, whatever recording it now sits
-    on.** A stretch re-recorded in the mother tongue moves onto the take carrying the new audio,
-    and when the passage could not be rebuilt around it the piece stays there — on a recording
-    with no part number of its own. Taken by the take alone, it would outlive its own parent: a
-    row still counting whose parent is abandoned, which the reading walks from the top and never
-    reaches, so it would vanish from the packet, the check block, the analyst's list and the
-    listening gate while the row went on saying it counts.
+    **A piece of a stretch that goes is a piece of that part**, and the walk down the children
+    is what says so rather than the take each piece carries. Taken by the take alone, a piece
+    could outlive its own parent: a row still counting whose parent is abandoned, which the
+    reading walks from the top and never reaches, so it would vanish from the packet, the check
+    block, the analyst's list and the listening gate while the row went on saying it counts.
+    Since a version keeps the slice of the stretch it replaces (ADR 0025), every descendant now
+    sits on its parent's take and the two readings agree; the walk is kept because it is the one
+    that follows from the rule, not from what the rows happen to hold.
 
     The transaction is left open, because the retired rows and the telling-back state they empty
     are one fact about one upload: committed apart, a failure between them leaves the room
@@ -529,7 +541,7 @@ async def current_stretch_at(
         (
             segment
             for segment in await final_segments(db, session_id)
-            if not slice_moved(segment, take_id, starts_ms, ends_ms)
+            if sits_at(segment, take_id, starts_ms, ends_ms)
         ),
         None,
     )
