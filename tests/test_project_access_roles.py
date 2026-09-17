@@ -1,6 +1,7 @@
 import pytest
 
 from app.core.exceptions import AuthorizationError, NotFoundError
+from app.models.project import ProjectGrantUserAccess
 from app.services import project_service
 from tests.baker import (
     make_language,
@@ -74,6 +75,20 @@ async def test_manager_cannot_modify_another_manager(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_manager_cannot_modify_a_facilitator(db_session) -> None:
+    project = await _project(db_session)
+    manager = await make_user(db_session, email="m@example.com")
+    facilitator = await make_user(db_session, email="f@example.com")
+    await make_project_user_access(db_session, project.id, manager.id, role="manager")
+    await make_project_user_access(db_session, project.id, facilitator.id, role="facilitator")
+
+    with pytest.raises(AuthorizationError, match="facilitator"):
+        await project_service.assert_can_modify_member_role(
+            db_session, manager, project.id, facilitator.id
+        )
+
+
+@pytest.mark.asyncio
 async def test_admin_can_modify_a_manager(db_session) -> None:
     project = await _project(db_session)
     admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
@@ -108,3 +123,9 @@ async def test_modify_missing_target_raises_not_found(db_session) -> None:
         await project_service.assert_can_modify_member_role(
             db_session, manager, project.id, ghost.id
         )
+
+
+def test_grant_payload_accepts_every_project_role() -> None:
+    """The payload does not second-guess the service: `validate_project_role` is the gate."""
+    for role in ("member", "manager", "facilitator"):
+        assert ProjectGrantUserAccess(user_id="u", role=role).role == role
