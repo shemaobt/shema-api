@@ -348,7 +348,7 @@ async def test_the_short_way_over_the_same_slice_is_one_more_telling(
 
     assert answered.status_code == 200, answered.text
     assert answered.json()["captured"] is True, "a correção foi guardada"
-    assert answered.json().get("composed_take_id") is None, "nada foi montado à volta dela"
+    assert "composed_take_id" not in answered.json(), "nada foi montado à volta dela"
     standing = await _standing(db_session, session.id)
     assert len(standing) == 1
     assert standing[0].id != was[0], "a correção é uma linha nova, nunca uma edição"

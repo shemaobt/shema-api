@@ -484,8 +484,8 @@ async def current_segments(db: AsyncSession, session_id: str) -> list[IRSegment]
 
     One step short of `final_segments`, which keeps only the leaves. What wants this rather
     than that is what is about the rows and not about the reading: the ordinal a new stretch
-    takes, and the re-addressing of a passage that was rebuilt, where a stretch the team
-    divided has to move with its own children or stop describing them.
+    takes, and the retiring of a part's stretches, where a stretch the team divided has to go
+    with its own children or stop describing them.
 
     **The order is the part's number, then the milliseconds inside it** (ADR 0021). The stretch
     ordinal is one past the last of its own current siblings, which held while the only way to

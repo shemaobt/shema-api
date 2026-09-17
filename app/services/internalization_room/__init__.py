@@ -16,7 +16,6 @@ from app.services.internalization_room.back_translation import (
     with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
-from app.services.internalization_room.compose import recompose_passage
 from app.services.internalization_room.hard_stretches import (
     capture_and_note_a_hard_stretch,
     count_an_empty_telling,
@@ -118,7 +117,6 @@ __all__ = [
     "note_a_hard_stretch",
     "parent_of",
     "person_arrived",
-    "recompose_passage",
     "rehearsed_parts",
     "report_playback",
     "retire_the_part_recorded_again",

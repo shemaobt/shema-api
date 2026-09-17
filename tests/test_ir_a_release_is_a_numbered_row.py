@@ -158,10 +158,10 @@ async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_on
 ):
     """One more stretch told is what moves the content here, and it stands for the re-record.
 
-    A **Rebuild** reaches the packet the same way — it re-points every stretch at the file it
-    rebuilt, so the composed content differs — and it costs a whole recording to stage. What
-    the version turns on is the hash, not which edit changed it, so the cheaper change proves
-    the rule; `compose.py` owns the rebuild path and its own tests.
+    A part recorded again reaches the packet the same way — the take under that number
+    changes, so the content differs — and it costs a whole recording to stage. What the version
+    turns on is the hash, not which edit changed it, so the cheaper change proves the rule; the
+    re-recording has its own file of cases.
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
