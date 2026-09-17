@@ -325,6 +325,8 @@ def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
         "nós não conseguimos, ficou difícil combinar quem fala primeiro",
         "we didn't have time to do it now",
         "we couldn't do it now, we only talked it through in English",
+        "We never got around to it, we only talked the story through in English",
+        "we had no time to do it before the tablet went off",
         "no tuvimos tiempo de hacerlo ahora",
     ):
         assert not bridge_language_retelling_completes_practice(
