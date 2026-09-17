@@ -107,8 +107,9 @@ async def test_the_bead_classifier_is_made_to_answer_in_the_shape_that_is_parsed
     assert set(entry) == {"element_id", "new_status"}, (
         "o esquema tem de nomear exatamente os dois campos que _parse lê"
     )
-    assert entry["new_status"]["enum"] == ["surfaced", "partially_engaged", "engaged"], (
-        "partially_engaged já caiu fora de uma tabela uma vez e nenhuma passagem fechava"
+    assert entry["new_status"]["enum"] == ["surfaced", "engaged"], (
+        "o esquema é o que o modelo pode responder; um quarto valor aqui é uma conta que "
+        "o parser descarta e a equipe nunca vê mover"
     )
 
 
