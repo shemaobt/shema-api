@@ -21,11 +21,11 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room.segments import divide_segment
 from app.services.internalization_room.sessions import get_session
 from tests.room_harness import (
     Analyst,
     Room,
+    a_piece_still_to_be_told,
     played_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -143,8 +143,8 @@ async def test_an_untold_stretch_is_the_first_errand(
     reason.
     """
     session, (first, second, third) = await rehearsed_in_parts(db_session, 3)
-    await divide_segment(
-        db_session, session, await stretch_on(db_session, session, third), at_ms=PART_MS // 2
+    await a_piece_still_to_be_told(
+        db_session, session, await stretch_on(db_session, session, third)
     )
 
     answered = await press_terminei(

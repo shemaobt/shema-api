@@ -38,6 +38,7 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from tests.release_harness import ensaio_take, supported_comprehension
+from tests.room_harness import a_piece_still_to_be_told
 
 P = "P03"
 CLIP_MS = 61000
@@ -94,20 +95,8 @@ async def _the_analyst_has_read(
 async def _leave_it_waiting_to_be_told(
     db: AsyncSession, session: IRSession, stretch: IRSegment
 ) -> IRSegment:
-    """Leave one stretch waiting to be told back: a version of it that carries no words.
-
-    A version keeps the slice of the stretch it replaces, so what is redone here is the telling
-    and never the audio under it. A recording that was wrong is answered by recording the
-    **Part** again, which is an upload and never arrives as a version (ADR 0023, ADR 0025).
-    """
-    return await capture_segment(
-        db,
-        session,
-        take_id=stretch.take_id,
-        starts_ms=stretch.starts_ms,
-        ends_ms=stretch.ends_ms,
-        replaces=stretch,
-    )
+    """Leave one stretch waiting to be told back, by cutting it in two."""
+    return await a_piece_still_to_be_told(db, session, stretch)
 
 
 async def _a_part_nobody_has_played(db: AsyncSession, session: IRSession) -> IRSegment:

@@ -31,7 +31,11 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
-from tests.room_harness import heard_every_part, press_terminei
+from tests.room_harness import (
+    a_piece_still_to_be_told,
+    heard_every_part,
+    press_terminei,
+)
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -220,22 +224,10 @@ async def _two_stretches_told(client: httpx.AsyncClient) -> tuple[str, str]:
 
 
 async def _leave_it_waiting_to_be_told(db: AsyncSession, session_id: str) -> IRSegment:
-    """Leave one stretch waiting to be told back: a version of it that carries no words.
-
-    A version keeps the slice of the stretch it replaces, so what is redone here is the telling
-    and never the audio under it. A recording that was wrong is answered by recording the
-    **Part** again, which is an upload and never arrives as a version (ADR 0023, ADR 0025).
-    """
+    """Leave one stretch waiting to be told back, by cutting the last one in two."""
     session = await get_session(db, session_id)
-    waiting = (await service.final_segments(db, session_id))[-1]
-    return await service.capture_segment(
-        db,
-        session,
-        take_id=waiting.take_id,
-        starts_ms=waiting.starts_ms,
-        ends_ms=waiting.ends_ms,
-        replaces=waiting,
-    )
+    standing = (await service.final_segments(db, session_id))[-1]
+    return await a_piece_still_to_be_told(db, session, standing)
 
 
 async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRSegment:

@@ -32,7 +32,11 @@ from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     build_internalization_release,
 )
-from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.segments import (
+    capture_segment,
+    divide_segment,
+    final_segments,
+)
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
@@ -417,6 +421,39 @@ async def stretch_on(db: AsyncSession, session: IRSession, take: IRTake) -> IRSe
 def _after(take: IRTake) -> datetime | None:
     """A moment past a take's own, so which of two takes is the newer never rests on a clock."""
     return take.created_at + timedelta(minutes=1) if take.created_at else None
+
+
+async def a_piece_still_to_be_told(
+    db: AsyncSession, session: IRSession, stretch: IRSegment
+) -> IRSegment:
+    """Cut one stretch in two and answer with the second piece, which nobody has told yet.
+
+    Cutting is the verb that leaves a stretch standing with nothing said on it: each piece is
+    born over its parent's own audio with no telling of its own. The other way in was a version
+    that carried no words, and a version is a telling now (ADR 0025), so a case about what the
+    room does with an untold stretch builds it here rather than writing a row no route can.
+
+    The head is told back before the piece is handed over, so exactly one stretch is left
+    waiting: a cut leaves two pieces untold and a case about *the* untold stretch would other-
+    wise have two to choose from.
+
+    The cut falls halfway, because where it falls is the team's and no case here is about that.
+    """
+    head, tail = await divide_segment(
+        db, session, stretch, at_ms=(stretch.starts_ms + stretch.ends_ms) // 2
+    )
+    await capture_segment(
+        db,
+        session,
+        take_id=head.take_id,
+        starts_ms=head.starts_ms,
+        ends_ms=head.ends_ms,
+        bridge_take_id="retro-da-cabeca",
+        transcript="a primeira metade contada de volta",
+        pass_number=head.pass_number,
+        replaces=head,
+    )
+    return tail
 
 
 async def record_the_part_again(

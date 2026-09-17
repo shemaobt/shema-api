@@ -52,6 +52,7 @@ from tests.release_harness import (
     reported_playback,
     retro_take,
 )
+from tests.room_harness import a_piece_still_to_be_told
 
 TEAM = "equipe-de-rute"
 TABLET = "tablet-1"
@@ -473,7 +474,7 @@ async def test_frase_and_segment_id_are_each_unique_within_a_version(
 
 
 @pytest.mark.asyncio
-async def test_a_stretch_recorded_again_and_untold_cannot_be_approved(
+async def test_a_stretch_left_untold_by_a_cut_cannot_be_approved(
     db_session: AsyncSession,
 ) -> None:
     """An approved version does not let the approval after it through on a stretch without words.
@@ -488,15 +489,8 @@ async def test_a_stretch_recorded_again_and_untold_cannot_be_approved(
     session = await _told_in_three_stretches(db_session)
     first = await approve_release(db_session, session, device_id=TABLET)
 
-    waiting = (await final_segments(db_session, session.id))[0]
-    await capture_segment(
-        db_session,
-        session,
-        take_id=waiting.take_id,
-        starts_ms=waiting.starts_ms,
-        ends_ms=waiting.ends_ms,
-        replaces=waiting,
-    )
+    standing = (await final_segments(db_session, session.id))[0]
+    await a_piece_still_to_be_told(db_session, session, standing)
 
     with pytest.raises(InternalizationReleaseBlocked) as refused:
         await approve_release(db_session, session, device_id=TABLET)
