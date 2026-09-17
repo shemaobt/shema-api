@@ -286,6 +286,7 @@ async def append_exchange(
     *,
     team_utterance: str,
     guide_response: str,
+    room_note: str = "",
 ) -> IRSession:
     """Append one team/guide turn to the transcript.
 
@@ -305,6 +306,8 @@ async def append_exchange(
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
+    if room_note:
+        messages.append({"role": "room", "text": room_note})
     messages.append({"role": "guide", "text": guide_response})
     values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
     if session.status is IRSessionStatus.NEEDS_PERSON:

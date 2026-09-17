@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.core.config import Settings
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.languages import FLOOR
+from app.services.platform.audio_duration import measure_ms
 from app.services.translation_helper.transcribe_audio import (
     transcribe_audio,
     transcribe_audio_detailed,
@@ -65,6 +66,7 @@ class HeardSpeech(BaseModel):
     language_code: str | None = None
     language_probability: float | None = None
     transcript_confidence: float | None = None
+    take_ms: int | None = None
 
     @property
     def mother_tongue(self) -> bool:
@@ -141,10 +143,13 @@ async def heard_speech(
     except ValidationError as failure:
         logger.info("Nothing made out of %d bytes of audio: %s", len(audio), failure)
         return HeardSpeech(bridge_language=language)
-    return HeardSpeech(
+    speech = HeardSpeech(
         text=spoken_words_only(result.text),
         bridge_language=language,
         language_code=result.language_code,
         language_probability=result.language_probability,
         transcript_confidence=result.transcript_confidence,
     )
+    if speech.mother_tongue:
+        speech.take_ms = await measure_ms(audio)
+    return speech

@@ -146,7 +146,13 @@ def _heard(payload: TextTurnRequest, *, language: str) -> HeardSpeech:
     heard = HeardSpeech(text=payload.text or "", bridge_language=language)
     if payload.motherTongue is None:
         return heard
-    return heard.model_copy(update={"language_code": "und", "language_probability": 1.0})
+    return heard.model_copy(
+        update={
+            "language_code": "und",
+            "language_probability": 1.0,
+            "take_ms": payload.motherTongue * 1000,
+        }
+    )
 
 
 def _language_code(named: str) -> str:
@@ -223,7 +229,11 @@ async def take_text_turn(
         outcome = turn.outcome
         session = await room.save_comprehension(db, session, turn.state)
         session = await room.append_exchange(
-            db, session, team_utterance=outcome.transcript, guide_response=outcome.speech
+            db,
+            session,
+            team_utterance=outcome.transcript,
+            guide_response=outcome.speech,
+            room_note=outcome.room_note,
         )
         if _worth_settling(outcome, heard):
             await settle_coverage(

@@ -568,6 +568,7 @@ async def take_turn(
         session,
         team_utterance=outcome.transcript,
         guide_response=outcome.speech,
+        room_note=outcome.room_note,
     )
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)

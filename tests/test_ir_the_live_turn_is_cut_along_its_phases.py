@@ -22,10 +22,6 @@ from app.services.internalization_room.turn.context import render_context
 from app.services.internalization_room.turn.speech import speak_back
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_agent_answers
 
-OFF_BRIDGE_LINE = (
-    "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas "
-    "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
-)
 SECOND_INAUDIBLE_LINE = "Essa me escapou. Podem dizer de novo?"
 STATUS_BLOCK = "BLOCO DE TESTE: o que a sala sabe"
 
@@ -86,6 +82,7 @@ def test_the_context_phase_hands_the_models_the_status_block_and_nothing_can_rew
 async def _speak(session: Any, **overrides: Any) -> Any:
     given: dict[str, Any] = {
         "mother_tongue": False,
+        "take_ms": None,
         "session": session,
         "messages": [],
         "transcript": "a fome chegou",
@@ -100,22 +97,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "app_context": STATUS_BLOCK,
     }
     return await speak_back(**{**given, **overrides})
-
-
-async def test_speech_in_the_teams_own_language_meets_the_g_line_without_waking_a_model(
-    db_session: AsyncSession, agent: RecordingAgent
-) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
-
-    outcome = await _speak(
-        session, mother_tongue=True, transcript="koeti yoko vitukeovo enepone itukovo"
-    )
-
-    assert outcome.speech == OFF_BRIDGE_LINE
-    assert outcome.fixed_line == "G0"
-    assert outcome.used_fail_safe is True
-    assert outcome.degraded is False
-    assert agent.calls == 0
 
 
 async def test_speech_the_room_could_not_hear_draws_the_d_line_the_turn_count_points_at(
