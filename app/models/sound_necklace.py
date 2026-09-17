@@ -1,10 +1,11 @@
 """Pydantic schemas for the sound-necklace app module.
 
 The wire contract the SPA generates its TypeScript types from (code-first
-OpenAPI). Provisional: the resources not yet implemented are stubs returning 501, so
-every schema is tagged ``x-stability: experimental`` and mirrors the SPA's provisional
-contracts (sound-necklace ``contracts/``). Artifacts and the session-state envelope are
-opaque — never parsed or re-serialized here.
+OpenAPI). Every resource is implemented; nothing here answers 501 any more (see
+``app/api/sound_necklace/__init__.py``). Every schema is still tagged
+``x-stability: experimental`` — provisional until each resource's shape finalizes —
+and mirrors the SPA's provisional contracts (sound-necklace ``contracts/``). Artifacts
+and the session-state envelope are opaque — never parsed or re-serialized here.
 
 Where this and the SPA's provisional contracts disagree, this wins and the SPA
 regenerates: its ``contracts/bucket.ts`` still types the codebook version as an integer
@@ -14,11 +15,12 @@ actually mints them (ENG-261).
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.core.exceptions import (
+    ERROR_CODE_CONFLICT,
     ERROR_CODE_PROJECT_GRANULARITY_LOCKED,
     ERROR_CODE_SESSION_LOCK_CHANGED,
     ERROR_CODE_SESSION_LOCKED,
@@ -105,6 +107,24 @@ class SessionCreate(BaseModel):
     bead_sec: float = Field(gt=0)
     manifest_id: str = Field(pattern=MANIFEST_ID_PATTERN)
     pipeline_consent: bool
+
+
+class SessionRename(BaseModel):
+    """Rename body: the story's display name, and nothing else.
+
+    The slug is deliberately absent. It names all three artifact files (PRD §10.5) and a
+    downstream pipeline reads them by name, so accepting a slug here would let a
+    cosmetic edit become a migration of stored objects.
+
+    Trimmed before it is measured, so a name of nothing but spaces is refused rather
+    than stored. The 255 mirrors the column, as ``SessionCreate`` does.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    story_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
+    ]
 
 
 class SessionStateUpdate(BaseModel):
@@ -345,10 +365,30 @@ class TranscriptionRequest(BaseModel):
     language: str = Field(min_length=2, max_length=16)
     #: Throw the existing drafts away and transcribe again — the re-record case.
     force: bool = False
+    #: Which answers ``force`` applies to. Omitted (or null) means the whole session,
+    #: which is what the report's own trigger still asks for. Naming the re-recorded
+    #: answer is what keeps one repeated take from costing a whole session of
+    #: transcriptions.
+    paths: list[str] | None = None
 
 
 class AnswerTranscript(BaseModel):
     """One answer's draft. Advisory: nothing here reaches an artifact unconfirmed.
+
+    ``transcript_source`` is the cleaned text, which is the one to show and the one the
+    facilitator confirms. ``transcript_verbatim`` is what speech-to-text returned before the
+    disfluency cleanup, carried so the client can diff the two and show what was removed.
+
+    That diff means "what the cleaner removed" only while the draft is still unconfirmed. A
+    confirm writes the facilitator's own text into ``transcript_source`` and never touches
+    ``transcript_verbatim``, so from then on the diff is the cleaner's removals and the
+    human's edits at once, with nothing on this row to separate them — ``status`` is
+    ``ready`` either way and ``generation`` counts both. Rendering it as the model's work
+    after a confirm attributes the facilitator's own corrections to the cleaner.
+
+    Equality has three causes for the same reason: the cleanup fell back, the cleanup found
+    nothing to remove, or somebody confirmed text that happens to match the verbatim. It is
+    not a signal about the cleaner on its own.
 
     ``translation_en`` carries the English text whatever the interview language was — for
     an English interview it is the transcript itself — so the report reads one field.
@@ -359,9 +399,15 @@ class AnswerTranscript(BaseModel):
 
     path: str
     status: TranscriptStatus
+    transcript_verbatim: str | None = None
     transcript_source: str | None = None
     translation_en: str | None = None
     error: str | None = None
+    #: The draft's revision counter, which the confirm route takes back as its guard.
+    #: Required, not defaulted: an optional field in the generated types invites the client
+    #: to fill a missing one in with 0, which is a valid-looking confirm the guard refuses
+    #: and no reload can fix.
+    generation: int
 
 
 class TranscriptionProgressResponse(BaseModel):
@@ -374,6 +420,61 @@ class TranscriptionProgressResponse(BaseModel):
     failed: int
     pending: int
     answers: list[AnswerTranscript]
+
+
+class TranscriptConfirmRequest(BaseModel):
+    """A transcript as a human confirmed it, once they had corrected it (ENG-394).
+
+    Only the spoken-language text is sent. The English is never the client's to state: it
+    is re-derived here from what was confirmed, which is the whole point of the route —
+    the report reads the English field, so a correction the client alone applied would
+    never reach it.
+
+    ``generation`` is the counter the client last read for this answer, and it makes the
+    confirm a compare-and-swap: a facilitator whose draft was re-transcribed underneath
+    them is refused rather than allowed to write an edit of text that no longer exists.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    #: The spoken-language text as the human confirmed it. Bounded at both ends: an empty
+    #: confirm would store a ``ready`` draft with two blank text fields, which on screen is
+    #: an answer nobody transcribed, and the text is forwarded verbatim to a billed model,
+    #: so the ceiling is a cost limit as much as a validation one. 20k characters is far
+    #: past the longest answer a single question produces.
+    transcript_source: str = Field(min_length=1, max_length=20_000)
+    generation: int = Field(ge=0)
+
+    @field_validator("transcript_source")
+    @classmethod
+    def _must_carry_speech(cls, value: str) -> str:
+        """Refuse a confirm with nothing in it, and store everything else verbatim.
+
+        ``min_length`` alone lets a run of spaces through, which stores a ``ready`` draft
+        whose text is blank on screen — indistinguishable from an answer nobody
+        transcribed, and unlike a real one it carries no ``error`` to explain itself.
+
+        The value comes back unchanged rather than stripped. What is rejected here is an
+        empty confirm, not a badly spaced one, and a human's confirmed text is theirs.
+        """
+        if not value.strip():
+            raise ValueError("transcript_source must contain more than whitespace")
+        return value
+
+
+class TranscriptConfirmConflictResponse(BaseModel):
+    """The 409 of a confirm sent from a draft that has since been rewritten.
+
+    A third arm next to the two lock 409s, and it has to be its own model for the reason
+    those two are separate from each other: the client branches on ``code``, and this one
+    demands the opposite reaction to SESSION_LOCK_CHANGED. Retrying this unchanged replays
+    the same stale generation forever — the only way out is to re-read the draft.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    detail: str
+    code: Literal["CONFLICT"] = ERROR_CODE_CONFLICT
 
 
 # ── Project settings (ENG-352) ───────────────────────────────────────────────
@@ -423,3 +524,52 @@ class ProjectGranularityLockedResponse(BaseModel):
 
     detail: str
     code: Literal["PROJECT_GRANULARITY_LOCKED"] = ERROR_CODE_PROJECT_GRANULARITY_LOCKED
+
+
+# ── Net working time (ENG-396) ───────────────────────────────────────────────
+
+
+class WorkingTimeTick(BaseModel):
+    """One "still here" heartbeat. Deliberately the smallest thing that can be sent.
+
+    No timestamp, because the server stamps it and a client clock is not a time source
+    an accumulating counter can trust. No description of what the facilitator was doing,
+    because §14 forbids telemetry on listener behaviour and a field for it here is where
+    that would start.
+
+    ``client_tick_id`` is the client's own identifier for the beat, and exists only so a
+    retried or twice-delivered one is not charged twice.
+
+    It is pinned to a UUID rather than left as free text, and that is a privacy control
+    rather than tidiness. A free-form string this API stores verbatim and forever is
+    somewhere a later client could thread ``"cut;played=3;bead=17"`` — per-interaction
+    telemetry smuggled through an idempotency key, arriving in the one table whose whole
+    claim is that it records nothing about what was done. The pattern constrains that
+    rather than preventing it: 122 bits of hex is ample room to encode something, so what
+    this really does is make smuggling deliberate and obvious instead of casual. Anyone
+    who wants the guarantee has to read the clients, not this field.
+
+    The pattern fixes the length at 36, so no separate bound is declared: a second one
+    would only be a number to keep in step with the regex.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    client_tick_id: str = Field(
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+
+
+class WorkingTimeResponse(BaseModel):
+    """The session's accumulated net working time, in whole seconds.
+
+    Seconds rather than a duration string: the SPA already formats this number for
+    display and a second unit on the wire would be a second thing to keep in step.
+
+    Served on every tick and on demand, with no rule about when to look at it — the SPA
+    shows it on completion and not before, and that stays the SPA's decision.
+    """
+
+    model_config = ConfigDict(json_schema_extra=_EXPERIMENTAL)
+
+    net_working_seconds: int

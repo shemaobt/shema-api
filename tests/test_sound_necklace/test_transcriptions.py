@@ -1,8 +1,8 @@
 """Transcription drafts for the recorded answers (ENG-325).
 
-The job is one pass per answer: transcribe in the language it was spoken, then, if that is
-not English, translate. Both outputs are DRAFTS — the API never merges them into an
-artifact, a human confirms them in the SPA first.
+The job is one pass per answer: transcribe in the language it was spoken, clean the speech
+disfluency out of it (ENG-395), then, if that is not English, translate. Both outputs are
+DRAFTS — the API never merges them into an artifact, a human confirms them in the SPA first.
 
 The state of the job IS the per-answer rows: there is no job table. That is what makes it
 idempotent (a ready answer is never paid for twice), resumable (a lost worker leaves
@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from app.core.enums import SnTranscriptionEvent
-from app.core.exceptions import UpstreamServiceError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.core.inngest_client import inngest_client
 from app.services import sound_necklace_service as sn_service
 from app.services.oral_collector import gcs_utils
@@ -68,11 +68,17 @@ def no_background(monkeypatch):
 
 
 class FakeProviders:
-    """One STT + one translator, counting every (billed) call."""
+    """One STT + one cleaner + one translator, counting every (billed) call.
+
+    The cleaner hands the text back untouched so the tests that are about the job — its
+    idempotency, its force, its failure isolation — keep asserting on one text. What the
+    cleaning itself does to the draft has its own tests below.
+    """
 
     def __init__(self, *, fail_on: str | None = None) -> None:
         self.fail_on = fail_on
         self.transcribed: list[str] = []
+        self.cleaned: list[str] = []
         self.translated: list[str] = []
 
     async def stt(self, audio: bytes, *, language: str, mime_type: str) -> str:
@@ -80,6 +86,10 @@ class FakeProviders:
         if self.fail_on and self.fail_on.encode() in audio:
             raise UpstreamServiceError("Scribe is down")
         return f"transcrição em {language}"
+
+    async def clean(self, text: str, *, language: str) -> str:
+        self.cleaned.append(text)
+        return text
 
     async def translate(self, text: str, *, source_language: str) -> str:
         self.translated.append(text)
@@ -177,7 +187,11 @@ async def test_the_job_leaves_a_transcript_and_a_translation_per_answer(
     providers = FakeProviders()
 
     await sn_service.run_pending(
-        db_session, session_id, stt=providers.stt, translator=providers.translate
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
     )
 
     body = await progress(client, headers, session_id)
@@ -197,14 +211,217 @@ async def test_an_english_interview_is_transcribed_but_not_translated(
     providers = FakeProviders()
 
     await sn_service.run_pending(
-        db_session, session_id, stt=providers.stt, translator=providers.translate
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
     )
 
     body = await progress(client, headers, session_id)
     assert providers.transcribed == ["en-US"] * 3
     assert providers.translated == []  # nothing to translate, so nothing was billed
+    # Cleaning is the one model step an English interview does pay for, which is why it is
+    # its own service and not a rule inside the translation prompt.
+    assert providers.cleaned == ["transcrição em en-US"] * 3
     # The answer still carries an English text, so the report reads one field either way.
     assert body["answers"][0]["translation_en"] == body["answers"][0]["transcript_source"]
+
+
+async def test_the_draft_the_human_confirms_is_the_cleaned_one_not_the_verbatim_one(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        return f"cleaned: {text}"
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    body = await progress(client, headers, session_id)
+    first = body["answers"][0]
+    assert first["transcript_source"] == "cleaned: transcrição em pt-BR"
+    # The translator is fed the cleaned text, so the hesitation is not paid for twice or
+    # carried into English.
+    assert providers.translated == ["cleaned: transcrição em pt-BR"] * 3
+    assert first["translation_en"] == "english of: cleaned: transcrição em pt-BR"
+
+
+async def test_the_verbatim_transcript_is_kept_beside_the_cleaned_one(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        return "sem hesitação"
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    first = (await progress(client, headers, session_id))["answers"][0]
+    assert first["transcript_source"] == "sem hesitação"
+    assert first["transcript_verbatim"] == "transcrição em pt-BR"
+
+
+async def test_a_cleaner_outage_stores_the_verbatim_text_in_both_fields(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        raise UpstreamServiceError("Gemini is down")
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    body = await progress(client, headers, session_id)
+    assert (body["ready"], body["failed"], body["pending"]) == (3, 0, 0)
+    first = body["answers"][0]
+    assert first["status"] == "ready"
+    assert first["transcript_verbatim"] == first["transcript_source"] == "transcrição em pt-BR"
+
+
+async def test_an_english_answer_keeps_its_verbatim_text_too(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id, language="en-US")
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        return "no hesitation"
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    first = (await progress(client, headers, session_id))["answers"][0]
+    assert providers.translated == []
+    assert first["transcript_source"] == first["translation_en"] == "no hesitation"
+    assert first["transcript_verbatim"] == "transcrição em en-US"
+
+
+async def test_force_throws_the_verbatim_text_away_with_the_rest_of_the_draft(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
+    )
+
+    forced = await start(client, headers, session_id, force=True)
+
+    first = forced.json()["answers"][0]
+    assert first["transcript_verbatim"] is None
+    assert first["transcript_source"] is None
+
+
+async def test_a_cleaner_outage_keeps_the_verbatim_answer_instead_of_losing_it(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        raise UpstreamServiceError("Gemini is down")
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    body = await progress(client, headers, session_id)
+    assert (body["ready"], body["failed"], body["pending"]) == (3, 0, 0)
+    first = body["answers"][0]
+    assert first["transcript_source"] == "transcrição em pt-BR"
+    assert first["translation_en"] == "english of: transcrição em pt-BR"
+    assert first["error"] is None
+
+
+async def test_an_unexpected_cleaner_crash_still_leaves_the_answer_standing(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        raise RuntimeError("the provider SDK changed its mind")
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    body = await progress(client, headers, session_id)
+    assert (body["ready"], body["failed"], body["pending"]) == (3, 0, 0)
+    assert body["answers"][0]["transcript_source"] == "transcrição em pt-BR"
+    assert body["answers"][0]["translation_en"] == "english of: transcrição em pt-BR"
+
+
+async def test_a_missing_cleanup_key_does_not_cost_the_session_its_transcripts(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+
+    async def cleaner(text: str, *, language: str) -> str:
+        raise ValidationError("GOOGLE_API_KEY is not configured")
+
+    await sn_service.run_pending(
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=cleaner,
+        translator=providers.translate,
+    )
+
+    body = await progress(client, headers, session_id)
+    assert (body["ready"], body["failed"], body["pending"]) == (3, 0, 0)
+    first = body["answers"][0]
+    assert first["transcript_source"] == "transcrição em pt-BR"
+    assert first["translation_en"] == "english of: transcrição em pt-BR"
+    assert first["error"] is None
 
 
 async def test_one_bad_answer_fails_alone_and_blocks_nothing(
@@ -217,7 +434,11 @@ async def test_one_bad_answer_fails_alone_and_blocks_nothing(
     providers = FakeProviders(fail_on="poison")
 
     await sn_service.run_pending(
-        db_session, session_id, stt=providers.stt, translator=providers.translate
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
     )
 
     body = await progress(client, headers, session_id)
@@ -235,12 +456,20 @@ async def test_a_second_trigger_does_not_pay_for_a_ready_answer_again(
     await start(client, headers, session_id)
     providers = FakeProviders()
     await sn_service.run_pending(
-        db_session, session_id, stt=providers.stt, translator=providers.translate
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
     )
 
     await start(client, headers, session_id)
     await sn_service.run_pending(
-        db_session, session_id, stt=providers.stt, translator=providers.translate
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
     )
 
     assert len(providers.transcribed) == 3
@@ -256,6 +485,7 @@ async def test_a_failed_answer_is_retried_by_a_plain_trigger(
         db_session,
         session_id,
         stt=FakeProviders(fail_on="poison").stt,
+        cleaner=FakeProviders().clean,
         translator=FakeProviders().translate,
     )
 
@@ -264,7 +494,7 @@ async def test_a_failed_answer_is_retried_by_a_plain_trigger(
 
     healed = FakeProviders()
     await sn_service.run_pending(
-        db_session, session_id, stt=healed.stt, translator=healed.translate
+        db_session, session_id, stt=healed.stt, cleaner=healed.clean, translator=healed.translate
     )
     after = await progress(client, headers, session_id)
     assert (after["ready"], after["failed"]) == (3, 0)
@@ -278,7 +508,11 @@ async def test_force_re_transcribes_everything_because_a_take_was_re_recorded(
     await start(client, headers, session_id)
     providers = FakeProviders()
     await sn_service.run_pending(
-        db_session, session_id, stt=providers.stt, translator=providers.translate
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
     )
 
     forced = await start(client, headers, session_id, force=True)
@@ -286,9 +520,85 @@ async def test_force_re_transcribes_everything_because_a_take_was_re_recorded(
     assert forced.json()["pending"] == 3
     assert forced.json()["answers"][0]["transcript_source"] is None  # the stale draft is gone
     await sn_service.run_pending(
-        db_session, session_id, stt=providers.stt, translator=providers.translate
+        db_session,
+        session_id,
+        stt=providers.stt,
+        cleaner=providers.clean,
+        translator=providers.translate,
     )
     assert len(providers.transcribed) == 6
+
+
+async def test_force_with_paths_spares_the_drafts_that_did_not_change(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    """One take re-recorded costs one transcription, not the whole session.
+
+    Without the scoping a `force` resets every draft the session has, so going back to
+    fix a single answer threw away — and paid again for — the forty that were already
+    reviewed. The SPA now names the answer it re-recorded.
+    """
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+    first_pass = len(providers.transcribed)
+
+    listed = await progress(client, headers, session_id)
+    re_recorded = str(listed["answers"][0]["path"])
+
+    forced = await start(client, headers, session_id, force=True, paths=[re_recorded])
+
+    body = forced.json()
+    assert body["pending"] == 1
+    assert body["ready"] == len(body["answers"]) - 1
+    reset = next(a for a in body["answers"] if a["path"] == re_recorded)
+    assert reset["transcript_source"] is None
+
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+    assert len(providers.transcribed) == first_pass + 1
+
+
+async def test_force_without_paths_still_resets_the_whole_session(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    """The un-scoped force is the contract every existing caller already relies on."""
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+
+    forced = await start(client, headers, session_id, force=True, paths=None)
+
+    assert forced.json()["pending"] == 3
+
+
+async def test_a_path_that_belongs_to_no_answer_resets_nothing(
+    client, db_session, session_with_answers, no_background
+) -> None:
+    """A stale path from a client that fell behind must not become an empty force.
+
+    Treating "nothing matched" as "match everything" would turn the cheapest possible
+    mistake into the most expensive outcome there is.
+    """
+    session_id, headers = session_with_answers
+    await start(client, headers, session_id)
+    providers = FakeProviders()
+    await sn_service.run_pending(
+        db_session, session_id, stt=providers.stt, translator=providers.translate
+    )
+
+    forced = await start(
+        client, headers, session_id, force=True, paths=["respostas/level1/inexistente.webm"]
+    )
+
+    assert forced.json()["pending"] == 0
 
 
 async def test_deleting_the_recording_takes_its_draft_with_it(
@@ -297,7 +607,11 @@ async def test_deleting_the_recording_takes_its_draft_with_it(
     session_id, headers = session_with_answers
     await start(client, headers, session_id)
     await sn_service.run_pending(
-        db_session, session_id, stt=FakeProviders().stt, translator=FakeProviders().translate
+        db_session,
+        session_id,
+        stt=FakeProviders().stt,
+        cleaner=FakeProviders().clean,
+        translator=FakeProviders().translate,
     )
 
     res = await client.delete(
@@ -364,13 +678,18 @@ async def test_a_force_that_lands_mid_pass_wins_over_the_take_it_replaced(
         return f"english of: {text}"
 
     await sn_service.run_pending(
-        db_session, session_id, stt=stt_then_rerecord, translator=translate
+        db_session,
+        session_id,
+        stt=stt_then_rerecord,
+        cleaner=FakeProviders().clean,
+        translator=translate,
     )
 
     body = await progress(client, headers, session_id)
     superseded = next(a for a in body["answers"] if a["path"] == P1)
     assert superseded["status"] == "pending"
     assert superseded["transcript_source"] is None
+    assert superseded["transcript_verbatim"] is None
 
 
 async def test_a_double_submit_is_answered_twice_not_crashed_once(

@@ -21,7 +21,11 @@ from app.services.platform.voices import language_hint
 
 logger = logging.getLogger(__name__)
 
-TRANSLATION_MODEL = "gemini-3-flash-preview"
+
+def translation_model(settings: Settings) -> str:
+    """Step three of the Sound Necklace answer path (CLAUDE.md section 9)."""
+    return settings.gemini_fast_model
+
 
 #: Spoken-answer languages we can name for the model. An unlisted code is passed through as
 #: itself rather than refused — naming the language is a prompt nicety, not a gate.
@@ -100,7 +104,7 @@ async def translate_to_english(
     provider = client or _default_client(cfg.google_api_key)
     try:
         response = await provider.aio.models.generate_content(
-            model=TRANSLATION_MODEL, contents=prompt
+            model=translation_model(cfg), contents=prompt
         )
     except Exception as exc:
         logger.warning("Gemini translation failed: %s", exc)
@@ -112,7 +116,7 @@ async def translate_to_english(
 
     logger.info(
         "platform translation: model=%s source=%s chars_in=%d chars_out=%d",
-        TRANSLATION_MODEL,
+        translation_model(cfg),
         source_language,
         len(text),
         len(translation),

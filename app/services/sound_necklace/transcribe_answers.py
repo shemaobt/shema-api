@@ -1,8 +1,16 @@
 """Transcription + translation drafts for a session's voice answers (ENG-325).
 
-One async pass per answer: transcribe in the language it was spoken, then, if that is not
-English, translate. Both are drafts for a human to confirm — this module never touches an
-artifact.
+DORMANT since the 2026-09-01 scope cut — kept deliberately, not by neglect.
+
+The Colar's SPA now ends at the scene and phrase segmentation: no interview, no report, no
+artifact. Nothing has called this module since. This is not dead code and not an oversight — it
+still runs end to end when called, and the module belongs to the interview package the system that
+hosts the interview next will pick up whole. Read ``docs/sound_necklace_interview_package.md``
+before changing or removing anything here.
+
+One async pass per answer: transcribe in the language it was spoken, take the speech
+disfluency out of it (ENG-395), then, if that is not English, translate. All of it is draft
+for a human to confirm — this module never touches an artifact.
 
 It runs when the SPA enters the Report, not on upload: a take that gets re-recorded before
 the report is never paid for. The per-answer rows carry the whole state of the job, which
@@ -25,6 +33,7 @@ from app.core.enums import SnTranscriptionEvent
 from app.core.inngest_client import inngest_client
 from app.db.models.sound_necklace import SnAnswerTranscript, SnVoiceAnswer, TranscriptStatus
 from app.services.oral_collector import gcs_utils
+from app.services.platform.disfluency import DisfluencyCleaner, clean_disfluency
 from app.services.platform.stt import SpeechToText, transcribe_speech
 from app.services.platform.translation import Translator, translate_to_english
 from app.services.platform.voices import language_hint
@@ -45,7 +54,12 @@ class TranscriptionProgress:
 
 
 async def start_transcription(
-    db: AsyncSession, session_id: str, *, language: str, force: bool = False
+    db: AsyncSession,
+    session_id: str,
+    *,
+    language: str,
+    force: bool = False,
+    paths: list[str] | None = None,
 ) -> TranscriptionProgress:
     """Queue the drafts that are missing, and return the progress right away.
 
@@ -57,6 +71,14 @@ async def start_transcription(
     of a take that no longer exists is worse than no draft at all. It is also the only
     thing that touches a draft already queued: a plain re-trigger leaves ``pending`` alone,
     so a pass in flight is not made to throw away an answer it has already paid for.
+
+    ``paths`` scopes that force to the answers that actually changed. Session-wide is the
+    right default for the report, which asks once and knows nothing finer; it is the wrong
+    one for the interview, where going back to redo a single take would otherwise discard
+    — and pay again for — every draft already made. ``None`` keeps the session-wide
+    meaning every existing caller relies on; a list that matches no answer resets nothing,
+    because reading "nothing matched" as "match everything" would turn the cheapest
+    mistake a client can make into the most expensive outcome available.
 
     Two queries, never one per answer: a session carries a draft for every question of
     every scene and every phrase, and this runs on the request the report is waiting for.
@@ -78,6 +100,7 @@ async def start_transcription(
     )
 
     existing = await _existing_drafts(db, session_id)
+    scope = None if paths is None else set(paths)
 
     for answer in answers:
         draft = existing.get(answer.resource_path)
@@ -88,12 +111,14 @@ async def start_transcription(
                 )
             )
             continue
-        if draft.status != TranscriptStatus.FAILED and not force:
+        forced = force and (scope is None or answer.resource_path in scope)
+        if draft.status != TranscriptStatus.FAILED and not forced:
             continue
 
         draft.language = language
         draft.status = TranscriptStatus.PENDING
         draft.generation += 1
+        draft.transcript_verbatim = None
         draft.transcript_source = None
         draft.translation_en = None
         draft.error = None
@@ -146,12 +171,24 @@ async def run_pending(
     session_id: str,
     *,
     stt: SpeechToText = transcribe_speech,
+    cleaner: DisfluencyCleaner = clean_disfluency,
     translator: Translator = translate_to_english,
 ) -> None:
     """Fill in every pending draft of the session, one answer at a time.
 
     Sequential on purpose: one session, one row committed per answer, so progress is
     visible while it runs and a crash costs at most the answer in flight.
+
+    The cleaned text is what the facilitator confirms and what the translator is fed, so the
+    hesitation is neither shown nor carried into English. The verbatim text is stored beside
+    it rather than discarded: what the cleaner removed is then a diff between two columns,
+    which is the only way anyone can check a sentence that never reached the screen.
+
+    That diff is the cleaner's work only until somebody confirms the draft. A confirm writes
+    the facilitator's text into `transcript_source` and leaves `transcript_verbatim` as this
+    pass wrote it, so a confirmed row's two columns differ by the removals and the human's
+    edits together. The verbatim text stays recoverable either way, which is the property
+    worth having; attributing the whole difference to the model is not.
 
     ponytail: a 200-answer session takes 200 round trips end to end. If that becomes the
     complaint, fan out with one DB session per worker — not with a shared one, which is
@@ -181,7 +218,10 @@ async def run_pending(
         generation, path, language = draft.generation, draft.resource_path, draft.language
         try:
             audio = await gcs_utils.download_gcs_object(GCS_SN_BUCKET, answer.storage_key)
-            transcript = await stt(audio, language=language, mime_type=answer.content_type)
+            verbatim = await stt(audio, language=language, mime_type=answer.content_type)
+            transcript = await _cleaned(
+                cleaner, verbatim, language=language, session_id=session_id, resource_path=path
+            )
             translation = (
                 transcript
                 if language_hint(language) == "en"
@@ -189,6 +229,7 @@ async def run_pending(
             )
             values = {
                 "status": TranscriptStatus.READY,
+                "transcript_verbatim": verbatim,
                 "transcript_source": transcript,
                 "translation_en": translation,
                 "error": None,
@@ -198,6 +239,62 @@ async def run_pending(
             values = {"status": TranscriptStatus.FAILED, "error": str(exc)}
 
         await _write_draft(db, session_id, path, generation=generation, values=values)
+
+
+async def _cleaned(
+    cleaner: DisfluencyCleaner,
+    verbatim: str,
+    *,
+    language: str,
+    session_id: str,
+    resource_path: str,
+) -> str:
+    """The disfluency-free text, or the verbatim one if the cleanup could not be done.
+
+    The transcript is the work product and the cleanup an improvement on top of it, so a
+    cleanup failure must not take the answer down with it. Missing configuration is absorbed
+    too, not only an outage: transcription runs on ElevenLabs and the cleanup on Google, so
+    an absent `GOOGLE_API_KEY` would otherwise turn every session into `failed` rows. It
+    announces itself at `error` level instead.
+
+    `Exception` rather than a list of types, which is this repo's rule broken on purpose.
+    `DisfluencyCleaner` is a seam: it promises a return type and nothing about what it
+    raises, so naming types here would couple this to the one implementation currently
+    behind it.
+
+    A fallen-back answer is stored as a `READY` draft whose `transcript_verbatim` and
+    `transcript_source` are equal. That implication runs one way only. An answer with no
+    hesitation in it is cleaned successfully and stored equal too, so equality is a set of
+    candidates to look at, never the set of answers an outage damaged — acting on it as if
+    it were exact would `force` a re-transcription of answers that are perfectly fine.
+
+    The confirm path widens that set further, and it widens with use: `retranslate_answer`
+    writes `transcript_source` without touching `transcript_verbatim`, so a facilitator who
+    confirms text matching the verbatim lands on the same equality from a third direction
+    entirely. The candidate set is thus not even stable — a row can join it long after this
+    function last ran.
+
+    It does not even hold as a proxy for "the text was not changed". `clean_disfluency`
+    returns `.strip()`ed output where this fallback returns the verbatim string as it came,
+    so a successful cleanup that removed nothing but surrounding whitespace stores the two
+    UNEQUAL. The logs are what actually record a fallback.
+
+    Known gap, deliberately not fixed here: `start_transcription` never re-queues a `READY`
+    draft, so nothing re-cleans those answers on its own. The only recovery is `force`,
+    which re-bills the ElevenLabs transcription of every answer it resets — a cleanup pass
+    that reads the stored verbatim text and skips the transcriber is the fix, and it is a
+    job of its own rather than a branch in this one.
+    """
+    try:
+        return await cleaner(verbatim, language=language)
+    except Exception as exc:
+        logger.error(
+            "disfluency cleanup skipped, keeping verbatim transcript session=%s path=%s: %s",
+            session_id,
+            resource_path,
+            exc,
+        )
+        return verbatim
 
 
 async def _write_draft(

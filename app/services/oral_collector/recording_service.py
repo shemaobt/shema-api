@@ -1,17 +1,20 @@
+import asyncio
 import logging
 import re
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 
 import google.auth
 import google.auth.transport.requests
 import inngest
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import (
     ACTIVE_UPLOAD_STATUSES,
     USER_SETTABLE_CLEANING_STATUSES,
+    OCNotificationEvent,
     OCRecordingEvent,
     SplittingStatus,
     UploadStatus,
@@ -37,8 +40,11 @@ from app.models.oc_recording import (
     ResumableUploadUrlResponse,
     UploadUrlResponse,
 )
+from app.services.notifications.create_notification import create_notification
+from app.services.notifications.get_oc_app_id import get_oc_app_id
 from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE, content_type_for_format
+from app.services.oral_collector.review_flags import flag_codes, recompute_review_flags
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +110,75 @@ FORMAT_EXTENSIONS: dict[str, str] = {
 SIGNED_URL_EXPIRY_MINUTES = 15
 
 
+def _listing_conditions(
+    project_id: str,
+    *,
+    genre_id: str | None,
+    subcategory_id: str | None,
+    upload_status: str | None,
+    cleaning_status: str | None,
+    user_id: str | None,
+    storyteller_id: str | None,
+    title: str | None,
+) -> list[ColumnElement[bool]]:
+    conditions: list[ColumnElement[bool]] = [
+        OC_Recording.project_id == project_id,
+        OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT,
+    ]
+    if genre_id:
+        conditions.append(OC_Recording.genre_id == genre_id)
+    if subcategory_id:
+        conditions.append(OC_Recording.subcategory_id == subcategory_id)
+    if upload_status:
+        conditions.append(OC_Recording.upload_status == upload_status)
+    else:
+        conditions.append(OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES))
+    if cleaning_status:
+        conditions.append(OC_Recording.cleaning_status == cleaning_status)
+    if user_id:
+        conditions.append(OC_Recording.user_id == user_id)
+    if storyteller_id:
+        conditions.append(OC_Recording.storyteller_id == storyteller_id)
+    if title:
+        conditions.append(OC_Recording.title == title.strip())
+    return conditions
+
+
+async def _list_recordings_with_review_flag(
+    db: AsyncSession,
+    conditions: list[ColumnElement[bool]],
+    review_flag: str,
+    *,
+    offset: int,
+    limit: int,
+) -> list[OC_Recording]:
+    """The requested page of the recordings carrying ``review_flag``, newest first.
+
+    The flags sit in a JSON column that neither Postgres nor SQLite can filter on portably,
+    so the match runs in Python, which forces the order of the steps: the whole ordered set
+    of candidates is matched first and only then sliced. Slicing in SQL would cut the page
+    out of the unfiltered list, and every match past its end would be lost.
+
+    ``IN`` does not preserve the order of its values, so the fetched page is put back in the
+    order of the ids it was sliced from.
+    """
+    candidate_stmt = (
+        select(OC_Recording.id, OC_Recording.review_flags)
+        .where(*conditions)
+        .order_by(OC_Recording.recorded_at.desc())
+    )
+    candidates = (await db.execute(candidate_stmt)).all()
+    matching_ids = [row.id for row in candidates if review_flag in flag_codes(row.review_flags)]
+
+    page_ids = matching_ids[offset : offset + limit]
+    if not page_ids:
+        return []
+
+    page_stmt = select(OC_Recording).where(OC_Recording.id.in_(page_ids))
+    by_id = {r.id: r for r in (await db.execute(page_stmt)).scalars().all()}
+    return [by_id[recording_id] for recording_id in page_ids]
+
+
 async def list_recordings(
     db: AsyncSession,
     project_id: str,
@@ -115,33 +190,33 @@ async def list_recordings(
     user_id: str | None = None,
     storyteller_id: str | None = None,
     title: str | None = None,
+    review_flag: str | None = None,
     offset: int = 0,
     limit: int = 50,
 ) -> list[OC_Recording]:
 
+    conditions = _listing_conditions(
+        project_id,
+        genre_id=genre_id,
+        subcategory_id=subcategory_id,
+        upload_status=upload_status,
+        cleaning_status=cleaning_status,
+        user_id=user_id,
+        storyteller_id=storyteller_id,
+        title=title,
+    )
+    if review_flag:
+        return await _list_recordings_with_review_flag(
+            db, conditions, review_flag, offset=offset, limit=limit
+        )
+
     stmt = (
         select(OC_Recording)
-        .where(OC_Recording.project_id == project_id)
-        .where(OC_Recording.splitting_status != SplittingStatus.ARCHIVED_AFTER_SPLIT)
+        .where(*conditions)
         .order_by(OC_Recording.recorded_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
-    if genre_id:
-        stmt = stmt.where(OC_Recording.genre_id == genre_id)
-    if subcategory_id:
-        stmt = stmt.where(OC_Recording.subcategory_id == subcategory_id)
-    if upload_status:
-        stmt = stmt.where(OC_Recording.upload_status == upload_status)
-    else:
-        stmt = stmt.where(OC_Recording.upload_status.in_(ACTIVE_UPLOAD_STATUSES))
-    if cleaning_status:
-        stmt = stmt.where(OC_Recording.cleaning_status == cleaning_status)
-    if user_id:
-        stmt = stmt.where(OC_Recording.user_id == user_id)
-    if storyteller_id:
-        stmt = stmt.where(OC_Recording.storyteller_id == storyteller_id)
-    if title:
-        stmt = stmt.where(OC_Recording.title == title.strip())
-    stmt = stmt.offset(offset).limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -309,6 +384,7 @@ async def create_recording(db: AsyncSession, data: RecordingCreate, user_id: str
         format=data.format,
         recorded_at=data.recorded_at,
     )
+    recompute_review_flags(recording)
     db.add(recording)
     try:
         await db.commit()
@@ -374,6 +450,7 @@ async def update_recording(
         update_fields["title"] = normalized_title
     for field, value in update_fields.items():
         setattr(recording, field, value)
+    recompute_review_flags(recording)
     try:
         await db.commit()
     except IntegrityError as exc:
@@ -400,9 +477,18 @@ async def _validate_storyteller_in_project(
 
 
 async def delete_recording(db: AsyncSession, recording_id: str) -> None:
+    """Delete a recording, and its blob if it ever reached the bucket.
 
+    The blob goes whenever `gcs_url` is set, whatever the upload status: `process-upload`
+    writes `gcs_url` before it checks size and checksum, so an `UPLOAD_FAILED` row can own a
+    real object, and `clear_stale_recordings` deletes that same object.
+
+    An upload still in flight is deleted rather than refused, since the bytes travel from the
+    client to GCS over a signed URL and this API cannot cancel a transfer either way. A `PUT`
+    landing after the row is gone leaves an orphan object and answers `confirm-upload` 404.
+    """
     recording = await get_recording(db, recording_id)
-    if recording.upload_status in ACTIVE_UPLOAD_STATUSES and recording.gcs_url:
+    if recording.gcs_url:
         _delete_gcs_blob(recording.gcs_url)
     await db.delete(recording)
     await db.commit()
@@ -415,6 +501,20 @@ async def clear_stale_recordings(
     *,
     is_platform_admin: bool = False,
 ) -> int:
+    """Delete the project's failed uploads on demand and report how many rows went.
+
+    No application calls this any more. The Oral Collector's "clear failures" button was
+    removed for deleting device audio the server had never received, which leaves this an
+    administrative tool a manager or platform admin can still reach by hand, and leaves
+    `purge_failed_uploads` — not this — as the routine that keeps the rows from piling up.
+
+    Only `UPLOAD_FAILED` is cleared, and the client counts more things as failed than the
+    server ever will: a failure it hits before or instead of the upload leaves the server row
+    at `UPLOADING`, written back when the upload URL was issued, and that row survives this
+    call deliberately — its bytes may still be in flight. So a device listing several failed
+    recordings can get `deleted: 0` back, and that is the intended answer, not a bug. Ageing
+    a stalled `UPLOADING` row into a failure is a separate state transition.
+    """
     if not is_platform_admin:
         access_stmt = select(ProjectUserAccess).where(
             ProjectUserAccess.project_id == project_id,
@@ -425,10 +525,9 @@ async def clear_stale_recordings(
         if access_result.scalar_one_or_none() is None:
             raise AuthorizationError("Only a project manager can clear stale recordings")
 
-    stale_statuses = [UploadStatus.UPLOADING, UploadStatus.UPLOAD_FAILED]
     stmt = select(OC_Recording).where(
         OC_Recording.project_id == project_id,
-        OC_Recording.upload_status.in_(stale_statuses),
+        OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
     )
     result = await db.execute(stmt)
     recordings = list(result.scalars().all())
@@ -440,6 +539,128 @@ async def clear_stale_recordings(
 
     await db.commit()
     return len(recordings)
+
+
+STALLED_UPLOAD_DEADLINE = timedelta(days=14)
+
+STALLED_UPLOAD_ERROR = (
+    f"No upload progress for {STALLED_UPLOAD_DEADLINE.days} days. "
+    "Keep the local recording and upload it again."
+)
+
+
+async def fail_stalled_uploads(db: AsyncSession) -> int:
+    """Fail the uploads that stopped making progress `STALLED_UPLOAD_DEADLINE` ago.
+
+    `UPLOADING` is entered when the client asks for an upload URL and left only by
+    `confirm-upload`, so an app that dies mid-transfer leaves a row nothing else on the server
+    moves. Fourteen days because a V4 signed URL and a resumable session URI both last at most
+    seven, so past a week the transfer provably cannot resume; the second week is grace for an
+    offline-first client. Staleness reads `updated_at`, so any edit counts as progress.
+
+    Nothing is deleted and no blob is touched, but each owner is told once per sweep: the only
+    copy left is on the device of someone who would otherwise never learn the upload died.
+    The rows this leaves are drained by `purge_failed_uploads` once they stop being news.
+    """
+    cutoff = datetime.now(UTC) - STALLED_UPLOAD_DEADLINE
+    stmt = select(OC_Recording).where(
+        OC_Recording.upload_status == UploadStatus.UPLOADING,
+        OC_Recording.updated_at < cutoff,
+    )
+    result = await db.execute(stmt)
+    stalled = list(result.scalars().all())
+
+    owners = Counter(r.user_id for r in stalled if r.user_id)
+    app_id = await get_oc_app_id(db) if owners else None
+
+    for recording in stalled:
+        recording.upload_status = UploadStatus.UPLOAD_FAILED
+        recording.upload_error = STALLED_UPLOAD_ERROR
+
+    await db.commit()
+
+    if app_id is not None:
+        for user_id, count in owners.items():
+            await create_notification(
+                db,
+                user_id=user_id,
+                app_id=app_id,
+                event_type=OCNotificationEvent.UPLOAD_FAILED,
+                title="Uploads timed out — keep your local recordings",
+                body=(
+                    f"{count} of your recordings stopped uploading more than "
+                    f"{STALLED_UPLOAD_DEADLINE.days} days ago and cannot resume. "
+                    "Keep the local recordings and upload them again."
+                ),
+            )
+
+    return len(stalled)
+
+
+FAILED_UPLOAD_RETENTION = timedelta(days=180)
+
+FAILED_UPLOAD_PURGE_BATCH = 300
+
+
+async def purge_failed_uploads(db: AsyncSession) -> int:
+    """Delete the `UPLOAD_FAILED` rows untouched for `FAILED_UPLOAD_RETENTION`, blobs included.
+
+    `fail_stalled_uploads` manufactures these rows and nothing drains them. The app's bulk
+    clear was removed for deleting audio that existed only on the device, which leaves
+    `clear_stale_recordings` without a caller, so the reaper's output accumulates. The rubbish
+    belongs to the server and the server removes it.
+
+    Removing the row cannot cost a recording. The device keeps its local copy until the server
+    reports `uploaded`/`verified` *and* returns a server id, so a recording that never
+    finished uploading is still on the phone; its healing request simply answers 404. A row
+    that owns a blob owns one that failed verification, and `delete_recording` already treats
+    `gcs_url` as the only thing worth asking about.
+
+    Nothing fixes the retention the way the seven-day GCS resumable session fixed the reaper's
+    fourteen days: past that deadline the transfer provably could not resume, while here the
+    row is already dead and only the typed metadata is at stake. So the number is a choice,
+    taken conservatively — 180 days, the retention this project already uses for the artefacts
+    it keeps, and half a year after the owner was told the upload died. Age reads `updated_at`
+    like the reaper does, so any edit counts as activity and starts it over.
+
+    `_delete_gcs_blob` logs and swallows, so an object the bucket cannot produce costs its own
+    delete and nothing else: neither its row nor the rest of the pass.
+
+    A pass takes `FAILED_UPLOAD_PURGE_BATCH` rows, oldest first, and leaves the rest to
+    tomorrow's. Nothing else bounds the set, and this runs unattended: without a ceiling the
+    first pass walks whatever backlog has accumulated, one bucket round-trip per row, in a
+    request Cloud Run kills at 300 seconds (`deploy.yml`) — which would time the Inngest step
+    out and retry the whole pass, forever, on the same oversized set. 300 rows is the ceiling
+    that fits: at a pessimistic half-second per delete it spends half that budget. It is also
+    well above the daily inflow, since the only producer is `fail_stalled_uploads` and the
+    platform does not start 300 uploads a day, so a backlog shrinks with every pass instead of
+    being held at a level the batch cannot clear.
+
+    The delete runs on a worker thread, like every other blob call in this package
+    (`gcs_utils`, `cleaning_service`, `upload_processing._verify_blob`). `_delete_gcs_blob` is
+    synchronous, and a batch of blocking round-trips on the event loop would stall the uploads
+    the API is serving at the same time.
+    """
+    cutoff = datetime.now(UTC) - FAILED_UPLOAD_RETENTION
+    stmt = (
+        select(OC_Recording)
+        .where(
+            OC_Recording.upload_status == UploadStatus.UPLOAD_FAILED,
+            OC_Recording.updated_at < cutoff,
+        )
+        .order_by(OC_Recording.updated_at)
+        .limit(FAILED_UPLOAD_PURGE_BATCH)
+    )
+    result = await db.execute(stmt)
+    abandoned = list(result.scalars().all())
+
+    for recording in abandoned:
+        if recording.gcs_url:
+            await asyncio.to_thread(_delete_gcs_blob, recording.gcs_url)
+        await db.delete(recording)
+
+    await db.commit()
+    return len(abandoned)
 
 
 def _gcs_blob_path(project_id: str, genre_id: str, recording_id: str, fmt: str) -> str:

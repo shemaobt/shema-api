@@ -1,0 +1,90 @@
+# Resource Request Form — authentication (BE-00 · OBT-464)
+#
+# This product has no login of its own: it uses the shared /api/auth with the
+# app_key below. What belongs to it are the app_key and the three roles —
+# equipe, mesa, gestor — seeded by scripts/seed_apps_roles.py.
+#
+# Before running: apply the seed, then grant a role to the test account.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py mesa.local@test.com resource-request-form mesa
+
+@baseUrl = http://localhost:8000
+@appKey = resource-request-form
+
+### Signup — the mesa test account
+POST {{baseUrl}}/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "mesa.local@test.com",
+  "password": "password123",
+  "display_name": "Mesa Local"
+}
+
+### Signup — a second account, deliberately left without a role
+POST {{baseUrl}}/api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "sempapel.local@test.com",
+  "password": "password123",
+  "display_name": "Sem Papel"
+}
+
+### Login — run this first; the token feeds the calls below
+# @name rrf_login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "mesa.local@test.com",
+  "password": "password123"
+}
+
+### Me
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{rrf_login.response.body.tokens.access_token}}
+
+### My roles for this app — the call FE-24 makes to hydrate a session
+# Expected: [{ "app_key": "resource-request-form", "role_key": "mesa" }]
+GET {{baseUrl}}/api/auth/my-roles?app_key={{appKey}}
+Authorization: Bearer {{rrf_login.response.body.tokens.access_token}}
+
+### Login as the account with no role
+# @name rrf_login_norole
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "sempapel.local@test.com",
+  "password": "password123"
+}
+
+### My roles for the account with no role — expected: []
+# An empty array, not a 403: my-roles reports, it does not guard. What refuses is
+# require_app_access on the module's own routes — and the module has none yet,
+# because routes are BE-02/BE-03. The 403 is proven in
+# tests/test_resource_requests/test_access.py, against a probe router.
+GET {{baseUrl}}/api/auth/my-roles?app_key={{appKey}}
+Authorization: Bearer {{rrf_login_norole.response.body.tokens.access_token}}
+
+### Forgot password — the FE-25 email
+# The app_key is what points the link at this product: request_password_reset
+# looks the row up in `apps` and builds {app_url}/reset-password?token=…
+# app_url is https://resourceform.shemaywam.com.
+POST {{baseUrl}}/api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "mesa.local@test.com",
+  "app_key": "resource-request-form"
+}
+
+### Reset password — token comes from the email above
+POST {{baseUrl}}/api/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "PASTE_TOKEN_FROM_EMAIL",
+  "password": "novasenha123"
+}

@@ -1,5 +1,13 @@
 """The batch transcription of a session's voice answers (ENG-325).
 
+DORMANT since the 2026-09-01 scope cut — kept deliberately, not by neglect.
+
+The Colar's SPA now ends at the scene and phrase segmentation: no interview, no report, no
+artifact. Nothing has called this function since. This is not dead code and not an oversight — the
+function stays registered with Inngest and still runs when its event arrives, and the module
+belongs to the interview package the system that hosts the interview next will pick up whole. Read
+``docs/sound_necklace_interview_package.md`` before changing or removing anything here.
+
 Off the API process, so a deploy in the middle of a long session does not strand the run,
 and a retry is Inngest's job rather than the facilitator's.
 
