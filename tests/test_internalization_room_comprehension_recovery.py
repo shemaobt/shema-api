@@ -258,6 +258,17 @@ _TELLING_OF_THE_LOSS = (
     "cena em que Malone e Kleon morrer-morreram, e Noemí fica sozinha, sem os filhos e sem o "
     "marido."
 )
+#: The same session's earlier telling, with its "certo?" tags taken off: it opens "no tempo
+#: dos juízes", and it names what the story keeps silent about — no child, no mourning,
+#: nothing said of God.
+_TELLING_WITH_THE_STORYS_SILENCES = (
+    "Tudo isso aconteceu no tempo que os juízes julgavam Israel, antes de ter rei. Os dois "
+    "filhos tomaram esposas dentre as mulheres de Moabe, Orfa e Rute, e moraram lá uns dez "
+    "anos. A história não fala de nenhum filho nascido nesses casamentos, nenhuma criança é "
+    "mencionada. Quando Elimeleque morre, Noemi ficou com os dois filhos, e quando Malom e "
+    "Quiliom morreram ela sobrou sozinha, sem os dois filhos e sem o marido. A história não "
+    "descreve o luto, nenhum choro, nem nada de enterro, e não diz que Deus fez nada disso."
+)
 
 
 def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
@@ -265,15 +276,22 @@ def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
     stayed unpractised.
 
     Ruth 1:3-5 is a story of loss, and a team telling it says so: Noemi is left "sem os
-    filhos e sem o marido". The reader took "sem" for a denial — the same word list that
+    filhos e sem o marido"; the story "não fala de nenhum filho", "não diz que Deus fez
+    nada disso". The reader took every one of those for a denial — the same word list that
     catches "ainda não ensaiamos" — and filed the telling the invitation had asked for as a
     team that had done nothing. What the story takes away is content the team told back.
-    The denial the reader guards is the rehearsal itself being refused, and inside a telling
-    that is read on the rehearsal, not on the story; a short reply keeps the flat reading,
-    where any negation is the team declining."""
-    assert bridge_language_retelling_completes_practice(
-        _INVITATION_FOR_THE_LAST_TWO_SCENES, _TELLING_OF_THE_LOSS, True
-    )
+
+    The denial the reader guards is the team refusing the doing, and a told scene comes
+    back in the third person, about the family — so inside a telling the negation that
+    still refuses is the team's own: on the rehearsal ("não ensaiamos", "contamos sem
+    ensaiar"), in the first person ("a gente não teve tempo", "nós não conseguimos", "we
+    didn't"), or nobody's doing at all ("não deu", "ainda não", "no time"). A short reply
+    keeps the flat reading, where any negation is the team declining. "No tempo dos juízes"
+    is how the passage opens, and it is not "no time"."""
+    for told in (_TELLING_OF_THE_LOSS, _TELLING_WITH_THE_STORYS_SILENCES):
+        assert bridge_language_retelling_completes_practice(
+            _INVITATION_FOR_THE_LAST_TWO_SCENES, told, True
+        ), told
     for declined in (
         "ainda não",
         "não ensaiamos ainda",
@@ -282,6 +300,11 @@ def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
         "ficou sozinha com os dois filhos em Moabe",
         "contamos sem ensaiar: a família saiu de Belém por causa da fome e foi morar em "
         "Moabe como estrangeiros",
+        "A gente não teve tempo de fazer isso agora",
+        "ainda não deu, ficou pra depois",
+        "nós não conseguimos, ficou difícil combinar quem fala primeiro",
+        "we didn't have time to do it now",
+        "no tuvimos tiempo de hacerlo ahora",
     ):
         assert not bridge_language_retelling_completes_practice(
             _INVITATION_FOR_THE_LAST_TWO_SCENES, declined, True

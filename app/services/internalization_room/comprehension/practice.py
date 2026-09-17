@@ -325,19 +325,31 @@ _CONDITION_HEADS = re.compile(
     r"|possible|needed|necessary|wanted)\b"
 )
 #: The team saying the rehearsal did not happen — the one negation a telling can carry that
-#: is about the doing and not about the story. It sits on the rehearsal ("não ensaiamos",
-#: "não conseguimos ensaiar", "no pudimos ensayar", "we did not rehearse"), or the telling
-#: says it was done without one ("contamos sem ensaiar"), or it is the team's own first
-#: person refusing the doing outright ("não fizemos", "a gente não conseguiu", "we
-#: didn't"). A told Ruth 1 is in the third person and full of what the story takes away —
-#: nobody, nothing, without — and none of that is the team declining.
+#: is about the doing and not about the story. A told scene comes back in the third person,
+#: about the family; the decline is the team's own. So it is read on the rehearsal ("não
+#: ensaiamos", "no pudimos ensayar", "contamos sem ensaiar"), on the first person refusing
+#: the doing whether or not it names it ("não fizemos", "a gente não teve tempo", "nós não
+#: conseguimos", "eu não consegui", "we didn't"), and on nobody's doing at all — the time
+#: there was not, the thing that did not happen, the not-yet that opens a clause ("não deu
+#: tempo", "não rolou", "ainda não", "no time", "no hubo tiempo"). What a told Ruth 1
+#: negates is the story's own — nobody, nothing, without, what it does not say — and none
+#: of that is the team declining. "No tempo dos juízes" is how the passage opens, and the
+#: Portuguese "no" is not the Spanish or English one: the time that was not is read behind
+#: a negation, never behind a preposition.
 _DENIES_THE_REHEARSAL = re.compile(
     r"\b(?:nao|nunca|jamais|sem|not|never|no|didn'?t|don'?t|couldn'?t|can'?t|cannot|won'?t)"
     r"(?:\s+\w+){0,3}\s+(?:ensai|ensay|pratic|practi[cs]|recont|rehears|retell)\w*"
-    r"|\b(?:nao|nunca)\s+(?:fizemos|fiz|conseguimos|consegui|terminamos|acabamos)\b"
-    r"|\ba\s+gente\s+(?:nao|nunca)\s+(?:fez|conseguiu|terminou|acabou)\b"
-    r"|\bno\s+(?:hicimos|pudimos|alcanzamos|terminamos|acabamos)\b"
-    r"|\bwe\s+(?:did\s+not|didn'?t|could\s+not|couldn'?t|have\s+not|haven'?t)\b"
+    r"|\b(?:nao|nunca|no)\s+(?:ainda\s+|todavia\s+)?(?:fizemos|fiz|conseguimos|consegui"
+    r"|tivemos|tive|pudemos|pude|terminamos|acabamos|chegamos"
+    r"|hicimos|pudimos|tuvimos|alcanzamos|logramos)\b"
+    r"|\b(?:a\s+gente|nos|eu|nosotros|yo)\s+(?:ainda\s+|todavia\s+)?(?:nao|nunca|jamais|no)\b"
+    r"|\b(?:we|i)\s+(?:still\s+)?(?:did\s+not|didn'?t|could\s+not|couldn'?t|have\s+not"
+    r"|haven'?t|had\s+no|never)\b"
+    r"|\b(?:nao|nunca)\s+(?:deu|rolou)\b"
+    r"|\b(?:nao|not|didn'?t|sem)\b(?:\s+\w+){0,2}\s+(?:tempo|time)\b"
+    r"|\bno\s+(?:hubo|dio|tuvimos|tenemos|hay)\s+tiempo\b"
+    r"|\bno\s+time\b"
+    r"|^(?:ainda\s+nao|todavia\s+no|aun\s+no|not\s+yet)\b"
 )
 
 
