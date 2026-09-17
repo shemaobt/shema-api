@@ -60,6 +60,9 @@ VENDORED = {
     "prompts/fail_safe_utterances.md": (
         "app/services/internalization_room/prompts/vendor/fail_safe_utterances.md"
     ),
+    "prompts/golden_judge_system_prompt.md": (
+        "app/services/internalization_room/prompts/vendor/golden_judge_system_prompt.md"
+    ),
     "golden/sessions/J01-frame-before-elicit.json": (
         "golden/sessions/J01-frame-before-elicit.json"
     ),

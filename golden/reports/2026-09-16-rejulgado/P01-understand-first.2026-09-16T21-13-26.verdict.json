@@ -1,0 +1,23 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 9,
+      "severity": "minor",
+      "kind": "incomplete_check",
+      "quote": "No que vocês me contaram de volta, apareceu a fome, os juízes, os quatro nomes, Moabe, Orfa e Rute, os uns dez anos, e as três mortes, na ordem certa.",
+      "why": "A recontagem inteira da equipe deixou de fora Belém de Judá, os efrateus e o morar como estrangeiros; o guia nomeou honestamente a falta do primeiro 'ficou', mas não nomeou essas outras lacunas nem mandou a equipe ensaiar de novo antes de gravar."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um par na mesa: cada turno respondeu de verdade ao que a equipe disse, e todo pedido de entender foi atendido abrindo a parte com mais detalhe, na ordem da história, sem nunca redirecionar nem repetir. Manteve-se inteiramente dentro do que a passagem conta — recusou com firmeza e calor a causa divina da morte de Elimeleque e o pareamento de Rute com Malom, e levantou os silêncios (Deus ausente, sem choro, sem criança, sem pareamento) como coisa de propósito, sem preenchê-los. As duas recontagens foram checadas com honestidade, inclusive a ordem 'filhos primeiro, marido depois' e a rima do 'ficou'. A única fraqueza foi no turno 9: a recontagem inteira omitiu Belém de Judá, os efrateus e o morar como estrangeiros, e o guia não nomeou essas faltas nem mandou ensaiar de novo, deixando a equipe encerrar com o ensaio ainda não inteiro. O registro foi simples e direto, sem 'mapa', sem bênção, e o fechamento mandou gravar."
+}

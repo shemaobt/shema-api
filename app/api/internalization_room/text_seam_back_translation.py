@@ -44,7 +44,11 @@ from app.services.internalization_room.back_translation import (
     Finding,
     FindingKind,
 )
-from app.services.internalization_room.takes import declare_rehearsal_parts, declared_parts_by_key
+from app.services.internalization_room.takes import (
+    declare_rehearsal_parts,
+    declared_parts_by_key,
+    takes_of,
+)
 
 router = APIRouter()
 
@@ -160,6 +164,7 @@ async def play_a_round(
             state=state,
             told=told,
             retired=await room.retired_segments(db, session.id),
+            takes=await takes_of(db, session.id),
             settings=get_settings(),
         )
         await room.save_the_spoken_verdict(

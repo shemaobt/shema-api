@@ -1,0 +1,73 @@
+[turn 0]
+TEAM: [A sessão acabou de começar. A equipe abriu a passagem P01 e está à mesa, pronta para começar. Fale primeiro.]
+GUIDE (pass): Olá, equipe. Eu sou o Facilitador Digital. Vou estar aqui na mesa com vocês, pensando junto, para a gente entender bem essa passagem antes de vocês traduzirem.
+
+Hoje começamos o livro de Rute. Bem no começo. A história abre no tempo dos juízes, e vem uma fome na terra. Uma família sai de Belém de Judá e vai morar em Moabe, uma terra estrangeira. São quatro pessoas: o pai, a mãe e dois filhos. Lá em Moabe, o pai morre. Os dois filhos se casam com mulheres de Moabe. Passam mais ou menos dez anos. E aí os dois filhos morrem também.
+
+A história começa grande, no tempo de um povo inteiro, e vai fechando, fechando, até sobrar uma mulher só, longe de casa. A família vai ficando menor a cada verso.
+
+E o jeito de contar é seco, direto. Quem conta não para pra chorar. Não fala o que ninguém sente por dentro. E não diz que Deus fez nada disso. É o silêncio que carrega o peso. A pergunta que fica no ar é: vai sobrar alguma coisa dessa família?
+
+Vamos entrar na primeira cena.
+
+A história diz: no tempo em que os juízes governavam Israel, veio uma fome na terra. Era um tempo bagunçado, sem um líder firme. Um homem de Belém de Judá saiu com a esposa e os dois filhos, para morar um tempo nos campos de Moabe. Morar como estrangeiro, de passagem, não pra ficar de vez.
+
+Os nomes: o homem era Elimeleque. A esposa, Noemi. Os filhos, Malom e Quiliom. Eles eram efrateus de Belém de Judá — esse era o clã antigo deles.
+
+E tem um detalhe: Belém quer dizer "casa do pão". E justo lá não tinha pão.
+
+Falem um pouco entre vocês sobre essa cena. O que vocês estão entendendo até aqui? Tem alguma parte que ficou confusa — quem são essas pessoas, de onde saíram, pra onde foram? Quando quiserem, me contem.
+
+[turn 1]
+TEAM: Bom dia. Somos a equipe Terena: o Jean, o Daniel e o Suzuki. Pode continuar.
+GUIDE (pass): Bom dia, Jean, Daniel e Suzuki. Que bom ter vocês aqui.
+
+Antes de eu continuar, quero ouvir vocês. Vamos ficar só nessa primeira cena por enquanto: a fome, e a família que sai de Belém de Judá e vai pra Moabe.
+
+Conversem um pouco entre vocês, do jeito de vocês. Me digam depois, em português: o que aconteceu na terra, e o que essa família fez por causa disso? Se alguma parte não ficou clara, me perguntem, que eu conto de novo.
+
+[turn 2]
+TEAM: Entendemos o começo. Vamos ensaiar essa primeira parte entre nós.
+GUIDE (pass): Ótimo. Então vão em frente.
+
+Ensaiem essa primeira cena juntos, na língua de vocês. Podem usar as mãos, se levantar, mostrar a família saindo de casa e chegando em Moabe. Contem do jeito que vocês contariam pra alguém da comunidade.
+
+Quando terminarem, voltem aqui e me contem, em português, o que vocês disseram. Eu fico esperando.
+
+[turn 3]
+TEAM: [A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma palavra chegou até você.]
+GUIDE (fail_safe): Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?
+
+[turn 4]
+TEAM: Pronto. Em português: no tempo em que os juízes mandavam, faltou comida na terra. Um homem de Belém de Judá foi morar em Moabe com a esposa e os dois meninos. Ele era Elimeleque, ela Noemi, os meninos Malom e Quiliom, gente de Efrata, de Belém.
+GUIDE (pass): Muito bem. No que vocês me contaram de volta, está tudo o que a história traz nessa parte: o tempo dos juízes, a fome na terra, o homem de Belém de Judá, a esposa, os dois filhos, os quatro nomes, e o clã de Efrata. Nada foi acrescentado — isso é bom.
+
+Só uma coisa eu quero conferir. Vocês disseram que ele "foi morar em Moabe". A história diz que eles foram morar lá *como estrangeiros, de passagem* — um abrigo por um tempo, não uma mudança pra ficar de vez.
+
+Esse jeito de morar, de estrangeiro que está só de passagem, entrou no ensaio na língua de vocês? Ou ficou só "foi morar"? Me contem como ficou.
+
+[turn 5]
+TEAM: E a próxima parte?
+GUIDE (pass): Já vamos pra próxima parte, prometo. Só quero fechar essa com uma coisa pequena.
+
+Vocês disseram que ele "foi morar em Moabe". A história diz que eles foram morar lá como estrangeiros, só de passagem — um abrigo por um tempo, não pra ficar de vez.
+
+No ensaio na língua de vocês, esse jeito de morar apareceu? Ou ficou só "foi morar"? Me digam como ficou, e aí seguimos.
+
+[turn 6]
+TEAM: Espera, espera. Antes disso: a Noemi ficou sozinha ou ficou com os filhos quando o marido morreu?
+GUIDE (pass): Boa pergunta. Vamos ver o que a história diz.
+
+Lá em Moabe, Elimeleque morre. E a história diz assim: Elimeleque, o marido de Noemi, morreu — e Noemi ficou com os dois filhos, Malom e Quiliom. Então ela não ficou sozinha nessa hora. Ficou ela com os dois meninos, longe de casa.
+
+E repara no jeito de contar. É uma frase só. A história não diz por que ele morreu, não diz quem causou a morte. Não fala de choro, não fala de enterro, não fala de luto. Só diz que ele morreu e que ela ficou com os filhos. Esse silêncio faz parte da história.
+
+Ficou claro pra vocês essa parte, ou querem que eu conte de novo?
+
+[turn 7]
+TEAM: Tá. Então ela ficou com os dois filhos. Pode seguir.
+GUIDE (pass): Certo. Então essa é a segunda cena: Elimeleque, o marido de Noemi, morre em Moabe, e Noemi fica com os dois filhos. Uma frase só, sem choro, sem enterro, sem dizer por quê.
+
+Agora ensaiem essa cena juntos, na língua de vocês. Pode ser bem curta, do jeito que a história é. Quando terminarem, voltem e me contem, em português, o que vocês disseram.
+
+Ah, e aquela ideia de que eles foram pra Moabe só de passagem, como estrangeiros — guardem ela com vocês. A gente pode voltar nisso depois.

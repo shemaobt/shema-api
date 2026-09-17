@@ -10,10 +10,11 @@ stops counting and names the new one as what took its place, exactly as a correc
 did through the replace route (ADR 0004). The chunks route does it too, because the tablet
 sends the stretch's own address — take, start and end — back with the flag on.
 
-How many times a stretch has been told is a column on the stretch row. A version that arrives
-with a telling-back carries the count of the row it replaces plus one; a version that arrives
-without one — the mother tongue re-recorded, which is answered by telling it again in a second
-call — carries the count across untouched, because nothing was told into it. A telling whose
+How many times a stretch has been told is a column on the stretch row. A version carries the
+count of the row it replaces plus one. A version arriving with no telling-back carried it
+across untouched instead, because nothing was told into it; that was the mother tongue
+re-recorded, and it existed only while the room had a correction per stretch — every version is
+a telling now (ADR 0025), so the count is always one more. A telling whose
 transcript came back empty captures no row at all, so it is counted in place on the row that is
 standing: during a transcriber outage every attempt comes back empty, and that is precisely the
 case Marcia named. The pieces of a divided stretch keep the count for the reason they already

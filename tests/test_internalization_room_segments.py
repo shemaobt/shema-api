@@ -30,7 +30,7 @@ from app.services.internalization_room.back_translation import analyse_telling_b
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.takes import store_take
 from app.services.platform.storage import StoredObject
-from tests.room_harness import heard_every_part, press_terminei
+from tests.room_harness import a_piece_still_to_be_told, heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -283,6 +283,8 @@ async def test_the_order_the_team_told_in_survives_a_later_write(
         take_id=take.id,
         starts_ms=9000,
         ends_ms=21000,
+        bridge_take_id="retro-de-novo",
+        transcript="segundo, contado outra vez",
         replaces=middle,
     )
 
@@ -358,122 +360,7 @@ async def test_a_new_version_retires_the_previous_one_without_erasing_it(
 
 
 # ---------------------------------------------------------------------------
-# 5. New native audio never sits beside the old translation
-# ---------------------------------------------------------------------------
-
-
-async def test_a_re_recorded_native_stretch_leaves_no_old_translation_behind(
-    db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """**The case that carries the product decision.**
-
-    Correcting only the mother-tongue audio does not exist: touching it always means the
-    explanation in the bridge language is redone. So there must be no state in which the
-    analyst reads the new recording together with the explanation of the old one.
-
-    Two halves, and both are load-bearing: replacing the native audio leaves the stretch with
-    nothing told back about it, and asking to replace the native audio *while handing over a
-    telling-back* is refused outright rather than quietly accepted.
-
-    Refusing every replacement that carries an explanation would be the wrong rule and is
-    tested against below: redoing only the explanation, over audio that did not move, is the
-    product's other correction and has to go on working.
-    """
-    session = await _room_session(db_session)
-    first_take = await _rehearsal(db_session, session, b"o primeiro ensaio")
-    retro = await store_take(
-        db_session,
-        session_id=session.id,
-        device_id=DEVICE,
-        project_id=session.project_id,
-        pericope=session.pericope,
-        kind=IRTakeKind.RETRO,
-        scope=session.pericope,
-        audio=b"a equipe explicou em portugues",
-    )
-    second_take = await _rehearsal(db_session, session, b"o ensaio regravado")
-
-    told = await service.capture_segment(
-        db_session,
-        session,
-        take_id=first_take.id,
-        starts_ms=0,
-        ends_ms=9000,
-        bridge_take_id=retro.id,
-        transcript="a explicação da gravação velha",
-    )
-    regravado = await service.capture_segment(
-        db_session,
-        session,
-        take_id=second_take.id,
-        starts_ms=0,
-        ends_ms=11000,
-        replaces=told,
-    )
-
-    current = await service.final_segments(db_session, session.id)
-
-    assert [one.id for one in current] == [regravado.id]
-    assert current[0].take_id == second_take.id
-    assert current[0].transcript is None, (
-        "o nativo novo não pode chegar acompanhado da explicação do nativo velho"
-    )
-    assert current[0].bridge_take_id is None, (
-        "nem do áudio da explicação velha, que é a mesma coisa dita de outro jeito"
-    )
-
-    import sys
-
-    seen: dict[str, str] = {}
-
-    async def agent(*, system_prompt: str, user_content: str, **_: Any) -> str:
-        seen["prompt"] = system_prompt
-        return '{"evidence_sufficient": true, "findings": []}'
-
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.back_translation"], "call_agent", agent
-    )
-    await analyse_telling_back(
-        segments=current,
-        scope=PASSAGE,
-        pericope_num=PASSAGE,
-        analyst_prompt=ANALYST,
-        settings=_settings(),
-    )
-
-    assert "a explicação da gravação velha" not in seen["prompt"], (
-        "e o estado proibido é sobre o que o analista lê, não sobre o que a linha guarda"
-    )
-
-    third_take = await _rehearsal(db_session, session, b"o ensaio regravado outra vez")
-    with pytest.raises(ValidationError):
-        await service.capture_segment(
-            db_session,
-            session,
-            take_id=third_take.id,
-            starts_ms=0,
-            ends_ms=12000,
-            transcript="a explicação da gravação velha",
-            replaces=regravado,
-        )
-
-    redito = await service.capture_segment(
-        db_session,
-        session,
-        take_id=second_take.id,
-        starts_ms=0,
-        ends_ms=11000,
-        transcript="a explicação refeita, sobre o mesmo áudio",
-        replaces=regravado,
-    )
-
-    assert redito.transcript == "a explicação refeita, sobre o mesmo áudio", (
-        "refazer só a explicação, sobre áudio que não se moveu, é a outra correção do produto"
-    )
-
-
-# ---------------------------------------------------------------------------
-# 6. A stretch knows what it was divided out of
+# 5. A stretch knows what it was divided out of
 # ---------------------------------------------------------------------------
 
 
@@ -627,7 +514,6 @@ async def test_a_stretch_that_was_divided_cannot_be_replaced_as_a_unit(
     """
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
-    other = await _rehearsal(db_session, session, b"o ensaio regravado")
 
     whole = await service.capture_segment(
         db_session, session, take_id=take.id, starts_ms=0, ends_ms=20000, transcript="o todo"
@@ -638,26 +524,29 @@ async def test_a_stretch_that_was_divided_cannot_be_replaced_as_a_unit(
 
     with pytest.raises(ValidationError):
         await service.capture_segment(
-            db_session, session, take_id=other.id, starts_ms=0, ends_ms=21000, replaces=whole
+            db_session, session, take_id=take.id, starts_ms=0, ends_ms=20000, replaces=whole
         )
 
     assert [one.id for one in await service.final_segments(db_session, session.id)] == [head.id]
 
 
-async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
+async def test_a_piece_cut_off_and_not_yet_told_is_not_read_as_something_told(
     db_session: AsyncSession, bucket: MemoryStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A re-recorded stretch has nothing told back about it yet, and nothing is not a text.
+    """A piece the team cut has nothing told back about it yet, and nothing is not a text.
 
     It reached the analyst as a literal ``None`` — a line the team never said, which the
-    analyst compares against the map and can raise a finding on. The stretch is real and the
+    analyst compares against the map and can raise a finding on. The piece is real and the
     tablet must still see it; what it has no business being is evidence.
+
+    Cutting is the one verb left that leaves a stretch standing with nothing said on it, so the
+    rule is measured over that: the counts below are what a cut produces, and what carries the
+    rule is that the untold piece is absent from what the analyst reads.
     """
     import sys
 
     session = await _room_session(db_session)
     take = await _rehearsal(db_session, session, b"o ensaio")
-    other = await _rehearsal(db_session, session, b"o ensaio regravado")
 
     kept = await service.capture_segment(
         db_session,
@@ -667,18 +556,20 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
         ends_ms=9000,
         transcript="Noemi mandou Rute voltar.",
     )
-    waiting = await service.capture_segment(
+    whole = await service.capture_segment(
         db_session, session, take_id=take.id, starts_ms=9000, ends_ms=21000, transcript="a refazer"
     )
-    await service.capture_segment(
-        db_session, session, take_id=other.id, starts_ms=0, ends_ms=12000, replaces=waiting
-    )
+    waiting = await a_piece_still_to_be_told(db_session, session, whole)
 
     current = await service.final_segments(db_session, session.id)
     readable = service.told_back(current)
 
-    assert len(current) == 2, "o trecho à espera continua sendo uma unidade para o tablet"
-    assert [one.id for one in readable] == [kept.id]
+    assert len(current) == 3, "a peça por contar continua sendo uma unidade para o tablet"
+    assert len(readable) == 2
+    assert waiting.id not in [one.id for one in readable], (
+        "o que a equipe ainda não contou não é o que o analista lê"
+    )
+    assert kept.id in [one.id for one in readable]
 
     seen: dict[str, str] = {}
 
@@ -686,7 +577,7 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
         seen["prompt"] = system_prompt
         return (
             '{"evidence_sufficient": true, "findings": '
-            '[{"kind": "missing", "chunk": 2, "note": "x"}]}'
+            '[{"kind": "missing", "chunk": 3, "note": "x"}]}'
         )
 
     monkeypatch.setattr(
@@ -705,5 +596,5 @@ async def test_a_stretch_waiting_to_be_told_again_is_not_read_as_something_told(
     )
     assert analysis is not None
     assert analysis.findings[0].segment_id is None, (
-        "e um achado não pode cair num trecho que ainda não foi contado"
+        "e o achado na posição onde a peça por contar estaria não cai nela: ela não foi lida"
     )

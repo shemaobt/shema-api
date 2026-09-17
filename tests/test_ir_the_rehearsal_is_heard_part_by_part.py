@@ -59,6 +59,11 @@ from tests.room_harness import (
 #: blocker on every session refused for want of a report, because the check itself waits.
 NEVER_ANALYSED = "telling_back_never_analysed"
 
+#: A part recorded again starts the check over, because the passage the team is standing on is
+#: not the one the analyst read (ADR 0023). It stands beside the playback blocker until the
+#: team presses `terminei` again.
+NOT_CHECKED = "telling_back_not_checked"
+
 
 @pytest.fixture(autouse=True)
 def analyst(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -135,8 +140,9 @@ async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
     assert heard["readiness"] == "ready_for_refine"
 
     fresh_a = await record_the_part_again(db_session, session, a, sha256="e" * 64)
+    await tell_back_about(db_session, session, fresh_a, bridge_take_id="retro-de-novo")
 
-    assert await release_blockers(db_session, session) == [PLAYBACK_BLOCKER]
+    assert await release_blockers(db_session, session) == [NOT_CHECKED, PLAYBACK_BLOCKER]
     assert unheard_parts(
         await stored_telling_back(db_session, session), sorted([fresh_a.id, b.id, c.id, d.id])
     ) == [fresh_a.id], "only the part the team recorded again is unheard"
@@ -159,6 +165,7 @@ async def test_a_replaced_part_heard_again_confirms_without_the_others_replayed(
     )
 
     fresh_a = await record_the_part_again(db_session, session, a, sha256="e" * 64)
+    await tell_back_about(db_session, session, fresh_a, bridge_take_id="retro-de-novo")
     await _finish(
         client,
         session.id,
@@ -186,6 +193,7 @@ async def test_an_entry_for_a_recording_the_stretches_no_longer_name_is_ignored(
     )
 
     fresh_a = await record_the_part_again(db_session, session, a, sha256="e" * 64)
+    await tell_back_about(db_session, session, fresh_a, bridge_take_id="retro-de-novo")
     stored = await stored_telling_back(db_session, session)
 
     assert unheard_parts(stored, sorted([fresh_a.id, b.id, c.id, d.id])) == [fresh_a.id], (
