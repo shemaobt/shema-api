@@ -35,7 +35,7 @@ def sits_at(segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int) -> b
     )
 
 
-def refuse_a_slice_that_is_not_this_stretchs(
+def refuse_a_slice_the_stretch_does_not_sit_on(
     segment: IRSegment, take_id: str, starts_ms: int, ends_ms: int
 ) -> None:
     """A version of a stretch sits where that stretch sits.
@@ -58,6 +58,26 @@ def refuse_a_slice_that_is_not_this_stretchs(
         raise ValidationError(
             f"The slice from {starts_ms} ms to {ends_ms} ms of {take_id} is not this stretch's: "
             f"it sits from {segment.starts_ms} ms to {segment.ends_ms} ms of {segment.take_id}"
+        )
+
+
+def refuse_a_version_that_tells_nothing(transcript: str | None) -> None:
+    """A **Correction** is a telling, so a version of a stretch arrives with words.
+
+    A version with none said nothing into the stretch it replaces: it would stand in its place
+    carrying the audio it already had and no telling at all, which is the stretch going
+    backwards. The state existed to describe the mother tongue re-recorded, and that is answered
+    by recording the **Part** again (ADR 0023, ADR 0025).
+
+    Refused rather than defaulted. A default is overridden by the next caller who has no words
+    in hand and no reason to think twice; a refusal is what makes the state unreachable. What
+    leaves a stretch waiting to be told is the team cutting one in two, where each piece is born
+    with nothing said on it and `parent` says so.
+    """
+    if transcript is None:
+        raise ValidationError(
+            "A version of a stretch is the stretch told again, so it arrives with a telling: "
+            "this one carries none"
         )
 
 
@@ -100,16 +120,14 @@ async def capture_segment(
     final unit. ``replaces`` makes it a new version of one position: the earlier row stops
     counting and names this one as what took its place, and stays exactly where it is.
 
-    **The count of tellings follows the chain, and only a telling adds to it.** A version that
-    arrives with a telling-back is one more telling of that stretch; one that arrives without
-    carries the count across untouched, because nobody told anything into it. Counting the
-    supersession instead of the telling would reach three on the team's second telling and ask
-    for a person a whole telling early. The pieces of a division keep the count for the reason
-    they keep the pass: born on the default, a stretch already told twice would hand the team a
-    fresh count on each piece.
+    **The count of tellings follows the chain, and a version is always one more.** Every version
+    carries a telling — `refuse_a_version_that_tells_nothing` — so there is no supersession with
+    nothing said into it to carry the count across untouched. The pieces of a division keep the
+    count for the reason they keep the pass: born on the default, a stretch already told twice
+    would hand the team a fresh count on each piece.
 
-    **A version keeps the slice of the stretch it replaces**, whether or not it brings words:
-    `refuse_a_slice_that_is_not_this_stretchs`. A stretch is one slice of one recording, so a
+    **A version keeps the slice of the stretch it replaces**:
+    `refuse_a_slice_the_stretch_does_not_sit_on`. A stretch is one slice of one recording, so a
     version naming other audio is not another telling of it. The recording the team performed
     is the one that travels (ADR 0025), and a recording that was wrong is answered by recording
     the **Part** again, which is an upload and not a version.
@@ -130,11 +148,12 @@ async def capture_segment(
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
 
     if replaces is not None:
-        refuse_a_slice_that_is_not_this_stretchs(replaces, take_id, starts_ms, ends_ms)
+        refuse_a_slice_the_stretch_does_not_sit_on(replaces, take_id, starts_ms, ends_ms)
+        refuse_a_version_that_tells_nothing(transcript)
         await refuse_a_stretch_that_is_not_a_unit(db, session.id, replaces)
         parent_id = replaces.parent_id
         ordinal = replaces.ordinal
-        tellings = replaces.tellings + 1 if transcript is not None else replaces.tellings
+        tellings = replaces.tellings + 1
     elif parent is not None:
         parent_id = parent.id
         ordinal = await _next_ordinal(db, session.id, parent_id)
@@ -331,10 +350,10 @@ async def final_segments(db: AsyncSession, session_id: str) -> list[IRSegment]:
 def told_back(segments: list[IRSegment]) -> list[IRSegment]:
     """Of those stretches, the ones the team has actually explained in the bridge language.
 
-    A stretch whose mother-tongue recording was just replaced is a real unit and the tablet
-    has to see it, but it carries nothing the team said — and nothing is not a text. It
-    reached the analyst as a literal ``None``, a line nobody uttered, which the analyst then
-    compared against the map and could raise a finding on.
+    A piece the team cut out of another stretch is a real unit and the tablet has to see it,
+    but it carries nothing the team said — and nothing is not a text. It reached the analyst as
+    a literal ``None``, a line nobody uttered, which the analyst then compared against the map
+    and could raise a finding on.
 
     Kept separate from `final_segments` because the two questions are different: which
     stretches count, and which of them are evidence. Both the numbering the analyst is given
@@ -430,9 +449,10 @@ async def retire_the_segments_of(
     could outlive its own parent: a row still counting whose parent is abandoned, which the
     reading walks from the top and never reaches, so it would vanish from the packet, the check
     block, the analyst's list and the listening gate while the row went on saying it counts.
-    Since a version keeps the slice of the stretch it replaces (ADR 0025), every descendant now
-    sits on its parent's take and the two readings agree; the walk is kept because it is the one
-    that follows from the rule, not from what the rows happen to hold.
+    A version now keeps the slice of the stretch it replaces (ADR 0025), so a row written from
+    here on sits on its parent's take and the two readings agree. The walk stays because the
+    rows ADR 0023 tolerates as history do not: one written while a version could move onto
+    another recording still sits there, and its part is the one it was cut from.
 
     The transaction is left open, because the retired rows and the telling-back state they empty
     are one fact about one upload: committed apart, a failure between them leaves the room
