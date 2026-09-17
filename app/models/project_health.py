@@ -175,6 +175,11 @@ class AdminDashboardResponse(BaseModel):
 class TeamReportResponse(BaseModel):
     id: str
     interview_id: str
+    #: Carried from the interview, not from the model's reading of the transcript. The team
+    #: typed these when they began; a report that cannot name the team it is addressed to
+    #: reads as a form letter, and no extraction should be able to lose them.
+    project_name: str
+    team_name: str
     language: PHLanguage
     team_report: TeamReport
     created_at: datetime

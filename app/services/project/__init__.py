@@ -1,10 +1,12 @@
 from app.services.project.can_access_project import can_access_project
 from app.services.project.create_project import create_project
+from app.services.project.facilitates_project import facilitates_project
 from app.services.project.get_project_by_id import get_project_by_id
 from app.services.project.get_project_or_404 import get_project_or_404
 from app.services.project.grant_organization_access import grant_organization_access
 from app.services.project.grant_user_access import grant_user_access
 from app.services.project.list_all_projects import list_all_projects
+from app.services.project.list_facilitated_project_ids import list_facilitated_project_ids
 from app.services.project.list_project_organization_access import (
     list_project_organization_access,
 )
@@ -22,15 +24,18 @@ from app.services.project.revoke_user_access import revoke_user_access
 from app.services.project.update_project import update_project
 from app.services.project.update_project_location import update_project_location
 from app.services.project.update_user_access_role import update_user_access_role
+from app.services.project.validate_project_role import validate_project_role
 
 __all__ = [
     "can_access_project",
     "create_project",
+    "facilitates_project",
     "get_project_by_id",
     "get_project_or_404",
     "grant_organization_access",
     "grant_user_access",
     "list_all_projects",
+    "list_facilitated_project_ids",
     "list_project_organization_access",
     "list_project_user_access",
     "list_projects_accessible_to_user",
@@ -42,4 +47,5 @@ __all__ = [
     "update_project",
     "update_project_location",
     "update_user_access_role",
+    "validate_project_role",
 ]

@@ -1,0 +1,108 @@
+# Shemá — the two people directories (BE-13 · OBT-402)
+#
+# The org chart and the intercessor network. They are two directories of human
+# beings and deliberately not one model: docs/shema.md §5.7 forbids a reference
+# between them in either direction, so the network is never joined to a role and
+# a seat never points at a network contact.
+#
+# Read access is narrower than authentication, and the rule is:
+#   GET /regions                    any Shemá member — the organisation's own
+#                                   directory of offices, names only, no contact
+#   /regions/role-changes           coordinator, and only their regions
+#   /regions/{key}/team (GET, PUT)  coordinator, and only their region
+#   everything under /prayer/...    resourceCircle, and nobody else
+#
+# Before running: seed the app and its roles, then grant. An account may hold
+# more than one Shemá role and here it needs two, because the two directories
+# answer to two different roles.
+#   uv run python scripts/seed_apps_roles.py
+#   uv run python scripts/grant_app_role.py shema.local@test.com shema coordinator
+# The region scope is the module's own table and has no route yet:
+#   app/services/shema/set_region_scope.py, called by an operator.
+
+@baseUrl = http://localhost:8000
+@accessToken = PASTE_FROM_AUTH_LOGIN
+
+### The chart — seven regions, three seats each, assigned or not
+GET {{baseUrl}}/api/shema/regions
+Authorization: Bearer {{accessToken}}
+
+### One region's seats, with the account behind each — what the editor loads
+GET {{baseUrl}}/api/shema/regions/asia/team
+Authorization: Bearer {{accessToken}}
+
+### Put three names in three seats. A seat left empty is a seat cleared.
+# The answer is {outcome: {changed, filled, cleared}, changes: RoleChange[]} —
+# a save that changed nothing says so, which a 204 could not carry.
+# `accounts` is optional and per seat; an account sent beside a new name belongs
+# to the new holder, and a name change with no account beside it clears the old.
+PUT {{baseUrl}}/api/shema/regions/asia/team
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "team": {"coordinator": "Ana Lima", "obtLab": "Bruno Sá", "resourceCircle": ""},
+  "accounts": {"coordinator": "PASTE_A_REAL_USER_ID"}
+}
+
+### The audit trail — the one surface that shows somebody who left a seat
+GET {{baseUrl}}/api/shema/regions/role-changes
+Authorization: Bearer {{accessToken}}
+
+# --- the network. resourceCircle only, from here down. ------------------------
+
+### The directory — everyone who consented to be listed
+# No contact string anywhere in the body: contactChannel and contactHint say how
+# somebody is reached and which of two people with one name this is, and are
+# worth nothing in bulk. withheldCount is how many the consent gate removed.
+GET {{baseUrl}}/api/shema/prayer/intercessors
+Authorization: Bearer {{accessToken}}
+
+### Add a contact — the basis is required, and the two rows are one transaction
+# A person cannot be stored without a recorded basis. docs/shema.md §10 item 8
+# asks what consent was given and how it is evidenced; this is where it lands.
+POST {{baseUrl}}/api/shema/prayer/intercessors
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Maria Santos",
+  "country": "BR",
+  "contact": "maria.santos@example.org",
+  "sensitiveCountry": false,
+  "consentBasis": "verbal, at the 2026 regional gathering"
+}
+
+### Consent to being listed internally — which is not consent to an export
+PUT {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID/consents/directory
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"basis": "asked on the call of 3 March, said yes to the internal list"}
+
+### Consent to appearing in something that leaves the organisation
+PUT {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID/consents/partner-export
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"basis": "signed form on file, 2026-04-02"}
+
+### Withdraw one consent — the row is deleted, never flagged
+# Withdrawing `network` erases the person: it was the basis the row existed on.
+DELETE {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID/consents/directory
+Authorization: Bearer {{accessToken}}
+
+### One contact, for one person. The server logs the read.
+GET {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID/contact
+Authorization: Bearer {{accessToken}}
+
+### Edit. addedAt has no field here and survives.
+PATCH {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{"contact": "+55 11 98765-4321"}
+
+### Erase — the row and its consents leave storage. No tombstone.
+DELETE {{baseUrl}}/api/shema/prayer/intercessors/PASTE_ID
+Authorization: Bearer {{accessToken}}

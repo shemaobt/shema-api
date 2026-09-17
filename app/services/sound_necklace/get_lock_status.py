@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
 from app.db.models.sound_necklace import SnSession
+from app.utils.stored_time import as_utc
 
 
 @dataclass(frozen=True)
@@ -28,16 +29,6 @@ def holder_name(display_name: str | None, email: str) -> str:
     string, so the email stands in rather than the screen reading "None".
     """
     return display_name or email
-
-
-def as_utc(when: datetime) -> datetime:
-    """Read a stored expiry back as an instant.
-
-    Postgres hands back an aware datetime and SQLite a naive one, so without this the
-    wire would carry an offset in production and none under test — and the SPA reads
-    expires_at as an instant either way.
-    """
-    return when.replace(tzinfo=UTC) if when.tzinfo is None else when
 
 
 async def get_lock_status(db: AsyncSession, session_id: str) -> LockState:
