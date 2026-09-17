@@ -170,8 +170,8 @@ _Avoid_: has an address, Aponta um trecho
 ### Correction and verification
 
 **Correction**:
-The retaking of exactly one stretch, at the place the current finding points to, to answer it. Detected because only one position of the list changed.
-_Avoid_: mend (the app's word for the same gesture), fix, retell (the count of tellings, not this gesture), Correção
+The retelling of exactly one stretch, in the bridge language and over the recording it already sits in, at the place the current finding points to. Detected because only one position of the list changed; it always carries audio, and no rule counts how many a stretch may have.
+_Avoid_: mend (the app's word for the same gesture), fix, retell (the count of tellings, not this gesture), Correção, mother-tongue correction (retired: a recording error is answered by recording the **Part** again), rebuild (retired: the passage the server assembled around a correction)
 
 **Retell**:
 Each new telling of the same stretch after a finding; in the room's Portuguese, *traduzir de novo*. The third telling of a stretch makes it a hard stretch: a warning, never a cap.
@@ -202,11 +202,6 @@ A superseded stretch that never got a replacement, which is what starting a tell
 over leaves behind on every stretch of a session at once, and what recording a **Part** again
 leaves behind on that part's stretches alone.
 _Avoid_: erased, discarded, cancelled, Abandonada
-
-**Rebuild**:
-A new passage take assembled around a stretch that was recorded again, which every stretch
-of the recording it replaces is then re-pointed at.
-_Avoid_: version, merge, recomposition, Reconstrução
 
 ### Verdict closings
 
@@ -244,7 +239,7 @@ _Avoid_: approval (the gesture, not the record), finalization, export, snapshot,
 
 **Version**:
 The number of a release within its pericope and project, from one, never reused.
-_Avoid_: revision, pass (the count of tellings of a stretch), rebuild (a new passage take), v-number
+_Avoid_: revision, pass (the count of tellings of a stretch), v-number
 
 **Packet**:
 The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
