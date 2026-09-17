@@ -1,4 +1,5 @@
 from app.services.project.can_access_project import can_access_project
+from app.services.project.count_project_team_sizes import count_project_team_sizes
 from app.services.project.create_project import create_project
 from app.services.project.facilitates_project import facilitates_project
 from app.services.project.get_project_by_id import get_project_by_id
@@ -21,6 +22,10 @@ from app.services.project.list_projects_for_user import list_projects_for_user
 from app.services.project.list_user_project_roles import list_user_project_roles
 from app.services.project.revoke_organization_access import revoke_organization_access
 from app.services.project.revoke_user_access import revoke_user_access
+from app.services.project.serialize_project_responses import (
+    serialize_project,
+    serialize_projects,
+)
 from app.services.project.update_project import update_project
 from app.services.project.update_project_location import update_project_location
 from app.services.project.update_user_access_role import update_user_access_role
@@ -28,6 +33,7 @@ from app.services.project.validate_project_role import validate_project_role
 
 __all__ = [
     "can_access_project",
+    "count_project_team_sizes",
     "create_project",
     "facilitates_project",
     "get_project_by_id",
@@ -44,6 +50,8 @@ __all__ = [
     "list_user_project_roles",
     "revoke_organization_access",
     "revoke_user_access",
+    "serialize_project",
+    "serialize_projects",
     "update_project",
     "update_project_location",
     "update_user_access_role",
