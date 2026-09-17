@@ -187,6 +187,7 @@ async def test_a_fixed_line_spoken_through_the_route_is_recorded_with_its_scene(
 ) -> None:
     the_room_hears(["desculpe, não consigo", "desculpe, não consigo"])
     session = await create_session(db_session, language="pt", pericope=P)
+    await append_exchange(db_session, session, team_utterance="a fome", guide_response="…")
 
     answered = await _post_a_turn(client, session.id)
     assert answered.status_code == 200, answered.text[:300]
