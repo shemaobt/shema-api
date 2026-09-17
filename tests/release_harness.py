@@ -55,6 +55,7 @@ from app.services.internalization_room.sessions import (
     report_playback,
     save_comprehension,
 )
+from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
     make_language,
     make_project,
@@ -148,11 +149,23 @@ def supported_comprehension(pericope: str, *, carry_one: bool = False) -> Compre
     )
 
 
+async def the_rehearsal_of(db: AsyncSession, session: IRSession) -> IRTake:
+    """The recording this session's stretches are slices of, read off the rows.
+
+    Asked of the database rather than named by a constant. A stretch is a slice of one
+    recording and the room refuses one naming anything else (`rehearsal_take_of`), so a builder
+    writing an id no row carries assembles a session the field cannot produce: the part stands
+    with nothing told on it, which is ground nobody told back.
+    """
+    return current_parts(await takes_of(db, session.id))[0]
+
+
 async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):
+    part = await the_rehearsal_of(db, session)
     return await capture_segment(
         db,
         session,
-        take_id="ensaio-1",
+        take_id=part.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
         bridge_take_id="retro-1",
@@ -376,26 +389,25 @@ async def a_p02_telling_with_the_swapped_cause(db: AsyncSession, project: Projec
     session = await create_session(db, pericope=P02, project_id=project.id)
     session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
     await save_comprehension(db, session, supported_comprehension(P02))
-    db.add(
-        IRTake(
-            session_id=session.id,
-            project_id=project.id,
-            device_id=TABLET,
-            pericope=P02,
-            kind=IRTakeKind.ENSAIO,
-            scope="passagem-inteira",
-            storage_key=f"takes/{session.id}/ensaio/b",
-            size_bytes=2048,
-            sha256="b" * 64,
-            crc32c="AAAAAAA=",
-            content_type="audio/mp4",
-        )
+    rehearsal = IRTake(
+        session_id=session.id,
+        project_id=project.id,
+        device_id=TABLET,
+        pericope=P02,
+        kind=IRTakeKind.ENSAIO,
+        scope="passagem-inteira",
+        storage_key=f"takes/{session.id}/ensaio/b",
+        size_bytes=2048,
+        sha256="b" * 64,
+        crc32c="AAAAAAA=",
+        content_type="audio/mp4",
     )
+    db.add(rehearsal)
     await db.commit()
     told = await capture_segment(
         db,
         session,
-        take_id="ensaio-1",
+        take_id=rehearsal.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
         bridge_take_id="retro-1",
@@ -437,12 +449,13 @@ async def a_rehearsal_only_half_heard(db: AsyncSession, project: Project) -> IRS
     state = back_translation_of(session)
     state.checked = True
     state.findings = []
+    part = await the_rehearsal_of(db, session)
     await report_playback(
         db,
         session,
         state,
         played_by_take=[
-            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
+            PlayedTake(take_id=part.id, played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
         ],
         played_ranges=[[0, 20000]],
         clip_duration_ms=CLIP_MS,

@@ -77,6 +77,7 @@ from tests.release_harness import (
     retro_take,
     team_headers,
     team_release,
+    the_rehearsal_of,
 )
 from tests.room_harness import (
     PART_MS,
@@ -86,9 +87,6 @@ from tests.room_harness import (
     the_room_speaks,
     the_transcriber_says,
 )
-
-#: The rehearsal these cases tell back over, as the room's own builders name it.
-REHEARSAL = "ensaio-1"
 
 #: The audio route the file points at, one link per take. A path and never a signed link: a
 #: signed URL expires in minutes and this document outlives it.
@@ -188,11 +186,12 @@ async def _read(db: AsyncSession, session: IRSession) -> BackTranslationState:
 
 async def _told_once(db: AsyncSession, session: IRSession) -> BackTranslationState:
     """One stretch, explained on a retro take the file can point at."""
+    part = await the_rehearsal_of(db, session)
     retro = await _a_retro_take(db, session, "primeira")
     await capture_segment(
         db,
         session,
-        take_id=REHEARSAL,
+        take_id=part.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
         bridge_take_id=retro.id,
@@ -202,12 +201,13 @@ async def _told_once(db: AsyncSession, session: IRSession) -> BackTranslationSta
 
 
 async def _told_in_two_stretches(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    part = await the_rehearsal_of(db, session)
     for text, starts_ms, ends_ms in TWO_STRETCHES:
         retro = await _a_retro_take(db, session, f"retro-{starts_ms}")
         await capture_segment(
             db,
             session,
-            take_id=REHEARSAL,
+            take_id=part.id,
             starts_ms=starts_ms,
             ends_ms=ends_ms,
             bridge_take_id=retro.id,
@@ -682,7 +682,7 @@ async def test_the_frozen_numbers_are_the_latest_releases_and_a_new_stretch_has_
     await capture_segment(
         db_session,
         session,
-        take_id=REHEARSAL,
+        take_id=(await the_rehearsal_of(db_session, session)).id,
         starts_ms=CLIP_MS,
         ends_ms=CLIP_MS + 10000,
         bridge_take_id=late_retro.id,

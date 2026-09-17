@@ -61,6 +61,7 @@ from tests.release_harness import (
     reported_playback,
     team_headers,
     team_release,
+    the_rehearsal_of,
     told_back_with_an_open_finding,
 )
 from tests.room_harness import (
@@ -91,11 +92,6 @@ AN_ENTRYS_NAMES = {"kind", "frase", "idx", "clipKey"}
 #: A note no other string in the packet contains, so a case can ask where it did and did not
 #: travel without matching anything else by accident.
 THE_ANALYSTS_NOTE = "NOTA-DO-ANALISTA-9f3c"
-
-#: The rehearsal these cases tell back over. It is what this module's own builder writes, so
-#: it is the subject a case of its own may name; a case standing on a harness builder reads
-#: the take off the stretch instead.
-REHEARSAL = "ensaio-1"
 
 #: One rehearsal told back in three stretches, the shape
 #: `test_ir_the_version_freezes_the_frase_number.py` uses: three is the smallest reading in
@@ -144,11 +140,12 @@ async def _the_desk_reads(db: AsyncSession, session: IRSession) -> dict[str, Any
 
 
 async def _three_stretches_told(db: AsyncSession, session: IRSession) -> BackTranslationState:
+    part = await the_rehearsal_of(db, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         await capture_segment(
             db,
             session,
-            take_id=REHEARSAL,
+            take_id=part.id,
             starts_ms=starts_ms,
             ends_ms=ends_ms,
             bridge_take_id=f"retro-{starts_ms}",
@@ -530,7 +527,7 @@ async def test_frase_is_the_frozen_number_of_the_stretch_the_finding_points_at(
         if stretch["segment_id"] == third.id
     ), "o bloco e a lista que viaja ao lado dele contam a mesma frase, ou o bloco não promete nada"
     assert on_the_stretch["idx"] == third.id
-    assert on_the_stretch["clipKey"] == REHEARSAL
+    assert on_the_stretch["clipKey"] == third.take_id
     assert "frase" not in nowhere, "o chunk que a analista deu não vira frase de trecho nenhum"
     assert nowhere["idx"] is None
     assert nowhere["clipKey"] is None
