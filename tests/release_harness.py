@@ -149,19 +149,21 @@ def supported_comprehension(pericope: str, *, carry_one: bool = False) -> Compre
     )
 
 
-async def the_rehearsal_of(db: AsyncSession, session: IRSession) -> IRTake:
-    """The recording this session's stretches are slices of, read off the rows.
+async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
+    """This session's single current part, read off the rows rather than named by a constant.
 
-    Asked of the database rather than named by a constant. A stretch is a slice of one
-    recording and the room refuses one naming anything else (`rehearsal_take_of`), so a builder
-    writing an id no row carries assembles a session the field cannot produce: the part stands
-    with nothing told on it, which is ground nobody told back.
+    It refuses a session holding more than one, because a case rehearsed in parts has to say
+    which part a stretch is a slice of and answering with the first would decide that by
+    accident.
     """
-    return current_parts(await takes_of(db, session.id))[0]
+    parts = current_parts(await takes_of(db, session.id))
+    if len(parts) != 1:
+        raise ValueError(f"this session holds {len(parts)} current parts, not one")
+    return parts[0]
 
 
 async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):
-    part = await the_rehearsal_of(db, session)
+    part = await the_one_part_of(db, session)
     return await capture_segment(
         db,
         session,
@@ -449,7 +451,7 @@ async def a_rehearsal_only_half_heard(db: AsyncSession, project: Project) -> IRS
     state = back_translation_of(session)
     state.checked = True
     state.findings = []
-    part = await the_rehearsal_of(db, session)
+    part = await the_one_part_of(db, session)
     await report_playback(
         db,
         session,

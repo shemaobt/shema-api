@@ -51,7 +51,7 @@ from tests.release_harness import (
     ready_session,
     reported_playback,
     retro_take,
-    the_rehearsal_of,
+    the_one_part_of,
 )
 from tests.room_harness import a_piece_still_to_be_told
 
@@ -114,7 +114,7 @@ async def _three_stretches(db: AsyncSession, session: IRSession) -> BackTranslat
     Each on a retro take of its own, because which take gave a stretch its words is half of
     what a frozen entry says.
     """
-    part = await the_rehearsal_of(db, session)
+    part = await the_one_part_of(db, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         retro = await _a_retro_take(db, session, f"retro-{starts_ms}")
         await capture_segment(
@@ -274,7 +274,7 @@ async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     before = [stretch.id for stretch in await final_segments(db_session, session.id)]
 
     await begin_back_translation_again(db_session, session)
-    part = await the_rehearsal_of(db_session, session)
+    part = await the_one_part_of(db_session, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         retro = await _a_retro_take(db_session, session, f"retro-de-novo-{starts_ms}")
         await capture_segment(

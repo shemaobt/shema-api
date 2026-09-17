@@ -22,7 +22,6 @@ except where the subject of the case is precisely that the flat numbers survive.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -42,6 +41,7 @@ from tests.room_harness import (
     PART_MS,
     PLAYBACK_BLOCKER,
     P,
+    after,
     another_rehearsal_take,
     heard_every_part,
     played_every_part,
@@ -98,11 +98,15 @@ def _covering(take: IRTake, *, duration_ms: int = PART_MS) -> dict[str, Any]:
     return played_every_part([take.id], duration_ms=duration_ms)["played_by_take"][0]
 
 
-async def _rehearsed_and_told_back(db: AsyncSession) -> IRSession:
-    """A session that needs nothing but the report to travel: one part, one stretch told."""
+async def _rehearsed_and_told_back(db: AsyncSession) -> tuple[IRSession, IRTake]:
+    """A session that needs nothing but the report to travel: one part, one stretch told.
+
+    The part comes back beside it because a case that records a second one has to say which of
+    the two is the newer, and the rehearsal it is newer than is this one.
+    """
     session, take = await rehearsed_session(db, language="pt")
     await tell_back_about(db, session, take)
-    return session
+    return session, take
 
 
 async def _told_back_on_a_new_part(db: AsyncSession, session: IRSession, *, sha256: str) -> IRTake:
@@ -403,7 +407,7 @@ async def test_a_release_with_no_report_of_playback_is_refused(
 ) -> None:
     """The tablet says nothing about playback, which is what it says whenever the clip did not
     run to its end. Silence is not a claim that the team heard themselves."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(client, session.id)
 
@@ -420,11 +424,11 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     so what reaches the gate is a session that told the new clip back and never said anybody
     played it. The package would otherwise travel on a report about audio nobody will hear.
     """
-    session = await _rehearsed_and_told_back(db_session)
+    session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
     again = await another_rehearsal_take(
-        db_session, session, sha256="b" * 64, created_at=datetime.now(UTC) + timedelta(hours=1)
+        db_session, session, sha256="b" * 64, created_at=after(part)
     )
     await begin_back_translation_again(db_session, session)
     await tell_back_about(db_session, session, again)
@@ -438,7 +442,7 @@ async def test_an_honest_report_on_the_current_rehearsal_releases(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Control: the team played their own clip through, and the package travels."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
@@ -451,11 +455,11 @@ async def test_a_fresh_report_after_a_re_record_releases(
 ) -> None:
     """Re-recording is the team working, not the team erring, and playing the new clip through
     has to be enough to release it."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
     again = await another_rehearsal_take(
-        db_session, session, sha256="b" * 64, created_at=datetime.now(UTC) + timedelta(hours=1)
+        db_session, session, sha256="b" * 64, created_at=after(part)
     )
     await begin_back_translation_again(db_session, session)
     await tell_back_about(db_session, session, again)
@@ -469,7 +473,7 @@ async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Control against regression: half a clip played is still half a clip played."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(
         client,
@@ -490,7 +494,7 @@ async def test_a_report_with_no_clip_to_measure_against_is_refused(
     measured, and the other half — a length with nothing played — is a report that the team
     played nothing at all. A part whose length is zero is the first of those on the wire.
     """
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(
         client, session.id, report=await heard_every_part(db_session, session.id, duration_ms=0)

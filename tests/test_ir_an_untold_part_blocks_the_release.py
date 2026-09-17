@@ -21,7 +21,6 @@ a takes fact, and what the team heard of it is a report fact.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -40,9 +39,10 @@ from tests.release_harness import (
     ensaio_take,
     ready_session,
     releases_of,
+    the_one_part_of,
 )
 from tests.room_harness import (
-    REHEARSED_AT,
+    after,
     heard_every_part,
     press_terminei,
     rehearsed_in_parts,
@@ -51,6 +51,7 @@ from tests.room_harness import (
     room_client,
     stretch_on,
     tell_back_about,
+    the_analyst_reads,
     the_bucket_is_in_memory,
     the_room_speaks,
     the_upload_landed_at,
@@ -64,18 +65,10 @@ UNTOLD_PART = "untold_part"
 NEW_AUDIO = b"a equipe gravou a cena dois outra vez"
 
 
-class _CleanAnalyst:
-    """The analyst reading and finding nothing, so a press of `terminei` leaves a clean check."""
-
-    async def __call__(self, **_: Any) -> str:
-        return '{"evidence_sufficient": true, "findings": []}'
-
-
 @pytest.fixture(autouse=True)
 def analyst(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.internalization_room import back_translation as bt_service
-
-    monkeypatch.setattr(bt_service, "call_agent", _CleanAnalyst())
+    """The analyst, reading clean, so a press of `terminei` leaves a check nothing is open on."""
+    the_analyst_reads(monkeypatch)
 
 
 @pytest.fixture(autouse=True)
@@ -233,12 +226,13 @@ async def test_a_rehearsal_told_whole_and_recorded_again_is_untold(
     and not about anything being retired, so this is the same refusal.
     """
     session = await ready_session(db_session)
+    told_whole = await the_one_part_of(db_session, session)
     assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine", (
         "the case starts from a session the gate lets through"
     )
 
     fresh = await _recorded_again(client, session.id, part=None)
-    await the_upload_landed_at(db_session, fresh, datetime.now(UTC) + timedelta(hours=1))
+    await the_upload_landed_at(db_session, fresh, after(told_whole))
 
     assert await release_blockers(db_session, session) == [UNTOLD_PART]
 
@@ -264,7 +258,7 @@ async def test_an_old_composed_row_still_yields_one_take_per_number(
         scope="composed",
         ordinal=two.ordinal,
         sha256="r" * 64,
-        created_at=REHEARSED_AT + timedelta(hours=1),
+        created_at=after(two),
         project_id=session.project_id,
     )
     db_session.add(assembled)

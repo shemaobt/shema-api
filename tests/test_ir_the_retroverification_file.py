@@ -77,7 +77,7 @@ from tests.release_harness import (
     retro_take,
     team_headers,
     team_release,
-    the_rehearsal_of,
+    the_one_part_of,
 )
 from tests.room_harness import (
     PART_MS,
@@ -186,7 +186,7 @@ async def _read(db: AsyncSession, session: IRSession) -> BackTranslationState:
 
 async def _told_once(db: AsyncSession, session: IRSession) -> BackTranslationState:
     """One stretch, explained on a retro take the file can point at."""
-    part = await the_rehearsal_of(db, session)
+    part = await the_one_part_of(db, session)
     retro = await _a_retro_take(db, session, "primeira")
     await capture_segment(
         db,
@@ -201,7 +201,7 @@ async def _told_once(db: AsyncSession, session: IRSession) -> BackTranslationSta
 
 
 async def _told_in_two_stretches(db: AsyncSession, session: IRSession) -> BackTranslationState:
-    part = await the_rehearsal_of(db, session)
+    part = await the_one_part_of(db, session)
     for text, starts_ms, ends_ms in TWO_STRETCHES:
         retro = await _a_retro_take(db, session, f"retro-{starts_ms}")
         await capture_segment(
@@ -682,7 +682,7 @@ async def test_the_frozen_numbers_are_the_latest_releases_and_a_new_stretch_has_
     await capture_segment(
         db_session,
         session,
-        take_id=(await the_rehearsal_of(db_session, session)).id,
+        take_id=(await the_one_part_of(db_session, session)).id,
         starts_ms=CLIP_MS,
         ends_ms=CLIP_MS + 10000,
         bridge_take_id=late_retro.id,

@@ -61,7 +61,7 @@ from tests.release_harness import (
     reported_playback,
     team_headers,
     team_release,
-    the_rehearsal_of,
+    the_one_part_of,
     told_back_with_an_open_finding,
 )
 from tests.room_harness import (
@@ -140,7 +140,7 @@ async def _the_desk_reads(db: AsyncSession, session: IRSession) -> dict[str, Any
 
 
 async def _three_stretches_told(db: AsyncSession, session: IRSession) -> BackTranslationState:
-    part = await the_rehearsal_of(db, session)
+    part = await the_one_part_of(db, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         await capture_segment(
             db,
