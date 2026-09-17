@@ -269,6 +269,16 @@ _TELLING_WITH_THE_STORYS_SILENCES = (
     "Quiliom morreram ela sobrou sozinha, sem os dois filhos e sem o marido. A história não "
     "descreve o luto, nenhum choro, nem nada de enterro, e não diz que Deus fez nada disso."
 )
+#: Tellers in the first person negating the story, not the doing.
+_TELLING_THAT_FORGETS_A_NAME = (
+    "A gente ensaiou a cena dos casamentos. Os dois filhos casaram com mulheres de Moabe, "
+    "uma era Rute, eu não lembro o nome da outra, e eles moraram lá uns dez anos."
+)
+_TELLING_THAT_KEEPS_THE_STORYS_SILENCE = (
+    "The two sons married women from Moab, Orpah and Ruth, and lived there about ten years. "
+    "We didn't hear which son married which woman, the story keeps that quiet, and we never "
+    "heard why the famine came."
+)
 
 
 def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
@@ -285,13 +295,22 @@ def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
     back in the third person, about the family — so inside a telling the negation that
     still refuses is the team's own: on the rehearsal ("não ensaiamos", "contamos sem
     ensaiar"), in the first person ("a gente não teve tempo", "nós não conseguimos", "we
-    didn't"), or nobody's doing at all ("não deu", "ainda não", "no time"). A short reply
-    keeps the flat reading, where any negation is the team declining. "No tempo dos juízes"
-    is how the passage opens, and it is not "no time"."""
-    for told in (_TELLING_OF_THE_LOSS, _TELLING_WITH_THE_STORYS_SILENCES):
+    didn't do it"), or nobody's doing at all ("não deu", "ainda não", "no time"). The first
+    person is bound to the doing, because a teller says "eu não lembro o nome" and "we
+    didn't hear who married whom" about the story. A short reply keeps the flat reading,
+    where any negation is the team declining. "No tempo dos juízes" is how the passage
+    opens, and it is not "no time"."""
+    for told in (
+        _TELLING_OF_THE_LOSS,
+        _TELLING_WITH_THE_STORYS_SILENCES,
+        _TELLING_THAT_FORGETS_A_NAME,
+    ):
         assert bridge_language_retelling_completes_practice(
             _INVITATION_FOR_THE_LAST_TWO_SCENES, told, True
         ), told
+    assert bridge_language_retelling_completes_practice(
+        INVITATION["en"], _TELLING_THAT_KEEPS_THE_STORYS_SILENCE, True
+    )
     for declined in (
         "ainda não",
         "não ensaiamos ainda",
@@ -301,9 +320,11 @@ def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
         "contamos sem ensaiar: a família saiu de Belém por causa da fome e foi morar em "
         "Moabe como estrangeiros",
         "A gente não teve tempo de fazer isso agora",
+        "a gente não fez ainda, a gente só conversou sobre a história em português",
         "ainda não deu, ficou pra depois",
         "nós não conseguimos, ficou difícil combinar quem fala primeiro",
         "we didn't have time to do it now",
+        "we couldn't do it now, we only talked it through in English",
         "no tuvimos tiempo de hacerlo ahora",
     ):
         assert not bridge_language_retelling_completes_practice(
