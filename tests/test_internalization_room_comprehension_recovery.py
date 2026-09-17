@@ -242,6 +242,52 @@ def test_a_reflexive_se_in_the_telling_is_not_a_condition() -> None:
     ) == ["S1"]
 
 
+_INVITATION_FOR_THE_LAST_TWO_SCENES = (
+    "Entendo. E vocês têm razão numa coisa: vocês já entenderam a história inteira. Isso "
+    "ficou claro no que me contaram.\n\n"
+    "Mas entender é só uma parte. A outra parte é a história viver na boca de vocês, na "
+    "língua de vocês. As duas últimas cenas ainda não passaram por aí. Não leva muito tempo.\n\n"
+    "Então façam assim. Ensaiem juntos, na língua de vocês, a cena dos casamentos e dos dez "
+    "anos, e depois a cena em que Malom e Quiliom morrem e Noemi fica sozinha, sem os dois "
+    "filhos e sem o marido. Podem fazer as duas cenas seguidas. Quando terminarem, voltem e "
+    "me contem em português, bem curto, o que vocês disseram no ensaio.\n\n"
+    "Depois disso, vamos pro próximo passo."
+)
+_TELLING_OF_THE_LOSS = (
+    "A gente ensaiou juntos na nossa língua a cena dos casamentos e dos 10 anos, e depois a "
+    "cena em que Malone e Kleon morrer-morreram, e Noemí fica sozinha, sem os filhos e sem o "
+    "marido."
+)
+
+
+def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
+    """Session dce19a6b, in Portuguese, on the pilot device: the scene came back told and
+    stayed unpractised.
+
+    Ruth 1:3-5 is a story of loss, and a team telling it says so: Noemi is left "sem os
+    filhos e sem o marido". The reader took "sem" for a denial — the same word list that
+    catches "ainda não ensaiamos" — and filed the telling the invitation had asked for as a
+    team that had done nothing. What the story takes away is content the team told back.
+    The denial the reader guards is the rehearsal itself being refused, and inside a telling
+    that is read on the rehearsal, not on the story; a short reply keeps the flat reading,
+    where any negation is the team declining."""
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION_FOR_THE_LAST_TWO_SCENES, _TELLING_OF_THE_LOSS, True
+    )
+    for declined in (
+        "ainda não",
+        "não ensaiamos ainda",
+        "a gente não conseguiu ensaiar, ficou difícil",
+        "a gente não ensaiou na nossa língua, mas entendemos que Elimeleque morreu e Noemi "
+        "ficou sozinha com os dois filhos em Moabe",
+        "contamos sem ensaiar: a família saiu de Belém por causa da fome e foi morar em "
+        "Moabe como estrangeiros",
+    ):
+        assert not bridge_language_retelling_completes_practice(
+            _INVITATION_FOR_THE_LAST_TWO_SCENES, declined, True
+        ), declined
+
+
 def test_a_condition_that_opens_the_clause_holds_the_telling_back_without_a_subject() -> None:
     """ "Se quiserem a gente ensaia" names nobody and is still a condition.
 
