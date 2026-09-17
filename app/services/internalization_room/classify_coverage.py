@@ -6,9 +6,9 @@ import re
 from typing import Any
 
 from app.core.config import Settings, get_settings
-from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.canon.elements import Element, element_keys
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import merge, remaining
+from app.services.internalization_room.coverage import CoverageStatus, merge, remaining
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent, classifier_ladder
 from app.services.internalization_room.render import render
@@ -87,22 +87,58 @@ def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -
         )
 
 
+def _shown_label(element: Element) -> str:
+    return element.label + (f" — {element.detail}" if element.detail else "")
+
+
+def _shown_status(coverage_state: dict[str, str], element: Element) -> str:
+    """The word the classifier is told a bead stands at, out of the two its prompt names.
+
+    A bead still stored under the retired `partially_engaged` is read below the floor
+    exactly as `surfaced` is, so that is the word it is shown under: sending the retired
+    word would name a status her prompt does not have, and not sending the bead at all
+    would freeze it there for good.
+    """
+    standing = coverage_state.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value)
+    if standing == CoverageStatus.PARTIALLY_ENGAGED.value:
+        return CoverageStatus.SURFACED.value
+    return standing
+
+
 def _unresolved_block(coverage_state: dict[str, str], pericope_num: str) -> str:
     left = remaining(coverage_state, pericope_num)
     if not left:
         return "(no elements pending)"
-    return "\n".join(
-        f"- [{element.key}] {element.label}" + (f" — {element.detail}" if element.detail else "")
-        for element in left
+    return json.dumps(
+        [
+            {
+                "id": element.key,
+                "kind": element.kind.value,
+                "label": _shown_label(element),
+                "status": _shown_status(coverage_state, element),
+            }
+            for element in left
+        ],
+        ensure_ascii=False,
+        indent=2,
     )
 
 
 def _scenes_block(pericope_num: str) -> str:
     scenes = load_map(pericope_num).scenes
-    return "\n".join(
-        f"- [scene:{scene.number}] {scene.title} ({scene.verses}): {scene.what_happens}"
-        for scene in scenes
+    return json.dumps(
+        [{"id": f"S{scene.number}", "title": scene.title} for scene in scenes],
+        ensure_ascii=False,
+        indent=2,
     )
+
+
+def _the_object_in(text: str) -> str:
+    """Her third fallback: the first brace to the last, when the object came wrapped in prose."""
+    opens, closes = text.find("{"), text.rfind("}")
+    if opens == -1 or closes < opens:
+        return text
+    return text[opens : closes + 1]
 
 
 def _parse(raw: str) -> dict[str, list[str]]:
@@ -128,7 +164,7 @@ def _parse(raw: str) -> dict[str, list[str]]:
     if fenced:
         text = fenced.group(1).strip()
     try:
-        parsed: Any = json.loads(text)
+        parsed: Any = json.loads(_the_object_in(text))
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
         return verdict

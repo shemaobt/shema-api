@@ -338,10 +338,10 @@ async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) 
 
 
 def _as_the_list_prints_it(pericope: str, key: str) -> str:
-    """The element exactly as the classifier is shown it, read off the real renderer."""
-    for line in _unresolved_block(initial_state(pericope), pericope).splitlines():
-        if line.startswith(f"- [{key}]"):
-            return line.removeprefix("- ")
+    """The element's id exactly as the classifier is shown it, read off the real renderer."""
+    for entry in json.loads(_unresolved_block(initial_state(pericope), pericope)):
+        if entry["id"] == key:
+            return entry["id"]
     raise AssertionError(f"{key} is not in the unresolved block for {pericope}")
 
 
