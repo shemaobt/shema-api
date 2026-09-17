@@ -1,0 +1,353 @@
+"""ENG-437 — Behaviour 8: the migration that adds the device table is reversible.
+
+Alembic's full chain does not run on SQLite: the first migration in the tree writes a
+``DEFAULT now()`` that SQLite rejects. So this exercises the one migration under test
+rather than the whole history — the pre-existing schema is built from ``Base.metadata``
+the way ``tests/conftest.py`` builds it, stamped at this migration's predecessor, and
+filled with rows before the upgrade runs.
+
+The Postgres run is therefore not covered here. What is covered is the shape the issue
+asks for: the migration adds a table, and nothing outside that table changes across
+upgrade, downgrade and upgrade again.
+
+The issue's own wording — that existing ``device_id`` values in ``ir_questions`` and
+``ir_takes`` are untouched — cannot be exercised on this branch, because those tables
+arrive with the internalization-room work and are not on ``main``. The general form is
+asserted instead.
+"""
+
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+import pytest
+from sqlalchemy import inspect, text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+import app.db.models  # noqa: F401  (populates Base.metadata with every table)
+from app.core.database import Base
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PREVIOUS_REVISION = "20260812_0001"
+
+#: The tip of the device chain, named rather than asked for as "head".
+#:
+#: While the internalization-room line is unmerged, the two lines both descend from
+#: PREVIOUS_REVISION, so the tree has two heads and ``alembic upgrade head`` refuses to
+#: guess between them. Naming this one keeps these tests about the device migrations and
+#: nothing else. It stops being necessary when the two lines meet on main and this chain
+#: rebases onto the room chain's tip — the second head goes away with the rebase.
+DEVICE_CHAIN_HEAD = "20260819_0001"
+
+#: Where the rest of the `devices` columns arrive, and what stands between here and each
+#: of them: the room chain's tip on the day it was written.
+#:
+#: Every one of these was written after ``20260820_merge`` joined the two lines, so each
+#: descends from wherever the room chain had got to rather than from the device migration
+#: before it. Upgrading straight through would run the room migrations, and one of them
+#: inserts a row into `apps` — a table this file never builds, because it stamps the past
+#: instead of migrating it. Stamping the room tip is the same move applied to the same kind
+#: of thing: migrations that are somebody else's subject.
+#:
+#: A pair per device migration rather than one named tip, because a single one only ever
+#: described the newest, and the older migration then never ran: the columns it adds went
+#: missing from the migrated shape while still standing in the model, which reads exactly
+#: like the omission this file exists to catch.
+#:
+#: The last pair names a device migration as its predecessor rather than a room tip, which
+#: is what a chain with a single head looks like: ENG-624 was written after ENG-622 landed,
+#: so nothing of anybody else's stands between them and stamping is a no-op there. The pair
+#: is kept in the same shape so the walk reads the same for every migration in it.
+DEVICE_COLUMN_MIGRATIONS = (
+    ("20260820_qcomp", "20260820_devcred"),  # ENG-448 — rotation and revocation
+    ("20260902_room09", "20260903_devcoll"),  # ENG-622 — the collection moment
+    ("20260903_devcoll", "20260904_devnp"),  # ENG-624 — the halt with no session
+    ("20260904_att01", "20260908_arr01"),  # ENG-792 — the visit that lifts a tablet's halt
+)
+
+#: The column ENG-624 adds, named here because one test below is about it leaving again.
+#:
+#: The round-trip tests cannot see it: they filter out every object whose name or SQL
+#: mentions `devices`, which is the whole of this migration. A downgrade that dropped
+#: nothing would pass all three of them.
+NEEDS_PERSON_COLUMN = "needs_person_since"
+
+#: The migration that adds it, named rather than taken as the newest device migration in the
+#: tuple above. It was the newest on the day it was written and stopped being so with ENG-792:
+#: a downgrade aimed at "the last pair" would walk back that slice's columns instead and leave
+#: this one standing, so the case below would fail while saying nothing about its own column.
+NEEDS_PERSON_REVISION = "20260904_devnp"
+
+#: What ENG-792 adds to `devices`: the visit a facilitator records from the Desk, and the halt
+#: moment that visit lifted — kept so an undo can put the halt back at the moment it was
+#: raised rather than at the moment somebody changed their mind.
+ATTENDED_COLUMNS = {"attended_at", "attended_by", "attended_lifted_since"}
+ATTENDED_REVISION = "20260908_arr01"
+
+#: The migration these tests are actually about: the one that creates the table.
+DEVICE_TABLE_REVISION = "20260817_0001"
+NEW_TABLE = "devices"
+
+
+def _run_alembic(database_url: str, *argv: str) -> subprocess.CompletedProcess:
+    import os
+
+    return subprocess.run(
+        [sys.executable, "-m", "alembic", *argv],
+        cwd=REPO_ROOT,
+        env={
+            **os.environ,
+            "DATABASE_URL": database_url,
+            "JWT_SECRET_KEY": "test-secret-for-pytest-only",
+            "INNGEST_DEV": "1",
+        },
+        capture_output=True,
+        text=True,
+    )
+
+
+async def _build_schema_without_the_new_table(database_url: str) -> None:
+    """The database as it stands before this migration: every table but the new one."""
+    engine = create_async_engine(database_url)
+    existing = [t for t in Base.metadata.sorted_tables if t.name != NEW_TABLE]
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, tables=existing))
+    await engine.dispose()
+
+
+async def _seed_rows(database_url: str) -> str:
+    """A project the migration must leave alone. Returns its id."""
+    engine = create_async_engine(database_url)
+    language_id = str(uuid.uuid4())
+    project_id = str(uuid.uuid4())
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("INSERT INTO languages (id, name, code) VALUES (:id, :name, :code)"),
+            {"id": language_id, "name": "Migration Language", "code": "mig"},
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO projects (id, name, language_id, created_at, updated_at)"
+                " VALUES (:id, :name, :language_id, :now, :now)"
+            ),
+            {
+                "id": project_id,
+                "name": "Migration Project",
+                "language_id": language_id,
+                "now": "2026-08-17 00:00:00",
+            },
+        )
+    await engine.dispose()
+    return project_id
+
+
+async def _schema_outside_the_new_table(database_url: str) -> set[tuple[str, str, str]]:
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        rows = (
+            await conn.execute(text("SELECT type, name, COALESCE(sql, '') FROM sqlite_master"))
+        ).all()
+    await engine.dispose()
+    return {
+        (kind, name, sql)
+        for kind, name, sql in rows
+        if NEW_TABLE not in name and NEW_TABLE not in sql and name != "alembic_version"
+    }
+
+
+async def _table_names(database_url: str) -> set[str]:
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        rows = (
+            await conn.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'"))
+        ).all()
+    await engine.dispose()
+    return {name for (name,) in rows}
+
+
+async def _project_ids(database_url: str) -> set[str]:
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("SELECT id FROM projects"))).all()
+    await engine.dispose()
+    return {row_id for (row_id,) in rows}
+
+
+async def _migrated_shape(database_url: str) -> tuple[set[tuple[str, bool]], set[tuple[str, bool]]]:
+    """Columns (name, nullable) and indexes (name, unique) of the migrated new table."""
+    engine = create_async_engine(database_url)
+    async with engine.connect() as conn:
+        columns = await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_columns(NEW_TABLE))
+        indexes = await conn.run_sync(lambda sync_conn: inspect(sync_conn).get_indexes(NEW_TABLE))
+    await engine.dispose()
+    return (
+        {(c["name"], bool(c["nullable"])) for c in columns},
+        {(i["name"], bool(i["unique"])) for i in indexes},
+    )
+
+
+def _walk_the_device_column_migrations(database_url: str) -> None:
+    """Run every migration that adds columns to `devices`, and none that does not.
+
+    Each pair stamps what stands before its migration and upgrades exactly one revision
+    further, so the room's own migrations are recorded as done without being run — they
+    write to tables this file never builds.
+    """
+    assert _run_alembic(database_url, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    for predecessor, device_revision in DEVICE_COLUMN_MIGRATIONS:
+        assert _run_alembic(database_url, "stamp", predecessor).returncode == 0
+        columns_added = _run_alembic(database_url, "upgrade", device_revision)
+        assert columns_added.returncode == 0, columns_added.stderr
+
+
+@pytest.fixture()
+async def stamped_database(tmp_path) -> str:
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'migration.db'}"
+    await _build_schema_without_the_new_table(database_url)
+    await _seed_rows(database_url)
+
+    stamped = _run_alembic(database_url, "stamp", PREVIOUS_REVISION)
+    assert stamped.returncode == 0, stamped.stderr
+
+    return database_url
+
+
+async def test_migration_upgrade_adds_the_table_and_downgrade_removes_it(stamped_database):
+    assert NEW_TABLE not in await _table_names(stamped_database)
+
+    up = _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
+    assert up.returncode == 0, up.stderr
+    assert NEW_TABLE in await _table_names(stamped_database)
+
+    down = _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION)
+    assert down.returncode == 0, down.stderr
+    assert NEW_TABLE not in await _table_names(stamped_database)
+
+    again = _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD)
+    assert again.returncode == 0, again.stderr
+    assert NEW_TABLE in await _table_names(stamped_database)
+
+
+async def test_migration_round_trip_leaves_everything_outside_the_new_table_unchanged(
+    stamped_database,
+):
+    before = await _schema_outside_the_new_table(stamped_database)
+
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    after_upgrade = await _schema_outside_the_new_table(stamped_database)
+
+    assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
+    after_downgrade = await _schema_outside_the_new_table(stamped_database)
+
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    after_reupgrade = await _schema_outside_the_new_table(stamped_database)
+
+    assert after_upgrade == before
+    assert after_downgrade == before
+    assert after_reupgrade == before
+
+
+async def test_migration_round_trip_leaves_existing_rows_intact(stamped_database):
+    before = await _project_ids(stamped_database)
+    assert before
+
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+    assert _run_alembic(stamped_database, "downgrade", PREVIOUS_REVISION).returncode == 0
+    assert _run_alembic(stamped_database, "upgrade", DEVICE_CHAIN_HEAD).returncode == 0
+
+    assert await _project_ids(stamped_database) == before
+
+
+async def test_migration_builds_the_table_the_model_declares(stamped_database):
+    """AGENTS.md forbids schema changes outside Alembic, which only means anything
+    if the migration and the model agree. A model the migration does not build is a
+    schema change that happened outside Alembic by omission."""
+    _walk_the_device_column_migrations(stamped_database)
+
+    migrated_columns, migrated_indexes = await _migrated_shape(stamped_database)
+    model = Base.metadata.tables[NEW_TABLE]
+
+    assert migrated_columns == {(c.name, bool(c.nullable)) for c in model.columns}
+    assert migrated_indexes == {(i.name, bool(i.unique)) for i in model.indexes}
+
+
+async def test_migration_never_names_the_internalization_room_tables():
+    """The IR half of the issue's clause, in the only form this branch can assert.
+
+    This migration was written against a branch where ``ir_questions`` and ``ir_takes``
+    did not exist, so "their ``device_id`` values are untouched" could not be run at all.
+    Where the two lines are joined the tables are present and the assertion is worth more
+    than it was: the migration still never names them. The wider claim — that nothing
+    outside the new table changes — is what the round-trip test above runs.
+
+    The migration under test is found by its own revision id. Looking for whatever
+    descends from ``PREVIOUS_REVISION`` used to identify it and no longer does: the room
+    line starts from the same parent, so that search finds two files and neither is
+    necessarily this one.
+    """
+    versions = REPO_ROOT / "alembic" / "versions"
+    new_migrations = [
+        path
+        for path in versions.glob("*.py")
+        if f'revision: str = "{DEVICE_TABLE_REVISION}"' in path.read_text()
+    ]
+    assert len(new_migrations) == 1, f"expected exactly one {DEVICE_TABLE_REVISION}"
+
+    source = new_migrations[0].read_text()
+    operative = source.split('"""', 2)[-1]
+    for absent in ("ir_questions", "ir_takes", "ir_sessions"):
+        assert absent not in operative, f"the migration operates on {absent}"
+
+
+async def test_the_halt_column_arrives_with_its_migration_and_leaves_with_its_downgrade(
+    stamped_database,
+):
+    """ENG-624 — the column a halted tablet is recorded in travels in both directions.
+
+    The shape comparison above says the migrated table matches the model, which is the
+    upgrade half. The downgrade half has no test that can see it: everything the
+    round-trips compare is filtered on the table's own name, so a ``downgrade`` that
+    dropped nothing would be green everywhere else in this file.
+
+    What is lost by going back is a halt recorded before the downgrade, and that is
+    accepted rather than overlooked: a room that stopped for a person is a thing somebody
+    walks over to, and the tablet asks again on its next attempt.
+    """
+    _walk_the_device_column_migrations(stamped_database)
+
+    migrated_columns, _indexes = await _migrated_shape(stamped_database)
+    assert NEEDS_PERSON_COLUMN in {name for name, _nullable in migrated_columns}
+
+    down = _run_alembic(stamped_database, "downgrade", f"{NEEDS_PERSON_REVISION}-1")
+    assert down.returncode == 0, down.stderr
+
+    after_downgrade, _again = await _migrated_shape(stamped_database)
+    assert NEEDS_PERSON_COLUMN not in {name for name, _nullable in after_downgrade}
+
+
+async def test_the_visit_columns_arrive_with_their_migration_and_leave_with_its_downgrade(
+    stamped_database,
+):
+    """ENG-792 — the three columns a facilitator's visit to a tablet is recorded in.
+
+    Same blind spot as the case above: every round-trip in this file filters on the table's
+    own name, so a ``downgrade`` that dropped none of these would be green everywhere else.
+
+    ``attended_lifted_since`` travels with the pair rather than being derived on the way back,
+    because the fact it holds cannot be recovered afterwards: ``needs_person_since`` is null
+    once the visit lifted the halt, and an undo with nothing to read from would put the halt
+    back stamped now. The queue is ordered by that column, newest halt first, so the tablet
+    would return announcing a stop that never happened and sit above rooms that really did
+    stop after it.
+    """
+    _walk_the_device_column_migrations(stamped_database)
+
+    migrated_columns, _indexes = await _migrated_shape(stamped_database)
+    assert {name for name, _nullable in migrated_columns} >= ATTENDED_COLUMNS
+
+    down = _run_alembic(stamped_database, "downgrade", f"{ATTENDED_REVISION}-1")
+    assert down.returncode == 0, down.stderr
+
+    after_downgrade, _again = await _migrated_shape(stamped_database)
+    assert ATTENDED_COLUMNS.isdisjoint({name for name, _nullable in after_downgrade})

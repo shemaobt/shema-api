@@ -9,3 +9,14 @@ class TtsSpeakRequest(BaseModel):
     #: BCP-47 locale (`pt-BR`, `en-US`) — the locale->voice map lives in
     #: `services/platform/voices.py`.
     language: str = Field(min_length=2, max_length=16)
+
+
+class SttTranscribeResponse(BaseModel):
+    """What one recording said. A draft: no caller is told it is correct."""
+
+    text: str
+    #: Whether `text` came back through the disfluency cleaner: false when it was not asked
+    #: for, and false when it was asked for and could not be had. Without it those two are
+    #: the same response, and a caller reading hesitation cannot tell whether it was left in
+    #: on purpose.
+    cleaned: bool = False

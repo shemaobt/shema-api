@@ -1,0 +1,24 @@
+.git
+.worktrees
+.venv
+.mypy_cache
+.ruff_cache
+.pytest_cache
+__pycache__
+*.pyc
+*.db
+
+# `**/` because a pattern is matched against the whole path and `*` does not cross a `/`:
+# a bare `*.dump` would miss `.local-dump/latest.dump`, which is production data.
+**/*.dump
+# And the directory whole, because the download lands on `latest.dump.partial` and is
+# renamed only on success — production bytes under a name no `*.dump` pattern matches,
+# for as long as the transfer takes.
+.local-dump/
+node_modules
+
+# Credentials. Dockerfile.dev ends in `COPY . .`, and compose mounts these at
+# runtime, so nothing needs them in a layer.
+.env
+.env.*
+gcs-signing-key.json

@@ -109,6 +109,21 @@ async def delete_gcs_object(bucket_name: str, blob_name: str) -> None:
     await asyncio.to_thread(_blocking)
 
 
+async def download_gcs_object(bucket_name: str, blob_name: str) -> bytes:
+    """Read an object's bytes from an arbitrary bucket.
+
+    Server-side reads only. A missing object raises ``NotFound`` rather than returning
+    ``None``: every caller here reads an object a row already claims exists, so a silent
+    empty read would be a bug wearing a valid return value.
+    """
+
+    def _blocking() -> bytes:
+        client = storage.Client(project=GCS_OC_PROJECT)
+        return bytes(client.bucket(bucket_name).blob(blob_name).download_as_bytes())
+
+    return await asyncio.to_thread(_blocking)
+
+
 def blob_name_from_url(gcs_url: str) -> str | None:
     if not gcs_url.startswith(GCS_PUBLIC_BASE):
         return None

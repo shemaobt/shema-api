@@ -1,0 +1,163 @@
+"""The audio the room is not allowed to lose.
+
+What the team says during the conversation is thrown away once it has been transcribed —
+there the record is the text. A rehearsal take and the chunks of a back translation are the
+opposite: the recording is the work, and a tablet that breaks with them still on it takes the
+session with it.
+"""
+
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.facilitator._deps import FacilitatorUser
+from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.core.database import get_db
+from app.core.exceptions import ValidationError
+from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.models.internalization_room import TakeResponse, TakesResponse
+from app.services import internalization_room as room
+from app.services.internalization_room.takes import (
+    listen_url,
+    store_take,
+    take_for_facilitator,
+    take_in_session,
+    takes_of,
+)
+from app.utils.stored_time import as_utc
+
+router = APIRouter()
+
+
+def _view(take: IRTake) -> TakeResponse:
+    return TakeResponse(
+        take_id=take.id,
+        session_id=take.session_id,
+        kind=take.kind.value,
+        scope=take.scope,
+        sha256=take.sha256,
+        size_bytes=take.size_bytes,
+        verified=take.verified_at is not None,
+        chunk_index=take.chunk_index,
+        pass_number=take.pass_number,
+        pericope=take.pericope,
+        recorded_at=as_utc(take.created_at).isoformat() if take.created_at else "",
+    )
+
+
+def _kind(raw: str) -> IRTakeKind:
+    try:
+        return IRTakeKind(raw)
+    except ValueError:
+        raise ValidationError(f"Unknown take kind: {raw}") from None
+
+
+@router.post(
+    "/sessions/{session_id}/takes",
+    response_model=TakeResponse,
+    dependencies=[room_caller_dep],
+)
+async def keep_take(
+    session_id: str,
+    kind: str = Form(...),
+    scope: str = Form(...),
+    pass_number: int | None = Form(default=None),
+    chunk_index: int | None = Form(default=None),
+    file: UploadFile = File(...),
+    device_id: str = device_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TakeResponse:
+    """Store one take and answer with where it landed.
+
+    The app keeps its local copy until this answers, and re-sends the same bytes after a lost
+    connection without checking anything first. That is safe because the key is the hash of
+    the audio: a repeat lands on the same object and returns the row that already exists.
+    """
+    session = await room.get_session(db, session_id)
+    take = await store_take(
+        db,
+        session_id=session.id,
+        device_id=device_id,
+        project_id=session.project_id,
+        pericope=session.pericope,
+        kind=_kind(kind),
+        scope=scope,
+        audio=await file.read(),
+        pass_number=pass_number,
+        chunk_index=chunk_index,
+        content_type=file.content_type or "audio/mp4",
+    )
+    return _view(take)
+
+
+@router.get(
+    "/sessions/{session_id}/takes",
+    response_model=TakesResponse,
+    dependencies=[room_caller_dep],
+)
+async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> TakesResponse:
+    session = await room.get_session(db, session_id)
+    return TakesResponse(
+        session_id=session.id,
+        takes=[_view(take) for take in await takes_of(db, session.id)],
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/takes/{take_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+    dependencies=[room_caller_dep],
+)
+async def room_listens_to_take(
+    session_id: str, take_id: str, db: AsyncSession = Depends(get_db)
+) -> RedirectResponse:
+    """Give the team back the telling it just recorded, by the same signed redirect.
+
+    The back translation goes up and, until this, went nowhere the room could reach: the
+    only route that handed out playable audio wanted a facilitator's login, and the team
+    never signs in. The screen that asks where the error lives plays the mother tongue
+    from the tablet's own files and this in the other button.
+
+    The take is named inside its session rather than on its own, because the credential
+    at this door is the same string on every tablet — `take_in_session` is where that
+    argument is written out.
+    """
+    take = await take_in_session(db, session_id, take_id)
+    return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+@router.get("/facilitator/sessions/{session_id}/takes", response_model=TakesResponse)
+async def facilitator_takes(
+    session_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> TakesResponse:
+    """What a session recorded, for the person who will listen to it.
+
+    A facilitator signs in; the team never does. So this carries no room key — the two
+    audiences never share a route.
+    """
+    session = await room.get_session_for_facilitator(db, user, session_id)
+    return TakesResponse(
+        session_id=session.id,
+        takes=[_view(take) for take in await takes_of(db, session.id)],
+    )
+
+
+@router.get(
+    "/facilitator/takes/{take_id}/audio",
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    response_class=RedirectResponse,
+    response_model=None,
+)
+async def listen_to_take(
+    take_id: str, user: FacilitatorUser, db: AsyncSession = Depends(get_db)
+) -> RedirectResponse:
+    """Redirect to a short-lived signed URL: storage serves the bytes.
+
+    The API never proxies a take. A rehearsal take is the whole passage, and streaming
+    minutes of audio through the application server buys nothing over letting the bucket
+    do it — the same reason the sound necklace redirects rather than proxies.
+    """
+    take = await take_for_facilitator(db, user, take_id)
+    return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)

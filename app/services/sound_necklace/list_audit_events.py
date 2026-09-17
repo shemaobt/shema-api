@@ -11,6 +11,7 @@ async def list_audit_events(
     project_id: str,
     *,
     since: datetime | None = None,
+    until: datetime | None = None,
     event: AuditEvent | None = None,
     limit: int = 100,
 ) -> list[SnAuditEvent]:
@@ -19,10 +20,16 @@ async def list_audit_events(
     Scoped to the project in the statement, not filtered afterwards: this log names who
     reached whose voice, and a query that could return another project's rows would be a
     leak of exactly the thing it is meant to protect.
+
+    ``since`` and ``until`` bound the window as ``[since, until)``. Without an upper bound
+    the newest-first view can only be read from the current end — raising ``since`` strips
+    older rows but never reaches a past window once it is more than ``limit`` events back.
     """
     stmt = select(SnAuditEvent).where(SnAuditEvent.project_id == project_id)
     if since is not None:
         stmt = stmt.where(SnAuditEvent.occurred_at >= since)
+    if until is not None:
+        stmt = stmt.where(SnAuditEvent.occurred_at < until)
     if event is not None:
         stmt = stmt.where(SnAuditEvent.event == event)
     # id breaks the tie: two events in the same instant would otherwise come back in

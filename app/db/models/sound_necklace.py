@@ -20,10 +20,12 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -140,6 +142,20 @@ _AUDIT_EVENT_TYPE = Enum(
 
 
 class SnSession(Base):
+    """One facilitator's pass over one recorded story.
+
+    ``audio_ref`` is a real foreign key rather than a remembered string, and that is
+    load-bearing: it is the only link from a bucket audio to the artifacts cut from it,
+    so a session naming an audio nobody has would be an export nothing could ever trace
+    back — the row would survive and the one field saying where it came from would be
+    wrong. NO ACTION on delete, never CASCADE: removing an audio must fail while a
+    session points at it, because the alternative is destroying somebody's finished work
+    to satisfy a delete they did not ask for. Deleting the PROJECT still works, since
+    both rows cascade from it in the same statement. Its width matches
+    ``sn_audio_refs.audio_id``; a wider column could hold a value the referenced one
+    cannot store.
+    """
+
     __tablename__ = "sn_sessions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -149,8 +165,15 @@ class SnSession(Base):
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    audio_ref: Mapped[str] = mapped_column(String(255))
+    audio_ref: Mapped[str] = mapped_column(
+        String(128), ForeignKey("sn_audio_refs.audio_id"), index=True
+    )
+    #: The display name. Editable — see ``rename_session``.
     story_name: Mapped[str] = mapped_column(String(255))
+    #: Set once, at creation, and never written again. It names the three artifact files
+    #: a downstream pipeline reads by name (PRD §10.5), so writing it after those objects
+    #: exist would strand them under keys nothing points at. A rename moves
+    #: ``story_name`` alone for exactly this reason.
     slug: Mapped[str] = mapped_column(String(255))
     manifest_id: Mapped[str] = mapped_column(String(64))
     granularity_level: Mapped[GranularityLevel] = mapped_column(_GRANULARITY_TYPE)
@@ -179,6 +202,17 @@ class SnSession(Base):
     # Expiry is decided on read; nothing sweeps lapsed leases. A crashed tab therefore
     # frees its session without anyone unlocking it by hand.
     lock_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The session's accumulated net working time, as a whole count of seconds: a plain
+    # Integer, never Interval — see working_time, which argues that and does the
+    # accumulating.
+    net_working_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # The instant the last counted heartbeat was stamped, and the cursor the accumulation
+    # compare-and-swaps on. Null means "no stretch to measure from": completing a session
+    # clears it, so the first heartbeat after a reopen charges nothing at all and the
+    # closed stretch is never counted, however short it was.
+    last_working_tick_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class SnSessionState(Base):
@@ -202,6 +236,50 @@ class SnSessionState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class SnSessionTick(Base):
+    """One "still here" heartbeat, and nothing else about it.
+
+    The whole table is deliberately impoverished. There is one event — the session was
+    open and the tab was visible — carrying no idea of what was clicked, typed, played or
+    looked at, because §14 forbids telemetry on listener behaviour and a schema with room
+    for it is the first step across that line. Session metadata is what is allowed here,
+    and a session metadata table with a ``what_happened`` column would not stay one.
+
+    Append-only while the session is open, and dropped when it completes. The total on
+    ``sn_sessions`` is derived from these rows rather than the other way round, so keeping
+    them is what makes it auditable while it can still move; a lone counter could only
+    ever be believed. Completion freezes the total, and from that moment the rows would
+    record nothing but when the facilitator was at their desk.
+
+    ``occurred_at`` is the database's own clock, never the client's and never the
+    application's; ``working_time`` is where that choice is argued.
+
+    ``client_tick_id`` exists only so a retried or twice-delivered heartbeat cannot be
+    charged twice. It is the client's own opaque string and means nothing here beyond
+    "the same beat"; the unique constraint with the session is what makes the replay a
+    no-op rather than a second gap. Scoped to the session rather than global because it
+    is minted per session by a client that has no idea what other sessions exist.
+    """
+
+    __tablename__ = "sn_session_ticks"
+
+    # The unique constraint is also the only index this table needs. The duplicate check
+    # looks up exactly this pair, and the delete on completion looks up by session alone —
+    # the leading column of that same index. Nothing reads the beats in time order on any
+    # hot path — the running total is kept on the session — and an index per heartbeat
+    # insert that no query reads is a cost paid all session long for nothing.
+    __table_args__ = (
+        UniqueConstraint("session_id", "client_tick_id", name="uq_sn_session_ticks_session_client"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("sn_sessions.id", ondelete="CASCADE")
+    )
+    client_tick_id: Mapped[str] = mapped_column(String(64))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class SnArtifact(Base):
@@ -345,12 +423,20 @@ class SnAuditEvent(Base):
     reads like a fact and is not one. The column exists because adding it later means a
     migration on a database six production apps share; filling it needs a trusted-proxy
     policy, which is its own work.
+
+    Two indexes, and only the first serves a query. ``ix_sn_audit_events_project_occurred``
+    is the trail's one read — a project's events, newest first — scope, ORDER BY and LIMIT
+    together. ``ix_sn_audit_events_session_id`` serves the SET NULL trigger instead:
+    without an index on the referencing column Postgres sequential-scans this append-only
+    table on every session delete, which ENG-414 turned from a rare admin chore into a
+    button a facilitator presses.
     """
 
     __tablename__ = "sn_audit_events"
 
     __table_args__ = (
         Index("ix_sn_audit_events_project_occurred", "project_id", "occurred_at", "id"),
+        Index("ix_sn_audit_events_session_id", "session_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -403,3 +489,138 @@ class SnAudioRef(Base):
     )
     consent_present: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TranscriptStatus(enum.StrEnum):
+    """Where one answer's draft is. There is no ``running``: a claimed-but-unfinished
+    state survives a crashed worker as a row nothing will ever move again, and the cure
+    (a sweeper, or a heartbeat column) costs more than the disease. A lost worker leaves
+    ``pending``, which the next trigger simply picks up."""
+
+    PENDING = "pending"
+    READY = "ready"
+    FAILED = "failed"
+
+
+_TRANSCRIPT_STATUS_TYPE = Enum(
+    TranscriptStatus,
+    name="sn_transcript_status_enum",
+    values_callable=lambda enum_cls: [m.value for m in enum_cls],
+)
+
+
+class SnAnswerTranscript(Base):
+    """The transcription (and English translation) draft of one voice answer.
+
+    Advisory only. Nothing here is ever merged into an artifact by the API — a human
+    confirms the draft in the SPA, and an unconfirmed draft never leaves (PRD v2 §1.1,
+    §12). That is also why the text lives in its own table rather than in the answer
+    row: the recording is evidence, the draft is a suggestion about it, and ``force``
+    throws the suggestion away without touching the evidence.
+
+    These rows ARE the job's state — there is no job table. ``pending`` is work to do,
+    ``ready`` is work never to pay for twice, ``failed`` carries its own reason and
+    blocks nothing else.
+
+    The key is the answer's, and the foreign key is composite ON DELETE CASCADE: delete
+    or re-record an answer and its draft goes with it, with no cleanup code to forget.
+
+    ``language`` is the interview language the answer was spoken in, as the SPA sends it on
+    the trigger: it is the transcriber's hint and the switch that decides whether a
+    translation is needed. ``generation`` backs the compare-and-swap that keeps a pass in
+    flight from writing its result over a draft a ``force`` has already reset.
+
+    Two transcripts, not one. ``transcript_source`` is the cleaned text — what the
+    facilitator reads and confirms — and ``transcript_verbatim`` is what speech-to-text
+    returned before the disfluency cleanup touched it. Keeping both is what makes the
+    removal inspectable: a human cannot be the last word on a sentence they were never
+    shown, and without the verbatim column the only record of a dropped sentence would be
+    the model call that dropped it.
+
+    A confirm writes the facilitator's text into ``transcript_source`` and leaves
+    ``transcript_verbatim`` exactly where the transcription pass left it, which is what keeps
+    the spoken words recoverable however often the draft is edited. It also means the gap
+    between the two columns stops being the cleaner's work alone once a human has touched the
+    row: after a confirm it holds the removals and the edits together, and no column here
+    records which of the two a given difference came from.
+
+    Equality between the two does NOT mean the cleanup failed. A cleanup that fell back to
+    verbatim produces equal texts; so does a successful cleanup of an answer that had no
+    hesitation in it; and so does a facilitator confirming text that happens to match the
+    verbatim. Equality is the one signal that cannot tell those three apart. Selecting
+    ``WHERE transcript_verbatim = transcript_source`` and ``force``-ing the result would
+    re-bill the transcription of every cleanly-processed answer in the session and throw
+    away drafts a facilitator had already confirmed.
+    """
+
+    __tablename__ = "sn_answer_transcripts"
+
+    session_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    resource_path: Mapped[str] = mapped_column(String(255), primary_key=True)
+    status: Mapped[TranscriptStatus] = mapped_column(
+        _TRANSCRIPT_STATUS_TYPE, default=TranscriptStatus.PENDING
+    )
+    language: Mapped[str] = mapped_column(String(16))
+    generation: Mapped[int] = mapped_column(Integer, default=0)
+    transcript_verbatim: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    translation_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["session_id", "resource_path"],
+            ["sn_voice_answers.session_id", "sn_voice_answers.resource_path"],
+            ondelete="CASCADE",
+        ),
+    )
+
+
+class SnProjectSettings(Base):
+    """The bead granularity a project cuts at — one row, one decision, one grid.
+
+    ``beadSec`` is the coordinate system the downstream pipeline and the training data
+    are built on: it defines the bead grid and is mixed into ``manifest_id``. Choosing it
+    per session, as the SPA's setup screen used to, let two audios of one project land on
+    two incompatible grids. It is a property of the project, so it lives on the project.
+
+    ``bead_sec`` is nullable and is NOT what the admin sets. The admin sets a LEVEL; the
+    resolved duration is ``granularity_frames[level] * hop_sec``, which comes from each
+    audio's own acousteme (the O8 rule) and so is not known until an audio is cut. The
+    first session on the project stamps it here, and from then on it is the value every
+    later audio has to agree with — the SPA refuses one whose acousteme would resolve
+    differently rather than cutting it on a second grid.
+
+    The row IS the lock. ``granularity_level`` is NOT NULL, so a row existing means an
+    admin confirmed a level, and confirming is what freezes it — the settings screen says
+    as much on the button before the write happens. That is not caution, it is the only
+    arrangement where the invariant holds: a level that could move afterwards would either
+    contradict the ``bead_sec`` a session already stamped — leaving the project unable to
+    open another session at all — or split the corpus across two grids, which is the exact
+    thing this table exists to prevent. Re-cutting a project at a new granularity means
+    re-deriving every ``manifest_id`` it has already exported, and that is a migration,
+    not a setting.
+
+    ``updated_by`` is SET NULL, never CASCADE: the account that chose the granularity is
+    not the setting, so deleting that user must not take a project's grid with it, and
+    RESTRICT would make a row here the reason a user cannot be deleted in an app that
+    shares this database.
+    """
+
+    __tablename__ = "sn_project_settings"
+
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    granularity_level: Mapped[GranularityLevel] = mapped_column(_GRANULARITY_TYPE)
+    bead_sec: Mapped[float | None] = mapped_column(Float, nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
