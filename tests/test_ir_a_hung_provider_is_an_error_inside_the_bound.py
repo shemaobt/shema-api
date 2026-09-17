@@ -14,6 +14,8 @@ import time
 from types import SimpleNamespace
 from typing import Any
 
+import anthropic
+import httpx
 import pytest
 
 from app.core.config import Settings
@@ -162,3 +164,66 @@ async def test_a_provider_that_hangs_is_an_error_inside_the_bound_and_the_reques
     assert timed_out[0].outcome == "timeout"
     assert timed_out[0].role == "guide" and timed_out[0].rung == MODEL
     assert 0 <= timed_out[0].latency_ms < 5000
+
+
+def _usage_lines(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [
+        record
+        for record in caplog.records
+        if record.name == "app.services.internalization_room.llm"
+        and "[llm-usage]" in record.getMessage()
+    ]
+
+
+async def test_an_answered_call_says_who_asked_how_long_it_took_and_that_it_was_ok(
+    the_client, caplog: pytest.LogCaptureFixture
+) -> None:
+    the_client(_Scripted())
+
+    with caplog.at_level(logging.INFO, logger="app.services.internalization_room.llm"):
+        await llm.call_agent(
+            role="validator", system_prompt="s", user_content="u", settings=_settings()
+        )
+
+    (answered,) = _usage_lines(caplog)
+    assert answered.role == "validator" and answered.rung == MODEL
+    assert isinstance(answered.latency_ms, int)
+    assert answered.outcome == "ok", (
+        "a linha da chamada que respondeu não dizia como terminou, e a que falhou não dizia "
+        "nem quem perguntou nem quanto esperou: as duas se liam juntas e não se somavam"
+    )
+
+
+class _Refusing:
+    def __init__(self, failure: Exception) -> None:
+        self.failure = failure
+
+    async def create(self, **_: Any) -> SimpleNamespace:
+        raise self.failure
+
+
+async def test_a_refused_call_says_who_asked_how_long_it_waited_and_that_it_erred(
+    the_client, caplog: pytest.LogCaptureFixture
+) -> None:
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    the_client(
+        _Refusing(
+            anthropic.InternalServerError(
+                "Overloaded", response=httpx.Response(status_code=529, request=request), body=None
+            )
+        )
+    )
+
+    with (
+        caplog.at_level(logging.WARNING, logger="app.services.internalization_room.llm"),
+        pytest.raises(UpstreamServiceError),
+    ):
+        await llm.call_agent(
+            role="classifier", system_prompt="s", user_content="u", settings=_settings()
+        )
+
+    (refused,) = _usage_lines(caplog)
+    assert refused.status == 529 and refused.rung == MODEL
+    assert refused.role == "classifier", "sem o papel, a linha não separa o Guia do classificador"
+    assert isinstance(refused.latency_ms, int)
+    assert refused.outcome == "error"

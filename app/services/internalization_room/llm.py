@@ -178,7 +178,7 @@ async def call_agent(
             raise _timed_out(model, role=role, started=started, bound_s=bound_s) from hang
         except anthropic.NotFoundError as refusal:
             if model == rungs[-1]:
-                raise _unavailable(model, refusal) from refusal
+                raise _unavailable(model, refusal, role=role, started=started) from refusal
             logger.warning(
                 "This key cannot use %s; the room steps down to %s",
                 model,
@@ -187,7 +187,7 @@ async def call_agent(
             )
             continue
         except anthropic.APIError as failure:
-            raise _unavailable(model, failure) from failure
+            raise _unavailable(model, failure, role=role, started=started) from failure
         _report_spend(
             response,
             model,
@@ -213,22 +213,35 @@ async def call_agent(
     raise AssertionError("unreachable: the last rung either answers or raises")
 
 
-def _unavailable(model: str, failure: anthropic.APIError) -> UpstreamServiceError:
+def _unavailable(
+    model: str, failure: anthropic.APIError, *, role: str, started: float
+) -> UpstreamServiceError:
     """The usage line for a call that was refused, and the error the turn rises with.
 
-    The same logger as `_report_spend`, so a session's calls read as one ledger: which rung
-    each one asked, and for the one that failed, the status and the provider's own reason.
-    A credit or quota failure is diagnosed from here, not from the team's report of a room
-    that kept saying the same sentence. No token counts, because none were spent — which is
-    also what keeps this line out of the text seam's per-call tally.
+    The same logger as `_report_spend`, so a session's calls read as one ledger: who asked,
+    which rung, how long it waited and how it ended — and for the one that failed, the
+    status and the provider's own reason. A credit or quota failure is diagnosed from here,
+    not from the team's report of a room that kept saying the same sentence. No token
+    counts, because none were spent — which is also what keeps this line out of the text
+    seam's per-call tally.
     """
     status = getattr(failure, "status_code", None)
+    latency_ms = round((time.monotonic() - started) * 1000)
     logger.warning(
-        "[llm-usage] failed on %s: status=%s %s",
+        "[llm-usage] %s error on %s after %s ms: status=%s %s",
+        role,
         model,
+        latency_ms,
         status,
         failure,
-        extra={"rung": model, "status": status, "cause": type(failure).__name__},
+        extra={
+            "role": role,
+            "rung": model,
+            "latency_ms": latency_ms,
+            "outcome": "error",
+            "status": status,
+            "cause": type(failure).__name__,
+        },
     )
     return UpstreamServiceError(f"o modelo não respondeu em {model}: {failure}")
 
@@ -376,6 +389,7 @@ def _report_spend(
             "rung_fell_because": fell_because,
             "effort": effort,
             "latency_ms": latency_ms,
+            "outcome": "ok",
             "cost_usd": cost,
             "input_tokens": usage.input_tokens,
             "cache_read_tokens": cache_read,
