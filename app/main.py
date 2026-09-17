@@ -13,7 +13,12 @@ from app.api.bhsa import router as bhsa_router
 from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
 from app.api.change_requests import router as change_requests_router
+from app.api.devices import devices_router
+from app.api.facilitator.devices import facilitator_devices_router
+from app.api.facilitator.legend import facilitator_legend_router
+from app.api.facilitator.teams import facilitator_teams_router
 from app.api.health import router as health_router
+from app.api.internalization_room import router as internalization_room_router
 from app.api.languages import router as languages_router
 from app.api.meaning_maps import router as meaning_maps_router
 from app.api.notifications import router as notifications_router
@@ -37,7 +42,10 @@ from app.api.platform import router as platform_router
 from app.api.project_health import router as project_health_router
 from app.api.projects import router as projects_router
 from app.api.rag import router as rag_router
+from app.api.resource_requests import router as resource_requests_router
+from app.api.resource_requests.access import router as resource_request_access_router
 from app.api.roles import router as roles_router
+from app.api.shema import router as shema_router
 from app.api.sound_necklace import router as sound_necklace_router
 from app.api.translation_helper import router as translation_helper_router
 from app.api.uploads import router as uploads_router
@@ -132,6 +140,11 @@ def create_app() -> FastAPI:
     app.include_router(apps_router, prefix="/api/apps", tags=["apps"])
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(roles_router, prefix="/api/roles", tags=["roles"])
+    app.include_router(
+        resource_request_access_router,
+        prefix="/api/resource-requests/access",
+        tags=["resource-request-access"],
+    )
     app.include_router(platform_router, prefix="/api/platform", tags=["platform"])
     app.include_router(uploads_router, prefix="/api/uploads", tags=["uploads"])
     app.include_router(users_router, prefix="/api/users", tags=["users"])
@@ -139,6 +152,22 @@ def create_app() -> FastAPI:
     app.include_router(organizations_router, prefix="/api/organizations", tags=["organizations"])
     app.include_router(places_router, prefix="/api/places", tags=["places"])
     app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
+    app.include_router(
+        facilitator_devices_router,
+        prefix="/api/facilitator/devices",
+        tags=["facilitator-devices"],
+    )
+    app.include_router(
+        facilitator_teams_router,
+        prefix="/api/facilitator/teams",
+        tags=["facilitator-teams"],
+    )
+    app.include_router(
+        facilitator_legend_router,
+        prefix="/api/facilitator/coverage-legend",
+        tags=["facilitator-legend"],
+    )
+    app.include_router(devices_router, prefix="/api/devices", tags=["devices"])
     app.include_router(phases_router, prefix="/api/phases", tags=["phases"])
     app.include_router(books_router, prefix="/api/books", tags=["books"])
     app.include_router(pericopes_router, prefix="/api/pericopes", tags=["pericopes"])
@@ -161,6 +190,11 @@ def create_app() -> FastAPI:
         prefix="/api/translation-helper",
         tags=["translation-helper"],
     )
+    app.include_router(
+        internalization_room_router,
+        prefix="/api/internalization-room",
+        tags=["internalization-room"],
+    )
     app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
     app.include_router(rag_router, prefix="/api/rag", tags=["rag"])
     app.include_router(bhsa_router, prefix="/api/bhsa", tags=["bhsa"])
@@ -169,6 +203,12 @@ def create_app() -> FastAPI:
         prefix="/api/book-context",
         tags=["book-context"],
     )
+    app.include_router(
+        resource_requests_router,
+        prefix="/api/resource-requests",
+        tags=["resource-requests"],
+    )
+    app.include_router(shema_router, prefix="/api/shema", tags=["shema"])
 
     app.include_router(oc_genres_router, prefix="/api/oc/genres", tags=["oc-genres"])
     app.include_router(

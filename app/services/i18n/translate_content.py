@@ -17,7 +17,11 @@ LANGUAGE_NAMES: dict[str, str] = {
     "fr": "French",
 }
 
-TRANSLATION_MODEL = "gemini-3-flash-preview"
+
+def translation_model(settings: Settings) -> str:
+    """The model that translates authored content."""
+    return settings.gemini_fast_model
+
 
 TRANSLATION_PROMPT = """\
 You are a professional translator specializing in biblical and scholarly content.
@@ -65,7 +69,7 @@ async def translate_document_content(
     try:
         client = genai.Client(api_key=settings.google_api_key)
         response = await client.aio.models.generate_content(
-            model=TRANSLATION_MODEL,
+            model=translation_model(settings),
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
