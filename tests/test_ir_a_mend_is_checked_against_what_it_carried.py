@@ -379,7 +379,7 @@ async def test_the_team_is_told_which_element_fell(
     assert STILL_TOLD not in about, "o que continua dito não é uma perda"
 
 
-_FINDING_LINE = re.compile(r"^- (?:missing|addition|unclear): (.+)$", re.M)
+_FINDING_LINE = re.compile(r"^- (?:missing|addition|unclear)(?: \[[^\]]*\])?: (.+)$", re.M)
 
 
 def _the_finding_the_speaker_was_given(spoken: list[str]) -> str:

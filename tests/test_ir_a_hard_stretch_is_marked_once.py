@@ -31,6 +31,7 @@ from app.db.models.internalization_room import (
     IRTakeKind,
 )
 from app.services.internalization_room import sessions as room
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from tests.baker import (
     grant_facilitator_app_role,
@@ -519,6 +520,7 @@ async def test_the_three_prompts_are_byte_identical_with_and_without_the_count(
             scope=P,
             pericope_num=P,
             correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
+            addresses=Addresses(),
         )
         return list(said)
 

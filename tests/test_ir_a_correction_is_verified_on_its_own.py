@@ -113,7 +113,7 @@ class ReaderOfTellings:
         return self.answer
 
     def _verify(self, prompt: str) -> dict[str, Any]:
-        finding = _section(prompt, FINDING_MARK, EARLIER_MARK)
+        finding = _without_the_address(_section(prompt, FINDING_MARK, EARLIER_MARK))
         earlier = _section(prompt, EARLIER_MARK, CORRECTION_MARK)
         now = _section(prompt, CORRECTION_MARK, None)
 
@@ -134,6 +134,19 @@ def _section(prompt: str, start: str, end: str | None) -> str:
         return ""
     body = prompt.split(start, 1)[1]
     return body.split(end, 1)[0] if end and end in body else body
+
+
+#: The address the room puts on each finding: the frase, and the part the stretch is a slice
+#: of. It is taken out before the elements are read, because a scene title is passage content
+#: and carries the passage's own names — P01 scene 1 is *Fome e ida para Moabe* — so a double
+#: reading proper names off the whole section would count the room's address as something the
+#: analyst reported. Anchored to the shape the block writes, kind and bracket and colon, so a
+#: note of the analyst's own that happens to carry brackets is not mutilated with it.
+_THE_ADDRESS = re.compile(r"^(- \w+) \[[^\]]*\](:)", re.M)
+
+
+def _without_the_address(finding: str) -> str:
+    return _THE_ADDRESS.sub(r"\1\2", finding)
 
 
 def _names(text: str) -> set[str]:

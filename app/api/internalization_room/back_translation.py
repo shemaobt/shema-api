@@ -16,7 +16,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
-from app.services.internalization_room.takes import rehearsal_take_of, store_take
+from app.services.internalization_room.takes import rehearsal_take_of, store_take, takes_of
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
@@ -295,6 +295,7 @@ async def finish(
         state=state,
         told=told,
         retired=await room.retired_segments(db, session.id),
+        takes=await takes_of(db, session.id),
         settings=get_settings(),
     )
     voiced = (
