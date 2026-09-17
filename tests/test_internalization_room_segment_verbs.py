@@ -283,46 +283,14 @@ async def test_the_pieces_sit_where_the_original_sat_between_the_same_neighbours
 
 
 # ---------------------------------------------------------------------------
-# 4. A new native version arrives without the old explanation
-# ---------------------------------------------------------------------------
-
-
-async def test_a_new_recording_of_a_stretch_arrives_without_the_old_explanation(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """**The case that carries the product rule.**
-
-    Correcting only the mother-tongue audio does not exist: touching it always means the
-    explanation is redone. So there is no state in which the analyst reads the new recording
-    together with the explanation of the old one.
-    """
-    session_id, _, whole = await _one_told_stretch(client)
-    fresh_take = await _rehearse(client, session_id, b"o ensaio regravado")
-
-    answered = await _replace(
-        client, session_id, whole["segment_id"], take_id=fresh_take, starts_ms=0, ends_ms=24000
-    )
-
-    assert answered.status_code == 200, answered.text
-    units = await _units(client, session_id)
-    assert len(units) == 1
-    assert units[0]["take_id"] == fresh_take
-    assert units[0]["told"] is False, "o trecho novo está à espera de ser contado de novo"
-
-    read = service.told_back(await service.final_segments(db_session, session_id))
-
-    assert read == [], "nada do que a equipe disse sobre a gravação velha vale para a nova"
-
-
-# ---------------------------------------------------------------------------
-# 5. Only the translation can be redone on its own
+# 4. The one correction: the same slice, told again
 # ---------------------------------------------------------------------------
 
 
 async def test_redoing_only_the_explanation_over_unchanged_audio_is_accepted(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """The other side of the rule, without which case 4 would be forbidding too much."""
+    """The correction the room has: the audio stays where it is and the telling is redone."""
     session_id, take_id, whole = await _one_told_stretch(client)
 
     client.said.append("a explicação refeita")  # type: ignore[attr-defined]
@@ -355,13 +323,24 @@ async def test_redoing_only_the_explanation_over_unchanged_audio_is_accepted(
 async def test_a_divided_stretch_cannot_be_replaced_as_a_unit_through_the_route(
     client: httpx.AsyncClient,
 ) -> None:
-    """The refusal the service already carries, reachable through the door."""
+    """The refusal the service already carries, reachable through the door.
+
+    Over the stretch's own slice, so what answers is the guard about the divided unit and not
+    the one about the slice: a correction addressed elsewhere is refused a line earlier, and
+    this case would go on passing without ever reaching what it is named for.
+    """
     session_id, _, whole = await _one_told_stretch(client)
-    fresh_take = await _rehearse(client, session_id, b"o ensaio regravado")
     await _divide(client, session_id, whole["segment_id"], 8000)
 
+    client.said.append("o todo contado outra vez")  # type: ignore[attr-defined]
     refused = await _replace(
-        client, session_id, whole["segment_id"], take_id=fresh_take, starts_ms=0, ends_ms=24000
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=whole["take_id"],
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando o todo outra vez",
     )
 
     assert refused.status_code == 400, refused.text
@@ -631,111 +610,21 @@ async def test_a_stretch_that_no_longer_counts_cannot_be_divided_through_the_rou
 ) -> None:
     """The same door, the same refusal — reached before anything is written."""
     session_id, _, whole = await _one_told_stretch(client)
-    fresh = await _rehearse(client, session_id, b"o ensaio regravado")
+    client.said.append("o trecho contado outra vez")  # type: ignore[attr-defined]
     await _replace(
-        client, session_id, whole["segment_id"], take_id=fresh, starts_ms=0, ends_ms=9000
+        client,
+        session_id,
+        whole["segment_id"],
+        take_id=whole["take_id"],
+        starts_ms=whole["starts_ms"],
+        ends_ms=whole["ends_ms"],
+        audio=b"contando o trecho outra vez",
     )
 
     refused = await _divide(client, session_id, whole["segment_id"], 4000)
 
     assert refused.status_code == 400, refused.text
     assert len(await _units(client, session_id)) == 1
-
-
-async def test_a_re_recording_that_arrives_with_an_explanation_is_refused_before_anything_is_kept(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """The combination is knowable from the request, so nothing should be spent on it.
-
-    It was refused, but only after the recording had been stored and the transcriber paid —
-    and the orphan take then travelled to Refine in `retro_takes`, as a telling-back of a
-    stretch that has none. Same argument as the slice that is not a slice: a malformed request
-    is the app's own bug, and refusing it costs the team nothing.
-    """
-    from sqlalchemy import select
-
-    from app.db.models.internalization_room import IRTake
-
-    session_id, _, whole = await _one_told_stretch(client)
-    fresh = await _rehearse(client, session_id, b"o ensaio regravado")
-    before = len(
-        (
-            await db_session.execute(
-                select(IRTake).where(
-                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    refused = await _replace(
-        client,
-        session_id,
-        whole["segment_id"],
-        take_id=fresh,
-        starts_ms=0,
-        ends_ms=24000,
-        audio=b"a explicacao que nao pode vir junto",
-    )
-
-    assert refused.status_code == 400, refused.text
-    after = (
-        (
-            await db_session.execute(
-                select(IRTake).where(
-                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    assert len(after) == before, "nada foi guardado para um pedido que termina em recusa"
-
-
-async def test_the_service_refuses_a_moved_slice_carrying_an_explanation_on_its_own(
-    db_session: AsyncSession,
-) -> None:
-    """The product rule held at the service, with no route in front of it.
-
-    The route refuses this combination before anything is kept, which is right and is covered
-    above — but it means the guard underneath it is never reached from there. A second layer
-    nobody exercises is not defence in depth: it is a line somebody deletes in a refactor with
-    nothing to say so, and `capture_segment` is called from more than one place already.
-
-    So this one goes straight at the service: a new version pointing at different audio, handed
-    an explanation, has to be refused whoever asks.
-    """
-    from app.core.exceptions import ValidationError
-    from app.services.internalization_room.sessions import create_session
-
-    session = await create_session(db_session, pericope=PASSAGE, project_id="projeto-1")
-    told = await service.capture_segment(
-        db_session,
-        session,
-        take_id="ensaio-1",
-        starts_ms=0,
-        ends_ms=20000,
-        bridge_take_id="retro-1",
-        transcript="a explicação da gravação velha",
-    )
-
-    with pytest.raises(ValidationError):
-        await service.capture_segment(
-            db_session,
-            session,
-            take_id="ensaio-2",
-            starts_ms=0,
-            ends_ms=24000,
-            bridge_take_id="retro-2",
-            transcript="a explicação da gravação velha",
-            replaces=told,
-        )
-
-    kept = await service.final_segments(db_session, session.id)
-    assert [one.id for one in kept] == [told.id], "e a recusa não mexeu no que estava lá"
 
 
 # ---------------------------------------------------------------------------

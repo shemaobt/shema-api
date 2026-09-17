@@ -929,8 +929,8 @@ def correction_to_verify(
     without a rule of its own: a stretch divided changes the list's length; two corrections at
     once move two positions; a stretch retold that no finding pointed at moves a position that
     is not the finding's; a finding with no address names nothing to compare; a first reading
-    has no earlier list at all; and a mother-tongue re-recording leaves a stretch with nothing
-    told back, so the chain from the finding's stretch does not reach what stands there now.
+    has no earlier list at all; and a stretch cut in two leaves pieces with nothing told back, so
+    the chain from the finding's stretch does not reach what stands there now.
     """
     answered = current_findings(state)
     finding = answered[0] if answered else None

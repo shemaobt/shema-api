@@ -32,11 +32,16 @@ from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
     build_internalization_release,
 )
-from app.services.internalization_room.segments import capture_segment, final_segments
+from app.services.internalization_room.segments import (
+    capture_segment,
+    divide_segment,
+    final_segments,
+)
 from app.services.internalization_room.sessions import (
     back_translation_of,
     create_session,
     get_session,
+    retire_the_part_recorded_again,
     save_comprehension,
 )
 from app.services.internalization_room.takes import take_by_id
@@ -418,18 +423,55 @@ def _after(take: IRTake) -> datetime | None:
     return take.created_at + timedelta(minutes=1) if take.created_at else None
 
 
-async def move_the_mother_tongue(
+async def a_piece_still_to_be_told(
+    db: AsyncSession, session: IRSession, stretch: IRSegment
+) -> IRSegment:
+    """Cut one stretch in two and answer with the second piece, which nobody has told yet.
+
+    Cutting is the verb that leaves a stretch standing with nothing said on it: each piece is
+    born over its parent's own audio with no telling of its own. The other way in was a version
+    that carried no words, and a version is a telling now (ADR 0025), so a case about what the
+    room does with an untold stretch builds it here rather than writing a row no route can.
+
+    The head is told back before the piece is handed over, so exactly one stretch is left
+    waiting: a cut leaves two pieces untold and a case about *the* untold stretch would other-
+    wise have two to choose from.
+
+    The cut falls halfway, because where it falls is the team's and no case here is about that.
+    """
+    head, tail = await divide_segment(
+        db, session, stretch, at_ms=(stretch.starts_ms + stretch.ends_ms) // 2
+    )
+    await capture_segment(
+        db,
+        session,
+        take_id=head.take_id,
+        starts_ms=head.starts_ms,
+        ends_ms=head.ends_ms,
+        bridge_take_id="retro-da-cabeca",
+        transcript="a primeira metade contada de volta",
+        pass_number=head.pass_number,
+        replaces=head,
+    )
+    return tail
+
+
+async def record_the_part_again(
     db: AsyncSession, session: IRSession, part: IRTake, *, sha256: str
 ) -> IRTake:
-    """The team recorded one part again and has told nothing back over the new audio yet.
+    """The team recorded one **Part** again, and its ground is untold until they tell it back.
 
-    The first of the two calls the room's own correction is made of. The service refuses to
-    carry the old explanation across when the audio moves, so what it leaves behind is a
-    stretch waiting to be told.
+    The verb is the upload under that part's number: a rehearsal take landing under a number an
+    earlier take already carries *is* that part again, and it retires the stretches whose
+    recording is one of those earlier takes and nothing else (ADR 0023). It also starts the
+    check over, because the passage the team is standing on has changed.
 
-    The fresh recording takes the replaced part's place — its scope and its number — the way a
-    **Rebuild** takes the placement of the recording it was built from. A part recorded again
-    is the same part, and a take that landed with no number would be a part of its own.
+    It is built through the product's own verb rather than by writing the rows: the cases
+    standing on this builder read takes and stretches, so a chain forged here would hold them up
+    over a shape the product cannot reach.
+
+    What comes back carries no stretch of its own: the fresh recording is nobody's telling yet.
+    `tell_back_about` is the second call, the way the team's two gestures are two.
     """
     fresh = await another_rehearsal_take(
         db,
@@ -439,32 +481,7 @@ async def move_the_mother_tongue(
         ordinal=part.ordinal,
         created_at=_after(part),
     )
-    standing = await stretch_on(db, session, part)
-    await capture_segment(
-        db, session, take_id=fresh.id, starts_ms=0, ends_ms=PART_MS, replaces=standing
-    )
-    return fresh
-
-
-async def record_the_part_again(
-    db: AsyncSession, session: IRSession, part: IRTake, *, sha256: str
-) -> IRTake:
-    """The team recorded one part again and told it back over the new audio.
-
-    The second of the two calls: the telling follows on the audio that replaced the old one.
-    """
-    fresh = await move_the_mother_tongue(db, session, part, sha256=sha256)
-    waiting = await stretch_on(db, session, fresh)
-    await capture_segment(
-        db,
-        session,
-        take_id=fresh.id,
-        starts_ms=0,
-        ends_ms=PART_MS,
-        bridge_take_id="retro-de-novo",
-        transcript="a parte recontada",
-        replaces=waiting,
-    )
+    await retire_the_part_recorded_again(db, session, fresh)
     return fresh
 
 

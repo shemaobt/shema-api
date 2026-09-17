@@ -246,6 +246,9 @@ async def _approved_by_the_team(
     assert approved.status_code == 200, approved.text
 
 
+TOLD_AGAIN = "Noemi voltou com Rute, contado outra vez"
+
+
 async def test_a_facilitator_reads_the_file_of_a_clean_session(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
@@ -341,39 +344,42 @@ async def test_a_version_another_session_minted_does_not_take_this_ones_numbers(
     assert file["notices"] == []
 
 
-async def test_a_stretch_whose_mother_tongue_was_recorded_again_keeps_what_was_said(
+async def test_a_stretch_told_again_keeps_what_was_said_before(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
-    """Re-recording the native audio leaves a stretch standing with nothing said on it yet.
+    """The row standing is the new telling, and the one it replaced is its history.
 
-    It is a real unit and the tablet asks for it, and the telling that came before it is the
-    team's own words about the passage. Listed as only what was told back, the new row was in
-    no list at all and the old one was in nobody's history — so the one thing the consultant
-    came for left the document in silence, which is the loss `divided_segments` was added to
-    the packet to stop.
+    What the consultant comes for is the team's own earlier words about the passage. Listed as
+    only what stands, the replaced row was in nobody's history — so the one thing the document
+    exists for left it in silence, which is the loss `divided_segments` was added to the packet
+    to stop.
 
-    It carries no number, because the numbering of a live reading is the enumeration the
-    analyst was given and a stretch with nothing said on it was not in it.
+    This case used to build its standing row as a version carrying no words, and asked of it
+    that it had no transcript and no frase number. That state is gone with the station that
+    made it (ADR 0025): a version is the stretch told again and always carries words, so the
+    two halves about a wordless row fall with the state rather than being weakened. What is
+    left waiting today is a piece the team cut, and its history is its parent, not a chain.
     """
     project, _credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id, tell=_told_once)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
     told = (await final_segments(db_session, session.id))[0]
-    moved = await capture_segment(
+    again = await capture_segment(
         db_session,
         session,
-        take_id="ensaio-2",
-        starts_ms=0,
-        ends_ms=CLIP_MS,
+        take_id=told.take_id,
+        starts_ms=told.starts_ms,
+        ends_ms=told.ends_ms,
+        bridge_take_id="retro-de-novo",
+        transcript=TOLD_AGAIN,
         replaces=told,
     )
 
     file = await _the_file(client, session.id, desk)
 
     (standing,) = file["stretches"]
-    assert standing["segment_id"] == moved.id
-    assert standing["transcript"] is None
-    assert "frase" not in standing
+    assert standing["segment_id"] == again.id
+    assert standing["transcript"] == TOLD_AGAIN
     assert [one["segment_id"] for one in standing["history"]] == [told.id]
     assert standing["history"][0]["transcript"] == FIRST_TELLING
     assert file["abandoned"] == []
