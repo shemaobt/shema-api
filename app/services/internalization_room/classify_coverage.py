@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from typing import Any
 
 from app.core.config import Settings, get_settings
@@ -278,3 +279,36 @@ async def classify_coverage(
         surfaced=verdict["surfaced"],
         engaged=verdict["engaged"],
     )
+
+
+_WORD = re.compile(r"[a-z]{4,}")
+
+
+def _words(text: str) -> set[str]:
+    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().casefold()
+    return set(_WORD.findall(plain))
+
+
+async def classify_coverage_by_keywords(
+    *,
+    coverage_state: dict[str, str],
+    team_utterance: str,
+    guide_response: str,
+    pericope_num: str,
+    scene_pointer: str | None = None,
+    **_: object,
+) -> dict[str, str]:
+    """The classifier with no model in it: her keyword heuristic over the labels.
+
+    A word of the team's that touches a bead's label engages it; a word of the Guide's
+    surfaces it. It is offered exactly what the model would be — the same list, the same
+    label with the map's prose — and it reads the words alone, so it is wrong in the ways
+    a keyword match is wrong and never in a way that costs a call. It stands in for
+    `classify_coverage` wherever a whole room has to run without a provider; the extra
+    keywords the settle passes the real one are taken and ignored.
+    """
+    offered = _offered(coverage_state, pericope_num, scene_pointer)
+    team, guide = _words(team_utterance), _words(guide_response)
+    engaged = [e.key for e in offered if _words(_shown_label(e)) & team]
+    surfaced = [e.key for e in offered if e.key not in engaged and _words(_shown_label(e)) & guide]
+    return merge(coverage_state, pericope_num=pericope_num, surfaced=surfaced, engaged=engaged)

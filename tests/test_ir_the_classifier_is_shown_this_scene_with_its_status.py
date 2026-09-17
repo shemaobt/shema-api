@@ -29,6 +29,7 @@ from app.services.internalization_room.classify_coverage import (
     _scenes_block,
     _unresolved_block,
     classify_coverage,
+    classify_coverage_by_keywords,
 )
 from app.services.internalization_room.coverage import (
     CoverageStatus,
@@ -244,3 +245,37 @@ async def test_an_id_the_classifier_was_not_offered_this_turn_moves_nothing(
         "qualquer outra: o modelo movia uma conta de uma cena que ninguém abriu"
     )
     assert "not offered" in caplog.text
+
+
+async def test_the_keyword_classifier_moves_beads_from_the_words_alone_with_no_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = sys.modules["app.services.internalization_room.classify_coverage"]
+
+    async def never(**_: Any) -> str:
+        raise AssertionError("o classificador determinístico chamou o provedor")
+
+    monkeypatch.setattr(module, "call_agent", never)
+
+    settled = await classify_coverage_by_keywords(
+        coverage_state=initial_state(P),
+        team_utterance="Naomi and her husband went away because of the famine, Ruth too",
+        guide_response="They left Bethlehem of Judah for the fields of Moab.",
+        pericope_num=P,
+        scene_pointer="S1",
+    )
+
+    assert settled["being:S1:B3"] == CoverageStatus.ENGAGED.value, (
+        "as palavras da equipe tocam o rótulo de Noemi e a conta tem de subir a engaged"
+    )
+    assert settled["object:S1:O1"] == CoverageStatus.ENGAGED.value
+    assert settled["place:S1:PL1"] == CoverageStatus.SURFACED.value, (
+        "Belém só saiu da boca do Guia: levantada, não engajada"
+    )
+    assert settled["place:S1:PL2"] == CoverageStatus.SURFACED.value
+    assert settled["being:S1:B2"] == CoverageStatus.NOT_ENCOUNTERED.value, (
+        "'her husband' não toca o rótulo de Elimeleque; nada de engajamento inventado"
+    )
+    assert settled["being:S3:B9"] == CoverageStatus.NOT_ENCOUNTERED.value, (
+        "Rute é da cena 3; com a equipe na cena 1 ela não está na lista e não se move"
+    )
