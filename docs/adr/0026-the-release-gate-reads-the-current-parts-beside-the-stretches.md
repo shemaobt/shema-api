@@ -53,6 +53,13 @@ those rows would travel by the same rule as any take, and this is that rule turn
 teeth. Whether any such session is still unreleased is a question for the field and not for the
 gate.
 
+The text seam does not reach this gate, and it was asked. It declares a part per clip of her draft
+and captures a frase on a clip only when a round arrives, so a declared clip nobody told is exactly
+the shape this refuses — but a seam session names no project, `approve_release` refuses a
+project-less session before it composes anything, and both facilitator routes resolve a session by
+the team that owns it. Neither golden runner calls a release door. A release door opened onto the
+seam would have to answer this question before it opened.
+
 Consequences, decided knowing them. A session whose telling-back was started over now carries
 `untold_part` beside `no_telling_back`, because every part it holds stands with nothing told on it;
 that is the same hole read honestly. The verdict's untold errand, `first_untold`, still speaks only

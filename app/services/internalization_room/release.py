@@ -48,6 +48,7 @@ from app.services.internalization_room.back_translation import (
     findings_remaining,
     rehearsed_parts,
     unheard_parts,
+    untold_parts,
 )
 from app.services.internalization_room.canon.book_material import vendor_pin
 from app.services.internalization_room.canon.parse_map import load_map
@@ -382,8 +383,10 @@ async def compose_internalization_release(
     has an empty reading *and* recordings nobody explained, both are true of it, and each sends
     the team somewhere else. Once rather than once per part, for the reason above.
 
-    Which grounds the stretches name is `rehearsed_parts`, asked once and read by this and by the
-    listening below, so what counts as a part the team stood on cannot drift between the two.
+    Both this and the listening below start from `rehearsed_parts`, the grounds the stretches
+    name, and ask different things of it: whether a current part is among them at all, and
+    whether the report covers the ones that are. The input is shared and the answer is not —
+    deriving the listening from the takes is what ADR 0023 refused and ADR 0026 keeps refused.
 
     Not forceable, for the reason the stretch is not: ground nobody told back is missing material
     and not a dispute, and there is nothing in a recording nobody explained to disagree with.
@@ -448,7 +451,7 @@ async def compose_internalization_release(
     if told != stretches:
         blockers.append("untold_stretch")
     rehearsed = rehearsed_parts(stretches)
-    if any(part.id not in rehearsed for part in parts):
+    if untold_parts(parts, rehearsed):
         blockers.append("untold_part")
     unheard = unheard_parts(telling_back, rehearsed)
     if rehearsed and unheard:

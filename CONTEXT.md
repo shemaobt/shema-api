@@ -84,7 +84,7 @@ The act of saying, in the bridge language, what a stretch of the mother tongue h
 _Avoid_: translating (in English prose; the room's own English literal does say translated), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
 
 **Untold**:
-A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called. A current **Part** no standing stretch is a slice of is untold ground as well, and it refuses the **Release** as `untold_part`.
+A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called. A current **Part** with no standing stretch is untold ground as well, and refuses the **Release** as `untold_part`.
 _Avoid_: missing, pending, Não contado
 
 **Rehearsal** (`ensaio`):
