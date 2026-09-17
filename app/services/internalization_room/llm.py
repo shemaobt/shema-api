@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Sequence
@@ -163,15 +164,18 @@ async def call_agent(
     for model in _from_the_settled_rung(rungs):
         started = time.monotonic()
         try:
-            response = await client.messages.create(
-                model=model,
-                max_tokens=max_output_tokens,
-                thinking=thinking,
-                output_config=output_config,
-                system=_system_blocks(system_prompt),
-                messages=messages,
-                timeout=bound_s,
-            )
+            async with asyncio.timeout(bound_s):
+                response = await client.messages.create(
+                    model=model,
+                    max_tokens=max_output_tokens,
+                    thinking=thinking,
+                    output_config=output_config,
+                    system=_system_blocks(system_prompt),
+                    messages=messages,
+                    timeout=bound_s,
+                )
+        except TimeoutError as hang:
+            raise _timed_out(model, role=role, started=started, bound_s=bound_s) from hang
         except anthropic.NotFoundError as refusal:
             if model == rungs[-1]:
                 raise _unavailable(model, refusal) from refusal
@@ -227,6 +231,27 @@ def _unavailable(model: str, failure: anthropic.APIError) -> UpstreamServiceErro
         extra={"rung": model, "status": status, "cause": type(failure).__name__},
     )
     return UpstreamServiceError(f"o modelo não respondeu em {model}: {failure}")
+
+
+def _timed_out(model: str, *, role: str, started: float, bound_s: float) -> UpstreamServiceError:
+    """The usage line for a call the bound ended, and the error the turn rises with.
+
+    The request itself is let go when the bound fires — `asyncio.timeout` cancels the await,
+    and the connection under it closes with it — so nothing keeps waiting on an answer nobody
+    will hear. The line carries the role and the elapsed time like an answered call's, which
+    is what makes a slow turn readable afterwards: whether it was the Guide, the Validator
+    or the classifier that never came back.
+    """
+    latency_ms = round((time.monotonic() - started) * 1000)
+    logger.warning(
+        "[llm-usage] %s timeout on %s after %s ms: no answer inside %s s",
+        role,
+        model,
+        latency_ms,
+        f"{bound_s:g}",
+        extra={"role": role, "rung": model, "latency_ms": latency_ms, "outcome": "timeout"},
+    )
+    return UpstreamServiceError(f"o modelo não respondeu em {model}: sem resposta em {bound_s:g} s")
 
 
 def _refused_outright(response: Message) -> bool:
