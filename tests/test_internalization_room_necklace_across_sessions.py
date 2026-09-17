@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
-from app.services.internalization_room.coverage import CoverageStatus, current_scene, floor_met
+from app.services.internalization_room.coverage import CoverageStatus, floor_met
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.prompt_blocks import coverage_status_block
 from tests.baker import (
@@ -101,7 +101,7 @@ async def test_the_guide_is_handed_only_what_the_team_still_has_left(
     thursday = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
 
     state = thursday.coverage_state
-    left = coverage_status_block(state, FIRST, current_scene(state, FIRST)).split("REMAINING")[1]
+    left = coverage_status_block(state, FIRST).split("REMAINING")[1]
     assert left.splitlines()[1:] == ["  preserved: R10"]
 
 

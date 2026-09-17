@@ -9,7 +9,7 @@ from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.practice import (
     guide_invited_mother_tongue_practice,
 )
-from app.services.internalization_room.coverage import current_scene, initial_state, merge
+from app.services.internalization_room.coverage import initial_state, merge
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.render import render
 from app.services.internalization_room.run_turn import (
@@ -182,7 +182,7 @@ def test_render_fills_every_placeholder() -> None:
 
 def test_the_coverage_block_lists_only_what_is_left() -> None:
     state = merge(initial_state(P), pericope_num=P, engaged=["scene:1", "scene:2"])
-    covered, left = coverage_status_block(state, P, current_scene(state, P)).split("REMAINING")
+    covered, left = coverage_status_block(state, P).split("REMAINING")
 
     assert "  scene: S3 (v.18)" in left
     assert "S1 (v.15)" not in left
@@ -191,7 +191,7 @@ def test_the_coverage_block_lists_only_what_is_left() -> None:
 
 def test_a_finished_map_says_nothing_remains() -> None:
     whole = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
-    block = coverage_status_block(whole, P, current_scene(whole, P))
+    block = coverage_status_block(whole, P)
 
     assert "none" in block
 
