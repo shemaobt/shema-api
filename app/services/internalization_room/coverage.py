@@ -171,6 +171,28 @@ def remaining(state: dict[str, str], pericope_num: str) -> list[Element]:
     ]
 
 
+def current_scene(state: dict[str, str], pericope_num: str) -> str | None:
+    """The first scene with a bead still short of `engaged`, once one scene bead is.
+
+    Ledger state, read off which scene-scoped beads the team has worked: none of them
+    engaged is the whole-passage opening, all of them engaged is the whole-passage
+    integration, and both are answered with no scene at all. The pointer the rehearsal is
+    read against lives in `live_turn` and answers to what the team has said, not to this.
+    """
+    merged = {**initial_state(pericope_num), **state}
+    beads = [
+        (element.scene, merged.get(element.key) == CoverageStatus.ENGAGED)
+        for element in elements_for(pericope_num)
+        if element.scene is not None
+    ]
+    if not any(engaged for _, engaged in beads):
+        return None
+    for scene in sorted({scene for scene, _ in beads}):
+        if not all(engaged for at, engaged in beads if at == scene):
+            return f"S{scene}"
+    return None
+
+
 _AXES = frozenset({ElementKind.ARC, ElementKind.CONTEXT, ElementKind.TONE, ElementKind.FUNCTION})
 
 
