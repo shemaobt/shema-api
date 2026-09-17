@@ -197,6 +197,10 @@ async def test_a_session_the_room_refused_after_it_played_is_not_judged(
         "uma sessão que a sala recusou no meio não é inteira: julgá-la custa e não compara com nada"
     )
     assert not list(out.glob("*.verdict.json"))
+    exported = json.loads((out / f"P01-kickoff-twice.{STAMP}.json").read_text(encoding="utf-8"))
+    assert exported["refused"].startswith("409 "), (
+        "a recusa vai no JSON exportado, senão um --rejudge remonta a sessão como inteira"
+    )
     assert "| P01-kickoff-twice | — | recusada | 409 " in (out / "README.md").read_text(
         encoding="utf-8"
     )
@@ -498,10 +502,40 @@ async def test_a_committed_run_is_judged_again_from_its_exports_without_playing_
         ),
         encoding="utf-8",
     )
+    (earlier / "P01-kickoff-twice.2026-09-16T21-13-26.json").write_text(
+        json.dumps(
+            {
+                "name": "P01-kickoff-twice",
+                "pericopeId": "P01",
+                "language": "Brazilian Portuguese",
+                "baseUrl": "http://127.0.0.1:8047/api/internalization-room/text-seam/",
+                "sessionId": "s-2",
+                "refused": "502 o modelo não respondeu",
+                "turns": [
+                    {
+                        "idx": 0,
+                        "team": "Oi.",
+                        "guide": GUIDE_LINE,
+                        "outcome": "pass",
+                        "interrupted": False,
+                        "turnMs": 17000,
+                        "usage": [],
+                        "mechanical": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     out = tmp_path / "2026-09-16-rejulgado"
 
     exit_code = await golden_runner.run(_args(earlier, out, rejudge=str(earlier)))
 
+    assert len(judge.asked) == 1 and "| P01-kickoff-twice | — | recusada | 502 " in (
+        out / "README.md"
+    ).read_text(encoding="utf-8"), (
+        "a sessão que a sala recusou no meio não é julgada de novo, e a linha segue recusada"
+    )
     assert judge.asked[0]["user_content"].endswith(
         f"[turn 1]\nTEAM: Explica de novo.\nGUIDE (pass): {GUIDE_LINE}"
     ), "o juiz lê o mesmo bloco que a rodada original exportou, remontado do JSON"
@@ -517,6 +551,24 @@ async def test_a_committed_run_is_judged_again_from_its_exports_without_playing_
         "juiz: turn 1 · blocker · redirect_on_request_to_understand |"
     ) in readme, "a coluna mecânica vem do JSON exportado, o juiz da chamada de agora"
     assert exit_code == 1
+
+
+async def test_a_rejudge_refuses_to_write_over_the_run_it_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    judge = the_judge_answers(monkeypatch)
+    earlier = tmp_path / "2026-09-16"
+    earlier.mkdir()
+    (earlier / "README.md").write_text("o README da rodada, com o custo dela\n", encoding="utf-8")
+
+    exit_code = await golden_runner.run(_args(earlier, earlier, rejudge=str(earlier)))
+
+    assert exit_code == 2
+    assert judge.asked == []
+    assert (earlier / "README.md").read_text(encoding="utf-8") == (
+        "o README da rodada, com o custo dela\n"
+    ), "o README que registra o custo da rodada é o que o §5.2 amarra ao release; não se apaga"
+    assert "--out" in capsys.readouterr().err
 
 
 def test_the_judges_column_and_the_mechanical_column_never_read_each_other() -> None:

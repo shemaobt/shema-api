@@ -328,6 +328,7 @@ def export(
     played: list[Played],
     out: Path,
     stamp: str,
+    refused: str | None = None,
 ) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     report = out / f"{script.name}.{stamp}.json"
@@ -340,6 +341,7 @@ def export(
                 "language": script.language,
                 "baseUrl": base_url,
                 "sessionId": session_id,
+                "refused": refused,
                 "turns": [asdict(turn) for turn in played],
             },
             ensure_ascii=False,
@@ -391,7 +393,13 @@ async def play_session(
         result.refused = _refusal(refused)
     finally:
         report, transcript = export(
-            script, session_id=session_id, base_url=base_url, played=played, out=out, stamp=stamp
+            script,
+            session_id=session_id,
+            base_url=base_url,
+            played=played,
+            out=out,
+            stamp=stamp,
+            refused=result.refused,
         )
         print(f"  {report}\n  {transcript}")
     if result.refused is None:
@@ -567,6 +575,9 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
 
     The turns' usage is left out on purpose: those calls were paid for by the run that
     exported them and are already in its README, and a re-judgement's money is the judge's.
+    A refusal comes back with the session, so a run cut short by the room is not rebuilt
+    as a whole one; an export older than the field is read as played whole, which is what
+    those runs were.
     """
     raw = json.loads(path.read_text(encoding="utf-8"))
     script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
@@ -582,7 +593,8 @@ def exported(path: Path) -> tuple[Script, SessionResult, str]:
         )
         for turn in raw["turns"]
     ]
-    return script, SessionResult(script.name, raw["sessionId"], played), raw["baseUrl"]
+    result = SessionResult(script.name, raw["sessionId"], played, refused=raw.get("refused"))
+    return script, result, raw["baseUrl"]
 
 
 async def rejudge(args: argparse.Namespace) -> int:
@@ -593,9 +605,19 @@ async def rejudge(args: argparse.Namespace) -> int:
     again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
     pericope names today, and its verdict written under the same name and stamp into `--out`,
     so the file still says which transcript it judged. The mechanical column is the one the
-    run exported; the judge's column is this call's.
+    run exported; the judge's column is this call's. A session the room refused is not
+    judged here either, and its row stays `recusada`. Writing into the directory being read
+    is refused: `--out` defaults to today's date, which on the day of the run is that very
+    directory, and `close` would replace the README that records what the run cost.
     """
     out = Path(args.out)
+    if out.resolve() == Path(args.rejudge).resolve():
+        print(
+            f"golden: --out is the run being judged again ({args.rejudge}); its README records "
+            "what that run cost and a re-judgement would write over it — name another --out",
+            file=sys.stderr,
+        )
+        return 2
     results: list[SessionResult] = []
     base_url = ""
     for path in sorted(Path(args.rejudge).glob("*.json")):
@@ -604,7 +626,8 @@ async def rejudge(args: argparse.Namespace) -> int:
         script, result, base_url = exported(path)
         print(f"\n▶ {script.name} — judging {path.name} again")
         out.mkdir(parents=True, exist_ok=True)
-        await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
+        if result.refused is None:
+            await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
         results.append(result)
     if not results:
         print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
