@@ -35,7 +35,11 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
-from tests.room_harness import heard_every_part, press_terminei
+from tests.room_harness import (
+    a_piece_still_to_be_told,
+    heard_every_part,
+    press_terminei,
+)
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -236,22 +240,12 @@ async def _standing(db: AsyncSession, session_id: str) -> list[IRSegment]:
     return await service.final_segments(db, session_id)
 
 
-async def _re_record_the_native(db: AsyncSession, session_id: str, segment: IRSegment) -> IRSegment:
-    """Redo one stretch's mother-tongue audio, which is what leaves it waiting to be told.
-
-    The service refuses to carry the old explanation across when the slice moves — it
-    belonged to audio nobody will hear again — so the stretch comes back with nothing the
-    team said, which is the state this file is about.
-    """
+async def _leave_it_waiting_to_be_told(
+    db: AsyncSession, session_id: str, segment: IRSegment
+) -> IRSegment:
+    """Leave one stretch waiting to be told back, by cutting it in two."""
     session = await get_session(db, session_id)
-    return await service.capture_segment(
-        db,
-        session,
-        take_id=segment.take_id,
-        starts_ms=segment.starts_ms,
-        ends_ms=segment.ends_ms + 1500,
-        replaces=segment,
-    )
+    return await a_piece_still_to_be_told(db, session, segment)
 
 
 async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRSegment:
@@ -280,7 +274,7 @@ async def test_the_room_names_the_stretch_that_was_never_told_back(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    waiting = await _re_record_the_native(db_session, session_id, standing[1])
+    waiting = await _leave_it_waiting_to_be_told(db_session, session_id, standing[1])
 
     body = (await _finish(client, db_session, session_id)).json()
 
@@ -301,8 +295,8 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    later = await _re_record_the_native(db_session, session_id, standing[2])
-    earlier = await _re_record_the_native(db_session, session_id, standing[0])
+    later = await _leave_it_waiting_to_be_told(db_session, session_id, standing[2])
+    earlier = await _leave_it_waiting_to_be_told(db_session, session_id, standing[0])
 
     body = (await _finish(client, db_session, session_id)).json()
 
@@ -325,7 +319,7 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    await _re_record_the_native(db_session, session_id, standing[1])
+    await _leave_it_waiting_to_be_told(db_session, session_id, standing[1])
 
     body = (await _finish(client, db_session, session_id)).json()
 
@@ -371,9 +365,11 @@ async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
 
-    retired_with_no_telling = await _re_record_the_native(db_session, session_id, standing[0])
+    retired_with_no_telling = await _leave_it_waiting_to_be_told(
+        db_session, session_id, standing[0]
+    )
     await _explain(db_session, session_id, retired_with_no_telling)
-    still_waiting = await _re_record_the_native(db_session, session_id, standing[2])
+    still_waiting = await _leave_it_waiting_to_be_told(db_session, session_id, standing[2])
 
     body = (await _finish(client, db_session, session_id)).json()
 
@@ -397,7 +393,7 @@ async def test_a_stretch_divided_in_two_is_named_by_its_first_half(
     """
     session_id = await _three_stretches_told(client)
     standing = await _standing(db_session, session_id)
-    await _re_record_the_native(db_session, session_id, standing[2])
+    await _leave_it_waiting_to_be_told(db_session, session_id, standing[2])
     session = await get_session(db_session, session_id)
     head, tail = await service.divide_segment(db_session, session, standing[0], at_ms=4000)
 

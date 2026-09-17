@@ -138,7 +138,8 @@ class ReaderOfTellings:
         asked = _section(prompt, FINDING_MARK, EARLIER_MARK)
         now = _section(prompt, CORRECTION_MARK, None)
         answered = [
-            _answers(kind, note, now) for kind, note in re.findall(r"^- (\w+): (.+)$", asked, re.M)
+            _answers(kind, note, now)
+            for kind, note in re.findall(r"^- (\w+)(?: \[[^\]]*\])?: (.+)$", asked, re.M)
         ]
         verdict: dict[str, Any] = {
             "resolved": bool(answered) and all(answered),

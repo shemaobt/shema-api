@@ -193,6 +193,23 @@ def current_scene(state: dict[str, str], pericope_num: str) -> str | None:
     return None
 
 
+def remaining_in_scene(
+    state: dict[str, str], pericope_num: str, scene_pointer: str
+) -> list[Element]:
+    """What the team has not worked yet in the scene it is in, and in no scene at all.
+
+    Her eligibility rule, and the app's to apply rather than the model's: a bead from a scene
+    nobody has opened is not on the classifier's list, so nothing said about Naomi in scene
+    one can answer for the woman of scene four. The Level-1 axes and the preservation rules
+    belong to the passage rather than to a scene, so they are on every scene's list.
+    """
+    return [
+        element
+        for element in remaining(state, pericope_num)
+        if element.scene is None or f"S{element.scene}" == scene_pointer
+    ]
+
+
 _EXITS_AT_SURFACED = frozenset({"arc", "context", "tone", "function"})
 
 

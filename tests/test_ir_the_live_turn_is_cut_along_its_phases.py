@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import live_turn
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.sessions import create_session
 from app.services.internalization_room.turn import scene_view
 from app.services.internalization_room.turn.speech import speak_back
@@ -46,6 +47,17 @@ def agent(monkeypatch: pytest.MonkeyPatch) -> RecordingAgent:
 def test_the_scene_pointer_lives_in_its_own_module_and_live_turn_still_names_it() -> None:
     assert live_turn.current_scene_id is scene_view.current_scene_id
     assert "current_scene_id" in live_turn.__all__
+
+
+def test_the_invitation_is_about_the_scene_being_opened_or_else_the_first_still_owed() -> None:
+    """While a scene is being opened the pointer names it; with the necklace full, the first
+    scene not yet reported is what an invitation can be about; with every scene reported,
+    nothing is."""
+    scenes = scene_ids_for(P)
+    assert scene_view.scene_the_invitation_is_about("S2", P, []) == "S2"
+    assert scene_view.scene_the_invitation_is_about(None, P, ["S1"]) == "S2"
+    assert scene_view.scene_the_invitation_is_about(None, P, scenes[:1] + scenes[2:]) == "S2"
+    assert scene_view.scene_the_invitation_is_about(None, P, scenes) is None
 
 
 async def _speak(session: Any, **overrides: Any) -> Any:

@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.exceptions import UnreadableReply, UpstreamServiceError
-from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession
+from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession, IRTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
     Finding,
@@ -39,8 +39,10 @@ from app.services.internalization_room.back_translation import (
     with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.sessions import append_exchange, save_back_translation
+from app.services.internalization_room.takes import current_parts
 from app.services.internalization_room.validated_turn import TurnOutcome
 from app.services.internalization_room.verdict_turn import run_verdict_turn
 
@@ -74,6 +76,7 @@ async def check_the_telling_back(
     state: BackTranslationState,
     told: list[IRSegment],
     retired: list[IRSegment],
+    takes: list[IRTake],
     settings: Settings,
 ) -> TellingBackVerdict:
     """Read what the team told back, settle the findings, and voice one of them.
@@ -88,11 +91,23 @@ async def check_the_telling_back(
     the wheel for good, so a passage blessed because the analyst was unreachable would be
     finished by an outage.
 
+    `takes` is the session's recordings in reading order, which is where the address the voice
+    says comes from: a finding names a stretch, a stretch is a slice of a **Part**, and only the
+    takes say which part that is and where it sits among the current ones. Handed in rather than
+    read here, because this module touches no database — the two callers already hold one.
+
     `state` is mutated in place — the findings, the addresses already read, `checked` and the
     moment it was decided — and writing it is the caller's, in the same transaction as whatever
     else it decides.
     """
     read_this_round: list[Finding] = []
+    addresses = addresses_for(
+        told,
+        current_parts(takes),
+        scene_titles(session),
+        session.language,
+        superseded=retired,
+    )
     correction = correction_to_verify(state, told, retired)
     if correction is not None:
         verified = await verify_correction(
@@ -104,6 +119,7 @@ async def check_the_telling_back(
             pericope_num=session.pericope,
             correction_prompt=get_prompt_text(IRPromptKey.BT_CORRECTION),
             session_language=LANGUAGE_NAMES[session.language],
+            addresses=addresses,
             settings=settings,
             session_id=session.id,
         )
@@ -154,7 +170,7 @@ async def check_the_telling_back(
     state.checked_at = datetime.now(UTC)
 
     outcome = await run_verdict_turn(
-        findings_text=findings_block(current),
+        findings_text=findings_block(current, addresses),
         closing=closing_block(finding, checked=state.checked),
         scope=state.scope or session.pericope,
         pericope_num=session.pericope,

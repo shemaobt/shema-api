@@ -37,7 +37,10 @@ from app.services.internalization_room.comprehension.state import ComprehensionS
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
-from app.services.internalization_room.turn.scene_view import current_scene_id
+from app.services.internalization_room.turn.scene_view import (
+    current_scene_id,
+    scene_the_invitation_is_about,
+)
 from app.services.internalization_room.turn.speech import speak_back
 
 
@@ -80,7 +83,11 @@ async def run_comprehension_turn(
 
     scene_pointer = current_scene_id(session.coverage_state or {}, pericope, messages)
     practiced_now = scenes_practiced_by_the_telling_the_guide_invited(
-        prior_probe, last_guide, transcript, reliable, scene_pointer
+        prior_probe,
+        last_guide,
+        transcript,
+        reliable,
+        scene_the_invitation_is_about(scene_pointer, pericope, state.practiced_scene_ids),
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
 

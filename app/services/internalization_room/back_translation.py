@@ -19,6 +19,7 @@ from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import analysis_ladder, call_agent
+from app.services.internalization_room.part_names import Addresses
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
@@ -928,8 +929,8 @@ def correction_to_verify(
     without a rule of its own: a stretch divided changes the list's length; two corrections at
     once move two positions; a stretch retold that no finding pointed at moves a position that
     is not the finding's; a finding with no address names nothing to compare; a first reading
-    has no earlier list at all; and a mother-tongue re-recording leaves a stretch with nothing
-    told back, so the chain from the finding's stretch does not reach what stands there now.
+    has no earlier list at all; and a stretch cut in two leaves pieces with nothing told back, so
+    the chain from the finding's stretch does not reach what stands there now.
     """
     answered = current_findings(state)
     finding = answered[0] if answered else None
@@ -997,6 +998,7 @@ async def verify_correction(
     scope: str,
     pericope_num: str,
     correction_prompt: str,
+    addresses: Addresses,
     session_language: str = "Portuguese",
     settings: Settings | None = None,
     session_id: str = "",
@@ -1013,6 +1015,13 @@ async def verify_correction(
     single stretch cannot support. This asks a different question, about a finding that is
     already known, and that question fits in one stretch.
 
+    `addresses` is where each told stretch sits, the same one the Speaker is shown: the check
+    reads the finding the way the room voices it, and a check told no address while the voice
+    had one would be two readings of the same stretch in two different sentences. The frase
+    number travels with it and this reader cannot resolve it — no numbered telling reaches this
+    prompt — but it is the finding's own text and taking it out here would make one finding
+    read two ways.
+
     Returns None when the call or its reply failed, which is not the same as a correction that
     passed: the caller keeps the finding rather than dropping it on an outage.
     """
@@ -1022,7 +1031,7 @@ async def verify_correction(
         SESSION_LANGUAGE=session_language,
         SCOPE=scope,
         MEANING_MAP=load_map(pericope_num).body,
-        FINDING=findings_block(findings),
+        FINDING=findings_block(findings, addresses),
         EARLIER_TELLING=earlier.transcript or "",
         NEW_TELLING=corrected.transcript or "",
     )
@@ -1247,11 +1256,27 @@ def findings_remaining(findings: list[Finding]) -> int:
     return len(findings) - len(_swaps(findings))
 
 
-def findings_block(findings: list[Finding]) -> str:
-    """What reaches the Speaker this turn; the rest wait for the next round."""
+def findings_block(findings: list[Finding], addresses: Addresses) -> str:
+    """What reaches the Speaker this turn; the rest wait for the next round.
+
+    One line per finding, each carrying the address the team can hear, because the room is
+    wordless and the spoken name is the only address there is: *record that part again* over a
+    rehearsal of five parts asks a team to work out which one, and the cost of getting it wrong
+    is a re-recording of the wrong scene.
+
+    `addresses` is required and has no default. A caller with no takes in hand hands in an
+    empty `Addresses()` and says so, rather than being quietly answered the line as it read
+    before this rule: the address going missing for a caller nobody thought about is the defect
+    this whole slice exists to remove, and it has already been in front of a team once.
+    """
     if not findings:
         return "(nenhum achado — a tradução está completa)"
-    return "\n".join(f"- {finding.kind}: {finding.note}" for finding in findings)
+    lines = []
+    for finding in findings:
+        address = addresses.of(finding.chunk, finding.segment_id)
+        at = f" [{address}]" if address else ""
+        lines.append(f"- {finding.kind}{at}: {finding.note}")
+    return "\n".join(lines)
 
 
 #: What every closing below promises except `CLOSING_CHECKED`: the process goes on. It used
@@ -1323,10 +1348,11 @@ def closing_block(finding: Finding | None, *, checked: bool = False) -> str:
     `finding` is `None`: a turn with a finding is not the checked turn, whatever `checked`
     says, so the flag is read nowhere else in this function.
 
-    Chosen here rather than by the Speaker reading a branch, because the finding carries the
-    deciding fact and the prompt does not: `findings_block` sends kind and note, never the
-    address. A prompt that branched would be asking a model not to promise a choice the screen
-    will not offer; injecting one closing means the wrong instruction is never in front of it.
+    Chosen here rather than by the Speaker reading a branch, because which screen the team is
+    standing in front of is not something the findings block says: it carries the frase, the
+    part and the note, and none of the three tells a microphone from a rehearsal. A prompt that
+    branched would be asking a model not to promise a choice the screen will not offer;
+    injecting one closing means the wrong instruction is never in front of it.
 
     What counts as a stretch to hand over is `points_at_a_stretch`, and it is not written out
     a second time here: the room's request for the whole stretch turns on the same answer, and

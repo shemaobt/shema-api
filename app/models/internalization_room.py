@@ -291,9 +291,9 @@ class SegmentView(BaseModel):
     ends_ms: int
     #: 1 for the first telling of a stretch, 2 when it was told again after a finding.
     pass_number: int = 1
-    #: Whether the team has explained this stretch in the bridge language yet. False on a
-    #: stretch whose mother-tongue recording was replaced: the explanation of the recording
-    #: it replaced does not carry over, and the stretch is waiting to be told again.
+    #: Whether the team has explained this stretch in the bridge language yet. False on a piece
+    #: the team cut out of another stretch, which is born over its parent's audio with nothing
+    #: said on it, and on an older row kept as history from when a version could carry none.
     told: bool = True
 
 
@@ -509,8 +509,9 @@ class BackTranslationVerdictResponse(BaseModel):
     #: Which stretch the finding lands on, by its own address, so the room can take the team
     #: straight to that slice of their recording instead of starting the whole passage over.
     finding_segment_id: str | None = None
-    #: Which stretch was recorded in the mother tongue but never told back, by its own
-    #: address, when that is what stopped the reading. Its own field rather than
+    #: Which stretch is standing with no telling-back at all, by its own address, when that is
+    #: what stopped the reading — today a piece of a stretch the team cut in two, and before
+    #: that any stretch whose recording had just been replaced. Its own field rather than
     #: `finding_segment_id` because the two ask the room for different things: a finding is
     #: a stretch the team told and the analyst has a correction about, and this is a stretch
     #: with no telling-back at all. Reading one from the absence of the other is the
