@@ -4,9 +4,12 @@ import json
 import logging
 from typing import Any
 
+from langchain_core.exceptions import OutputParserException
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.book_context import BCDGenerationLog
+from app.models.book_context import ParticipantEntityType, ParticipantType
 from app.services.book_context.generation.llm import call_llm
 from app.services.book_context.generation.schemas import ParticipantRegisterSchema
 from app.services.book_context.generation.state import BCDGenerationState
@@ -15,6 +18,9 @@ from app.services.book_context.generation.types import BHSAEntity
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 80
+
+_VALID_PARTICIPANT_TYPES = {member.value for member in ParticipantType}
+_VALID_PARTICIPANT_ENTITY_TYPES = {member.value for member in ParticipantEntityType}
 
 PARTICIPANT_PROMPT = """\
 You are a biblical scholar creating a participant register for {book_name}.
@@ -74,6 +80,8 @@ Persia when used as country/region references.
 plurality of people as a corporate party (e.g., "Israelites", "Moabites" \
 as a people). DO NOT use for country/region toponyms.
   - "divine" — for God / YHWH / Almighty / Elohim and divine epithets.
+  Source A NEVER uses "unnamed" or "role" — those values are reserved for \
+Source B (common-noun candidates).
 - entry_verse: copy EXACTLY from the entity data (do NOT change)
 - exit_verse: copy EXACTLY from the entity data (do NOT change)
 - appears_in: copy the ENTIRE appears_in list EXACTLY from the entity data
@@ -86,7 +94,7 @@ as a people). DO NOT use for country/region toponyms.
 
 You MUST NOT invent proper-noun participants outside the entity list.
 
-### Source B — Common Noun Groups, Roles, and Officials
+### Source B — Common Noun Groups, Roles, Officials, and Unnamed Individuals
 For EACH candidate in the Common Noun Candidates list whose `sp == "subs"` \
 and whose semantics denote either:
 
@@ -97,7 +105,15 @@ foreigners, nobles, witnesses, the seven sons), OR
   (b) an INSTITUTIONAL ROLE OR OFFICE — a categorial human title that \
 identifies a position in the book's social/political/religious system \
 (e.g., king, queen, prince, priest, prophet, judge, official, eunuch, \
-governor, satrap, lord, foreman, kinsman-redeemer).
+governor, satrap, lord, foreman, kinsman-redeemer), OR
+
+  (c) an UNNAMED INDIVIDUAL — a SINGLE human referenced only by a \
+common-noun descriptor (e.g., "the man's servant", "a woman from \
+Bethlehem", "the foreman of the reapers", "a certain prophet"). Use \
+this category when the lemma stands for a single individual whose \
+identity is narratively important but who is never named. DO NOT use \
+this for collective groups (use group) or for recurring institutional \
+positions (use role).
 
 create a participant entry. Static fields below MUST be copied EXACTLY \
 from the candidate (they are deterministic):
@@ -107,6 +123,7 @@ from the candidate (they are deterministic):
 - type:
   - "group" for category (a) — collective groups
   - "role" for category (b) — institutional roles/offices
+  - "unnamed" for category (c) — single anonymous individuals
   - "divine" for the divine common noun אלהים (god[s]) when it refers \
 to the proper deity. In that case ALSO override entity_type to "person".
 - entry_verse: copy EXACTLY from the candidate's `first_appears`
@@ -125,9 +142,48 @@ warrant participant entries.
 
 You MUST NOT invent participants outside the candidate list. Skip candidates \
 whose semantics do not denote a human collective group, an institutional \
-role, or the divine deity (objects, places, rituals, and abstract concepts \
-go to other sections).
+role, an unnamed individual, or the divine deity (objects, places, rituals, \
+and abstract concepts go to other sections).
 """
+
+
+def _strip_markdown_fences(raw: str) -> str:
+    text = raw.strip()
+    if not text.startswith("```"):
+        return text
+    lines = text.split("\n")
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines)
+
+
+def _normalize_participant_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    type_value = entry.get("type")
+    if type_value not in _VALID_PARTICIPANT_TYPES:
+        entry["_legacy_type"] = type_value
+        entry["type"] = ParticipantType.NAMED.value
+    entity_type_value = entry.get("entity_type")
+    if entity_type_value not in _VALID_PARTICIPANT_ENTITY_TYPES:
+        entry["_legacy_entity_type"] = entity_type_value
+        entry["entity_type"] = ParticipantEntityType.PERSON.value
+    return entry
+
+
+def _parse_and_normalize_participants(raw: str) -> list[dict[str, Any]]:
+    try:
+        payload = json.loads(_strip_markdown_fences(raw))
+    except (TypeError, ValueError):
+        logger.warning("Fallback parser could not load LLM raw payload as JSON")
+        return []
+    if isinstance(payload, dict):
+        items = payload.get("participants", [])
+    elif isinstance(payload, list):
+        items = payload
+    else:
+        return []
+    return [_normalize_participant_entry(dict(entry)) for entry in items if isinstance(entry, dict)]
 
 
 async def _generate_batch(
@@ -148,8 +204,16 @@ async def _generate_batch(
             "\n\n## User Feedback (address these concerns in your output)\n"
             + state["user_feedback"]
         )
-    result = await call_llm(prompt, output_schema=ParticipantRegisterSchema)
-    return [p.model_dump() for p in result.participants]
+    try:
+        result = await call_llm(prompt, output_schema=ParticipantRegisterSchema)
+        return [p.model_dump() for p in result.participants]
+    except (ValidationError, OutputParserException) as exc:
+        logger.warning(
+            "LLM emitted out-of-enum participant payload; falling back to raw parse: %s",
+            exc,
+        )
+        raw = await call_llm(prompt, output_schema=None)
+        return _parse_and_normalize_participants(raw)
 
 
 async def generate_participants(

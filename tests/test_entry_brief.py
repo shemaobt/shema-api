@@ -84,7 +84,7 @@ SAMPLE_BCD_DATA = {
         {
             "name": "Boaz's field",
             "first_appears": {"chapter": 2, "verse": 3},
-            "type": "location",
+            "type": "field",
             "meaning_and_function": "place of provision",
         },
     ],
