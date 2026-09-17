@@ -25,6 +25,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -167,7 +168,12 @@ class SnSession(Base):
     audio_ref: Mapped[str] = mapped_column(
         String(128), ForeignKey("sn_audio_refs.audio_id"), index=True
     )
+    #: The display name. Editable — see ``rename_session``.
     story_name: Mapped[str] = mapped_column(String(255))
+    #: Set once, at creation, and never written again. It names the three artifact files
+    #: a downstream pipeline reads by name (PRD §10.5), so writing it after those objects
+    #: exist would strand them under keys nothing points at. A rename moves
+    #: ``story_name`` alone for exactly this reason.
     slug: Mapped[str] = mapped_column(String(255))
     manifest_id: Mapped[str] = mapped_column(String(64))
     granularity_level: Mapped[GranularityLevel] = mapped_column(_GRANULARITY_TYPE)
@@ -196,6 +202,17 @@ class SnSession(Base):
     # Expiry is decided on read; nothing sweeps lapsed leases. A crashed tab therefore
     # frees its session without anyone unlocking it by hand.
     lock_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The session's accumulated net working time, as a whole count of seconds: a plain
+    # Integer, never Interval — see working_time, which argues that and does the
+    # accumulating.
+    net_working_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # The instant the last counted heartbeat was stamped, and the cursor the accumulation
+    # compare-and-swaps on. Null means "no stretch to measure from": completing a session
+    # clears it, so the first heartbeat after a reopen charges nothing at all and the
+    # closed stretch is never counted, however short it was.
+    last_working_tick_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class SnSessionState(Base):
@@ -219,6 +236,50 @@ class SnSessionState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class SnSessionTick(Base):
+    """One "still here" heartbeat, and nothing else about it.
+
+    The whole table is deliberately impoverished. There is one event — the session was
+    open and the tab was visible — carrying no idea of what was clicked, typed, played or
+    looked at, because §14 forbids telemetry on listener behaviour and a schema with room
+    for it is the first step across that line. Session metadata is what is allowed here,
+    and a session metadata table with a ``what_happened`` column would not stay one.
+
+    Append-only while the session is open, and dropped when it completes. The total on
+    ``sn_sessions`` is derived from these rows rather than the other way round, so keeping
+    them is what makes it auditable while it can still move; a lone counter could only
+    ever be believed. Completion freezes the total, and from that moment the rows would
+    record nothing but when the facilitator was at their desk.
+
+    ``occurred_at`` is the database's own clock, never the client's and never the
+    application's; ``working_time`` is where that choice is argued.
+
+    ``client_tick_id`` exists only so a retried or twice-delivered heartbeat cannot be
+    charged twice. It is the client's own opaque string and means nothing here beyond
+    "the same beat"; the unique constraint with the session is what makes the replay a
+    no-op rather than a second gap. Scoped to the session rather than global because it
+    is minted per session by a client that has no idea what other sessions exist.
+    """
+
+    __tablename__ = "sn_session_ticks"
+
+    # The unique constraint is also the only index this table needs. The duplicate check
+    # looks up exactly this pair, and the delete on completion looks up by session alone —
+    # the leading column of that same index. Nothing reads the beats in time order on any
+    # hot path — the running total is kept on the session — and an index per heartbeat
+    # insert that no query reads is a cost paid all session long for nothing.
+    __table_args__ = (
+        UniqueConstraint("session_id", "client_tick_id", name="uq_sn_session_ticks_session_client"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("sn_sessions.id", ondelete="CASCADE")
+    )
+    client_tick_id: Mapped[str] = mapped_column(String(64))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class SnArtifact(Base):
@@ -362,12 +423,20 @@ class SnAuditEvent(Base):
     reads like a fact and is not one. The column exists because adding it later means a
     migration on a database six production apps share; filling it needs a trusted-proxy
     policy, which is its own work.
+
+    Two indexes, and only the first serves a query. ``ix_sn_audit_events_project_occurred``
+    is the trail's one read — a project's events, newest first — scope, ORDER BY and LIMIT
+    together. ``ix_sn_audit_events_session_id`` serves the SET NULL trigger instead:
+    without an index on the referencing column Postgres sequential-scans this append-only
+    table on every session delete, which ENG-414 turned from a rare admin chore into a
+    button a facilitator presses.
     """
 
     __tablename__ = "sn_audit_events"
 
     __table_args__ = (
         Index("ix_sn_audit_events_project_occurred", "project_id", "occurred_at", "id"),
+        Index("ix_sn_audit_events_session_id", "session_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -460,6 +529,28 @@ class SnAnswerTranscript(Base):
     the trigger: it is the transcriber's hint and the switch that decides whether a
     translation is needed. ``generation`` backs the compare-and-swap that keeps a pass in
     flight from writing its result over a draft a ``force`` has already reset.
+
+    Two transcripts, not one. ``transcript_source`` is the cleaned text — what the
+    facilitator reads and confirms — and ``transcript_verbatim`` is what speech-to-text
+    returned before the disfluency cleanup touched it. Keeping both is what makes the
+    removal inspectable: a human cannot be the last word on a sentence they were never
+    shown, and without the verbatim column the only record of a dropped sentence would be
+    the model call that dropped it.
+
+    A confirm writes the facilitator's text into ``transcript_source`` and leaves
+    ``transcript_verbatim`` exactly where the transcription pass left it, which is what keeps
+    the spoken words recoverable however often the draft is edited. It also means the gap
+    between the two columns stops being the cleaner's work alone once a human has touched the
+    row: after a confirm it holds the removals and the edits together, and no column here
+    records which of the two a given difference came from.
+
+    Equality between the two does NOT mean the cleanup failed. A cleanup that fell back to
+    verbatim produces equal texts; so does a successful cleanup of an answer that had no
+    hesitation in it; and so does a facilitator confirming text that happens to match the
+    verbatim. Equality is the one signal that cannot tell those three apart. Selecting
+    ``WHERE transcript_verbatim = transcript_source`` and ``force``-ing the result would
+    re-bill the transcription of every cleanly-processed answer in the session and throw
+    away drafts a facilitator had already confirmed.
     """
 
     __tablename__ = "sn_answer_transcripts"
@@ -471,6 +562,7 @@ class SnAnswerTranscript(Base):
     )
     language: Mapped[str] = mapped_column(String(16))
     generation: Mapped[int] = mapped_column(Integer, default=0)
+    transcript_verbatim: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     translation_en: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

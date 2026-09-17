@@ -55,6 +55,30 @@ Content-Type: application/json
 GET {{baseUrl}}/api/sound-necklace/sessions/sess_1
 Authorization: Bearer {{accessToken}}
 
+### Sessions: rename the story (the name only — the slug is frozen)
+# `story_name` is the whole body. The slug is deliberately not accepted: it names the
+# three artifact files the downstream pipeline reads by name (PRD §10.5), so a rename
+# that carried it would turn a cosmetic edit into a migration of stored objects.
+# Trimmed before it is stored; a name of nothing but spaces is refused with 422.
+# Fenced by the editor lock — 409 while somebody else holds it.
+PATCH {{baseUrl}}/api/sound-necklace/sessions/sess_1
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "story_name": "O Conto do Boto — parte II"
+}
+
+### Sessions: delete for good (204, no body)
+# A hard delete, allowed at any time including on a completed session. It sweeps the
+# objects this session produced — the listener's voice answers and the three artifacts —
+# and the cascades take the state, ticks, artifacts, answers, consents and transcripts.
+# The project's source audio is never touched: the sweep is driven off the session's own
+# rows, never off a bucket prefix. The §12 audit trail outlives the session.
+# Fenced by the editor lock, before anything is swept — a 409 destroys nothing.
+DELETE {{baseUrl}}/api/sound-necklace/sessions/sess_1
+Authorization: Bearer {{accessToken}}
+
 ### Sessions: autosave the state envelope (unconditional — what the SPA's autosaver does)
 # The request body IS the state document. It is stored as the exact bytes sent and
 # served back unchanged: the SPA re-validates it under a strict schema, so anything

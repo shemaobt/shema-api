@@ -23,6 +23,10 @@ from app.inngest.helpers import (
 from app.inngest.schemas import BlobVerificationResult, UploadConfirmedPayload
 from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE
+from app.services.oral_collector.recording_service import (
+    fail_stalled_uploads,
+    purge_failed_uploads,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,3 +135,53 @@ async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
     await step.run("notify-upload-complete", _notify)
 
     return UploadStatus.VERIFIED
+
+
+STALLED_UPLOAD_SWEEP_CRON = "0 4 * * *"
+
+
+@inngest_client.create_function(
+    fn_id="fail-stalled-uploads",
+    trigger=inngest.TriggerCron(cron=STALLED_UPLOAD_SWEEP_CRON),
+)
+async def fail_stalled_uploads_fn(ctx: inngest.Context, step: inngest.Step) -> int:
+    """Sweep uploads abandoned mid-transfer into `UPLOAD_FAILED` once a day.
+
+    Inngest is the only scheduler this service has and it already serves these functions, so
+    a cron trigger buys the schedule without adding infrastructure to run and watch. Daily is
+    fine for a deadline measured in weeks, and the pass is idempotent — a run that finds
+    nothing writes nothing.
+    """
+
+    async def _sweep() -> int:
+        async with AsyncSessionLocal() as db:
+            return await fail_stalled_uploads(db)
+
+    return await step.run("fail-stalled-uploads", _sweep)
+
+
+FAILED_UPLOAD_PURGE_CRON = "30 4 * * *"
+
+
+@inngest_client.create_function(
+    fn_id="purge-failed-uploads",
+    trigger=inngest.TriggerCron(cron=FAILED_UPLOAD_PURGE_CRON),
+)
+async def purge_failed_uploads_fn(ctx: inngest.Context, step: inngest.Step) -> int:
+    """Drain the `UPLOAD_FAILED` rows the sweep above leaves behind, once a day.
+
+    Half an hour after the sweep, so a row the sweep just failed is read by a purge that has
+    already seen it aged, rather than by one racing the same transaction. Daily suits a
+    retention measured in months, and the pass is idempotent — a run that finds nothing writes
+    nothing and touches no bucket.
+
+    One run is bounded (`FAILED_UPLOAD_PURGE_BATCH`), so a backlog larger than a batch drains
+    over consecutive days rather than in the first run. That is the point: it keeps a single
+    run inside the request timeout this function is executed in.
+    """
+
+    async def _purge() -> int:
+        async with AsyncSessionLocal() as db:
+            return await purge_failed_uploads(db)
+
+    return await step.run("purge-failed-uploads", _purge)
