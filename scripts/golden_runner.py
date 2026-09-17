@@ -20,14 +20,23 @@ one line of the report, not the end of the run.
 `--out` defaults to `golden/reports/<date>/`, committed, so two runs a week apart can be
 compared by a person who was not in the room. Per session it holds `<name>.<stamp>.json`, one
 entry per turn with the four fields the judge is defined against (turn index, team turn,
-guide turn, outcome tag), the mechanical faults and what the room said each turn cost; and
+guide turn, outcome tag), the mechanical faults and what the room said each turn cost;
 `<name>.<stamp>.transcript.txt`, the transcript block exactly as her runner pastes it into
-`prompts/golden_judge_system_prompt.md`. `README.md` is the run's summary in the shape of
-her `golden/reports/2026-09-03/README.md`: a row per session, the mechanical column, cost
-and latency beside her ≈US$ 8 and median 27 s. The judge's column waits for the judge.
+`prompts/golden_judge_system_prompt.md`; and `<name>.<stamp>.verdict.json`, what her judge
+answered — the eight scores, every incident with its turn, severity and quote, the summary.
+`README.md` is the run's summary in the shape of her `golden/reports/2026-09-03/README.md`:
+a row per session, the judge's column and the mechanical column kept apart, cost and
+latency beside her ≈US$ 8 and median 27 s.
 
-The exit code is the gate: 1 when any session tripped a check or was refused, 2 when there was
-nothing to play, 0 when every session played clean.
+The judge is her prompt, unedited, on the voice ladder — Fable 5.1, the same rung the run
+itself is on — handed the Validator's map and the session language from this repo's pin.
+It runs in this process, so the runner needs `ANTHROPIC_API_KEY` (and the workspace id when
+the key is identity-bound) where the room does. `--rejudge <dir>` judges the exports of an
+earlier run again, without playing the room.
+
+The exit code is the gate, by her rule: a session passes when the judge passed it and no
+mechanical check tripped. 1 when any session failed or was refused, 2 when there was
+nothing to play, 0 when every session passed. DOCTRINE.md §5.2 binds the release to it.
 """
 
 from __future__ import annotations
@@ -35,6 +44,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import statistics
@@ -48,6 +58,8 @@ from typing import Any
 
 import httpx
 
+from app.api.internalization_room.text_seam import _collecting_model_calls
+from app.services.internalization_room.golden_judge import FLOORED, judge_session, passes
 from scripts.golden_checks import mechanical_checks
 from scripts.sync_doctrine import read_pin
 
@@ -126,10 +138,47 @@ class SessionResult:
     session_id: str | None
     played: list[Played]
     refused: str | None = None
+    verdict: dict[str, Any] | None = None
+    unjudged: str | None = None
+    judge_usage: list[Usage] = field(default_factory=list)
 
     @property
     def faults(self) -> list[str]:
         return [f"turn {turn.idx}: {fault}" for turn in self.played for fault in turn.mechanical]
+
+    @property
+    def judged(self) -> str:
+        """The judge's column: her verdict by her rule, or a dash where no verdict was reached."""
+        if self.verdict is None:
+            return "—"
+        return "PASS" if passes(self.verdict) else "FAIL"
+
+    @property
+    def objections(self) -> list[str]:
+        """Why the judge closed the gate, in the row: the score under its floor, the blocker quoted.
+
+        The whole verdict is in the file beside the transcript; this is the part of it that
+        decided, so a reader of the README knows what to open.
+        """
+        if self.verdict is None:
+            return [f"juiz sem veredito: {self.unjudged}"] if self.unjudged else []
+        scores: dict[str, int] = self.verdict["scores"]
+        under = [
+            f"juiz: {dimension} {score}"
+            for dimension, score in scores.items()
+            if score == 0 or (dimension in FLOORED and score < 3)
+        ]
+        blockers = [
+            f"juiz: turn {incident['turn']} · blocker · {incident['kind']}"
+            for incident in self.verdict["incidents"]
+            if incident["severity"] == "blocker"
+        ]
+        return under + blockers
+
+    @property
+    def passed(self) -> bool:
+        """Her rule for the run's own line: the judge approved and nothing mechanical tripped."""
+        return self.judged == "PASS" and not self.faults and not self.refused
 
 
 def load_script(path: Path) -> Script:
@@ -279,6 +328,7 @@ def export(
     played: list[Played],
     out: Path,
     stamp: str,
+    refused: str | None = None,
 ) -> tuple[Path, Path]:
     out.mkdir(parents=True, exist_ok=True)
     report = out / f"{script.name}.{stamp}.json"
@@ -291,6 +341,7 @@ def export(
                 "language": script.language,
                 "baseUrl": base_url,
                 "sessionId": session_id,
+                "refused": refused,
                 "turns": [asdict(turn) for turn in played],
             },
             ensure_ascii=False,
@@ -342,10 +393,55 @@ async def play_session(
         result.refused = _refusal(refused)
     finally:
         report, transcript = export(
-            script, session_id=session_id, base_url=base_url, played=played, out=out, stamp=stamp
+            script,
+            session_id=session_id,
+            base_url=base_url,
+            played=played,
+            out=out,
+            stamp=stamp,
+            refused=result.refused,
         )
         print(f"  {report}\n  {transcript}")
+    if result.refused is None:
+        await judge(script, result, out=out, stamp=stamp)
     return result
+
+
+async def judge(script: Script, result: SessionResult, *, out: Path, stamp: str) -> None:
+    """Her judge on the session, and its verdict written beside the transcript — or the reason not.
+
+    A judge that fails — a provider down, a reply outside the shape it was bound to — is a
+    session without a verdict, which her runner treats as a session that did not pass, and
+    the run goes on to the next script: the transcript already paid for is on disk, and the
+    row says what the judge did not say. A verdict that never came is not written.
+
+    The call's cost is read the way the seam reads a turn's: off the one usage line
+    `call_agent` writes, through the seam's own collector, so the judge is priced into the
+    run beside the Guide and the Validator — as her US$ 8 counted it — and not from a
+    second ledger. The line is written at INFO and this process configures no logging, so
+    the logger is opened to that level here or the call is silently free.
+    """
+    logging.getLogger("app.services.internalization_room.llm").setLevel(logging.INFO)
+    with _collecting_model_calls() as calls:
+        try:
+            result.verdict = await judge_session(
+                pericope=script.pericopeId,
+                language=script.language,
+                transcript=judge_transcript(result.played),
+            )
+        except Exception as failed:
+            result.unjudged = str(failed)
+            print(f"  [judge] failed — no verdict for this session: {failed}")
+    result.judge_usage = [Usage.from_wire(call.model_dump()) for call in calls]
+    for call in result.judge_usage:
+        print(f"    {usage_line(call)}")
+    if result.verdict is None:
+        return
+    verdict = out / f"{script.name}.{stamp}.verdict.json"
+    verdict.write_text(
+        json.dumps(result.verdict, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"  {verdict}")
 
 
 def _refusal(refused: httpx.HTTPStatusError) -> str:
@@ -379,19 +475,22 @@ def _seconds(values: list[int]) -> str:
 def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str, pins: str) -> str:
     """The run's README, in the shape of hers: the verdict line, the table, the money, the clock.
 
-    The judge's column is a dash on every row until the judge is wired; the mechanical column
-    is hers exactly, a count kept apart from any verdict so a warning is never laundered into
-    a judge failure in either direction. What her table's last column says by hand, ours says
-    by listing the faults, or the room's refusal.
+    Two columns, as her reports keep them: the judge's PASS or FAIL by her rule, and the
+    mechanical count, each read from its own source so a warning is never laundered into a
+    judge failure nor a judge failure into a warning, in either direction. What her table's
+    last column says by hand, ours says by listing the faults, the judge's objections, or
+    the room's refusal.
     """
     played = [turn for result in results for turn in result.played]
     faults = sum(len(result.faults) for result in results)
     refused = [result for result in results if result.refused]
-    clean = sum(1 for result in results if not result.faults and not result.refused)
+    approved = sum(1 for result in results if result.judged == "PASS")
     fail_safes = sum(1 for turn in played if turn.outcome == "fail_safe")
     by_role: dict[str, float] = {}
     unpriced: list[str] = []
-    for call in (call for turn in played for call in turn.usage):
+    spent = [call for turn in played for call in turn.usage]
+    spent += [call for result in results for call in result.judge_usage]
+    for call in spent:
         if call.cost_usd is None:
             unpriced.append(call.rung)
         else:
@@ -405,9 +504,14 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         f"# Sessões-ouro — {stamp[:10]}, esta sala em `{tip}`, `{base_url}`",
         "",
         f"Rodada `{stamp}` de `scripts/golden_runner.py` sobre os roteiros dela ({pins}): "
-        f"**{clean}/{len(results)} sem aviso mecânico (juiz ainda não ligado), {faults} avisos "
-        f"mecânicos, {fail_safes} fail-safes em {len(played)} turnos reais"
+        f"**{approved}/{len(results)} aprovadas pelo juiz, {faults} avisos mecânicos, "
+        f"{fail_safes} fail-safes em {len(played)} turnos reais"
         f"{f', {len(refused)} sessões recusadas' if refused else ''}.**",
+        "",
+        "Este portão vale para o release, não só para o CI (DOCTRINE §5.2): nada que toque "
+        "prompt, laço de turno, modelo ou tela chega à equipe sem as sessões-ouro aprovadas "
+        "pelo juiz e sem aviso mecânico — uma suíte verde não basta para publicar uma mudança "
+        "de prompt.",
         "",
         "| Sessão | Juiz | Mecânico | Observação |",
         "|---|---|---|---|",
@@ -416,8 +520,10 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
         column = "recusada" if result.refused else str(len(result.faults))
         if result.refused and result.faults:
             column = f"recusada · {len(result.faults)}"
-        noted = "; ".join(([result.refused] if result.refused else []) + result.faults)
-        lines.append(f"| {result.name} | — | {column} | {noted} |")
+        noted = "; ".join(
+            ([result.refused] if result.refused else []) + result.faults + result.objections
+        )
+        lines.append(f"| {result.name} | {result.judged} | {column} | {noted} |")
     lines.append("")
     if by_role:
         total = sum(by_role.values())
@@ -443,6 +549,8 @@ def summary(results: list[SessionResult], *, base_url: str, stamp: str, tip: str
 
 
 async def run(args: argparse.Namespace) -> int:
+    if args.rejudge:
+        return await rejudge(args)
     scripts = [load_script(path) for path in scripts_to_play(args)]
     if not scripts:
         print(f"golden: no session named {args.only}", file=sys.stderr)
@@ -459,22 +567,96 @@ async def run(args: argparse.Namespace) -> int:
                     script, client, base_url=base_url, out=out, stamp=stamp, turns=args.turns
                 )
             )
+    return close(results, out=out, base_url=base_url, stamp=stamp)
+
+
+def exported(path: Path) -> tuple[Script, SessionResult, str]:
+    """A session as a run left it: the script's head, the turns played, the room it was played on.
+
+    The turns' usage is left out on purpose: those calls were paid for by the run that
+    exported them and are already in its README, and a re-judgement's money is the judge's.
+    A refusal comes back with the session, so a run cut short by the room is not rebuilt
+    as a whole one; an export older than the field is read as played whole, which is what
+    those runs were.
+    """
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    script = Script(raw["name"], raw["pericopeId"], raw["language"], turns=[])
+    played = [
+        Played(
+            idx=turn["idx"],
+            team=turn["team"],
+            guide=turn["guide"],
+            outcome=turn["outcome"],
+            interrupted=turn["interrupted"],
+            turnMs=turn["turnMs"],
+            mechanical=turn["mechanical"],
+        )
+        for turn in raw["turns"]
+    ]
+    result = SessionResult(script.name, raw["sessionId"], played, refused=raw.get("refused"))
+    return script, result, raw["baseUrl"]
+
+
+async def rejudge(args: argparse.Namespace) -> int:
+    """Her judge over a run already on disk, with the room left alone.
+
+    A judge prompt that changes, or a rung that does, changes the verdict and not the
+    transcript; and a run's verdict can be asked for twice without paying the five sessions
+    again. Each `<name>.<stamp>.json` of the earlier run is read back, judged with the map its
+    pericope names today, and its verdict written under the same name and stamp into `--out`,
+    so the file still says which transcript it judged. The mechanical column is the one the
+    run exported; the judge's column is this call's. A session the room refused is not
+    judged here either, and its row stays `recusada`. Writing into the directory being read
+    is refused: `--out` defaults to today's date, which on the day of the run is that very
+    directory, and `close` would replace the README that records what the run cost.
+    """
+    out = Path(args.out)
+    if out.resolve() == Path(args.rejudge).resolve():
+        print(
+            f"golden: --out is the run being judged again ({args.rejudge}); its README records "
+            "what that run cost and a re-judgement would write over it — name another --out",
+            file=sys.stderr,
+        )
+        return 2
+    results: list[SessionResult] = []
+    base_url = ""
+    for path in sorted(Path(args.rejudge).glob("*.json")):
+        if path.name.endswith(".verdict.json"):
+            continue
+        script, result, base_url = exported(path)
+        print(f"\n▶ {script.name} — judging {path.name} again")
+        out.mkdir(parents=True, exist_ok=True)
+        if result.refused is None:
+            await judge(script, result, out=out, stamp=path.stem[len(script.name) + 1 :])
+        results.append(result)
+    if not results:
+        print(f"golden: nothing exported under {args.rejudge}", file=sys.stderr)
+        return 2
+    stamp = args.stamp or datetime.now(UTC).strftime("%Y-%m-%dT%H-%M-%S")
+    return close(results, out=out, base_url=base_url, stamp=stamp)
+
+
+def close(results: list[SessionResult], *, out: Path, base_url: str, stamp: str) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "README.md").write_text(
         summary(results, base_url=base_url, stamp=stamp, tip=_tip(), pins=_pins()),
         encoding="utf-8",
     )
-    passed = sum(1 for result in results if not result.faults and not result.refused)
+    passed = sum(1 for result in results if result.passed)
     for result in results:
-        verdict = "REFUSED" if result.refused else ("PASS" if not result.faults else "FAIL")
-        print(f"  {verdict} · {result.name} · mechanical={len(result.faults)}")
+        verdict = "REFUSED" if result.refused else ("PASS" if result.passed else "FAIL")
+        print(
+            f"  {verdict} · {result.name} · judge={result.judged.lower().replace('—', 'n/a')} "
+            f"· mechanical={len(result.faults)}"
+        )
     print(f"\n{passed}/{len(results)} golden sessions pass · {out / 'README.md'}")
     return 0 if passed == len(results) else 1
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", required=True)
+    parser.add_argument("--base-url", default=None)
+    parser.add_argument("--rejudge", default=None)
     parser.add_argument("--script", default=None)
     parser.add_argument("--sessions", default=str(SESSIONS_DIR))
     parser.add_argument("--only", default=None)
@@ -484,7 +666,10 @@ def main() -> int:
     parser.add_argument("--turns", type=int, default=None)
     parser.add_argument("--stamp", default=None)
     parser.add_argument("--access-code", default=os.environ.get("ACCESS_CODE", ""))
-    return asyncio.run(run(parser.parse_args()))
+    args = parser.parse_args()
+    if not args.base_url and not args.rejudge:
+        parser.error("--base-url names the room to play, or --rejudge <dir> a run to judge again")
+    return asyncio.run(run(args))
 
 
 if __name__ == "__main__":

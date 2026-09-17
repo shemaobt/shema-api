@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 4,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 3,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 0,
+      "severity": "minor",
+      "kind": "long_opening_many_ideas",
+      "quote": "Antes de olhar as partes, vamos sentir o todo. [...] Agora vamos entrar na primeira parte. [...] Uma coisa para reparar: o nome Belém quer dizer \"casa de pão\".",
+      "why": "A abertura junta visão geral, abertura completa da cena 1, observação sobre o nome de Belém e o convite, tudo num só turno; vai contra o ideal de uma ideia por vez, embora todo o conteúdo esteja fundamentado."
+    },
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "near_repeat_of_elicitation",
+      "quote": "Conversem um pouco entre vocês, do jeito de vocês. Depois me contem em português, com as palavras de vocês",
+      "why": "Repete quase o mesmo convite do turno 0 sem acrescentar nada novo, embora não seja cópia literal e responda à apresentação da equipe."
+    },
+    {
+      "turn": 3,
+      "severity": "minor",
+      "kind": "fail_safe_on_untranscribed_speech",
+      "quote": "Eu não consigo conferir essas palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?",
+      "why": "Linha pronta em vez de fala própria, mas em resposta a áudio sem transcrição, não a um pedido de entendimento; efeito na sessão é pequeno."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se manteve inteiramente dentro do mapa: nenhuma afirmação sobre a passagem saiu do que o mapa contém, e os silêncios (Deus não age, sem choro, sem enterro, sem causa da morte) foram levantados como conteúdo, sem serem preenchidos. Abriu cada parte antes de pedir reconto ou ensaio, e só mandou ensaiar quando a equipe disse que tinha entendido. No turno 4 conferiu o reconto com honestidade, nomeando com calor o que faltou (morar como estrangeiro, de passagem) sem elogiar a parte como completa. Respondeu de forma direta e correta à pergunta da equipe no turno 6, inclusive apontando a rima 'ficou/sobrou' que o mapa exige preservar, e reagiu bem ao 'espera' e ao 'e a próxima parte?'. Os pontos fracos são de registro: o turno 0 é longo e empilha muitas ideias de uma vez, e o turno 1 quase repete o convite do turno 0; vale enxugar a abertura e variar a elicitação."
+}

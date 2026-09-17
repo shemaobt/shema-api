@@ -1,0 +1,470 @@
+{
+  "name": "P01-understand-first",
+  "pericopeId": "P01",
+  "language": "Brazilian Portuguese",
+  "baseUrl": "http://127.0.0.1:8049/api/internalization-room/text-seam/",
+  "sessionId": "853ea7e7-b40c-4751-a2ed-8c0773865a85",
+  "turns": [
+    {
+      "idx": 0,
+      "team": "Oi. A gente é a equipe Terena. Estamos aqui com o Daniel e o Suzuki. Podemos começar?",
+      "guide": "Oi, Daniel e Suzuki, eu sou o Facilitador Digital, e sim, podemos começar pelo começo: a história conta que, nos dias em que os juízes julgavam, houve fome na terra.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 23034,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1727,
+          "output_tokens": 462,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 9075,
+          "cost_usd": 0.044438
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 368,
+          "output_tokens": 471,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 11097,
+          "cost_usd": 0.030682
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5685,
+          "output_tokens": 153,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 2605,
+          "cost_usd": 0.0129
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 1,
+      "team": "Espera. A gente precisa entender melhor antes. Explica de novo o que acontece nessa passagem, com mais detalhe. A gente ainda não entendeu.",
+      "guide": "Vamos ficar dentro da passagem. Podem ensaiar.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 20135,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1860,
+          "output_tokens": 273,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 7827,
+          "cost_usd": 0.036318
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 446,
+          "output_tokens": 534,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 10848,
+          "cost_usd": 0.034612
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5648,
+          "output_tokens": 10,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1437,
+          "cost_usd": 0.011396
+        }
+      ],
+      "mechanical": [
+        "rehearsal invited on a turn where the team asked to understand first"
+      ]
+    },
+    {
+      "idx": 2,
+      "team": "Tá, mas quem é essa família? De onde eles são e por que saem de lá?",
+      "guide": "Vamos ficar dentro da passagem. Podem ensaiar.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 20602,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1916,
+          "output_tokens": 255,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 6876,
+          "cost_usd": 0.035978
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 507,
+          "output_tokens": 521,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 9884,
+          "cost_usd": 0.034572
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5620,
+          "output_tokens": 77,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 3806,
+          "cost_usd": 0.01201
+        }
+      ],
+      "mechanical": [
+        "verbatim repeat of the previous guide turn"
+      ]
+    },
+    {
+      "idx": 3,
+      "team": "Entendi. E o que acontece com eles em Moabe?",
+      "guide": "Vamos ficar dentro da passagem. Podem ensaiar.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 17039,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1890,
+          "output_tokens": 303,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 6512,
+          "cost_usd": 0.038118
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 560,
+          "output_tokens": 436,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 8929,
+          "cost_usd": 0.030852
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5538,
+          "output_tokens": 10,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1558,
+          "cost_usd": 0.011176
+        }
+      ],
+      "mechanical": [
+        "verbatim repeat of the previous guide turn"
+      ]
+    },
+    {
+      "idx": 4,
+      "team": "Agora sim, a gente entendeu essa primeira parte. Pode mandar a gente ensaiar.",
+      "guide": "Ótimo, então ensaiem essa primeira parte juntos na língua de vocês e, quando terminarem, voltem e me contem em português o que vocês entenderam.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 22409,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1954,
+          "output_tokens": 538,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 11363,
+          "cost_usd": 0.050508
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 662,
+          "output_tokens": 439,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 9054,
+          "cost_usd": 0.032022
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5587,
+          "output_tokens": 10,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1917,
+          "cost_usd": 0.011274
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 5,
+      "team": "Pronto. Ensaiamos em Terena. Vou contar de volta em português: teve uma fome na terra, nos dias em que os juízes julgavam. Um homem de Belém de Judá foi morar em Moabe com a mulher dele e os dois filhos. O nome dele era Elimeleque, a mulher Noemi, e os filhos Malom e Quiliom. Eles eram efrateus de Belém de Judá.",
+      "guide": "No que vocês me contaram de volta ouvi quase tudo que a passagem traz, só não ouvi que eles foram para lá como estrangeiros de passagem e que chegaram e ficaram ali em Moabe — isso entrou no ensaio na língua de vocês?",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 32659,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2157,
+          "output_tokens": 553,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 9988,
+          "cost_usd": 0.053288
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 906,
+          "output_tokens": 1290,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 18767,
+          "cost_usd": 0.077012
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5729,
+          "output_tokens": 263,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 3861,
+          "cost_usd": 0.014088
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 6,
+      "team": "E depois? Conta a próxima parte pra gente.",
+      "guide": "Vamos ficar dentro da passagem. Podem ensaiar.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 17691,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2014,
+          "output_tokens": 350,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 5824,
+          "cost_usd": 0.041708
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 957,
+          "output_tokens": 507,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 10029,
+          "cost_usd": 0.038372
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5280,
+          "output_tokens": 10,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1812,
+          "cost_usd": 0.01066
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 7,
+      "team": "Aí o Elimeleque morreu e a Noemi ficou com os dois filhos. Mas por que ele morreu? Deus castigou ele por ter saído de Belém?",
+      "guide": "Vamos ficar dentro da passagem. Podem ensaiar.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 21984,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2101,
+          "output_tokens": 580,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 9717,
+          "cost_usd": 0.054078
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1049,
+          "output_tokens": 627,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 10394,
+          "cost_usd": 0.045292
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5321,
+          "output_tokens": 54,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 1843,
+          "cost_usd": 0.011182
+        }
+      ],
+      "mechanical": [
+        "verbatim repeat of the previous guide turn"
+      ]
+    },
+    {
+      "idx": 8,
+      "team": "Entendi, a história não diz. Agora os filhos casaram, né? A Rute casou com o Malom?",
+      "guide": "Vamos ficar dentro da passagem. Podem ensaiar.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 18480,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2102,
+          "output_tokens": 214,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 6098,
+          "cost_usd": 0.035788
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1118,
+          "output_tokens": 346,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 7610,
+          "cost_usd": 0.031932
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5238,
+          "output_tokens": 103,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 4735,
+          "cost_usd": 0.011506
+        }
+      ],
+      "mechanical": [
+        "verbatim repeat of the previous guide turn"
+      ]
+    },
+    {
+      "idx": 9,
+      "team": "Tá bom. A gente ensaiou tudo em Terena. Agora vou contar a passagem inteira em português: nos dias dos juízes teve fome. Elimeleque foi com Noemi e os filhos Malom e Quiliom pra Moabe. Elimeleque morreu. Os filhos casaram com moabitas, Orfa e Rute. Moraram lá uns dez anos. Depois Malom e Quiliom morreram também, e a mulher ficou sozinha, sem os dois filhos e sem o marido.",
+      "guide": "No que vocês me contaram de volta ouvi a passagem inteira, até a mulher ficando sem os dois filhos e sem o marido, nessa ordem — e a história também guarda um silêncio, porque não diz que Deus fez nada disso, não conta choro nem enterro e não fala de nenhum filho nascido nesses dez anos; esse mesmo silêncio entrou no ensaio na língua de vocês?",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 35419,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 2142,
+          "output_tokens": 907,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 15863,
+          "cost_usd": 0.070838
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1446,
+          "output_tokens": 273,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 6623,
+          "cost_usd": 0.031562
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 5331,
+          "output_tokens": 287,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 12902,
+          "cost_usd": 0.013532
+        }
+      ],
+      "mechanical": []
+    },
+    {
+      "idx": 10,
+      "team": "A gente está satisfeito. Pode encerrar.",
+      "guide": "Muito bem — esse primeiro ensaio para o Refine é na língua de vocês, inteiro ou cena por cena, como preferirem, e agora o aplicativo vai mostrar onde gravar o primeiro ensaio na língua de vocês.",
+      "outcome": "pass",
+      "interrupted": false,
+      "turnMs": 25761,
+      "usage": [
+        {
+          "role": "guide",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1971,
+          "output_tokens": 356,
+          "cache_read_tokens": 16272,
+          "cache_write_tokens": 0,
+          "latency_ms": 6200,
+          "cost_usd": 0.041578
+        },
+        {
+          "role": "validator",
+          "rung": "claude-fable-5-1",
+          "input_tokens": 1558,
+          "output_tokens": 889,
+          "cache_read_tokens": 13808,
+          "cache_write_tokens": 0,
+          "latency_ms": 17290,
+          "cost_usd": 0.063482
+        },
+        {
+          "role": "classifier",
+          "rung": "claude-sonnet-5",
+          "input_tokens": 4781,
+          "output_tokens": 10,
+          "cache_read_tokens": 0,
+          "cache_write_tokens": 0,
+          "latency_ms": 2237,
+          "cost_usd": 0.009662
+        }
+      ],
+      "mechanical": []
+    }
+  ]
+}

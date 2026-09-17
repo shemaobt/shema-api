@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 4,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 3,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 6,
+      "severity": "minor",
+      "kind": "unaddressed_addition",
+      "quote": "Moraram lá dez anos e não tiveram filhos.",
+      "why": "A equipe afirmou como fato que 'não tiveram filhos'; o guia corrigiu o pareamento dos casais mas não observou nessa volta que a história apenas silencia sobre crianças — só no turno 7 reformulou como silêncio ('não diz nada de filho'), sem marcar que colocar 'não tiveram filhos' no relato acrescenta algo."
+    },
+    {
+      "turn": 10,
+      "severity": "minor",
+      "kind": "unnoted_gap",
+      "quote": "ouvi o caminho inteiro: o tempo dos juízes, a fome, os quatro nomes, Belém de Judá, Moabe.",
+      "why": "O relato da equipe deixou de fora 'efrateus' e 'na terra', presentes no relato anterior (turno 3); o guia só apontou o 'como estrangeiros'. A equipe restaurou 'efrateus' e 'na terra' sozinha no turno 11."
+    },
+    {
+      "turn": 11,
+      "severity": "minor",
+      "kind": "no_record_close",
+      "quote": "Conversem entre vocês, na língua de vocês: esse jeito de começar, com a fome chegando sozinha... Depois me contem em português o que vocês falaram.",
+      "why": "A equipe disse 'Estamos satisfeitos' e o relato estava inteiro; o guia deveria encerrar mandando gravar o ensaio agora, mas abriu mais uma rodada de conversa. A sessão termina sem a instrução de gravar."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia foi um verdadeiro par à mesa: reagiu a cada fala da equipe, acompanhou os saltos para cenas seguintes sem resistir ('vocês já foram para a próxima parte — tudo bem, vamos ficar aqui'), e a cada vez abriu a cena a partir do que a história conta antes de mandar ensaiar. A checagem dos relatos foi honesta e calorosa: apontou o que faltava (tempo dos juízes, morar como estrangeiro) e o que a história não diz (doença de tristeza, choro, enterro, quem casou com quem, Deus deixando Noemi sozinha), sem elogiar como completo o que tinha lacuna ou acréscimo. Os silêncios foram tratados como conteúdo, e a rima do 'ficou' e a ordem filhos-depois-marido foram trazidas com fidelidade. A contenção foi total: nenhuma afirmação fora do mapa, nenhuma bênção, nenhum 'mapa'. Os lapsos são pequenos: não marcou que 'não tiveram filhos' dito como fato acrescenta algo que a história só silencia; deixou passar 'efrateus' no relato do turno 10; e, sobretudo, após a equipe se declarar satisfeita com um relato inteiro, abriu outra rodada de conversa em vez de encerrar mandando gravar o ensaio."
+}

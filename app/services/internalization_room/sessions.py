@@ -48,6 +48,7 @@ from app.services.internalization_room.segments import (
     retire_the_segments_of,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.validated_turn import TurnOutcome
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
 
@@ -93,6 +94,7 @@ async def create_session(
     after_panorama: bool = False,
     project_id: str | None = None,
     language: str | None = None,
+    chosen: bool = False,
 ) -> IRSession:
     """Open a session, on the passage this team is actually standing on.
 
@@ -130,12 +132,19 @@ async def create_session(
     own bias.
 
     A request for the panorama is a request and not an instruction. The app asks for it at
-    every launch, and a team that already heard it for the passage they stand on is answered
-    with that passage instead, opened as any other session and not as one that follows a
+    every launch, and a team that already heard the book's panorama is answered with the
+    passage they stand on instead, opened as any other session and not as one that follows a
     panorama — no panorama played, so the greeting must not say one did. Whether they heard
     it is `heard_panorama`'s to say and is derived, never stored. A team standing on no
     passage — the walkable book closed — is given the panorama as before: the decision puts
     the team's passage in its place, and there is none to put there.
+
+    ``chosen`` is the team asking for the panorama themselves — the spoke on the wheel —
+    rather than the app asking at launch, and a request the team chose is honoured, heard
+    or not: the panorama is a conversation, and a team that has forgotten the shape of the
+    book, or gained a member, has to be able to hold it again. The difference rides on the
+    request and nowhere else. Nothing writes "asked" down, so the next automatic launch is
+    still answered from the rows, exactly as before the team asked.
 
     Raises ``ConflictError`` when the team has closed every passage that opens and none was
     named. That is the end of the book, and it is a defined state rather than a wrap-around:
@@ -150,10 +159,10 @@ async def create_session(
                 "This team has finished every passage the book can walk; name one to open a session"
             )
     pericope = resolve_pericope(pericope)
-    if is_panorama(pericope):
+    if is_panorama(pericope) and not chosen:
         standing = await active_passage(db, project_id=project_id, book=book_of(pericope))
         if standing is not None and await heard_panorama(
-            db, project_id=project_id, pericope=standing
+            db, project_id=project_id, book=book_of(pericope)
         ):
             pericope, after_panorama = standing, False
     panorama = is_panorama(pericope)
@@ -278,8 +287,17 @@ async def append_exchange(
     *,
     team_utterance: str,
     guide_response: str,
+    outcome: TurnOutcome | None = None,
+    scene: str | None = None,
 ) -> IRSession:
-    """Append one team/guide turn to the transcript.
+    """Append one team/guide turn to the transcript, and what containment did to it.
+
+    The guide message says whether the draft passed, was mended, or gave way to a fixed
+    line, and how many redrafts it cost. When a fixed line spoke, the message also keeps
+    what her fail-safe spec asks of every firing — the pericope, the scene, the team's
+    words, the Guide's draft, the Validator's verdict and issues, and which family
+    answered — so a session read back later never has to infer any of it. A turn that
+    arrives with no outcome, the prepared opening, is written as it always was.
 
     A turn that lands is the proof a person came back, so it also releases
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
@@ -297,11 +315,34 @@ async def append_exchange(
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
-    messages.append({"role": "guide", "text": guide_response})
+    guide: dict[str, Any] = {"role": "guide", "text": guide_response}
+    if outcome is not None:
+        guide["outcome"] = _containment_of(outcome)
+        guide["redrafts"] = outcome.redrafts
+        if outcome.used_fail_safe:
+            guide.update(
+                category=outcome.fixed_line[:1],
+                fixed_line=outcome.fixed_line,
+                pericope=session.pericope,
+                scene=scene,
+                team_utterance=team_utterance,
+                draft=outcome.draft,
+                verdict=outcome.verdict,
+                issues=outcome.issues,
+            )
+    messages.append(guide)
     values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
     if session.status is IRSessionStatus.NEEDS_PERSON:
         values["status"] = IRSessionStatus.IN_PROGRESS
     return await _land(db, session, values)
+
+
+def _containment_of(outcome: TurnOutcome) -> str:
+    if outcome.used_fail_safe:
+        return "fail_safe"
+    if outcome.verdict == "correct":
+        return "corrected"
+    return "pass"
 
 
 async def apply_coverage(

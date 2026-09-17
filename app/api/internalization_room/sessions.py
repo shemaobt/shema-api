@@ -39,6 +39,8 @@ from app.services.internalization_room.canon.book_material import build_book_mat
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.live_turn import current_scene_id
+from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
     prepare_opening,
@@ -107,6 +109,13 @@ async def _voice_the_turn(
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def _scene_of(session: IRSession) -> str | None:
+    """The scene the turn was read against, for the record; a panorama has none."""
+    if is_panorama(session.pericope):
+        return None
+    return current_scene_id(session.coverage_state or {}, session.pericope)
 
 
 def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
@@ -228,6 +237,15 @@ async def create_session(
 
     After the session exists, so a `create_session` that refuses leaves the halt standing:
     a room that could not open a session is still stopped.
+
+    The opening is written ahead only for a panorama the team has not yet gone on from:
+    that is the team about to enter the book, and the line is the passage's first. A team
+    already inside the book that chose to hear the panorama again is there for the book's
+    shape, not for the door into a passage, so nothing is written for it. What that costs
+    is stated rather than waved away: `hand_over` would move the line to a bead opened after
+    the second panorama too, and a team that does leave it into a passage hears an opening
+    written live, with the wait the prepared one spares. A model call and a clip on every
+    second hearing, most of which end on the wheel, is the dearer side of that trade.
     """
     session = await room.create_session(
         db,
@@ -235,6 +253,7 @@ async def create_session(
         after_panorama=payload.after_panorama or payload.after_session is not None,
         project_id=project_id,
         language=payload.language,
+        chosen=payload.chosen,
     )
     if caller is not None:
         await clear_needs_person(db, caller.id)
@@ -242,7 +261,9 @@ async def create_session(
         previous = await room.get_session(db, payload.after_session)
         if hand_over(previous, session):
             await db.commit()
-    elif is_panorama(session.pericope):
+    elif is_panorama(session.pericope) and not await heard_panorama(
+        db, project_id=project_id, book=book_of(session.pericope)
+    ):
         background.add_task(prepare_opening, session.id)
     return await _state(db, session)
 
@@ -555,6 +576,8 @@ async def take_turn(
         session,
         team_utterance=outcome.transcript,
         guide_response=outcome.speech,
+        outcome=outcome,
+        scene=_scene_of(session),
     )
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
