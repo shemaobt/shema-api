@@ -13,7 +13,7 @@ from app.api.internalization_room._deps import (
 )
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
@@ -541,32 +541,37 @@ async def take_turn(
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
-    if is_panorama(session.pericope):
-        book = book_of(session.pericope)
-        outcome = await room.run_panorama_turn(
-            transcript=transcript,
-            messages=session.messages or [],
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
-            validator_prompt=validator_prompt,
-            book=book,
-            book_material=build_book_material(book),
-            opening=opening,
-            settings=get_settings(),
-            session_id=session.id,
-        )
-    else:
-        turn = await room.run_comprehension_turn(
-            db,
-            session,
-            speech=speech_heard,
-            opening=opening,
-            guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
-            validator_prompt=validator_prompt,
-            settings=get_settings(),
-        )
-        outcome = turn.outcome
+    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
+    try:
+        async with asyncio.timeout(bound_s):
+            if is_panorama(session.pericope):
+                book = book_of(session.pericope)
+                outcome = await room.run_panorama_turn(
+                    transcript=transcript,
+                    messages=session.messages or [],
+                    session_language=LANGUAGE_NAMES[session.language],
+                    language_code=session.language,
+                    panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
+                    validator_prompt=validator_prompt,
+                    book=book,
+                    book_material=build_book_material(book),
+                    opening=opening,
+                    settings=get_settings(),
+                    session_id=session.id,
+                )
+            else:
+                turn = await room.run_comprehension_turn(
+                    db,
+                    session,
+                    speech=speech_heard,
+                    opening=opening,
+                    guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
+                    validator_prompt=validator_prompt,
+                    settings=get_settings(),
+                )
+                outcome = turn.outcome
+    except TimeoutError as spent:
+        raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     voiced, segments = await _voice_the_turn(outcome, language=session.language)
     if turn is not None:
