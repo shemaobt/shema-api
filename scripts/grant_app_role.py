@@ -1,3 +1,18 @@
+"""Seeding tool: hand-plant one role grant from a shell, outside any gate.
+
+This is operator seeding — first admin of a fresh environment, local fixtures —
+not the product's concession path. The application path is OBT-477's surface
+(``app/services/resource_request_access`` for the resource-request-form,
+``/api/roles`` elsewhere), which checks who is asking, records who granted, and
+enforces the app's own rules; none of that runs here.
+
+Known defect, deliberately not fixed here: the lookup takes the user's single
+``UserAppRole`` row per app for granted and *overwrites its role_id*, so a user
+holding two roles crashes it (``scalar_one_or_none`` on two rows) and a user
+holding one has that one silently replaced instead of accumulated. That fix is
+PLAT-01 (OBT-484).
+"""
+
 import argparse
 import asyncio
 import sys

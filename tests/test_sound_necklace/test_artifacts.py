@@ -23,7 +23,13 @@ import pytest
 from app.db.models.sound_necklace import ArtifactKind
 from app.services.oral_collector import gcs_utils
 from tests.baker import make_language, make_project, make_project_user_access, make_user
-from tests.test_sound_necklace.conftest import auth_header, grant_role, hand_lease_to
+from tests.test_sound_necklace.conftest import (
+    audio_of,
+    auth_header,
+    give_project_an_audio,
+    grant_role,
+    hand_lease_to,
+)
 
 SN = "/api/sound-necklace"
 
@@ -71,6 +77,11 @@ def storage(monkeypatch):
     model of it — and it lets a test read back exactly what the API handed over. It can
     be told to fail on the Nth upload, because "a failure partway through" is the one
     behaviour a dict that always succeeds cannot exercise.
+
+    Deletes are intercepted too. A re-upload with changed bytes sweeps the object it
+    replaced, so a fake that only knew about uploads would let a test in this file reach
+    the real bucket. What that sweep leaves behind is asserted in the delete tests, which
+    own the fake that records it.
     """
 
     class FakeStorage:
@@ -113,6 +124,10 @@ def storage(monkeypatch):
             self.signed.append({"bucket": bucket_name, "blob": blob_name, "ttl": expiry_minutes})
             return f"https://storage.googleapis.com/{bucket_name}/{blob_name}?X-Goog-Signature=d0d0"
 
+        async def delete(self, bucket_name: str, blob_name: str) -> None:
+            self.objects.pop(blob_name, None)
+            self.content_types.pop(blob_name, None)
+
         def fetch(self, url: str) -> bytes:
             """What a client following the redirect would actually receive."""
             key = url.split("?", 1)[0].split("/", 4)[4]
@@ -121,6 +136,7 @@ def storage(monkeypatch):
     fake = FakeStorage()
     monkeypatch.setattr(gcs_utils, "upload_gcs_object", fake.upload)
     monkeypatch.setattr(gcs_utils, "generate_signed_download_url", fake.sign)
+    monkeypatch.setattr(gcs_utils, "delete_gcs_object", fake.delete)
     return fake
 
 
@@ -130,6 +146,7 @@ async def facilitator(db_session, sound_necklace_app):
     await grant_role(db_session, sound_necklace_app.id, user.id, "facilitator")
     language = await make_language(db_session, name="Terena", code="ter")
     project = await make_project(db_session, language.id, name="Projeto A")
+    await give_project_an_audio(db_session, project.id)
     await make_project_user_access(db_session, project.id, user.id)
     headers = await auth_header(db_session, user)
     return user, project, headers
@@ -138,7 +155,9 @@ async def facilitator(db_session, sound_necklace_app):
 @pytest.fixture()
 async def other_project(db_session):
     language = await make_language(db_session, name="Nheengatu", code="yrl")
-    return await make_project(db_session, language.id, name="Projeto B")
+    other = await make_project(db_session, language.id, name="Projeto B")
+    await give_project_an_audio(db_session, other.id)
+    return other
 
 
 async def new_session(client, headers, project_id: str, *, slug: str = "a-historia-de-rute") -> str:
@@ -146,7 +165,7 @@ async def new_session(client, headers, project_id: str, *, slug: str = "a-histor
         f"{SN}/sessions",
         headers=headers,
         json={
-            "audio_id": "ruth-a-historia-de-rute",
+            "audio_id": audio_of(project_id),
             "project_id": project_id,
             "story_name": "A História de Rute",
             "story_slug": slug,

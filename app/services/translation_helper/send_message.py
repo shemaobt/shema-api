@@ -19,8 +19,16 @@ from app.services.translation_helper.list_messages import list_messages
 
 logger = logging.getLogger(__name__)
 
-CHAT_MODEL = "gemini-3-flash-preview"
-TITLE_MODEL = "gemini-3-flash-preview"
+
+def chat_model(settings: Settings) -> str:
+    """The model behind a Translation Helper reply."""
+    return settings.gemini_fast_model
+
+
+def title_model(settings: Settings) -> str:
+    """The model that names a new thread from its first message."""
+    return settings.gemini_fast_model
+
 
 TITLE_PROMPT = (
     "Summarize the following user message as a chat title in 50 characters or fewer."
@@ -46,7 +54,7 @@ async def _generate_assistant_text(
 ) -> str:
     client = genai.Client(api_key=settings.google_api_key)
     response = await client.aio.models.generate_content(
-        model=CHAT_MODEL,
+        model=chat_model(settings),
         contents=contents,
         config=types.GenerateContentConfig(system_instruction=system_prompt),
     )
@@ -67,7 +75,7 @@ def _fallback_title(user_message: str) -> str:
 async def _generate_title(user_message: str, settings: Settings) -> str:
     client = genai.Client(api_key=settings.google_api_key)
     response = await client.aio.models.generate_content(
-        model=TITLE_MODEL,
+        model=title_model(settings),
         contents=TITLE_PROMPT.format(message=user_message[:1000]),
     )
     title = (response.text or "").strip().strip('"').strip("'")

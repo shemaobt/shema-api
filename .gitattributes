@@ -1,0 +1,3 @@
+# The repository is LF. Thirteen files arrived CRLF and every branch that touched one
+# rewrote the whole file, burying the real change in a few hundred phantom lines.
+* text=auto eol=lf

@@ -58,3 +58,14 @@ class SegmentResult(BaseModel):
     duration_seconds: float
     file_size_bytes: int
     index: int
+
+
+class TranscriptionRequestedPayload(BaseModel):
+    """A session whose answers need drafts.
+
+    The session id and nothing else: the work to do is whatever is `pending` in
+    `sn_answer_transcripts` when the run starts, so a replayed event never redoes a draft
+    and never carries a stale copy of one.
+    """
+
+    session_id: str
