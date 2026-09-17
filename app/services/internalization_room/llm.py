@@ -109,6 +109,7 @@ async def call_agent(
     effort: Effort = "high",
     thinks: bool = True,
     schema: dict[str, Any] | None = None,
+    timeout_ms: int | None = None,
     settings: Settings | None = None,
 ) -> str:
     """Ask one of the room's models, and hand back the text it spoke.
@@ -140,6 +141,7 @@ async def call_agent(
     """
     settings = settings or get_settings()
     rungs = ladder or voice_ladder(settings)
+    bound_s = (timeout_ms or settings.internalization_room_turn_bound_ms) / 1000
     adaptive: ThinkingConfigAdaptiveParam = {"type": "adaptive"}
     disabled: ThinkingConfigDisabledParam = {"type": "disabled"}
     thinking: ThinkingConfigAdaptiveParam | ThinkingConfigDisabledParam = (
@@ -153,7 +155,9 @@ async def call_agent(
     ]
     messages.append({"role": "user", "content": user_content})
     client = anthropic.AsyncAnthropic(
-        api_key=settings.anthropic_api_key, default_headers=_workspace_header(settings)
+        api_key=settings.anthropic_api_key,
+        default_headers=_workspace_header(settings),
+        max_retries=0,
     )
     refused_above = False
     for model in _from_the_settled_rung(rungs):
@@ -166,6 +170,7 @@ async def call_agent(
                 output_config=output_config,
                 system=_system_blocks(system_prompt),
                 messages=messages,
+                timeout=bound_s,
             )
         except anthropic.NotFoundError as refusal:
             if model == rungs[-1]:

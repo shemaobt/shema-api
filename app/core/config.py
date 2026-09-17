@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     tripod_voice_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
     tripod_analysis_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
     tripod_classifier_model: str = "claude-sonnet-5,claude-sonnet-4-6"
+    #: The one clock on the room's turn: the deployment's own function ceiling (Cloud Run's
+    #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
+    #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
+    internalization_room_turn_bound_ms: int = 300_000
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5
