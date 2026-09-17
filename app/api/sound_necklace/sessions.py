@@ -1,7 +1,19 @@
-"""Session lifecycle, autosave and resume.
+"""Session lifecycle, autosave and resume — creation through to deletion.
 
 The state document is the SPA's, not ours: it arrives as bytes, is stored as those
 bytes, and is served back as those bytes. Nothing here parses it to persist it.
+
+A session can be renamed and it can be deleted, both at any point in its life, a
+completed one included. The rename moves the display name and never the slug, because
+the slug names the artifact files a downstream pipeline reads by name (PRD §10.5). The
+delete is hard — there is no archived state and nothing to restore from — and it takes
+the objects the session produced with it, never the project's source audio.
+
+``_TICK_LOCKED_RESPONSE`` is fenced like complete and reopen, but the heartbeat can only
+ever refuse for one reason, so it advertises one model rather than reusing
+``LOCKED_RESPONSE``. A heartbeat has no SESSION_LOCK_CHANGED case: where those two must
+report a write that refused and then lost its holder, a heartbeat that finds the lease
+lapsed simply lands.
 """
 
 from typing import Annotated, Any
@@ -18,9 +30,13 @@ from app.models.sound_necklace import (
     ProjectGranularityLockedResponse,
     SessionCreate,
     SessionListResponse,
+    SessionLockedResponse,
     SessionProgress,
+    SessionRename,
     SessionStateUpdate,
     SessionSummary,
+    WorkingTimeResponse,
+    WorkingTimeTick,
 )
 from app.services import sound_necklace_service as sn_service
 
@@ -35,6 +51,18 @@ _CONFLICT_RESPONSE: dict[int | str, dict[str, Any]] = {
             "and the body carries holder_name and expires_at — stop writing and open in "
             "review mode."
         )
+    }
+}
+
+
+_TICK_LOCKED_RESPONSE: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {
+        "model": SessionLockedResponse,
+        "description": (
+            "Somebody else holds the editor lock. A heartbeat from a third party must "
+            "not add to a total that will be read as the holder's own work — stop "
+            "ticking; the holder's own client is keeping the number."
+        ),
     }
 }
 
@@ -136,6 +164,50 @@ async def get_session(session_id: str, db: Db, user: CurrentUser) -> SessionSumm
     session = await sn_service.get_session(db, session_id)
     await assert_project_access(db, user, session.project_id)
     return _summary(session)
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    response_model=SessionSummary,
+    responses=LOCKED_RESPONSE,
+)
+async def rename_session(
+    session_id: str, payload: SessionRename, db: Db, user: CurrentUser
+) -> SessionSummary | JSONResponse:
+    """Rename a session's story.
+
+    The name is all that moves. ``slug`` is frozen deliberately: it names the three
+    artifact files the downstream pipeline reads by name (PRD §10.5), so a rename that
+    carried it would turn a cosmetic edit into a migration of objects already stored.
+    """
+    session = await sn_service.get_session(db, session_id)
+    await assert_project_access(db, user, session.project_id)
+    try:
+        renamed = await sn_service.rename_session(db, session, payload.story_name, user.id)
+    except sn_service.SessionLockedByOther as exc:
+        return locked_body(exc)
+    return _summary(renamed)
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=LOCKED_RESPONSE,
+)
+async def delete_session(session_id: str, db: Db, user: CurrentUser) -> Response:
+    """Delete a session for good, with the objects it produced.
+
+    Available at any time, a completed session included. What goes is what this session
+    made — the listener's recordings and the three artifacts; the project's source audio
+    is never in scope. The §12 audit trail outlives the session it describes.
+    """
+    session = await sn_service.get_session(db, session_id)
+    await assert_project_access(db, user, session.project_id)
+    try:
+        await sn_service.delete_session(db, session, user.id)
+    except sn_service.SessionLockedByOther as exc:
+        return locked_body(exc)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/sessions/{session_id}/state", response_model=SessionStateUpdate)
@@ -242,3 +314,37 @@ async def reopen_session(
     except sn_service.SessionLockedByOther as exc:
         return locked_body(exc)
     return _summary(reopened)
+
+
+@router.post(
+    "/sessions/{session_id}/working-time/ticks",
+    response_model=WorkingTimeResponse,
+    responses=_TICK_LOCKED_RESPONSE,
+)
+async def record_working_tick(
+    session_id: str, payload: WorkingTimeTick, db: Db, user: CurrentUser
+) -> WorkingTimeResponse | JSONResponse:
+    """Record a "still here" heartbeat and answer with the session's total so far.
+
+    The heartbeat carries no timestamp and no account of what was done: the server stamps
+    the instant, and the gap since the previous beat is what it is worth. Replaying a
+    ``client_tick_id`` is a no-op, so a client may retry a beat it is unsure of.
+    """
+    session = await sn_service.get_session(db, session_id)
+    await assert_project_access(db, user, session.project_id)
+    try:
+        total = await sn_service.record_working_tick(
+            db, session_id, client_tick_id=payload.client_tick_id, actor_user_id=user.id
+        )
+    except sn_service.SessionLockedByOther as exc:
+        return locked_body(exc)
+    return WorkingTimeResponse(net_working_seconds=total)
+
+
+@router.get("/sessions/{session_id}/working-time", response_model=WorkingTimeResponse)
+async def get_working_time(session_id: str, db: Db, user: CurrentUser) -> WorkingTimeResponse:
+    """The session's accumulated net working time, for a client that lost its own copy."""
+    session = await sn_service.get_session(db, session_id)
+    await assert_project_access(db, user, session.project_id)
+    total = await sn_service.read_working_time(db, session_id)
+    return WorkingTimeResponse(net_working_seconds=total)

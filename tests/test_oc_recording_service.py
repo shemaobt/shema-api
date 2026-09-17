@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.enums import CleaningStatus, SplittingStatus, UploadStatus
+from app.core.enums import CleaningStatus, OCNotificationEvent, SplittingStatus, UploadStatus
 from app.core.exceptions import (
     AuthorizationError,
     ConflictError,
@@ -14,9 +15,10 @@ from app.core.exceptions import (
     UnknownReferenceError,
     ValidationError,
 )
+from app.db.models.auth import App
+from app.db.models.notification import Notification
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
-from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.project import ProjectUserAccess
 from app.models.oc_recording import (
     ConfirmUploadRequest,
@@ -25,57 +27,24 @@ from app.models.oc_recording import (
     ResumableUploadUrlRequest,
     ResumableUploadUrlResponse,
 )
-from tests.baker import make_language, make_project, make_user
+from app.services.notifications.get_oc_app_id import OC_APP_KEY
+from tests.baker import (
+    make_app,
+    make_language,
+    make_oc_recording,
+    make_oc_storyteller,
+    make_oc_taxonomy,
+    make_project,
+    make_user,
+)
 
 pytest.importorskip("app.inngest")
-
-
-async def _seed_genre(db: AsyncSession) -> tuple[OC_Genre, OC_Subcategory]:
-    genre = OC_Genre(name="narrative", sort_order=0)
-    db.add(genre)
-    await db.flush()
-
-    sub = OC_Subcategory(genre_id=genre.id, name="folktale", sort_order=0)
-    db.add(sub)
-    await db.commit()
-    await db.refresh(genre)
-    await db.refresh(sub)
-    return genre, sub
 
 
 async def _seed_project(db: AsyncSession) -> str:
     lang = await make_language(db)
     project = await make_project(db, lang.id)
     return project.id
-
-
-async def _seed_recording(
-    db: AsyncSession,
-    user_id: str,
-    project_id: str,
-    genre_id: str,
-    subcategory_id: str,
-    *,
-    upload_status: str = UploadStatus.LOCAL,
-    file_size_bytes: int = 1024,
-    title: str | None = "test recording",
-) -> OC_Recording:
-    rec = OC_Recording(
-        project_id=project_id,
-        genre_id=genre_id,
-        subcategory_id=subcategory_id,
-        user_id=user_id,
-        title=title,
-        duration_seconds=10.0,
-        file_size_bytes=file_size_bytes,
-        format="m4a",
-        upload_status=upload_status,
-        recorded_at=datetime.now(UTC),
-    )
-    db.add(rec)
-    await db.commit()
-    await db.refresh(rec)
-    return rec
 
 
 def _import_service():
@@ -89,9 +58,10 @@ async def test_create_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -118,7 +88,7 @@ async def test_create_recording_with_description(db_session: AsyncSession) -> No
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     data = RecordingCreate(
         project_id=project_id,
@@ -142,16 +112,14 @@ async def test_update_recording_sets_description(db_session: AsyncSession) -> No
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
-
-    updated = await rs.update_recording(
-        db_session, rec.id, RecordingUpdate(description="A new story")
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
     )
-    assert updated.description == "A new story"
 
-    cleared = await rs.update_recording(db_session, rec.id, RecordingUpdate(description=None))
-    assert cleared.description is None
+    story = "A new story, told at length enough to be worth keeping"
+    updated = await rs.update_recording(db_session, rec.id, RecordingUpdate(description=story))
+    assert updated.description == story
 
 
 @pytest.mark.asyncio
@@ -159,8 +127,10 @@ async def test_update_recording_sets_cleaning_status(db_session: AsyncSession) -
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     assert rec.cleaning_status == CleaningStatus.NONE
 
     updated = await rs.update_recording(
@@ -181,8 +151,10 @@ async def test_update_recording_rejects_internal_cleaning_status(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
 
     for internal_status in (CleaningStatus.CLEANING, CleaningStatus.CLEANED, CleaningStatus.FAILED):
         with pytest.raises(InvalidCleaningStatusError):
@@ -196,9 +168,11 @@ async def test_get_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     fetched = await rs.get_recording(db_session, rec.id)
 
     assert fetched.id == rec.id
@@ -217,9 +191,11 @@ async def test_update_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     updated = await rs.update_recording(db_session, rec.id, RecordingUpdate(title="Updated Title"))
 
     assert updated.title == "Updated Title"
@@ -230,9 +206,11 @@ async def test_delete_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     await rs.delete_recording(db_session, rec.id)
 
     with pytest.raises(NotFoundError):
@@ -244,22 +222,22 @@ async def test_list_recordings(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        user.id,
         project_id,
         genre.id,
         sub.id,
+        user_id=user.id,
         upload_status=UploadStatus.UPLOADED,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        user.id,
         project_id,
         genre.id,
         sub.id,
+        user_id=user.id,
         upload_status=UploadStatus.VERIFIED,
         title="Second recording",
     )
@@ -273,22 +251,22 @@ async def test_list_recordings_filter_by_status(db_session: AsyncSession) -> Non
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        user.id,
         project_id,
         genre.id,
         sub.id,
+        user_id=user.id,
         upload_status=UploadStatus.UPLOADED,
     )
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        user.id,
         project_id,
         genre.id,
         sub.id,
+        user_id=user.id,
         upload_status=UploadStatus.LOCAL,
         title="Second recording",
     )
@@ -303,9 +281,11 @@ async def test_check_recording_access_owner(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     await rs.check_recording_access(db_session, rec, user.id)
 
 
@@ -315,9 +295,11 @@ async def test_check_recording_access_denied(db_session: AsyncSession) -> None:
     user = await make_user(db_session, email="owner@test.com")
     other = await make_user(db_session, email="other@test.com")
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     with pytest.raises(AuthorizationError):
         await rs.check_recording_access(db_session, rec, other.id)
 
@@ -328,13 +310,15 @@ async def test_check_recording_access_manager(db_session: AsyncSession) -> None:
     user = await make_user(db_session, email="owner@test.com")
     manager = await make_user(db_session, email="manager@test.com")
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     access = ProjectUserAccess(project_id=project_id, user_id=manager.id, role="manager")
     db_session.add(access)
     await db_session.commit()
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     await rs.check_recording_access(db_session, rec, manager.id)
 
 
@@ -381,28 +365,18 @@ def test_resumable_upload_url_response_model() -> None:
     assert resp.chunk_size_bytes == 8388608
 
 
-async def _seed_storyteller(db: AsyncSession, project_id: str, name: str = "Ana") -> OC_Storyteller:
-    st = OC_Storyteller(
-        project_id=project_id,
-        name=name,
-        sex="female",
-        external_acceptance_confirmed=True,
-    )
-    db.add(st)
-    await db.commit()
-    await db.refresh(st)
-    return st
-
-
 @pytest.mark.asyncio
 async def test_create_recording_with_storyteller(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    storyteller = await _seed_storyteller(db_session, project_id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    storyteller = await make_oc_storyteller(
+        db_session, project_id, external_acceptance_confirmed=True
+    )
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -428,10 +402,13 @@ async def test_create_recording_rejects_cross_project_storyteller(
     from tests.baker import make_project as _make_project
 
     project_b = await _make_project(db_session, lang_b.id, name="Other Project")
-    storyteller_b = await _seed_storyteller(db_session, project_b.id)
+    storyteller_b = await make_oc_storyteller(
+        db_session, project_b.id, external_acceptance_confirmed=True
+    )
 
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id_a,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -452,14 +429,23 @@ async def test_update_recording_rejects_cross_project_storyteller(
     rs = _import_service()
     user = await make_user(db_session)
     project_id_a = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id_a, genre.id, sub.id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session,
+        project_id_a,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.LOCAL,
+    )
 
     lang_b = await make_language(db_session, name="Other", code="oth")
     from tests.baker import make_project as _make_project
 
     project_b = await _make_project(db_session, lang_b.id, name="Other Project")
-    storyteller_b = await _seed_storyteller(db_session, project_b.id)
+    storyteller_b = await make_oc_storyteller(
+        db_session, project_b.id, external_acceptance_confirmed=True
+    )
 
     with pytest.raises(ValidationError):
         await rs.update_recording(
@@ -474,7 +460,7 @@ async def test_create_recording_with_secondary_classification(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     genre_b = OC_Genre(name="wisdom", sort_order=1)
     db_session.add(genre_b)
@@ -486,6 +472,7 @@ async def test_create_recording_with_secondary_classification(
     await db_session.refresh(sub_b)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -510,7 +497,7 @@ async def test_create_recording_allows_secondary_with_only_genre_matching_primar
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     other_sub = OC_Subcategory(genre_id=genre.id, name="other", sort_order=1)
     db_session.add(other_sub)
@@ -518,6 +505,7 @@ async def test_create_recording_allows_secondary_with_only_genre_matching_primar
     await db_session.refresh(other_sub)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -541,9 +529,10 @@ async def test_create_recording_rejects_identical_secondary_triple(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -567,8 +556,10 @@ async def test_update_recording_allows_single_field_overlap_when_merged_triple_d
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     rec.register_id = "formal"
     await db_session.commit()
     await db_session.refresh(rec)
@@ -588,8 +579,10 @@ async def test_update_recording_rejects_when_merged_triple_collapses_to_identica
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     rec.register_id = "formal"
     await db_session.commit()
     await db_session.refresh(rec)
@@ -615,8 +608,10 @@ async def test_update_recording_rejects_a_primary_only_update_that_lands_on_the_
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     rec.register_id = "formal"
     rec.secondary_genre_id = genre.id
     rec.secondary_subcategory_id = sub.id
@@ -638,8 +633,10 @@ async def test_update_recording_allows_a_secondary_left_partly_unset(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    genre, sub = await make_oc_taxonomy(db_session)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     rec.register_id = "formal"
     await db_session.commit()
     await db_session.refresh(rec)
@@ -662,24 +659,28 @@ async def test_list_recordings_filter_by_user_and_storyteller(
     user_a = await make_user(db_session, email="a@test.com")
     user_b = await make_user(db_session, email="b@test.com")
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
-    st_a = await _seed_storyteller(db_session, project_id, name="Ana")
-    st_b = await _seed_storyteller(db_session, project_id, name="Beto")
+    genre, sub = await make_oc_taxonomy(db_session)
+    st_a = await make_oc_storyteller(
+        db_session, project_id, name="Ana", external_acceptance_confirmed=True
+    )
+    st_b = await make_oc_storyteller(
+        db_session, project_id, name="Beto", external_acceptance_confirmed=True
+    )
 
-    rec_a = await _seed_recording(
+    rec_a = await make_oc_recording(
         db_session,
-        user_a.id,
         project_id,
         genre.id,
         sub.id,
+        user_id=user_a.id,
         upload_status=UploadStatus.UPLOADED,
     )
-    rec_b = await _seed_recording(
+    rec_b = await make_oc_recording(
         db_session,
-        user_b.id,
         project_id,
         genre.id,
         sub.id,
+        user_id=user_b.id,
         upload_status=UploadStatus.UPLOADED,
         title="User B recording",
     )
@@ -699,10 +700,11 @@ async def test_create_recording_rejects_duplicate_title(db_session: AsyncSession
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -726,10 +728,11 @@ async def test_create_recording_normalizes_and_rejects_trimmed_duplicate(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -752,10 +755,11 @@ async def test_create_recording_title_match_is_case_sensitive(db_session: AsyncS
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -780,10 +784,11 @@ async def test_create_recording_blank_titles_do_not_collide(db_session: AsyncSes
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     def _data(title: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -809,7 +814,7 @@ async def test_create_recording_ignores_split_children_for_uniqueness(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     split_child = OC_Recording(
         project_id=project_id,
@@ -827,6 +832,7 @@ async def test_create_recording_ignores_split_children_for_uniqueness(
     await db_session.commit()
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -847,9 +853,11 @@ async def test_update_recording_rejects_duplicate_title(db_session: AsyncSession
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     other = OC_Recording(
         project_id=project_id,
         genre_id=genre.id,
@@ -874,9 +882,17 @@ async def test_update_recording_keep_own_title_succeeds(db_session: AsyncSession
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="test recording",
+        upload_status=UploadStatus.LOCAL,
+    )
     updated = await rs.update_recording(db_session, rec.id, RecordingUpdate(title="test recording"))
 
     assert updated.id == rec.id
@@ -888,9 +904,11 @@ async def test_update_recording_trims_title(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     updated = await rs.update_recording(
         db_session, rec.id, RecordingUpdate(title="  Trimmed Title  ")
     )
@@ -903,7 +921,7 @@ async def test_list_recordings_filter_by_title(db_session: AsyncSession) -> None
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     for title in ("Alpha", "Beta"):
         db_session.add(
@@ -941,10 +959,11 @@ async def test_create_recording_duplicate_title_allowed_across_projects(
     project_a = await _seed_project(db_session)
     lang_b = await make_language(db_session, name="Other", code="oth")
     project_b = await make_project(db_session, lang_b.id, name="Other Project")
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     def _data(project_id: str) -> RecordingCreate:
         return RecordingCreate(
+            description="a description long enough to satisfy the rule",
             project_id=project_id,
             genre_id=genre.id,
             subcategory_id=sub.id,
@@ -969,7 +988,7 @@ async def test_create_recording_allowed_when_title_held_by_archived_split_parent
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
     archived_parent = OC_Recording(
         project_id=project_id,
@@ -987,6 +1006,7 @@ async def test_create_recording_allowed_when_title_held_by_archived_split_parent
     await db_session.commit()
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id=genre.id,
         subcategory_id=sub.id,
@@ -1007,9 +1027,11 @@ async def test_update_recording_blank_title_clears_to_null(db_session: AsyncSess
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
     updated = await rs.update_recording(db_session, rec.id, RecordingUpdate(title="   "))
 
     assert updated.title is None
@@ -1019,21 +1041,45 @@ async def test_update_recording_blank_title_clears_to_null(db_session: AsyncSess
 async def test_duplicate_title_rejected_at_db_level(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title="Genesis 1")
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="Genesis 1",
+        upload_status=UploadStatus.LOCAL,
+    )
 
     with pytest.raises(IntegrityError):
-        await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title="Genesis 1")
+        await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title="Genesis 1",
+            upload_status=UploadStatus.LOCAL,
+        )
 
 
 @pytest.mark.asyncio
 async def test_db_unique_index_exempts_split_children(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title="Genesis 1")
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="Genesis 1",
+        upload_status=UploadStatus.LOCAL,
+    )
     split_child = OC_Recording(
         project_id=project_id,
         genre_id=genre.id,
@@ -1058,14 +1104,14 @@ async def test_db_unique_index_exempts_archived_split_parent(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(
+    await make_oc_recording(
         db_session,
-        user.id,
         project_id,
         genre.id,
         sub.id,
+        user_id=user.id,
         title="Genesis 1",
         upload_status=UploadStatus.UPLOADED,
     )
@@ -1093,10 +1139,26 @@ async def test_db_unique_index_allows_repeated_null_titles(
 ) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    first = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title=None)
-    second = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title=None)
+    first = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title=None,
+        upload_status=UploadStatus.LOCAL,
+    )
+    second = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title=None,
+        upload_status=UploadStatus.LOCAL,
+    )
 
     assert first.id != second.id
 
@@ -1110,9 +1172,17 @@ async def test_update_recording_lets_a_split_child_take_a_used_title(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title="Genesis 1")
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="Genesis 1",
+        upload_status=UploadStatus.LOCAL,
+    )
     split_child = OC_Recording(
         project_id=project_id,
         genre_id=genre.id,
@@ -1144,9 +1214,17 @@ async def test_update_recording_lets_an_archived_split_parent_take_a_used_title(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    await _seed_recording(db_session, user.id, project_id, genre.id, sub.id, title="Genesis 1")
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="Genesis 1",
+        upload_status=UploadStatus.LOCAL,
+    )
     archived_parent = OC_Recording(
         project_id=project_id,
         genre_id=genre.id,
@@ -1180,9 +1258,10 @@ async def test_create_recording_answers_422_for_a_genre_that_does_not_exist(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    _, sub = await _seed_genre(db_session)
+    _, sub = await make_oc_taxonomy(db_session)
 
     data = RecordingCreate(
+        description="a description long enough to satisfy the rule",
         project_id=project_id,
         genre_id="no-such-genre",
         subcategory_id=sub.id,
@@ -1204,9 +1283,11 @@ async def test_update_recording_answers_422_for_a_genre_that_does_not_exist(
     rs = _import_service()
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
-    genre, sub = await _seed_genre(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
 
-    rec = await _seed_recording(db_session, user.id, project_id, genre.id, sub.id)
+    rec = await make_oc_recording(
+        db_session, project_id, genre.id, sub.id, user_id=user.id, upload_status=UploadStatus.LOCAL
+    )
 
     with pytest.raises(UnknownReferenceError):
         await rs.update_recording(db_session, rec.id, RecordingUpdate(genre_id="no-such-genre"))
@@ -1317,3 +1398,612 @@ async def test_unknown_reference_is_served_as_422() -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "no such genre"
+
+
+async def _seed_oc_app(db: AsyncSession) -> App:
+    """The app row every oral-collector notification is filed under.
+
+    `conftest` seeds the other two apps but not this one, and the sweep notifies the owner of
+    every recording it fails, so any test whose stalled rows have an owner needs it.
+    """
+    return await make_app(db, app_key=OC_APP_KEY, name="Oral Collector")
+
+
+async def _notifications_for(db: AsyncSession, user_id: str) -> list[Notification]:
+    result = await db.execute(select(Notification).where(Notification.user_id == user_id))
+    return list(result.scalars().all())
+
+
+async def _age_recording(db: AsyncSession, recording_id: str, age: timedelta) -> None:
+    """Move a recording's `updated_at` back without waiting the clock out.
+
+    Writes behind the ORM's back because that is the only way to express it: `updated_at`
+    carries `onupdate=func.now()`, so every ORM write stamps it with the present. Safe only
+    while staleness is decided in SQL — a guard reading `recording.updated_at` in Python
+    would see the identity map's copy, which this statement does not touch.
+    """
+    await db.execute(
+        text("UPDATE oc_recordings SET updated_at = :when WHERE id = :rid"),
+        {"when": datetime.now(UTC) - age, "rid": recording_id},
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_an_upload_stalled_past_the_deadline_is_marked_failed(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    await _seed_oc_app(db_session)
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.UPLOADING,
+    )
+    await _age_recording(db_session, rec.id, rs.STALLED_UPLOAD_DEADLINE + timedelta(days=1))
+
+    failed = await rs.fail_stalled_uploads(db_session)
+
+    assert failed == 1
+    recording = await rs.get_recording(db_session, rec.id)
+    assert recording.upload_status == UploadStatus.UPLOAD_FAILED
+    assert recording.upload_error
+
+
+@pytest.mark.asyncio
+async def test_an_upload_stalled_inside_the_deadline_is_left_alone(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.UPLOADING,
+    )
+    await _age_recording(db_session, rec.id, rs.STALLED_UPLOAD_DEADLINE - timedelta(days=1))
+
+    failed = await rs.fail_stalled_uploads(db_session)
+
+    assert failed == 0
+    recording = await rs.get_recording(db_session, rec.id)
+    assert recording.upload_status == UploadStatus.UPLOADING
+    assert recording.upload_error is None
+
+
+@pytest.mark.asyncio
+async def test_no_other_upload_state_is_touched_however_old_it_is(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    untouched = [
+        UploadStatus.LOCAL,
+        UploadStatus.UPLOADED,
+        UploadStatus.VERIFIED,
+        UploadStatus.UPLOAD_FAILED,
+    ]
+    ids = {}
+    for status in untouched:
+        rec = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"recording {status}",
+            upload_status=status,
+        )
+        await _age_recording(db_session, rec.id, timedelta(days=365))
+        ids[status] = rec.id
+
+    failed = await rs.fail_stalled_uploads(db_session)
+
+    assert failed == 0
+    for status, recording_id in ids.items():
+        recording = await rs.get_recording(db_session, recording_id)
+        assert recording.upload_status == status
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_counts_only_the_uploads_it_failed(db_session: AsyncSession) -> None:
+    rs = _import_service()
+    await _seed_oc_app(db_session)
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    for index in range(2):
+        stalled = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"stalled {index}",
+            upload_status=UploadStatus.UPLOADING,
+        )
+        await _age_recording(db_session, stalled.id, rs.STALLED_UPLOAD_DEADLINE + timedelta(days=1))
+
+    await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        title="still uploading",
+        upload_status=UploadStatus.UPLOADING,
+    )
+
+    assert await rs.fail_stalled_uploads(db_session) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_sweep_tells_each_owner_how_many_of_their_uploads_it_failed(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    oc_app = await _seed_oc_app(db_session)
+    owner = await make_user(db_session, email="stalled-owner@test.com")
+    other = await make_user(db_session, email="stalled-other@test.com")
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    for index, user in enumerate([owner, owner, other]):
+        stalled = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"stalled {index}",
+            upload_status=UploadStatus.UPLOADING,
+        )
+        await _age_recording(db_session, stalled.id, rs.STALLED_UPLOAD_DEADLINE + timedelta(days=1))
+
+    await rs.fail_stalled_uploads(db_session)
+
+    owner_notifications = await _notifications_for(db_session, owner.id)
+    assert len(owner_notifications) == 1
+    assert owner_notifications[0].app_id == oc_app.id
+    assert owner_notifications[0].event_type == OCNotificationEvent.UPLOAD_FAILED
+    assert "2 of your recordings" in owner_notifications[0].body
+
+    other_notifications = await _notifications_for(db_session, other.id)
+    assert len(other_notifications) == 1
+    assert "1 of your recordings" in other_notifications[0].body
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_upload_nobody_owns_is_failed_without_a_notification(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    stalled = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=None,
+        upload_status=UploadStatus.UPLOADING,
+    )
+    await _age_recording(db_session, stalled.id, rs.STALLED_UPLOAD_DEADLINE + timedelta(days=1))
+
+    assert await rs.fail_stalled_uploads(db_session) == 1
+
+    result = await db_session.execute(select(Notification))
+    assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_failed_upload_that_reached_the_bucket_deletes_its_blob(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/r.m4a"
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        gcs_url=gcs_url,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+
+    await rs.delete_recording(db_session, rec.id)
+
+    assert deleted == [gcs_url]
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_verified_recording_deletes_its_blob(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/verified.m4a"
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        gcs_url=gcs_url,
+        upload_status=UploadStatus.VERIFIED,
+    )
+
+    await rs.delete_recording(db_session, rec.id)
+
+    assert deleted == [gcs_url]
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_recording_that_never_reached_the_bucket_calls_no_blob_delete(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.LOCAL,
+    )
+
+    await rs.delete_recording(db_session, rec.id)
+
+    assert deleted == []
+
+
+@pytest.mark.asyncio
+async def test_an_upload_in_flight_can_still_be_deleted(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.UPLOADING,
+    )
+
+    await rs.delete_recording(db_session, rec.id)
+
+    with pytest.raises(NotFoundError):
+        await rs.get_recording(db_session, rec.id)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upload_past_the_retention_is_deleted_with_its_blob(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned.m4a"
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        gcs_url=gcs_url,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+    await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
+
+    purged = await rs.purge_failed_uploads(db_session)
+
+    assert purged == 1
+    assert deleted == [gcs_url]
+    with pytest.raises(NotFoundError):
+        await rs.get_recording(db_session, rec.id)
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upload_that_never_reached_the_bucket_is_purged_anyway(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+    await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
+
+    assert await rs.purge_failed_uploads(db_session) == 1
+    assert deleted == []
+    with pytest.raises(NotFoundError):
+        await rs.get_recording(db_session, rec.id)
+
+
+@pytest.mark.asyncio
+async def test_a_bucket_that_refuses_the_blob_does_not_keep_the_row(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A blob already gone, or a bucket that answers with an error, is not a reason to keep
+    the row or to abandon the rest of the sweep."""
+    rs = _import_service()
+
+    def _refuse():  # type: ignore[no-untyped-def]
+        raise RuntimeError("bucket unreachable")
+
+    monkeypatch.setattr(rs, "_get_gcs_client", _refuse)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    for index in range(2):
+        rec = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"abandoned {index}",
+            gcs_url=f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned-{index}.m4a",
+            upload_status=UploadStatus.UPLOAD_FAILED,
+        )
+        await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
+
+    assert await rs.purge_failed_uploads(db_session) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_failed_upload_inside_the_retention_is_left_alone(
+    db_session: AsyncSession,
+) -> None:
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    rec = await make_oc_recording(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user_id=user.id,
+        upload_status=UploadStatus.UPLOAD_FAILED,
+    )
+    await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION - timedelta(days=1))
+
+    assert await rs.purge_failed_uploads(db_session) == 0
+    recording = await rs.get_recording(db_session, rec.id)
+    assert recording.upload_status == UploadStatus.UPLOAD_FAILED
+
+
+@pytest.mark.asyncio
+async def test_no_other_upload_state_is_purged_however_old_it_is(
+    db_session: AsyncSession,
+) -> None:
+    """`UPLOADING` above all: the reaper decides when an upload stops being in flight, and
+    the purge must not take that decision away from it."""
+    rs = _import_service()
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    untouched = [
+        UploadStatus.LOCAL,
+        UploadStatus.UPLOADING,
+        UploadStatus.UPLOADED,
+        UploadStatus.VERIFIED,
+    ]
+    ids = {}
+    for status in untouched:
+        rec = await make_oc_recording(
+            db_session,
+            project_id,
+            genre.id,
+            sub.id,
+            user_id=user.id,
+            title=f"recording {status}",
+            upload_status=status,
+        )
+        await _age_recording(db_session, rec.id, timedelta(days=365))
+        ids[status] = rec.id
+
+    assert await rs.purge_failed_uploads(db_session) == 0
+    for status, recording_id in ids.items():
+        recording = await rs.get_recording(db_session, recording_id)
+        assert recording.upload_status == status
+
+
+async def _seed_abandoned_uploads(
+    db: AsyncSession,
+    project_id: str,
+    genre_id: str,
+    subcategory_id: str,
+    user_id: str,
+    *,
+    ages_in_days: list[int],
+) -> list[tuple[str, str]]:
+    """Purgeable rows of the given ages, each owning a blob, as `(id, gcs_url)` in seed order."""
+    rs = _import_service()
+    seeded: list[tuple[str, str]] = []
+    for age_days in ages_in_days:
+        gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned-{age_days}d.m4a"
+        rec = await make_oc_recording(
+            db,
+            project_id,
+            genre_id,
+            subcategory_id,
+            user_id=user_id,
+            title=f"abandoned {age_days} days ago",
+            gcs_url=gcs_url,
+            upload_status=UploadStatus.UPLOAD_FAILED,
+        )
+        await _age_recording(db, rec.id, timedelta(days=age_days))
+        seeded.append((rec.id, gcs_url))
+    return seeded
+
+
+@pytest.mark.asyncio
+async def test_a_purge_pass_stops_at_its_batch_and_takes_the_oldest_first(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """More purgeable rows than one pass may take: the pass takes its batch, oldest first.
+
+    The batch is shrunk for the test because the number itself is not the behaviour under
+    test — that a pass is bounded at all, and that the rows waiting longest are the ones it
+    takes, is.
+    """
+    rs = _import_service()
+    monkeypatch.setattr(rs, "_delete_gcs_blob", lambda url: None)
+    monkeypatch.setattr(rs, "FAILED_UPLOAD_PURGE_BATCH", 2)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    retention_days = rs.FAILED_UPLOAD_RETENTION.days
+    seeded = await _seed_abandoned_uploads(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user.id,
+        ages_in_days=[retention_days + 30, retention_days + 20, retention_days + 10],
+    )
+    oldest_id, second_oldest_id, youngest_id = (recording_id for recording_id, _ in seeded)
+
+    assert await rs.purge_failed_uploads(db_session) == 2
+
+    for purged_id in (oldest_id, second_oldest_id):
+        with pytest.raises(NotFoundError):
+            await rs.get_recording(db_session, purged_id)
+    assert await rs.get_recording(db_session, youngest_id)
+
+
+@pytest.mark.asyncio
+async def test_what_one_pass_leaves_behind_goes_in_the_next(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The batch defers the rest of the backlog, it does not strand it."""
+    rs = _import_service()
+    monkeypatch.setattr(rs, "_delete_gcs_blob", lambda url: None)
+    monkeypatch.setattr(rs, "FAILED_UPLOAD_PURGE_BATCH", 2)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    retention_days = rs.FAILED_UPLOAD_RETENTION.days
+    seeded = await _seed_abandoned_uploads(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user.id,
+        ages_in_days=[retention_days + 30, retention_days + 20, retention_days + 10],
+    )
+
+    assert await rs.purge_failed_uploads(db_session) == 2
+    assert await rs.purge_failed_uploads(db_session) == 1
+    assert await rs.purge_failed_uploads(db_session) == 0
+
+    for recording_id, _ in seeded:
+        with pytest.raises(NotFoundError):
+            await rs.get_recording(db_session, recording_id)
+
+
+@pytest.mark.asyncio
+async def test_a_batched_pass_deletes_the_blobs_of_the_rows_it_took_and_no_others(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A row deferred to the next pass keeps its blob until the pass that takes its row."""
+    rs = _import_service()
+    deleted: list[str] = []
+    monkeypatch.setattr(rs, "_delete_gcs_blob", deleted.append)
+    monkeypatch.setattr(rs, "FAILED_UPLOAD_PURGE_BATCH", 2)
+
+    user = await make_user(db_session)
+    project_id = await _seed_project(db_session)
+    genre, sub = await make_oc_taxonomy(db_session)
+
+    retention_days = rs.FAILED_UPLOAD_RETENTION.days
+    seeded = await _seed_abandoned_uploads(
+        db_session,
+        project_id,
+        genre.id,
+        sub.id,
+        user.id,
+        ages_in_days=[retention_days + 30, retention_days + 20, retention_days + 10],
+    )
+    oldest_url, second_oldest_url, youngest_url = (gcs_url for _, gcs_url in seeded)
+
+    await rs.purge_failed_uploads(db_session)
+
+    assert deleted == [oldest_url, second_oldest_url]
+
+    await rs.purge_failed_uploads(db_session)
+
+    assert deleted == [oldest_url, second_oldest_url, youngest_url]
