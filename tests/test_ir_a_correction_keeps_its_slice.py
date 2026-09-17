@@ -23,12 +23,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRSegment, IRTake, IRTakeKind
 from app.services.internalization_room.segments import capture_segment, final_segments
-from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.internalization_room.takes import current_parts, take_by_id, takes_of
 from tests.hard_stretch_harness import FROM_THE_DATABASE
 from tests.release_harness import KEY, PREFIX, TABLET
 from tests.room_harness import (
     PART_MS,
+    a_piece_still_to_be_told,
     another_rehearsal_take,
     record_the_part_again,
     rehearsed_in_parts,
@@ -247,10 +247,14 @@ async def test_a_replacement_over_a_moved_range_of_its_own_recording_is_refused(
     )
 
     assert refused.status_code == 400, refused.text
-    assert refused.json()["detail"] == (
-        f"The slice from {was[1] + A_LITTLE_MS} ms to {was[2]} ms of {take_id} "
-        f"is not this stretch's: it sits from {was[1]} ms to {was[2]} ms of {take_id}"
-    ), "a razão inteira: a fatia que o pedido pediu, e a fatia em que o trecho está"
+    said = refused.json()["detail"]
+    assert f"from {was[1] + A_LITTLE_MS} ms to {was[2]} ms" in said, (
+        "a recusa nomeia a fatia que o pedido pediu"
+    )
+    assert f"from {was[1]} ms to {was[2]} ms" in said, "e a fatia em que o trecho está"
+    assert take_id in said, "sobre a gravação que as duas nomeiam"
+    for word in RETIRED_WORDS:
+        assert word not in said.lower(), f"a razão não fala de {word}"
     assert await _take_ids(db_session, session.id, kind=IRTakeKind.RETRO) == retro_before, (
         "nada foi guardado"
     )
@@ -264,7 +268,7 @@ async def test_a_replacement_over_a_moved_range_of_its_own_recording_is_refused(
 # ---------------------------------------------------------------------------
 
 
-async def test_the_service_refuses_a_version_that_moves_the_slice(
+async def test_the_service_refuses_a_version_whose_slice_is_not_the_stretchs(
     db_session: AsyncSession,
 ) -> None:
     """The rule is the service's, and it does not ask whether words came with the request.
@@ -274,21 +278,15 @@ async def test_the_service_refuses_a_version_that_moves_the_slice(
     exercises is a line somebody deletes in a refactor with nothing to say so. `capture_segment`
     is called from more than one place already.
 
-    Two shapes go straight at the service, and which words came with them is the point. The
-    rule that stood here made the answer depend on the telling — a moved slice carrying words
-    was refused, a moved slice arriving bare was written — so a version with no words is the
-    case that would go green again if that condition ever came back.
-
-    They also take the two dimensions a slice can move in: the one carrying words names another
-    recording, the one carrying none keeps the recording and moves the milliseconds. The route
-    short-circuits both before the service is reached, so this is the only place either is asked
-    of `capture_segment` itself.
+    It takes the two shapes a slice can be wrong in: naming another recording, and keeping the
+    recording while naming other milliseconds. The route answers both before the service is
+    reached, so this is the only place either is asked of `capture_segment` itself.
     """
     session, (part,) = await rehearsed_in_parts(db_session, 1)
     told = await stretch_on(db_session, session, part)
     elsewhere = await another_rehearsal_take(db_session, session, sha256="f" * 64)
 
-    with pytest.raises(ValidationError) as carrying_words:
+    with pytest.raises(ValidationError) as other_recording:
         await capture_segment(
             db_session,
             session,
@@ -300,22 +298,22 @@ async def test_the_service_refuses_a_version_that_moves_the_slice(
             replaces=told,
         )
 
-    with pytest.raises(ValidationError) as carrying_none:
+    with pytest.raises(ValidationError) as other_milliseconds:
         await capture_segment(
             db_session,
             session,
             take_id=told.take_id,
             starts_ms=told.starts_ms + A_LITTLE_MS,
             ends_ms=told.ends_ms,
+            bridge_take_id="retro-de-novo",
+            transcript="o trecho contado outra vez",
             replaces=told,
         )
 
-    assert elsewhere.id in str(carrying_words.value), "nomeia a gravação que o pedido deu"
-    assert str(carrying_none.value) == (
-        f"The slice from {told.starts_ms + A_LITTLE_MS} ms to {told.ends_ms} ms "
-        f"of {told.take_id} is not this stretch's: "
-        f"it sits from {told.starts_ms} ms to {told.ends_ms} ms of {told.take_id}"
-    ), "e a razão inteira quando o que se move são os milissegundos"
+    assert elsewhere.id in str(other_recording.value), "nomeia a gravação que o pedido deu"
+    assert f"from {told.starts_ms + A_LITTLE_MS} ms to {told.ends_ms} ms" in str(
+        other_milliseconds.value
+    ), "e os milissegundos que ele pediu, quando o que se move são eles"
     assert [one.id for one in await _standing(db_session, session.id)] == [told.id], (
         "e a recusa não mexeu no que estava lá"
     )
@@ -419,43 +417,40 @@ async def test_a_part_recorded_again_is_the_upload_under_its_number_in_the_harne
 
 
 # ---------------------------------------------------------------------------
-# 7. The third telling of a stretch asks for a person
+# 7. A version is a telling
 # ---------------------------------------------------------------------------
 
 
-async def test_the_third_telling_over_the_same_slice_asks_for_a_person(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """A correction spends the retell budget, and the room stops to offer a person.
+async def test_a_version_without_a_telling_is_refused(db_session: AsyncSession) -> None:
+    """A **Correction** is the stretch told again, so a version of it arrives with words.
 
-    `RETELLS_BEFORE_A_WARNING` exists so a team never gets stuck telling the same stretch over
-    and over with nobody to ask. It was charged on the telling-back route alone, and corrections
-    do not go through there — so the one limit the room has against trapping a team did not
-    cover the path they actually correct by. Told once and corrected twice is three tellings,
-    and the third is the one that answers.
+    A version with none would stand in the stretch's place over the audio it already had and
+    say nothing into it, which is the stretch going backwards. That state described the mother
+    tongue re-recorded, and a recording that was wrong is answered by recording the **Part**
+    again (ADR 0023, ADR 0025) — never by a version.
+
+    What still leaves a stretch waiting is the team cutting one in two: each piece is born over
+    its parent's audio with nothing said on it, and `parent` is what says so.
     """
     session, (part,) = await rehearsed_in_parts(db_session, 1)
     told = await stretch_on(db_session, session, part)
-    its_slice = (part.id, told.starts_ms, told.ends_ms)
 
-    standing = told.id
-    answers = []
-    for _ in range(RETELLS_BEFORE_A_WARNING - told.tellings):
-        answered = await _replace(
-            client,
-            session.id,
-            standing,
-            take_id=its_slice[0],
-            starts_ms=its_slice[1],
-            ends_ms=its_slice[2],
+    with pytest.raises(ValidationError) as refused:
+        await capture_segment(
+            db_session,
+            session,
+            take_id=told.take_id,
+            starts_ms=told.starts_ms,
+            ends_ms=told.ends_ms,
+            replaces=told,
         )
-        assert answered.status_code == 200, answered.text
-        answers.append(answered.json())
-        standing = (await _standing(db_session, session.id))[0].id
 
-    assert [one["needs_person"] for one in answers] == [False, True], (
-        "a sala só pede alguém na contagem em que o trecho vira difícil, e não antes"
+    assert "telling" in str(refused.value).lower(), "a razão é a falta do reconto"
+    assert [one.id for one in await _standing(db_session, session.id)] == [told.id], (
+        "e a recusa não mexeu no que estava lá"
     )
-    assert [one.tellings for one in await _standing(db_session, session.id)] == [
-        RETELLS_BEFORE_A_WARNING
-    ]
+
+    piece = await a_piece_still_to_be_told(db_session, session, told)
+
+    assert piece.transcript is None, "o corte é o que deixa um trecho à espera de ser contado"
+    assert piece.parent_id == told.id

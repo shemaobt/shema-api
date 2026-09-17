@@ -18,7 +18,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import (
     divide_segment,
-    refuse_a_slice_that_is_not_this_stretchs,
+    refuse_a_slice_the_stretch_does_not_sit_on,
     segment_for_session,
 )
 from app.services.internalization_room.takes import rehearsal_take_of, store_take
@@ -120,7 +120,7 @@ async def replace(
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
-    refuse_a_slice_that_is_not_this_stretchs(segment, rehearsal.id, starts_ms, ends_ms)
+    refuse_a_slice_the_stretch_does_not_sit_on(segment, rehearsal.id, starts_ms, ends_ms)
 
     audio_bytes = await file.read()
     if len(audio_bytes) > MAX_AUDIO_BYTES:
