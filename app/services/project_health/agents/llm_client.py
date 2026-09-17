@@ -11,22 +11,77 @@ from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
-FAST_MODEL = "gemini-3-flash-preview"
-QUALITY_MODEL = "gemini-3-flash-preview"
+
+#: How hard these agents think before answering. Production evidence made the case: with
+#: thinking unbounded, a 1800-token cap was spent 1728 on thinking and 57 on the answer, and
+#: a 2000-token cap 1917 on thinking and 68 on the answer — the reasoning expands to fill
+#: whatever budget it is given, and the JSON arrives truncated to a single `{`. Raising the
+#: caps alone therefore buys nothing. These agents extract and classify rather than reason at
+#: length; the answers they truncated needed 60 to 1000 tokens. `internalization_room/llm.py`
+#: already bounds its own thinking the same way.
+DEFAULT_THINKING = types.ThinkingLevel.LOW
+
+
+def fast_model(settings: Settings | None = None) -> str:
+    """The cheaper tier: planning, evidence, guardrails, context extraction."""
+    return (settings or get_settings()).gemini_fast_model
+
+
+def quality_model(settings: Settings | None = None) -> str:
+    """The stronger tier: the facilitator's own words, scoring, and the reports."""
+    return (settings or get_settings()).gemini_quality_model
+
 
 T = TypeVar("T")
+
+
+def _warn_if_truncated(response: types.GenerateContentResponse, *, model: str, cap: int) -> None:
+    """Say so when the model was cut off, instead of returning the stub in silence.
+
+    A truncated answer reaches the caller as an unparseable fragment, and every JSON agent
+    here answers a parse failure with its fallback — an empty context, no evidence, an
+    approving guardrail. The report still renders, so nothing looks wrong. The first real
+    interview ever run through this service produced nineteen of these and the only trace
+    was a parse warning holding a single `{`.
+
+    `thoughts_token_count` is the number that explains it: on a thinking model the thinking
+    is spent from the same budget as the answer, so a cap that looks generous can leave
+    almost nothing for the JSON. It is logged here so the caps can be tuned from evidence.
+    """
+    candidates = response.candidates or []
+    if not candidates or candidates[0].finish_reason != types.FinishReason.MAX_TOKENS:
+        return
+    usage = response.usage_metadata
+    logger.warning(
+        "project_health agent truncated: model=%s cap=%s answer_tokens=%s thinking_tokens=%s",
+        model,
+        cap,
+        getattr(usage, "candidates_token_count", None),
+        getattr(usage, "thoughts_token_count", None),
+    )
 
 
 async def call_agent(
     *,
     system_prompt: str,
     user_content: str,
-    model: str = FAST_MODEL,
+    model: str | None = None,
     temperature: float = 0.4,
     max_output_tokens: int = 2000,
+    expects_json: bool = False,
+    thinking: types.ThinkingLevel = DEFAULT_THINKING,
     settings: Settings | None = None,
 ) -> str:
+    """One turn with an agent, returning its raw text.
+
+    `expects_json` puts the model in JSON mode. Every caller that parses the answer should
+    set it: without it the model is free to wrap the object in a fence or introduce it in
+    prose, and `safe_parse_json` then falls back and the agent silently contributes nothing.
+    All seven orchestrator callers do; the facilitator's spoken reply is not one of them and
+    goes through `call_chat`.
+    """
     settings = settings or get_settings()
+    model = model or fast_model(settings)
     client = genai.Client(api_key=settings.google_api_key)
     response = await client.aio.models.generate_content(
         model=model,
@@ -35,8 +90,11 @@ async def call_agent(
             system_instruction=system_prompt,
             temperature=temperature,
             max_output_tokens=max_output_tokens,
+            response_mime_type="application/json" if expects_json else None,
+            thinking_config=types.ThinkingConfig(thinking_level=thinking),
         ),
     )
+    _warn_if_truncated(response, model=model, cap=max_output_tokens)
     return response.text or ""
 
 
@@ -44,12 +102,14 @@ async def call_chat(
     *,
     system_prompt: str,
     contents: list[dict],
-    model: str = QUALITY_MODEL,
+    model: str | None = None,
     temperature: float = 0.6,
     max_output_tokens: int = 500,
+    thinking: types.ThinkingLevel = DEFAULT_THINKING,
     settings: Settings | None = None,
 ) -> str:
     settings = settings or get_settings()
+    model = model or quality_model(settings)
     client = genai.Client(api_key=settings.google_api_key)
     response = await client.aio.models.generate_content(
         model=model,
@@ -58,8 +118,10 @@ async def call_chat(
             system_instruction=system_prompt,
             temperature=temperature,
             max_output_tokens=max_output_tokens,
+            thinking_config=types.ThinkingConfig(thinking_level=thinking),
         ),
     )
+    _warn_if_truncated(response, model=model, cap=max_output_tokens)
     return response.text or ""
 
 
