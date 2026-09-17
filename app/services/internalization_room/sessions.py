@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
@@ -242,6 +242,36 @@ async def get_session_for_room_caller(
     return session
 
 
+async def _land(db: AsyncSession, session: IRSession, values: dict[str, Any]) -> IRSession:
+    """Write ``values`` to this session's row, refusing the write if another turn got there
+    first (ENG-643).
+
+    ``messages`` and ``comprehension`` are both whole-value JSON, computed from whatever the
+    caller had read off ``session`` before calling this — so a plain UPDATE would let a turn
+    that started a moment later, and committed a moment earlier, have its evidence silently
+    written over. The WHERE clause below is the guard: it only lands while ``version`` is
+    still what this ``session`` was read at, and the loser gets a raised conflict instead of
+    a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
+    sound necklace's own document, generalised to whichever columns the caller is writing.
+    """
+    stmt = (
+        update(IRSession)
+        .where(IRSession.id == session.id, IRSession.version == session.version)
+        .values(**values, version=IRSession.version + 1)
+        .returning(IRSession.version)
+        .execution_options(synchronize_session=False)
+    )
+    landed = (await db.execute(stmt)).scalar_one_or_none()
+    if landed is None:
+        # Nothing matched, so nothing is pending: leave the transaction to the caller's
+        # teardown rather than rolling back a session shared with the rest of the request,
+        # the way autosave_state.py's own version conflict does.
+        raise ConflictError("This session was written to by another turn.")
+    await db.commit()
+    await db.refresh(session)
+    return session
+
+
 async def append_exchange(
     db: AsyncSession,
     session: IRSession,
@@ -268,13 +298,10 @@ async def append_exchange(
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
     messages.append({"role": "guide", "text": guide_response})
-    session.messages = messages
+    values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
     if session.status is IRSessionStatus.NEEDS_PERSON:
-        session.status = IRSessionStatus.IN_PROGRESS
-    session.lifted_halt = None
-    await db.commit()
-    await db.refresh(session)
-    return session
+        values["status"] = IRSessionStatus.IN_PROGRESS
+    return await _land(db, session, values)
 
 
 async def apply_coverage(
@@ -340,10 +367,7 @@ def comprehension_of(session: IRSession) -> ComprehensionState:
 async def save_comprehension(
     db: AsyncSession, session: IRSession, state: ComprehensionState
 ) -> IRSession:
-    session.comprehension = state.model_dump(mode="json")
-    await db.commit()
-    await db.refresh(session)
-    return session
+    return await _land(db, session, {"comprehension": state.model_dump(mode="json")})
 
 
 def semantics_ready(session: IRSession) -> bool:
