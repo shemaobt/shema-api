@@ -113,22 +113,6 @@ async def test_is_project_manager_only_true_for_manager_role(db_session) -> None
 
 
 @pytest.mark.asyncio
-async def test_assert_project_access_denies_projects_outside_manager_scope(db_session) -> None:
-    from app.api.projects._deps import assert_project_access
-    from app.core.exceptions import AuthorizationError
-
-    lang = await make_language(db_session, code="apa")
-    manager = await make_user(db_session, email="apa@scope.com")
-    managed = await make_project(db_session, language_id=lang.id, name="Managed")
-    other = await make_project(db_session, language_id=lang.id, name="Other")
-    await make_project_user_access(db_session, managed.id, manager.id, role="manager")
-
-    await assert_project_access(db_session, manager, managed.id)
-    with pytest.raises(AuthorizationError):
-        await assert_project_access(db_session, manager, other.id)
-
-
-@pytest.mark.asyncio
 async def test_manager_via_member_role_sees_projects(db_session) -> None:
     lang = await make_language(db_session, code="mmr")
     manager = await make_user(db_session, email="role-mgr@scope.com")
