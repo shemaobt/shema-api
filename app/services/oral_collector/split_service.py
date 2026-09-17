@@ -7,7 +7,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import OCRecordingEvent, SplittingStatus, UploadStatus
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import (
+    NotFoundError,
+    SegmentClassificationConflictError,
+    ValidationError,
+)
 from app.core.inngest_client import inngest_client
 from app.db.models.oc_recording import OC_Recording
 from app.inngest.schemas import SplitRequestedPayload, SplitSegmentData
@@ -15,6 +19,7 @@ from app.models.oc_recording import SplitSegment
 from app.services.oral_collector.recording_service import (
     check_recording_access,
     get_recording,
+    secondary_equals_primary,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,6 +80,22 @@ async def request_split(
             "Recording must be verified before splitting. "
             f"Current status: {recording.upload_status}"
         )
+
+    for index, seg in enumerate(segments):
+        effective_genre = seg.genre_id or recording.genre_id
+        effective_sub = seg.subcategory_id or recording.subcategory_id
+        effective_register = (
+            seg.register_id if seg.register_id is not None else recording.register_id
+        )
+        if secondary_equals_primary(
+            primary_register_id=effective_register,
+            primary_genre_id=effective_genre,
+            primary_subcategory_id=effective_sub,
+            secondary_register_id=recording.secondary_register_id,
+            secondary_genre_id=recording.secondary_genre_id,
+            secondary_subcategory_id=recording.secondary_subcategory_id,
+        ):
+            raise SegmentClassificationConflictError(index)
 
     recording.splitting_status = SplittingStatus.SPLITTING
     await db.commit()
