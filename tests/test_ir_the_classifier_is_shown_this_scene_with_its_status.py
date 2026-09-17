@@ -16,7 +16,12 @@ from app.services.internalization_room.classify_coverage import (
     _scenes_block,
     _unresolved_block,
 )
-from app.services.internalization_room.coverage import CoverageStatus, initial_state, merge
+from app.services.internalization_room.coverage import (
+    CoverageStatus,
+    initial_state,
+    merge,
+    remaining_in_scene,
+)
 
 P = "P01"
 
@@ -76,4 +81,31 @@ def test_a_decision_buried_in_a_sentence_of_prose_still_moves_the_beads() -> Non
     assert _parse(wrapped)["engaged"] == ["scene:1"], (
         "o leitor aceitava JSON nu ou cercado e mais nada; um objeto embrulhado numa frase "
         "era 'JSON ilegível' e a classificação do turno sumia em silêncio"
+    )
+
+
+THIS_SCENE_AND_THE_SCENELESS = [
+    "arc",
+    "context",
+    "tone",
+    "function",
+    "scene:2",
+    "being:S2:B2",
+    "being:S2:B3",
+    "being:S2:B4",
+    "being:S2:B5",
+    "place:S2:PL2",
+    "absence:2",
+    "preserved:R3",
+    "preserved:R5",
+    "preserved:R10",
+]
+
+
+def test_the_scene_scoped_list_holds_this_scenes_beads_and_the_ones_of_no_scene() -> None:
+    left = [element.key for element in remaining_in_scene(initial_state(P), P, "S2")]
+
+    assert left == THIS_SCENE_AND_THE_SCENELESS, (
+        "a lista inteira da passagem ia ao classificador com a equipe ainda na cena 1: contas "
+        "de cenas que ninguém abriu, e Noemi da cena 4 respondendo pela Noemi da cena 2"
     )
