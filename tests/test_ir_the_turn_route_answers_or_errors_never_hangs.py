@@ -8,6 +8,7 @@ call-a-person affordance, the circle stays alive, and the next tap is a normal t
 """
 
 import asyncio
+import json
 from typing import Any
 
 import httpx
@@ -30,6 +31,16 @@ class _Hung:
     async def __call__(self, **_: Any) -> str:
         await asyncio.Event().wait()
         raise AssertionError("unreachable: nothing sets the event")
+
+
+class _Answering:
+    """A model seam that answers at once — after the one yield any network call makes."""
+
+    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
+        await asyncio.sleep(0)
+        if "corrected_response" in system_prompt:
+            return json.dumps({"verdict": "pass", "issues": []})
+        return "Vamos ficar nesta cena. O que vocês contariam?"
 
 
 @pytest.fixture()
@@ -104,3 +115,42 @@ async def test_a_turn_whose_models_never_answer_is_a_502_inside_the_bound_not_a_
     assert body["code"] == "UPSTREAM_ERROR"
     assert "used_fail_safe" not in body, "um limite estourado é erro, nunca a linha A"
     assert spoken == [], "um turno que estourou não tem fala para sintetizar"
+
+
+async def test_the_hearing_spends_the_same_bound_the_models_do(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, spoken: list[str]
+) -> None:
+    """The clock starts when the turn reaches the route, not when the models are asked.
+
+    Armed after the hearing, the bound landed strictly later than the platform's own cut
+    at the same figure — by the upload and the transcription — so on a deployed turn the
+    platform always won, and the 502 that names the cause and the line that names who was
+    waiting were never written.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    the_agent_answers(monkeypatch, _Answering())  # type: ignore[arg-type]
+
+    async def _slow_hearing(audio: bytes, **_: Any) -> HeardSpeech:
+        await asyncio.sleep(0.15)
+        return HeardSpeech(text="Noemi voltou para Belém com Rute")
+
+    monkeypatch.setattr(sessions_api, "heard_speech", _slow_hearing)
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": P, "language": "pt"}
+    )
+    session_id = created.json()["session_id"]
+
+    answered = await asyncio.wait_for(
+        client.post(
+            f"{PREFIX}/sessions/{session_id}/turns",
+            headers={"X-Room-Key": KEY},
+            files={"file": ("answer.m4a", b"audio", "audio/m4a")},
+        ),
+        timeout=5,
+    )
+
+    assert answered.status_code == 502, (
+        f"o limite só era armado depois da escuta, e a escuta não contava: {answered.text[:300]}"
+    )
+    assert spoken == []

@@ -495,6 +495,8 @@ async def take_turn(
     cannot go on, which is a different walk for the facilitator than a hard stretch's request
     for a witness.
     """
+    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
+    deadline = asyncio.get_running_loop().time() + bound_s
     session = await room.get_session(db, session_id)
 
     if turn_id:
@@ -541,9 +543,8 @@ async def take_turn(
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
-    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     try:
-        async with asyncio.timeout(bound_s):
+        async with asyncio.timeout_at(deadline):
             if is_panorama(session.pericope):
                 book = book_of(session.pericope)
                 outcome = await room.run_panorama_turn(
