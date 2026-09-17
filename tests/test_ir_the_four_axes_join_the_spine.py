@@ -5,7 +5,7 @@ from app.services.internalization_room.canon.elements import ElementKind, elemen
 from app.services.internalization_room.canon.parse_map import MAPS_DIR, load_map, parse_map
 from app.services.internalization_room.classify_coverage import _unresolved_block
 from app.services.internalization_room.coverage import CoverageStatus, floor_met, initial_state
-from app.services.internalization_room.live_turn import (
+from app.services.internalization_room.turn.scene_view import (
     current_scene_id,
     has_substantive_team_history,
 )

@@ -26,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.canon.elements import elements_for
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.practice import (
     scenes_practiced_by_the_telling_the_guide_invited,
@@ -35,52 +34,17 @@ from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import CoverageStatus
-from app.services.internalization_room.fail_safe import FailSafe, choose
-from app.services.internalization_room.hearing import HeardSpeech, spoken_words_only
-from app.services.internalization_room.languages import LANGUAGE_NAMES
-from app.services.internalization_room.run_turn import (
-    TurnOutcome,
-    run_turn,
-)
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
+from app.services.internalization_room.turn.scene_view import current_scene_id
+from app.services.internalization_room.turn.speech import speak_back
 
 
 @dataclass
 class ComprehensionTurn:
     outcome: TurnOutcome
     state: ComprehensionState
-
-
-def has_substantive_team_history(messages: list[dict[str, Any]]) -> bool:
-    return any(
-        message.get("role") == "team" and spoken_words_only(message.get("text", ""))
-        for message in messages
-    )
-
-
-def current_scene_id(
-    coverage_state: dict[str, Any], pericope: str, messages: list[dict[str, Any]]
-) -> str | None:
-    """The first scene whose own coverage is not fully engaged — once the team has spoken.
-
-    It is what the rehearsal the Guide invites is read against: the Guide opens the scene
-    the pointer names, and it never selects a scene itself. On a session where nobody has
-    said a word there is no scene to name: the app declines to assert one rather than tell
-    the Guide the team is in Scene 1 before they have opened their mouths.
-    """
-    if not has_substantive_team_history(messages):
-        return None
-    by_scene: dict[int, bool] = {}
-    for element in elements_for(pericope):
-        if element.scene is None:
-            continue
-        engaged = coverage_state.get(element.key) == CoverageStatus.ENGAGED.value
-        by_scene[element.scene] = by_scene.get(element.scene, True) and engaged
-    for scene in sorted(by_scene):
-        if not by_scene[scene]:
-            return f"S{scene}"
-    return None
 
 
 async def run_comprehension_turn(
@@ -120,36 +84,20 @@ async def run_comprehension_turn(
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
 
-    if mother_tongue:
-        line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
-        outcome = TurnOutcome(
-            speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
-        )
-    elif not opening and (empty or uncertain):
-        line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
-        outcome = TurnOutcome(
-            speech=line,
-            transcript=transcript,
-            used_fail_safe=True,
-            degraded=True,
-            fixed_line=fixed,
-        )
-    else:
-        outcome = await run_turn(
-            transcript=transcript,
-            coverage_state=session.coverage_state or {},
-            messages=messages,
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            guide_prompt=guide_prompt,
-            validator_prompt=validator_prompt,
-            pericope_num=pericope,
-            book=book,
-            opening=opening,
-            settings=settings,
-            session_id=session.id,
-            ask_for_movements=opening and not messages,
-        )
+    outcome = await speak_back(
+        mother_tongue=mother_tongue,
+        session=session,
+        messages=messages,
+        transcript=transcript,
+        opening=opening,
+        empty=empty,
+        uncertain=uncertain,
+        book=book,
+        guide_prompt=guide_prompt,
+        validator_prompt=validator_prompt,
+        pericope=pericope,
+        settings=settings,
+    )
 
     final_probe = select_probe_after_oral_turn(
         outcome="fail_safe" if outcome.used_fail_safe else "pass",
@@ -166,3 +114,6 @@ async def run_comprehension_turn(
         practiced_scene_ids=projected_practice,
     )
     return ComprehensionTurn(outcome=outcome, state=new_state)
+
+
+__all__ = ["ComprehensionTurn", "current_scene_id", "run_comprehension_turn"]

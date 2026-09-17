@@ -193,7 +193,7 @@ def current_scene(state: dict[str, str], pericope_num: str) -> str | None:
     return None
 
 
-_AXES = frozenset({ElementKind.ARC, ElementKind.CONTEXT, ElementKind.TONE, ElementKind.FUNCTION})
+_EXITS_AT_SURFACED = frozenset({"arc", "context", "tone", "function"})
 
 
 def floor_met(state: dict[str, str], pericope_num: str) -> bool:
@@ -216,7 +216,11 @@ def floor_met(state: dict[str, str], pericope_num: str) -> bool:
     """
     merged = {**initial_state(pericope_num), **state}
     for element in elements_for(pericope_num):
-        bar = CoverageStatus.SURFACED if element.kind in _AXES else CoverageStatus.ENGAGED
+        bar = (
+            CoverageStatus.SURFACED
+            if element.kind.value in _EXITS_AT_SURFACED
+            else CoverageStatus.ENGAGED
+        )
         standing = CoverageStatus(merged.get(element.key, CoverageStatus.NOT_ENCOUNTERED))
         if _RANK[standing] < _RANK[bar]:
             return False

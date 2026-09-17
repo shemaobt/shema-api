@@ -26,10 +26,11 @@ whitespace/case variants can exist:
 from __future__ import annotations
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "20260601_0001"
-down_revision: str | None = "20260724_0002"
+down_revision: str | None = "20260916_0001"
 branch_labels: str | None = None
 depends_on: str | None = None
 
@@ -44,6 +45,7 @@ def upgrade() -> None:
         ["project_id", "title"],
         unique=True,
         postgresql_where=sa.text(_WHERE),
+        sqlite_where=sa.text(_WHERE),
     )
 
 

@@ -96,12 +96,14 @@ class _ModelCalls(logging.Handler):
             return
         calls.append(
             ModelCall(
+                role=written["role"],
                 rung=written["rung"],
                 input_tokens=written["input_tokens"],
                 output_tokens=written["output_tokens"],
                 cache_read_tokens=written["cache_read_tokens"],
                 cache_write_tokens=written["cache_write_tokens"],
                 latency_ms=written.get("latency_ms"),
+                cost_usd=written.get("cost_usd"),
             )
         )
 

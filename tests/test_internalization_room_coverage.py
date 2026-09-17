@@ -1,3 +1,4 @@
+import enum
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +9,7 @@ from app.services.internalization_room._default_prompts import (
     fail_safe_utterances,
 )
 from app.services.internalization_room.canon.elements import (
+    Element,
     ElementKind,
     element_keys,
     elements_for,
@@ -283,27 +285,36 @@ def test_a_preservation_rule_the_team_only_echoed_does_not_close_the_passage() -
 
 
 def test_a_level_one_axis_meets_the_floor_at_surfaced_and_nothing_else_does() -> None:
-    """Her one exemption: "all four Level-1 elements at least `surfaced`" (build_spec.md:333)."""
-    axis = next(e for e in elements_for(P) if e.kind is ElementKind.ARC)
-    concrete = next(e for e in elements_for(P) if e.kind not in coverage._AXES)
+    """Her one exemption: "all four Level-1 elements at least `surfaced`" (build_spec.md:333).
+
+    The exemption is read off the kind's value, so this case hands the floor a kind spelled
+    outside the enum, the way the ledger would receive it.
+    """
+
+    class AxisKind(enum.StrEnum):
+        ARC = "arc"
+
+    axis = Element.model_construct(key="arc", label="Level-1 arc", kind=AxisKind.ARC, scene=None)
+    concrete = next(e for e in elements_for(P) if e.kind is ElementKind.SCENE)
     spine = [axis, concrete]
-    with_the_axis = {**initial_state(P), axis.key: CoverageStatus.SURFACED.value}
+    with_the_axis = {**initial_state(P), "arc": CoverageStatus.SURFACED.value}
 
     with patch.object(coverage, "elements_for", return_value=spine):
         assert floor_met({**with_the_axis, concrete.key: "engaged"}, P) is True
         assert floor_met({**with_the_axis, concrete.key: "surfaced"}, P) is False
         assert floor_met(
-            {**with_the_axis, axis.key: "not_encountered", concrete.key: "engaged"}, P
+            {**with_the_axis, "arc": "not_encountered", concrete.key: "engaged"}, P
         ) is (False)
 
 
 def test_the_four_axes_the_floor_exempts_are_kinds_the_enum_names() -> None:
-    """Nothing else ties the exemption to the spine.
+    """The exemption is keyed on four strings the enum holds.
 
-    If an axis kind were spelled any other way, the four beads would silently need
-    `engaged`, the passage would stop closing, and every other test would stay green.
+    Nothing else ties the two: if an axis kind were spelled any other way, the four beads
+    would silently need `engaged`, the passage would stop closing, and every other test
+    would stay green.
     """
-    assert set(ElementKind) >= coverage._AXES
+    assert {kind.value for kind in ElementKind} >= coverage._EXITS_AT_SURFACED
 
 
 def test_a_partly_worked_bead_stays_in_the_set_the_classifier_is_shown() -> None:

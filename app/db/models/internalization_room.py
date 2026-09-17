@@ -137,6 +137,13 @@ class IRSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    #: Backs the optimistic check on ``messages`` and ``comprehension`` (ENG-643). Both are
+    #: whole-value JSON writes computed from whatever the writer read, so two turns landing
+    #: together for one session would otherwise have the later commit erase the evidence the
+    #: earlier one had just added, with neither writer ever told. `coverage_state` needs no
+    #: such guard — its merge is monotonic by rank (`coverage.furthest`) and cannot regress
+    #: under the same race.
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class IRCoverageEvent(Base):
@@ -308,6 +315,33 @@ class IRTake(Base):
     crc32c: Mapped[str] = mapped_column(String(16))
     content_type: Mapped[str] = mapped_column(String(64))
     verified_at: Mapped[datetime | None] = mapped_column(UtcDateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(timezone=True), server_default=func.now()
+    )
+
+
+class IRTurn(Base):
+    """One turn the room has already answered, kept so a resend costs a read.
+
+    ``turn_id`` is the client's own string and means nothing here beyond "the same turn" —
+    read the way ``IRTake.storage_key`` and ``SnSessionTick.client_tick_id`` are read by
+    their own tables. The unique constraint with the session is what turns a resent POST
+    into a lookup instead of a second pass through transcription, the Guide, the Validator
+    and synthesis.
+
+    ``response`` is kept whole rather than recomputed, because a repeat is answered from
+    the session as it stood the moment this turn landed, not as it stands now —
+    recomputing it from the session's current state would silently disagree the moment a
+    later turn has moved it on.
+    """
+
+    __tablename__ = "ir_turns"
+    __table_args__ = (UniqueConstraint("session_id", "turn_id", name="uq_ir_turns_session_turn"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    turn_id: Mapped[str] = mapped_column(String(64))
+    response: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(timezone=True), server_default=func.now()
     )

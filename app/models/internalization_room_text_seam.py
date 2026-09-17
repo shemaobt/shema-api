@@ -38,6 +38,9 @@ class TextTurnRequest(BaseModel):
 class ModelCall(BaseModel):
     """One answered model call, in the names the room's own usage line already uses."""
 
+    #: Who asked — `guide`, `validator`, `classifier` — the way her `[llm-usage]` line is
+    #: labelled, so a run can add up the Guide and the Validator apart from the rest.
+    role: str
     rung: str
     input_tokens: int
     output_tokens: int
@@ -45,6 +48,8 @@ class ModelCall(BaseModel):
     cache_write_tokens: int | None
     #: Filled once the room's usage line carries it; the whole turn's wall clock is `turnMs`.
     latency_ms: int | None
+    #: At list price, as the room's own line prices it; null for a rung the table never priced.
+    cost_usd: float | None
 
 
 class TextTurnResponse(BaseModel):

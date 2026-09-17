@@ -62,7 +62,13 @@ def test_already_met_instruction_is_gone() -> None:
     is the promotion of that fact into an instruction that had to go."""
     assert not hasattr(turn_instructions, "ALREADY_MET_INSTRUCTION")
     assert "already_met" not in inspect.signature(run_turn).parameters
-    for name in ("turn_instructions.py", "passage_turn.py", "live_turn.py", "prepare_opening.py"):
+    for name in (
+        "turn_instructions.py",
+        "passage_turn.py",
+        "live_turn.py",
+        "turn/speech.py",
+        "prepare_opening.py",
+    ):
         text = (_ROOM / name).read_text()
         assert "ALREADY_MET_INSTRUCTION" not in text, name
         assert "already_met" not in text, name
