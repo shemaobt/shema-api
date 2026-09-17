@@ -33,8 +33,13 @@ dependencies = [
     # Imported directly to checksum artifacts; declared rather than leaned on transitively.
     "google-crc32c>=1.5.0",
     "inngest>=0.4.22",
+    # Already in the dependency tree; imported directly by the e-mail template layer,
+    # so declared rather than leaned on transitively.
+    "jinja2>=3.1.6",
     "langdetect>=1.0.9",
     "slowapi>=0.1.9",
+    "regex>=2026.7.19",
+    "filetype>=1.2.0",
 ]
 
 [build-system]
@@ -51,6 +56,8 @@ dev = [
     "aiosqlite>=0.20.0",
     "ruff>=0.8.0",
     "mypy>=1.19.1",
+    "pyyaml>=6.0.3",
+    "types-pyyaml>=6.0.12.20260724",
 ]
 
 [tool.ruff]

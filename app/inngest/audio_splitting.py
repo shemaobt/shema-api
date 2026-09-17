@@ -26,6 +26,7 @@ from app.inngest.helpers import (
 from app.inngest.schemas import SegmentResult, SplitRequestedPayload
 from app.services.oral_collector.gcs_utils import content_type_for_format, upload_gcs_blob
 from app.services.oral_collector.recording_service import FORMAT_EXTENSIONS, _gcs_blob_path
+from app.services.oral_collector.review_flags import recompute_review_flags
 from app.services.oral_collector.split_service import (
     _download_audio,
     _ffmpeg_split_segment,
@@ -75,6 +76,7 @@ async def persist_split_segments(
             ),
             uploaded_at=datetime.now(UTC),
         )
+        recompute_review_flags(new_recording)
         db.add(new_recording)
         new_ids.append(seg.id)
     await db.commit()

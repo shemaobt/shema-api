@@ -1,0 +1,189 @@
+"""The one path every stage change takes — a decision's move and a hand's drag alike.
+
+GATE-02 D6 made recording a decision move the card, and BE-08 (OBT-457) gives the mesa's
+hand the same power over the same six columns. The corruption this module exists to
+prevent is a stage that changed without its deduction, or a deduction without its stage —
+so both writers go through ``transition_stage``, which writes the ledger effect and the
+stage event together, **flushes and never commits**. The caller owns the transaction,
+which is what makes the two writes one fate: ``save_evaluation`` commits a decision, its
+scores, the movement and the move under one commit, and ``move_request`` does the same
+for a drag.
+
+**The graph is total, and that is a decision with a record rather than a default.** The
+export drags any column to any column, FE-15 kept the pure transition total on purpose —
+*"apertá-lo aqui congelaria em código uma decisão que é da mesa"* — and GATE-02 D6's own
+reading is that the mesa may drag a card it never evaluated, a decided card included: a
+decision implies a column, a column never implies a decision, and dragging out of
+``aprovado`` is precisely how an approval is undone (its compensating movement rides the
+same transaction). What is refused is not an edge of the graph but a state of the
+request, and there are three: a draft is not on the board (``move_request``), a request
+nobody endorsed leaves ``triagem`` only for ``recusado`` (``guard_endorsement``, BE-16's
+rule landing where ``rr_requests``'s docstring assigned it), and nothing enters
+``aprovado`` without a fund and an amount to deduct. The fund half is **not stated here** — it is
+GATE-01 D4's invariant and BE-11's rule, and it lives in ``_fund_assignment.py``, which
+is what makes it one rule over the two doors GATE-02 D6 opened rather than the same
+sentence written twice. It fires *through* this module because ``guard_stage_entry`` is
+where a stage change becomes an entry into ``aprovado``, for a decision's move and a
+hand's drag alike.
+
+**The ledger effect is the export's golden rule, as movements.** Only ``aprovado``
+commits funds: entering it appends an ``APPROVAL_DEDUCTION`` for the request's
+``amount_requested``, leaving it reverses that deduction — the compensating movement
+copies the amount from the movement it undoes, so un-approving restores exactly what
+approving deducted, whatever the request says today. Moves between the other five
+columns move no money, ``condicional`` included. Leaving ``aprovado`` with no unreversed
+deduction on record restores nothing rather than inventing an amount: the ledger answers
+what actually happened, and a card that never deducted has nothing to give back.
+"""
+
+from decimal import Decimal
+from typing import NamedTuple
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import ConflictError
+from app.db.models.resource_request import (
+    RRBoardTransition,
+    RRFundMovement,
+    RRMovementKind,
+    RRRequest,
+    RRStage,
+)
+from app.services.resource_request._fund_assignment import require_assigned_fund
+from app.services.resource_request.append_movement import append_movement
+from app.services.resource_request.reverse_movement import reverse_movement
+
+
+class StageMove(NamedTuple):
+    transition: RRBoardTransition
+    movement: RRFundMovement | None
+    committed_delta: Decimal | None
+
+
+def guard_stage_entry(request: RRRequest, to_stage: RRStage) -> tuple[str, Decimal] | None:
+    """What entering ``aprovado`` will deduct — or a refusal, before anything is written.
+
+    Answers ``None`` when the change does not enter ``aprovado`` (a move elsewhere, or a
+    no-op already there), and the ``(fund_id, amount)`` the deduction will move when it
+    does. Callable with nothing written yet, which is why ``save_evaluation`` runs it in
+    its pre-check phase: a refusal must leave nothing half-saved, and a session that
+    flushed before being refused shows its pending rows to whoever shares it.
+    """
+    if to_stage is not RRStage.APROVADO or request.stage is RRStage.APROVADO:
+        return None
+    fund_id = require_assigned_fund(request)
+    if request.amount_requested is None:
+        raise ConflictError("A request does not enter aprovado with no amount requested.")
+    return (fund_id, request.amount_requested)
+
+
+def guard_endorsement(request: RRRequest, to_stage: RRStage) -> None:
+    """The base's signature gates the analysis — BE-16's rule, enforced where it said.
+
+    A request nobody endorsed leaves ``triagem`` only for ``recusado``: declining stays
+    possible, because a base that does not recognise a project is itself a reason to
+    decline, while ``analise`` and every column past it wait for that signature. The rule
+    is stated in ``rr_requests``'s own docstring (BE-16, OBT-476) and assigned from there
+    to this service; ``endorsed_at`` is what it reads, because only the act writes it and
+    a typed ``leader_name`` is the team's line, not an endorsement.
+
+    **Over destinations, never over one edge.** Refusing ``triagem → analise`` alone would
+    leave ``triagem → aprovado`` open, and the graph is total by decision (FE-15's, kept
+    in this module's docstring) — so what is refused here is a state of the request, like
+    its two neighbours, and the graph keeps every edge it had.
+
+    Pure and callable with nothing written, the ``guard_stage_entry`` shape: it runs in
+    ``save_evaluation``'s pre-check phase too, so a decision the endorsement does not
+    allow is refused before a scores row is flushed.
+    """
+    if to_stage is request.stage or request.stage is not RRStage.TRIAGEM:
+        return
+    if to_stage is RRStage.RECUSADO or request.endorsed_at is not None:
+        return
+    raise ConflictError("This request has no endorsement, so it leaves triagem only for recusado.")
+
+
+async def unreversed_deduction(db: AsyncSession, request_id: str) -> RRFundMovement | None:
+    """The deduction still standing for this request — at most one by construction.
+
+    Entering ``aprovado`` twice without leaving is impossible (a same-stage change is a
+    no-op), so deductions and reversals alternate; the newest is read defensively rather
+    than assumed alone.
+    """
+    reversed_ids = select(RRFundMovement.reverses_id).where(RRFundMovement.reverses_id.is_not(None))
+    stmt = (
+        select(RRFundMovement)
+        .where(
+            RRFundMovement.request_id == request_id,
+            RRFundMovement.kind == RRMovementKind.APPROVAL_DEDUCTION,
+            RRFundMovement.id.not_in(reversed_ids),
+        )
+        .order_by(RRFundMovement.created_at.desc(), RRFundMovement.id.desc())
+    )
+    return (await db.execute(stmt)).scalars().first()
+
+
+async def transition_stage(
+    db: AsyncSession,
+    *,
+    request: RRRequest,
+    to_stage: RRStage,
+    moved_by: str,
+    reason: str,
+    evaluation_id: str | None = None,
+) -> StageMove | None:
+    """Move one card, with whatever the move does to money, in the caller's transaction.
+
+    ``None`` when the card is already in the column — nothing is written, which is
+    FE-15's *moved: null* and what lets a decision land on a card the mesa already
+    dragged there without deducting twice (GATE-02 D6 converging with the manual move).
+
+    The write order is the FK's, not taste: the movement first, because the stage event
+    names it through ``rr_board_transitions.movement_id``; then the event and the stage,
+    one flush. ``append_movement`` and ``reverse_movement`` both take the fund row's
+    ``FOR UPDATE`` and never commit, so two concurrent approvals serialize there and this
+    function closes no transaction under its caller.
+
+    ``evaluation_id`` says a decision caused this move; a hand's drag leaves it ``None``.
+    """
+    if request.stage is to_stage:
+        return None
+
+    guard_endorsement(request, to_stage)
+    claim = guard_stage_entry(request, to_stage)
+
+    movement: RRFundMovement | None = None
+    committed_delta: Decimal | None = None
+    if claim is not None:
+        fund_id, amount = claim
+        movement = await append_movement(
+            db,
+            fund_id=fund_id,
+            kind=RRMovementKind.APPROVAL_DEDUCTION,
+            amount=amount,
+            author_id=moved_by,
+            reason=reason,
+            request_id=request.id,
+        )
+        committed_delta = movement.amount
+    elif request.stage is RRStage.APROVADO:
+        deduction = await unreversed_deduction(db, request.id)
+        if deduction is not None:
+            movement = await reverse_movement(
+                db, movement_id=deduction.id, author_id=moved_by, reason=reason
+            )
+            committed_delta = -movement.amount
+
+    transition = RRBoardTransition(
+        request_id=request.id,
+        from_stage=request.stage,
+        to_stage=to_stage,
+        moved_by=moved_by,
+        movement_id=movement.id if movement is not None else None,
+        evaluation_id=evaluation_id,
+    )
+    db.add(transition)
+    request.stage = to_stage
+    await db.flush()
+    return StageMove(transition=transition, movement=movement, committed_delta=committed_delta)

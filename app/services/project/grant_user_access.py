@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ValidationError
 from app.db.models.project import ProjectUserAccess
+from app.services.project.validate_project_role import validate_project_role
 from app.services.user.get_user_by_id import get_user_by_id
 
 
@@ -12,6 +13,13 @@ async def grant_user_access(
     user_id: str,
     role: str = "member",
 ) -> ProjectUserAccess:
+    """Link a user to a project. ``role`` has to be one of ``ProjectRole``.
+
+    An existing link is returned untouched, including its role — granting access again is
+    not a way to change what someone already is. A platform admin is never linked: they
+    already manage every project.
+    """
+    validate_project_role(role)
     target = await get_user_by_id(db, user_id)
     if target.is_platform_admin:
         raise ValidationError(

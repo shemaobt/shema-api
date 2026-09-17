@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.project import ProjectUserAccess
+from app.services.project.validate_project_role import validate_project_role
 from app.services.user.get_user_by_id import get_user_by_id
 
 
@@ -12,6 +13,11 @@ async def update_user_access_role(
     user_id: str,
     role: str,
 ) -> ProjectUserAccess:
+    """Change what a user is on a project. ``role`` has to be one of ``ProjectRole``.
+
+    A platform admin never holds a project role: they already manage every project.
+    """
+    validate_project_role(role)
     target = await get_user_by_id(db, user_id)
     if target.is_platform_admin:
         raise ValidationError(

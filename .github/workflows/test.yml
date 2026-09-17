@@ -3,6 +3,15 @@ name: Test
 on:
   pull_request:
 
+  # See the note in `lint.yml` for why `integration/**` is here at all.
+  #
+  # The narrowness of the filter is this file's own concern more than any other's: this job
+  # is the one measured between 6 and 56 minutes (ENG-556), and the chain is merged a step
+  # at a time, so every branch added here is paid once per step by the slowest job there is.
+  push:
+    branches:
+      - 'integration/**'
+
 env:
   # Opt JavaScript-based actions into Node.js 24 ahead of the 2026-06-02
   # forced switch. Remove once the runner default is Node 24.
@@ -14,6 +23,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # The suite measures the length of a recording with ffprobe, the same tool
+      # `oral_collector/split_service.py` and `inngest/audio_splitting.py` already shell out
+      # to and the same one both Dockerfiles install. The runner image ships neither, so
+      # without this the tests here would be measuring a machine the deployed one is not.
+      # 16 s on the runner (measured on this job; a local ubuntu 24.04 container took 43 s,
+      # so the runner's mirror is the difference — the number to trust is the runner's).
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4

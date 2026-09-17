@@ -1,0 +1,295 @@
+"""A stretch the room could not transcribe is still the stretch the team told.
+
+The route returned 200 above the store when the transcript came back empty — and `heard`
+cannot tell a silent recording from a transcription outage, so an ElevenLabs hiccup
+erased work. The app trusted the docstring's promise and kept no copy of its own.
+"""
+
+import base64
+from typing import Any
+
+import httpx
+import pytest
+from google_crc32c import Checksum
+from httpx import ASGITransport
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
+from app.services.platform.storage import StoredObject
+
+PREFIX = "/api/internalization-room"
+KEY = "sala-de-teste"
+DEVICE = "tablet-da-equipe-1"
+AUDIO = b"a equipe explicou este trecho em portugues"
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+    from fastapi import FastAPI
+
+    from app.api.internalization_room import back_translation as bt_api
+    from app.api.internalization_room import router
+    from app.core.config import get_settings
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+    from app.services.internalization_room import takes as takes_service
+
+    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
+
+    async def _silence(*_: Any, **__: Any) -> str:
+        return ""
+
+    monkeypatch.setattr(bt_api, "heard", _silence)
+
+    class MemoryStore:
+        def __init__(self) -> None:
+            self.objects: dict[str, bytes] = {}
+
+        async def get(self, key: str) -> bytes | None:
+            return self.objects.get(key)
+
+        async def put(self, key: str, data: bytes, content_type: str) -> None:
+            self.objects[key] = data
+
+        async def stat(self, key: str) -> Any:
+            stored = self.objects.get(key)
+            if stored is None:
+                return None
+            checksum = Checksum()
+            checksum.update(stored)
+            return StoredObject(
+                size=len(stored),
+                crc32c=base64.b64encode(checksum.digest()).decode("ascii"),
+            )
+
+    bucket = MemoryStore()
+    monkeypatch.setattr(takes_service, "_store", lambda *_, **__: bucket)
+
+    test_app = FastAPI()
+    test_app.include_router(router, prefix=PREFIX)
+    register_exception_handlers(test_app)
+
+    async def _get_db():
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        c.bucket = bucket  # type: ignore[attr-defined]
+        yield c
+
+
+async def _rehearsed(client: httpx.AsyncClient) -> tuple[str, str]:
+    """A session with one rehearsal recording in it — a stretch is a slice of a file, so
+    there has to be a file before there can be a stretch."""
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
+    )
+    session_id = created.json()["session_id"]
+    kept = await client.post(
+        f"{PREFIX}/sessions/{session_id}/takes",
+        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        data={"kind": IRTakeKind.ENSAIO.value, "scope": "P01"},
+        files={"file": ("tomada.m4a", b"a equipe ensaiou a passagem", "audio/mp4")},
+    )
+    return session_id, kept.json()["take_id"]
+
+
+async def _tell_back(
+    client: httpx.AsyncClient, session_id: str, take_id: str, **extra: str
+) -> httpx.Response:
+    return await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        data={"take_id": take_id, "starts_ms": "0", "ends_ms": "9000", **extra},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+
+async def test_a_transcriber_that_never_answers_does_not_take_the_stretch_with_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The likelier outage: not an empty answer, but no answer at all.
+
+    `heard` only catches `ValidationError`, so a read timeout to the transcriber raised
+    past the store. On a weak link the tablet also gives up first, and the cancelled
+    request dies in the same place.
+    """
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def _never_answers(*_: Any, **__: Any) -> str:
+        raise httpx.ReadTimeout("a transcricao nao respondeu")
+
+    monkeypatch.setattr(bt_api, "heard", _never_answers)
+
+    session_id, take_id = await _rehearsed(client)
+
+    with pytest.raises(httpx.ReadTimeout):
+        await _tell_back(client, session_id, take_id)
+
+    rows = (
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
+
+
+async def test_a_stretch_with_no_transcript_is_still_stored(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session_id, take_id = await _rehearsed(client)
+
+    answer = await _tell_back(client, session_id, take_id)
+
+    assert answer.status_code == 200
+    assert answer.json()["captured"] is False
+
+    rows = (
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    assert AUDIO in client.bucket.objects.values()  # type: ignore[attr-defined]
+
+
+async def test_finishing_without_telling_anything_back_is_not_checking(
+    client: httpx.AsyncClient,
+) -> None:
+    """The one press that could strike a passage off the wheel without any work.
+
+    An analyst asked to compare nothing against the map answers with no findings, and no
+    findings is what `checked` is made of.
+    """
+    created = await client.post(
+        f"{PREFIX}/sessions", headers={"X-Room-Key": KEY}, json={"pericope": "P01"}
+    )
+    session_id = created.json()["session_id"]
+
+    answer = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/finish",
+        headers={"X-Room-Key": KEY},
+    )
+
+    assert answer.status_code == 200
+    body = answer.json()
+    assert body["checked"] is False
+    assert body["fixed_line"].startswith("D"), (
+        "a sala diz que não ouviu nada, que é a família escrita para isto"
+    )
+
+
+async def test_a_transcriber_outage_still_counts_the_retell(
+    client: httpx.AsyncClient,
+) -> None:
+    """Every attempt comes back empty during an outage, and every one used to be free.
+
+    `RETELLS_BEFORE_A_WARNING` was never reached, so the room's only route to a person was
+    unreachable exactly when the room was broken.
+    """
+    session_id, take_id = await _rehearsed(client)
+
+    last = None
+    for _ in range(4):
+        last = await _tell_back(client, session_id, take_id, retelling="true")
+
+    assert last is not None
+    assert last.json()["needs_person"] is True
+
+
+async def test_reaching_the_number_warns_and_still_takes_the_next_retell(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The count is a warning, not a cap: nothing is refused past it.
+
+    Measured in the field with six retells against a number of three, the passage checked
+    and the session in progress (ENG-706). The product owner's decision is that this is the
+    behaviour: the room asks for a person to come and watch, and goes on taking the team's
+    work. This case is what says so in code.
+    """
+    from app.api.internalization_room import back_translation as bt_api
+
+    async def _heard(*_: Any, **__: Any) -> str:
+        return "a equipe contou o trecho de novo"
+
+    monkeypatch.setattr(bt_api, "heard", _heard)
+    session_id, take_id = await _rehearsed(client)
+
+    asked = [
+        (await _tell_back(client, session_id, take_id, retelling="true")).json()["needs_person"]
+        for _ in range(RETELLS_BEFORE_A_WARNING)
+    ]
+    assert asked == [False] * (RETELLS_BEFORE_A_WARNING - 1) + [True]
+
+    accepted = await _tell_back(client, session_id, take_id, retelling="true")
+
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["captured"] is True
+    assert accepted.json()["chunks"] == RETELLS_BEFORE_A_WARNING + 1, (
+        "o trecho entra na conta como qualquer outro; a marca é um pedido de companhia"
+    )
+
+
+@pytest.mark.parametrize(
+    ("starts_ms", "ends_ms"),
+    [(9000, 3000), (5000, 5000)],
+)
+async def test_a_stretch_whose_slice_is_not_a_slice_is_refused(
+    client: httpx.AsyncClient, db_session: AsyncSession, starts_ms: int, ends_ms: int
+) -> None:
+    """An end before the beginning is not an interval, and an end on the beginning is no audio.
+
+    Both were accepted in silence and became final units — a unit with no audio can never be
+    told back, so it can never be completed, and the first round waits on every final unit.
+    The bot caught one of these in the field, with the end before the beginning, which is why
+    this is a case and not a comment.
+    """
+    session_id, take_id = await _rehearsed(client)
+
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session_id}/back-translation/chunks",
+        headers={"X-Room-Key": KEY, "X-Room-Device": DEVICE},
+        data={"take_id": take_id, "starts_ms": str(starts_ms), "ends_ms": str(ends_ms)},
+        files={"file": ("trecho.m4a", AUDIO, "audio/mp4")},
+    )
+
+    assert refused.status_code == 400, refused.text
+    kept = (
+        (
+            await db_session.execute(
+                select(IRTake).where(
+                    IRTake.session_id == session_id, IRTake.kind == IRTakeKind.RETRO
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert kept == [], "e a recusa vem antes de guardar seja o que for"
+
+
+async def test_a_stretch_with_a_real_slice_is_still_accepted(
+    client: httpx.AsyncClient,
+) -> None:
+    """The positive control: a rule that refused every slice would pass the case above."""
+    session_id, take_id = await _rehearsed(client)
+
+    accepted = await _tell_back(client, session_id, take_id)
+
+    assert accepted.status_code == 200, accepted.text
