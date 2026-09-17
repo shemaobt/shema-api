@@ -22,6 +22,7 @@ except where the subject of the case is precisely that the flat numbers survive.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -33,6 +34,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     unheard_parts,
 )
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import capture_segment
 from app.services.internalization_room.sessions import begin_back_translation_again
 from tests.release_harness import ensaio_take, rehearsed_session
@@ -365,6 +367,10 @@ async def test_a_replaced_attempt_archives_the_report_per_take(
     Read where Refine reads it. The archived attempt is the history the packet carries, and a
     report that left no trace there would make the record say the team never listened — on the
     one recording where what they heard is all that is left of it.
+
+    Composed rather than built: starting the telling-back over leaves the four parts standing
+    with nothing told on any of them, which the gate refuses as untold ground. That refusal is
+    another file's subject; this one is about what the archive keeps.
     """
     session, parts = await rehearsed_in_parts(db_session, 4)
     glued = PART_MS * len(parts)
@@ -383,7 +389,7 @@ async def test_a_replaced_attempt_archives_the_report_per_take(
     started_over = await _told_back_on_a_new_part(db_session, session, sha256="e" * 64)
     await _finish(client, session.id, report={"played_by_take": [_covering(started_over)]})
 
-    packet = await release_packet(db_session, session)
+    packet, _blockers = await compose_internalization_release(db_session, session)
     archived = packet["back_translation"]["superseded_attempts"][-1]
 
     assert archived["played_by_take"] == per_take
@@ -417,7 +423,9 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     session = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(db_session, session, sha256="b" * 64)
+    again = await another_rehearsal_take(
+        db_session, session, sha256="b" * 64, created_at=datetime.now(UTC) + timedelta(hours=1)
+    )
     await begin_back_translation_again(db_session, session)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id)
@@ -446,7 +454,9 @@ async def test_a_fresh_report_after_a_re_record_releases(
     session = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(db_session, session, sha256="b" * 64)
+    again = await another_rehearsal_take(
+        db_session, session, sha256="b" * 64, created_at=datetime.now(UTC) + timedelta(hours=1)
+    )
     await begin_back_translation_again(db_session, session)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
@@ -493,14 +503,16 @@ async def test_a_report_with_no_clip_to_measure_against_is_refused(
 async def test_a_session_with_nothing_told_back_is_not_also_blamed_for_playback(
     db_session: AsyncSession,
 ) -> None:
-    """One thing wrong is told to the team once.
+    """Each errand is named once, and only the errands that exist.
 
-    There is nothing to have played back before a stretch exists, so the room names what is
-    actually missing and does not hand the team a second errand that would not help.
+    There is nothing to have played back before a stretch exists, so the room does not hand the
+    team a second errand that would not help. What it does name twice is two different things:
+    the reading is empty, and the recording they made carries nobody's words. A team told only
+    the first would go looking for a list to fill; told only the second, for a recording to make.
     """
     session, _ = await rehearsed_session(db_session, language="pt")
 
     refused = await release_blockers(db_session, session)
 
-    assert "no_telling_back" in refused
+    assert refused == ["no_telling_back", "untold_part"]
     assert PLAYBACK_BLOCKER not in refused

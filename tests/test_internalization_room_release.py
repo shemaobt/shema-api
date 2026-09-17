@@ -246,6 +246,10 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
 
     The whole-passage take `ready_session` leaves is a part of its own: it carries no number,
     and the undivided recording reads before the numbered parts on either engine.
+
+    Composed rather than built, because the gate is not the subject: the two takes under part
+    one carry no telling of their own, which is a part nobody told back and a refusal of its
+    own file's. What this case asks is which of them the packet calls the part.
     """
     session = await ready_session(db_session)
     db_session.add(
@@ -270,7 +274,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     )
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
     file = await retroverification_file(db_session, session)
 
     seen = [
