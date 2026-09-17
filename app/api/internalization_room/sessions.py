@@ -115,7 +115,9 @@ def _scene_of(session: IRSession) -> str | None:
     """The scene the turn was read against, for the record; a panorama has none."""
     if is_panorama(session.pericope):
         return None
-    return current_scene_id(session.coverage_state or {}, session.pericope)
+    return current_scene_id(
+        session.coverage_state or {}, session.pericope, list(session.messages or [])
+    )
 
 
 def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
