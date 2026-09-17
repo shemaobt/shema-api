@@ -30,7 +30,7 @@ from app.services.internalization_room.comprehension.evidence import (
     EvidenceResult,
 )
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.coverage import CoverageStatus, initial_state
+from app.services.internalization_room.coverage import CoverageStatus, initial_state, remaining
 from app.services.internalization_room.coverage_channel import subscribe
 from app.services.internalization_room.release import (
     InternalizationReleaseBlocked,
@@ -339,7 +339,8 @@ async def test_the_prompt_asks_for_the_shape_the_parser_reads(patch_classifier) 
 
 def _as_the_list_prints_it(pericope: str, key: str) -> str:
     """The element's id exactly as the classifier is shown it, read off the real renderer."""
-    for entry in json.loads(_unresolved_block(initial_state(pericope), pericope)):
+    nothing_worked = initial_state(pericope)
+    for entry in json.loads(_unresolved_block(nothing_worked, remaining(nothing_worked, pericope))):
         if entry["id"] == key:
             return entry["id"]
     raise AssertionError(f"{key} is not in the unresolved block for {pericope}")

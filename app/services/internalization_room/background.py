@@ -10,6 +10,7 @@ from app.services.internalization_room.classify_coverage import classify_coverag
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.sessions import apply_coverage, get_session
@@ -37,18 +38,27 @@ async def settle_coverage(
     be written into a total already logged. Its own book also puts the classifier's money
     where it belongs — on the session, which is what pays for it — without adding a turn the
     team did not take.
+
+    The scene pointer is read off the session as it stands here, by the same reading the
+    turn uses to open a scene, so the classifier is shown the scene the team is in and not
+    the whole passage. It is the app's bookkeeping and it stops here: the Guide is never
+    handed it as a scope on what it may say.
     """
     try:
         with counted_for(session_id):
             async with AsyncSessionLocal() as db:
                 session = await get_session(db, session_id)
+                coverage_state = session.coverage_state or {}
                 classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
                 updated = await classify_coverage(
-                    coverage_state=session.coverage_state or {},
+                    coverage_state=coverage_state,
                     team_utterance=team_utterance,
                     guide_response=guide_response,
                     classifier_prompt=classifier_prompt,
                     pericope_num=pericope_num,
+                    scene_pointer=current_scene_id(
+                        coverage_state, pericope_num, list(session.messages or [])
+                    ),
                     session_language=LANGUAGE_NAMES[session.language],
                 )
                 settled = await apply_coverage(db, session_id, updated)

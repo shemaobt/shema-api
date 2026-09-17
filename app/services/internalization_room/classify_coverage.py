@@ -8,7 +8,12 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.elements import Element, element_keys
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import CoverageStatus, merge, remaining
+from app.services.internalization_room.coverage import (
+    CoverageStatus,
+    merge,
+    remaining,
+    remaining_in_scene,
+)
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent, classifier_ladder
 from app.services.internalization_room.render import render
@@ -87,6 +92,26 @@ def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -
         )
 
 
+def _only_offered(verdict: dict[str, list[str]], offered: list[Element]) -> dict[str, list[str]]:
+    """The decisions about beads this turn was shown; the rest are dropped, and said.
+
+    `_report_unknown_elements` makes an id the passage does not hold visible. An id the
+    passage holds but this turn did not offer — a bead from a scene nobody has opened, or
+    one already engaged — used to pass through `merge` like any other, so the model could
+    move a bead it was never asked about. It is inert now as well as visible.
+    """
+    keys = {element.key for element in offered}
+    kept = {status: [key for key in named if key in keys] for status, named in verdict.items()}
+    dropped = sorted({key for named in verdict.values() for key in named} - keys)
+    if dropped:
+        logger.warning(
+            "Coverage classifier named %d elements not offered this turn: %s",
+            len(dropped),
+            dropped[:5],
+        )
+    return kept
+
+
 def _shown_label(element: Element) -> str:
     return element.label + (f" — {element.detail}" if element.detail else "")
 
@@ -105,9 +130,22 @@ def _shown_status(coverage_state: dict[str, str], element: Element) -> str:
     return standing
 
 
-def _unresolved_block(coverage_state: dict[str, str], pericope_num: str) -> str:
-    left = remaining(coverage_state, pericope_num)
-    if not left:
+def _offered(
+    coverage_state: dict[str, str], pericope_num: str, scene_pointer: str | None
+) -> list[Element]:
+    """The beads this turn may move: the current scene's and the scene-less, or all of them.
+
+    With no pointer there is no scene to narrow to, and the whole unresolved set goes as it
+    always did. The pointer is `None` on a session where nobody has spoken and once every
+    scene is engaged — the second leaves only the scene-less beads on either reading.
+    """
+    if scene_pointer is None:
+        return remaining(coverage_state, pericope_num)
+    return remaining_in_scene(coverage_state, pericope_num, scene_pointer)
+
+
+def _unresolved_block(coverage_state: dict[str, str], offered: list[Element]) -> str:
+    if not offered:
         return "(no elements pending)"
     return json.dumps(
         [
@@ -117,7 +155,7 @@ def _unresolved_block(coverage_state: dict[str, str], pericope_num: str) -> str:
                 "label": _shown_label(element),
                 "status": _shown_status(coverage_state, element),
             }
-            for element in left
+            for element in offered
         ],
         ensure_ascii=False,
         indent=2,
@@ -191,6 +229,7 @@ async def classify_coverage(
     guide_response: str,
     classifier_prompt: str,
     pericope_num: str,
+    scene_pointer: str | None = None,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
 ) -> dict[str, str]:
@@ -198,14 +237,19 @@ async def classify_coverage(
 
     Any failure leaves coverage untouched: under-counting delays a session, while
     over-counting lets one complete hollow.
+
+    The scene pointer is bookkeeping: it narrows what the classifier is shown to the scene
+    the team is in, and it goes nowhere else — never to the Guide as a scope on what it may
+    say, which DOCTRINE.md §3 forbids.
     """
     cfg = settings or get_settings()
 
+    offered = _offered(coverage_state, pericope_num, scene_pointer)
     system = render(
         classifier_prompt,
         SESSION_LANGUAGE=session_language,
         SCENES=_scenes_block(pericope_num),
-        COVERAGE_ELEMENTS=_unresolved_block(coverage_state, pericope_num),
+        COVERAGE_ELEMENTS=_unresolved_block(coverage_state, offered),
         TEAM_UTTERANCE=team_utterance or _NO_TEAM_UTTERANCE_YET,
         GUIDE_RESPONSE=guide_response,
     )
@@ -227,6 +271,7 @@ async def classify_coverage(
 
     verdict = _parse(raw)
     _report_unknown_elements(verdict, pericope_num)
+    verdict = _only_offered(verdict, offered)
     return merge(
         coverage_state,
         pericope_num=pericope_num,
