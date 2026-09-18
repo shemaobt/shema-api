@@ -492,10 +492,8 @@ async def take_turn(
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
 
-    A turn can also end in the hard stop — the assessor failed three times running and the
-    room said so out loud — and that halt is `BLOCKING`: the room is telling the team it
-    cannot go on, which is a different walk for the facilitator than a hard stretch's request
-    for a witness.
+    A turn never halts the session. The graceful pause is a spoken line like any other
+    fail-safe, and the call for a person is the tablet's, on its own triggers.
     """
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
@@ -587,8 +585,6 @@ async def take_turn(
         outcome=outcome,
         scene=_scene_of(session),
     )
-    if outcome.needs_person:
-        session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False

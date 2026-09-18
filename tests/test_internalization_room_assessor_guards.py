@@ -15,6 +15,7 @@ acousteme surface is named: the package around them is alive, and a prefix guard
 be widened until it meant nothing.
 """
 
+import dataclasses
 import importlib
 import json
 import sys
@@ -30,6 +31,7 @@ from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
+from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
@@ -75,6 +77,12 @@ def test_no_field_of_the_session_remembers_the_probe_machinery() -> None:
     }
 
     assert not retired & set(ComprehensionState.model_fields)
+
+
+def test_no_turn_can_carry_a_call_for_a_person() -> None:
+    """The field outlived its last writer, and the route still read it. A turn that could
+    say a person is needed is the server deciding it, and that call is the tablet's."""
+    assert "needs_person" not in {field.name for field in dataclasses.fields(TurnOutcome)}
 
 
 def test_the_one_purpose_left_is_the_recording_handoff_consent() -> None:

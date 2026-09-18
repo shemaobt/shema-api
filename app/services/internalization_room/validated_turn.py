@@ -67,7 +67,6 @@ class TurnOutcome:
     #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
-    needs_person: bool = False
     #: The last words the Guide drafted and the last verdict the Validator gave on them, as
     #: it wrote it — empty when no draft was asked for, or when no reply could be read.
     #: They are what the record keeps of a firing, so a fail-safe can be read back later.
