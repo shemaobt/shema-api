@@ -86,6 +86,7 @@ async def update_me(
     user = await user_service.update_user(
         db,
         current_user.id,
+        current_user,
         display_name=payload.display_name,
         avatar_url=payload.avatar_url,
         locale=payload.locale,
