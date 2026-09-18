@@ -1,6 +1,7 @@
 from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.auth import User
 from app.db.models.project import ProjectUserAccess
 
 
@@ -12,7 +13,11 @@ async def count_project_team_sizes(db: AsyncSession, project_ids: list[str]) -> 
             ProjectUserAccess.project_id,
             func.count(distinct(ProjectUserAccess.user_id)),
         )
-        .where(ProjectUserAccess.project_id.in_(project_ids))
+        .join(User, ProjectUserAccess.user_id == User.id)
+        .where(
+            ProjectUserAccess.project_id.in_(project_ids),
+            User.is_platform_admin.is_(False),
+        )
         .group_by(ProjectUserAccess.project_id)
     )
     result = await db.execute(stmt)

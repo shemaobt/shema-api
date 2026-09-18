@@ -83,7 +83,10 @@ async def _members_preview_by_project(
             member_rank,
         )
         .join(User, ProjectUserAccess.user_id == User.id)
-        .where(ProjectUserAccess.project_id.in_(project_ids))
+        .where(
+            ProjectUserAccess.project_id.in_(project_ids),
+            User.is_platform_admin.is_(False),
+        )
         .subquery()
     )
     stmt = (
