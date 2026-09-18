@@ -265,10 +265,10 @@ async def test_reactivate_language_restores_default_list_visibility(db_session) 
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     created = await make_language(db_session, code="kos")
     await language_service.deactivate_language(db_session, created.id, admin)
-    assert await language_service.list_languages(db_session) == []
+    assert await language_service.list_languages(db_session, admin) == []
 
     await language_service.reactivate_language(db_session, created.id, admin)
-    languages = await language_service.list_languages(db_session)
+    languages = await language_service.list_languages(db_session, admin)
     assert [lang.id for lang in languages] == [created.id]
 
 
