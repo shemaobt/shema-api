@@ -5,6 +5,7 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
+from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import (
     meaning_map_block,
     validator_map_block,
@@ -76,7 +77,7 @@ async def run_verdict_turn(
 
     return await _voiced_after_validation(
         speaker_system=render(
-            speaker_prompt,
+            cache_break_before(speaker_prompt, "{{FINDINGS}}"),
             SESSION_LANGUAGE=session_language,
             SCOPE=scope,
             MEANING_MAP=map_block,

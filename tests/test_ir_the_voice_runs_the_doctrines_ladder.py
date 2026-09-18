@@ -245,3 +245,59 @@ async def test_the_book_the_panorama_reads_from_is_sent_once_and_cached(
     assert first[0]["text"] == second[0]["text"], (
         "o prefixo do panorama mudava de bytes entre turnos e nada era servido do cache"
     )
+
+
+async def test_the_verdict_the_guide_speaks_on_a_telling_back_rides_its_map_in_one_cached_block(
+    recording_client,
+) -> None:
+    from app.services.internalization_room.back_translation import (
+        Finding,
+        FindingKind,
+        closing_block,
+        findings_block,
+    )
+    from app.services.internalization_room.part_names import Addresses
+    from app.services.internalization_room.run_turn import run_verdict_turn
+
+    messages = recording_client(draft="No que vocês me traduziram, Orfa não apareceu.")
+    speaker = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
+    orfa = Finding(kind=FindingKind.MISSING, note="Orfa", segment_id="segmento-2")
+    fome = Finding(kind=FindingKind.MISSING, note="a fome", segment_id="segmento-1")
+
+    for finding in (orfa, fome):
+        await run_verdict_turn(
+            session_language="Portuguese",
+            language_code="pt",
+            findings_text=findings_block([finding], Addresses()),
+            closing=closing_block(finding),
+            scope=P,
+            pericope_num=P,
+            messages=[],
+            speaker_prompt=speaker,
+            validator_prompt=VALIDATOR,
+            telling_back="a fome chegou e eles partiram",
+            settings=_settings(),
+        )
+
+    speakers = [c for c in messages.calls if not _is_validator(c)]
+    first, second = (call["system"] for call in speakers)
+    assert isinstance(first, list), (
+        "o veredito ia como um texto só, sem fronteira de cache, e cada redraft do mesmo "
+        "turno pagava o mapa inteiro de novo: in=11405 cache_read=0 cache_write=0, três vezes"
+    )
+    assert first[0]["cache_control"] == {"type": "ephemeral"}, (
+        "o prefixo do veredito ia inteiro a cada chamada e o mapa era relido do zero"
+    )
+    assert first[0]["text"] == second[0]["text"], (
+        "o prefixo do veredito mudava de bytes entre um achado e o outro, e nada era servido "
+        "do cache"
+    )
+    assert "Meaning Map" in first[0]["text"], (
+        "o bloco cacheado do veredito não continha o mapa, que é o volume que paga o cache"
+    )
+    assert "Orfa" not in first[0]["text"] and "Orfa" in first[1]["text"], (
+        "o achado da vez entrava no bloco cacheado e escrevia uma entrada por veredito"
+    )
+    assert "cache_control" not in first[1], (
+        "o que muda a cada veredito entrava no cache e escrevia uma entrada por turno"
+    )
