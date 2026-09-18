@@ -254,9 +254,7 @@ async def test_the_version_is_never_the_callers(client, db_session):
     assert approved.json()["version"] == 1
 
 
-async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
-    client, db_session, room_app
-):
+async def test_a_session_on_the_shared_key_is_refused_by_name(client, db_session, room_app):
     project, _credential = await a_claimed_device(db_session)
     session = await ready_session(db_session)
     desk = await _facilitator(db_session, room_app, project)

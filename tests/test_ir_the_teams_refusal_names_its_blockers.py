@@ -143,6 +143,13 @@ async def test_two_blockers_at_once_both_name_their_own_ground(
     Both are missing material and neither yields to a force; the team's own answer names both
     codes, in the gate's order, each on its own field — never one field standing in for two
     errands (ADR 0027's rule, asked here of the release).
+
+    The state is built by hand with `checked=True` after `record_the_part_again`, which no
+    live session reaches: recording a part again resets `checked` on its own (ADR 0027), so a
+    real session here would also carry `telling_back_not_checked`. This case is kept anyway
+    because it is the one place two *grounded* blockers fire together, and what it proves —
+    that each field lands on its own key and neither shadows the other — does not depend on
+    the third, ungrounded code being absent.
     """
     project, credential = await a_claimed_device(db_session)
     session, (one, two) = await rehearsed_in_parts(db_session, 2, project_id=project.id)

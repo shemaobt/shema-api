@@ -319,28 +319,30 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
 
 
 @pytest.mark.parametrize(
-    ("break_it", "expected_blockers"),
+    ("break_it", "expected_blockers", "expected_untold"),
     [
         # ADR 0026: retiring every stretch leaves the session's one part standing with no
         # standing stretch either, so `untold_part` rides beside `no_telling_back` and is the
         # only one of the two that names ground — measured with the probe in ENG-954's report,
         # not assumed, because a session with an empty reading and at least one rehearsal take
         # always trips both.
-        (_nothing_told_back, ["no_telling_back", "untold_part"]),
-        (_never_analysed, ["telling_back_never_analysed"]),
+        (_nothing_told_back, ["no_telling_back", "untold_part"], True),
+        (_never_analysed, ["telling_back_never_analysed"], False),
         # `_no_rehearsal_audio` also leaves the open finding of the base fixture unanswered,
         # so `telling_back_not_checked` rides beside it; neither of the two names ground.
-        (_no_rehearsal_audio, ["no_rehearsal_audio", "telling_back_not_checked"]),
+        (_no_rehearsal_audio, ["no_rehearsal_audio", "telling_back_not_checked"], False),
     ],
 )
-async def test_the_team_route_names_ground_only_for_the_grounded_blockers(
-    client, db_session, break_it, expected_blockers
+async def test_the_gates_ground_fields_answer_only_their_own_blocker(
+    client, db_session, break_it, expected_blockers, expected_untold
 ):
-    """A blocker with no door on the tablet answers with every ground field empty.
+    """The route names ground where the gate says to, and nowhere else.
 
-    `untold_take_ids`, `unheard_take_ids` and `untold_segment_id` are filled only for the
-    blocker that owns them (`untold_part`, `playback_did_not_cover_the_clip`,
-    `untold_stretch`); every other code in the list leaves them exactly as they came.
+    The rule this pins is the gate's, not the route's: `compose_internalization_release`
+    appends `untold_part` exactly when a current part stands with no standing stretch, and the
+    route's `untold_take_ids` is empty whenever that append did not happen. The first case
+    still has a door on the tablet (`untold_part`); the other two do not, and every ground
+    field stays empty for them.
     """
     project, credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
@@ -355,10 +357,8 @@ async def test_the_team_route_names_ground_only_for_the_grounded_blockers(
     assert body["version"] is None
     assert body["unheard_take_ids"] == []
     assert body["untold_segment_id"] is None
-    if "untold_part" in expected_blockers:
-        assert body["untold_take_ids"] == [part.id]
-    else:
-        assert body["untold_take_ids"] == []
+    assert body["untold_take_ids"] == ([part.id] if expected_untold else [])
+    assert await releases_of(db_session, session.id) == []
 
 
 async def test_a_panorama_is_never_forced(client, db_session, room_app):
@@ -777,8 +777,12 @@ async def test_the_team_route_refuses_a_panorama(client, db_session):
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert refused.status_code == 200, refused.text
-    assert refused.json()["blockers"] == ["panorama_sessions_never_release"]
-    assert refused.json()["version"] is None
+    body = refused.json()
+    assert body["blockers"] == ["panorama_sessions_never_release"]
+    assert body["version"] is None
+    assert body["untold_take_ids"] == []
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
 
 

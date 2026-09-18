@@ -15,6 +15,7 @@ from app.models.internalization_room import (
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.release import (
+    GROUNDED_BLOCKERS,
     InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
@@ -98,8 +99,9 @@ async def force_internalization_release(
     whose only purpose is to overrule the gate has nothing to say to a caller who did not ask
     it to, and answering about the session would mean deciding what that caller meant.
 
-    Only the two codes of ``FORCEABLE_BLOCKERS`` are set aside; the rest refuse the force the
-    way they refuse the team, and the answer is the same 409 naming them.
+    Only the two codes of ``FORCEABLE_BLOCKERS`` are set aside; the rest refuse the force with
+    the same 409 naming them the Desk's own routes always answer a refusal with. The team's own
+    route answers those with a 200 now (ENG-954); this one is a person's, and stays a 409.
     """
     if not payload.force:
         raise NothingToForce(
@@ -122,31 +124,34 @@ async def _team_release_blocked(
 ) -> TeamReleaseResponse:
     """The refused half of the team's answer, its ground derived the finish route's way.
 
-    `untold_take_ids`, `unheard_take_ids` and `untold_segment_id` are filled only for the
-    blocker that owns them, from the same three service helpers `terminei` reads its own
-    answer from (`app/api/internalization_room/back_translation.py`), asked fresh here rather
-    than threaded through the gate: the gate owes codes (ADR 0026), and re-deriving the ground
-    after the refusal keeps `compose_internalization_release`'s return type untouched.
+    `untold_take_ids`, `unheard_take_ids` and `untold_segment_id` land only where their own
+    blocker fired — but that is the gate's rule, not this function's:
+    `compose_internalization_release` appends `untold_stretch` exactly when `first_untold`
+    finds one, `untold_part` exactly when `untold_parts` is non-empty, and
+    `playback_did_not_cover_the_clip` exactly when `unheard_parts` is non-empty over a
+    rehearsed part. Asking the same service helpers `terminei` already reads its own answer
+    from (`app/api/internalization_room/back_translation.py`), unconditionally once inside the
+    one short-circuit below, answers exactly the body the gate's own append order already
+    promises; the one guard left is there only to skip the `takes_of` query when nothing needs
+    it. Asked fresh here rather than threaded through the gate: the gate owes codes (ADR 0026),
+    and re-deriving the ground after the refusal keeps
+    `compose_internalization_release`'s return type untouched.
     """
     untold_take_ids: list[str] = []
     unheard_take_ids: list[str] = []
     untold_segment_id: str | None = None
-    grounded = {"untold_part", "playback_did_not_cover_the_clip", "untold_stretch"}
-    if grounded & set(blockers):
+    if GROUNDED_BLOCKERS & set(blockers):
         final = await room.final_segments(db, session.id)
-        if "untold_stretch" in blockers:
-            untold = room.first_untold(final)
-            untold_segment_id = untold.id if untold else None
-        if "untold_part" in blockers or "playback_did_not_cover_the_clip" in blockers:
-            rehearsed = room.rehearsed_parts(final)
-            if "untold_part" in blockers:
-                takes = await takes_of(db, session.id)
-                untold_take_ids = [
-                    part.id for part in room.untold_parts(current_parts(takes), rehearsed)
-                ]
-            if "playback_did_not_cover_the_clip" in blockers:
-                state = room.back_translation_of(session)
-                unheard_take_ids = room.unheard_parts(state, rehearsed)
+        untold = room.first_untold(final)
+        untold_segment_id = untold.id if untold else None
+        rehearsed = room.rehearsed_parts(final)
+        if "untold_part" in blockers:
+            takes = await takes_of(db, session.id)
+            untold_take_ids = [
+                part.id for part in room.untold_parts(current_parts(takes), rehearsed)
+            ]
+        state = room.back_translation_of(session)
+        unheard_take_ids = room.unheard_parts(state, rehearsed)
     return TeamReleaseResponse(
         session_id=session.id,
         blockers=blockers,
@@ -183,12 +188,18 @@ async def approve_internalization_release(
     this one writes is named by the team, and resolving the session by id alone would let
     one tablet mint a release on another team's passage.
 
-    A refusal is a 200 naming its blockers, never a 409 (ENG-954): the tablet is the client
-    that reads it, and a client that throws on a 409 learns nothing about which door is shut.
-    ``InternalizationReleaseBlocked`` answers with its codes as they stand; a session on the
-    shared key answers ``["no_project"]``, a literal here because the fact is the route's own
-    and the gate never sees a project-less session (``approve_release`` refuses it first). The
-    facilitator's own routes keep their 409: a person reads those, not the tablet.
+    Every refusal the gate raises is a 200 naming its blockers, not a 409 (ENG-954): the
+    tablet is the client that reads it, and a client that throws on a 409 learns nothing about
+    which door is shut. ``InternalizationReleaseBlocked`` answers with its codes as they
+    stand; a session on the shared key answers ``["no_project"]``, a literal here because the
+    fact is the route's own and the gate never sees a project-less session (``approve_release``
+    refuses it first). The facilitator's own routes keep their 409: a person reads those, not
+    the tablet.
+
+    The version race is not a refusal and keeps the generic 409 `approve_release` already
+    raises on a lost `IntegrityError`: it is not one of the two exceptions this route catches,
+    and answering it as a blocker would tell the tablet to stop asking about a passage it is
+    entitled to ask about again. That 409 is a retry signal, not a gate.
     """
     session = await room.get_session_for_room_caller(db, session_id, project_id)
     try:
