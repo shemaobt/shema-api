@@ -111,13 +111,20 @@ async def _voice_the_turn(
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 
-def _scene_of(session: IRSession) -> str | None:
-    """The scene the turn was read against, for the record; a panorama has none."""
+def _scene_of(session: IRSession, team_utterance: str = "") -> str | None:
+    """The scene the turn was read against, for the record; a panorama has none.
+
+    The record is written before the exchange is appended, so the utterance being
+    recorded is not in the stored history yet — it is handed in on its own. Without it
+    the first turn of every session would be recorded with no scene, as if the team had
+    not spoken, when the record is precisely about what they just said.
+    """
     if is_panorama(session.pericope):
         return None
-    return current_scene_id(
-        session.coverage_state or {}, session.pericope, list(session.messages or [])
-    )
+    history = list(session.messages or [])
+    if team_utterance:
+        history.append({"role": "team", "text": team_utterance})
+    return current_scene_id(session.coverage_state or {}, session.pericope, history)
 
 
 def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
@@ -585,7 +592,7 @@ async def take_turn(
         team_utterance=outcome.transcript,
         guide_response=outcome.speech,
         outcome=outcome,
-        scene=_scene_of(session),
+        scene=_scene_of(session, outcome.transcript),
     )
     if outcome.needs_person:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
