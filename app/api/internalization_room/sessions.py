@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +50,11 @@ from app.services.internalization_room.prepare_opening import (
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sessions import book_of, is_panorama
-from app.services.internalization_room.turn_dedup import answered_turn, remember_turn
+from app.services.internalization_room.turn_dedup import (
+    answer_once,
+    answered_turn,
+    remember_turn,
+)
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from app.services.project.facilitated_scope import facilitated_project_ids
@@ -502,6 +507,22 @@ async def take_turn(
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
     """
+    answer = partial(
+        _answer_the_turn, session_id=session_id, background=background, file=file, turn_id=turn_id
+    )
+    if turn_id:
+        return await answer_once(session_id, turn_id, answer)
+    return await answer(db)
+
+
+async def _answer_the_turn(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    background: BackgroundTasks,
+    file: UploadFile | None,
+    turn_id: str | None,
+) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
     session = await room.get_session(db, session_id)
