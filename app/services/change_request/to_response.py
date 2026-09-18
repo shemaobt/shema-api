@@ -1,16 +1,16 @@
 from app.db.models.auth import User
-from app.db.models.change_request import ChangeRequest
+from app.db.models.change_request import ChangeRequest, ChangeRequestKind, ChangeRequestStatus
 from app.models.change_request import ChangeRequestResponse
 
 
 def to_change_request_response(request: ChangeRequest, requester: User) -> ChangeRequestResponse:
     return ChangeRequestResponse(
         id=request.id,
-        kind=request.kind,
+        kind=ChangeRequestKind(request.kind),
         requester_user_id=request.requester_user_id,
         requester_display_name=requester.display_name,
         requester_email=requester.email,
-        status=request.status,
+        status=ChangeRequestStatus(request.status),
         name=request.name,
         code=request.code,
         description=request.description,

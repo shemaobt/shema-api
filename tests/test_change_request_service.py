@@ -193,6 +193,20 @@ async def test_edit_language_request_scoped_to_managed_project(db_session) -> No
 
 
 @pytest.mark.asyncio
+async def test_edit_language_request_bad_code(db_session) -> None:
+    manager = await make_user(db_session, email="m@example.com")
+    lang = await make_language(db_session, code="edt")
+    project = await make_project(db_session, language_id=lang.id)
+    await make_project_user_access(db_session, project.id, manager.id, role="manager")
+    with pytest.raises(ValidationError):
+        await change_request_service.create_change_request(
+            db_session,
+            manager.id,
+            ChangeRequestCreate(kind="edit_language", language_id=lang.id, code="ab"),
+        )
+
+
+@pytest.mark.asyncio
 async def test_edit_language_request_forbidden_when_not_managed(db_session) -> None:
     user = await make_user(db_session)
     lang = await make_language(db_session, code="edt")

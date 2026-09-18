@@ -6,8 +6,10 @@ from app.core.database import get_db
 from app.db.models.auth import User
 from app.models.change_request import (
     ChangeRequestCreate,
+    ChangeRequestKind,
     ChangeRequestResponse,
     ChangeRequestReview,
+    ChangeRequestStatus,
 )
 from app.services import change_request_service
 
@@ -38,8 +40,8 @@ async def list_my_change_requests(
 
 @router.get("", response_model=list[ChangeRequestResponse])
 async def list_change_requests(
-    kind: str | None = Query(None),
-    status: str | None = Query(None),
+    kind: ChangeRequestKind | None = Query(None),
+    status: ChangeRequestStatus | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
 ) -> list[ChangeRequestResponse]:

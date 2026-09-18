@@ -29,7 +29,9 @@ class ChangeRequest(Base):
     requester_user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default=ChangeRequestStatus.PENDING.value, index=True
+    )
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     code: Mapped[str | None] = mapped_column(String(3), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

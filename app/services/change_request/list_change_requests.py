@@ -2,11 +2,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.change_request import ChangeRequest
+from app.db.models.change_request import ChangeRequest, ChangeRequestKind, ChangeRequestStatus
 
 
 async def list_change_requests(
-    db: AsyncSession, kind: str | None = None, status: str | None = None
+    db: AsyncSession,
+    kind: ChangeRequestKind | None = None,
+    status: ChangeRequestStatus | None = None,
 ) -> list[tuple[ChangeRequest, User]]:
     stmt = select(ChangeRequest, User).join(User, User.id == ChangeRequest.requester_user_id)
     if kind:

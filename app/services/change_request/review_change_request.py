@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.auth import User
-from app.db.models.change_request import ChangeRequest
+from app.db.models.change_request import ChangeRequest, ChangeRequestKind, ChangeRequestStatus
 from app.db.models.language import Language
 from app.services.language.get_language_by_code import get_language_by_code
 from app.services.language.get_language_or_404 import get_language_or_404
@@ -15,17 +15,17 @@ async def review_change_request(
     db: AsyncSession,
     reviewer: User,
     request_id: str,
-    status: str,
+    status: ChangeRequestStatus,
     reason: str | None,
     grant_manager_access: bool,
 ) -> tuple[ChangeRequest, User]:
     request = await db.get(ChangeRequest, request_id)
     if request is None:
         raise NotFoundError("Change request not found")
-    if request.status != "pending":
+    if request.status != ChangeRequestStatus.PENDING:
         raise ConflictError("This request has already been reviewed")
 
-    if status == "approved":
+    if status == ChangeRequestStatus.APPROVED:
         request.created_entity_id = await _apply(db, request, grant_manager_access)
 
     request.status = status
@@ -43,7 +43,7 @@ async def review_change_request(
 
 
 async def _apply(db: AsyncSession, request: ChangeRequest, grant_manager_access: bool) -> str:
-    if request.kind == "create_project":
+    if request.kind == ChangeRequestKind.CREATE_PROJECT:
         name = request.name
         assert name is not None
         project_language_id = request.language_id or await _create_requested_language(db, request)
@@ -56,7 +56,7 @@ async def _apply(db: AsyncSession, request: ChangeRequest, grant_manager_access:
         )
         return project.id
 
-    if request.kind == "create_language":
+    if request.kind == ChangeRequestKind.CREATE_LANGUAGE:
         name = request.name
         code = request.code
         assert name is not None and code is not None
@@ -92,7 +92,5 @@ async def _create_requested_language(db: AsyncSession, request: ChangeRequest) -
         raise ConflictError("Language code already exists")
     language = Language(name=name, code=code, created_by=request.requester_user_id)
     db.add(language)
-    # Flush (not commit) so the language and the project are persisted together
-    # by create_project's commit; a mid-approval failure leaves no orphan language.
     await db.flush()
     return language.id
