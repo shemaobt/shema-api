@@ -49,6 +49,7 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     append_exchange,
+    append_opening,
     apply_coverage,
     attend,
     back_translation_of,
@@ -85,6 +86,7 @@ __all__ = [
     "TurnOutcome",
     "analyse_telling_back",
     "append_exchange",
+    "append_opening",
     "apply_coverage",
     "attend",
     "back_translation_of",
