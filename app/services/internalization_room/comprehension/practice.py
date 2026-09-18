@@ -376,6 +376,31 @@ def _told_at_length(clauses: list[OralDecisionClause]) -> bool:
 
 
 def _the_telling_asks_a_question(team_utterance: str) -> bool:
+    """Whether a team that came back telling the scene asked the room something.
+
+    A tag at the end of a clause — "…, certo?", "…, né?", "…, não é?", "…, tá?", "…,
+    right?" — is the Brazilian habit of asking the listener to nod, not a question about
+    the passage. Session dce19a6b told scene 2 back whole, checked itself twice with
+    "certo?" along the way and closed on "né?", and the plain interrogative check filed all
+    of it as a team asking something, so the Guide invited the rehearsal again.
+
+    The tags come off before the check, and only behind a substantive telling, by the
+    same measure `_the_telling_holds_back` uses: two clauses of three words or more, or
+    one of eight. A reply that is only the tag, or a tag on a bare "ensaiamos", keeps the
+    flat reading and is refused as the question it may be, because the ticket relieves the
+    tag for the telling and not for the reply that is nothing but the tag. A real question
+    keeps refusing with or without a telling in front of it — it carries no tag to take
+    off. The tag is replaced by a stop rather than removed, so the clause boundary it sat
+    on survives and a question opening the next clause is still read at the head of its
+    own clause, which is where the spoken question openings are matched. "Certo" or "tá"
+    as an adjective closing a long real question ("…, e isso tá certo?") comes off like a
+    tag; the tag is named by its words, and a long line that ends on one of them is read
+    as the telling it mostly is.
+
+    Only this reader relieves the tag. The closing-word path still refuses "pronto, né?"
+    as interrogative, since a bare closing word is not a telling, and `oral_decision`
+    is left as it is because it tracks the prototype's `decision.ts`.
+    """
     without_tags = _CONFIRMATION_TAG.sub(".", team_utterance)
     clauses = oral_decision_clause_details(without_tags)
     if _told_in_clauses(clauses) or _told_at_length(clauses):
