@@ -83,7 +83,6 @@ async def _findings_for(reply: str, patch_analyst):
     return analysis.findings
 
 
-@pytest.mark.asyncio
 async def test_after_on_the_last_chunk_sends_the_team_to_rehearsal(patch_analyst) -> None:
     """Case 1: nothing to point at past the last chunk, and the room goes on recording."""
     findings = await _findings_for(
@@ -97,7 +96,6 @@ async def test_after_on_the_last_chunk_sends_the_team_to_rehearsal(patch_analyst
     assert closing_block(findings[0]) == CLOSING_MISSING_TO_REHEARSAL
 
 
-@pytest.mark.asyncio
 async def test_after_in_the_middle_points_at_the_next_chunk(patch_analyst) -> None:
     """Case 2: missing after chunk 3 is missing at the start of chunk 4."""
     findings = await _findings_for(
@@ -108,7 +106,6 @@ async def test_after_in_the_middle_points_at_the_next_chunk(patch_analyst) -> No
     assert findings[0].segment_id == "segmento-4"
 
 
-@pytest.mark.asyncio
 async def test_inside_points_at_the_named_chunk(patch_analyst) -> None:
     """Case 3 (guard): the missing content is inside the chunk itself."""
     findings = await _findings_for(
@@ -119,7 +116,6 @@ async def test_inside_points_at_the_named_chunk(patch_analyst) -> None:
     assert findings[0].segment_id == "segmento-3"
 
 
-@pytest.mark.asyncio
 async def test_before_on_the_first_chunk_points_at_the_first_chunk(patch_analyst) -> None:
     """Case 4 (guard): before chunk 1 is still chunk 1 — there is no chunk 0."""
     findings = await _findings_for(
@@ -130,7 +126,6 @@ async def test_before_on_the_first_chunk_points_at_the_first_chunk(patch_analyst
     assert findings[0].segment_id == "segmento-1"
 
 
-@pytest.mark.asyncio
 async def test_without_where_the_chunk_is_used_as_is(patch_analyst) -> None:
     """Case 5 (guard): a reply with no `where` at all keeps today's behaviour."""
     findings = await _findings_for(
@@ -141,7 +136,6 @@ async def test_without_where_the_chunk_is_used_as_is(patch_analyst) -> None:
     assert findings[0].segment_id == "segmento-5"
 
 
-@pytest.mark.asyncio
 async def test_a_null_chunk_still_sends_the_team_to_rehearsal(patch_analyst) -> None:
     """Case 5 (guard): a legacy `null` chunk still means no stretch to point at."""
     findings = await _findings_for(
@@ -152,7 +146,6 @@ async def test_a_null_chunk_still_sends_the_team_to_rehearsal(patch_analyst) -> 
     assert findings[0].segment_id is None
 
 
-@pytest.mark.asyncio
 async def test_an_unrecognised_where_is_ignored_and_leaves_a_trace(
     patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -172,7 +165,6 @@ async def test_an_unrecognised_where_is_ignored_and_leaves_a_trace(
     )
 
 
-@pytest.mark.asyncio
 async def test_other_kinds_ignore_where(patch_analyst) -> None:
     """Case 7 (guard): `where` only means something for a `missing` finding."""
     findings = await _findings_for(

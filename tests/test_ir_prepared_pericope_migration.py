@@ -62,7 +62,6 @@ async def applied_database(tmp_path):
     yield url, session_id
 
 
-@pytest.mark.asyncio
 async def test_the_column_goes_away_on_downgrade_and_comes_back_on_upgrade(applied_database):
     url, _session_id = applied_database
 
@@ -75,7 +74,6 @@ async def test_the_column_goes_away_on_downgrade_and_comes_back_on_upgrade(appli
     assert COLUMN in await columns_of(url, TABLE)
 
 
-@pytest.mark.asyncio
 async def test_the_round_trip_leaves_the_sessions_alone(applied_database):
     """Dropping a column on SQLite rebuilds the table. The conversations have to survive it."""
     url, session_id = applied_database
@@ -101,7 +99,6 @@ async def test_the_round_trip_leaves_the_sessions_alone(applied_database):
     assert row.prepared_audio_key == "tts/v/p02.mp3"
 
 
-@pytest.mark.asyncio
 async def test_the_passage_a_line_was_written_for_does_not_survive_the_downgrade(
     applied_database,
 ):

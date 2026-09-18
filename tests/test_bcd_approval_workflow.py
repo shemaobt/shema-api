@@ -6,7 +6,6 @@ from app.services.book_context.request_revision import request_revision
 from tests.baker import make_bcd, make_bible_book, make_user
 
 
-@pytest.mark.asyncio
 async def test_admin_approval_auto_approves(db_session):
     user = await make_user(db_session, email="admin1@test.com")
     book = await make_bible_book(
@@ -22,7 +21,6 @@ async def test_admin_approval_auto_approves(db_session):
     assert result.status.value == "approved"
 
 
-@pytest.mark.asyncio
 async def test_single_specialist_sets_review(db_session):
     user = await make_user(db_session, email="spec1@test.com")
     book = await make_bible_book(
@@ -38,7 +36,6 @@ async def test_single_specialist_sets_review(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_facilitator_cannot_approve(db_session):
     user = await make_user(db_session, email="fac_no@test.com")
     book = await make_bible_book(
@@ -54,7 +51,6 @@ async def test_facilitator_cannot_approve(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["facilitator"])
 
 
-@pytest.mark.asyncio
 async def test_two_specialists_same_role_stay_review(db_session):
     spec1 = await make_user(db_session, email="spec2a@test.com")
     spec2 = await make_user(db_session, email="spec2b@test.com")
@@ -72,7 +68,6 @@ async def test_two_specialists_same_role_stay_review(db_session):
     assert result.status.value == "review"
 
 
-@pytest.mark.asyncio
 async def test_duplicate_approval_rejected(db_session):
     user = await make_user(db_session, email="dup1@test.com")
     book = await make_bible_book(
@@ -89,7 +84,6 @@ async def test_duplicate_approval_rejected(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["exegete"])
 
 
-@pytest.mark.asyncio
 async def test_approval_rejects_unauthorized_role(db_session):
     user = await make_user(db_session, email="analyst1@test.com")
     book = await make_bible_book(
@@ -105,7 +99,6 @@ async def test_approval_rejects_unauthorized_role(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["analyst"])
 
 
-@pytest.mark.asyncio
 async def test_approval_rejects_already_approved(db_session):
     user = await make_user(db_session, email="appr1@test.com")
     book = await make_bible_book(
@@ -121,7 +114,6 @@ async def test_approval_rejects_already_approved(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["admin"])
 
 
-@pytest.mark.asyncio
 async def test_approval_rejects_generating(db_session):
     user = await make_user(db_session, email="gen1@test.com")
     book = await make_bible_book(
@@ -137,7 +129,6 @@ async def test_approval_rejects_generating(db_session):
         await approve_bcd(db_session, bcd.id, user.id, ["admin"])
 
 
-@pytest.mark.asyncio
 async def test_request_revision_resets_to_draft(db_session):
     user = await make_user(db_session, email="rev1@test.com")
     book = await make_bible_book(
@@ -153,7 +144,6 @@ async def test_request_revision_resets_to_draft(db_session):
     assert result.status.value == "draft"
 
 
-@pytest.mark.asyncio
 async def test_request_revision_rejects_generating(db_session):
     user = await make_user(db_session, email="rev2@test.com")
     book = await make_bible_book(
@@ -169,7 +159,6 @@ async def test_request_revision_rejects_generating(db_session):
         await request_revision(db_session, bcd.id, user.id, "admin")
 
 
-@pytest.mark.asyncio
 async def test_request_revision_rejects_unauthorized_role(db_session):
     user = await make_user(db_session, email="rev3@test.com")
     book = await make_bible_book(
@@ -185,7 +174,6 @@ async def test_request_revision_rejects_unauthorized_role(db_session):
         await request_revision(db_session, bcd.id, user.id, "viewer")
 
 
-@pytest.mark.asyncio
 async def test_request_revision_rejects_facilitator(db_session):
     user = await make_user(db_session, email="rev_fac@test.com")
     book = await make_bible_book(

@@ -208,7 +208,6 @@ def test_peer_cue_is_read_off_the_reply() -> None:
     assert not detects_peer_cue("Essa discussão fica para depois, vamos seguir juntos.")
 
 
-@pytest.mark.asyncio
 async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     agent = patch_agent(FakeAgent(verdicts=[]))
 
@@ -230,7 +229,6 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     assert agent.calls == []
 
 
-@pytest.mark.asyncio
 async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
@@ -257,7 +255,6 @@ async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     assert agent.calls == ["guide", "validator"]
 
 
-@pytest.mark.asyncio
 async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None:
     patch_agent(
         FakeAgent(
@@ -289,7 +286,6 @@ async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None
     assert outcome.issues
 
 
-@pytest.mark.asyncio
 async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
@@ -320,7 +316,6 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     assert agent.calls.count("guide") == MAX_REDRAFTS + 1
 
 
-@pytest.mark.asyncio
 async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_not_the_g_line(
     patch_agent,
 ) -> None:
@@ -367,7 +362,6 @@ def test_the_g_line_is_chosen_only_from_the_teams_own_speech_never_the_guides_dr
     assert callers == ["turn/speech.py"]
 
 
-@pytest.mark.asyncio
 async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> None:
     class Garbage(FakeAgent):
         async def __call__(self, *, system_prompt: str, user_content: str, **kwargs: Any) -> str:
@@ -392,7 +386,6 @@ async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> Non
     assert outcome.used_fail_safe is True
 
 
-@pytest.mark.asyncio
 async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(

@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import itertools
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.room_enums import HaltKind
@@ -229,7 +228,6 @@ async def a_session_the_team_finished(db: AsyncSession, *, project_id: str | Non
     return await having_finished_the_passage(db, session)
 
 
-@pytest.mark.asyncio
 async def test_a_team_with_nothing_recorded_resolves_to_the_first_passage(
     db_session: AsyncSession,
 ) -> None:
@@ -238,7 +236,6 @@ async def test_a_team_with_nothing_recorded_resolves_to_the_first_passage(
     assert await active_passage(db_session, project_id=team.id) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_tablet_that_never_said_whose_it_was_resolves_to_the_first_passage(
     db_session: AsyncSession,
 ) -> None:
@@ -251,7 +248,6 @@ async def test_a_tablet_that_never_said_whose_it_was_resolves_to_the_first_passa
     assert await active_passage(db_session, project_id=None) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_floor_met_across_two_evenings_does_not_close_the_passage(
     db_session: AsyncSession,
 ) -> None:
@@ -281,7 +277,6 @@ async def test_a_floor_met_across_two_evenings_does_not_close_the_passage(
     assert await active_passage(db_session, project_id=team.id) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_session_the_team_finished_closes_the_passage(
     db_session: AsyncSession,
 ) -> None:
@@ -297,7 +292,6 @@ async def test_a_session_the_team_finished_closes_the_passage(
     assert await active_passage(db_session, project_id=team.id) == SECOND
 
 
-@pytest.mark.asyncio
 async def test_a_session_that_reached_the_rehearsal_and_never_recorded_leaves_the_passage_open(
     db_session: AsyncSession,
 ) -> None:
@@ -318,7 +312,6 @@ async def test_a_session_that_reached_the_rehearsal_and_never_recorded_leaves_th
     assert await active_passage(db_session, project_id=team.id) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
     db_session: AsyncSession,
 ) -> None:
@@ -342,7 +335,6 @@ async def test_a_halt_after_the_rehearsal_does_not_hand_the_passage_back(
     assert await active_passage(db_session, project_id=team.id) == SECOND
 
 
-@pytest.mark.asyncio
 async def test_a_recording_on_a_session_the_room_never_sent_to_rehearse_closes_nothing(
     db_session: AsyncSession,
 ) -> None:
@@ -362,7 +354,6 @@ async def test_a_recording_on_a_session_the_room_never_sent_to_rehearse_closes_n
     assert await active_passage(db_session, project_id=team.id) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_told_back_is_not_the_rehearsal_and_closes_nothing(
     db_session: AsyncSession,
 ) -> None:
@@ -377,7 +368,6 @@ async def test_a_stretch_told_back_is_not_the_rehearsal_and_closes_nothing(
     assert await active_passage(db_session, project_id=team.id) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_two_teams_at_different_points_progress_independently(
     db_session: AsyncSession,
 ) -> None:
@@ -399,7 +389,6 @@ async def test_two_teams_at_different_points_progress_independently(
     assert resolved == {ahead.id: SECOND, behind.id: FIRST}
 
 
-@pytest.mark.asyncio
 async def test_another_teams_work_does_not_move_this_team(db_session: AsyncSession) -> None:
     """A finished session belongs to the team that held it, and moves nobody else."""
     mine = await a_team(db_session, name="Minha")
@@ -410,7 +399,6 @@ async def test_another_teams_work_does_not_move_this_team(db_session: AsyncSessi
     assert await active_passage(db_session, project_id=mine.id) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_session_belonging_to_no_team_moves_nobody(db_session: AsyncSession) -> None:
     """Work with no project is nobody's rather than everybody's."""
     team = await a_team(db_session, name="Ninguem")
@@ -420,7 +408,6 @@ async def test_a_session_belonging_to_no_team_moves_nobody(db_session: AsyncSess
     assert await active_passage(db_session, project_id=team.id) == FIRST
 
 
-@pytest.mark.asyncio
 async def test_the_whole_roll_is_resolved_without_a_round_trip_per_team(
     db_session: AsyncSession, test_engine
 ) -> None:
@@ -450,7 +437,6 @@ async def test_the_whole_roll_is_resolved_without_a_round_trip_per_team(
     assert len(read) == 1, f"a resolucao custou {len(read)} statements para 14 equipes: {read}"
 
 
-@pytest.mark.asyncio
 async def test_the_standing_of_a_real_team_comes_from_its_own_finished_sessions(
     db_session: AsyncSession,
 ) -> None:
@@ -468,7 +454,6 @@ async def test_the_standing_of_a_real_team_comes_from_its_own_finished_sessions(
 # ------------------------------------------------ the failure mode the issue names, made visible
 
 
-@pytest.mark.asyncio
 async def test_a_passage_that_never_closes_holds_the_team_and_says_which_bead(
     db_session: AsyncSession,
 ) -> None:
@@ -497,7 +482,6 @@ async def test_a_passage_that_never_closes_holds_the_team_and_says_which_bead(
     assert below_the_floor == [stuck]
 
 
-@pytest.mark.asyncio
 async def test_a_later_conversation_on_a_finished_passage_does_not_reopen_it(
     db_session: AsyncSession,
 ) -> None:

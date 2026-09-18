@@ -44,7 +44,6 @@ async def _seed_project(db: AsyncSession) -> str:
     return project.id
 
 
-@pytest.mark.asyncio
 async def test_genre_stats_counts_primary_only_ignores_secondary(
     db_session: AsyncSession,
 ) -> None:
@@ -84,7 +83,6 @@ async def test_genre_stats_counts_primary_only_ignores_secondary(
     assert sub_b.id not in sub_ids, "secondary subcategory must NOT appear in stats"
 
 
-@pytest.mark.asyncio
 async def test_genre_stats_aggregates_only_primary_across_multiple_recordings(
     db_session: AsyncSession,
 ) -> None:
@@ -156,7 +154,6 @@ async def _seed_visible_and_archived(
     return project_id, genre, sub
 
 
-@pytest.mark.asyncio
 async def test_genre_stats_excludes_archived_after_split(db_session: AsyncSession) -> None:
     project_id, genre, _sub = await _seed_visible_and_archived(db_session)
 
@@ -170,7 +167,6 @@ async def test_genre_stats_excludes_archived_after_split(db_session: AsyncSessio
     assert stat.duration_seconds == 120.0, "the archived parent's duration must not be summed"
 
 
-@pytest.mark.asyncio
 async def test_subcategory_stats_excludes_archived_after_split(db_session: AsyncSession) -> None:
     project_id, _genre, sub = await _seed_visible_and_archived(db_session)
 
@@ -181,7 +177,6 @@ async def test_subcategory_stats_excludes_archived_after_split(db_session: Async
     assert stat.duration_seconds == 120.0
 
 
-@pytest.mark.asyncio
 async def test_genre_stats_counts_the_same_set_the_listing_returns(
     db_session: AsyncSession,
 ) -> None:
@@ -238,7 +233,6 @@ async def _seed_admin_taxonomy(db: AsyncSession) -> tuple[OC_Genre, OC_Subcatego
     return genre, sub
 
 
-@pytest.mark.asyncio
 async def test_admin_hours_count_only_the_audio_the_server_holds(
     db_session: AsyncSession,
 ) -> None:
@@ -289,7 +283,6 @@ async def test_admin_hours_count_only_the_audio_the_server_holds(
     assert response.total_hours == 1.0
 
 
-@pytest.mark.asyncio
 async def test_admin_project_count_holds_a_project_whose_uploads_are_all_in_flight(
     db_session: AsyncSession,
 ) -> None:
@@ -336,7 +329,6 @@ async def test_admin_project_count_holds_a_project_whose_uploads_are_all_in_flig
     assert response.total_hours == 1.0
 
 
-@pytest.mark.asyncio
 async def test_admin_hours_describe_the_same_set_the_listing_returns(
     db_session: AsyncSession,
 ) -> None:

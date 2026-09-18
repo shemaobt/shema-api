@@ -1,4 +1,3 @@
-import pytest
 from sqlalchemy import select
 
 from app.db.models.project import ProjectInvite
@@ -6,7 +5,6 @@ from app.services.oral_collector import invite_service
 from tests.baker import make_language, make_project, make_user
 
 
-@pytest.mark.asyncio
 async def test_create_invite_is_idempotent_for_pending(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, lang.id)
@@ -35,7 +33,6 @@ async def test_create_invite_is_idempotent_for_pending(db_session) -> None:
     assert len(rows) == 1
 
 
-@pytest.mark.asyncio
 async def test_create_invite_reflects_latest_inviter(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, lang.id)
@@ -53,7 +50,6 @@ async def test_create_invite_reflects_latest_inviter(db_session) -> None:
     assert second.invited_by == str(inviter_b.id)
 
 
-@pytest.mark.asyncio
 async def test_list_user_invites_returns_project_name(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, lang.id, name="Kokama Bible")
@@ -71,7 +67,6 @@ async def test_list_user_invites_returns_project_name(db_session) -> None:
     assert project_name == "Kokama Bible"
 
 
-@pytest.mark.asyncio
 async def test_accept_invite_is_idempotent_when_access_exists(db_session) -> None:
     from sqlalchemy import select
 
@@ -102,7 +97,6 @@ async def test_accept_invite_is_idempotent_when_access_exists(db_session) -> Non
     assert len(rows) == 1
 
 
-@pytest.mark.asyncio
 async def test_accept_invite_grants_access_and_marks_accepted(db_session) -> None:
     from sqlalchemy import select
 

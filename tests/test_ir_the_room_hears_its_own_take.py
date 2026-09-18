@@ -154,7 +154,6 @@ async def a_team(db_session, *, code: str, name: str):
     return await make_project(db_session, language.id, name=name)
 
 
-@pytest.mark.asyncio
 async def test_the_room_hears_a_take_of_its_own_session(client, db_session):
     session, take = await a_session_that_recorded(db_session, "sessao-da-equipe")
 
@@ -170,7 +169,6 @@ async def test_the_room_hears_a_take_of_its_own_session(client, db_session):
     assert response.content == b"", "a API não carrega os bytes de uma tomada inteira"
 
 
-@pytest.mark.asyncio
 async def test_the_room_does_not_hear_the_take_of_another_session(client, db_session):
     """The case the shared key makes necessary.
 
@@ -201,7 +199,6 @@ async def test_the_room_does_not_hear_the_take_of_another_session(client, db_ses
     assert "location" not in response.headers
 
 
-@pytest.mark.asyncio
 async def test_without_the_room_credential_nothing_plays(client, db_session):
     session, take = await a_session_that_recorded(db_session, "sessao-sem-chave")
 
@@ -213,7 +210,6 @@ async def test_without_the_room_credential_nothing_plays(client, db_session):
     assert "location" not in response.headers
 
 
-@pytest.mark.asyncio
 async def test_an_absent_take_and_somebody_elses_answer_alike(client, db_session):
     """So the refusal cannot be read as an inventory of what exists.
 
@@ -248,7 +244,6 @@ async def test_an_absent_take_and_somebody_elses_answer_alike(client, db_session
     assert elsewhere.text.replace(their_take.id, absent) == nowhere.text
 
 
-@pytest.mark.asyncio
 async def test_the_facilitator_door_is_where_it_was(client, db_session, room_app):
     """The regression of the slice: opening one door must not move the other.
 

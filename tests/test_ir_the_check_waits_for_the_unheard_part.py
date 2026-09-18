@@ -63,7 +63,6 @@ async def _transcript(db: AsyncSession, session_id: str) -> list[Any]:
     return list((await get_session(db, session_id)).messages or [])
 
 
-@pytest.mark.asyncio
 async def test_a_part_the_team_never_played_refuses_the_check_and_names_it(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -102,7 +101,6 @@ async def test_a_part_the_team_never_played_refuses_the_check_and_names_it(
     assert await _transcript(db_session, session.id) == before
 
 
-@pytest.mark.asyncio
 async def test_the_third_part_played_reaches_the_verdict_on_one_analyst_call(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -130,7 +128,6 @@ async def test_the_third_part_played_reaches_the_verdict_on_one_analyst_call(
     assert len(await _transcript(db_session, session.id)) > len(before)
 
 
-@pytest.mark.asyncio
 async def test_an_untold_stretch_is_the_first_errand(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -159,7 +156,6 @@ async def test_an_untold_stretch_is_the_first_errand(
     assert (await stored_telling_back(db_session, session)).waited == 1
 
 
-@pytest.mark.asyncio
 async def test_a_second_press_serves_the_stored_verdict_without_re_checking(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -178,7 +174,6 @@ async def test_a_second_press_serves_the_stored_verdict_without_re_checking(
     assert analyst.readings == 1
 
 
-@pytest.mark.asyncio
 async def test_a_report_about_a_recording_no_stretch_names_is_ignored(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -199,7 +194,6 @@ async def test_a_report_about_a_recording_no_stretch_names_is_ignored(
     assert analyst.readings == 1
 
 
-@pytest.mark.asyncio
 async def test_a_flat_report_or_none_is_refused_with_every_part_named(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -229,7 +223,6 @@ async def test_a_flat_report_or_none_is_refused_with_every_part_named(
     assert analyst.readings == 0
 
 
-@pytest.mark.asyncio
 async def test_a_malformed_span_is_refused_at_the_door(
     client: httpx.AsyncClient,
     db_session: AsyncSession,

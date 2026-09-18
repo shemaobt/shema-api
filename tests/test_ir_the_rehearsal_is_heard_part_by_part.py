@@ -126,7 +126,6 @@ async def _told_back_on_a_new_part(db: AsyncSession, session: IRSession, *, sha2
     return take
 
 
-@pytest.mark.asyncio
 async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -154,7 +153,6 @@ async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
     ) == [fresh_a.id], "only the part the team recorded again is unheard"
 
 
-@pytest.mark.asyncio
 async def test_a_replaced_part_heard_again_confirms_without_the_others_replayed(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -181,7 +179,6 @@ async def test_a_replaced_part_heard_again_confirms_without_the_others_replayed(
     assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
 
 
-@pytest.mark.asyncio
 async def test_an_entry_for_a_recording_the_stretches_no_longer_name_is_ignored(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -210,7 +207,6 @@ async def test_an_entry_for_a_recording_the_stretches_no_longer_name_is_ignored(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_flat_report_is_evidence_of_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -283,7 +279,6 @@ def test_coverage_is_measured_per_part_with_the_tolerance() -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_the_packet_carries_the_report_per_take(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -314,7 +309,6 @@ async def test_the_packet_carries_the_report_per_take(
     assert "clip_duration_ms" not in packet["back_translation"]
 
 
-@pytest.mark.asyncio
 async def test_terminei_without_a_report_takes_nothing_away(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -336,7 +330,6 @@ async def test_terminei_without_a_report_takes_nothing_away(
     ] == per_take
 
 
-@pytest.mark.asyncio
 async def test_a_flat_report_does_not_erase_the_parts_a_newer_build_named(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -362,7 +355,6 @@ async def test_a_flat_report_does_not_erase_the_parts_a_newer_build_named(
     assert packet["back_translation"]["played_by_take"] == per_take
 
 
-@pytest.mark.asyncio
 async def test_a_replaced_attempt_archives_the_report_per_take(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -401,7 +393,6 @@ async def test_a_replaced_attempt_archives_the_report_per_take(
     assert archived["clip_duration_ms"] == glued
 
 
-@pytest.mark.asyncio
 async def test_a_release_with_no_report_of_playback_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -414,7 +405,6 @@ async def test_a_release_with_no_report_of_playback_is_refused(
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -437,7 +427,6 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_an_honest_report_on_the_current_rehearsal_releases(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -449,7 +438,6 @@ async def test_an_honest_report_on_the_current_rehearsal_releases(
     assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
 
 
-@pytest.mark.asyncio
 async def test_a_fresh_report_after_a_re_record_releases(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -468,7 +456,6 @@ async def test_a_fresh_report_after_a_re_record_releases(
     assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
 
 
-@pytest.mark.asyncio
 async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -484,7 +471,6 @@ async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_a_report_with_no_clip_to_measure_against_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -503,7 +489,6 @@ async def test_a_report_with_no_clip_to_measure_against_is_refused(
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_a_session_with_nothing_told_back_is_not_also_blamed_for_playback(
     db_session: AsyncSession,
 ) -> None:

@@ -154,7 +154,6 @@ def _marks_the_app_added(handed: list[str], written: str) -> list[str]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -204,7 +203,6 @@ class _BrokenModels:
         return "Vamos ficar nesta cena."
 
 
-@pytest.mark.asyncio
 async def test_a_room_whose_model_keeps_failing_is_never_stopped_for_a_person(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

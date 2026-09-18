@@ -245,7 +245,6 @@ async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRS
     )
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -266,7 +265,6 @@ async def test_a_stretch_still_waiting_stops_the_analyst_from_reading(
     )
 
 
-@pytest.mark.asyncio
 async def test_the_room_tells_the_team_instead_of_going_quiet(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -287,7 +285,6 @@ async def test_the_room_tells_the_team_instead_of_going_quiet(
     assert spoken, "e alguma coisa tem de ter sido dita para haver endereço"
 
 
-@pytest.mark.asyncio
 async def test_what_the_room_says_is_the_waiting_line_and_not_another_familys(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -305,7 +302,6 @@ async def test_what_the_room_says_is_the_waiting_line_and_not_another_familys(
     assert spoken[-1] not in utterances(FailSafe.INAUDIBLE, LANGUAGE)
 
 
-@pytest.mark.asyncio
 async def test_the_room_does_not_say_the_same_thing_twice_running(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -329,7 +325,6 @@ async def test_the_room_does_not_say_the_same_thing_twice_running(
     assert set(spoken) <= set(utterances(FailSafe.UNTOLD_STRETCH, LANGUAGE))
 
 
-@pytest.mark.asyncio
 async def test_the_other_families_are_still_played_from_the_app(
     client: httpx.AsyncClient, analyst: Analyst, spoken: list[str], db_session: AsyncSession
 ) -> None:
@@ -348,7 +343,6 @@ async def test_the_other_families_are_still_played_from_the_app(
     assert spoken == [], "nada foi sintetizado no caminho de 'não ouvi nada'"
 
 
-@pytest.mark.asyncio
 async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -370,7 +364,6 @@ async def test_the_passage_is_not_marked_checked_over_a_stretch_nobody_explained
     )
 
 
-@pytest.mark.asyncio
 async def test_the_gate_opens_itself_when_the_last_stretch_is_explained(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -386,7 +379,6 @@ async def test_the_gate_opens_itself_when_the_last_stretch_is_explained(
     assert answered.json()["checked"] is True
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_with_every_stretch_explained_is_read_as_before(
     client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
@@ -401,7 +393,6 @@ async def test_a_telling_back_with_every_stretch_explained_is_read_as_before(
     assert body["fixed_line"] == "", "o caminho normal fala pela síntese, não por fala fixa"
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_with_no_stretch_at_all_answers_as_before(
     client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:

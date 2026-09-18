@@ -16,14 +16,12 @@ from scripts.seed_apps_roles import APP_ROLES_OVERRIDE, DEFAULT_ROLES, SEED_APPS
 from tests.baker import grant_app_role, make_access_request, make_role, make_user
 
 
-@pytest.mark.asyncio
 async def test_user_without_th_role_has_no_access(db_session) -> None:
     user = await make_user(db_session, email="th_ac_a@test.com")
     roles = await list_roles(db_session, user.id, "translation-helper")
     assert roles == []
 
 
-@pytest.mark.asyncio
 async def test_user_with_th_role_can_access(db_session) -> None:
     th_app = (
         await db_session.execute(select(App).where(App.app_key == "translation-helper"))
@@ -36,7 +34,6 @@ async def test_user_with_th_role_can_access(db_session) -> None:
     assert await has_role(db_session, user.id, "translation-helper", "user") is True
 
 
-@pytest.mark.asyncio
 async def test_platform_admin_bypasses_role_in_access_control() -> None:
     """`require_app_access` short-circuits for platform admins (see access_control.py)."""
     from app.core.access_control import require_app_access
@@ -125,7 +122,6 @@ def test_every_app_is_approvable(app_key: str) -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_review_approve_grants_user_role_for_translation_helper(db_session) -> None:
     """Smoke-tests the full request→approve→access path for translation-helper.
 
@@ -149,7 +145,6 @@ async def test_review_approve_grants_user_role_for_translation_helper(db_session
     assert granted_roles == [("translation-helper", "user")]
 
 
-@pytest.mark.asyncio
 async def test_review_approve_grants_analyst_role_for_meaning_map(db_session) -> None:
     """Mirror of the TH test — confirms the legacy meaning-map flow is unbroken."""
     mm_app = (

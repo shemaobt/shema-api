@@ -46,7 +46,6 @@ from app.services.internalization_room.sessions import (
 P = "P03"
 
 
-@pytest.mark.asyncio
 async def test_a_new_session_starts_with_nothing_encountered(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
 
@@ -55,13 +54,11 @@ async def test_a_new_session_starts_with_nothing_encountered(db_session: AsyncSe
     assert session.coverage_state == initial_state(P)
 
 
-@pytest.mark.asyncio
 async def test_an_unknown_session_is_not_found(db_session: AsyncSession) -> None:
     with pytest.raises(NotFoundError):
         await get_session(db_session, "nao-existe")
 
 
-@pytest.mark.asyncio
 async def test_the_exchange_is_appended_in_order(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
 
@@ -75,7 +72,6 @@ async def test_the_exchange_is_appended_in_order(db_session: AsyncSession) -> No
     ]
 
 
-@pytest.mark.asyncio
 async def test_the_opening_turn_records_only_the_guide(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
 
@@ -86,7 +82,6 @@ async def test_the_opening_turn_records_only_the_guide(db_session: AsyncSession)
     assert session.messages == [{"role": "guide", "text": "que bom ter vocês aqui"}]
 
 
-@pytest.mark.asyncio
 async def test_coverage_settles_without_closing_a_partial_session(
     db_session: AsyncSession,
 ) -> None:
@@ -99,7 +94,6 @@ async def test_coverage_settles_without_closing_a_partial_session(
     assert session.coverage_state[element_keys(P)[0]] == "engaged"
 
 
-@pytest.mark.asyncio
 async def test_the_coverage_floor_alone_no_longer_closes_the_session(
     db_session: AsyncSession,
 ) -> None:
@@ -139,7 +133,6 @@ def _fully_supported_comprehension(pericope: str) -> ComprehensionState:
     )
 
 
-@pytest.mark.asyncio
 async def test_the_floor_with_evidence_and_practice_closes_the_session(
     db_session: AsyncSession,
 ) -> None:
@@ -152,7 +145,6 @@ async def test_the_floor_with_evidence_and_practice_closes_the_session(
     assert session.status is IRSessionStatus.DONE
 
 
-@pytest.mark.asyncio
 async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     db_session: AsyncSession,
 ) -> None:
@@ -180,7 +172,6 @@ async def test_meeting_the_floor_stamps_the_instant_the_session_closed(
     assert end_of(session, at=datetime.now(UTC)).state is SessionState.COMPLETE
 
 
-@pytest.mark.asyncio
 async def test_a_settle_that_does_not_close_the_session_stamps_nothing(
     db_session: AsyncSession,
 ) -> None:
@@ -192,7 +183,6 @@ async def test_a_settle_that_does_not_close_the_session_stamps_nothing(
     assert session.ended_at is None
 
 
-@pytest.mark.asyncio
 async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
     db_session: AsyncSession,
 ) -> None:
@@ -214,7 +204,6 @@ async def test_a_session_closes_once_and_the_end_does_not_move_afterwards(
     assert session.ended_at == closed_at
 
 
-@pytest.mark.asyncio
 async def test_a_session_needing_a_person_is_marked(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
 
@@ -237,7 +226,6 @@ async def _tell(db_session: AsyncSession, session, text: str):
     )
 
 
-@pytest.mark.asyncio
 async def test_a_fresh_recording_throws_the_whole_telling_back_away(
     db_session: AsyncSession,
 ) -> None:
@@ -251,7 +239,6 @@ async def test_a_fresh_recording_throws_the_whole_telling_back_away(
     assert session.status is IRSessionStatus.IN_PROGRESS
 
 
-@pytest.mark.asyncio
 async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: AsyncSession) -> None:
     """The count is the stretch's, so the service decides on the stretch and not on the state.
 
@@ -274,7 +261,6 @@ async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: As
     assert session.halt_kind == HaltKind.WARNING.value
 
 
-@pytest.mark.asyncio
 async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
     await save_back_translation(
@@ -301,7 +287,6 @@ async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSess
     )
 
 
-@pytest.mark.asyncio
 async def test_restarting_an_empty_telling_back_archives_nothing(
     db_session: AsyncSession,
 ) -> None:
@@ -313,7 +298,6 @@ async def test_restarting_an_empty_telling_back_archives_nothing(
     assert fresh.superseded == []
 
 
-@pytest.mark.asyncio
 async def test_two_retakes_keep_both_histories_in_order(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope=P)
     await save_back_translation(

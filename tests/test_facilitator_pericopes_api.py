@@ -110,7 +110,6 @@ def positions(body: list[dict]) -> dict[str, str]:
 # --------------------------------------------------------------- the book, in the canon's order
 
 
-@pytest.mark.asyncio
 async def test_the_whole_book_is_served_in_the_canons_order(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="ordem@x.com")
 
@@ -119,7 +118,6 @@ async def test_the_whole_book_is_served_in_the_canons_order(client, db_session) 
     assert [entry["pericope"] for entry in body] == CANON
 
 
-@pytest.mark.asyncio
 async def test_each_passage_carries_both_of_the_names_the_desk_draws(client, db_session) -> None:
     """The reference and the title, off the canon rather than composed by a screen."""
     _user, team, headers = await a_facilitator(db_session, email="nomes@x.com")
@@ -132,7 +130,6 @@ async def test_each_passage_carries_both_of_the_names_the_desk_draws(client, db_
     assert first["title"]
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_not_started_stands_on_the_first_and_the_rest_are_future(
     client, db_session
 ) -> None:
@@ -144,7 +141,6 @@ async def test_a_team_that_has_not_started_stands_on_the_first_and_the_rest_are_
     assert set(where.values()) == {"current", "future"}
 
 
-@pytest.mark.asyncio
 async def test_a_closed_passage_reads_closed_and_the_next_one_current(client, db_session) -> None:
     _user, team, headers = await a_facilitator(db_session, email="andou@x.com")
     await having_closed(db_session, team, FIRST)
@@ -154,7 +150,6 @@ async def test_a_closed_passage_reads_closed_and_the_next_one_current(client, db
     assert (where[FIRST], where[SECOND], where[THIRD]) == ("closed", "current", "future")
 
 
-@pytest.mark.asyncio
 async def test_a_passage_closed_out_of_order_reads_closed_and_does_not_move_the_team(
     client, db_session
 ) -> None:
@@ -168,7 +163,6 @@ async def test_a_passage_closed_out_of_order_reads_closed_and_does_not_move_the_
     assert sum(1 for position in where.values() if position == "current") == 1
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_finished_the_book_has_no_current_passage(client, db_session) -> None:
     """ENG-469: a complete team shows its last passage as closed, not current."""
     _user, team, headers = await a_facilitator(db_session, email="terminou@x.com")
@@ -179,7 +173,6 @@ async def test_a_team_that_finished_the_book_has_no_current_passage(client, db_s
     assert set(where.values()) == {"closed"}
 
 
-@pytest.mark.asyncio
 async def test_the_count_the_desk_draws_is_a_position_and_not_a_measure(client, db_session) -> None:
     """*"N of 14 closed"* is countable from this answer, and it is countable by the Desk.
 
@@ -199,7 +192,6 @@ async def test_the_count_the_desk_draws_is_a_position_and_not_a_measure(client, 
 # ------------------------------------------------ who may read it, and the fact that nobody writes
 
 
-@pytest.mark.asyncio
 async def test_a_team_the_caller_does_not_facilitate_reads_as_absent(client, db_session) -> None:
     """The ENG-443 non-enumeration rule, on one more route."""
     _user, _mine, headers = await a_facilitator(db_session, email="minha@x.com")
@@ -212,14 +204,12 @@ async def test_a_team_the_caller_does_not_facilitate_reads_as_absent(client, db_
     assert refused.json()["detail"] == absent.json()["detail"] == TEAM_NOT_FOUND
 
 
-@pytest.mark.asyncio
 async def test_an_anonymous_caller_reads_nothing(client, db_session) -> None:
     _user, team, _headers = await a_facilitator(db_session, email="anon@x.com")
 
     assert (await client.get(pericopes_url(team.id))).status_code in (401, 403)
 
 
-@pytest.mark.asyncio
 async def test_nothing_in_this_family_writes(client, db_session) -> None:
     """The restriction that shapes the whole control, and the only one no screen would show.
 
@@ -246,7 +236,6 @@ async def test_nothing_in_this_family_writes(client, db_session) -> None:
 # --------------------------------------------------------------- one source of truth, three doors
 
 
-@pytest.mark.asyncio
 async def test_the_three_surfaces_answer_the_same_passage(client, db_session) -> None:
     """ "One source of truth for where is this team" is the issue's own phrase, tested as one.
 
@@ -276,7 +265,6 @@ async def test_the_three_surfaces_answer_the_same_passage(client, db_session) ->
     assert opened.pericope == SECOND
 
 
-@pytest.mark.asyncio
 async def test_a_team_at_the_end_of_the_book_says_so_at_every_door(client, db_session) -> None:
     """The terminal state, agreed on rather than each door inventing its own.
 
