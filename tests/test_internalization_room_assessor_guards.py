@@ -15,6 +15,7 @@ acousteme surface is named: the package around them is alive, and a prefix guard
 be widened until it meant nothing.
 """
 
+import dataclasses
 import importlib
 import json
 import sys
@@ -28,9 +29,9 @@ from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
+from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import (
     append_exchange,
     create_session,
@@ -40,6 +41,10 @@ from app.services.internalization_room.sessions import (
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
+PAUSE_LINE = (
+    "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de "
+    "vocês, e a gente retoma isso junto."
+)
 P = "P03"
 
 RETIRED_MODULES = (
@@ -74,6 +79,12 @@ def test_no_field_of_the_session_remembers_the_probe_machinery() -> None:
     assert not retired & set(ComprehensionState.model_fields)
 
 
+def test_no_turn_can_carry_a_call_for_a_person() -> None:
+    """The field outlived its last writer, and the route still read it. A turn that could
+    say a person is needed is the server deciding it, and that call is the tablet's."""
+    assert "needs_person" not in {field.name for field in dataclasses.fields(TurnOutcome)}
+
+
 def test_the_one_purpose_left_is_the_recording_handoff_consent() -> None:
     """The purposes were the contract: each one told the Guide what it could and could not
     say next. The consent question is the app's own fixed sentence and the only reason a
@@ -101,13 +112,18 @@ async def _a_room_that_has_asked_something(db: AsyncSession) -> IRSession:
 
 
 async def _the_team_answers(
-    db: AsyncSession, session: IRSession, text: str
+    db: AsyncSession, session: IRSession, text: str, *, heard_as: str | None = None
 ) -> tuple[ComprehensionTurn, IRSession]:
-    """One whole turn as the endpoint runs it, so what one turn leaves the next one reads."""
+    """One whole turn as the endpoint runs it, so what one turn leaves the next one reads.
+
+    `heard_as` is the language the transcriber was sure it heard; at the room's threshold,
+    a language other than the session's is the team speaking their own tongue."""
     turn = await run_comprehension_turn(
         db,
         session,
-        speech=HeardSpeech(text=text),
+        speech=HeardSpeech(
+            text=text, bridge_language="pt", language_code=heard_as, language_probability=0.99
+        ),
         opening=False,
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
@@ -115,7 +131,11 @@ async def _the_team_answers(
     )
     session = await save_comprehension(db, session, turn.state)
     session = await append_exchange(
-        db, session, team_utterance=turn.outcome.transcript, guide_response=turn.outcome.speech
+        db,
+        session,
+        team_utterance=turn.outcome.transcript,
+        guide_response=turn.outcome.speech,
+        outcome=turn.outcome,
     )
     return turn, session
 
@@ -205,15 +225,17 @@ class _BrokenModels:
 
 
 @pytest.mark.asyncio
-async def test_a_room_whose_model_keeps_failing_is_never_stopped_for_a_person(
+async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_stopped_for_a_person(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A component that no longer exists cannot decide a session is over.
+    """The failures the ladder once counted were the Assessor's own, and three in a row
+    ended the interview and called somebody. What is counted now is the Validator refusing
+    every draft, and the count walks her catalogue in order — the first two A lines, then
+    the graceful pause — instead of picking two of the four by the parity of the record.
 
-    The failures the ladder counted were the Assessor's own, and three in a row ended the
-    interview and called somebody. What still asks for a person lives outside the turn —
-    the tablet asking, the retelling ceiling, the back-translation ceiling, the device
-    halt — and none of it counts model calls.
+    The pause is a spoken line and nothing more: a fourth failure says it again, and what
+    asks for a person lives outside the turn. That the session stays open behind it is
+    the route's to show, in `test_ir_the_pause_leaves_the_session_open.py`.
     """
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
@@ -221,10 +243,54 @@ async def test_a_room_whose_model_keeps_failing_is_never_stopped_for_a_person(
     session = await _a_room_that_has_asked_something(db_session)
 
     spoken = []
-    for _ in range(6):
+    for _ in range(4):
         turn, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-        spoken.append(turn.outcome.speech)
-        assert not turn.outcome.needs_person
+        spoken.append(turn.outcome.fixed_line)
 
-    hard_stop = utterances(FailSafe.HARD_STOP, "pt")
-    assert not any(line in hard_stop for line in spoken)
+    assert spoken == ["A0", "A1", "E0", "E0"], (
+        "a escada A era indexada pelo tamanho da conversa e a pausa nunca chegava"
+    )
+    assert turn.outcome.speech == PAUSE_LINE
+
+
+@pytest.mark.asyncio
+async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    models = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+    session = await _a_room_that_has_asked_something(db_session)
+    for _ in range(2):
+        _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
+    monkeypatch.setattr(models, "call_agent", _RecordingModels())
+    settled, session = await _the_team_answers(db_session, session, text="Rute foi junto")
+    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+
+    turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
+
+    assert settled.outcome.speech == GUIDE_LINE
+    assert turn.outcome.fixed_line == "A0", (
+        "a contagem não zerava num turno que o Validador aprovou, e a terceira falha da "
+        "sessão virava pausa mesmo com a sala tendo voltado a falar no meio"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_in_the_teams_own_tongue_between_two_refusals_does_not_start_the_a_ladder_over(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The G line is a fail-safe too: the Guide did not answer the team on that turn, and
+    the ticket's rule is that only a turn which needed no fail-safe ends the run."""
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
+    )
+    session = await _a_room_that_has_asked_something(db_session)
+    _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
+    own_tongue, session = await _the_team_answers(
+        db_session, session, text="koeti yoko vitukeovo enepone", heard_as="ter"
+    )
+
+    turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
+
+    assert own_tongue.outcome.fixed_line == "G0"
+    assert turn.outcome.fixed_line == "A1"
