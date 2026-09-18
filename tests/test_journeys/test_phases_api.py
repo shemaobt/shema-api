@@ -101,6 +101,20 @@ async def test_update_phase_category_and_icon_url(client, db_session):
     assert cleared.json()["icon_url"] is None
 
 
+async def test_update_phase_clears_description_with_explicit_null(client, db_session):
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    journey = await make_journey(db_session)
+    phase = await make_phase(db_session, journey_id=journey.id, description="To be cleared")
+    headers = await auth_header(db_session, admin)
+    resp = await client.patch(
+        f"/api/phases/{phase.id}",
+        json={"description": None},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["description"] is None
+
+
 async def test_update_phase_as_non_admin_forbidden(client, db_session):
     user = await make_user(db_session, email="user@example.com")
     journey = await make_journey(db_session)

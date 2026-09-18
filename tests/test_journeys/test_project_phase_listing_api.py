@@ -22,7 +22,7 @@ async def _journey_project(db_session, *, code: str = "tst"):
 
 async def test_project_phases_cover_full_journey(client, db_session):
     _journey, phases, project = await _journey_project(db_session)
-    await make_project_phase(db_session, project.id, phases[1].id, status="in_progress")
+    link = await make_project_phase(db_session, project.id, phases[1].id, status="in_progress")
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     headers = await auth_header(db_session, admin)
 
@@ -31,6 +31,40 @@ async def test_project_phases_cover_full_journey(client, db_session):
     body = resp.json()
     assert [row["phase_id"] for row in body] == [p.id for p in phases]
     assert [row["status"] for row in body] == ["not_started", "in_progress", "not_started"]
+    assert [row["id"] for row in body] == [None, link.id, None]
+
+
+async def test_project_phases_keep_a_phase_attached_from_another_journey(client, db_session):
+    _journey, phases, project = await _journey_project(db_session)
+    other_journey = await make_journey(db_session, name="Other")
+    foreign = await make_phase(
+        db_session, name="Foreign", journey_id=other_journey.id, sort_order=0
+    )
+    foreign_link = await make_project_phase(db_session, project.id, foreign.id, status="completed")
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    headers = await auth_header(db_session, admin)
+
+    resp = await client.get(f"/api/projects/{project.id}/phases", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [row["phase_id"] for row in body] == [p.id for p in phases] + [foreign.id]
+    assert body[-1]["status"] == "completed"
+    assert body[-1]["id"] == foreign_link.id
+
+
+async def test_project_phases_keep_a_phase_attached_without_a_journey(client, db_session):
+    _journey, phases, project = await _journey_project(db_session)
+    orphan = await make_phase(db_session, name="Orphan", sort_order=0)
+    await make_project_phase(db_session, project.id, orphan.id, status="in_progress")
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    headers = await auth_header(db_session, admin)
+
+    resp = await client.get(f"/api/projects/{project.id}/phases-with-deps", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [row["phase_id"] for row in body["phases"]] == [p.id for p in phases] + [orphan.id]
+    assert body["phases"][-1]["status"] == "in_progress"
+    assert body["dependencies"][orphan.id] == []
 
 
 async def test_project_phases_with_deps_cover_full_journey(client, db_session):
@@ -79,3 +113,20 @@ async def test_phases_by_project_resolve_through_journey(client, db_session):
     resp = await client.get(f"/api/phases?project_id={project.id}", headers=headers)
     assert resp.status_code == 200
     assert [row["id"] for row in resp.json()] == [p.id for p in phases]
+
+
+async def test_phases_by_project_also_return_what_is_attached_outside_the_journey(
+    client, db_session
+):
+    _journey, phases, project = await _journey_project(db_session)
+    other_journey = await make_journey(db_session, name="Other")
+    foreign = await make_phase(
+        db_session, name="Foreign", journey_id=other_journey.id, sort_order=9
+    )
+    await make_project_phase(db_session, project.id, foreign.id)
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    headers = await auth_header(db_session, admin)
+
+    resp = await client.get(f"/api/phases?project_id={project.id}", headers=headers)
+    assert resp.status_code == 200
+    assert [row["id"] for row in resp.json()] == [p.id for p in phases] + [foreign.id]
