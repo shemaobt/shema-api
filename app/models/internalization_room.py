@@ -849,6 +849,37 @@ class ForcedReleaseResponse(ReleaseResponse):
     forced_at: str | None
 
 
+class TeamReleaseResponse(BaseModel):
+    """What the tablet is told when the team presses approve: a number, or a named blocker.
+
+    A refused approval is one of these, never a 409 (ENG-954, reversing ADR 0026's rejection
+    of "a payload naming the take" for this route alone): the tablet is the client that reads
+    it, and the app decides by the field and never by what is missing from the body.
+    """
+
+    session_id: str
+    #: Present only when the packet was minted, so an app reading this field never has to
+    #: infer a release from an empty ``blockers`` list.
+    version: int | None = None
+    #: Null on a refusal, the way ``version`` is: nothing was minted for this row to name.
+    release_id: str | None = None
+    #: Null on a refusal, for the reason ``release_id`` is.
+    package_sha256: str | None = None
+    #: Null on a refusal, for the reason ``release_id`` is.
+    approved_at: str | None = None
+    #: The gate's codes, in the order the gate raised them; empty on a mint. Never a sentence.
+    blockers: list[str] = Field(default_factory=list)
+    #: Which current parts carry nobody's words, by their own take, when `untold_part` is
+    #: among the blockers; empty otherwise, the way `terminei`'s own field is (ADR 0027).
+    untold_take_ids: list[str] = Field(default_factory=list)
+    #: Which parts of the rehearsal the report does not cover, by their own take, when
+    #: `playback_did_not_cover_the_clip` is among the blockers; empty otherwise.
+    unheard_take_ids: list[str] = Field(default_factory=list)
+    #: The earliest stretch standing with nothing told over it, when `untold_stretch` is
+    #: among the blockers; null otherwise.
+    untold_segment_id: str | None = None
+
+
 class QuestionAudioResponse(BaseModel):
     """Where a facilitator's browser can fetch a question's recording, and for how long.
 

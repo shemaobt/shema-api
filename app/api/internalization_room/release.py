@@ -6,18 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.facilitator._deps import FacilitatorUser
 from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.core.database import get_db
-from app.core.exceptions import NothingToForce
+from app.core.exceptions import NothingToForce, ReleaseWithoutProject
+from app.db.models.internalization_room import IRSession
 from app.models.internalization_room import (
     ForcedReleaseResponse,
     ForceReleaseRequest,
-    ReleaseResponse,
+    TeamReleaseResponse,
 )
 from app.services import internalization_room as room
 from app.services.internalization_room.release import (
+    InternalizationReleaseBlocked,
     approve_release,
     build_internalization_release,
     release_by_version,
 )
+from app.services.internalization_room.takes import current_parts, takes_of
 from app.utils.stored_time import as_utc
 
 router = APIRouter()
@@ -114,9 +117,48 @@ async def force_internalization_release(
     )
 
 
+async def _team_release_blocked(
+    db: AsyncSession, session: IRSession, blockers: list[str]
+) -> TeamReleaseResponse:
+    """The refused half of the team's answer, its ground derived the finish route's way.
+
+    `untold_take_ids`, `unheard_take_ids` and `untold_segment_id` are filled only for the
+    blocker that owns them, from the same three service helpers `terminei` reads its own
+    answer from (`app/api/internalization_room/back_translation.py`), asked fresh here rather
+    than threaded through the gate: the gate owes codes (ADR 0026), and re-deriving the ground
+    after the refusal keeps `compose_internalization_release`'s return type untouched.
+    """
+    untold_take_ids: list[str] = []
+    unheard_take_ids: list[str] = []
+    untold_segment_id: str | None = None
+    grounded = {"untold_part", "playback_did_not_cover_the_clip", "untold_stretch"}
+    if grounded & set(blockers):
+        final = await room.final_segments(db, session.id)
+        if "untold_stretch" in blockers:
+            untold = room.first_untold(final)
+            untold_segment_id = untold.id if untold else None
+        if "untold_part" in blockers or "playback_did_not_cover_the_clip" in blockers:
+            rehearsed = room.rehearsed_parts(final)
+            if "untold_part" in blockers:
+                takes = await takes_of(db, session.id)
+                untold_take_ids = [
+                    part.id for part in room.untold_parts(current_parts(takes), rehearsed)
+                ]
+            if "playback_did_not_cover_the_clip" in blockers:
+                state = room.back_translation_of(session)
+                unheard_take_ids = room.unheard_parts(state, rehearsed)
+    return TeamReleaseResponse(
+        session_id=session.id,
+        blockers=blockers,
+        untold_take_ids=untold_take_ids,
+        unheard_take_ids=unheard_take_ids,
+        untold_segment_id=untold_segment_id,
+    )
+
+
 @router.post(
     "/sessions/{session_id}/release",
-    response_model=ReleaseResponse,
+    response_model=TeamReleaseResponse,
     dependencies=[room_caller_dep],
 )
 async def approve_internalization_release(
@@ -124,8 +166,8 @@ async def approve_internalization_release(
     project_id: str | None = device_project_dep,
     device_id: str = device_dep,
     db: AsyncSession = Depends(get_db),
-) -> ReleaseResponse:
-    """The team says this passage is its final draft, and the draft gets a number.
+) -> TeamReleaseResponse:
+    """The team says this passage is its final draft, and the draft gets a number — or refuses.
 
     A team route because the team is who approves; the facilitator routes beside it read the
     packet and force one. It carries no body: the version is the room's to allocate and never
@@ -140,13 +182,26 @@ async def approve_internalization_release(
     Scoped with `get_session_for_room_caller`, which the other team routes do not use: what
     this one writes is named by the team, and resolving the session by id alone would let
     one tablet mint a release on another team's passage.
+
+    A refusal is a 200 naming its blockers, never a 409 (ENG-954): the tablet is the client
+    that reads it, and a client that throws on a 409 learns nothing about which door is shut.
+    ``InternalizationReleaseBlocked`` answers with its codes as they stand; a session on the
+    shared key answers ``["no_project"]``, a literal here because the fact is the route's own
+    and the gate never sees a project-less session (``approve_release`` refuses it first). The
+    facilitator's own routes keep their 409: a person reads those, not the tablet.
     """
     session = await room.get_session_for_room_caller(db, session_id, project_id)
-    release = await approve_release(db, session, device_id=device_id)
-    return ReleaseResponse(
+    try:
+        release = await approve_release(db, session, device_id=device_id)
+    except ReleaseWithoutProject:
+        return TeamReleaseResponse(session_id=session_id, blockers=["no_project"])
+    except InternalizationReleaseBlocked as exc:
+        return await _team_release_blocked(db, session, exc.blockers)
+    return TeamReleaseResponse(
+        session_id=session_id,
         release_id=release.id,
-        session_id=release.session_id,
         version=release.version,
         package_sha256=release.package_sha256,
         approved_at=as_utc(release.approved_at).isoformat(),
+        blockers=[],
     )

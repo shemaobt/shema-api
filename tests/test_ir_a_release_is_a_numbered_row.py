@@ -150,6 +150,8 @@ async def test_approving_again_with_nothing_changed_returns_the_same_release(cli
     assert second.json()["release_id"] == first.json()["release_id"]
     assert first.json()["version"] == 1
     assert second.json()["version"] == 1
+    assert first.json()["blockers"] == []
+    assert second.json()["blockers"] == []
     assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
@@ -265,8 +267,13 @@ async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
     )
     read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
 
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["code"] == "RELEASE_WITHOUT_PROJECT"
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == ["no_project"]
+    assert body["version"] is None
+    assert body["untold_take_ids"] == []
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
     assert read.status_code == 404, (
         "a leitura do facilitador para uma sessão sem projeto continua sendo 404, como na main"
@@ -287,8 +294,9 @@ async def test_a_passage_the_packet_refuses_is_not_approved_either(client, db_se
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
 
-    assert refused.status_code == 409, refused.text
-    assert "no_telling_back" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    assert "no_telling_back" in refused.json()["blockers"]
+    assert refused.json()["version"] is None
     assert await releases_of(db_session, session.id) == []
 
 
@@ -415,8 +423,13 @@ async def test_a_credentialed_tablet_is_refused_by_name_on_a_session_with_no_pro
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
 
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["code"] == "RELEASE_WITHOUT_PROJECT"
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == ["no_project"]
+    assert body["version"] is None
+    assert body["untold_take_ids"] == []
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
 
 
