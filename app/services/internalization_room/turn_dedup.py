@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import AsyncSessionLocal
 from app.db.models.internalization_room import IRTurn
 from app.models.internalization_room import TurnResponse
 
@@ -15,22 +16,34 @@ _in_flight: dict[tuple[str, str], asyncio.Task[TurnResponse]] = {}
 
 
 async def answer_once(
-    session_id: str, turn_id: str, answer: Callable[[], Coroutine[Any, Any, TurnResponse]]
+    session_id: str,
+    turn_id: str,
+    answer: Callable[[AsyncSession], Coroutine[Any, Any, TurnResponse]],
 ) -> TurnResponse:
     """Run this turn once while it is in flight; a resend joins it and hears the same answer.
 
     A registry in this process rather than a claim row, because the second request has to
     come back with the first one's answer and a row can only hand that over by polling it
     until the first commits. Shielded so the tablet that gave up on the first request
-    cannot take the answer away from the one still waiting for it.
+    cannot take the answer away from the one still waiting for it — and run on a session
+    of its own, the way `settle_coverage` is, because the request's session closes when
+    that request unwinds, and a turn that outlives it would otherwise write through a
+    session that is no longer there.
     """
     key = (session_id, turn_id)
     running = _in_flight.get(key)
     if running is None:
-        running = asyncio.create_task(answer())
+        running = asyncio.create_task(_on_a_session_of_its_own(answer))
         _in_flight[key] = running
         running.add_done_callback(lambda _: _in_flight.pop(key, None))
     return await asyncio.shield(running)
+
+
+async def _on_a_session_of_its_own(
+    answer: Callable[[AsyncSession], Coroutine[Any, Any, TurnResponse]],
+) -> TurnResponse:
+    async with AsyncSessionLocal() as db:
+        return await answer(db)
 
 
 async def answered_turn(db: AsyncSession, session_id: str, turn_id: str) -> dict[str, Any] | None:

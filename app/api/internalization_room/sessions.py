@@ -507,19 +507,21 @@ async def take_turn(
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
     """
-    answer = partial(_answer_the_turn, session_id, background, file=file, turn_id=turn_id, db=db)
+    answer = partial(
+        _answer_the_turn, session_id=session_id, background=background, file=file, turn_id=turn_id
+    )
     if turn_id:
         return await answer_once(session_id, turn_id, answer)
-    return await answer()
+    return await answer(db)
 
 
 async def _answer_the_turn(
+    db: AsyncSession,
+    *,
     session_id: str,
     background: BackgroundTasks,
-    *,
     file: UploadFile | None,
     turn_id: str | None,
-    db: AsyncSession,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s

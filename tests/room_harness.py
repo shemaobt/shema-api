@@ -22,7 +22,7 @@ from typing import Any
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import BackTranslationState
@@ -198,12 +198,21 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
 
 @asynccontextmanager
 async def room_client(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, *, runner_key: str | None = None
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    runner_key: str | None = None,
+    per_request: async_sessionmaker[AsyncSession] | None = None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """The room's routes on an app of their own, over the session the case writes through.
 
     `runner_key` opens the text seam as well, which exists only where the key is set, and
     sends it on every request the way her runner does.
+
+    `per_request` gives every request a session of its own from that factory, closed when the
+    request unwinds, which is what `get_db` does in the deployed app and what one shared
+    session cannot show: a case about a request that goes away mid-turn needs the session it
+    was writing through to go away with it.
     """
     from fastapi import FastAPI
 
@@ -223,7 +232,11 @@ async def room_client(
     register_exception_handlers(test_app)
 
     async def _get_db():
-        yield db_session
+        if per_request is None:
+            yield db_session
+            return
+        async with per_request() as session:
+            yield session
 
     test_app.dependency_overrides[get_db] = _get_db
     transport = ASGITransport(app=test_app)

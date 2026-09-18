@@ -22,11 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.sessions import create_session, get_session
+from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
 
 OPENING = "Eu sou o Guia. Hoje a historia e a de Rute, que ficou com Noemi."
+VOICED_AS = "tts/voice/abertura.mp3"
 
 
 class _GuideStillThinking:
@@ -53,7 +55,7 @@ class _CountingVoice:
     async def __call__(self, text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
         self.calls += 1
         entry = SynthesizedSpeech(
-            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key="tts/voice/a.mp3"
+            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key=VOICED_AS
         )
         return entry, False
 
@@ -105,4 +107,40 @@ async def test_two_concurrent_posts_of_one_turn_id_ask_the_guide_once_and_answer
         reread = await get_session(fresh_db, session.id)
     assert [message["text"] for message in reread.messages] == [OPENING], (
         "a sessão gravou a mesma abertura duas vezes"
+    )
+
+
+async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_resending(
+    db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first request is cancelled mid-Guide, and with it the session it was given.
+
+    Whether the deployed server cancels a handler when its client hangs up is the server's
+    business and has changed across releases; the turn in flight must not depend on it.
+    """
+    session = await create_session(db_session, pericope=P, language="pt")
+    guide = _GuideStillThinking()
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
+    )
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _CountingVoice())
+
+    async with room_client(db_session, monkeypatch, per_request=rival_factory) as tablet:
+        first = asyncio.create_task(_ask_for_the_opening(tablet, session.id))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        second = asyncio.create_task(_ask_for_the_opening(tablet, session.id))
+        await asyncio.wait({second}, timeout=0.2)
+        first.cancel()
+        await asyncio.wait({first})
+        guide.answer.set()
+        resent = await second
+
+    assert first.cancelled()
+    assert resent.status_code == 200, resent.text[:300]
+    assert resent.json()["audio_url"] == clip_url(VOICED_AS)
+
+    async with rival_factory() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
+    assert [message["text"] for message in reread.messages] == [OPENING], (
+        "o turno em voo escrevia pela sessão do request que desistiu, já fechada"
     )
