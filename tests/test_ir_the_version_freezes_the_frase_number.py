@@ -44,7 +44,6 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     back_translation_of,
-    begin_back_translation_again,
 )
 from tests.release_harness import (
     P,
@@ -53,7 +52,7 @@ from tests.release_harness import (
     retro_take,
     the_one_part_of,
 )
-from tests.room_harness import a_piece_still_to_be_told
+from tests.room_harness import a_piece_still_to_be_told, numbered_part, record_the_part_again
 
 TEAM = "equipe-de-rute"
 TABLET = "tablet-1"
@@ -259,7 +258,7 @@ async def test_a_stretch_told_again_in_place_keeps_its_frase_in_the_next_version
 async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     db_session: AsyncSession,
 ) -> None:
-    """The team threw the recording away and told the passage back again, from the top.
+    """The team recorded the part again and told the passage back over it, from the top.
 
     Every stretch of version one stopped counting and three new ones were told, so the second
     approval numbers three stretches nobody had seen. Version one is untouched: its frases
@@ -269,7 +268,12 @@ async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     first = await approve_release(db_session, session, device_id=TABLET)
     before = [stretch.id for stretch in await final_segments(db_session, session.id)]
 
-    await begin_back_translation_again(db_session, session)
+    await record_the_part_again(
+        db_session,
+        session,
+        await numbered_part(db_session, await the_one_part_of(db_session, session)),
+        sha256="b" * 64,
+    )
     part = await the_one_part_of(db_session, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         retro = await _a_retro_take(db_session, session, f"retro-de-novo-{starts_ms}")

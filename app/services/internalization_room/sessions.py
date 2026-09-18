@@ -15,7 +15,6 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTak
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
-    SupersededAttempt,
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
@@ -45,7 +44,6 @@ from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
     final_segments,
-    retire_every_segment,
     retire_the_segments_of,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
@@ -719,46 +717,6 @@ async def report_playback(
     return state
 
 
-async def begin_back_translation_again(
-    db: AsyncSession, session: IRSession
-) -> BackTranslationState:
-    """Start the telling-back over on a freshly recorded clip, archiving the old attempt.
-
-    Only the re-record reaches here. Telling one stretch again does not pass through: it
-    adds a stretch beside the others, and it is counted where that happens.
-
-    The replaced attempt is kept, clearly marked as superseded, rather than erased: its
-    stretches and findings are the history the Refine artifact carries, and the team's open
-    questions must survive their own retake. The stretches stay where they are and stop
-    counting — nothing takes their place, because the clip they explained was thrown away —
-    and only what was never theirs is copied in here.
-
-    The count of tellings is not carried and does not need to be: it lives on the stretch, and
-    every stretch of the session stops counting here. What the team tells next is a new stretch
-    on a new recording, counted from one — while the hard stretches already noted stay exactly
-    where they are, in a table this does not touch.
-    """
-    state = back_translation_of(session)
-    told = await final_segments(db, session.id)
-    superseded = list(state.superseded)
-    if told or state.findings:
-        superseded.append(
-            SupersededAttempt(
-                findings=state.findings,
-                played_by_take=state.played_by_take,
-                played_ranges=state.played_ranges,
-                clip_duration_ms=state.clip_duration_ms,
-            )
-        )
-    await retire_every_segment(db, session.id)
-    await save_back_translation(
-        db,
-        session,
-        BackTranslationState(scope=state.scope, superseded=superseded),
-    )
-    return back_translation_of(session)
-
-
 async def retire_the_part_recorded_again(
     db: AsyncSession, session: IRSession, take: IRTake
 ) -> None:
@@ -773,8 +731,10 @@ async def retire_the_part_recorded_again(
     What it takes: the stretches whose recording is one of the *other* takes of that number,
     divided parents and their pieces alike; the findings that pointed at them, a **Swap** whole;
     and the check, which starts over because the passage the team is standing on has changed.
-    Zero is a number the text seam uses, so it counts; a take with none is the whole recording,
-    whose route is `begin_back_translation_again` and whose verb is still all of it.
+    Zero is a number the text seam uses, so it counts; a take with none is the rehearsal told
+    whole, and this verb leaves it alone. That ground is answered at `terminei` instead: a
+    current part no standing stretch is a slice of refuses the check and is named there
+    (ADR 0027), which is the question the number cannot settle.
 
     What it leaves: the other parts' stretches, their words and their listening. A part recorded
     again is unheard by construction — a new take is a recording nobody has played — so the

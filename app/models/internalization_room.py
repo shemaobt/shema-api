@@ -517,14 +517,15 @@ class BackTranslationVerdictResponse(BaseModel):
     #: they owe is a clip to play. Empty on every answer that is not this refusal, so the app
     #: decides by the field and never by what is missing from the body.
     unheard_take_ids: list[str] = Field(default_factory=list)
+    #: Which current parts of the rehearsal carry nobody's words, by their own take, in the
+    #: order the parts read; empty when every one of them has been told back. Its own field for
+    #: the reason the two above are their own: a part recorded again owes a telling, and an app
+    #: reading this off `unheard_take_ids` would send the team to play a recording they still
+    #: have to explain, while one reading it off `untold_segment_id` would look for a stretch
+    #: that does not exist. Empty on every answer that is not this refusal.
+    untold_take_ids: list[str] = Field(default_factory=list)
     findings_remaining: int = 0
     used_fail_safe: bool = False
-
-
-class BackTranslationRestartResponse(BaseModel):
-    session_id: str
-    chunks: int
-    needs_person: bool
 
 
 class NeedsPersonResponse(BaseModel):

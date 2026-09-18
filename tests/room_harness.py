@@ -469,6 +469,24 @@ async def a_piece_still_to_be_told(
     return tail
 
 
+async def numbered_part(db: AsyncSession, part: IRTake, *, number: int = 1) -> IRTake:
+    """Give a part the number the tablet sends with it, on a rehearsal built without one.
+
+    A session built as the passage recorded in one go carries no number, and the verb for
+    *this part recorded again* reads the number and nothing else (ADR 0023): a case about what
+    recording it again leaves behind has to stand on a part that has one.
+
+    It writes the two columns rather than uploading, which the builder below deliberately does
+    not do: what is being built here is not a gesture, it is the number the gesture would have
+    carried — every part the tablet sends is `parte-N` with N beside it — so there is no chain
+    forged and nothing the product could not have stored.
+    """
+    part.ordinal = number
+    part.scope = f"parte-{number}"
+    await db.commit()
+    return part
+
+
 async def record_the_part_again(
     db: AsyncSession, session: IRSession, part: IRTake, *, sha256: str
 ) -> IRTake:

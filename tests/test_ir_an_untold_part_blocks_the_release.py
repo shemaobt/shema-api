@@ -59,6 +59,7 @@ from tests.room_harness import (
 )
 
 UNTOLD_PART = "untold_part"
+NOT_CHECKED = "telling_back_not_checked"
 
 #: New bytes on every upload, because a take is addressed by the hash of its audio: the same
 #: bytes twice are one row and no re-recording at all.
@@ -144,19 +145,20 @@ async def test_a_part_recorded_again_and_not_told_back_blocks_the_release(
 async def test_a_clean_reading_of_the_other_parts_does_not_release_the_untold_part(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Parts one and three read clean and heard through, and the release is still refused.
+    """The check refuses the press, and the release goes on naming the part behind it.
 
-    This is the hole the ticket closes. The check starts over when a part is recorded again, so
-    the team presses `terminei` again; the analyst reads the stretches that stand, which are the
-    other two parts, and finds nothing; the report covers the two recordings those stretches
-    name. Every stretch-derived gate is then green, and the part nobody told back is still there.
+    This was the hole: the analyst read the two parts that stand, found nothing, and the passage
+    was conferred with a recording nobody had explained in it — the release alone refused it.
+    The check refuses that press itself now (ADR 0027), so the passage is not checked, and this
+    is where the two answers are read side by side: the gate names the part the check named, and
+    a build that stopped doing either would be caught here.
     """
     session, _parts, _fresh = await _a_session_with_part_two_recorded_again(client, db_session)
 
     await _heard_and_checked(client, db_session, session.id)
 
-    assert await release_blockers(db_session, session) == [UNTOLD_PART], (
-        "nothing else stands, and the untold part alone refuses the release"
+    assert await release_blockers(db_session, session) == [NOT_CHECKED, UNTOLD_PART], (
+        "the check refused the press, and the part nobody told back is still standing"
     )
 
 

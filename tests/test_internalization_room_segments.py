@@ -483,16 +483,6 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
         "o achado aponta o trecho que o analista numerou, e não a passagem inteira"
     )
 
-    restarted = await client.post(
-        f"{PREFIX}/sessions/{session_id}/back-translation/restart", headers={"X-Room-Key": KEY}
-    )
-
-    assert restarted.status_code == 200, restarted.text
-    assert restarted.json()["chunks"] == 0
-    assert await _told_so_far(client, session_id) == [], (
-        "recomeçar a retrotradução deixa a sessão sem trecho corrente nenhum"
-    )
-
 
 # ---------------------------------------------------------------------------
 # Raised in review: two states the service could reach and did not handle
