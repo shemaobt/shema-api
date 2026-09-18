@@ -2,10 +2,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.project import Project
+from app.models.language import LanguageProjectRef, LanguageStatsResponse
 from app.services.language.get_language_or_404 import get_language_or_404
 
 
-async def get_language_stats(db: AsyncSession, language_id: str) -> list[tuple[str, str]]:
+async def get_language_stats(db: AsyncSession, language_id: str) -> LanguageStatsResponse:
     await get_language_or_404(db, language_id)
     stmt = (
         select(Project.id, Project.name)
@@ -13,4 +14,9 @@ async def get_language_stats(db: AsyncSession, language_id: str) -> list[tuple[s
         .order_by(Project.name)
     )
     result = await db.execute(stmt)
-    return [(row.id, row.name) for row in result.all()]
+    projects = [LanguageProjectRef(id=row.id, name=row.name) for row in result.all()]
+    return LanguageStatsResponse(
+        language_id=language_id,
+        project_count=len(projects),
+        projects=projects,
+    )
