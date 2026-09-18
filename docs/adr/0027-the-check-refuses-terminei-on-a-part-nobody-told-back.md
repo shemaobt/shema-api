@@ -69,5 +69,11 @@ release as `untold_part` and that no force lifts it; the same reading here means
 cannot be conferred either. It is the same row read by the same rule, and whether the field still
 holds such a session is the question ADR 0026 already left open.
 
+**`SupersededAttempt` is left without a producer.** The retired verb was the only writer of
+`superseded`, so the archived attempt the **Packet**, the **Retroverification file** and the
+session's own answer carry is history from here on: the rows already stored go on travelling and
+no new one is ever written. Whether the field and its three readers go too is the Definer's to
+decide, not this decision's — nothing here reads them.
+
 `SCHEMA_VERSION` does not move, no key of the packet changes and the release gate is untouched:
 what changed is that a passage the gate would refuse can no longer be conferred first.

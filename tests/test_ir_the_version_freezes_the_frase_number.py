@@ -52,7 +52,7 @@ from tests.release_harness import (
     retro_take,
     the_one_part_of,
 )
-from tests.room_harness import a_piece_still_to_be_told, numbered_part, record_the_part_again
+from tests.room_harness import a_piece_still_to_be_told, record_the_part_again
 
 TEAM = "equipe-de-rute"
 TABLET = "tablet-1"
@@ -128,9 +128,14 @@ async def _three_stretches(db: AsyncSession, session: IRSession) -> BackTranslat
     return await _read(db, session)
 
 
-async def _told_in_three_stretches(db: AsyncSession) -> IRSession:
-    """A session the team could approve, told back in three stretches."""
-    return await ready_session(db, project_id=TEAM, tell=_three_stretches)
+async def _told_in_three_stretches(db: AsyncSession, *, ordinal: int | None = None) -> IRSession:
+    """A session the team could approve, told back in three stretches.
+
+    ``ordinal`` is named only by the case that records the part again: that verb reads the
+    number the tablet sends and nothing else (ADR 0023), and a rehearsal recorded in one go
+    carries none.
+    """
+    return await ready_session(db, project_id=TEAM, ordinal=ordinal, tell=_three_stretches)
 
 
 async def _tell_again(
@@ -255,7 +260,7 @@ async def test_a_stretch_told_again_in_place_keeps_its_frase_in_the_next_version
     assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
 
 
-async def test_starting_the_telling_back_over_numbers_only_the_next_version(
+async def test_recording_the_part_again_numbers_only_the_next_version(
     db_session: AsyncSession,
 ) -> None:
     """The team recorded the part again and told the passage back over it, from the top.
@@ -264,15 +269,12 @@ async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     approval numbers three stretches nobody had seen. Version one is untouched: its frases
     still name the stretches that were abandoned.
     """
-    session = await _told_in_three_stretches(db_session)
+    session = await _told_in_three_stretches(db_session, ordinal=1)
     first = await approve_release(db_session, session, device_id=TABLET)
     before = [stretch.id for stretch in await final_segments(db_session, session.id)]
 
     await record_the_part_again(
-        db_session,
-        session,
-        await numbered_part(db_session, await the_one_part_of(db_session, session)),
-        sha256="b" * 64,
+        db_session, session, await the_one_part_of(db_session, session), sha256="b" * 64
     )
     part = await the_one_part_of(db_session, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:

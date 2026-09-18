@@ -80,7 +80,6 @@ from tests.release_harness import (
 )
 from tests.room_harness import (
     PART_MS,
-    numbered_part,
     record_the_part_again,
     rehearsed_in_parts,
     room_client,
@@ -477,10 +476,10 @@ async def test_an_abandoned_telling_back_is_listed_apart(
     tell the consultant a stretch was retold when the recording it explained was replaced.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    session = await ready_session(db_session, project_id=project.id, ordinal=1, tell=_told_once)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
     thrown_away = (await final_segments(db_session, session.id))[0]
-    part = await numbered_part(db_session, await the_one_part_of(db_session, session))
+    part = await the_one_part_of(db_session, session)
     fresh = await record_the_part_again(db_session, session, part, sha256="b" * 64)
     fresh_retro = await _a_retro_take(db_session, session, "de-novo")
     await capture_segment(
@@ -758,7 +757,7 @@ async def test_a_hard_stretch_mark_lands_on_the_stretch_standing_now(
     project, _credential = await a_claimed_device(db_session)
     session_id = await _a_session(db_session, team_id=project.id)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
-    take_id = await _rehearse(client, session_id)
+    take_id = await _rehearse(client, session_id, part=1)
     await _told(client, session_id, take_id, 1)
     first = (await final_segments(db_session, session_id))[0]
     for saying in ("o trecho de novo", "o trecho mais uma vez", "o trecho pela quarta vez"):
@@ -777,7 +776,7 @@ async def test_a_hard_stretch_mark_lands_on_the_stretch_standing_now(
     assert row.segment_id == first.id
 
     session = await get_session(db_session, session_id)
-    part = await numbered_part(db_session, await the_one_part_of(db_session, session))
+    part = await the_one_part_of(db_session, session)
     await record_the_part_again(db_session, session, part, sha256="b" * 64)
 
     after = await _the_file(client, session_id, desk)

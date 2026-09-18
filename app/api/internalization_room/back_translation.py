@@ -5,7 +5,7 @@ from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
     BackTranslationVerdictResponse,
@@ -148,6 +148,40 @@ async def add_chunk(
     )
 
 
+async def _the_untold_errand(
+    db: AsyncSession,
+    session: IRSession,
+    state: room.BackTranslationState,
+    *,
+    segment_id: str | None = None,
+    take_ids: list[str] | None = None,
+) -> BackTranslationVerdictResponse:
+    """Say the H family over ground nobody has told back, and step the waiting ladder.
+
+    One errand over two grounds: a stretch standing with nothing said on it, and a current
+    **Part** no standing stretch is a slice of. The room says the same thing over both — the
+    family names no frase, so it is true of either — and the ladder belongs to the errand and
+    not to the ground, which is why a press spent on one advances the line the next press
+    speaks over the other.
+
+    The answer names its ground on its own field and leaves the other empty, so the app decides
+    by the field and never by what is missing from the body.
+    """
+    waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
+    spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
+    state.waited += 1
+    await room.save_back_translation(db, session, state)
+    return BackTranslationVerdictResponse(
+        session_id=session.id,
+        audio_url=clip_url(spoken.key),
+        fixed_line="",
+        checked=False,
+        untold_segment_id=segment_id,
+        untold_take_ids=take_ids or [],
+        findings_remaining=0,
+    )
+
+
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
@@ -247,42 +281,14 @@ async def finish(
 
     untold = room.first_untold(final)
     if untold is not None:
-        waiting, _ = choose(
-            FailSafe.UNTOLD_STRETCH,
-            session.language,
-            turn=state.waited,
-        )
-        spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
-        state.waited += 1
-        await room.save_back_translation(db, session, state)
-        return BackTranslationVerdictResponse(
-            session_id=session.id,
-            audio_url=clip_url(spoken.key),
-            fixed_line="",
-            checked=False,
-            untold_segment_id=untold.id,
-            findings_remaining=0,
-        )
+        return await _the_untold_errand(db, session, state, segment_id=untold.id)
 
     rehearsed = room.rehearsed_parts(final)
     takes = await takes_of(db, session.id)
     untold_ground = room.untold_parts(current_parts(takes), rehearsed)
     if untold_ground:
-        waiting, _ = choose(
-            FailSafe.UNTOLD_STRETCH,
-            session.language,
-            turn=state.waited,
-        )
-        spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
-        state.waited += 1
-        await room.save_back_translation(db, session, state)
-        return BackTranslationVerdictResponse(
-            session_id=session.id,
-            audio_url=clip_url(spoken.key),
-            fixed_line="",
-            checked=False,
-            untold_take_ids=[part.id for part in untold_ground],
-            findings_remaining=0,
+        return await _the_untold_errand(
+            db, session, state, take_ids=[part.id for part in untold_ground]
         )
 
     unheard = room.unheard_parts(state, rehearsed)

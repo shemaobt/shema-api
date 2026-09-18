@@ -333,6 +333,7 @@ async def rehearsed_session(
     *,
     project_id: str | None = None,
     language: str | None = None,
+    ordinal: int | None = None,
     **comprehension_kwargs,
 ) -> tuple[IRSession, IRTake]:
     """A session that has done everything a release needs except tell the passage back.
@@ -344,11 +345,15 @@ async def rehearsed_session(
     ``language`` is which language the room speaks to this team. It is named here only by the
     cases that were opened naming it: a session that names none takes the floor, and changing
     that under a case would change what the room answers rather than what it is asked.
+
+    ``ordinal`` is the number the tablet sends beside a part, and none is the passage recorded
+    in one go. A case about recording that part again names one, because the verb for *this
+    part again* reads the number and nothing else (ADR 0023).
     """
     session = await create_session(db, pericope=P, project_id=project_id, language=language)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
-    take = ensaio_take(session.id, project_id=session.project_id)
+    take = ensaio_take(session.id, ordinal=ordinal, project_id=session.project_id)
     db.add(take)
     await db.commit()
     return session, take
@@ -358,6 +363,7 @@ async def ready_session(
     db: AsyncSession,
     *,
     project_id: str | None = None,
+    ordinal: int | None = None,
     tell: Callable[[AsyncSession, IRSession], Awaitable[BackTranslationState]] | None = None,
     **comprehension_kwargs,
 ):
@@ -375,7 +381,9 @@ async def ready_session(
     several stretches passes its own and inherits the rest of the scaffold rather than
     rebuilding it, which is the only part of this that ever differs.
     """
-    session, _take = await rehearsed_session(db, project_id=project_id, **comprehension_kwargs)
+    session, _take = await rehearsed_session(
+        db, project_id=project_id, ordinal=ordinal, **comprehension_kwargs
+    )
     await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session
 
