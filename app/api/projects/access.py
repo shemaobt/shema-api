@@ -31,7 +31,7 @@ async def grant_user_access(
     actor: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectUserAccessResponse:
-    await assert_can_grant_access(db, actor, project_id)
+    await assert_can_grant_access(db, actor, project_id, payload.role)
     await project_service.get_project_or_404(db, project_id)
     access = await project_service.grant_user_access(db, project_id, payload.user_id, payload.role)
     return ProjectUserAccessResponse.model_validate(access)

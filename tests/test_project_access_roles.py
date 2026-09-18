@@ -35,8 +35,9 @@ async def test_grant_access_allows_admin_and_manager(db_session) -> None:
     manager = await make_user(db_session, email="m@example.com")
     await make_project_user_access(db_session, project.id, manager.id, role="manager")
 
-    await project_service.assert_can_grant_access(db_session, admin, project.id)
-    await project_service.assert_can_grant_access(db_session, manager, project.id)
+    await project_service.assert_can_grant_access(db_session, admin, project.id, "member")
+    await project_service.assert_can_grant_access(db_session, manager, project.id, "member")
+    await project_service.assert_can_grant_access(db_session, manager, project.id, "manager")
 
 
 @pytest.mark.asyncio
@@ -46,7 +47,27 @@ async def test_grant_access_forbidden_for_member(db_session) -> None:
     await make_project_user_access(db_session, project.id, member.id, role="member")
 
     with pytest.raises(AuthorizationError, match="manager of this project"):
-        await project_service.assert_can_grant_access(db_session, member, project.id)
+        await project_service.assert_can_grant_access(db_session, member, project.id, "member")
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_grant_a_facilitator(db_session) -> None:
+    project = await _project(db_session)
+    manager = await make_user(db_session, email="m@example.com")
+    await make_project_user_access(db_session, project.id, manager.id, role="manager")
+
+    with pytest.raises(AuthorizationError, match="only members and managers"):
+        await project_service.assert_can_grant_access(
+            db_session, manager, project.id, "facilitator"
+        )
+
+
+@pytest.mark.asyncio
+async def test_admin_can_grant_a_facilitator(db_session) -> None:
+    project = await _project(db_session)
+    admin = await make_user(db_session, email="a@example.com", is_platform_admin=True)
+
+    await project_service.assert_can_grant_access(db_session, admin, project.id, "facilitator")
 
 
 @pytest.mark.asyncio
