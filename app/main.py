@@ -157,12 +157,7 @@ def create_app() -> FastAPI:
         dependencies=console_guard,
     )
     app.include_router(places_router, prefix="/api/places", tags=["places"])
-    app.include_router(
-        projects_router,
-        prefix="/api/projects",
-        tags=["projects"],
-        dependencies=console_guard,
-    )
+    app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
     app.include_router(
         facilitator_devices_router,
         prefix="/api/facilitator/devices",

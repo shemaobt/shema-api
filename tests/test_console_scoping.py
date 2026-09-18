@@ -1,4 +1,7 @@
+import httpx
 import pytest
+from httpx import ASGITransport
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.org_scope import get_managed_project_ids
 from app.services import language_service, organization_service, phase_service
@@ -12,6 +15,29 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession):
+    """The real application, because where the console gate is mounted is the thing under test."""
+    from app.core.database import get_db
+    from app.main import app
+
+    async def _get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.pop(get_db, None)
+
+
+async def _headers(db_session: AsyncSession, user) -> dict[str, str]:
+    from app.services.auth.issue_tokens import issue_tokens
+
+    access, _refresh = await issue_tokens(db_session, user)
+    return {"Authorization": f"Bearer {access}"}
 
 
 @pytest.mark.asyncio
@@ -87,3 +113,48 @@ async def test_list_phases_by_projects_filter_outside_scope_is_empty(db_session)
     )
 
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_console_gate_refuses_a_plain_member_on_the_project_list(db_session, client) -> None:
+    lang = await make_language(db_session, code="cgl")
+    user = await make_user(db_session, email="member@gate.com")
+    project = await make_project(db_session, language_id=lang.id, name="Member Project")
+    await make_project_user_access(db_session, project.id, user.id, role="member")
+
+    response = await client.get("/api/projects", headers=await _headers(db_session, user))
+
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_console_gate_does_not_shadow_the_per_project_read(db_session, client) -> None:
+    """The gate belongs to the console's collections, not to the routes ``assert_project_access``
+    already answers for: a member of a project still reads that project and its phases."""
+    lang = await make_language(db_session, code="cgr")
+    user = await make_user(db_session, email="reader@gate.com")
+    project = await make_project(db_session, language_id=lang.id, name="Member Project")
+    await make_project_user_access(db_session, project.id, user.id, role="member")
+    headers = await _headers(db_session, user)
+
+    read = await client.get(f"/api/projects/{project.id}", headers=headers)
+    phases = await client.get(f"/api/projects/{project.id}/phases", headers=headers)
+
+    assert read.status_code == 200
+    assert read.json()["name"] == "Member Project"
+    assert phases.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_per_project_read_still_refuses_a_stranger(db_session, client) -> None:
+    lang = await make_language(db_session, code="cgs")
+    user = await make_user(db_session, email="stranger@gate.com")
+    mine = await make_project(db_session, language_id=lang.id, name="Mine")
+    theirs = await make_project(db_session, language_id=lang.id, name="Theirs")
+    await make_project_user_access(db_session, mine.id, user.id, role="member")
+
+    response = await client.get(
+        f"/api/projects/{theirs.id}", headers=await _headers(db_session, user)
+    )
+
+    assert response.status_code == 403
