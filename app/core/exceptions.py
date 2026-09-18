@@ -39,6 +39,8 @@ ERROR_CODE_UNREADABLE_REPLY: Final = "UNREADABLE_REPLY"
 #: response to every other refusal.
 ERROR_CODE_DEVICE_REVOKED: Final = "DEVICE_REVOKED"
 
+ERROR_CODE_STORAGE_UNAVAILABLE = "STORAGE_UNAVAILABLE"
+
 
 class AuthenticationError(Exception):
     pass
@@ -202,6 +204,10 @@ class TranscriptionDefect(Exception):
         self.status = status
 
 
+class StorageUnavailableError(Exception):
+    pass
+
+
 class InvalidCleaningStatusError(ValidationError):
     def __init__(self, status: str) -> None:
         super().__init__(
@@ -337,6 +343,16 @@ async def handle_unreadable_reply(_request: Request, exc: UnreadableReply) -> JS
     )
 
 
+async def handle_storage_unavailable_error(
+    _request: Request, exc: StorageUnavailableError
+) -> JSONResponse:
+    logger.error("Object storage unavailable: %s", exc, exc_info=exc)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=_error_body(str(exc), ERROR_CODE_STORAGE_UNAVAILABLE),
+    )
+
+
 async def handle_not_found_error(_request: Request, exc: NotFoundError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -398,4 +414,5 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(IncompleteSubmission, handle_incomplete_submission)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnreadableReply, handle_unreadable_reply)  # type: ignore[arg-type]
+    app.add_exception_handler(StorageUnavailableError, handle_storage_unavailable_error)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, handle_unexpected)

@@ -46,6 +46,37 @@ async def test_update_user_toggles_is_platform_admin(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_user_clears_avatar_when_explicitly_null(db_session) -> None:
+    created = await make_user(db_session, email="clearnull@example.com")
+    await user_service.update_user(db_session, created.id, avatar_url="https://x/a.png")
+
+    updated = await user_service.update_user(db_session, created.id, avatar_url=None)
+
+    assert updated.avatar_url is None
+
+
+@pytest.mark.asyncio
+async def test_update_user_clears_avatar_when_empty_string(db_session) -> None:
+    created = await make_user(db_session, email="clearempty@example.com")
+    await user_service.update_user(db_session, created.id, avatar_url="https://x/a.png")
+
+    updated = await user_service.update_user(db_session, created.id, avatar_url="")
+
+    assert updated.avatar_url is None
+
+
+@pytest.mark.asyncio
+async def test_update_user_keeps_avatar_when_field_is_omitted(db_session) -> None:
+    created = await make_user(db_session, email="keepavatar@example.com")
+    await user_service.update_user(db_session, created.id, avatar_url="https://x/a.png")
+
+    updated = await user_service.update_user(db_session, created.id, is_active=False)
+
+    assert updated.avatar_url == "https://x/a.png"
+    assert updated.is_active is False
+
+
+@pytest.mark.asyncio
 async def test_update_user_raises_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match="not found"):
         await user_service.update_user(

@@ -46,13 +46,7 @@ async def update_user(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
 ) -> UserListResponse:
-    user = await user_service.update_user(
-        db,
-        user_id,
-        is_active=payload.is_active,
-        is_platform_admin=payload.is_platform_admin,
-        avatar_url=payload.avatar_url,
-    )
+    user = await user_service.update_user(db, user_id, **payload.model_dump(exclude_unset=True))
     return UserListResponse.model_validate(user)
 
 

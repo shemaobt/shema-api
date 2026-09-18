@@ -84,11 +84,7 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     user = await user_service.update_user(
-        db,
-        current_user.id,
-        display_name=payload.display_name,
-        avatar_url=payload.avatar_url,
-        locale=payload.locale,
+        db, current_user.id, **payload.model_dump(exclude_unset=True)
     )
     invalidate_user(user.id)
     return _user_response(user)
