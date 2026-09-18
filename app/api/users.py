@@ -47,11 +47,12 @@ async def update_user(
     user_id: str,
     payload: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_platform_admin),
+    current_user: User = Depends(require_platform_admin),
 ) -> UserListResponse:
     user = await user_service.update_user(
         db,
         user_id,
+        current_user,
         is_active=payload.is_active,
         is_platform_admin=payload.is_platform_admin,
         avatar_url=payload.avatar_url,

@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.services import user_service
 from tests.baker import (
     make_app,
@@ -39,25 +39,62 @@ async def test_get_user_by_id_raises_not_found(db_session) -> None:
 
 @pytest.mark.asyncio
 async def test_update_user_toggles_is_active(db_session) -> None:
+    admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
     created = await make_user(db_session, email="toggle@example.com", is_active=True)
     assert created.is_active is True
-    updated = await user_service.update_user(db_session, created.id, is_active=False)
+    updated = await user_service.update_user(db_session, created.id, admin, is_active=False)
     assert updated.is_active is False
 
 
 @pytest.mark.asyncio
 async def test_update_user_toggles_is_platform_admin(db_session) -> None:
+    admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
     created = await make_user(db_session, email="admin@example.com", is_platform_admin=False)
     assert created.is_platform_admin is False
-    updated = await user_service.update_user(db_session, created.id, is_platform_admin=True)
+    updated = await user_service.update_user(db_session, created.id, admin, is_platform_admin=True)
     assert updated.is_platform_admin is True
 
 
 @pytest.mark.asyncio
+async def test_update_user_rejects_self_admin_flag_change(db_session) -> None:
+    admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
+
+    with pytest.raises(AuthorizationError):
+        await user_service.update_user(db_session, admin.id, admin, is_platform_admin=False)
+
+    await db_session.refresh(admin)
+    assert admin.is_platform_admin is True
+
+
+@pytest.mark.asyncio
+async def test_update_user_rejects_self_deactivation(db_session) -> None:
+    admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
+
+    with pytest.raises(AuthorizationError):
+        await user_service.update_user(db_session, admin.id, admin, is_active=False)
+
+    await db_session.refresh(admin)
+    assert admin.is_active is True
+
+
+@pytest.mark.asyncio
+async def test_update_user_allows_self_profile_fields(db_session) -> None:
+    admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
+
+    updated = await user_service.update_user(
+        db_session, admin.id, admin, avatar_url="https://example.com/a.png", locale="pt-BR"
+    )
+
+    assert updated.avatar_url == "https://example.com/a.png"
+    assert updated.locale == "pt-BR"
+
+
+@pytest.mark.asyncio
 async def test_update_user_raises_not_found(db_session) -> None:
+    admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
     with pytest.raises(NotFoundError, match="not found"):
         await user_service.update_user(
-            db_session, "00000000-0000-0000-0000-000000000000", is_active=False
+            db_session, "00000000-0000-0000-0000-000000000000", admin, is_active=False
         )
 
 
