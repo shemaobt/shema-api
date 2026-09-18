@@ -1,6 +1,8 @@
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.models.app import AppCreate, AppUpdate
 from app.services import app_service
 from tests.baker import make_app, make_role, make_user, make_user_app_role
 
@@ -28,7 +30,7 @@ async def test_create_app_with_all_fields(db_session) -> None:
         app_url="https://example.com",
         ios_url="https://apps.apple.com/app",
         android_url="https://play.google.com/app",
-        platform="both",
+        platforms=["web", "android", "ios"],
         is_active=True,
     )
     assert app.app_key == "full-app"
@@ -38,9 +40,36 @@ async def test_create_app_with_all_fields(db_session) -> None:
     assert app.app_url == "https://example.com"
     assert app.ios_url == "https://apps.apple.com/app"
     assert app.android_url == "https://play.google.com/app"
-    assert app.platform == "both"
+    assert app.platforms == ["web", "android", "ios"]
     assert app.is_active is True
     assert app.id is not None
+
+
+@pytest.mark.asyncio
+async def test_create_app_defaults_platforms_to_web(db_session) -> None:
+    app = await app_service.create_app(db_session, app_key="def-app", name="Default App")
+    assert app.platforms == ["web"]
+
+
+def test_app_platforms_reject_empty() -> None:
+    with pytest.raises(ValidationError):
+        AppCreate(app_key="x", name="X", platforms=[])
+    with pytest.raises(ValidationError):
+        AppUpdate(platforms=[])
+
+
+def test_app_platforms_reject_duplicates() -> None:
+    with pytest.raises(ValidationError):
+        AppCreate(app_key="x", name="X", platforms=["web", "web"])
+    with pytest.raises(ValidationError):
+        AppUpdate(platforms=["ios", "ios"])
+
+
+@pytest.mark.asyncio
+async def test_update_app_platforms(db_session) -> None:
+    created = await make_app(db_session, app_key="plat-app", name="Plat App")
+    updated = await app_service.update_app(db_session, created.id, platforms=["android", "ios"])
+    assert updated.platforms == ["android", "ios"]
 
 
 @pytest.mark.asyncio
