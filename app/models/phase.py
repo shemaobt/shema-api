@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.core.enums import PhaseStatus
+
 
 class PhaseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -42,13 +44,16 @@ class ProjectPhaseResponse(BaseModel):
     phase_id: str
     phase_name: str
     phase_description: str | None
+    #: ``str``, not ``PhaseStatus``: the column is free and still holds whatever was
+    #: written before the set was closed, and a read must render that row rather than
+    #: raise on it. The closed set is published on the write side, where a client needs it.
     status: str
 
     model_config = {"from_attributes": True}
 
 
 class ProjectPhaseStatusUpdate(BaseModel):
-    status: str = Field(min_length=1, max_length=20)
+    status: PhaseStatus
     note: str | None = Field(default=None, max_length=10000)
 
 

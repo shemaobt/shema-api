@@ -89,6 +89,7 @@ async def test_status_update_phase_not_in_project_journey(client, db_session):
         headers=headers,
     )
     assert resp.status_code == 422
+    assert resp.json()["code"] == "UNKNOWN_REFERENCE"
 
 
 async def test_status_update_invalid_status(client, db_session):
@@ -103,6 +104,19 @@ async def test_status_update_invalid_status(client, db_session):
     assert resp.status_code == 422
 
 
+async def test_status_set_is_published_in_the_openapi_schema(client):
+    resp = await client.get("/openapi.json")
+    assert resp.status_code == 200
+    assert resp.json()["components"]["schemas"]["PhaseStatus"]["enum"] == [
+        "not_started",
+        "in_progress",
+        "delayed",
+        "blocked",
+        "completed",
+        "cancelled",
+    ]
+
+
 async def test_status_update_note_required_for_blocking_statuses(client, db_session):
     _journey, phase, project = await _project_with_phase(db_session)
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
@@ -114,6 +128,7 @@ async def test_status_update_note_required_for_blocking_statuses(client, db_sess
             headers=headers,
         )
         assert resp.status_code == 422
+        assert resp.json()["code"] == "UNPROCESSABLE_VALUE"
     with_note = await client.patch(
         f"/api/projects/{project.id}/phases/{phase.id}",
         json={"status": "blocked", "note": "Waiting on vendor"},

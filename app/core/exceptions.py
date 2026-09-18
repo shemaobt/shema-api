@@ -27,6 +27,10 @@ ERROR_CODE_BAD_REQUEST = "BAD_REQUEST"
 # names a row that is not there. The client fixes it by picking a different id, not by
 # reshaping the request.
 ERROR_CODE_UNKNOWN_REFERENCE: Final = "UNKNOWN_REFERENCE"
+# The other half of 422, and the reason UNKNOWN_REFERENCE could not be stretched over it:
+# every id in the body exists, the body itself is what cannot be accepted. The client fixes
+# it by sending a different value or filling a field in, not by picking another row.
+ERROR_CODE_UNPROCESSABLE_VALUE: Final = "UNPROCESSABLE_VALUE"
 ERROR_CODE_NOT_FOUND = "NOT_FOUND"
 ERROR_CODE_INTERNAL = "INTERNAL_ERROR"
 ERROR_CODE_UPSTREAM = "UPSTREAM_ERROR"
@@ -113,6 +117,23 @@ class UnknownReferenceError(Exception):
     ``detail`` as a string only after matching ``code`` never meets the list. Unifying
     the two would mean rewriting the body of every validation error the API returns,
     which breaks existing clients and is not this exception's to do.
+    """
+
+
+class UnprocessableValueError(Exception):
+    """A value outside a closed set, or a field required by a rule the shape cannot state.
+
+    Kept apart from ``UnknownReferenceError``, whose 422 it shares, because that one is
+    closed on purpose — *a write named a foreign key that does not exist* — and ``code`` is
+    what a client reads to decide what to do next. Borrowing it tells a manager who left
+    ``note`` empty to go and pick a different id.
+
+    Not a ``ValidationError`` either, which answers 400. What raises this is the rule the
+    request model could not carry: whether a phase status needs a note depends on the
+    status, so it can only be checked once both fields are in hand. The closed sets the
+    model *can* carry are already answered 422 by FastAPI on that same request, and one
+    refusal of one body arriving as 400 and its neighbour as 422 is a difference the
+    client would have to learn by trial.
     """
 
 
@@ -295,6 +316,15 @@ async def handle_unknown_reference(_request: Request, exc: UnknownReferenceError
     )
 
 
+async def handle_unprocessable_value(
+    _request: Request, exc: UnprocessableValueError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=_error_body(str(exc), ERROR_CODE_UNPROCESSABLE_VALUE),
+    )
+
+
 async def handle_incomplete_submission(
     _request: Request, exc: IncompleteSubmission
 ) -> JSONResponse:
@@ -394,6 +424,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(InvalidTokenError, handle_invalid_token)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, handle_not_found_error)  # type: ignore[arg-type]
     app.add_exception_handler(UnknownReferenceError, handle_unknown_reference)  # type: ignore[arg-type]
+    app.add_exception_handler(UnprocessableValueError, handle_unprocessable_value)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, handle_validation_error)  # type: ignore[arg-type]
     app.add_exception_handler(IncompleteSubmission, handle_incomplete_submission)  # type: ignore[arg-type]
     app.add_exception_handler(UpstreamServiceError, handle_upstream_service_error)  # type: ignore[arg-type]

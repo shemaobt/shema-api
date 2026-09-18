@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+from app.core.enums import PhaseStatus
 
 
 class PhaseCategory(Base):
@@ -47,7 +48,7 @@ class ProjectPhase(Base):
         ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     phase_id: Mapped[str] = mapped_column(ForeignKey("phases.id", ondelete="CASCADE"), index=True)
-    status: Mapped[str] = mapped_column(String(20), default="not_started")
+    status: Mapped[str] = mapped_column(String(20), default=PhaseStatus.NOT_STARTED)
 
 
 class PhaseDependency(Base):
