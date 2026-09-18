@@ -57,6 +57,9 @@ async def update_app(
 async def _approve_pending_requests_for_app(
     db: AsyncSession, app: App, *, actor: User | None
 ) -> None:
+    """Sweep every pending request for this app to approved + grant the default
+    role. Runs in the same session as update_app so the toggle and the grants
+    commit together."""
     role_key = default_role_for(app.app_key)
     now = datetime.now(UTC)
     actor_id = actor.id if actor is not None else None

@@ -8,6 +8,7 @@ from app.services.app.list_user_apps import list_user_apps
 async def list_user_apps_display(
     db: AsyncSession, user_id: str, *, is_admin: bool
 ) -> list[UserAppResponse]:
+    """Return app display models, with admin users seeing every app."""
     if is_admin:
         all_apps = await list_apps(db)
         user_apps_map: dict[str, list[str]] = {}
