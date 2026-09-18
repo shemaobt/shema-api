@@ -228,6 +228,31 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     assert agent.systems == []
 
 
+async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
+    patch_agent,
+) -> None:
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+    one_miss = [
+        {"role": "guide", "text": "vamos conhecer o livro", "outcome": "pass"},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+    ]
+
+    outcome = await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="   ",
+        messages=one_miss,
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        settings=_settings(),
+    )
+
+    assert outcome.fixed_line == "D1", "duas mensagens guardadas davam D2 pela paridade"
+    assert agent.systems == []
+
+
 async def test_a_rejected_panorama_turn_is_never_voiced(patch_agent) -> None:
     patch_agent(
         FakeAgent(
