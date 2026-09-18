@@ -63,8 +63,9 @@ seam would have to answer this question before it opened.
 Consequences, decided knowing them. A session whose telling-back was started over now carries
 `untold_part` beside `no_telling_back`, because every part it holds stands with nothing told on it;
 that is the same hole read honestly. The verdict's untold errand, `first_untold`, still speaks only
-of stretches, so a team sent back by the release gate and a team sent back by the check are told
-about different things — out of scope here and named as a finding. `SCHEMA_VERSION` does not move
+of stretches, so a team sent back by the release gate and a team sent back by the check were told
+about different things — out of scope here, named as a finding, and closed by ADR 0027, which asks
+this same question at `terminei` and names the parts there. `SCHEMA_VERSION` does not move
 and no key of the packet changes: what changed is which sessions are refused.
 
 The release cases used to be assembled on a stretch naming a recording no row carried, which the
