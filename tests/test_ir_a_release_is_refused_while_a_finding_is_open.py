@@ -71,6 +71,7 @@ from tests.release_harness import (
     supported_comprehension,
     team_headers,
     team_release,
+    the_one_part_of,
 )
 
 REVISION = "20260911_rel02"
@@ -265,7 +266,7 @@ async def _a_wordless_stretch(db: AsyncSession, session: IRSession) -> None:
     await capture_segment(
         db,
         session,
-        take_id="ensaio-1",
+        take_id=(await the_one_part_of(db, session)).id,
         starts_ms=CLIP_MS,
         ends_ms=CLIP_MS + 9000,
         transcript=None,

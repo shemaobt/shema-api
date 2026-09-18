@@ -729,10 +729,9 @@ async def retire_the_part_recorded_again(
 
     The verb has no route of its own and no flag: the tablet already sends every part under
     `parte-N` with the number beside it, so a second take under N is the team recording part N
-    again and nothing else could be. It sits here rather than in `store_take`, which is a
-    storage primitive two other callers depend on — the text seam declares its parts through
-    one of them, and the **Rebuild** stores a passage that carries the number of the recording
-    it was built from and must retire none of the stretches it is about to re-address.
+    again and nothing else could be. It sits here rather than in `store_take`, which is a storage
+    primitive that knows nothing of parts: the two routes that keep a telling of a stretch store
+    through it as well, and a room verb inside it would run on every take the room keeps.
 
     What it takes: the stretches whose recording is one of the *other* takes of that number,
     divided parents and their pieces alike; the findings that pointed at them, a **Swap** whole;

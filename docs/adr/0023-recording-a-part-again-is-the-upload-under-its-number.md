@@ -28,12 +28,14 @@ included, and it is where the history is read.
 pericope as scope: keyed on the string, a seam session would be one part and a re-record would
 retire the whole rehearsal. Zero is a number, and the seam's parts start there.
 
-**The verb is the route and not `store_take`.** Storing is a primitive with two other callers,
-and one of them is the **Rebuild**: it stores a passage assembled around a corrected stretch,
-carrying the number of the recording it was built from, and it then re-points those very
-stretches at the file that came out. Retiring inside the storing would take away the stretches
-the rebuild exists to keep. The seam's `declare_rehearsal_parts` is untouched for the same
-reason.
+**The verb is the route and not `store_take`.** Storing is a primitive that knows nothing of parts:
+its two other callers keep the tellings of a stretch, and a verb inside it would run on every take
+the room keeps. The reason first written here was the **Rebuild**, a third caller that stored a
+passage assembled around a corrected stretch under the number of the recording it was built from
+and then re-pointed those very stretches at it — retiring inside the storing would have taken away
+the stretches the rebuild existed to keep. That caller is gone with the gesture (ADR 0025) and the
+rule stands on the sentence above. The seam's `declare_rehearsal_parts` writes its rows without the
+primitive at all.
 
 **The newest under a number is the last of them in reading order** — the pass the tablet
 counted, then the moment the upload landed — and not the moment alone. That stamp is when the

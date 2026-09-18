@@ -33,6 +33,7 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     unheard_parts,
 )
+from app.services.internalization_room.release import compose_internalization_release
 from app.services.internalization_room.segments import capture_segment
 from app.services.internalization_room.sessions import begin_back_translation_again
 from tests.release_harness import ensaio_take, rehearsed_session
@@ -40,6 +41,7 @@ from tests.room_harness import (
     PART_MS,
     PLAYBACK_BLOCKER,
     P,
+    after,
     another_rehearsal_take,
     heard_every_part,
     played_every_part,
@@ -96,11 +98,15 @@ def _covering(take: IRTake, *, duration_ms: int = PART_MS) -> dict[str, Any]:
     return played_every_part([take.id], duration_ms=duration_ms)["played_by_take"][0]
 
 
-async def _rehearsed_and_told_back(db: AsyncSession) -> IRSession:
-    """A session that needs nothing but the report to travel: one part, one stretch told."""
+async def _rehearsed_and_told_back(db: AsyncSession) -> tuple[IRSession, IRTake]:
+    """A session that needs nothing but the report to travel: one part, one stretch told.
+
+    The part comes back beside it because a case that records a second one has to say which of
+    the two is the newer, and the rehearsal it is newer than is this one.
+    """
     session, take = await rehearsed_session(db, language="pt")
     await tell_back_about(db, session, take)
-    return session
+    return session, take
 
 
 async def _told_back_on_a_new_part(db: AsyncSession, session: IRSession, *, sha256: str) -> IRTake:
@@ -365,6 +371,10 @@ async def test_a_replaced_attempt_archives_the_report_per_take(
     Read where Refine reads it. The archived attempt is the history the packet carries, and a
     report that left no trace there would make the record say the team never listened — on the
     one recording where what they heard is all that is left of it.
+
+    Composed rather than built: starting the telling-back over leaves the four parts standing
+    with nothing told on any of them, which the gate refuses as untold ground. That refusal is
+    another file's subject; this one is about what the archive keeps.
     """
     session, parts = await rehearsed_in_parts(db_session, 4)
     glued = PART_MS * len(parts)
@@ -383,7 +393,7 @@ async def test_a_replaced_attempt_archives_the_report_per_take(
     started_over = await _told_back_on_a_new_part(db_session, session, sha256="e" * 64)
     await _finish(client, session.id, report={"played_by_take": [_covering(started_over)]})
 
-    packet = await release_packet(db_session, session)
+    packet, _blockers = await compose_internalization_release(db_session, session)
     archived = packet["back_translation"]["superseded_attempts"][-1]
 
     assert archived["played_by_take"] == per_take
@@ -397,7 +407,7 @@ async def test_a_release_with_no_report_of_playback_is_refused(
 ) -> None:
     """The tablet says nothing about playback, which is what it says whenever the clip did not
     run to its end. Silence is not a claim that the team heard themselves."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(client, session.id)
 
@@ -414,10 +424,12 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     so what reaches the gate is a session that told the new clip back and never said anybody
     played it. The package would otherwise travel on a report about audio nobody will hear.
     """
-    session = await _rehearsed_and_told_back(db_session)
+    session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(db_session, session, sha256="b" * 64)
+    again = await another_rehearsal_take(
+        db_session, session, sha256="b" * 64, created_at=after(part)
+    )
     await begin_back_translation_again(db_session, session)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id)
@@ -430,7 +442,7 @@ async def test_an_honest_report_on_the_current_rehearsal_releases(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Control: the team played their own clip through, and the package travels."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
@@ -443,10 +455,12 @@ async def test_a_fresh_report_after_a_re_record_releases(
 ) -> None:
     """Re-recording is the team working, not the team erring, and playing the new clip through
     has to be enough to release it."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(db_session, session, sha256="b" * 64)
+    again = await another_rehearsal_take(
+        db_session, session, sha256="b" * 64, created_at=after(part)
+    )
     await begin_back_translation_again(db_session, session)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
@@ -459,7 +473,7 @@ async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Control against regression: half a clip played is still half a clip played."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(
         client,
@@ -480,7 +494,7 @@ async def test_a_report_with_no_clip_to_measure_against_is_refused(
     measured, and the other half — a length with nothing played — is a report that the team
     played nothing at all. A part whose length is zero is the first of those on the wire.
     """
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(
         client, session.id, report=await heard_every_part(db_session, session.id, duration_ms=0)
@@ -493,14 +507,16 @@ async def test_a_report_with_no_clip_to_measure_against_is_refused(
 async def test_a_session_with_nothing_told_back_is_not_also_blamed_for_playback(
     db_session: AsyncSession,
 ) -> None:
-    """One thing wrong is told to the team once.
+    """Each errand is named once, and only the errands that exist.
 
-    There is nothing to have played back before a stretch exists, so the room names what is
-    actually missing and does not hand the team a second errand that would not help.
+    There is nothing to have played back before a stretch exists, so the room does not hand the
+    team a second errand that would not help. What it does name twice is two different things:
+    the reading is empty, and the recording they made carries nobody's words. A team told only
+    the first would go looking for a list to fill; told only the second, for a recording to make.
     """
     session, _ = await rehearsed_session(db_session, language="pt")
 
     refused = await release_blockers(db_session, session)
 
-    assert "no_telling_back" in refused
+    assert refused == ["no_telling_back", "untold_part"]
     assert PLAYBACK_BLOCKER not in refused

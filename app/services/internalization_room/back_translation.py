@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
-from app.db.models.internalization_room import IRSegment
+from app.db.models.internalization_room import IRSegment, IRTake
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.fail_safe import FailSafe, first
@@ -337,6 +337,20 @@ def rehearsed_parts(stretches: list[IRSegment]) -> list[str]:
     more — so a part leaves the question by being recorded over and by nothing else.
     """
     return sorted({stretch.take_id for stretch in stretches})
+
+
+def untold_parts(parts: list[IRTake], rehearsal_take_ids: list[str]) -> list[IRTake]:
+    """Which of the rehearsal's current parts carry nobody's words, in the order they read.
+
+    Empty is told. A part the team recorded again arrives with no stretch of its own, and the
+    stretches of the recording it replaced went with that recording (ADR 0023) — so a part can
+    stand in the **Packet** as the rehearsal while nothing anybody said is about it.
+
+    Asked of the parts and answered about the parts, because the question is which recording is
+    current and that is a fact of the takes. What was heard of it is a fact of the report, and
+    the function below is where that is asked (ADR 0026).
+    """
+    return [part for part in parts if part.id not in rehearsal_take_ids]
 
 
 def unheard_parts(state: BackTranslationState, rehearsal_take_ids: list[str]) -> list[str]:

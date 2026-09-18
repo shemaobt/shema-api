@@ -418,7 +418,7 @@ async def stretch_on(db: AsyncSession, session: IRSession, take: IRTake) -> IRSe
     return next(stretch for stretch in standing if stretch.take_id == take.id)
 
 
-def _after(take: IRTake) -> datetime | None:
+def after(take: IRTake) -> datetime | None:
     """A moment past a take's own, so which of two takes is the newer never rests on a clock."""
     return take.created_at + timedelta(minutes=1) if take.created_at else None
 
@@ -479,7 +479,7 @@ async def record_the_part_again(
         sha256=sha256,
         scope=part.scope,
         ordinal=part.ordinal,
-        created_at=_after(part),
+        created_at=after(part),
     )
     await retire_the_part_recorded_again(db, session, fresh)
     return fresh
