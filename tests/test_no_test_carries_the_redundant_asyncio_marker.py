@@ -25,6 +25,8 @@ def _asyncio_mode() -> str:
 
 def _is_bare_asyncio_marker(node: ast.expr) -> bool:
     if isinstance(node, ast.Call):
+        if node.args or node.keywords:
+            return False
         node = node.func
     return (
         isinstance(node, ast.Attribute)
@@ -46,6 +48,23 @@ def _asyncio_marker_lines(module: Path) -> list[int]:
             if _is_bare_asyncio_marker(decorator):
                 lines.append(decorator.lineno)
     return lines
+
+
+def _decorator(source: str) -> ast.expr:
+    return ast.parse(source).body[0].decorator_list[0]
+
+
+def test_a_bare_marker_is_flagged() -> None:
+    assert _is_bare_asyncio_marker(_decorator("@pytest.mark.asyncio\nasync def f(): ...\n"))
+
+
+def test_an_empty_call_marker_is_flagged() -> None:
+    assert _is_bare_asyncio_marker(_decorator("@pytest.mark.asyncio()\nasync def f(): ...\n"))
+
+
+def test_a_marker_carrying_loop_scope_is_not_flagged() -> None:
+    marker = _decorator('@pytest.mark.asyncio(loop_scope="session")\nasync def f(): ...\n')
+    assert not _is_bare_asyncio_marker(marker)
 
 
 def test_asyncio_mode_is_auto() -> None:
