@@ -68,9 +68,7 @@ async def test_count_team_sizes_excludes_platform_admins(db_session) -> None:
 async def test_members_preview_excludes_platform_admins(db_session) -> None:
     lang = await make_language(db_session, code="tsq")
     project = await make_project(db_session, language_id=lang.id)
-    member = await make_user(
-        db_session, email="member@example.com", display_name="Member One"
-    )
+    member = await make_user(db_session, email="member@example.com", display_name="Member One")
     admin = await make_user(
         db_session,
         email="admin@example.com",
