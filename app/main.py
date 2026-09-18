@@ -40,6 +40,8 @@ from app.api.places import router as places_router
 from app.api.platform import router as platform_router
 from app.api.project_health import router as project_health_router
 from app.api.projects import router as projects_router
+from app.api.public import router as public_router
+from app.api.public_requests import router as public_requests_router
 from app.api.rag import router as rag_router
 from app.api.resource_requests import router as resource_requests_router
 from app.api.resource_requests.access import router as resource_request_access_router
@@ -162,6 +164,12 @@ def create_app() -> FastAPI:
         tags=["facilitator-legend"],
     )
     app.include_router(devices_router, prefix="/api/devices", tags=["devices"])
+    app.include_router(public_router, prefix="/api/public", tags=["public"])
+    app.include_router(
+        public_requests_router,
+        prefix="/api/public-requests",
+        tags=["public-requests"],
+    )
     app.include_router(phases_router, prefix="/api/phases", tags=["phases"])
     app.include_router(books_router, prefix="/api/books", tags=["books"])
     app.include_router(pericopes_router, prefix="/api/pericopes", tags=["pericopes"])

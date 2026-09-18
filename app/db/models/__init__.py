@@ -55,6 +55,7 @@ from app.db.models.project_health import (
     PHLanguage,
     PHReport,
 )
+from app.db.models.public_request import PublicRequest
 from app.db.models.resource_request import (
     RRBoardTransition,
     RRBudgetLine,
@@ -168,6 +169,7 @@ __all__ = [
     "ProjectOrganizationAccess",
     "ProjectPhase",
     "ProjectUserAccess",
+    "PublicRequest",
     "RRBoardTransition",
     "RRBudgetLine",
     "RRCurrency",

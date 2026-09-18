@@ -107,3 +107,22 @@ class SessionState(StrEnum):
     IN_PROGRESS = "in_progress"
     COMPLETE = "complete"
     ABANDONED = "abandoned"
+
+
+class PublicRequestKind(StrEnum):
+    CREATE_LANGUAGE = "create_language"
+    CREATE_PROJECT = "create_project"
+
+
+class PublicRequestStatus(StrEnum):
+    """The states of ``public_requests.status``, the queue a visitor's request moves through.
+
+    The column stays a ``String(20)`` and enforcement is at the write path, as with the other
+    machines here. ``PENDING`` is where a request is born and is never a verdict, which is why
+    the review payload narrows this to a ``Literal`` of the two a reviewer may stamp instead of
+    accepting the whole enum.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
