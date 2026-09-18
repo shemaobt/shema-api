@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.services import project_service
 from tests.baker import (
     make_language,
@@ -259,6 +259,26 @@ async def test_update_project_raises_not_found_for_invalid_language(db_session) 
             project.id,
             language_id="00000000-0000-0000-0000-000000000000",
         )
+
+
+@pytest.mark.asyncio
+async def test_create_project_rejects_inactive_language(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    lang.is_active = False
+    await db_session.commit()
+    with pytest.raises(ValidationError, match="not active"):
+        await project_service.create_project(db_session, name="X", language_id=lang.id)
+
+
+@pytest.mark.asyncio
+async def test_update_project_rejects_inactive_language(db_session) -> None:
+    active = await make_language(db_session, code="act")
+    inactive = await make_language(db_session, code="ina")
+    project = await make_project(db_session, active.id, name="P")
+    inactive.is_active = False
+    await db_session.commit()
+    with pytest.raises(ValidationError, match="not active"):
+        await project_service.update_project(db_session, project.id, language_id=inactive.id)
 
 
 @pytest.mark.asyncio

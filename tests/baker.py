@@ -225,8 +225,9 @@ async def make_language(
     *,
     name: str = "Test Language",
     code: str = "tst",
+    created_by: str | None = None,
 ) -> Language:
-    lang = Language(name=name, code=code.lower())
+    lang = Language(name=name, code=code.lower(), created_by=created_by)
     db.add(lang)
     await db.commit()
     await db.refresh(lang)
@@ -654,7 +655,6 @@ async def grant_app_role(
     role_key: str = "user",
     label: str | None = None,
 ) -> UserAppRole:
-    """Convenience: ensure a role with `role_key` exists for `app` and assign it to `user`."""
     role = await make_role(
         db,
         app.id,
