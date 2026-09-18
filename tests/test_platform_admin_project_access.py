@@ -1,7 +1,11 @@
 import pytest
+from sqlalchemy import select
 
 from app.core.exceptions import NotFoundError, ValidationError
+from app.db.models.project import ProjectInvite
 from app.services import project_service
+from app.services.oral_collector import invite_service
+from app.services.oral_collector.project_member_counts import get_member_counts
 from tests.baker import (
     make_language,
     make_project,
@@ -86,3 +90,46 @@ async def test_create_project_admin_creator_gets_no_membership(db_session) -> No
     stmt = select(ProjectUserAccess).where(ProjectUserAccess.project_id == project.id)
     rows = list((await db_session.execute(stmt)).scalars())
     assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_member_count_agrees_with_the_listed_members(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id)
+    member = await make_user(db_session, email="member@example.com")
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    await make_project_user_access(db_session, project.id, member.id)
+    await make_project_user_access(db_session, project.id, admin.id)
+
+    counts = await get_member_counts(db_session, [project.id])
+    listed = await project_service.list_project_user_access(db_session, project.id)
+
+    assert counts[project.id] == len(listed) == 1
+
+
+@pytest.mark.asyncio
+async def test_member_count_is_zero_when_only_an_admin_is_linked(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id)
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    await make_project_user_access(db_session, project.id, admin.id)
+
+    counts = await get_member_counts(db_session, [project.id])
+
+    assert counts.get(project.id, 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_invite_rejects_platform_admin_and_writes_nothing(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id)
+    inviter = await make_user(db_session, email="inviter@example.com")
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+
+    with pytest.raises(ValidationError, match="Platform admins cannot be invited"):
+        await invite_service.create_invite(
+            db_session, project.id, admin.email, "member", str(inviter.id)
+        )
+
+    stmt = select(ProjectInvite).where(ProjectInvite.project_id == project.id)
+    assert list((await db_session.execute(stmt)).scalars()) == []
