@@ -11,7 +11,7 @@ async def update_phase(db: AsyncSession, phase_id: str, payload: PhaseUpdate) ->
     phase = await get_phase_or_404(db, phase_id)
     if payload.name is not None:
         phase.name = payload.name
-    if payload.description is not None:
+    if "description" in payload.model_fields_set:
         phase.description = payload.description
     if "category_id" in payload.model_fields_set:
         if payload.category_id is not None:

@@ -9,7 +9,7 @@ async def update_journey(db: AsyncSession, journey_id: str, payload: JourneyUpda
     journey = await get_journey_or_404(db, journey_id)
     if payload.name is not None:
         journey.name = payload.name
-    if payload.description is not None:
+    if "description" in payload.model_fields_set:
         journey.description = payload.description
     await db.commit()
     await db.refresh(journey)

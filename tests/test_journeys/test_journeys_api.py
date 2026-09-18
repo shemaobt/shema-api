@@ -95,6 +95,34 @@ async def test_update_journey_as_admin(client, db_session):
     assert body["description"] == "Updated"
 
 
+async def test_update_journey_clears_description_with_explicit_null(client, db_session):
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    journey = await make_journey(db_session, name="Kept", description="To be cleared")
+    headers = await auth_header(db_session, admin)
+    resp = await client.patch(
+        f"/api/journeys/{journey.id}",
+        json={"description": None},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["description"] is None
+    assert body["name"] == "Kept"
+
+
+async def test_update_journey_omitting_description_leaves_it_alone(client, db_session):
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    journey = await make_journey(db_session, name="Old name", description="Kept")
+    headers = await auth_header(db_session, admin)
+    resp = await client.patch(
+        f"/api/journeys/{journey.id}",
+        json={"name": "New name"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["description"] == "Kept"
+
+
 async def test_update_journey_as_non_admin_forbidden(client, db_session):
     user = await make_user(db_session, email="user@example.com")
     journey = await make_journey(db_session)

@@ -1,19 +1,10 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import UnknownReferenceError
+from app.core.enums import NOTE_REQUIRED_PHASE_STATUSES, PhaseStatus
+from app.core.exceptions import UnknownReferenceError, UnprocessableValueError
 from app.db.models.auth import User
 from app.db.models.phase import PhaseStatusLog, ProjectPhase
-
-ALLOWED_PHASE_STATUSES = (
-    "not_started",
-    "in_progress",
-    "delayed",
-    "blocked",
-    "completed",
-    "cancelled",
-)
-NOTE_REQUIRED_STATUSES = ("delayed", "blocked", "cancelled")
 
 
 async def update_project_phase_status(
@@ -22,7 +13,7 @@ async def update_project_phase_status(
     phase_id: str,
     user: User,
     *,
-    status: str,
+    status: PhaseStatus,
     note: str | None = None,
 ) -> ProjectPhase:
     from app.services.oral_collector.require_manager import require_project_manager
@@ -38,13 +29,9 @@ async def update_project_phase_status(
         action="update phase status",
         is_platform_admin=user.is_platform_admin,
     )
-    if status not in ALLOWED_PHASE_STATUSES:
-        raise UnknownReferenceError(
-            f"Invalid status '{status}'. Valid statuses are: {', '.join(ALLOWED_PHASE_STATUSES)}"
-        )
     normalized_note = note.strip() if note and note.strip() else None
-    if status in NOTE_REQUIRED_STATUSES and normalized_note is None:
-        raise UnknownReferenceError(f"A note is required for status '{status}'")
+    if status in NOTE_REQUIRED_PHASE_STATUSES and normalized_note is None:
+        raise UnprocessableValueError(f"A note is required for status '{status}'")
     if phase.journey_id != project.journey_id:
         raise UnknownReferenceError("Phase does not belong to this project's journey")
 
@@ -55,7 +42,7 @@ async def update_project_phase_status(
         )
     )
     link = result.scalar_one_or_none()
-    from_status = link.status if link else "not_started"
+    from_status = link.status if link else PhaseStatus.NOT_STARTED
     if link is None:
         link = ProjectPhase(project_id=project_id, phase_id=phase_id, status=status)
         db.add(link)

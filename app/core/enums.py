@@ -107,3 +107,34 @@ class SessionState(StrEnum):
     IN_PROGRESS = "in_progress"
     COMPLETE = "complete"
     ABANDONED = "abandoned"
+
+
+class PhaseStatus(StrEnum):
+    """The accepted values of ``project_phases.status``.
+
+    The column is a free ``String(20)`` and stays one, for the reason ``ProjectRole``
+    gives: enforcement is at the write path, and rewriting rows a looser code path already
+    wrote is not a migration to make blind. What the closed set buys here is the other
+    half — declared on ``ProjectPhaseStatusUpdate`` it reaches OpenAPI, so the console
+    reads the six values off the contract instead of repeating them, and a seventh is
+    added in one place.
+
+    Reads are deliberately **not** coerced through this. ``ProjectPhaseResponse`` and
+    ``PhaseStatusLogResponse`` keep ``str`` so a row written before the set was closed
+    still renders, and so growing the set does not break clients generated against
+    today's schema — the argument ``ReviewFlagResponse`` already makes.
+    """
+
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    DELAYED = "delayed"
+    BLOCKED = "blocked"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+#: The three that say the work stopped. A schema cannot state this rule — whether ``note``
+#: is required depends on ``status`` — so it lives at the write path with the set itself.
+NOTE_REQUIRED_PHASE_STATUSES: frozenset[PhaseStatus] = frozenset(
+    {PhaseStatus.DELAYED, PhaseStatus.BLOCKED, PhaseStatus.CANCELLED}
+)
