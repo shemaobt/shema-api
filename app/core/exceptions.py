@@ -346,7 +346,7 @@ async def handle_unreadable_reply(_request: Request, exc: UnreadableReply) -> JS
 async def handle_storage_unavailable_error(
     _request: Request, exc: StorageUnavailableError
 ) -> JSONResponse:
-    logger.error("Object storage unavailable: %s", exc)
+    logger.error("Object storage unavailable: %s", exc, exc_info=exc)
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content=_error_body(str(exc), ERROR_CODE_STORAGE_UNAVAILABLE),
