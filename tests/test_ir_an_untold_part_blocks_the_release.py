@@ -59,6 +59,7 @@ from tests.room_harness import (
 )
 
 UNTOLD_PART = "untold_part"
+NOT_CHECKED = "telling_back_not_checked"
 
 #: New bytes on every upload, because a take is addressed by the hash of its audio: the same
 #: bytes twice are one row and no re-recording at all.
@@ -92,8 +93,12 @@ async def room_app(db_session: AsyncSession) -> App:
     return app
 
 
-async def _heard_and_checked(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> None:
-    """Press `terminei` over the parts the session's stretches are standing on right now."""
+async def _pressed_terminei(client: httpx.AsyncClient, db: AsyncSession, session_id: str) -> None:
+    """Press `terminei` over the parts the session's stretches are standing on right now.
+
+    What the press answers is each case's own subject: it confers where nothing is owed, and it
+    refuses where a part stands with nothing told over it.
+    """
     report = await heard_every_part(db, session_id)
     answered = await press_terminei(client, session_id, report=report)
     assert answered.status_code == 200, answered.text
@@ -117,7 +122,7 @@ async def _a_session_with_part_two_recorded_again(
     to the refusal proves nothing if the session was already being refused for something else.
     """
     session, parts = await rehearsed_in_parts(db, 3, project_id=project_id)
-    await _heard_and_checked(client, db, session.id)
+    await _pressed_terminei(client, db, session.id)
     assert (await release_packet(db, session))["readiness"] == "ready_for_refine", (
         "the case starts from a session the gate lets through"
     )
@@ -144,19 +149,20 @@ async def test_a_part_recorded_again_and_not_told_back_blocks_the_release(
 async def test_a_clean_reading_of_the_other_parts_does_not_release_the_untold_part(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Parts one and three read clean and heard through, and the release is still refused.
+    """The check refuses the press, and the release goes on naming the part behind it.
 
-    This is the hole the ticket closes. The check starts over when a part is recorded again, so
-    the team presses `terminei` again; the analyst reads the stretches that stand, which are the
-    other two parts, and finds nothing; the report covers the two recordings those stretches
-    name. Every stretch-derived gate is then green, and the part nobody told back is still there.
+    This was the hole: the analyst read the two parts that stand, found nothing, and the passage
+    was conferred with a recording nobody had explained in it — the release alone refused it.
+    The check refuses that press itself now (ADR 0027), so the passage is not checked, and this
+    is where the two answers are read side by side: the gate names the part the check named, and
+    a build that stopped doing either would be caught here.
     """
     session, _parts, _fresh = await _a_session_with_part_two_recorded_again(client, db_session)
 
-    await _heard_and_checked(client, db_session, session.id)
+    await _pressed_terminei(client, db_session, session.id)
 
-    assert await release_blockers(db_session, session) == [UNTOLD_PART], (
-        "nothing else stands, and the untold part alone refuses the release"
+    assert await release_blockers(db_session, session) == [NOT_CHECKED, UNTOLD_PART], (
+        "the check refused the press, and the part nobody told back is still standing"
     )
 
 
@@ -177,7 +183,7 @@ async def test_the_facilitator_cannot_force_past_an_untold_part(
     session, _parts, _fresh = await _a_session_with_part_two_recorded_again(
         client, db_session, project_id=project.id
     )
-    await _heard_and_checked(client, db_session, session.id)
+    await _pressed_terminei(client, db_session, session.id)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     refused = await client.post(desk_release(session.id), headers=desk, json={"force": True})
@@ -198,7 +204,7 @@ async def test_telling_the_new_part_back_lifts_the_blocker(
     session, (one, _two, three), fresh = await _a_session_with_part_two_recorded_again(
         client, db_session
     )
-    await _heard_and_checked(client, db_session, session.id)
+    await _pressed_terminei(client, db_session, session.id)
 
     await tell_back_about(
         db_session,
@@ -207,7 +213,7 @@ async def test_telling_the_new_part_back_lifts_the_blocker(
         transcript="a cena dois contada de novo",
         bridge_take_id="retro-de-novo",
     )
-    await _heard_and_checked(client, db_session, session.id)
+    await _pressed_terminei(client, db_session, session.id)
 
     packet = await release_packet(db_session, await get_session(db_session, session.id))
     audio = packet["audio"]
@@ -266,7 +272,7 @@ async def test_an_old_composed_row_still_yields_one_take_per_number(
     told_on_two = await stretch_on(db_session, session, two)
     told_on_two.take_id = assembled.id
     await db_session.commit()
-    await _heard_and_checked(client, db_session, session.id)
+    await _pressed_terminei(client, db_session, session.id)
 
     audio = (await release_packet(db_session, session))["audio"]
 

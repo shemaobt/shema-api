@@ -6,11 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRSessionStatus
-from app.services.internalization_room.back_translation import (
-    BackTranslationState,
-    Finding,
-    FindingKind,
-)
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.checkpoints import (
     checkpoints_for,
@@ -27,19 +22,16 @@ from app.services.internalization_room.hard_stretches import note_a_hard_stretch
 from app.services.internalization_room.segments import (
     capture_segment,
     final_segments,
-    retired_segments,
 )
 from app.services.internalization_room.session_end import SessionState, end_of
 from app.services.internalization_room.sessions import (
     RETELLS_BEFORE_A_WARNING,
     append_exchange,
     apply_coverage,
-    begin_back_translation_again,
     comprehension_of,
     create_session,
     get_session,
     mark_needs_person,
-    save_back_translation,
     save_comprehension,
 )
 
@@ -226,19 +218,6 @@ async def _tell(db_session: AsyncSession, session, text: str):
     )
 
 
-async def test_a_fresh_recording_throws_the_whole_telling_back_away(
-    db_session: AsyncSession,
-) -> None:
-    session = await create_session(db_session, pericope=P)
-    await save_back_translation(db_session, session, BackTranslationState(scope=P))
-    await _tell(db_session, session, "velho")
-
-    await begin_back_translation_again(db_session, session)
-
-    assert await final_segments(db_session, session.id) == []
-    assert session.status is IRSessionStatus.IN_PROGRESS
-
-
 async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: AsyncSession) -> None:
     """The count is the stretch's, so the service decides on the stretch and not on the state.
 
@@ -259,66 +238,6 @@ async def test_the_third_telling_of_a_stretch_reaches_the_warning(db_session: As
     assert await note_a_hard_stretch(db_session, session, told) is True
     assert session.status is IRSessionStatus.NEEDS_PERSON
     assert session.halt_kind == HaltKind.WARNING.value
-
-
-async def test_a_rerecorded_attempt_is_archived_not_erased(db_session: AsyncSession) -> None:
-    session = await create_session(db_session, pericope=P)
-    await save_back_translation(
-        db_session,
-        session,
-        BackTranslationState(
-            scope=P,
-            findings=[Finding(kind=FindingKind.MISSING, note="Orfa")],
-        ),
-    )
-    told = await _tell(db_session, session, "Noemi mandou Rute voltar")
-
-    fresh = await begin_back_translation_again(db_session, session)
-
-    assert await final_segments(db_session, session.id) == []
-    assert fresh.findings == []
-    assert len(fresh.superseded) == 1
-    archived = fresh.superseded[0]
-    assert archived.findings[0].kind is FindingKind.MISSING
-    retired = await retired_segments(db_session, session.id)
-    assert [one.id for one in retired] == [told.id], (
-        "o trecho não é copiado para dentro do arquivo: ele fica onde está, "
-        "marcado como não valendo mais, e continua recuperável"
-    )
-
-
-async def test_restarting_an_empty_telling_back_archives_nothing(
-    db_session: AsyncSession,
-) -> None:
-    session = await create_session(db_session, pericope=P)
-    await save_back_translation(db_session, session, BackTranslationState(scope=P))
-
-    fresh = await begin_back_translation_again(db_session, session)
-
-    assert fresh.superseded == []
-
-
-async def test_two_retakes_keep_both_histories_in_order(db_session: AsyncSession) -> None:
-    session = await create_session(db_session, pericope=P)
-    await save_back_translation(
-        db_session,
-        session,
-        BackTranslationState(scope=P, findings=[Finding(kind=FindingKind.MISSING, note="Orfa")]),
-    )
-    await _tell(db_session, session, "primeira tentativa")
-
-    state = await begin_back_translation_again(db_session, session)
-    state.findings = [Finding(kind=FindingKind.ADDITION, note="Belém")]
-    await save_back_translation(db_session, session, state)
-    await _tell(db_session, session, "segunda tentativa")
-
-    fresh = await begin_back_translation_again(db_session, session)
-
-    assert [attempt.findings[0].note for attempt in fresh.superseded] == ["Orfa", "Belém"]
-    assert [one.transcript for one in await retired_segments(db_session, session.id)] == [
-        "primeira tentativa",
-        "segunda tentativa",
-    ]
 
 
 async def test_a_session_saved_under_a_purpose_this_build_forgot_still_opens(

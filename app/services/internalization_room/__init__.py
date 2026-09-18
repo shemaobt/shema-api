@@ -12,6 +12,7 @@ from app.services.internalization_room.back_translation import (
     segments_block,
     the_finding_that_leads,
     unheard_parts,
+    untold_parts,
     verify_correction,
     with_the_whole_stretch_asked_for,
 )
@@ -53,7 +54,6 @@ from app.services.internalization_room.sessions import (
     apply_coverage,
     attend,
     back_translation_of,
-    begin_back_translation_again,
     comprehension_of,
     create_session,
     get_session,
@@ -90,7 +90,6 @@ __all__ = [
     "apply_coverage",
     "attend",
     "back_translation_of",
-    "begin_back_translation_again",
     "capture_and_note_a_hard_stretch",
     "capture_segment",
     "check_the_telling_back",
@@ -140,6 +139,7 @@ __all__ = [
     "told_back",
     "unattend",
     "unheard_parts",
+    "untold_parts",
     "verify_correction",
     "with_the_whole_stretch_asked_for",
 ]

@@ -5,10 +5,9 @@ from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
-from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
-    BackTranslationRestartResponse,
     BackTranslationVerdictResponse,
     FinishBackTranslationRequest,
 )
@@ -16,7 +15,12 @@ from app.services import internalization_room as room
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
-from app.services.internalization_room.takes import rehearsal_take_of, store_take, takes_of
+from app.services.internalization_room.takes import (
+    current_parts,
+    rehearsal_take_of,
+    store_take,
+    takes_of,
+)
 from app.services.internalization_room.voice_handles import clip_url
 
 router = APIRouter()
@@ -144,6 +148,40 @@ async def add_chunk(
     )
 
 
+async def _the_untold_errand(
+    db: AsyncSession,
+    session: IRSession,
+    state: room.BackTranslationState,
+    *,
+    segment_id: str | None = None,
+    take_ids: list[str] | None = None,
+) -> BackTranslationVerdictResponse:
+    """Say the H family over ground nobody has told back, and step the waiting ladder.
+
+    One errand over two grounds: a stretch standing with nothing said on it, and a current
+    **Part** no standing stretch is a slice of. The room says the same thing over both — the
+    family names no frase, so it is true of either — and the ladder belongs to the errand and
+    not to the ground, which is why a press spent on one advances the line the next press
+    speaks over the other.
+
+    The answer names its ground on its own field and leaves the other empty, so the app decides
+    by the field and never by what is missing from the body.
+    """
+    waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
+    spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
+    state.waited += 1
+    await room.save_back_translation(db, session, state)
+    return BackTranslationVerdictResponse(
+        session_id=session.id,
+        audio_url=clip_url(spoken.key),
+        fixed_line="",
+        checked=False,
+        untold_segment_id=segment_id,
+        untold_take_ids=take_ids or [],
+        findings_remaining=0,
+    )
+
+
 @router.post(
     "/sessions/{session_id}/back-translation/finish",
     response_model=BackTranslationVerdictResponse,
@@ -162,8 +200,12 @@ async def finish(
     off the wheel for good, on a telling-back that never happened. A finished passage never
     returns to the wheel, by design, so there is no undo for that.
 
-    The answer is the D family instead — *"I could not make anything out, can you tell me
-    again?"* — which is what the situation actually is, and is already on the tablet as audio.
+    The answer is never the badge, then. The D family stood here — *"I could not make anything
+    out, can you tell me again?"* — and a team that has recorded and told nothing back no longer
+    reaches it: their recording is a current part with nothing over it, which the untold errand
+    below answers first and answers truly, because nothing was said for the room to fail to hear
+    (ADR 0027). What is left for D is a session carrying no rehearsal take at all, which is the
+    one shape where there is no part to send them to.
 
     Only the stretches the team actually explained are read. A stretch whose mother-tongue
     recording was replaced is waiting to be told again and carries nothing they said, so it
@@ -178,9 +220,9 @@ async def finish(
     and `checked` is what strikes the passage off the wheel for good.
 
     The H family says so out loud rather than leaving the team with silence. Deliberately not
-    the D family eight lines below: that one says the room could not hear, which is false here
-    — it heard everything — and it asks the team to repeat what they already told instead of
-    telling what they have not.
+    the D family below: that one says the room could not hear, which is false here — it heard
+    everything — and it asks the team to repeat what they already told instead of telling what
+    they have not.
 
     It is the one line of that file the room speaks rather than the app plays. The fail-safes
     are shipped as audio because they have to work when nothing else does — no network, no
@@ -188,8 +230,19 @@ async def finish(
     the analyst is called, and the verdict a few lines below is already synthesized. Shipping
     it would have meant a new app release before the team could hear anything at all.
 
-    Told back is not the same as heard, and the second errand is asked after the first. While
-    any current part of the rehearsal is unheard, the analyst is not asked either: what it
+    The same errand is owed over a **Part** no stretch is a slice of, and it is asked second.
+    A part recorded again arrives carrying nobody's words — its predecessor's stretches went
+    with the recording they explained (ADR 0023) — so the reading above finds nothing waiting
+    and the passage could be conferred with a scene nobody had told back in it. The question
+    is the takes' to answer and not the stretches': which recording is current is the number
+    the tablet sent, which is why this is asked of `current_parts` and not of `first_untold`.
+    It sits between the stretch and the listening, the order the release gate lists the three
+    blockers in, because a part nobody told is owed a telling before it is owed a playing, and
+    it spends what the stretch spends — the same family of lines, the same turn of the waiting
+    ladder — because in the room it is the same errand said over different ground.
+
+    Told back is not the same as heard, and the third errand is asked after the other two.
+    While any current part of the rehearsal is unheard, the analyst is not asked either: what it
     would answer is a list of what is missing from the passage, and over a part nobody played
     that sentence is about audio the team never listened to — the room would voice it as if
     the work were done, on a reading of a passage they were still walking through. So the
@@ -228,24 +281,17 @@ async def finish(
 
     untold = room.first_untold(final)
     if untold is not None:
-        waiting, _ = choose(
-            FailSafe.UNTOLD_STRETCH,
-            session.language,
-            turn=state.waited,
-        )
-        spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
-        state.waited += 1
-        await room.save_back_translation(db, session, state)
-        return BackTranslationVerdictResponse(
-            session_id=session.id,
-            audio_url=clip_url(spoken.key),
-            fixed_line="",
-            checked=False,
-            untold_segment_id=untold.id,
-            findings_remaining=0,
+        return await _the_untold_errand(db, session, state, segment_id=untold.id)
+
+    rehearsed = room.rehearsed_parts(final)
+    takes = await takes_of(db, session.id)
+    untold_ground = room.untold_parts(current_parts(takes), rehearsed)
+    if untold_ground:
+        return await _the_untold_errand(
+            db, session, state, take_ids=[part.id for part in untold_ground]
         )
 
-    unheard = room.unheard_parts(state, room.rehearsed_parts(final))
+    unheard = room.unheard_parts(state, rehearsed)
     if unheard:
         line, _ = process_line("P", "unheard", session.language)
         spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]
@@ -295,7 +341,7 @@ async def finish(
         state=state,
         told=told,
         retired=await room.retired_segments(db, session.id),
-        takes=await takes_of(db, session.id),
+        takes=takes,
         settings=get_settings(),
     )
     voiced = (
@@ -322,28 +368,4 @@ async def finish(
         finding_segment_id=verdict.finding.segment_id if verdict.finding else None,
         findings_remaining=verdict.findings_remaining,
         used_fail_safe=verdict.outcome.used_fail_safe,
-    )
-
-
-@router.post(
-    "/sessions/{session_id}/back-translation/restart",
-    response_model=BackTranslationRestartResponse,
-    dependencies=[room_caller_dep],
-)
-async def restart(
-    session_id: str,
-    db: AsyncSession = Depends(get_db),
-) -> BackTranslationRestartResponse:
-    """The team threw the recording away and will rehearse again: the telling-back starts over.
-
-    The stretches of the abandoned clip stop counting here. While this had no route, the app
-    reset only its own list, so the next `finish` re-analysed the old clip together with the
-    new one and the analyst never saw a smaller transcript than the round before.
-    """
-    session = await room.get_session(db, session_id)
-    await room.begin_back_translation_again(db, session)
-    return BackTranslationRestartResponse(
-        session_id=session.id,
-        chunks=len(await room.final_segments(db, session.id)),
-        needs_person=session.status is IRSessionStatus.NEEDS_PERSON,
     )

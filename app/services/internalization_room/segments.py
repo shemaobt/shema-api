@@ -591,8 +591,8 @@ async def refuse_a_stretch_that_is_not_a_unit(
     """
     if segment.superseded_at is not None:
         raise ValidationError(
-            "This stretch no longer counts: it was already replaced, or the telling-back "
-            "it belonged to was started over"
+            "This stretch no longer counts: it was already replaced, or the part of the "
+            "rehearsal it is a slice of was recorded again"
         )
     if any(row.parent_id == segment.id for row in await current_segments(db, session_id)):
         raise ValidationError(

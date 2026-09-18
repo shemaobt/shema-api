@@ -95,8 +95,9 @@ async def replace(
     It is the only correction the room has. A stretch is a listening pause and not a unit
     anybody rehearsed, so what a team does about a *recording* that is wrong is record the
     **Part** again — an upload under that part's number, which is a different route (ADR 0023,
-    ADR 0025). Nothing assembled by the server travels to Refine, so this answer names no
-    rebuilt passage.
+    ADR 0025). This answer assembles nothing and names no take of the server's; an old composed
+    row is history, and it travels as the part its number makes it, by the same rule as any
+    take — `current_parts`, which the check and the **Packet** both read.
 
     The audio is therefore not optional: without it there is no correction to express, and a
     call that omits it is the app's own bug, refused by this signature before any service runs.

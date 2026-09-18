@@ -99,11 +99,21 @@ async def a_session(db: AsyncSession, *, team_id: str | None = None) -> str:
     return str(session.id)
 
 
-async def rehearse(client: httpx.AsyncClient, session_id: str) -> str:
+async def rehearse(client: httpx.AsyncClient, session_id: str, *, part: int | None = None) -> str:
+    """Send the rehearsal up the way the tablet sends it, whole or as the part numbered `part`.
+
+    None is the passage recorded in one go, which is what these cases want unless they go on to
+    record that part again: the verb for *this part again* reads the number and nothing else
+    (ADR 0023).
+    """
+    data: dict[str, str] = {"kind": IRTakeKind.ENSAIO.value, "scope": P}
+    if part is not None:
+        data["scope"] = f"parte-{part}"
+        data["chunk_index"] = str(part)
     kept = await client.post(
         f"{IR}/sessions/{session_id}/takes",
         headers={"X-Room-Key": ROOM_KEY, "X-Room-Device": DEVICE},
-        data={"kind": IRTakeKind.ENSAIO.value, "scope": P},
+        data=data,
         files={"file": ("ensaio.m4a", b"a equipe ensaiou a passagem inteira", "audio/mp4")},
     )
     assert kept.status_code == 200, kept.text

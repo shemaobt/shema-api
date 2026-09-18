@@ -43,7 +43,6 @@ from app.services.internalization_room.segments import (
     retired_segments,
 )
 from app.services.internalization_room.sessions import (
-    begin_back_translation_again,
     get_session,
     report_playback,
 )
@@ -81,6 +80,7 @@ from tests.release_harness import (
 )
 from tests.room_harness import (
     PART_MS,
+    record_the_part_again,
     rehearsed_in_parts,
     room_client,
     the_bucket_is_in_memory,
@@ -470,21 +470,22 @@ async def test_every_telling_of_a_stretch_travels_with_its_count(
 async def test_an_abandoned_telling_back_is_listed_apart(
     client: httpx.AsyncClient, db_session: AsyncSession, room_app
 ) -> None:
-    """A telling-back started over abandons its stretches: nothing took their place.
+    """A part recorded again abandons its stretches: nothing took their place.
 
     They are not history *of* anything standing now, so listing them inside a chain would
-    tell the consultant a stretch was retold when the team threw the recording away.
+    tell the consultant a stretch was retold when the recording it explained was replaced.
     """
     project, _credential = await a_claimed_device(db_session)
-    session = await ready_session(db_session, project_id=project.id, tell=_told_once)
+    session = await ready_session(db_session, project_id=project.id, ordinal=1, tell=_told_once)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
     thrown_away = (await final_segments(db_session, session.id))[0]
-    await begin_back_translation_again(db_session, await get_session(db_session, session.id))
+    part = await the_one_part_of(db_session, session)
+    fresh = await record_the_part_again(db_session, session, part, sha256="b" * 64)
     fresh_retro = await _a_retro_take(db_session, session, "de-novo")
     await capture_segment(
         db_session,
         session,
-        take_id="ensaio-2",
+        take_id=fresh.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
         bridge_take_id=fresh_retro.id,
@@ -750,13 +751,13 @@ async def test_a_hard_stretch_mark_lands_on_the_stretch_standing_now(
 
     The row cannot move — it is written once and cleared by nothing — so the file walks the
     chain forward and says both: which stretch the mark is about now, and the name the row
-    carries. A chain the team abandoned leads to no stretch standing, and the file says that
-    with a null rather than by pointing at a row nobody can hear any more.
+    carries. A chain whose recording the team replaced leads to no stretch standing, and the
+    file says that with a null rather than by pointing at a row nobody can hear any more.
     """
     project, _credential = await a_claimed_device(db_session)
     session_id = await _a_session(db_session, team_id=project.id)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
-    take_id = await _rehearse(client, session_id)
+    take_id = await _rehearse(client, session_id, part=1)
     await _told(client, session_id, take_id, 1)
     first = (await final_segments(db_session, session_id))[0]
     for saying in ("o trecho de novo", "o trecho mais uma vez", "o trecho pela quarta vez"):
@@ -774,7 +775,9 @@ async def test_a_hard_stretch_mark_lands_on_the_stretch_standing_now(
     assert mark["crossed_at"] == row.crossed_at.isoformat()
     assert row.segment_id == first.id
 
-    await begin_back_translation_again(db_session, await get_session(db_session, session_id))
+    session = await get_session(db_session, session_id)
+    part = await the_one_part_of(db_session, session)
+    await record_the_part_again(db_session, session, part, sha256="b" * 64)
 
     after = await _the_file(client, session_id, desk)
 
@@ -789,10 +792,8 @@ async def test_the_listening_report_names_each_part(
     """One entry per part of the rehearsal, and the file says which one nobody heard.
 
     A part is its own recording, so what the team heard of one is judged against that part
-    alone (ADR 0017). An attempt the team replaced keeps the listening it reported at the
-    time, which is the record of what that reading stood on and is never evidence about the
-    recording standing now — and it keeps its findings **with** the analyst's words, because
-    an archived reading is exactly the material this file exists to carry.
+    alone (ADR 0017): the entry says which part it is about, and a part the report never named
+    reads as unheard rather than as absent.
     """
     project, _credential = await a_claimed_device(db_session)
     session, (first, second, third) = await rehearsed_in_parts(db_session, 3, project_id=project.id)
@@ -802,10 +803,6 @@ async def test_the_listening_report_names_each_part(
         for part in (first, second)
     ]
     state = await _read(db_session, session)
-    state.checked = False
-    state.findings = [
-        Finding(kind=FindingKind.ADDITION, note=THE_ANALYSTS_NOTE, segment_id=None, chunk=1)
-    ]
     await report_playback(
         db_session,
         session,
@@ -827,12 +824,3 @@ async def test_the_listening_report_names_each_part(
         PART_MS,
         PART_MS,
     ]
-
-    await begin_back_translation_again(db_session, await get_session(db_session, session.id))
-
-    archived = await _the_file(client, session.id, desk)
-
-    (attempt,) = archived["superseded_attempts"]
-    assert [entry["take_id"] for entry in attempt["played_by_take"]] == [first.id, second.id]
-    assert attempt["findings"][0]["note"] == THE_ANALYSTS_NOTE
-    assert THE_ANALYSTS_NOTE in json.dumps(archived)

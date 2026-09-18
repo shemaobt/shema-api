@@ -52,7 +52,6 @@ from app.services.internalization_room.takes import take_by_id
 from tests.baker import make_app, make_role
 from tests.release_harness import (
     APP_KEY,
-    KEY,
     PREFIX,
     a_claimed_device,
     at_the_desk,
@@ -638,22 +637,6 @@ async def test_a_retry_of_a_replaced_take_leaves_the_part_that_replaced_it(
     assert told.id in await _standing_ids(db_session, session.id)
     assert (await _stored(db_session, told)).superseded_at is None
     assert (await stored_telling_back(db_session, session)).checked is True
-
-
-async def test_starting_over_still_retires_every_part(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """The recording thrown away whole keeps its own verb, and it still takes everything."""
-    session, _parts = await rehearsed_in_parts(db_session, 3)
-
-    answered = await client.post(
-        f"{PREFIX}/sessions/{session.id}/back-translation/restart", headers={"X-Room-Key": KEY}
-    )
-
-    assert answered.status_code == 200, answered.text
-    assert answered.json()["chunks"] == 0
-    assert await _standing_ids(db_session, session.id) == []
-    assert len((await stored_telling_back(db_session, session)).superseded) == 1
 
 
 async def test_divided_lists_a_parent_before_its_child(

@@ -33,16 +33,11 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     unheard_parts,
 )
-from app.services.internalization_room.release import compose_internalization_release
-from app.services.internalization_room.segments import capture_segment
-from app.services.internalization_room.sessions import begin_back_translation_again
-from tests.release_harness import ensaio_take, rehearsed_session
+from tests.release_harness import rehearsed_session
 from tests.room_harness import (
     PART_MS,
     PLAYBACK_BLOCKER,
     P,
-    after,
-    another_rehearsal_take,
     heard_every_part,
     played_every_part,
     press_terminei,
@@ -101,29 +96,12 @@ def _covering(take: IRTake, *, duration_ms: int = PART_MS) -> dict[str, Any]:
 async def _rehearsed_and_told_back(db: AsyncSession) -> tuple[IRSession, IRTake]:
     """A session that needs nothing but the report to travel: one part, one stretch told.
 
-    The part comes back beside it because a case that records a second one has to say which of
-    the two is the newer, and the rehearsal it is newer than is this one.
+    The part comes back beside it because a case that records it again has to name which part
+    it is recording, and it carries its number for the same reason: the verb for *this part
+    again* is the upload under that number and reads nothing else (ADR 0023).
     """
-    session, take = await rehearsed_session(db, language="pt")
-    await tell_back_about(db, session, take)
-    return session, take
-
-
-async def _told_back_on_a_new_part(db: AsyncSession, session: IRSession, *, sha256: str) -> IRTake:
-    """The team started the telling-back over on a recording they made fresh."""
-    take = ensaio_take(session.id, sha256=sha256)
-    db.add(take)
-    await db.commit()
-    await capture_segment(
-        db,
-        session,
-        take_id=take.id,
-        starts_ms=0,
-        ends_ms=PART_MS,
-        bridge_take_id="retro-do-recomeco",
-        transcript="a passagem contada de novo do comeco",
-    )
-    return take
+    session, (part,) = await rehearsed_in_parts(db, 1)
+    return session, part
 
 
 async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
@@ -355,44 +333,6 @@ async def test_a_flat_report_does_not_erase_the_parts_a_newer_build_named(
     assert packet["back_translation"]["played_by_take"] == per_take
 
 
-async def test_a_replaced_attempt_archives_the_report_per_take(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """Starting over keeps what the team reported about the rehearsal they threw away.
-
-    Read where Refine reads it. The archived attempt is the history the packet carries, and a
-    report that left no trace there would make the record say the team never listened — on the
-    one recording where what they heard is all that is left of it.
-
-    Composed rather than built: starting the telling-back over leaves the four parts standing
-    with nothing told on any of them, which the gate refuses as untold ground. That refusal is
-    another file's subject; this one is about what the archive keeps.
-    """
-    session, parts = await rehearsed_in_parts(db_session, 4)
-    glued = PART_MS * len(parts)
-    per_take = [_covering(part) for part in parts]
-
-    await _finish(
-        client,
-        session.id,
-        report={
-            "played_by_take": per_take,
-            "played_ranges": [[0, glued]],
-            "clip_duration_ms": glued,
-        },
-    )
-    await begin_back_translation_again(db_session, session)
-    started_over = await _told_back_on_a_new_part(db_session, session, sha256="e" * 64)
-    await _finish(client, session.id, report={"played_by_take": [_covering(started_over)]})
-
-    packet, _blockers = await compose_internalization_release(db_session, session)
-    archived = packet["back_translation"]["superseded_attempts"][-1]
-
-    assert archived["played_by_take"] == per_take
-    assert archived["played_ranges"] == [[0, glued]]
-    assert archived["clip_duration_ms"] == glued
-
-
 async def test_a_release_with_no_report_of_playback_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -410,21 +350,22 @@ async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
 ) -> None:
     """The report was honest about the clip it was made of, and that clip is gone.
 
-    Starting the telling-back over is what a re-record does, and it takes the report with it,
-    so what reaches the gate is a session that told the new clip back and never said anybody
-    played it. The package would otherwise travel on a report about audio nobody will hear.
+    Recording the part again leaves that report naming a recording no stretch is a slice of any
+    more, so what reaches the gate is a session that told the new clip back and never said
+    anybody played it. The package would otherwise travel on a report about audio nobody hears.
+
+    The reading is not thrown away with the recording — `analysed_segment_ids` stays where it
+    is (ADR 0023) — so the gate says the passage was read and is not checked, which is the
+    other half of what a re-recording leaves behind.
     """
     session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(
-        db_session, session, sha256="b" * 64, created_at=after(part)
-    )
-    await begin_back_translation_again(db_session, session)
+    again = await record_the_part_again(db_session, session, part, sha256="b" * 64)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id)
 
-    assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
+    assert await release_blockers(db_session, session) == [NOT_CHECKED, PLAYBACK_BLOCKER]
 
 
 async def test_an_honest_report_on_the_current_rehearsal_releases(
@@ -446,10 +387,7 @@ async def test_a_fresh_report_after_a_re_record_releases(
     session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(
-        db_session, session, sha256="b" * 64, created_at=after(part)
-    )
-    await begin_back_translation_again(db_session, session)
+    again = await record_the_part_again(db_session, session, part, sha256="b" * 64)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
