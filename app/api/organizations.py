@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError, NotFoundError
-from app.core.org_scope import get_managed_org_ids
+from app.core.org_scope import get_managed_org_ids, get_managed_project_ids
 from app.db.models.auth import User
 from app.models.org import (
     OrganizationCreate,
@@ -24,9 +24,13 @@ router = APIRouter()
 @router.get("", response_model=list[OrganizationResponse])
 async def list_organizations(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> list[OrganizationResponse]:
-    orgs = await organization_service.list_organizations(db)
+    if user.is_platform_admin:
+        orgs = await organization_service.list_organizations(db)
+    else:
+        managed_project_ids = await get_managed_project_ids(db, user.id)
+        orgs = await organization_service.list_organizations_by_projects(db, managed_project_ids)
     return [OrganizationResponse.model_validate(o) for o in orgs]
 
 
