@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from sqlalchemy import select
@@ -7,6 +9,28 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRTurn
+from app.models.internalization_room import TurnResponse
+
+_in_flight: dict[tuple[str, str], asyncio.Task[TurnResponse]] = {}
+
+
+async def answer_once(
+    session_id: str, turn_id: str, answer: Callable[[], Coroutine[Any, Any, TurnResponse]]
+) -> TurnResponse:
+    """Run this turn once while it is in flight; a resend joins it and hears the same answer.
+
+    A registry in this process rather than a claim row, because the second request has to
+    come back with the first one's answer and a row can only hand that over by polling it
+    until the first commits. Shielded so the tablet that gave up on the first request
+    cannot take the answer away from the one still waiting for it.
+    """
+    key = (session_id, turn_id)
+    running = _in_flight.get(key)
+    if running is None:
+        running = asyncio.create_task(answer())
+        _in_flight[key] = running
+        running.add_done_callback(lambda _: _in_flight.pop(key, None))
+    return await asyncio.shield(running)
 
 
 async def answered_turn(db: AsyncSession, session_id: str, turn_id: str) -> dict[str, Any] | None:
