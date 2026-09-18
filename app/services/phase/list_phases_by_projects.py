@@ -44,16 +44,21 @@ async def list_phases_with_deps_by_projects(
     db: AsyncSession,
     project_ids: list[str],
 ) -> PhasesWithDepsResponse:
+    """The scoped phases, each with every prerequisite it has — in scope or not.
+
+    ``add_dependency`` accepts any pair of phases, so a prerequisite may sit in a journey
+    this manager does not reach. Filtering ``depends_on_id`` by the scope too was rejected:
+    it drops that edge without saying so, and the phase then reads as ready to start.
+    An id outside the scope is not a secret either — ``GET /phases/{id}/dependencies``
+    answers any authenticated caller.
+    """
     phases = await list_phases_by_projects(db, project_ids)
     if not phases:
         return PhasesWithDepsResponse(phases=[], dependencies={})
 
     phase_ids = [p.id for p in phases]
     deps_result = await db.execute(
-        select(PhaseDependency).where(
-            PhaseDependency.phase_id.in_(phase_ids),
-            PhaseDependency.depends_on_id.in_(phase_ids),
-        )
+        select(PhaseDependency).where(PhaseDependency.phase_id.in_(phase_ids))
     )
     all_deps = list(deps_result.scalars().all())
 

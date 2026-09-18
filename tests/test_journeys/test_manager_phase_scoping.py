@@ -56,3 +56,21 @@ async def test_list_phases_by_projects_filter_outside_scope_is_empty(db_session)
     )
 
     assert result == []
+
+
+async def test_list_phases_with_deps_keeps_prerequisite_outside_the_scope(db_session):
+    lang = await make_language(db_session, code="mpx")
+    mine = await make_journey(db_session, name="Mine")
+    theirs = await make_journey(db_session, name="Theirs")
+    managed = await make_project(
+        db_session, language_id=lang.id, name="Managed", journey_id=mine.id
+    )
+    ph_mine = await make_phase(db_session, name="Mine A", journey_id=mine.id)
+    ph_theirs = await make_phase(db_session, name="Theirs A", journey_id=theirs.id)
+
+    await phase_service.add_dependency(db_session, ph_mine.id, ph_theirs.id)
+
+    with_deps = await phase_service.list_phases_with_deps_by_projects(db_session, [managed.id])
+
+    assert [p.id for p in with_deps.phases] == [ph_mine.id]
+    assert with_deps.dependencies == {ph_mine.id: [ph_theirs.id]}
