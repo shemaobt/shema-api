@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_middleware import get_current_user
+from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
 from app.db.models.auth import User
@@ -24,7 +24,7 @@ async def list_languages(
 async def create_language(
     payload: LanguageCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> LanguageResponse:
     language = await language_service.create_language(db, payload.name, payload.code)
     return LanguageResponse.model_validate(language)

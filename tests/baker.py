@@ -654,7 +654,6 @@ async def grant_app_role(
     role_key: str = "user",
     label: str | None = None,
 ) -> UserAppRole:
-    """Convenience: ensure a role with `role_key` exists for `app` and assign it to `user`."""
     role = await make_role(
         db,
         app.id,

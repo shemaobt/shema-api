@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.projects._deps import assert_project_access
-from app.core.auth_middleware import get_current_user
+from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.db.models.auth import User
 from app.models.project import (
@@ -35,7 +35,7 @@ async def list_projects(
 async def create_project(
     payload: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_platform_admin),
 ) -> ProjectResponse:
     project = await project_service.create_project(
         db,

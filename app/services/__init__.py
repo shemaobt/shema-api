@@ -3,6 +3,7 @@ from app.services import (
     app,
     auth,
     authorization,
+    change_request,
     language,
     meaning_map,
     notifications,
@@ -21,6 +22,7 @@ access_request_service = access_request
 app_service = app
 auth_service = auth
 authorization_service = authorization
+change_request_service = change_request
 language_service = language
 meaning_map_service = meaning_map
 notification_service = notifications
@@ -43,6 +45,8 @@ __all__ = [
     "auth_service",
     "authorization",
     "authorization_service",
+    "change_request",
+    "change_request_service",
     "language",
     "language_service",
     "meaning_map",
