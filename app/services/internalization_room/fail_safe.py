@@ -138,6 +138,36 @@ def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tupl
     return choose(FailSafe.INAUDIBLE, language_code, turn=min(misses, last))
 
 
+#: Consecutive validation fail-safes before the room stops re-asking and pauses out loud.
+FAILURES_BEFORE_THE_PAUSE = 2
+
+
+def validation_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
+    """The line for one more draft the Validator would not settle: A0, A1, then the pause.
+
+    Repeated validation failures used to walk the A catalogue by the parity of the record,
+    so a session picked two of its four lines and the graceful pause never came. The count
+    is the A and E lines in the trailing run of fail-safe turns; a turn that needed no
+    fail-safe ends the run, and a miss in between does not, because the team was not
+    answered by the Guide on that turn either.
+
+    The third consecutive failure is category E, and E is a spoken line and nothing more:
+    the session stays open behind it, and a fourth failure says it again. Nothing here
+    decides that a person is needed — that call is the tablet's.
+    """
+    failures = 0
+    for message in reversed(messages):
+        if message.get("role") != "guide":
+            continue
+        if message.get("outcome") != "fail_safe":
+            break
+        if message.get("category") in (str(FailSafe.UNREPAIRABLE), str(FailSafe.HARD_STOP)):
+            failures += 1
+    if failures >= FAILURES_BEFORE_THE_PAUSE:
+        return choose(FailSafe.HARD_STOP, language_code)
+    return choose(FailSafe.UNREPAIRABLE, language_code, turn=failures)
+
+
 class UnknownProcessLine(LookupError):
     """A process line was asked for by a family or a step nobody wrote.
 

@@ -24,11 +24,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey, IRSession
+from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
-from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import ComprehensionTurn, run_comprehension_turn
 from app.services.internalization_room.sessions import (
@@ -40,6 +39,10 @@ from app.services.internalization_room.sessions import (
 GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam?"
+PAUSE_LINE = (
+    "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de "
+    "vocês, e a gente retoma isso junto."
+)
 P = "P03"
 
 RETIRED_MODULES = (
@@ -115,7 +118,11 @@ async def _the_team_answers(
     )
     session = await save_comprehension(db, session, turn.state)
     session = await append_exchange(
-        db, session, team_utterance=turn.outcome.transcript, guide_response=turn.outcome.speech
+        db,
+        session,
+        team_utterance=turn.outcome.transcript,
+        guide_response=turn.outcome.speech,
+        outcome=turn.outcome,
     )
     return turn, session
 
@@ -205,15 +212,16 @@ class _BrokenModels:
 
 
 @pytest.mark.asyncio
-async def test_a_room_whose_model_keeps_failing_is_never_stopped_for_a_person(
+async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_stopped_for_a_person(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A component that no longer exists cannot decide a session is over.
+    """The failures the ladder once counted were the Assessor's own, and three in a row
+    ended the interview and called somebody. What is counted now is the Validator refusing
+    every draft, and the count walks her catalogue in order — the first two A lines, then
+    the graceful pause — instead of picking two of the four by the parity of the record.
 
-    The failures the ladder counted were the Assessor's own, and three in a row ended the
-    interview and called somebody. What still asks for a person lives outside the turn —
-    the tablet asking, the retelling ceiling, the back-translation ceiling, the device
-    halt — and none of it counts model calls.
+    The pause is a spoken line and nothing more. The session is still in progress after
+    it, a fourth failure says it again, and what asks for a person lives outside the turn.
     """
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
@@ -221,10 +229,34 @@ async def test_a_room_whose_model_keeps_failing_is_never_stopped_for_a_person(
     session = await _a_room_that_has_asked_something(db_session)
 
     spoken = []
-    for _ in range(6):
+    for _ in range(4):
         turn, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
-        spoken.append(turn.outcome.speech)
-        assert not turn.outcome.needs_person
+        spoken.append(turn.outcome.fixed_line)
+        assert session.status is IRSessionStatus.IN_PROGRESS
 
-    hard_stop = utterances(FailSafe.HARD_STOP, "pt")
-    assert not any(line in hard_stop for line in spoken)
+    assert spoken == ["A0", "A1", "E0", "E0"], (
+        "a escada A era indexada pelo tamanho da conversa e a pausa nunca chegava"
+    )
+    assert turn.outcome.speech == PAUSE_LINE
+
+
+@pytest.mark.asyncio
+async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    models = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+    session = await _a_room_that_has_asked_something(db_session)
+    for _ in range(2):
+        _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
+    monkeypatch.setattr(models, "call_agent", _RecordingModels())
+    settled, session = await _the_team_answers(db_session, session, text="Rute foi junto")
+    monkeypatch.setattr(models, "call_agent", _BrokenModels())
+
+    turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
+
+    assert settled.outcome.speech == GUIDE_LINE
+    assert turn.outcome.fixed_line == "A0", (
+        "a contagem não zerava num turno que o Validador aprovou, e a terceira falha da "
+        "sessão virava pausa mesmo com a sala tendo voltado a falar no meio"
+    )

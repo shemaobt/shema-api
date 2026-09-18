@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.fail_safe import validation_ladder
 from app.services.internalization_room.llm import Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
@@ -386,7 +386,7 @@ async def _voiced_after_validation(
         redraft_note = _redraft_note(issues, language_code)
     shim.logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
 
-    speech, line = choose(FailSafe.UNREPAIRABLE, language_code, turn=len(messages))
+    speech, line = validation_ladder(messages, language_code)
     return _timed(
         TurnOutcome(
             speech=speech,
