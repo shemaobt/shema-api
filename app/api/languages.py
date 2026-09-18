@@ -16,9 +16,7 @@ async def list_languages(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[LanguageResponse]:
-    languages = await language_service.list_languages(
-        db, include_inactive=include_inactive and user.is_platform_admin
-    )
+    languages = await language_service.list_languages(db, user, include_inactive=include_inactive)
     return [LanguageResponse.model_validate(lang) for lang in languages]
 
 

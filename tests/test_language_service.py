@@ -58,9 +58,10 @@ async def test_get_language_by_code_returns_none_when_missing(db_session) -> Non
 
 @pytest.mark.asyncio
 async def test_list_languages_ordered_by_code(db_session) -> None:
+    manager = await make_user(db_session, email="manager@example.com")
     await make_language(db_session, code="zzz", name="Z")
     await make_language(db_session, code="aaa", name="A")
-    languages = await language_service.list_languages(db_session)
+    languages = await language_service.list_languages(db_session, manager)
     assert len(languages) == 2
     assert languages[0].code == "aaa"
     assert languages[1].code == "zzz"
@@ -135,7 +136,7 @@ async def test_list_languages_hides_inactive_by_default(db_session) -> None:
     inactive = await make_language(db_session, code="ina", name="Inactive")
     await language_service.deactivate_language(db_session, inactive.id, admin)
 
-    languages = await language_service.list_languages(db_session)
+    languages = await language_service.list_languages(db_session, admin)
     assert [lang.id for lang in languages] == [active.id]
 
 
@@ -146,8 +147,20 @@ async def test_list_languages_include_inactive(db_session) -> None:
     inactive = await make_language(db_session, code="ina", name="Inactive")
     await language_service.deactivate_language(db_session, inactive.id, admin)
 
-    languages = await language_service.list_languages(db_session, include_inactive=True)
+    languages = await language_service.list_languages(db_session, admin, include_inactive=True)
     assert {lang.id for lang in languages} == {active.id, inactive.id}
+
+
+@pytest.mark.asyncio
+async def test_list_languages_ignores_include_inactive_for_non_admin(db_session) -> None:
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    manager = await make_user(db_session, email="manager@example.com")
+    active = await make_language(db_session, code="act", name="Active")
+    inactive = await make_language(db_session, code="ina", name="Inactive")
+    await language_service.deactivate_language(db_session, inactive.id, admin)
+
+    languages = await language_service.list_languages(db_session, manager, include_inactive=True)
+    assert [lang.id for lang in languages] == [active.id]
 
 
 @pytest.mark.asyncio
