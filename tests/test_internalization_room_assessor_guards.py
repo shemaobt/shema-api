@@ -25,7 +25,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
+from app.db.models.internalization_room import IRPromptKey, IRSession
 from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.comprehension.probe import ProbePurpose
 from app.services.internalization_room.comprehension.state import ComprehensionState
@@ -228,8 +228,9 @@ async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_sto
     every draft, and the count walks her catalogue in order — the first two A lines, then
     the graceful pause — instead of picking two of the four by the parity of the record.
 
-    The pause is a spoken line and nothing more. The session is still in progress after
-    it, a fourth failure says it again, and what asks for a person lives outside the turn.
+    The pause is a spoken line and nothing more: a fourth failure says it again, and what
+    asks for a person lives outside the turn. That the session stays open behind it is
+    the route's to show, in `test_ir_the_pause_leaves_the_session_open.py`.
     """
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
@@ -240,7 +241,6 @@ async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_sto
     for _ in range(4):
         turn, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
         spoken.append(turn.outcome.fixed_line)
-        assert session.status is IRSessionStatus.IN_PROGRESS
 
     assert spoken == ["A0", "A1", "E0", "E0"], (
         "a escada A era indexada pelo tamanho da conversa e a pausa nunca chegava"
