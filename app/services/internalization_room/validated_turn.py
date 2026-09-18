@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.fail_safe import validation_ladder
 from app.services.internalization_room.llm import Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
@@ -67,7 +67,6 @@ class TurnOutcome:
     #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
-    needs_person: bool = False
     #: The last words the Guide drafted and the last verdict the Validator gave on them, as
     #: it wrote it — empty when no draft was asked for, or when no reply could be read.
     #: They are what the record keeps of a firing, so a fail-safe can be read back later.
@@ -386,7 +385,7 @@ async def _voiced_after_validation(
         redraft_note = _redraft_note(issues, language_code)
     shim.logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
 
-    speech, line = choose(FailSafe.UNREPAIRABLE, language_code, turn=len(messages))
+    speech, line = validation_ladder(messages, language_code)
     return _timed(
         TurnOutcome(
             speech=speech,

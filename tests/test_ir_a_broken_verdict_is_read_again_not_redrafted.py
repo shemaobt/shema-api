@@ -76,7 +76,6 @@ async def test_a_verdict_unreadable_twice_is_line_a_with_both_redrafts_unspent(
     assert outcome.used_fail_safe is True
     assert outcome.fixed_line.startswith("A")
     assert outcome.speech in utterances(FailSafe.UNREPAIRABLE, "pt")
-    assert outcome.needs_person is False
 
 
 async def test_the_second_reading_judges_the_same_draft_and_its_verdict_stands(

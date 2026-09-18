@@ -231,6 +231,36 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_third_silence_in_a_row_draws_the_third_d_line_whatever_the_conversation_length(
+    patch_agent,
+) -> None:
+    agent = patch_agent(FakeAgent(verdicts=[]))
+    two_misses = [
+        {"role": "guide", "text": "Vamos conhecer a cena.", "outcome": "pass"},
+        {"role": "team", "text": ""},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+    ]
+
+    outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="   ",
+        coverage_state=initial_state(P),
+        messages=two_misses,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=settings(),
+    )
+
+    assert outcome.fixed_line == "D2", (
+        "quatro mensagens guardadas davam D1 pela paridade, fosse a primeira falha ou a terceira"
+    )
+    assert agent.calls == []
+
+
+@pytest.mark.asyncio
 async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
