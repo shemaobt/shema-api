@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import re
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 from app.services.internalization_room._default_prompts import fail_safe_utterances
 from app.services.internalization_room.languages import FLOOR
@@ -114,6 +114,28 @@ def choose(kind: FailSafe, language_code: str = FLOOR, *, turn: int = 0) -> tupl
         return "", ""
     index = turn % len(lines)
     return lines[index], f"{kind}{index}"
+
+
+def inaudible_ladder(messages: list[dict[str, Any]], language_code: str) -> tuple[str, str]:
+    """The D line for one more miss, read off how many the room is already answering.
+
+    The ladder used to be indexed by the length of the conversation, so the very first miss
+    could draw the third line and a team heard perfectly for twenty turns met whichever line
+    the count landed on. It walks the run of misses now — the trailing guide turns that
+    answered with a D line — and any turn the room did hear starts it over.
+
+    It stays on the last line rather than wrapping: a fourth miss re-opening with the first
+    line would ask again as if for the first time, and her rule is one D per evidence asked.
+    """
+    misses = 0
+    for message in reversed(messages):
+        if message.get("role") != "guide":
+            continue
+        if message.get("category") != str(FailSafe.INAUDIBLE):
+            break
+        misses += 1
+    last = len(utterances(FailSafe.INAUDIBLE, language_code)) - 1
+    return choose(FailSafe.INAUDIBLE, language_code, turn=min(misses, last))
 
 
 class UnknownProcessLine(LookupError):
