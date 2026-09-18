@@ -3,11 +3,13 @@ from app.services import (
     app,
     auth,
     authorization,
+    journey,
     language,
     meaning_map,
     notifications,
     org,
     phase,
+    phase_category,
     platform,
     project,
     project_health,
@@ -21,11 +23,13 @@ access_request_service = access_request
 app_service = app
 auth_service = auth
 authorization_service = authorization
+journey_service = journey
 language_service = language
 meaning_map_service = meaning_map
 notification_service = notifications
 organization_service = org
 phase_service = phase
+phase_category_service = phase_category
 platform_service = platform
 project_service = project
 project_health_service = project_health
@@ -43,6 +47,8 @@ __all__ = [
     "auth_service",
     "authorization",
     "authorization_service",
+    "journey",
+    "journey_service",
     "language",
     "language_service",
     "meaning_map",
@@ -52,6 +58,8 @@ __all__ = [
     "org",
     "organization_service",
     "phase",
+    "phase_category",
+    "phase_category_service",
     "phase_service",
     "platform",
     "platform_service",

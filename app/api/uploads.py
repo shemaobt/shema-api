@@ -14,7 +14,7 @@ async def upload_image_endpoint(
     folder: str = "images",
     _: User = Depends(get_current_user),
 ) -> ImageUploadResponse:
-    if folder not in ("app-icons", "avatars", "images"):
+    if folder not in ("app-icons", "avatars", "images", "phase-icons"):
         folder = "images"
     try:
         url = await upload_image(file, folder=folder)

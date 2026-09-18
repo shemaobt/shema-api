@@ -1,3 +1,4 @@
+from app.services.project.assign_journey import assign_journey
 from app.services.project.can_access_project import can_access_project
 from app.services.project.create_project import create_project
 from app.services.project.facilitates_project import facilitates_project
@@ -27,6 +28,7 @@ from app.services.project.update_user_access_role import update_user_access_role
 from app.services.project.validate_project_role import validate_project_role
 
 __all__ = [
+    "assign_journey",
     "can_access_project",
     "create_project",
     "facilitates_project",
