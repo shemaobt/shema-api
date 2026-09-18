@@ -1,6 +1,7 @@
 from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import PublicRequestKind, PublicRequestStatus
 from app.core.exceptions import ConflictError
 from app.db.models.language import Language
 from app.db.models.public_request import PublicRequest
@@ -27,17 +28,17 @@ async def ensure_language_available(db: AsyncSession, name: str, code: str) -> N
     pending_stmt: Select[tuple[PublicRequest]] = (
         select(PublicRequest)
         .where(
-            PublicRequest.status == "pending",
+            PublicRequest.status == PublicRequestStatus.PENDING,
             or_(
                 and_(
-                    PublicRequest.kind == "create_language",
+                    PublicRequest.kind == PublicRequestKind.CREATE_LANGUAGE,
                     or_(
                         func.lower(PublicRequest.name) == lowered_name,
                         PublicRequest.code == lowered_code,
                     ),
                 ),
                 and_(
-                    PublicRequest.kind == "create_project",
+                    PublicRequest.kind == PublicRequestKind.CREATE_PROJECT,
                     or_(
                         func.lower(PublicRequest.new_language_name) == lowered_name,
                         PublicRequest.new_language_code == lowered_code,

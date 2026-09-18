@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import PublicRequestKind
 from app.db.models.public_request import PublicRequest
 from app.services.public_request.ensure_language_available import ensure_language_available
 
@@ -16,7 +17,7 @@ async def create_language_request(
     await ensure_language_available(db, name, normalized_code)
 
     request = PublicRequest(
-        kind="create_language",
+        kind=PublicRequestKind.CREATE_LANGUAGE,
         requester_name=requester_name,
         requester_email=requester_email,
         name=name.strip(),

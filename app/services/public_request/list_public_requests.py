@@ -1,11 +1,15 @@
 from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import PublicRequestKind, PublicRequestStatus
 from app.db.models.public_request import PublicRequest
 
 
 async def list_public_requests(
-    db: AsyncSession, *, kind: str | None = None, status: str | None = None
+    db: AsyncSession,
+    *,
+    kind: PublicRequestKind | None = None,
+    status: PublicRequestStatus | None = None,
 ) -> list[PublicRequest]:
     stmt: Select[tuple[PublicRequest]] = select(PublicRequest).order_by(
         PublicRequest.requested_at.desc()

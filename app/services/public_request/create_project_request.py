@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import PublicRequestKind
 from app.core.exceptions import ValidationError
 from app.db.models.public_request import PublicRequest
 from app.services.language.get_language_or_404 import get_language_or_404
@@ -28,7 +29,7 @@ async def create_project_request(
         raise ValidationError("Select an existing language or propose a new one (name and code)")
 
     request = PublicRequest(
-        kind="create_project",
+        kind=PublicRequestKind.CREATE_PROJECT,
         requester_name=requester_name,
         requester_email=requester_email,
         name=name,

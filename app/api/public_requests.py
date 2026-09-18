@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth_middleware import require_platform_admin
 from app.core.database import get_db
+from app.core.enums import PublicRequestKind, PublicRequestStatus
 from app.db.models.auth import User
 from app.models.public_request import PublicRequestAdminResponse, PublicRequestReview
 from app.services import public_request_service
@@ -12,8 +13,8 @@ router = APIRouter()
 
 @router.get("", response_model=list[PublicRequestAdminResponse])
 async def list_public_requests(
-    kind: str | None = Query(default=None),
-    status: str | None = Query(default=None),
+    kind: PublicRequestKind | None = Query(default=None),
+    status: PublicRequestStatus | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
 ) -> list[PublicRequestAdminResponse]:

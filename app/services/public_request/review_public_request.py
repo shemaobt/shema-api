@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import PublicRequestKind, PublicRequestStatus
 from app.core.exceptions import ConflictError, NotFoundError
 from app.db.models.auth import User
 from app.db.models.language import Language
@@ -14,16 +15,16 @@ async def review_public_request(
     db: AsyncSession,
     reviewer: User,
     request_id: str,
-    status: str,
+    status: PublicRequestStatus,
     reason: str | None,
 ) -> PublicRequest:
     request = await db.get(PublicRequest, request_id)
     if request is None:
         raise NotFoundError("Public request not found")
-    if request.status != "pending":
+    if request.status != PublicRequestStatus.PENDING:
         raise ConflictError("This request has already been reviewed")
 
-    if status == "approved":
+    if status == PublicRequestStatus.APPROVED:
         request.created_entity_id = await _apply(db, request)
 
     request.status = status
@@ -36,7 +37,7 @@ async def review_public_request(
 
 
 async def _apply(db: AsyncSession, request: PublicRequest) -> str:
-    if request.kind == "create_project":
+    if request.kind == PublicRequestKind.CREATE_PROJECT:
         language_id = request.language_id or await _create_requested_language(db, request)
         project = await create_project(
             db,
@@ -52,8 +53,7 @@ async def _apply(db: AsyncSession, request: PublicRequest) -> str:
         raise ConflictError("Language code already exists")
     language = Language(name=request.name, code=code)
     db.add(language)
-    await db.commit()
-    await db.refresh(language)
+    await db.flush()
     return language.id
 
 

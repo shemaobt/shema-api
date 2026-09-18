@@ -4,6 +4,7 @@ import httpx
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
+from app.core.enums import PublicRequestStatus
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.db.models.project import Project
 from app.models.public_request import PublicProjectRequestCreate
@@ -328,6 +329,37 @@ async def test_review_public_request_approve_creates_language(db_session):
     created = await language_service.get_language_by_code(db_session, "ara")
     assert created is not None
     assert created.id == reviewed.created_entity_id
+
+
+async def test_review_public_request_leaves_no_orphan_language_when_the_stamp_fails(
+    db_session, monkeypatch
+):
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    request = await public_request_service.create_language_request(
+        db_session,
+        requester_name="Ana Silva",
+        requester_email="ana@example.com",
+        name="Arara",
+        code="ara",
+    )
+    commit = db_session.commit
+
+    async def _fail_while_stamping() -> None:
+        if request.status == PublicRequestStatus.APPROVED:
+            raise RuntimeError("the connection dropped while stamping the review")
+        await commit()
+
+    monkeypatch.setattr(db_session, "commit", _fail_while_stamping)
+    with pytest.raises(RuntimeError):
+        await public_request_service.review_public_request(
+            db_session, admin, request.id, PublicRequestStatus.APPROVED, None
+        )
+    monkeypatch.undo()
+    await db_session.rollback()
+
+    assert await language_service.get_language_by_code(db_session, "ara") is None
+    await db_session.refresh(request)
+    assert request.status == PublicRequestStatus.PENDING
 
 
 async def test_review_public_request_approve_creates_project_with_new_language(db_session):

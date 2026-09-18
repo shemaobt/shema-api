@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
+from app.core.enums import PublicRequestKind, PublicRequestStatus
+
 LANGUAGE_CODE_PATTERN = r"^[A-Za-z]{3}$"
 
 
@@ -41,14 +43,14 @@ class PublicProjectRequestCreate(BaseModel):
 
 
 class PublicRequestReview(BaseModel):
-    status: Literal["approved", "rejected"]
+    status: Literal[PublicRequestStatus.APPROVED, PublicRequestStatus.REJECTED]
     reason: str | None = Field(default=None, max_length=2000)
 
 
 class PublicRequestResponse(BaseModel):
     id: str
-    kind: str
-    status: str
+    kind: PublicRequestKind
+    status: PublicRequestStatus
     requester_name: str
     requester_email: str
     name: str

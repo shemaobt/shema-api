@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+from app.core.enums import PublicRequestStatus
 
 
 class PublicRequest(Base):
@@ -13,7 +14,7 @@ class PublicRequest(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     kind: Mapped[str] = mapped_column(String(30), index=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    status: Mapped[str] = mapped_column(String(20), default=PublicRequestStatus.PENDING, index=True)
     requester_name: Mapped[str] = mapped_column(String(200))
     requester_email: Mapped[str] = mapped_column(String(320), index=True)
     name: Mapped[str] = mapped_column(String(200))
