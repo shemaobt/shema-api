@@ -577,17 +577,28 @@ async def take_turn(
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     voiced, segments = await _voice_the_turn(outcome, language=session.language)
-    if turn is not None:
-        session = await room.save_comprehension(db, session, turn.state)
-    session = await room.append_exchange(
-        db,
-        session,
-        team_utterance=outcome.transcript,
-        guide_response=outcome.speech,
-        outcome=outcome,
-        scene=_scene_of(session),
-    )
-    if outcome.needs_person:
+    recorded = True
+    if opening:
+        recorded = await room.append_opening(
+            db,
+            session,
+            guide_response=outcome.speech,
+            outcome=outcome,
+            scene=_scene_of(session),
+            state=turn.state if turn is not None else None,
+        )
+    else:
+        if turn is not None:
+            session = await room.save_comprehension(db, session, turn.state)
+        session = await room.append_exchange(
+            db,
+            session,
+            team_utterance=outcome.transcript,
+            guide_response=outcome.speech,
+            outcome=outcome,
+            scene=_scene_of(session),
+        )
+    if outcome.needs_person and recorded:
         session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
 
     response_turn_id = turn_id or str(uuid.uuid4())

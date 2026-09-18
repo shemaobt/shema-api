@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -51,6 +52,8 @@ from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.internalization_room.validated_turn import TurnOutcome
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
+
+logger = logging.getLogger(__name__)
 
 PANORAMA_ALIAS = "OV"
 #: How many tellings of one stretch make it a hard stretch. Three is ours — measured in the
@@ -409,6 +412,40 @@ def comprehension_of(session: IRSession) -> ComprehensionState:
     except PydanticValidationError:
         stored.pop("active_probe", None)
         return ComprehensionState.model_validate(stored)
+
+
+async def append_opening(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    guide_response: str,
+    outcome: TurnOutcome | None = None,
+    scene: str | None = None,
+    state: ComprehensionState | None = None,
+) -> bool:
+    """The opening written as the session's first line, or dropped when the team spoke first.
+
+    The opening is read off an empty session and only comes back to be written after the
+    Guide has answered, which in the room has taken eleven minutes: long enough for the
+    tablet to give up, the team to speak, and their turn to be stored first. Written then,
+    it stood behind the team's turn as a line the Guide never said in that order; refused by
+    the row's version instead, it was gone and the tablet was never told. So the session is
+    read again here, and an opening that is no longer the first thing said is dropped from
+    the record and logged — the tablet still hears the line it asked for.
+    """
+    await db.refresh(session)
+    if session.messages:
+        logger.warning(
+            "The opening of session %s landed after the team's first turn; dropped, not appended",
+            session.id,
+        )
+        return False
+    if state is not None:
+        session = await save_comprehension(db, session, state)
+    await append_exchange(
+        db, session, team_utterance="", guide_response=guide_response, outcome=outcome, scene=scene
+    )
+    return True
 
 
 async def save_comprehension(
