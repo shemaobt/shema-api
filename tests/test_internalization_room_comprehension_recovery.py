@@ -459,6 +459,81 @@ def test_a_hedge_inside_a_told_scene_is_a_person_remembering_not_a_refusal() -> 
     )
 
 
+_INVITATION_FOR_THE_SECOND_SCENE = (
+    "Agora vamos entrar na segunda cena, o verso três. É curta. A história diz: Elimeleque, "
+    "o marido de Noemi, morreu. E Noemi ficou com os dois filhos. Isso acontece lá em Moabe, "
+    "longe de casa. Quem conta não diz por que ele morreu. Não fala de choro, não fala de "
+    "enterro. Diz só isso, em poucas palavras, e segue.\n\n"
+    "Ensaiem essa cena juntos, na língua de vocês. Podem mostrar com as mãos: o marido que se "
+    "vai, a mulher que fica com os dois filhos. Quando terminarem, voltem e me contem em "
+    "português o que vocês disseram."
+)
+_TELLING_THAT_CLOSES_ON_A_TAG = (
+    "Eu vou te contar algumas coisas que a gente concluiu. Tudo isso aconteceu no tempo que os "
+    "juízes julgavam Israel antes de ter rei. Eram os juízes que governavam naquela época, "
+    "certo? Hã, os dois filhos tomaram esposas dentre as mulheres de Moabe, mulheres moabitas, "
+    "uma se chamava Orfa e a outra Rute. Hã, eles moraram lá uns 10 anos, mais ou menos. A "
+    "história não fala de nenhum filho nascido nesses casamentos, nenhuma criança é "
+    "mencionada. Quando Elimeleque morre, Noemi ficou e ela sobrou com os dois filhos. E "
+    "quando Malom e Quiliom morreram, a mulher ficou e sobrou sozinha lá na terra, sem os dois "
+    "filhos e sem o marido, certo? Hã, e as mortes são contadas cada uma numa frase bem curta "
+    "e seca, tipo, Elimeleque morreu, Malom e Quiliom morreram. A história não descreve o "
+    "luto, nenhum sentimento do tipo, nenhum choro, nem nada de enterro. Não diz também que "
+    "Deus fez nada disso. E, e não deixa claro também que alguém deixou família ou linhagem "
+    "pra continuar, né?"
+)
+
+
+def test_a_telling_that_closes_on_a_confirmation_tag_is_not_a_question() -> None:
+    """Session dce19a6b, message 12: scene 2 told back whole, and the scene stayed unpractised.
+
+    The team closed its telling with "né?" and checked itself twice along the way with
+    "certo?", and every one of those is the Brazilian habit of asking the listener to nod,
+    not a question about the passage. The reader took the question mark for a question and
+    filed the telling as a team asking something, so the Guide invited the rehearsal again
+    for a scene it had just heard.
+    """
+    assert bridge_language_retelling_completes_practice(
+        _INVITATION_FOR_THE_SECOND_SCENE, _TELLING_THAT_CLOSES_ON_A_TAG, True
+    )
+    assert scenes_practiced_by_the_telling_the_guide_invited(
+        None, _INVITATION_FOR_THE_SECOND_SCENE, _TELLING_THAT_CLOSES_ON_A_TAG, True, "S2"
+    ) == ["S2"]
+
+
+def test_a_confirmation_tag_is_relieved_for_a_telling_and_a_real_question_still_refuses() -> None:
+    """The tag is the listener being asked to nod; the question is the team asking the room.
+
+    "…, né?", "…, certo?", "…, não é?", "…, tá?" and "…, right?" close a telling in either
+    language without asking anything about the passage. A question about the passage is
+    still a question, with or without a telling in front of it, and a tag on a reply that
+    tells nothing is still read as the question it might be — the tag is relieved for the
+    telling, never for the reply that is only the tag.
+    """
+    told_pt = "Elimeleque morreu lá em Moabe, e Noemi ficou com os dois filhos"
+    told_en = "Elimelech died there in Moab, and Naomi was left with her two sons"
+    for invitation, telling in (
+        (INVITATION["pt"], f"{told_pt}, né?"),
+        (INVITATION["pt"], f"{told_pt}, certo?"),
+        (INVITATION["pt"], f"{told_pt}, não é?"),
+        (INVITATION["pt"], f"{told_pt}, tá?"),
+        (INVITATION["en"], f"{told_en}, right?"),
+    ):
+        assert bridge_language_retelling_completes_practice(invitation, telling, True), telling
+    for invitation, question in (
+        (INVITATION["pt"], "quem casou com quem?"),
+        (INVITATION["pt"], f"{told_pt}. Quem casou com quem?"),
+        (INVITATION["pt"], f"{told_pt}, certo? E quem casou com quem?"),
+        (INVITATION["en"], "who married whom?"),
+        (INVITATION["en"], f"{told_en}, right? And who married whom?"),
+        (INVITATION["pt"], "ensaiamos, né?"),
+        (INVITATION["pt"], "certo?"),
+    ):
+        assert not bridge_language_retelling_completes_practice(invitation, question, True), (
+            question
+        )
+
+
 _BOUNDARY_QUESTIONS = (
     (
         "pt",

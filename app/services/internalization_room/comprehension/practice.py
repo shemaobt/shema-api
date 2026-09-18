@@ -14,6 +14,7 @@ import unicodedata
 
 from app.services.internalization_room.comprehension.probe import ActiveProbe
 from app.services.internalization_room.oral_decision import (
+    OralDecisionClause,
     normalize_oral_decision,
     oral_clause_has_negation,
     oral_clause_is_hedged,
@@ -361,6 +362,27 @@ _DENIES_THE_REHEARSAL = re.compile(
 )
 
 
+_CONFIRMATION_TAG = re.compile(
+    r"(?:,\s*)?\b(?:certo|n[eé]|n[aã]o\s+[eé]|t[aá]|right)\s*\?", re.IGNORECASE
+)
+
+
+def _told_in_clauses(clauses: list[OralDecisionClause]) -> bool:
+    return sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
+
+
+def _told_at_length(clauses: list[OralDecisionClause]) -> bool:
+    return any(len(clause.text.split()) >= 8 for clause in clauses)
+
+
+def _the_telling_asks_a_question(team_utterance: str) -> bool:
+    without_tags = _CONFIRMATION_TAG.sub(".", team_utterance)
+    clauses = oral_decision_clause_details(without_tags)
+    if _told_in_clauses(clauses) or _told_at_length(clauses):
+        return oral_utterance_is_interrogative(without_tags)
+    return oral_utterance_is_interrogative(team_utterance)
+
+
 def _the_telling_holds_back(team_utterance: str) -> bool:
     """Whether a team that came back telling the scene held back from telling it.
 
@@ -387,9 +409,8 @@ def _the_telling_holds_back(team_utterance: str) -> bool:
     that opens it.
     """
     clauses = oral_decision_clause_details(team_utterance)
-    told_in_clauses = sum(1 for clause in clauses if len(clause.text.split()) >= 3) >= 2
-    told_at_length = any(len(clause.text.split()) >= 8 for clause in clauses)
-    telling = told_in_clauses or told_at_length
+    told_in_clauses = _told_in_clauses(clauses)
+    telling = told_in_clauses or _told_at_length(clauses)
     for clause in clauses:
         spoken = normalize_oral_decision(_SPANISH_YES.sub(" ", clause.raw))
         if _CONDITION_ON_A_SUBJECT.match(spoken) or _CONDITION_HEADS.match(spoken):
@@ -458,7 +479,7 @@ def bridge_language_retelling_completes_practice(
         return False
     if _echoes_the_line_the_room_just_said(previous_guide_utterance, team_utterance):
         return False
-    if oral_utterance_is_interrogative(team_utterance) or _the_telling_holds_back(team_utterance):
+    if _the_telling_asks_a_question(team_utterance) or _the_telling_holds_back(team_utterance):
         return False
     clauses = oral_decision_clauses(team_utterance)
     if any(pattern.search(clause) for clause in clauses for pattern in _FUTURE_REPORT):
