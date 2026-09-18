@@ -12,7 +12,6 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_create_phase_without_project(db_session) -> None:
     payload = PhaseCreate(name="Acoustemes Training", description="Phase 1")
     phase = await phase_service.create_phase(db_session, payload)
@@ -21,13 +20,11 @@ async def test_create_phase_without_project(db_session) -> None:
     assert phase.id is not None
 
 
-@pytest.mark.asyncio
 async def test_list_phases_empty(db_session) -> None:
     phases = await phase_service.list_phases(db_session)
     assert phases == []
 
 
-@pytest.mark.asyncio
 async def test_list_phases_all(db_session) -> None:
     await make_phase(db_session, name="A")
     await make_phase(db_session, name="B")
@@ -37,7 +34,6 @@ async def test_list_phases_all(db_session) -> None:
     assert names == {"A", "B"}
 
 
-@pytest.mark.asyncio
 async def test_list_phases_by_project_id_after_attach(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id, name="P1")
@@ -49,7 +45,6 @@ async def test_list_phases_by_project_id_after_attach(db_session) -> None:
     assert phases[0].name == "Phase One"
 
 
-@pytest.mark.asyncio
 async def test_attach_phase_to_project(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id)
@@ -59,7 +54,6 @@ async def test_attach_phase_to_project(db_session) -> None:
     assert link.phase_id == phase.id
 
 
-@pytest.mark.asyncio
 async def test_attach_same_phase_to_multiple_projects(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     p1 = await make_project(db_session, language_id=lang.id, name="Proj1")
@@ -71,7 +65,6 @@ async def test_attach_same_phase_to_multiple_projects(db_session) -> None:
     assert set(project_ids) == {p1.id, p2.id}
 
 
-@pytest.mark.asyncio
 async def test_attach_phase_already_attached_raises(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id)
@@ -81,7 +74,6 @@ async def test_attach_phase_already_attached_raises(db_session) -> None:
         await phase_service.attach_phase_to_project(db_session, project.id, phase.id)
 
 
-@pytest.mark.asyncio
 async def test_detach_phase_from_project(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id)
@@ -92,13 +84,11 @@ async def test_detach_phase_from_project(db_session) -> None:
     assert project_ids == []
 
 
-@pytest.mark.asyncio
 async def test_get_phase_or_404_raises_when_missing(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Phase .* not found"):
         await phase_service.get_phase_or_404(db_session, "00000000-0000-0000-0000-000000000000")
 
 
-@pytest.mark.asyncio
 async def test_update_phase(db_session) -> None:
     phase = await make_phase(db_session, name="Old")
     updated = await phase_service.update_phase(
@@ -108,7 +98,6 @@ async def test_update_phase(db_session) -> None:
     assert updated.description == "Updated desc"
 
 
-@pytest.mark.asyncio
 async def test_delete_phase_cascades_links_and_dependencies(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id)
@@ -124,7 +113,6 @@ async def test_delete_phase_cascades_links_and_dependencies(db_session) -> None:
     assert project_ids == []
 
 
-@pytest.mark.asyncio
 async def test_add_dependency(db_session) -> None:
     a = await make_phase(db_session, name="A")
     b = await make_phase(db_session, name="B")
@@ -133,7 +121,6 @@ async def test_add_dependency(db_session) -> None:
     assert dep.depends_on_id == b.id
 
 
-@pytest.mark.asyncio
 async def test_list_dependencies(db_session) -> None:
     a = await make_phase(db_session, name="A")
     b = await make_phase(db_session, name="B")
@@ -146,14 +133,12 @@ async def test_list_dependencies(db_session) -> None:
     assert depends_on_ids == {b.id, c.id}
 
 
-@pytest.mark.asyncio
 async def test_add_self_dependency_raises(db_session) -> None:
     phase = await make_phase(db_session, name="Self")
     with pytest.raises(ConflictError, match="cannot depend on itself"):
         await phase_service.add_dependency(db_session, phase.id, phase.id)
 
 
-@pytest.mark.asyncio
 async def test_add_duplicate_dependency_raises(db_session) -> None:
     a = await make_phase(db_session, name="A")
     b = await make_phase(db_session, name="B")
@@ -162,7 +147,6 @@ async def test_add_duplicate_dependency_raises(db_session) -> None:
         await phase_service.add_dependency(db_session, a.id, b.id)
 
 
-@pytest.mark.asyncio
 async def test_remove_dependency(db_session) -> None:
     a = await make_phase(db_session, name="A")
     b = await make_phase(db_session, name="B")
@@ -172,7 +156,6 @@ async def test_remove_dependency(db_session) -> None:
     assert deps == []
 
 
-@pytest.mark.asyncio
 async def test_attach_phase_to_project_raises_when_project_not_found(db_session) -> None:
     phase = await make_phase(db_session, name="Phase")
     with pytest.raises(NotFoundError, match=r"Project .* not found"):
@@ -181,7 +164,6 @@ async def test_attach_phase_to_project_raises_when_project_not_found(db_session)
         )
 
 
-@pytest.mark.asyncio
 async def test_attach_phase_to_project_raises_when_phase_not_found(db_session) -> None:
     lang = await make_language(db_session, code="tst")
     project = await make_project(db_session, language_id=lang.id)

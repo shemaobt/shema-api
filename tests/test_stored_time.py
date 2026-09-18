@@ -146,7 +146,6 @@ async def a_document(db: AsyncSession, *, tag: str):
     return holder, newcomer, await make_bcd(db, book.id, holder.id)
 
 
-@pytest.mark.asyncio
 async def test_a_lock_older_than_the_timeout_is_taken_over(db_session: AsyncSession) -> None:
     holder, newcomer, bcd = await a_document(db_session, tag="velho")
     bcd.locked_by = holder.id
@@ -156,7 +155,6 @@ async def test_a_lock_older_than_the_timeout_is_taken_over(db_session: AsyncSess
     assert (await lock_bcd(db_session, bcd, newcomer.id)).locked_by == newcomer.id
 
 
-@pytest.mark.asyncio
 async def test_a_lock_inside_the_timeout_is_held(db_session: AsyncSession) -> None:
     """The half a wrong reading breaks silently: three hours of drift frees a live lock."""
     holder, newcomer, bcd = await a_document(db_session, tag="vivo")
@@ -168,7 +166,6 @@ async def test_a_lock_inside_the_timeout_is_held(db_session: AsyncSession) -> No
         await lock_bcd(db_session, bcd, newcomer.id)
 
 
-@pytest.mark.asyncio
 async def test_a_document_nobody_ever_locked_is_lockable(db_session: AsyncSession) -> None:
     """`locked_at` is nullable, and this is the only one of the six whose input can be null.
 
@@ -182,7 +179,6 @@ async def test_a_document_nobody_ever_locked_is_lockable(db_session: AsyncSessio
     assert (await lock_bcd(db_session, bcd, newcomer.id)).locked_by == newcomer.id
 
 
-@pytest.mark.asyncio
 async def test_a_lock_held_with_no_moment_recorded_is_not_broken_into(
     db_session: AsyncSession,
 ) -> None:
@@ -206,7 +202,6 @@ async def test_a_lock_held_with_no_moment_recorded_is_not_broken_into(
         await lock_bcd(db_session, bcd, newcomer.id)
 
 
-@pytest.mark.asyncio
 async def test_a_refresh_token_with_a_naive_expiry_is_read_as_utc(
     db_session: AsyncSession,
 ) -> None:

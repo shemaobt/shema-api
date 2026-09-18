@@ -11,7 +11,6 @@ from app.services.book_context.update_section import update_section
 from tests.baker import make_bcd, make_bible_book, make_user
 
 
-@pytest.mark.asyncio
 async def test_create_bcd_stores_genre_context(db_session):
     user = await make_user(db_session, email="genre1@test.com")
     book = await make_bible_book(
@@ -27,7 +26,6 @@ async def test_create_bcd_stores_genre_context(db_session):
     assert bcd.genre_context == {"primary_genre": "poetry"}
 
 
-@pytest.mark.asyncio
 async def test_create_bcd_increments_version(db_session):
     user = await make_user(db_session, email="ver1@test.com")
     book = await make_bible_book(
@@ -45,7 +43,6 @@ async def test_create_bcd_increments_version(db_session):
     assert bcd2.version == 2
 
 
-@pytest.mark.asyncio
 async def test_update_section_unknown_key_raises_not_found(db_session):
     user = await make_user(db_session, email="unk1@test.com")
     book = await make_bible_book(
@@ -61,7 +58,6 @@ async def test_update_section_unknown_key_raises_not_found(db_session):
         await update_section(db_session, bcd.id, "nonexistent_section", {}, user.id)
 
 
-@pytest.mark.asyncio
 async def test_update_section_rejects_generating(db_session):
     user = await make_user(db_session, email="gen2@test.com")
     book = await make_bible_book(
@@ -77,7 +73,6 @@ async def test_update_section_rejects_generating(db_session):
         await update_section(db_session, bcd.id, "places", [], user.id)
 
 
-@pytest.mark.asyncio
 async def test_create_new_version_rejects_draft(db_session):
     user = await make_user(db_session, email="nv1@test.com")
     book = await make_bible_book(
@@ -93,7 +88,6 @@ async def test_create_new_version_rejects_draft(db_session):
         await create_new_version(db_session, bcd.id, user.id)
 
 
-@pytest.mark.asyncio
 async def test_track_step_success(db_session):
     user = await make_user(db_session, email="ts1@test.com")
     book = await make_bible_book(
@@ -113,7 +107,6 @@ async def test_track_step_success(db_session):
     assert log.completed_at is not None
 
 
-@pytest.mark.asyncio
 async def test_track_step_failure(db_session):
     user = await make_user(db_session, email="ts2@test.com")
     book = await make_bible_book(
@@ -133,7 +126,6 @@ async def test_track_step_failure(db_session):
     assert "boom" in log.error_detail
 
 
-@pytest.mark.asyncio
 async def test_update_section_requires_lock(db_session):
     user = await make_user(db_session, email="lock_required@test.com")
     book = await make_bible_book(
@@ -149,7 +141,6 @@ async def test_update_section_requires_lock(db_session):
         await update_section(db_session, bcd.id, "places", [], user.id)
 
 
-@pytest.mark.asyncio
 async def test_update_section_wrong_user_cannot_edit(db_session):
     owner = await make_user(db_session, email="owner@test.com")
     intruder = await make_user(db_session, email="intruder@test.com")
@@ -169,7 +160,6 @@ async def test_update_section_wrong_user_cannot_edit(db_session):
         await update_section(db_session, bcd.id, "places", [], intruder.id)
 
 
-@pytest.mark.asyncio
 async def test_update_section_en_drops_section_from_cached_locales(db_session):
     user = await make_user(db_session, email="en_drop@test.com")
     book = await make_bible_book(
@@ -207,7 +197,6 @@ async def test_update_section_en_drops_section_from_cached_locales(db_session):
     assert updated.translations["es"]["objects"] == [{"name": "es objects"}]
 
 
-@pytest.mark.asyncio
 async def test_update_section_non_en_stores_original_payload(db_session, monkeypatch):
     async def fake_back_translate(data, locale):
         return {"english_version": True, "source_locale": locale}
@@ -245,7 +234,6 @@ async def test_update_section_non_en_stores_original_payload(db_session, monkeyp
     assert updated.translations["pt-BR"]["genre_context"] == pt_payload
 
 
-@pytest.mark.asyncio
 async def test_update_section_non_en_isolates_locale_caches(db_session, monkeypatch):
     async def fake_back_translate(data, locale):
         return {"english": "translated"}
@@ -294,7 +282,6 @@ async def test_update_section_non_en_isolates_locale_caches(db_session, monkeypa
     assert updated.translations["fr"]["theological_spine"] == "fr spine"
 
 
-@pytest.mark.asyncio
 async def test_update_section_non_en_first_translation(db_session, monkeypatch):
     async def fake_back_translate(data, locale):
         return {"english": "back"}
@@ -331,7 +318,6 @@ async def test_update_section_non_en_first_translation(db_session, monkeypatch):
     assert updated.translations == {"pt-BR": {"genre_context": pt_payload}}
 
 
-@pytest.mark.asyncio
 async def test_list_generation_logs_ordered(db_session):
     user = await make_user(db_session, email="lg1@test.com")
     book = await make_bible_book(

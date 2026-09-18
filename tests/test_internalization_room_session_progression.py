@@ -79,7 +79,6 @@ async def having_finished(db: AsyncSession, team, *pericopes: str) -> None:
 # ------------------------------------------------------------------- opening where the team is
 
 
-@pytest.mark.asyncio
 async def test_a_session_opened_without_a_passage_starts_the_team_at_the_beginning(
     db_session: AsyncSession,
 ) -> None:
@@ -93,7 +92,6 @@ async def test_a_session_opened_without_a_passage_starts_the_team_at_the_beginni
     )
 
 
-@pytest.mark.asyncio
 async def test_a_session_opened_without_a_passage_lands_on_the_teams_next_one(
     db_session: AsyncSession,
 ) -> None:
@@ -106,7 +104,6 @@ async def test_a_session_opened_without_a_passage_lands_on_the_teams_next_one(
     assert session.pericope == SECOND
 
 
-@pytest.mark.asyncio
 async def test_two_teams_open_on_their_own_passages_in_the_same_installation(
     db_session: AsyncSession,
 ) -> None:
@@ -120,7 +117,6 @@ async def test_two_teams_open_on_their_own_passages_in_the_same_installation(
     assert (for_ahead.pericope, for_behind.pericope) == (SECOND, FIRST)
 
 
-@pytest.mark.asyncio
 async def test_a_tablet_that_never_said_whose_it_is_still_opens_a_session(
     db_session: AsyncSession,
 ) -> None:
@@ -133,7 +129,6 @@ async def test_a_tablet_that_never_said_whose_it_is_still_opens_a_session(
     assert session.pericope == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_named_passage_is_obeyed_and_not_second_guessed(
     db_session: AsyncSession,
 ) -> None:
@@ -148,7 +143,6 @@ async def test_a_named_passage_is_obeyed_and_not_second_guessed(
 # --------------------------------------------------------------------- the end of the book
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_closed_the_last_passage_is_refused_rather_than_sent_round_again(
     db_session: AsyncSession,
 ) -> None:
@@ -164,7 +158,6 @@ async def test_a_team_that_closed_the_last_passage_is_refused_rather_than_sent_r
         await room.create_session(db_session, project_id=team.id)
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_closed_every_passage_it_could_walk_is_refused_the_same_way(
     db_session: AsyncSession,
 ) -> None:
@@ -182,7 +175,6 @@ async def test_a_team_that_closed_every_passage_it_could_walk_is_refused_the_sam
         await room.create_session(db_session, project_id=team.id)
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_finished_the_book_may_still_be_given_a_passage_by_name(
     db_session: AsyncSession,
 ) -> None:
@@ -197,7 +189,6 @@ async def test_a_team_that_finished_the_book_may_still_be_given_a_passage_by_nam
 # ------------------------------------------------------------ the panorama and its prepared line
 
 
-@pytest.mark.asyncio
 async def test_the_panorama_alias_still_names_the_book_the_room_serves(
     db_session: AsyncSession,
 ) -> None:
@@ -344,7 +335,6 @@ def _string_literals(source: Path) -> list[str]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_the_session_the_room_opens_still_refuses_canon_it_cannot_serve(
     db_session: AsyncSession,
 ) -> None:
@@ -355,7 +345,6 @@ async def test_the_session_the_room_opens_still_refuses_canon_it_cannot_serve(
         await room.create_session(db_session, pericope="P99")
 
 
-@pytest.mark.asyncio
 async def test_a_resolved_session_is_opened_in_progress_like_any_other(
     db_session: AsyncSession,
 ) -> None:

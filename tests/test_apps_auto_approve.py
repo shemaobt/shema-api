@@ -1,4 +1,3 @@
-import pytest
 from sqlalchemy import select
 
 from app.db.models.auth import AccessRequest, App, UserAppRole
@@ -17,19 +16,16 @@ async def _seed_th_user_role(db_session):
     return th_app
 
 
-@pytest.mark.asyncio
 async def test_create_app_defaults_auto_approve_to_false(db_session) -> None:
     new_app = await create_app(db_session, app_key="new-app", name="New App")
     assert new_app.auto_approve is False
 
 
-@pytest.mark.asyncio
 async def test_create_app_can_set_auto_approve_true(db_session) -> None:
     new_app = await create_app(db_session, app_key="new-app", name="New App", auto_approve=True)
     assert new_app.auto_approve is True
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_stays_pending_when_auto_approve_off(
     db_session,
 ) -> None:
@@ -45,7 +41,6 @@ async def test_create_access_request_stays_pending_when_auto_approve_off(
     assert roles == []
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_auto_approves_and_grants_role_when_flag_on(
     db_session,
 ) -> None:
@@ -65,7 +60,6 @@ async def test_create_access_request_auto_approves_and_grants_role_when_flag_on(
     assert roles == [("translation-helper", "user")]
 
 
-@pytest.mark.asyncio
 async def test_create_access_request_idempotent_returns_existing_when_auto_approve_on(
     db_session,
 ) -> None:
@@ -88,7 +82,6 @@ async def test_create_access_request_idempotent_returns_existing_when_auto_appro
     assert len(role_rows) == 1
 
 
-@pytest.mark.asyncio
 async def test_update_app_turning_auto_approve_on_retroactively_approves_pending(
     db_session,
 ) -> None:
@@ -124,7 +117,6 @@ async def test_update_app_turning_auto_approve_on_retroactively_approves_pending
     ]
 
 
-@pytest.mark.asyncio
 async def test_update_app_turning_auto_approve_off_is_noop_for_existing_users(
     db_session,
 ) -> None:
@@ -146,7 +138,6 @@ async def test_update_app_turning_auto_approve_off_is_noop_for_existing_users(
     ]
 
 
-@pytest.mark.asyncio
 async def test_update_app_setting_auto_approve_true_when_already_true_does_not_resweep(
     db_session,
 ) -> None:
@@ -165,7 +156,6 @@ async def test_update_app_setting_auto_approve_true_when_already_true_does_not_r
     assert pending.status == "pending"
 
 
-@pytest.mark.asyncio
 async def test_update_app_other_fields_do_not_trigger_retroactive_sweep(
     db_session,
 ) -> None:

@@ -10,7 +10,6 @@ took it up on the Guide's terms, which in her design is exactly what `surfaced` 
 
 from __future__ import annotations
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import sessions as room
@@ -39,7 +38,6 @@ def test_the_legacy_value_ranks_above_nothing_and_no_higher_than_surfaced() -> N
     assert scale[NOT_ENCOUNTERED] < scale[PARTIALLY_ENGAGED] <= scale[SURFACED] < scale[ENGAGED]
 
 
-@pytest.mark.asyncio
 async def test_a_stored_partial_bead_is_read_back_and_still_holds_the_floor(
     db_session: AsyncSession,
 ) -> None:

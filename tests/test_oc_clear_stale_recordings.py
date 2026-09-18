@@ -43,7 +43,6 @@ async def _surviving_ids(db: AsyncSession) -> set[str]:
     return set(result.scalars().all())
 
 
-@pytest.mark.asyncio
 async def test_clearing_stale_recordings_deletes_a_failed_upload_but_spares_one_in_flight(
     db_session: AsyncSession,
 ) -> None:
@@ -76,7 +75,6 @@ async def test_clearing_stale_recordings_deletes_a_failed_upload_but_spares_one_
     assert await _surviving_ids(db_session) == {in_flight.id}
 
 
-@pytest.mark.asyncio
 async def test_clearing_stale_recordings_reports_the_number_of_rows_it_removed(
     db_session: AsyncSession,
 ) -> None:
@@ -101,7 +99,6 @@ async def test_clearing_stale_recordings_reports_the_number_of_rows_it_removed(
     assert await _surviving_ids(db_session) == set()
 
 
-@pytest.mark.asyncio
 async def test_clearing_stale_recordings_leaves_local_uploaded_and_verified_recordings_alone(
     db_session: AsyncSession,
 ) -> None:
@@ -128,7 +125,6 @@ async def test_clearing_stale_recordings_leaves_local_uploaded_and_verified_reco
     assert await _surviving_ids(db_session) == kept
 
 
-@pytest.mark.asyncio
 async def test_clearing_stale_recordings_deletes_the_bucket_blob_only_of_a_row_that_has_one(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -166,7 +162,6 @@ async def test_clearing_stale_recordings_deletes_the_bucket_blob_only_of_a_row_t
     assert deleted_blobs == [blob_url]
 
 
-@pytest.mark.asyncio
 async def test_clearing_stale_recordings_is_refused_to_a_non_manager_and_deletes_nothing(
     db_session: AsyncSession,
 ) -> None:
@@ -193,7 +188,6 @@ async def test_clearing_stale_recordings_is_refused_to_a_non_manager_and_deletes
     assert await _surviving_ids(db_session) == {failed.id}
 
 
-@pytest.mark.asyncio
 async def test_clearing_stale_recordings_leaves_another_projects_recordings_alone(
     db_session: AsyncSession,
 ) -> None:

@@ -36,7 +36,6 @@ _ALL_OPENING_FIELDS = (
         "Unskip in CI when running against a real Postgres."
     )
 )
-@pytest.mark.asyncio
 async def test_concurrent_complete_returns_same_report(db_session, test_engine, ph_app, stub_llm):
     """Two concurrent POST /complete on the same interview must both return
     the same report_id (idempotent), and exactly one PHReport row exists."""

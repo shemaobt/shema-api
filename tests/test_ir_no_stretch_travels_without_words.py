@@ -142,7 +142,6 @@ async def _blockers(db: AsyncSession, session: IRSession) -> list[str]:
     return refused.value.blockers
 
 
-@pytest.mark.asyncio
 async def test_a_release_is_refused_while_a_stretch_has_no_words(
     db_session: AsyncSession,
 ) -> None:
@@ -163,7 +162,6 @@ async def test_a_release_is_refused_while_a_stretch_has_no_words(
     )
 
 
-@pytest.mark.asyncio
 async def test_dividing_a_stretch_leaves_the_release_waiting_for_both_halves(
     db_session: AsyncSession,
 ) -> None:
@@ -181,7 +179,6 @@ async def test_dividing_a_stretch_leaves_the_release_waiting_for_both_halves(
     assert await _blockers(db_session, session) == [UNTOLD]
 
 
-@pytest.mark.asyncio
 async def test_the_refusal_outlives_the_verdict_the_analyst_already_gave(
     db_session: AsyncSession,
 ) -> None:
@@ -204,7 +201,6 @@ async def test_the_refusal_outlives_the_verdict_the_analyst_already_gave(
     assert "no_telling_back" not in refused, "e a lista não está vazia, então esse também"
 
 
-@pytest.mark.asyncio
 async def test_a_passage_told_back_whole_still_releases_with_all_its_stretches(
     db_session: AsyncSession,
 ) -> None:
@@ -230,7 +226,6 @@ async def test_a_passage_told_back_whole_still_releases_with_all_its_stretches(
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_told_back_after_its_recording_moved_releases(
     db_session: AsyncSession,
 ) -> None:
@@ -256,7 +251,6 @@ async def test_a_stretch_told_back_after_its_recording_moved_releases(
     ]
 
 
-@pytest.mark.asyncio
 async def test_several_wordless_stretches_are_one_errand(
     db_session: AsyncSession,
 ) -> None:

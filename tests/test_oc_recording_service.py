@@ -53,7 +53,6 @@ def _import_service():
     return recording_service
 
 
-@pytest.mark.asyncio
 async def test_create_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -83,7 +82,6 @@ async def test_create_recording(db_session: AsyncSession) -> None:
     assert rec.upload_status == UploadStatus.LOCAL
 
 
-@pytest.mark.asyncio
 async def test_create_recording_with_description(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -105,7 +103,6 @@ async def test_create_recording_with_description(db_session: AsyncSession) -> No
     assert rec.description == "Field recording from coastal village"
 
 
-@pytest.mark.asyncio
 async def test_update_recording_sets_description(db_session: AsyncSession) -> None:
     from app.models.oc_recording import RecordingUpdate
 
@@ -122,7 +119,6 @@ async def test_update_recording_sets_description(db_session: AsyncSession) -> No
     assert updated.description == story
 
 
-@pytest.mark.asyncio
 async def test_update_recording_sets_cleaning_status(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -144,7 +140,6 @@ async def test_update_recording_sets_cleaning_status(db_session: AsyncSession) -
     assert cleared.cleaning_status == CleaningStatus.NONE
 
 
-@pytest.mark.asyncio
 async def test_update_recording_rejects_internal_cleaning_status(
     db_session: AsyncSession,
 ) -> None:
@@ -163,7 +158,6 @@ async def test_update_recording_rejects_internal_cleaning_status(
             )
 
 
-@pytest.mark.asyncio
 async def test_get_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -179,14 +173,12 @@ async def test_get_recording(db_session: AsyncSession) -> None:
     assert fetched.title == "test recording"
 
 
-@pytest.mark.asyncio
 async def test_get_recording_not_found(db_session: AsyncSession) -> None:
     rs = _import_service()
     with pytest.raises(NotFoundError):
         await rs.get_recording(db_session, "nonexistent-id")
 
 
-@pytest.mark.asyncio
 async def test_update_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -201,7 +193,6 @@ async def test_update_recording(db_session: AsyncSession) -> None:
     assert updated.title == "Updated Title"
 
 
-@pytest.mark.asyncio
 async def test_delete_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -217,7 +208,6 @@ async def test_delete_recording(db_session: AsyncSession) -> None:
         await rs.get_recording(db_session, rec.id)
 
 
-@pytest.mark.asyncio
 async def test_list_recordings(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -246,7 +236,6 @@ async def test_list_recordings(db_session: AsyncSession) -> None:
     assert len(recordings) == 2
 
 
-@pytest.mark.asyncio
 async def test_list_recordings_filter_by_status(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -276,7 +265,6 @@ async def test_list_recordings_filter_by_status(db_session: AsyncSession) -> Non
     assert uploaded[0].upload_status == UploadStatus.UPLOADED
 
 
-@pytest.mark.asyncio
 async def test_check_recording_access_owner(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -289,7 +277,6 @@ async def test_check_recording_access_owner(db_session: AsyncSession) -> None:
     await rs.check_recording_access(db_session, rec, user.id)
 
 
-@pytest.mark.asyncio
 async def test_check_recording_access_denied(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session, email="owner@test.com")
@@ -304,7 +291,6 @@ async def test_check_recording_access_denied(db_session: AsyncSession) -> None:
         await rs.check_recording_access(db_session, rec, other.id)
 
 
-@pytest.mark.asyncio
 async def test_check_recording_access_manager(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session, email="owner@test.com")
@@ -365,7 +351,6 @@ def test_resumable_upload_url_response_model() -> None:
     assert resp.chunk_size_bytes == 8388608
 
 
-@pytest.mark.asyncio
 async def test_create_recording_with_storyteller(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -390,7 +375,6 @@ async def test_create_recording_with_storyteller(db_session: AsyncSession) -> No
     assert rec.storyteller_id == storyteller.id
 
 
-@pytest.mark.asyncio
 async def test_create_recording_rejects_cross_project_storyteller(
     db_session: AsyncSession,
 ) -> None:
@@ -422,7 +406,6 @@ async def test_create_recording_rejects_cross_project_storyteller(
         await rs.create_recording(db_session, data, user.id)
 
 
-@pytest.mark.asyncio
 async def test_update_recording_rejects_cross_project_storyteller(
     db_session: AsyncSession,
 ) -> None:
@@ -453,7 +436,6 @@ async def test_update_recording_rejects_cross_project_storyteller(
         )
 
 
-@pytest.mark.asyncio
 async def test_create_recording_with_secondary_classification(
     db_session: AsyncSession,
 ) -> None:
@@ -490,7 +472,6 @@ async def test_create_recording_with_secondary_classification(
     assert rec.secondary_register_id == "consultative"
 
 
-@pytest.mark.asyncio
 async def test_create_recording_allows_secondary_with_only_genre_matching_primary(
     db_session: AsyncSession,
 ) -> None:
@@ -522,7 +503,6 @@ async def test_create_recording_allows_secondary_with_only_genre_matching_primar
     assert rec.secondary_genre_id == genre.id
 
 
-@pytest.mark.asyncio
 async def test_create_recording_rejects_identical_secondary_triple(
     db_session: AsyncSession,
 ) -> None:
@@ -549,7 +529,6 @@ async def test_create_recording_rejects_identical_secondary_triple(
         await rs.create_recording(db_session, data, user.id)
 
 
-@pytest.mark.asyncio
 async def test_update_recording_allows_single_field_overlap_when_merged_triple_differs(
     db_session: AsyncSession,
 ) -> None:
@@ -572,7 +551,6 @@ async def test_update_recording_allows_single_field_overlap_when_merged_triple_d
     assert updated.secondary_genre_id == genre.id
 
 
-@pytest.mark.asyncio
 async def test_update_recording_rejects_when_merged_triple_collapses_to_identical(
     db_session: AsyncSession,
 ) -> None:
@@ -599,7 +577,6 @@ async def test_update_recording_rejects_when_merged_triple_collapses_to_identica
         )
 
 
-@pytest.mark.asyncio
 async def test_update_recording_rejects_a_primary_only_update_that_lands_on_the_secondary(
     db_session: AsyncSession,
 ) -> None:
@@ -623,7 +600,6 @@ async def test_update_recording_rejects_a_primary_only_update_that_lands_on_the_
         await rs.update_recording(db_session, rec.id, RecordingUpdate(register_id="ceremonial"))
 
 
-@pytest.mark.asyncio
 async def test_update_recording_allows_a_secondary_left_partly_unset(
     db_session: AsyncSession,
 ) -> None:
@@ -651,7 +627,6 @@ async def test_update_recording_allows_a_secondary_left_partly_unset(
     assert updated.secondary_subcategory_id == sub.id
 
 
-@pytest.mark.asyncio
 async def test_list_recordings_filter_by_user_and_storyteller(
     db_session: AsyncSession,
 ) -> None:
@@ -695,7 +670,6 @@ async def test_list_recordings_filter_by_user_and_storyteller(
     assert {r.id for r in by_st} == {rec_b.id}
 
 
-@pytest.mark.asyncio
 async def test_create_recording_rejects_duplicate_title(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -721,7 +695,6 @@ async def test_create_recording_rejects_duplicate_title(db_session: AsyncSession
         await rs.create_recording(db_session, _data("Genesis 1"), user.id)
 
 
-@pytest.mark.asyncio
 async def test_create_recording_normalizes_and_rejects_trimmed_duplicate(
     db_session: AsyncSession,
 ) -> None:
@@ -750,7 +723,6 @@ async def test_create_recording_normalizes_and_rejects_trimmed_duplicate(
         await rs.create_recording(db_session, _data("Exodus"), user.id)
 
 
-@pytest.mark.asyncio
 async def test_create_recording_title_match_is_case_sensitive(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -779,7 +751,6 @@ async def test_create_recording_title_match_is_case_sensitive(db_session: AsyncS
     assert lowercase.title == "psalm"
 
 
-@pytest.mark.asyncio
 async def test_create_recording_blank_titles_do_not_collide(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -807,7 +778,6 @@ async def test_create_recording_blank_titles_do_not_collide(db_session: AsyncSes
     assert second.title is None
 
 
-@pytest.mark.asyncio
 async def test_create_recording_ignores_split_children_for_uniqueness(
     db_session: AsyncSession,
 ) -> None:
@@ -848,7 +818,6 @@ async def test_create_recording_ignores_split_children_for_uniqueness(
     assert created.title == "Ruth"
 
 
-@pytest.mark.asyncio
 async def test_update_recording_rejects_duplicate_title(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -877,7 +846,6 @@ async def test_update_recording_rejects_duplicate_title(db_session: AsyncSession
         await rs.update_recording(db_session, other.id, RecordingUpdate(title="test recording"))
 
 
-@pytest.mark.asyncio
 async def test_update_recording_keep_own_title_succeeds(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -899,7 +867,6 @@ async def test_update_recording_keep_own_title_succeeds(db_session: AsyncSession
     assert updated.title == "test recording"
 
 
-@pytest.mark.asyncio
 async def test_update_recording_trims_title(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -916,7 +883,6 @@ async def test_update_recording_trims_title(db_session: AsyncSession) -> None:
     assert updated.title == "Trimmed Title"
 
 
-@pytest.mark.asyncio
 async def test_list_recordings_filter_by_title(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -950,7 +916,6 @@ async def test_list_recordings_filter_by_title(db_session: AsyncSession) -> None
     assert missing == []
 
 
-@pytest.mark.asyncio
 async def test_create_recording_duplicate_title_allowed_across_projects(
     db_session: AsyncSession,
 ) -> None:
@@ -981,7 +946,6 @@ async def test_create_recording_duplicate_title_allowed_across_projects(
     assert in_a.title == in_b.title == "Shared Title"
 
 
-@pytest.mark.asyncio
 async def test_create_recording_allowed_when_title_held_by_archived_split_parent(
     db_session: AsyncSession,
 ) -> None:
@@ -1022,7 +986,6 @@ async def test_create_recording_allowed_when_title_held_by_archived_split_parent
     assert created.title == "Genesis 1"
 
 
-@pytest.mark.asyncio
 async def test_update_recording_blank_title_clears_to_null(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -1037,7 +1000,6 @@ async def test_update_recording_blank_title_clears_to_null(db_session: AsyncSess
     assert updated.title is None
 
 
-@pytest.mark.asyncio
 async def test_duplicate_title_rejected_at_db_level(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1065,7 +1027,6 @@ async def test_duplicate_title_rejected_at_db_level(db_session: AsyncSession) ->
         )
 
 
-@pytest.mark.asyncio
 async def test_db_unique_index_exempts_split_children(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     project_id = await _seed_project(db_session)
@@ -1098,7 +1059,6 @@ async def test_db_unique_index_exempts_split_children(db_session: AsyncSession) 
     assert split_child.id is not None
 
 
-@pytest.mark.asyncio
 async def test_db_unique_index_exempts_archived_split_parent(
     db_session: AsyncSession,
 ) -> None:
@@ -1133,7 +1093,6 @@ async def test_db_unique_index_exempts_archived_split_parent(
     assert archived_parent.id is not None
 
 
-@pytest.mark.asyncio
 async def test_db_unique_index_allows_repeated_null_titles(
     db_session: AsyncSession,
 ) -> None:
@@ -1163,7 +1122,6 @@ async def test_db_unique_index_allows_repeated_null_titles(
     assert first.id != second.id
 
 
-@pytest.mark.asyncio
 async def test_update_recording_lets_a_split_child_take_a_used_title(
     db_session: AsyncSession,
 ) -> None:
@@ -1206,7 +1164,6 @@ async def test_update_recording_lets_a_split_child_take_a_used_title(
     assert updated.title == "Genesis 1"
 
 
-@pytest.mark.asyncio
 async def test_update_recording_lets_an_archived_split_parent_take_a_used_title(
     db_session: AsyncSession,
 ) -> None:
@@ -1248,7 +1205,6 @@ async def test_update_recording_lets_an_archived_split_parent_take_a_used_title(
     assert updated.title == "Genesis 1"
 
 
-@pytest.mark.asyncio
 async def test_create_recording_answers_422_for_a_genre_that_does_not_exist(
     db_session: AsyncSession,
 ) -> None:
@@ -1276,7 +1232,6 @@ async def test_create_recording_answers_422_for_a_genre_that_does_not_exist(
         await rs.create_recording(db_session, data, user.id)
 
 
-@pytest.mark.asyncio
 async def test_update_recording_answers_422_for_a_genre_that_does_not_exist(
     db_session: AsyncSession,
 ) -> None:
@@ -1374,7 +1329,6 @@ def test_a_conflict_that_is_not_a_foreign_key_is_left_alone() -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_unknown_reference_is_served_as_422() -> None:
     """422 rather than 400: the payload parsed fine and every field is well formed, it
     just names a row that is not there. That is the same class of problem FastAPI already
@@ -1429,7 +1383,6 @@ async def _age_recording(db: AsyncSession, recording_id: str, age: timedelta) ->
     await db.commit()
 
 
-@pytest.mark.asyncio
 async def test_an_upload_stalled_past_the_deadline_is_marked_failed(
     db_session: AsyncSession,
 ) -> None:
@@ -1457,7 +1410,6 @@ async def test_an_upload_stalled_past_the_deadline_is_marked_failed(
     assert recording.upload_error
 
 
-@pytest.mark.asyncio
 async def test_an_upload_stalled_inside_the_deadline_is_left_alone(
     db_session: AsyncSession,
 ) -> None:
@@ -1484,7 +1436,6 @@ async def test_an_upload_stalled_inside_the_deadline_is_left_alone(
     assert recording.upload_error is None
 
 
-@pytest.mark.asyncio
 async def test_no_other_upload_state_is_touched_however_old_it_is(
     db_session: AsyncSession,
 ) -> None:
@@ -1521,7 +1472,6 @@ async def test_no_other_upload_state_is_touched_however_old_it_is(
         assert recording.upload_status == status
 
 
-@pytest.mark.asyncio
 async def test_the_sweep_counts_only_the_uploads_it_failed(db_session: AsyncSession) -> None:
     rs = _import_service()
     await _seed_oc_app(db_session)
@@ -1554,7 +1504,6 @@ async def test_the_sweep_counts_only_the_uploads_it_failed(db_session: AsyncSess
     assert await rs.fail_stalled_uploads(db_session) == 2
 
 
-@pytest.mark.asyncio
 async def test_the_sweep_tells_each_owner_how_many_of_their_uploads_it_failed(
     db_session: AsyncSession,
 ) -> None:
@@ -1590,7 +1539,6 @@ async def test_the_sweep_tells_each_owner_how_many_of_their_uploads_it_failed(
     assert "1 of your recordings" in other_notifications[0].body
 
 
-@pytest.mark.asyncio
 async def test_a_stalled_upload_nobody_owns_is_failed_without_a_notification(
     db_session: AsyncSession,
 ) -> None:
@@ -1614,7 +1562,6 @@ async def test_a_stalled_upload_nobody_owns_is_failed_without_a_notification(
     assert result.scalars().all() == []
 
 
-@pytest.mark.asyncio
 async def test_deleting_a_failed_upload_that_reached_the_bucket_deletes_its_blob(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1642,7 +1589,6 @@ async def test_deleting_a_failed_upload_that_reached_the_bucket_deletes_its_blob
     assert deleted == [gcs_url]
 
 
-@pytest.mark.asyncio
 async def test_deleting_a_verified_recording_deletes_its_blob(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1670,7 +1616,6 @@ async def test_deleting_a_verified_recording_deletes_its_blob(
     assert deleted == [gcs_url]
 
 
-@pytest.mark.asyncio
 async def test_deleting_a_recording_that_never_reached_the_bucket_calls_no_blob_delete(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1696,7 +1641,6 @@ async def test_deleting_a_recording_that_never_reached_the_bucket_calls_no_blob_
     assert deleted == []
 
 
-@pytest.mark.asyncio
 async def test_an_upload_in_flight_can_still_be_deleted(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1723,7 +1667,6 @@ async def test_an_upload_in_flight_can_still_be_deleted(
         await rs.get_recording(db_session, rec.id)
 
 
-@pytest.mark.asyncio
 async def test_a_failed_upload_past_the_retention_is_deleted_with_its_blob(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1755,7 +1698,6 @@ async def test_a_failed_upload_past_the_retention_is_deleted_with_its_blob(
         await rs.get_recording(db_session, rec.id)
 
 
-@pytest.mark.asyncio
 async def test_a_failed_upload_that_never_reached_the_bucket_is_purged_anyway(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1783,7 +1725,6 @@ async def test_a_failed_upload_that_never_reached_the_bucket_is_purged_anyway(
         await rs.get_recording(db_session, rec.id)
 
 
-@pytest.mark.asyncio
 async def test_a_bucket_that_refuses_the_blob_does_not_keep_the_row(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1816,7 +1757,6 @@ async def test_a_bucket_that_refuses_the_blob_does_not_keep_the_row(
     assert await rs.purge_failed_uploads(db_session) == 2
 
 
-@pytest.mark.asyncio
 async def test_a_failed_upload_inside_the_retention_is_left_alone(
     db_session: AsyncSession,
 ) -> None:
@@ -1840,7 +1780,6 @@ async def test_a_failed_upload_inside_the_retention_is_left_alone(
     assert recording.upload_status == UploadStatus.UPLOAD_FAILED
 
 
-@pytest.mark.asyncio
 async def test_no_other_upload_state_is_purged_however_old_it_is(
     db_session: AsyncSession,
 ) -> None:
@@ -1906,7 +1845,6 @@ async def _seed_abandoned_uploads(
     return seeded
 
 
-@pytest.mark.asyncio
 async def test_a_purge_pass_stops_at_its_batch_and_takes_the_oldest_first(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1943,7 +1881,6 @@ async def test_a_purge_pass_stops_at_its_batch_and_takes_the_oldest_first(
     assert await rs.get_recording(db_session, youngest_id)
 
 
-@pytest.mark.asyncio
 async def test_what_one_pass_leaves_behind_goes_in_the_next(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1975,7 +1912,6 @@ async def test_what_one_pass_leaves_behind_goes_in_the_next(
             await rs.get_recording(db_session, recording_id)
 
 
-@pytest.mark.asyncio
 async def test_a_batched_pass_deletes_the_blobs_of_the_rows_it_took_and_no_others(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

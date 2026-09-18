@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import itertools
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import sessions as room
@@ -47,7 +46,6 @@ async def a_team(db: AsyncSession, *, name: str):
     return await make_project(db, language.id, name=name)
 
 
-@pytest.mark.asyncio
 async def test_a_second_session_opens_with_the_beads_the_team_already_filled(
     db_session: AsyncSession,
 ) -> None:
@@ -63,7 +61,6 @@ async def test_a_second_session_opens_with_the_beads_the_team_already_filled(
     assert thursday.coverage_state == {**dict.fromkeys(keys, NOT_ENCOUNTERED), **worked}
 
 
-@pytest.mark.asyncio
 async def test_a_tablet_that_never_said_whose_it_is_still_opens_on_an_empty_necklace(
     db_session: AsyncSession,
 ) -> None:
@@ -83,7 +80,6 @@ async def test_a_tablet_that_never_said_whose_it_is_still_opens_on_an_empty_neck
     assert session.coverage_state == dict.fromkeys(keys, NOT_ENCOUNTERED)
 
 
-@pytest.mark.asyncio
 async def test_the_guide_is_handed_only_what_the_team_still_has_left(
     db_session: AsyncSession,
 ) -> None:
@@ -105,7 +101,6 @@ async def test_the_guide_is_handed_only_what_the_team_still_has_left(
     assert [key for key in keys[:-1] if f"[{key}]" in block] == []
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_closed_the_tablet_mid_passage_finishes_it_on_the_second_evening(
     db_session: AsyncSession,
 ) -> None:

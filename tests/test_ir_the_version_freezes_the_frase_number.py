@@ -157,7 +157,6 @@ async def _stored_again(db: AsyncSession, release: IRRelease) -> IRRelease:
     return release
 
 
-@pytest.mark.asyncio
 async def test_the_approved_packet_numbers_every_stretch_from_one_in_listening_order(
     db_session: AsyncSession,
 ) -> None:
@@ -185,7 +184,6 @@ async def test_the_approved_packet_numbers_every_stretch_from_one_in_listening_o
     )
 
 
-@pytest.mark.asyncio
 async def test_a_cut_after_the_approval_appears_only_in_the_next_version(
     db_session: AsyncSession,
 ) -> None:
@@ -220,7 +218,6 @@ async def test_a_cut_after_the_approval_appears_only_in_the_next_version(
     assert [entry["segment_id"] for entry in _frozen(stored)] == before
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_told_again_in_place_keeps_its_frase_in_the_next_version(
     db_session: AsyncSession,
 ) -> None:
@@ -259,7 +256,6 @@ async def test_a_stretch_told_again_in_place_keeps_its_frase_in_the_next_version
     assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
 
 
-@pytest.mark.asyncio
 async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     db_session: AsyncSession,
 ) -> None:
@@ -299,7 +295,6 @@ async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
 
 
-@pytest.mark.asyncio
 async def test_a_standing_finding_keeps_its_stretch_when_frase_three_is_divided(
     db_session: AsyncSession,
 ) -> None:
@@ -412,7 +407,6 @@ async def _every_shape_of_retro_take(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_superseded_an_empty_and_a_divided_parents_retro_take_never_enter_the_frozen_list(
     db_session: AsyncSession,
 ) -> None:
@@ -454,7 +448,6 @@ async def test_a_superseded_an_empty_and_a_divided_parents_retro_take_never_ente
     )
 
 
-@pytest.mark.asyncio
 async def test_frase_and_segment_id_are_each_unique_within_a_version(
     db_session: AsyncSession,
 ) -> None:
@@ -475,7 +468,6 @@ async def test_frase_and_segment_id_are_each_unique_within_a_version(
     assert len({entry["segment_id"] for entry in frozen}) == len(frozen)
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_left_untold_by_a_cut_cannot_be_approved(
     db_session: AsyncSession,
 ) -> None:

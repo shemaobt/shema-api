@@ -33,7 +33,6 @@ def _patch_stream_then_raise(monkeypatch, chunks_before_error: list[str], exc: E
     monkeypatch.setattr(_STREAM_MOD, "_stream_chunks", fake_stream)
 
 
-@pytest.mark.asyncio
 async def test_stream_message_yields_chunks_in_order(monkeypatch, db_session) -> None:
     user = await make_user(db_session, email="th_stream_a@test.com")
     chat = await make_th_chat(db_session, user.id)
@@ -47,7 +46,6 @@ async def test_stream_message_yields_chunks_in_order(monkeypatch, db_session) ->
     assert out == ["Hello", " ", "world"]
 
 
-@pytest.mark.asyncio
 async def test_stream_message_persists_concatenated_text(monkeypatch, db_session) -> None:
     user = await make_user(db_session, email="th_stream_b@test.com")
     chat = await make_th_chat(db_session, user.id)
@@ -74,7 +72,6 @@ async def test_stream_message_persists_concatenated_text(monkeypatch, db_session
     assert rows[1].content == "ABC"
 
 
-@pytest.mark.asyncio
 async def test_stream_message_persists_user_turn_and_partial_on_mid_stream_error(
     monkeypatch, db_session
 ) -> None:
@@ -111,7 +108,6 @@ async def test_stream_message_persists_user_turn_and_partial_on_mid_stream_error
     assert rows[1].content == "partial response"
 
 
-@pytest.mark.asyncio
 async def test_stream_message_persists_user_turn_when_stream_fails_before_any_chunk(
     monkeypatch, db_session
 ) -> None:
@@ -145,7 +141,6 @@ async def test_stream_message_persists_user_turn_when_stream_fails_before_any_ch
     assert rows[0].content == "question"
 
 
-@pytest.mark.asyncio
 async def test_stream_chat_message_error_event_does_not_leak_exception(monkeypatch) -> None:
     """Pins B-5: SSE error events must show a generic message, not the raw exception."""
     secret = "SUPER_SECRET_INTERNAL_DETAIL_xyz123"
@@ -182,7 +177,6 @@ async def test_stream_chat_message_error_event_does_not_leak_exception(monkeypat
     assert "RuntimeError" not in decoded
 
 
-@pytest.mark.asyncio
 async def test_stream_chat_message_sets_anti_buffering_headers(monkeypatch) -> None:
     """Without these headers, nginx and other intermediaries buffer SSE responses,
     which collapses the streaming UX into a single delayed burst."""

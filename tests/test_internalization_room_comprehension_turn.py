@@ -129,7 +129,6 @@ class TwoMovementAgent:
         )
 
 
-@pytest.mark.asyncio
 async def test_the_opening_is_cut_where_the_guide_marked_it(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -157,7 +156,6 @@ async def test_the_opening_is_cut_where_the_guide_marked_it(
     assert "[[" not in turn.outcome.speech
 
 
-@pytest.mark.asyncio
 async def test_a_session_that_already_spoke_is_not_opened_twice(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -196,7 +194,6 @@ class LongPanoramaAgent:
         return f"{'palavra ' * 200}.\n[[CENA]]\nE agora a cena."
 
 
-@pytest.mark.asyncio
 async def test_a_long_opening_is_spoken_in_its_two_movements(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -226,7 +223,6 @@ async def test_a_long_opening_is_spoken_in_its_two_movements(
     assert OPENING_MOVEMENT_MARK not in turn.outcome.speech
 
 
-@pytest.mark.asyncio
 async def test_the_opening_may_give_the_whole_before_the_parts(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -257,7 +253,6 @@ async def test_the_opening_may_give_the_whole_before_the_parts(
     assert len(turn.outcome.speech.split()) > 45
 
 
-@pytest.mark.asyncio
 async def test_a_turn_that_runs_long_is_spoken_as_it_is(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -289,7 +284,6 @@ async def test_a_turn_that_runs_long_is_spoken_as_it_is(
     assert len(turn.outcome.speech.split()) > 45
 
 
-@pytest.mark.asyncio
 async def test_the_opening_turn_belongs_to_the_guide(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -317,7 +311,6 @@ async def test_the_opening_turn_belongs_to_the_guide(
     assert turn.state.active_probe is None
 
 
-@pytest.mark.asyncio
 async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -372,7 +365,6 @@ async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
     assert not recovery.outcome.used_fail_safe
 
 
-@pytest.mark.asyncio
 async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -407,7 +399,6 @@ async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe
     assert all(event.kind != "evidence" for event in turn.state.ledger)
 
 
-@pytest.mark.asyncio
 async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_time(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -443,7 +434,6 @@ async def test_speech_the_room_could_not_hear_is_answered_the_same_way_every_tim
     assert all(outcome.used_fail_safe and outcome.degraded for outcome in spoken)
 
 
-@pytest.mark.asyncio
 async def test_a_turn_without_a_prior_probe_mints_no_evidence(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -518,7 +508,6 @@ _UNUSABLE_SPEECH = (
 )
 
 
-@pytest.mark.asyncio
 async def test_a_scene_worked_to_its_last_bead_is_not_a_mother_tongue_rehearsal(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -553,7 +542,6 @@ _THE_TELLING_OF_BOTH = (
 )
 
 
-@pytest.mark.asyncio
 async def test_a_full_necklace_still_lets_the_telling_mark_the_scene_it_reported(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -621,7 +609,6 @@ def guide_asks_for_the_word(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(module, "call_agent", InvitingAgentAskingForTheWord())
 
 
-@pytest.mark.asyncio
 async def test_the_closing_word_the_guide_asked_for_closes_the_scene(
     db_session: AsyncSession, guide_asks_for_the_word: None
 ) -> None:
@@ -651,7 +638,6 @@ async def test_the_closing_word_the_guide_asked_for_closes_the_scene(
     assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
 
 
-@pytest.mark.asyncio
 async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
     db_session: AsyncSession, guide_invites: None
 ) -> None:
@@ -701,7 +687,6 @@ class RecordingInvitingAgent:
         )
 
 
-@pytest.mark.asyncio
 async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_exists(
     db_session: AsyncSession, guide_invites: None
 ) -> None:
@@ -733,7 +718,6 @@ async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_ex
     assert comprehension_of(session).active_probe is None
 
 
-@pytest.mark.asyncio
 async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
     db_session: AsyncSession, guide_invites_pt: None
 ) -> None:

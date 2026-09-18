@@ -17,7 +17,6 @@ from app.services.translation_helper.update_chat import update_chat
 from tests.baker import make_th_chat, make_th_message, make_user
 
 
-@pytest.mark.asyncio
 async def test_create_chat_default(db_session) -> None:
     user = await make_user(db_session, email="th_a@test.com")
     chat = await create_chat(db_session, user.id)
@@ -27,7 +26,6 @@ async def test_create_chat_default(db_session) -> None:
     assert chat.title is None
 
 
-@pytest.mark.asyncio
 async def test_create_chat_custom_agent_and_title(db_session) -> None:
     user = await make_user(db_session, email="th_b@test.com")
     chat = await create_chat(db_session, user.id, agent_id=AgentId.BACKTRANS, title="Romans 8")
@@ -35,7 +33,6 @@ async def test_create_chat_custom_agent_and_title(db_session) -> None:
     assert chat.title == "Romans 8"
 
 
-@pytest.mark.asyncio
 async def test_list_chats_for_user_filters_by_owner(db_session) -> None:
     alice = await make_user(db_session, email="th_alice@test.com")
     bob = await make_user(db_session, email="th_bob@test.com")
@@ -50,7 +47,6 @@ async def test_list_chats_for_user_filters_by_owner(db_session) -> None:
     assert {r["title"] for r in alice_rows} == {"alice 1", "alice 2"}
 
 
-@pytest.mark.asyncio
 async def test_get_chat_or_404_success(db_session) -> None:
     user = await make_user(db_session, email="th_c@test.com")
     chat = await make_th_chat(db_session, user.id)
@@ -58,13 +54,11 @@ async def test_get_chat_or_404_success(db_session) -> None:
     assert found.id == chat.id
 
 
-@pytest.mark.asyncio
 async def test_get_chat_or_404_raises_when_missing(db_session) -> None:
     with pytest.raises(NotFoundError, match=r"Chat .* not found"):
         await get_chat_or_404(db_session, "nonexistent")
 
 
-@pytest.mark.asyncio
 async def test_get_chat_or_404_raises_when_other_user(db_session) -> None:
     owner = await make_user(db_session, email="th_owner@test.com")
     intruder = await make_user(db_session, email="th_intruder@test.com")
@@ -73,7 +67,6 @@ async def test_get_chat_or_404_raises_when_other_user(db_session) -> None:
         await get_chat_or_404(db_session, chat.id, user_id=intruder.id)
 
 
-@pytest.mark.asyncio
 async def test_update_chat_title_and_agent(db_session) -> None:
     user = await make_user(db_session, email="th_d@test.com")
     chat = await make_th_chat(db_session, user.id, title="old")
@@ -82,7 +75,6 @@ async def test_update_chat_title_and_agent(db_session) -> None:
     assert updated.agent_id == AgentId.ORAL
 
 
-@pytest.mark.asyncio
 async def test_delete_chat_cascades_messages(db_session) -> None:
     user = await make_user(db_session, email="th_e@test.com")
     chat = await make_th_chat(db_session, user.id)
@@ -101,7 +93,6 @@ async def test_delete_chat_cascades_messages(db_session) -> None:
     assert remaining_msgs == []
 
 
-@pytest.mark.asyncio
 async def test_list_messages_ordered_asc(db_session) -> None:
     user = await make_user(db_session, email="th_f@test.com")
     chat = await make_th_chat(db_session, user.id)
@@ -114,7 +105,6 @@ async def test_list_messages_ordered_asc(db_session) -> None:
     assert [m.content for m in msgs] == ["first", "second"]
 
 
-@pytest.mark.asyncio
 async def test_list_messages_with_limit_returns_most_recent_in_chronological_order(
     db_session,
 ) -> None:
@@ -136,7 +126,6 @@ async def test_list_messages_with_limit_returns_most_recent_in_chronological_ord
     assert [m.content for m in last_three] == ["m3", "m4", "m5"]
 
 
-@pytest.mark.asyncio
 async def test_list_messages_limit_larger_than_count_returns_all(db_session) -> None:
     user = await make_user(db_session, email="th_h@test.com")
     chat = await make_th_chat(db_session, user.id)

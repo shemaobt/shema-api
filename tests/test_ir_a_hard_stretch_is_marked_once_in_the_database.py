@@ -157,7 +157,6 @@ def _a_mark(session_id: str, segment_id: str) -> IRHardStretch:
     )
 
 
-@pytest.mark.asyncio
 async def test_two_marks_on_one_stretch_are_refused_by_the_database(
     db_session: AsyncSession,
 ) -> None:
@@ -204,7 +203,6 @@ async def applied_database(tmp_path) -> str:
     return database_url
 
 
-@pytest.mark.asyncio
 async def test_the_migration_creates_the_unique_index_both_ways(applied_database: str) -> None:
     down = run_alembic(applied_database, "downgrade", PREVIOUS_REVISION)
     assert down.returncode == 0, down.stderr
@@ -256,7 +254,6 @@ async def _crossed_and_attended(client, db: AsyncSession, facilitator: Facilitat
     return session_id
 
 
-@pytest.mark.asyncio
 async def test_the_second_writer_of_one_mark_loses_quietly(
     client, db_session: AsyncSession, facilitator: Facilitator
 ) -> None:
@@ -373,7 +370,6 @@ async def _nothing_of_that_telling_landed(
     assert marks == []
 
 
-@pytest.mark.asyncio
 async def test_the_stretch_row_and_the_mark_land_together_on_the_telling_back_route(
     client, db_session: AsyncSession, fresh: AsyncSession, the_halt_fails: None
 ) -> None:
@@ -391,7 +387,6 @@ async def test_the_stretch_row_and_the_mark_land_together_on_the_telling_back_ro
     await _nothing_of_that_telling_landed(fresh, session_id, stretch_id, tellings, before)
 
 
-@pytest.mark.asyncio
 async def test_the_stretch_row_and_the_mark_land_together_on_the_replace_route(
     client, db_session: AsyncSession, fresh: AsyncSession, the_halt_fails: None
 ) -> None:

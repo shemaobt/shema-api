@@ -63,7 +63,6 @@ def test_half_a_line_is_not_a_line() -> None:
     assert hand_over(only_audio, _session(id="p")) is False
 
 
-@pytest.mark.asyncio
 async def test_the_prepared_line_is_spoken_once_and_then_gone(db_session: AsyncSession) -> None:
     """A second turn must never repeat the opening — it is consumed when taken."""
     session = _session(prepared_speech="Olá.", prepared_audio_key="tts/x.mp3")
@@ -74,7 +73,6 @@ async def test_the_prepared_line_is_spoken_once_and_then_gone(db_session: AsyncS
     assert await take_prepared(db_session, session) is None
 
 
-@pytest.mark.asyncio
 async def test_a_session_with_nothing_prepared_says_so(db_session: AsyncSession) -> None:
     session = _session()
     db_session.add(session)
@@ -244,7 +242,6 @@ async def _passage_after(client, panorama_id: str, pericope: str = "P01") -> str
     return created.json()["session_id"]
 
 
-@pytest.mark.asyncio
 async def test_the_panorama_does_not_open_by_speaking_the_first_passage(
     client, db_session: AsyncSession
 ) -> None:
@@ -263,7 +260,6 @@ async def test_the_panorama_does_not_open_by_speaking_the_first_passage(
     assert PREPARED not in said
 
 
-@pytest.mark.asyncio
 async def test_a_passage_opened_after_a_panorama_still_gets_the_ready_line(
     client, db_session: AsyncSession
 ) -> None:
@@ -278,7 +274,6 @@ async def test_a_passage_opened_after_a_panorama_still_gets_the_ready_line(
     assert await _the_room_said(db_session, passage) == PREPARED
 
 
-@pytest.mark.asyncio
 async def test_the_panorama_leaves_the_ready_line_for_the_passage_to_come(
     client, db_session: AsyncSession
 ) -> None:
@@ -297,7 +292,6 @@ async def test_the_panorama_leaves_the_ready_line_for_the_passage_to_come(
     assert await _the_room_said(db_session, passage) == PREPARED
 
 
-@pytest.mark.asyncio
 async def test_a_panorama_opened_before_the_preparation_lands_still_opens(
     client, db_session: AsyncSession
 ) -> None:
@@ -311,7 +305,6 @@ async def test_a_panorama_opened_before_the_preparation_lands_still_opens(
     assert PREPARED not in said
 
 
-@pytest.mark.asyncio
 async def test_the_ready_line_reaches_the_team_without_ever_reaching_the_classifier(
     client, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

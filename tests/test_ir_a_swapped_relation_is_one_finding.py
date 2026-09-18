@@ -355,7 +355,6 @@ async def _findings_now(db: AsyncSession, session_id: str) -> list[Any]:
     return room.back_translation_of(session).findings
 
 
-@pytest.mark.asyncio
 async def test_the_swap_reaches_the_team_as_one_thing(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -379,7 +378,6 @@ async def test_the_swap_reaches_the_team_as_one_thing(
     assert body["finding_kind"] == "addition"
 
 
-@pytest.mark.asyncio
 async def test_the_pair_is_checked_and_cleared_as_one(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -404,7 +402,6 @@ async def test_the_pair_is_checked_and_cleared_as_one(
     assert await _findings_now(db_session, session_id) == []
 
 
-@pytest.mark.asyncio
 async def test_an_unresolved_pair_stays_on_the_corrected_stretch(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -427,7 +424,6 @@ async def test_an_unresolved_pair_stays_on_the_corrected_stretch(
     assert {finding.chunk for finding in findings} == {1}
 
 
-@pytest.mark.asyncio
 async def test_a_missing_placed_after_the_frase_is_still_the_same_swap(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -446,7 +442,6 @@ async def test_a_missing_placed_after_the_frase_is_still_the_same_swap(
     assert body["finding_segment_id"] == first.id
 
 
-@pytest.mark.asyncio
 async def test_a_pair_raised_by_a_correction_pairs_next_turn(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -468,7 +463,6 @@ async def test_a_pair_raised_by_a_correction_pairs_next_turn(
     assert "jerusalém" in speaker[-1].casefold()
 
 
-@pytest.mark.asyncio
 async def test_a_resumed_tablet_is_sent_to_the_stretch_of_the_swap(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:

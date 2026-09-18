@@ -1,5 +1,3 @@
-import pytest
-
 from app.services.book_context.compute_entry_brief import (
     _build_established_items,
     compute_entry_brief,
@@ -142,7 +140,6 @@ def test_build_established_items_all_categories():
     assert categories == {"participant", "event", "institution", "place", "object"}
 
 
-@pytest.mark.asyncio
 async def test_entry_brief_places_in_established_items(db_session):
     user = await make_user(db_session, email="eb_places@test.com")
     book = await make_bible_book(
@@ -183,7 +180,6 @@ async def test_entry_brief_places_in_established_items(db_session):
     assert "Boaz's field" not in place_names
 
 
-@pytest.mark.asyncio
 async def test_entry_brief_objects_in_established_items(db_session):
     user = await make_user(db_session, email="eb_objects@test.com")
     book = await make_bible_book(

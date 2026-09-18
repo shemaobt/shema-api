@@ -263,7 +263,6 @@ async def _explain(db: AsyncSession, session_id: str, segment: IRSegment) -> IRS
     )
 
 
-@pytest.mark.asyncio
 async def test_the_room_names_the_stretch_that_was_never_told_back(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -283,7 +282,6 @@ async def test_the_room_names_the_stretch_that_was_never_told_back(
     )
 
 
-@pytest.mark.asyncio
 async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -307,7 +305,6 @@ async def test_the_stretch_named_is_the_first_one_in_the_order_of_the_passage(
     assert body["untold_segment_id"] != later.id
 
 
-@pytest.mark.asyncio
 async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, spoken: list[str]
 ) -> None:
@@ -337,7 +334,6 @@ async def test_naming_the_stretch_does_not_turn_the_waiting_into_a_verdict(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_with_every_stretch_told_names_no_stretch(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -351,7 +347,6 @@ async def test_a_telling_back_with_every_stretch_told_names_no_stretch(
     assert analyst.readings == 1
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -380,7 +375,6 @@ async def test_a_stretch_that_was_replaced_is_never_named_as_the_missing_one(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_divided_in_two_is_named_by_its_first_half(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:

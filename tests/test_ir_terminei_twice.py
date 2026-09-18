@@ -210,7 +210,6 @@ async def _what_the_room_said(db: AsyncSession, session_id: str) -> list[str]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_second_terminei_with_nothing_new_consults_no_model(
     client: httpx.AsyncClient, consulted: Consulted, db_session: AsyncSession
 ) -> None:
@@ -232,7 +231,6 @@ async def test_a_second_terminei_with_nothing_new_consults_no_model(
     assert consulted.total == after_first
 
 
-@pytest.mark.asyncio
 async def test_a_second_terminei_does_not_write_a_second_exchange(
     client: httpx.AsyncClient, db_session: AsyncSession, consulted: Consulted
 ) -> None:
@@ -251,7 +249,6 @@ async def test_a_second_terminei_does_not_write_a_second_exchange(
     assert await _what_the_room_said(db_session, session_id) == after_first
 
 
-@pytest.mark.asyncio
 async def test_a_terminei_after_something_new_was_told_back_does_run(
     client: httpx.AsyncClient, db_session: AsyncSession, consulted: Consulted
 ) -> None:
@@ -276,7 +273,6 @@ async def test_a_terminei_after_something_new_was_told_back_does_run(
     assert len(await _what_the_room_said(db_session, session_id)) == len(said_after_first) + 1
 
 
-@pytest.mark.asyncio
 async def test_the_first_terminei_is_untouched(
     client: httpx.AsyncClient, db_session: AsyncSession, consulted: Consulted
 ) -> None:

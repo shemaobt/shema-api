@@ -60,7 +60,6 @@ async def _scope_in_the_row(db: AsyncSession, session_id: str) -> str:
     return str((stored.scalar_one().back_translation or {}).get("scope", ""))
 
 
-@pytest.mark.asyncio
 async def test_the_chunks_door_stores_the_scope_the_service_defaults(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -90,7 +89,6 @@ async def test_the_chunks_door_stores_the_scope_the_service_defaults(
     assert await _scope_in_the_row(db_session, session_id) == P
 
 
-@pytest.mark.asyncio
 async def test_the_seam_door_stores_the_scope_the_service_defaults(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:

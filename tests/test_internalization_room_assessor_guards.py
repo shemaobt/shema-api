@@ -174,7 +174,6 @@ def _marks_the_app_added(handed: list[str], written: str) -> list[str]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_problem_about_language_reaches_the_guide_with_no_block_attached(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -224,7 +223,6 @@ class _BrokenModels:
         return "Vamos ficar nesta cena."
 
 
-@pytest.mark.asyncio
 async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_stopped_for_a_person(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -253,7 +251,6 @@ async def test_a_room_whose_model_keeps_failing_pauses_out_loud_and_is_never_sto
     assert turn.outcome.speech == PAUSE_LINE
 
 
-@pytest.mark.asyncio
 async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -275,7 +272,6 @@ async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_turn_in_the_teams_own_tongue_between_two_refusals_does_not_start_the_a_ladder_over(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
