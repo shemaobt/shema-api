@@ -112,13 +112,18 @@ async def _a_room_that_has_asked_something(db: AsyncSession) -> IRSession:
 
 
 async def _the_team_answers(
-    db: AsyncSession, session: IRSession, text: str
+    db: AsyncSession, session: IRSession, text: str, *, heard_as: str | None = None
 ) -> tuple[ComprehensionTurn, IRSession]:
-    """One whole turn as the endpoint runs it, so what one turn leaves the next one reads."""
+    """One whole turn as the endpoint runs it, so what one turn leaves the next one reads.
+
+    `heard_as` is the language the transcriber was sure it heard; at the room's threshold,
+    a language other than the session's is the team speaking their own tongue."""
     turn = await run_comprehension_turn(
         db,
         session,
-        speech=HeardSpeech(text=text),
+        speech=HeardSpeech(
+            text=text, bridge_language="pt", language_code=heard_as, language_probability=0.99
+        ),
         opening=False,
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
@@ -268,3 +273,24 @@ async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
         "a contagem não zerava num turno que o Validador aprovou, e a terceira falha da "
         "sessão virava pausa mesmo com a sala tendo voltado a falar no meio"
     )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_in_the_teams_own_tongue_between_two_refusals_does_not_start_the_a_ladder_over(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The G line is a fail-safe too: the Guide did not answer the team on that turn, and
+    the ticket's rule is that only a turn which needed no fail-safe ends the run."""
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
+    )
+    session = await _a_room_that_has_asked_something(db_session)
+    _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
+    own_tongue, session = await _the_team_answers(
+        db_session, session, text="koeti yoko vitukeovo enepone", heard_as="ter"
+    )
+
+    turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
+
+    assert own_tongue.outcome.fixed_line == "G0"
+    assert turn.outcome.fixed_line == "A1"
