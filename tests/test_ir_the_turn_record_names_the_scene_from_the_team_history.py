@@ -14,8 +14,12 @@ def _session(messages: list[dict[str, str]]) -> IRSession:
     return IRSession(pericope="P01", language="pt", coverage_state={}, messages=messages)
 
 
-def test_a_turn_on_a_fresh_session_names_no_scene() -> None:
+def test_a_turn_on_a_fresh_session_names_no_scene_when_nothing_was_said() -> None:
     assert _scene_of(_session([])) is None
+
+
+def test_the_first_turn_is_recorded_with_the_scene_the_team_just_opened() -> None:
+    assert _scene_of(_session([]), "a fome chegou") == "S1"
 
 
 def test_a_turn_after_the_team_spoke_names_the_first_open_scene() -> None:
