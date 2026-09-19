@@ -198,10 +198,10 @@ A current **Part** of the rehearsal the team's listening report does not cover, 
 _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part never heard), Parte não ouvida
 
 **Abandoned**:
-A superseded stretch that never got a replacement, which is what starting a telling-back
-over leaves behind on every stretch of a session at once, and what recording a **Part** again
-leaves behind on that part's stretches alone.
-_Avoid_: erased, discarded, cancelled, Abandonada
+A superseded stretch that never got a replacement: what recording a **Part** again leaves
+behind on that part's stretches, and what a session told back and started over before
+2026-09-18 still carries as history.
+_Avoid_: erased, discarded, cancelled, Abandonada, restart (retired: the telling-back started over)
 
 ### Verdict closings
 

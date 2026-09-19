@@ -60,7 +60,9 @@ project-less session before it composes anything, and both facilitator routes re
 the team that owns it. Neither golden runner calls a release door. A release door opened onto the
 seam would have to answer this question before it opened.
 
-Consequences, decided knowing them. A session whose telling-back was started over now carries
+Consequences, decided knowing them. (The telling-back started over, named below, was retired on
+2026-09-18 by ENG-949 with its route; sessions that used it keep their abandoned rows as history.)
+A session whose telling-back was started over now carries
 `untold_part` beside `no_telling_back`, because every part it holds stands with nothing told on it;
 that is the same hole read honestly. The verdict's untold errand, `first_untold`, still speaks only
 of stretches, so a team sent back by the release gate and a team sent back by the check were told
