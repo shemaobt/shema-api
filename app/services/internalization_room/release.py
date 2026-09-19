@@ -92,6 +92,12 @@ SCHEMA_VERSION = "tripod.internalization-release.v0.6"
 #: material: there is nothing in a rehearsal nobody recorded for anybody to overrule.
 FORCEABLE_BLOCKERS = frozenset({"telling_back_not_checked", "playback_did_not_cover_the_clip"})
 
+#: The three the tablet has a door for and the team's own route names ground on: an untold
+#: part by its take, an unheard part by its take, an untold stretch by its own id (ADR 0027,
+#: ADR 0028). One name for the set so the strings live once rather than at every site that
+#: asks whether a blocker carries ground.
+GROUNDED_BLOCKERS = frozenset({"untold_part", "playback_did_not_cover_the_clip", "untold_stretch"})
+
 #: Where the facilitator and the consultant read everything the check learned about a session.
 #: The route is a later slice's; the packet says where it will be so the two land together.
 RETRO_ROUTE = "/api/internalization-room/facilitator/sessions/{session_id}/retroverificacao"

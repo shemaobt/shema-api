@@ -74,3 +74,7 @@ The release cases used to be assembled on a stretch naming a recording no row ca
 room itself refuses (`rehearsal_take_of`); the gate above reads that fiction as exactly what it is,
 so the harness now names the session's own take. That is a test-only change and it is recorded here
 because it is why a green suite before this decision is not evidence about it.
+
+The rejection above of "a payload naming the take" is reversed for the team's own route by ADR
+0028, on the reason that turned out false: the tablet is the client that reads it, and the Desk
+reads no code at all today.

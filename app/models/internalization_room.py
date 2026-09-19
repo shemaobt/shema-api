@@ -812,11 +812,13 @@ class TakesResponse(BaseModel):
 
 
 class ReleaseResponse(BaseModel):
-    """What the tablet is told when the team's approval landed.
+    """What the Desk is told when a mint lands: the number and the fingerprint.
 
-    The packet itself is not here: it is the file Refine reads, and the room has no use for
-    it on the way back. What the tablet shows is the number the passage now carries and the
-    fingerprint of what was approved under it.
+    Only ``ForcedReleaseResponse`` extends this now (ENG-954 gave the team's own route its
+    own model, ``TeamReleaseResponse``, once a refusal there stopped being a 409). The packet
+    itself is not here: it is the file Refine reads, and the room has no use for it on the way
+    back. What this shows is the number the passage now carries and the fingerprint of what
+    was approved under it.
     """
 
     release_id: str
@@ -847,6 +849,41 @@ class ForcedReleaseResponse(ReleaseResponse):
     """
 
     forced_at: str | None
+
+
+class TeamReleaseResponse(BaseModel):
+    """What the tablet is told when the team presses approve: a number, or a named blocker.
+
+    Every refusal the gate raises is one of these, not a 409 (ENG-954, reversing ADR 0026's
+    rejection of "a payload naming the take" for this route alone): the tablet is the client
+    that reads it, and the app decides by the field and never by what is missing from the
+    body. The version race is not one of the gate's refusals and keeps the generic 409
+    `approve_release` already raises — a retry signal, not a blocker.
+    """
+
+    session_id: str
+    #: Present only when the packet was minted, so an app reading this field never has to
+    #: infer a release from an empty ``blockers`` list.
+    version: int | None = None
+    #: Null on a refusal, the way ``version`` is: nothing was minted for this row to name.
+    release_id: str | None = None
+    #: Null on a refusal, for the reason ``release_id`` is.
+    package_sha256: str | None = None
+    #: Null on a refusal, for the reason ``release_id`` is.
+    approved_at: str | None = None
+    #: The gate's codes in the order the gate raised them, plus `no_project`, the one literal
+    #: that is the route's own (the gate never composes a project-less session); empty on a
+    #: mint. Never a sentence.
+    blockers: list[str] = Field(default_factory=list)
+    #: Which current parts carry nobody's words, by their own take, when `untold_part` is
+    #: among the blockers; empty otherwise, the way `terminei`'s own field is (ADR 0027).
+    untold_take_ids: list[str] = Field(default_factory=list)
+    #: Which parts of the rehearsal the report does not cover, by their own take, when
+    #: `playback_did_not_cover_the_clip` is among the blockers; empty otherwise.
+    unheard_take_ids: list[str] = Field(default_factory=list)
+    #: The earliest stretch standing with nothing told over it, when `untold_stretch` is
+    #: among the blockers; null otherwise.
+    untold_segment_id: str | None = None
 
 
 class QuestionAudioResponse(BaseModel):
