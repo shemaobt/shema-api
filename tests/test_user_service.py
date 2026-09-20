@@ -72,3 +72,23 @@ async def test_list_user_roles_returns_empty_for_no_roles(db_session) -> None:
     user = await make_user(db_session, email="noroles@example.com")
     roles = await user_service.list_user_roles(db_session, user.id)
     assert roles == []
+
+
+@pytest.mark.asyncio
+async def test_search_users_below_the_query_floor_returns_empty(db_session) -> None:
+    await make_user(db_session, email="alice@example.com", display_name="Alice")
+    await make_user(db_session, email="bob@example.com", display_name="Bob")
+
+    assert await user_service.search_users(db_session, "") == []
+    assert await user_service.search_users(db_session, "   ") == []
+    assert await user_service.search_users(db_session, "a") == []
+
+
+@pytest.mark.asyncio
+async def test_search_users_at_the_query_floor_matches(db_session) -> None:
+    await make_user(db_session, email="alice@example.com", display_name="Alice")
+    await make_user(db_session, email="bob@example.com", display_name="Bob")
+
+    results = await user_service.search_users(db_session, "al")
+
+    assert [u.email for u in results] == ["alice@example.com"]
