@@ -3,11 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
 
-#: Shortest query the directory search will answer. Below this the endpoint is a
-#: typeahead with nothing typed, and answering it dumps the whole user table (email,
-#: display name and the platform-admin flag) to any caller who may search at all. Two
-#: characters keeps the pick-a-user flows working while it stops being an enumeration
-#: oracle; the console pickers only fire once the field holds a couple of characters.
+#: Below this the `%q%` search pages the whole table; the floor drops the empty/one-char dump.
 MIN_SEARCH_QUERY_LENGTH = 2
 
 

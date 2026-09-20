@@ -155,7 +155,8 @@ async def test_check_other_users_role_is_denied_to_a_non_admin(db_session, clien
         headers=headers,
     )
 
-    assert response.status_code != 200
+    # assert_can_manage_roles raises RoleError, which the app maps to 400
+    assert response.status_code == 400
 
 
 async def test_check_other_users_role_is_allowed_for_a_platform_admin(db_session, client) -> None:
