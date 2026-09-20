@@ -2,7 +2,7 @@ import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.access_requests import router as access_requests_router
@@ -51,6 +51,7 @@ from app.api.sound_necklace import router as sound_necklace_router
 from app.api.translation_helper import router as translation_helper_router
 from app.api.uploads import router as uploads_router
 from app.api.users import router as users_router
+from app.core.auth_middleware import require_admin_or_manager
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, close_db, init_db
 from app.core.exceptions import register_exception_handlers
@@ -164,10 +165,19 @@ def create_app() -> FastAPI:
         tags=["facilitator-legend"],
     )
     app.include_router(devices_router, prefix="/api/devices", tags=["devices"])
-    app.include_router(journeys_router, prefix="/api/journeys", tags=["journeys"])
+    console_guard = [Depends(require_admin_or_manager)]
+    app.include_router(
+        journeys_router,
+        prefix="/api/journeys",
+        tags=["journeys"],
+        dependencies=console_guard,
+    )
     app.include_router(phases_router, prefix="/api/phases", tags=["phases"])
     app.include_router(
-        phase_categories_router, prefix="/api/phase-categories", tags=["phase-categories"]
+        phase_categories_router,
+        prefix="/api/phase-categories",
+        tags=["phase-categories"],
+        dependencies=console_guard,
     )
     app.include_router(books_router, prefix="/api/books", tags=["books"])
     app.include_router(pericopes_router, prefix="/api/pericopes", tags=["pericopes"])
