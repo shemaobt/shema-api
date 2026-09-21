@@ -4,7 +4,8 @@ import uuid
 from fastapi import UploadFile
 from google.cloud import storage
 
-GCS_UPLOADS_BUCKET = "tripod-image-uploads"
+from app.core.config import get_settings
+
 GCS_PROJECT = "gen-lang-client-0886209230"
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/svg+xml"}
@@ -21,15 +22,16 @@ async def upload_image(file: UploadFile, folder: str = "images") -> str:
 
     ext = _extension_for(file.content_type)
     blob_name = f"{folder}/{uuid.uuid4().hex}{ext}"
+    bucket_name = get_settings().gcs_oc_bucket
 
     def _blocking() -> None:
         client = storage.Client(project=GCS_PROJECT)
-        bucket = client.bucket(GCS_UPLOADS_BUCKET)
+        bucket = client.bucket(bucket_name)
         blob = bucket.blob(blob_name)
         blob.upload_from_string(contents, content_type=file.content_type)
 
     await asyncio.to_thread(_blocking)
-    return f"https://storage.googleapis.com/{GCS_UPLOADS_BUCKET}/{blob_name}"
+    return f"https://storage.googleapis.com/{bucket_name}/{blob_name}"
 
 
 def _extension_for(content_type: str | None) -> str:

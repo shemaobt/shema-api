@@ -159,3 +159,21 @@ async def test_verify_blob_both_hashes_validated() -> None:
     with _patch_storage(_make_blob_mock(md5_hash="DMF1ucDxtqgxw5niaXcmYQ==", crc32c="Nks/tw==")):
         result = await verify_gcs_blob(payload)
     assert result.size == 1024
+
+
+async def test_the_verification_reads_the_configured_bucket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The blob is looked for in the bucket the upload was signed for, not in production's."""
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "gcs_oc_bucket", "balde-de-staging")
+
+    client = MagicMock()
+    client.bucket.return_value.blob.return_value = _make_blob_mock()
+    payload = UploadConfirmedPayload(**_base_kwargs())
+
+    with patch("app.inngest.upload_processing.storage.Client", return_value=client):
+        await verify_gcs_blob(payload)
+
+    client.bucket.assert_called_once_with("balde-de-staging")

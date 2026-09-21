@@ -53,6 +53,12 @@ def _import_service():
     return recording_service
 
 
+def _public_base() -> str:
+    from app.services.oral_collector.gcs_utils import gcs_public_base
+
+    return gcs_public_base()
+
+
 async def test_create_recording(db_session: AsyncSession) -> None:
     rs = _import_service()
     user = await make_user(db_session)
@@ -1573,7 +1579,7 @@ async def test_deleting_a_failed_upload_that_reached_the_bucket_deletes_its_blob
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
 
-    gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/r.m4a"
+    gcs_url = f"{_public_base()}oral-collector/p/g/r.m4a"
     rec = await make_oc_recording(
         db_session,
         project_id,
@@ -1600,7 +1606,7 @@ async def test_deleting_a_verified_recording_deletes_its_blob(
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
 
-    gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/verified.m4a"
+    gcs_url = f"{_public_base()}oral-collector/p/g/verified.m4a"
     rec = await make_oc_recording(
         db_session,
         project_id,
@@ -1678,7 +1684,7 @@ async def test_a_failed_upload_past_the_retention_is_deleted_with_its_blob(
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
 
-    gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned.m4a"
+    gcs_url = f"{_public_base()}oral-collector/p/g/abandoned.m4a"
     rec = await make_oc_recording(
         db_session,
         project_id,
@@ -1749,7 +1755,7 @@ async def test_a_bucket_that_refuses_the_blob_does_not_keep_the_row(
             sub.id,
             user_id=user.id,
             title=f"abandoned {index}",
-            gcs_url=f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned-{index}.m4a",
+            gcs_url=f"{_public_base()}oral-collector/p/g/abandoned-{index}.m4a",
             upload_status=UploadStatus.UPLOAD_FAILED,
         )
         await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
@@ -1826,10 +1832,9 @@ async def _seed_abandoned_uploads(
     ages_in_days: list[int],
 ) -> list[tuple[str, str]]:
     """Purgeable rows of the given ages, each owning a blob, as `(id, gcs_url)` in seed order."""
-    rs = _import_service()
     seeded: list[tuple[str, str]] = []
     for age_days in ages_in_days:
-        gcs_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/p/g/abandoned-{age_days}d.m4a"
+        gcs_url = f"{_public_base()}oral-collector/p/g/abandoned-{age_days}d.m4a"
         rec = await make_oc_recording(
             db,
             project_id,
@@ -1943,3 +1948,143 @@ async def test_a_batched_pass_deletes_the_blobs_of_the_rows_it_took_and_no_other
     await rs.purge_failed_uploads(db_session)
 
     assert deleted == [oldest_url, second_oldest_url, youngest_url]
+
+
+STAGING_BUCKET = "balde-de-staging"
+PRODUCTION_BUCKET = "tripod-image-uploads"
+
+
+class _FakeGcsBlob:
+    """The three calls the service makes on a blob, answering what GCS answers with."""
+
+    def __init__(self, bucket_name: str, blob_name: str, deleted: list[tuple[str, str]]) -> None:
+        self._bucket_name = bucket_name
+        self._blob_name = blob_name
+        self._deleted = deleted
+
+    def generate_signed_url(self, **_kwargs: object) -> str:
+        return (
+            f"https://storage.googleapis.com/{self._bucket_name}/{self._blob_name}"
+            "?X-Goog-Signature=x"
+        )
+
+    def create_resumable_upload_session(self, **_kwargs: object) -> str:
+        return (
+            f"https://storage.googleapis.com/upload/storage/v1/b/{self._bucket_name}"
+            f"/o?uploadType=resumable&name={self._blob_name}"
+        )
+
+    def delete(self) -> None:
+        self._deleted.append((self._bucket_name, self._blob_name))
+
+
+class _FakeGcsBucket:
+    def __init__(self, name: str, deleted: list[tuple[str, str]]) -> None:
+        self._name = name
+        self._deleted = deleted
+
+    def blob(self, blob_name: str) -> _FakeGcsBlob:
+        return _FakeGcsBlob(self._name, blob_name, self._deleted)
+
+
+class _FakeGcsClient:
+    def __init__(self) -> None:
+        self.deleted: list[tuple[str, str]] = []
+
+    def bucket(self, name: str) -> _FakeGcsBucket:
+        return _FakeGcsBucket(name, self.deleted)
+
+
+def _fake_the_bucket(monkeypatch: pytest.MonkeyPatch, rs) -> _FakeGcsClient:  # type: ignore[no-untyped-def]
+    client = _FakeGcsClient()
+    monkeypatch.setattr(rs, "_get_gcs_client", lambda: client)
+    monkeypatch.setattr(rs, "_get_signing_info", lambda: ("signer@test", "token"))
+    return client
+
+
+def _point_the_bucket_at(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "gcs_oc_bucket", name)
+
+
+async def _seed_recording(db: AsyncSession, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+    user = await make_user(db)
+    project_id = await _seed_project(db)
+    genre, sub = await make_oc_taxonomy(db)
+    rec = await make_oc_recording(db, project_id, genre.id, sub.id, user_id=user.id)
+    return rec, user
+
+
+async def test_the_signed_upload_url_addresses_the_configured_bucket(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What the device receives is signed for the bucket the setting names."""
+    rs = _import_service()
+    _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
+    _fake_the_bucket(monkeypatch, rs)
+    rec, user = await _seed_recording(db_session, monkeypatch)
+
+    response = await rs.generate_upload_url(db_session, rec.id, "m4a", user.id)
+
+    assert response.upload_url.startswith(f"https://storage.googleapis.com/{STAGING_BUCKET}/")
+
+
+async def test_the_resumable_upload_session_addresses_the_configured_bucket(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rs = _import_service()
+    _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
+    _fake_the_bucket(monkeypatch, rs)
+    rec, user = await _seed_recording(db_session, monkeypatch)
+
+    response = await rs.generate_resumable_upload_url(db_session, rec.id, "m4a", user.id)
+
+    assert f"/b/{STAGING_BUCKET}/o" in response.session_uri
+
+
+async def test_without_the_setting_both_upload_urls_address_the_production_bucket(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A missing variable signs for exactly the bucket production signs for today."""
+    rs = _import_service()
+    _fake_the_bucket(monkeypatch, rs)
+    rec, user = await _seed_recording(db_session, monkeypatch)
+
+    simple = await rs.generate_upload_url(db_session, rec.id, "m4a", user.id)
+    resumable = await rs.generate_resumable_upload_url(db_session, rec.id, "m4a", user.id)
+
+    assert simple.upload_url.startswith(f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/")
+    assert f"/b/{PRODUCTION_BUCKET}/o" in resumable.session_uri
+
+
+async def test_deleting_a_row_inherited_from_production_removes_the_configured_buckets_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Staging's rows carry production's prefix: the object name comes from the URL and the
+    bucket from the setting, so production's file is never the one removed."""
+    rs = _import_service()
+    _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
+    client = _fake_the_bucket(monkeypatch, rs)
+
+    rs._delete_gcs_blob(
+        f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/oral-collector/p/g/r.m4a"
+    )
+
+    assert client.deleted == [(STAGING_BUCKET, "oral-collector/p/g/r.m4a")]
+
+
+def test_a_stored_url_resolves_to_its_object_name_whatever_bucket_it_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.oral_collector.gcs_utils import blob_name_from_url
+
+    _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
+
+    assert (
+        blob_name_from_url(
+            f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/oral-collector/p/g/r.m4a"
+        )
+        == "oral-collector/p/g/r.m4a"
+    )
+    assert blob_name_from_url("https://elsewhere.example/x") is None
