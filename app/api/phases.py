@@ -41,7 +41,7 @@ async def list_phases(
     else:
         managed_project_ids = await get_managed_project_ids(db, user.id)
         phases = await phase_service.list_phases_by_projects(
-            db, managed_project_ids, project_id=project_id
+            db, managed_project_ids, project_id=project_id, journey_id=journey_id
         )
     return [PhaseResponse.model_validate(phase) for phase in phases]
 

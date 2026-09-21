@@ -1,8 +1,12 @@
 from tests.baker import (
     make_journey,
+    make_language,
     make_phase,
     make_phase_category,
     make_phase_dependency,
+    make_project,
+    make_project_phase,
+    make_project_user_access,
     make_user,
 )
 from tests.test_journeys.conftest import auth_header
@@ -81,6 +85,36 @@ async def test_list_phases_filtered_by_journey_ordered(client, db_session):
     assert resp.status_code == 200
     body = resp.json()
     assert [p["id"] for p in body] == [p1.id, p2.id]
+
+
+async def test_list_phases_by_journey_filters_for_a_manager_too(client, db_session):
+    """The `journey_id` filter has to mean the same thing whichever branch answers.
+
+    `test_list_phases_filtered_by_journey_ordered` above covers the platform admin branch.
+    This one covers the manager branch, which reaches the listing through
+    `list_phases_by_projects` — without the filter it answered a manager with every phase
+    of every project they manage, so the same query said different things by role.
+    """
+    manager = await make_user(db_session, email="manager@example.com")
+    language = await make_language(db_session)
+    journey = await make_journey(db_session)
+    other = await make_journey(db_session, name="Other")
+    project = await make_project(db_session, language.id, journey_id=journey.id)
+    await make_project_user_access(db_session, project.id, manager.id, role="manager")
+    first = await make_phase(db_session, name="First", journey_id=journey.id, sort_order=0)
+    second = await make_phase(db_session, name="Second", journey_id=journey.id, sort_order=1)
+    elsewhere = await make_phase(db_session, name="Elsewhere", journey_id=other.id)
+    for phase in (first, second, elsewhere):
+        await make_project_phase(db_session, project.id, phase.id)
+    headers = await auth_header(db_session, manager)
+
+    resp = await client.get(f"/api/phases?journey_id={journey.id}", headers=headers)
+    assert resp.status_code == 200
+    assert [p["id"] for p in resp.json()] == [first.id, second.id]
+
+    unfiltered = await client.get("/api/phases", headers=headers)
+    assert unfiltered.status_code == 200
+    assert {p["id"] for p in unfiltered.json()} == {first.id, second.id, elsewhere.id}
 
 
 async def test_update_phase_category_and_icon_url(client, db_session):

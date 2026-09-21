@@ -9,6 +9,7 @@ async def list_phases_by_projects(
     db: AsyncSession,
     project_ids: list[str],
     project_id: str | None = None,
+    journey_id: str | None = None,
 ) -> list[Phase]:
     if not project_ids:
         return []
@@ -22,7 +23,10 @@ async def list_phases_by_projects(
         .where(ProjectPhase.project_id.in_(scoped_project_ids))
         .distinct()
     )
-    stmt = select(Phase).where(Phase.id.in_(phase_ids_subq)).order_by(Phase.name)
+    stmt = select(Phase).where(Phase.id.in_(phase_ids_subq))
+    if journey_id is not None:
+        stmt = stmt.where(Phase.journey_id == journey_id)
+    stmt = stmt.order_by(Phase.name)
     result = await db.execute(stmt)
     return list(result.scalars().unique().all())
 
