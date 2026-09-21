@@ -8,14 +8,16 @@ the Facilitator Desk, the Sound Necklace, the Oral Collector and the Annotation 
 Package manager is `uv`, on Python 3.11: `uv python install 3.11`, then `uv sync --frozen --group dev`.
 
 ```sh
-JWT_SECRET_KEY=test-secret-for-pytest-only DATABASE_URL=sqlite+aiosqlite:///./test.db uv run pytest tests/ -v
-uv run mypy app/
+JWT_SECRET_KEY=test-secret-for-pytest-only uv run pytest tests/ -n 4 --dist loadfile
+
 uv run ruff check . && uv run ruff format --check .
 DATABASE_URL=sqlite+aiosqlite:///./boot-check.db JWT_SECRET_KEY=test-secret-for-ci-only INNGEST_DEV=1 uv run python -c "import app.main"
+uv run mypy app/
+
 PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no duplicate ids
 ```
 
-The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon.
+The first line is the `test` job; the three lines between the blank ones carry the four commands of the single `lint` job, in that order. The suite needs `ffmpeg` and `ffprobe` on the host, because it measures recordings with them exactly as the deployed image does. It runs on SQLite and touches neither the local Postgres nor Neon. The test database is one file per process, in the system temporary directory and named by the xdist worker or, in a serial run, by the pid, so two runs in one checkout and four workers in one run do not corrupt each other; `DATABASE_URL` is honoured when set, and the run then uses that one file and leaves it behind — so a run that names its own database runs serially, without `-n`. The schema is created once per process and each test is given a clean database by a sweep, not by recreating it: [ADR 0031](docs/adr/0031-one-lint-check-and-a-schema-once-per-worker.md).
 
 ## Rules
 

@@ -27,14 +27,25 @@ import yaml
 WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 
 #: ENG-554 names four gates — lint, test, migrations, boots — and that is four names, not
-#: four jobs: `lint` is a file carrying `ruff`, `boots` and `mypy`, and the issue names
-#: `boots` separately because it is the one it most wants held. As jobs it is five, which is
-#: what a push actually costs. Keyed by file, because nothing here assumes one file is one job.
+#: four jobs. Lint was three jobs, each paying the same four setup steps, and a pull request
+#: showed three checks for one job's work: ENG-969 collapsed them into one job that runs the
+#: same commands in a queue. Keyed by file, because nothing here assumes one file is one job.
 GATES = {
-    "lint.yml": {"ruff", "boots", "mypy"},
+    "lint.yml": {"lint"},
     "test.yml": {"test"},
     "migrations.yml": {"migrations"},
 }
+
+#: The four commands the three lint jobs ran, in the order the single job runs them. Held as
+#: an ordered subsequence: a check that stops being reached is a check that stopped guarding.
+#: `main` has seven here — the doctrine guard and the canon drift check have no job on this
+#: branch, and the promotion of ENG-969 did not invent them.
+LINT_COMMANDS_IN_ORDER = [
+    "ruff check .",
+    "ruff format --check .",
+    "import app.main",
+    "mypy app/",
+]
 
 INTEGRATION_GLOB = "integration/**"
 
@@ -90,3 +101,77 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
     defined = set(_workflow(filename)["jobs"])
 
     assert jobs <= defined, f"{filename} lost {jobs - defined}"
+
+
+#: A job with no `timeout-minutes` inherits GitHub's 360-minute default, which is how a hung
+#: run stayed "pending" for six hours instead of turning red (ENG-913). Neither pull request
+#: gate on this branch had one. ENG-969 gives both a ceiling: 10 for lint, whose four
+#: commands cost well under a minute of work, and 10 for test, twice the five minutes its
+#: step is expected to take now that the suite runs in four processes.
+JOB_TIMEOUT_MINUTES = {
+    ("lint.yml", "lint"): 10,
+    ("test.yml", "test"): 10,
+}
+
+
+@pytest.mark.parametrize(
+    ("filename", "job", "minutes"),
+    sorted((filename, job, minutes) for (filename, job), minutes in JOB_TIMEOUT_MINUTES.items()),
+)
+def test_a_hung_job_turns_red_instead_of_staying_pending_for_hours(
+    filename: str, job: str, minutes: int
+) -> None:
+    jobs = _workflow(filename)["jobs"]
+    timeout = jobs[job].get("timeout-minutes")
+    assert timeout == minutes, f"{filename}:{job} timeout-minutes is {timeout}, not {minutes}"
+
+
+def _lint_steps() -> list[dict]:
+    jobs = _workflow("lint.yml")["jobs"]
+    assert "lint" in jobs, f"lint.yml defines {sorted(jobs)}, not a single `lint` job"
+    return jobs["lint"]["steps"]
+
+
+def _lint_step_running(fragment: str) -> dict:
+    running = [step for step in _lint_steps() if fragment in step.get("run", "")]
+    assert len(running) == 1, f"{fragment} is run by {len(running)} steps of the lint job"
+    return running[0]
+
+
+def test_lint_is_one_check_and_not_three() -> None:
+    """Three jobs cost one pull request three lines and three setups for one job's work."""
+    jobs = sorted(_workflow("lint.yml")["jobs"])
+
+    assert jobs == ["lint"], f"lint.yml defines {jobs}"
+
+
+def test_the_one_job_runs_every_check_the_three_jobs_ran() -> None:
+    """Collapsing the jobs must not drop a check: the four commands still run, in order."""
+    runs = [step["run"] for step in _lint_steps() if "run" in step]
+
+    unreached = list(LINT_COMMANDS_IN_ORDER)
+    for run in runs:
+        if unreached and unreached[0] in run:
+            unreached.pop(0)
+
+    assert unreached == [], f"the lint job never reaches, in this order: {unreached}"
+
+
+def test_the_boot_import_carries_the_three_variables_it_needs() -> None:
+    """The job-level env of the old `boots` job travels with the step, not with the job."""
+    step = _lint_step_running("import app.main")
+
+    assert set(step.get("env", {})) >= {"DATABASE_URL", "JWT_SECRET_KEY", "INNGEST_DEV"}, (
+        f"the boot step has env {step.get('env')}"
+    )
+
+
+def test_the_suite_runs_in_four_processes_split_by_file() -> None:
+    """ENG-969: the schema is created once per process, so the split has to be by file."""
+    steps = _workflow("test.yml")["jobs"]["test"]["steps"]
+    running_pytest = [step["run"] for step in steps if "pytest" in step.get("run", "")]
+    assert len(running_pytest) == 1, f"test.yml runs pytest in {len(running_pytest)} steps"
+    command = running_pytest[0]
+
+    assert "-n 4" in command, f"the test step runs `{command}`"
+    assert "--dist loadfile" in command, f"the test step runs `{command}`"
