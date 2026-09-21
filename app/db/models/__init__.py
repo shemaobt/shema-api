@@ -21,6 +21,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.change_request import ChangeRequest
 from app.db.models.device import Device
 from app.db.models.internalization_room import (
     IRCoverageEvent,
@@ -136,6 +137,7 @@ __all__ = [
     "BCDSectionFeedback",
     "BibleBook",
     "BookContextDocument",
+    "ChangeRequest",
     "ChatMessageRole",
     "Device",
     "GranularityLevel",

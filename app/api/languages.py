@@ -36,7 +36,7 @@ async def list_languages(
 async def create_language(
     payload: LanguageCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_platform_admin),
 ) -> LanguageResponse:
     language = await language_service.create_language(
         db, payload.name, payload.code, created_by=str(user.id)
