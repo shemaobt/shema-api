@@ -212,7 +212,9 @@ _Avoid_: ending, other, Fechamento
 ### Session states
 
 **Session**:
-The work of one team on one pericope, with status in progress, done or needs a person.
+The work of one team on one pericope, with status in progress, done or needs a person. A
+session nobody entered — no turn, no take and no halt — is not yet a room of the team: the
+Desk's column and the team's last activity ignore it.
 _Avoid_: passage, round, Sessão
 
 **Needs a person** (`needs_person`):

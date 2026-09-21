@@ -1,45 +1,41 @@
 """What every test in this suite is given before it asks for anything.
 
-**The database is one file per run**, named by the process and kept outside the working
-directory. A fixed name in the worktree meant two runs in one checkout shared a database:
-every test drops every table and creates them again, so one run took the other's tables out
-from under it, and the failures landed anywhere and looked like the code under test.
-``setdefault`` leaves a caller's own name alone, for anybody reproducing a failure against a
-file they want to keep; that run then owns its file, and this one removes only the file it
-made for itself.
+**The database is one file per process**, named by `tests.database_naming` before anything of
+the app is imported, and kept outside the working directory. A fixed name in the worktree
+meant two runs in one checkout shared a database; one name for the whole of an xdist run
+would mean four workers sharing one.
 
-It is named before anything of the app is imported, because the app builds its engine on
-import and a fixture would run long after that. The name is therefore written twice — once in
-the ``setdefault`` below and once for the cleanup — and cannot be written once: the lint
-refuses a module-level assignment before that import (E402), and a helper module is not
-importable this early because ``tests`` is not a package. Change one and change the other.
+**The schema is created once per process**, not once per test, and what gives a test a clean
+database instead is a sweep: every row of every table deleted in one transaction, then the
+two seeded `App` rows written again. Why it is not a rollback, and what it was measured
+against, is [ADR 0031](../docs/adr/0031-one-lint-check-and-a-schema-once-per-worker.md).
+
+`app.db.models` is imported here on purpose. `Base.metadata` is populated by importing the
+models, and a schema created once, at the start of a process, must not depend on which of
+them the collected modules happened to reach for.
 """
 
 import asyncio
 import os
-import tempfile
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
 import pytest
-from sqlalchemy import event
+from sqlalchemy import delete, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from tests.database_naming import database_environment_for_this_process, the_generated_database_file
+
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-for-pytest-only")
-os.environ.setdefault(
-    "DATABASE_URL",
-    f"sqlite+aiosqlite:///{Path(tempfile.gettempdir()) / f'shema-api-test-{os.getpid()}.db'}",
-)
+os.environ.update(database_environment_for_this_process())
 # The inngest client picks its mode when it is constructed, so this has to be set
 # before anything imports it — otherwise importing app.main needs a signing key.
 os.environ.setdefault("INNGEST_DEV", "1")
 
+import app.db.models  # noqa: F401
 from app.core.database import Base
 
 #: The one the app is already pointed at, so the fixtures and the routes share a database.
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
-
-_PER_RUN_DATABASE = Path(tempfile.gettempdir()) / f"shema-api-test-{os.getpid()}.db"
 
 
 @pytest.fixture(scope="session")
@@ -59,16 +55,22 @@ async def test_engine():
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+
     yield engine
     await engine.dispose()
-    _PER_RUN_DATABASE.unlink(missing_ok=True)
+    generated = the_generated_database_file()
+    if generated is not None:
+        generated.unlink(missing_ok=True)
 
 
 @pytest.fixture()
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(delete(table))
 
     session_factory = async_sessionmaker(
         test_engine, expire_on_commit=False, class_=AsyncSession, autoflush=False
