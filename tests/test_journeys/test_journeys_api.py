@@ -16,7 +16,9 @@ from tests.test_journeys.conftest import auth_header
 
 
 async def test_list_journeys_with_counts(client, db_session):
-    user = await make_user(db_session, email="viewer@example.com")
+    """The actor is an admin because the catalog is scoped to a manager's own
+    projects since OBT-507; this test is about the counts, not about who reads."""
+    user = await make_user(db_session, email="viewer@example.com", is_platform_admin=True)
     journey = await make_journey(db_session, name="Journey A")
     other = await make_journey(db_session, name="Journey B")
     await make_phase(db_session, name="P1", journey_id=journey.id)
@@ -61,7 +63,8 @@ async def test_create_journey_as_non_admin_forbidden(client, db_session):
 
 
 async def test_get_journey_with_counts(client, db_session):
-    user = await make_user(db_session, email="viewer@example.com")
+    """Admin actor for the same reason as the listing above (OBT-507)."""
+    user = await make_user(db_session, email="viewer@example.com", is_platform_admin=True)
     journey = await make_journey(db_session, name="Journey A")
     await make_phase(db_session, name="P1", journey_id=journey.id)
     headers = await auth_header(db_session, user)
@@ -74,7 +77,9 @@ async def test_get_journey_with_counts(client, db_session):
 
 
 async def test_get_journey_not_found(client, db_session):
-    user = await make_user(db_session, email="viewer@example.com")
+    """Only an unscoped reader can be told an id is missing: a scoped one is
+    refused first, which `test_journey_scope.py` pins on purpose (OBT-507)."""
+    user = await make_user(db_session, email="viewer@example.com", is_platform_admin=True)
     headers = await auth_header(db_session, user)
     resp = await client.get("/api/journeys/missing-id", headers=headers)
     assert resp.status_code == 404
