@@ -16,10 +16,6 @@ from app.services.internalization_room.turn import scene_view
 from app.services.internalization_room.turn.speech import speak_back
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_agent_answers
 
-OFF_BRIDGE_LINE = (
-    "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas "
-    "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
-)
 INAUDIBLE_LINES = [
     "Desculpa, não consegui ouvir direito — podem repetir?",
     "Essa me escapou. Podem dizer de novo?",
@@ -67,6 +63,7 @@ def test_the_invitation_is_about_the_scene_being_opened_or_else_the_first_still_
 async def _speak(session: Any, **overrides: Any) -> Any:
     given: dict[str, Any] = {
         "mother_tongue": False,
+        "take_ms": None,
         "session": session,
         "messages": [],
         "transcript": "a fome chegou",
@@ -80,22 +77,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "settings": settings(),
     }
     return await speak_back(**{**given, **overrides})
-
-
-async def test_speech_in_the_teams_own_language_meets_the_g_line_without_waking_a_model(
-    db_session: AsyncSession, agent: RecordingAgent
-) -> None:
-    session = await create_session(db_session, language="pt", pericope=P)
-
-    outcome = await _speak(
-        session, mother_tongue=True, transcript="koeti yoko vitukeovo enepone itukovo"
-    )
-
-    assert outcome.speech == OFF_BRIDGE_LINE
-    assert outcome.fixed_line == "G0"
-    assert outcome.used_fail_safe is True
-    assert outcome.degraded is False
-    assert agent.calls == 0
 
 
 async def _missed(db: AsyncSession, session: Any, *, times: int) -> Any:

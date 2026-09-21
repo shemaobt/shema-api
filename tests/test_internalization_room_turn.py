@@ -1,9 +1,7 @@
-from pathlib import Path
 from typing import Any
 
 import pytest
 
-import app.services.internalization_room as internalization_room
 from app.core.exceptions import ValidationError
 from app.services.internalization_room.canon.elements import element_keys
 from app.services.internalization_room.comprehension.practice import (
@@ -379,17 +377,6 @@ async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_
     assert outcome.fixed_line.startswith("A")
     assert outcome.used_fail_safe is True
     assert outcome.degraded is True
-
-
-def test_the_g_line_is_chosen_only_from_the_teams_own_speech_never_the_guides_draft() -> None:
-    """Category G is what the team hears, so only the team-detection branch may reach for it."""
-    package_dir = Path(internalization_room.__file__).resolve().parent
-    callers = sorted(
-        path.relative_to(package_dir).as_posix()
-        for path in package_dir.rglob("*.py")
-        if "FailSafe.OFF_BRIDGE_LANGUAGE" in path.read_text()
-    )
-    assert callers == ["turn/speech.py"]
 
 
 async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> None:

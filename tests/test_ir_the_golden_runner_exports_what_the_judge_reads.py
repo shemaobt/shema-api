@@ -36,10 +36,6 @@ MOTHER_TONGUE_NOTE = (
     "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
     "palavra chegou até você.]"
 )
-OFF_BRIDGE_LINE = (
-    "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas "
-    "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
-)
 
 
 @pytest.fixture()
@@ -110,13 +106,13 @@ async def test_the_export_is_the_transcript_block_her_judge_is_handed(seam, tmp_
     assert transcript.read_text(encoding="utf-8") == (
         f"[turn 0]\nTEAM: {OPENING_NOTE}\nGUIDE (pass): {GUIDE_LINE}\n\n"
         f"[turn 1]\nTEAM: {TEAM_LINE}\nGUIDE (pass): {GUIDE_LINE}\n\n"
-        f"[turn 2]\nTEAM: {MOTHER_TONGUE_NOTE}\nGUIDE (fail_safe): {OFF_BRIDGE_LINE}\n"
+        f"[turn 2]\nTEAM: {MOTHER_TONGUE_NOTE}\nGUIDE (pass): {GUIDE_LINE}\n"
     ), "o bloco tem de entrar no prompt do juiz sem edição, no formato do runner dela"
     turns = json.loads(report.read_text(encoding="utf-8"))["turns"]
     assert [(t["idx"], t["team"], t["guide"], t["outcome"]) for t in turns] == [
         (0, OPENING_NOTE, GUIDE_LINE, "pass"),
         (1, TEAM_LINE, GUIDE_LINE, "pass"),
-        (2, MOTHER_TONGUE_NOTE, OFF_BRIDGE_LINE, "fail_safe"),
+        (2, MOTHER_TONGUE_NOTE, GUIDE_LINE, "pass"),
     ]
     assert report.name == "P01-three-turns.2026-09-11T03-00-00.json"
 

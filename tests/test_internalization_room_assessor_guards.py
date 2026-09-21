@@ -272,21 +272,24 @@ async def test_a_turn_the_validator_settled_starts_the_a_ladder_over(
     )
 
 
-async def test_a_turn_in_the_teams_own_tongue_between_two_refusals_does_not_start_the_a_ladder_over(
+async def test_a_turn_in_the_teams_own_tongue_the_guide_answered_starts_the_a_ladder_over(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The G line is a fail-safe too: the Guide did not answer the team on that turn, and
-    the ticket's rule is that only a turn which needed no fail-safe ends the run."""
-    monkeypatch.setattr(
-        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _BrokenModels()
-    )
+    """A rehearsal in the team's own language is an ordinary Guide turn now, not a fixed
+    line: when the Guide answers the fact of it, that turn needed no fail-safe, and by the
+    ticket's rule a turn that needed none ends the run."""
+    models = sys.modules["app.services.internalization_room.run_turn"]
+    monkeypatch.setattr(models, "call_agent", _BrokenModels())
     session = await _a_room_that_has_asked_something(db_session)
     _, session = await _the_team_answers(db_session, session, text="Noemi voltou a Belém")
+    monkeypatch.setattr(models, "call_agent", _RecordingModels())
     own_tongue, session = await _the_team_answers(
         db_session, session, text="koeti yoko vitukeovo enepone", heard_as="ter"
     )
+    monkeypatch.setattr(models, "call_agent", _BrokenModels())
 
     turn, _ = await _the_team_answers(db_session, session, text="Orfa voltou")
 
-    assert own_tongue.outcome.fixed_line == "G0"
-    assert turn.outcome.fixed_line == "A1"
+    assert own_tongue.outcome.fixed_line == ""
+    assert own_tongue.outcome.used_fail_safe is False
+    assert turn.outcome.fixed_line == "A0"
