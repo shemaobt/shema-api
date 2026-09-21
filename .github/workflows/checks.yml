@@ -1,4 +1,4 @@
-name: Lint
+name: Checks
 
 on:
   pull_request:
@@ -27,7 +27,7 @@ jobs:
   # stops the queue. On `main` this job runs seven commands; here it runs the four this
   # branch has — the doctrine guard and the canon drift check have no job on this branch, and
   # the promotion did not invent them.
-  lint:
+  checks:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,3 +73,12 @@ jobs:
 
       - name: Run mypy
         run: uv run mypy app/
+
+      # The file that opens a fresh interpreter to prove what the suite's own process cannot
+      # prove about itself: that the application boots. It belongs beside the boot import
+      # above, which already pays for a clean interpreter as one of this job's commands
+      # (ENG-980). `main` sends three files here; this branch has one of the three.
+      - name: Run the tests that open a fresh interpreter
+        env:
+          JWT_SECRET_KEY: test-secret-for-ci-only
+        run: uv run pytest tests/ -rfE -m fresh_interpreter

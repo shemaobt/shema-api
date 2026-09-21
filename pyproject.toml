@@ -85,3 +85,7 @@ exclude = ["alembic/", "tests/"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "migration: walks a migration against its own throwaway SQLite file; runs in the Migrations job",
+    "fresh_interpreter: opens a clean interpreter to prove what the suite's own process cannot; runs in Checks",
+]

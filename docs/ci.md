@@ -1,16 +1,26 @@
 # CI
 
-Lint, Test and Migrations are the pull request gates: they run on every pull request, and also
+Checks, Test and Migrations are the pull request gates: they run on every pull request, and also
 on `integration/**` pushes, which have no pull request of their own. That filter stays narrow on
 purpose, because the test job has been measured between 6 and 56 minutes and a chain merged
 one step at a time pays the slowest job once per step. The rest run on their own triggers,
 named in the table.
 
+A test that spawns a process to prove what it proves does not run in the Test job: the eight
+that walk a migration carry the `migration` marker and run in Migrations, which already walks
+the graph on Postgres; the one that opens a fresh interpreter carries `fresh_interpreter` and
+runs in Checks, which already boots the application in a clean interpreter as one of its four
+commands. `tests/test_ci_gates.py` pins the three selections as a partition of the whole
+suite, so a file cannot fall outside all three without that turning red.
+[ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-beside.md). `main` marks
+fourteen files and three; this branch has eight and one, and the rest arrive with whatever
+carries `main` into `dev`.
+
 | Workflow | What it gates |
 |---|---|
-| Lint | One job, one check on the pull request, four commands in a queue under a 10-minute ceiling: `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), and `mypy app/`. `main` runs three more here, the two doctrine passes and the canon drift check; this branch has no job for them and the promotion did not invent one. |
-| Test | The pytest suite on SQLite in four processes split by file, with the schema created once per process, under a 10-minute ceiling, which is twice the five minutes the test step is expected to take. `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
-| Migrations | The graph stands at one head with no duplicate revision ids, and the newest migrations walk down and back up on a clean Postgres. |
+| Checks | One job, one check on the pull request, four commands in a queue under a 10-minute ceiling: `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), and `mypy app/`, then the file marked `fresh_interpreter`. `main` runs three more commands here, the two doctrine passes and the canon drift check; this branch has no job for them and neither promotion invented one. |
+| Test | The pytest suite on SQLite in four processes split by file, with the schema created once per process, selecting out the tests marked `migration` or `fresh_interpreter`, under a 7-minute ceiling. `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
+| Migrations | The graph stands at one head with no duplicate revision ids, the newest migrations walk down and back up on a clean Postgres, then the eight tests marked `migration` run with `DATABASE_URL` cleared so they build their own SQLite files instead of running against the job's Postgres. |
 | Deploy | A push to `main` builds the image, upgrades the production database and deploys to Cloud Run. |
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
 | Claude mention | Answers an `@claude` mention on a pull request or issue. |
