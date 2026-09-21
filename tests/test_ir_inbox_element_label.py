@@ -46,13 +46,13 @@ INBOX_URL = "/api/internalization-room/facilitator/questions"
 #: implementation reads. Deriving both from one source would let the two agree while both
 #: drifted from what a facilitator sees, and this text **is** what they see.
 PILOT = "P01"
-PILOT_KEY = "being:B3"
+PILOT_KEY = "being:S1:B3"
 PILOT_PT, PILOT_EN, PILOT_ES = "Noemi", "Naomi", "Noemí"
 
 #: One of the ten. English is filled in and the other two are null for every bead in the
 #: passage — the path the pilot's four never take.
 UNTRANSLATED = "P06"
-UNTRANSLATED_KEY = "being:B13"
+UNTRANSLATED_KEY = "being:S1:B13"
 UNTRANSLATED_EN = "Boaz"
 
 #: A key of the right shape that the catalogue does not have. It arrives on the wire as a
@@ -145,7 +145,6 @@ def every_value(card: dict) -> list[str]:
     return [str(value) for value in card.values() if value is not None]
 
 
-@pytest.mark.asyncio
 async def test_the_card_names_the_bead_in_the_three_languages(client, db_session):
     """The whole slice, on a passage that has all three."""
     team = await a_team(db_session, name="Equipe do piloto")
@@ -161,7 +160,6 @@ async def test_the_card_names_the_bead_in_the_three_languages(client, db_session
     ), f"a caixa nao nomeou a conta: {card}"
 
 
-@pytest.mark.asyncio
 async def test_the_raw_key_reaches_no_served_field(client, db_session):
     """The gate against the key coming back, in a new field or in an old one left behind.
 
@@ -181,7 +179,6 @@ async def test_the_raw_key_reaches_no_served_field(client, db_session):
     assert "element_key" not in card, f"o campo da chave continua servido: {card}"
 
 
-@pytest.mark.asyncio
 async def test_a_passage_outside_the_pilot_serves_english_and_two_nulls(client, db_session):
     """Ten of the fourteen look like this, so this is what most teams will see.
 
@@ -201,7 +198,6 @@ async def test_a_passage_outside_the_pilot_serves_english_and_two_nulls(client, 
     ), f"uma passagem nao traduzida nao saiu com o ingles e dois nulos: {card}"
 
 
-@pytest.mark.asyncio
 async def test_a_key_the_catalogue_does_not_know_costs_the_card_and_not_the_inbox(
     client, db_session
 ):
@@ -235,7 +231,6 @@ async def test_a_key_the_catalogue_does_not_know_costs_the_card_and_not_the_inbo
     )
 
 
-@pytest.mark.asyncio
 async def test_a_pericope_the_canon_does_not_have_costs_the_card_and_not_the_inbox(
     client, db_session
 ):
@@ -261,7 +256,6 @@ async def test_a_pericope_the_canon_does_not_have_costs_the_card_and_not_the_inb
     )
 
 
-@pytest.mark.asyncio
 async def test_a_hand_raised_on_no_bead_is_named_by_nothing(client, db_session):
     """Every question written before ENG-456, and every app that has not shipped it."""
     team = await a_team(db_session, name="Equipe sem conta")

@@ -206,7 +206,6 @@ def test_peer_cue_is_read_off_the_reply() -> None:
     assert not detects_peer_cue("Essa discussão fica para depois, vamos seguir juntos.")
 
 
-@pytest.mark.asyncio
 async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     agent = patch_agent(FakeAgent(verdicts=[]))
 
@@ -228,7 +227,35 @@ async def test_inaudible_audio_never_reaches_a_model(patch_agent) -> None:
     assert agent.calls == []
 
 
-@pytest.mark.asyncio
+async def test_a_third_silence_in_a_row_draws_the_third_d_line_whatever_the_conversation_length(
+    patch_agent,
+) -> None:
+    agent = patch_agent(FakeAgent(verdicts=[]))
+    two_misses = [
+        {"role": "guide", "text": "Vamos conhecer a cena.", "outcome": "pass"},
+        {"role": "team", "text": ""},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+    ]
+
+    outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="   ",
+        coverage_state=initial_state(P),
+        messages=two_misses,
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=settings(),
+    )
+
+    assert outcome.fixed_line == "D2", (
+        "quatro mensagens guardadas davam D1 pela paridade, fosse a primeira falha ou a terceira"
+    )
+    assert agent.calls == []
+
+
 async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
@@ -255,7 +282,6 @@ async def test_a_passing_draft_is_what_the_team_hears(patch_agent) -> None:
     assert agent.calls == ["guide", "validator"]
 
 
-@pytest.mark.asyncio
 async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None:
     patch_agent(
         FakeAgent(
@@ -287,7 +313,6 @@ async def test_a_corrected_verdict_voices_the_repaired_text(patch_agent) -> None
     assert outcome.issues
 
 
-@pytest.mark.asyncio
 async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(
@@ -318,7 +343,6 @@ async def test_two_regenerations_then_the_fail_safe_line(patch_agent) -> None:
     assert agent.calls.count("guide") == MAX_REDRAFTS + 1
 
 
-@pytest.mark.asyncio
 async def test_the_guide_straying_out_of_the_bridge_language_is_a_draft_failure_not_the_g_line(
     patch_agent,
 ) -> None:
@@ -379,7 +403,6 @@ async def test_unparseable_verdict_is_treated_as_a_rejection(patch_agent) -> Non
     assert outcome.used_fail_safe is True
 
 
-@pytest.mark.asyncio
 async def test_the_redraft_note_carries_the_rejection_back_to_the_guide(patch_agent) -> None:
     agent = patch_agent(
         FakeAgent(

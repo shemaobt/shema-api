@@ -55,6 +55,7 @@ from app.services.internalization_room.sessions import (
     report_playback,
     save_comprehension,
 )
+from app.services.internalization_room.takes import current_parts, takes_of
 from tests.baker import (
     make_language,
     make_project,
@@ -148,11 +149,25 @@ def supported_comprehension(pericope: str, *, carry_one: bool = False) -> Compre
     )
 
 
+async def the_one_part_of(db: AsyncSession, session: IRSession) -> IRTake:
+    """This session's single current part, read off the rows rather than named by a constant.
+
+    It refuses a session holding more than one, because a case rehearsed in parts has to say
+    which part a stretch is a slice of and answering with the first would decide that by
+    accident.
+    """
+    parts = current_parts(await takes_of(db, session.id))
+    if len(parts) != 1:
+        raise ValueError(f"this session holds {len(parts)} current parts, not one")
+    return parts[0]
+
+
 async def one_stretch(db: AsyncSession, session: IRSession, text: str = "Noemi voltou com Rute"):
+    part = await the_one_part_of(db, session)
     return await capture_segment(
         db,
         session,
-        take_id="ensaio-1",
+        take_id=part.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
         bridge_take_id="retro-1",
@@ -318,6 +333,7 @@ async def rehearsed_session(
     *,
     project_id: str | None = None,
     language: str | None = None,
+    ordinal: int | None = None,
     **comprehension_kwargs,
 ) -> tuple[IRSession, IRTake]:
     """A session that has done everything a release needs except tell the passage back.
@@ -329,11 +345,15 @@ async def rehearsed_session(
     ``language`` is which language the room speaks to this team. It is named here only by the
     cases that were opened naming it: a session that names none takes the floor, and changing
     that under a case would change what the room answers rather than what it is asked.
+
+    ``ordinal`` is the number the tablet sends beside a part, and none is the passage recorded
+    in one go. A case about recording that part again names one, because the verb for *this
+    part again* reads the number and nothing else (ADR 0023).
     """
     session = await create_session(db, pericope=P, project_id=project_id, language=language)
     session.coverage_state = merge(initial_state(P), pericope_num=P, engaged=element_keys(P))
     await save_comprehension(db, session, supported_comprehension(P, **comprehension_kwargs))
-    take = ensaio_take(session.id, project_id=session.project_id)
+    take = ensaio_take(session.id, ordinal=ordinal, project_id=session.project_id)
     db.add(take)
     await db.commit()
     return session, take
@@ -343,6 +363,7 @@ async def ready_session(
     db: AsyncSession,
     *,
     project_id: str | None = None,
+    ordinal: int | None = None,
     tell: Callable[[AsyncSession, IRSession], Awaitable[BackTranslationState]] | None = None,
     **comprehension_kwargs,
 ):
@@ -360,7 +381,9 @@ async def ready_session(
     several stretches passes its own and inherits the rest of the scaffold rather than
     rebuilding it, which is the only part of this that ever differs.
     """
-    session, _take = await rehearsed_session(db, project_id=project_id, **comprehension_kwargs)
+    session, _take = await rehearsed_session(
+        db, project_id=project_id, ordinal=ordinal, **comprehension_kwargs
+    )
     await reported_playback(db, session, await (tell or checked_telling_back)(db, session))
     return session
 
@@ -376,26 +399,25 @@ async def a_p02_telling_with_the_swapped_cause(db: AsyncSession, project: Projec
     session = await create_session(db, pericope=P02, project_id=project.id)
     session.coverage_state = merge(initial_state(P02), pericope_num=P02, engaged=element_keys(P02))
     await save_comprehension(db, session, supported_comprehension(P02))
-    db.add(
-        IRTake(
-            session_id=session.id,
-            project_id=project.id,
-            device_id=TABLET,
-            pericope=P02,
-            kind=IRTakeKind.ENSAIO,
-            scope="passagem-inteira",
-            storage_key=f"takes/{session.id}/ensaio/b",
-            size_bytes=2048,
-            sha256="b" * 64,
-            crc32c="AAAAAAA=",
-            content_type="audio/mp4",
-        )
+    rehearsal = IRTake(
+        session_id=session.id,
+        project_id=project.id,
+        device_id=TABLET,
+        pericope=P02,
+        kind=IRTakeKind.ENSAIO,
+        scope="passagem-inteira",
+        storage_key=f"takes/{session.id}/ensaio/b",
+        size_bytes=2048,
+        sha256="b" * 64,
+        crc32c="AAAAAAA=",
+        content_type="audio/mp4",
     )
+    db.add(rehearsal)
     await db.commit()
     told = await capture_segment(
         db,
         session,
-        take_id="ensaio-1",
+        take_id=rehearsal.id,
         starts_ms=0,
         ends_ms=CLIP_MS,
         bridge_take_id="retro-1",
@@ -437,12 +459,13 @@ async def a_rehearsal_only_half_heard(db: AsyncSession, project: Project) -> IRS
     state = back_translation_of(session)
     state.checked = True
     state.findings = []
+    part = await the_one_part_of(db, session)
     await report_playback(
         db,
         session,
         state,
         played_by_take=[
-            PlayedTake(take_id="ensaio-1", played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
+            PlayedTake(take_id=part.id, played_ranges=[(0, 20000)], clip_duration_ms=CLIP_MS)
         ],
         played_ranges=[[0, 20000]],
         clip_duration_ms=CLIP_MS,

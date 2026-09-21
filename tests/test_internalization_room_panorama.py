@@ -143,7 +143,6 @@ def test_the_wheels_own_panorama_id_also_resolves_to_the_book_the_room_serves() 
     assert resolve_pericope("panorama") == OV
 
 
-@pytest.mark.asyncio
 async def test_the_alias_opens_a_real_panorama_session(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope="OV")
 
@@ -151,7 +150,6 @@ async def test_the_alias_opens_a_real_panorama_session(db_session: AsyncSession)
     assert is_panorama(session.pericope)
 
 
-@pytest.mark.asyncio
 async def test_a_panorama_session_has_no_coverage_spine(db_session: AsyncSession) -> None:
     """It prepares the team to enter the book; it asks no retelling and never completes."""
     session = await create_session(db_session, pericope=OV)
@@ -161,7 +159,6 @@ async def test_a_panorama_session_has_no_coverage_spine(db_session: AsyncSession
     assert session.status is IRSessionStatus.IN_PROGRESS
 
 
-@pytest.mark.asyncio
 async def test_the_panorama_is_grounded_on_the_book_material(patch_agent) -> None:
     agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
     material = build_book_material("Ruth")
@@ -185,7 +182,6 @@ async def test_the_panorama_is_grounded_on_the_book_material(patch_agent) -> Non
     assert "PRESERVATION NOTES" in speaker_system
 
 
-@pytest.mark.asyncio
 async def test_the_validator_judges_against_the_same_material(patch_agent) -> None:
     """Containment is enforced twice in a panorama too, with the book as the standard."""
     agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
@@ -207,7 +203,6 @@ async def test_the_validator_judges_against_the_same_material(patch_agent) -> No
     assert "{{" not in validator_system
 
 
-@pytest.mark.asyncio
 async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_agent) -> None:
     """The book session counts toward a facilitator the same way a passage does.
 
@@ -233,7 +228,31 @@ async def test_a_panorama_that_could_not_hear_the_team_is_a_degraded_turn(patch_
     assert agent.systems == []
 
 
-@pytest.mark.asyncio
+async def test_a_panorama_missing_the_team_again_walks_the_d_ladder_by_misses(
+    patch_agent,
+) -> None:
+    agent = patch_agent(FakeAgent({"verdict": "pass", "issues": []}))
+    one_miss = [
+        {"role": "guide", "text": "vamos conhecer o livro", "outcome": "pass"},
+        {"role": "guide", "text": "…", "outcome": "fail_safe", "category": "D"},
+    ]
+
+    outcome = await run_panorama_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="   ",
+        messages=one_miss,
+        panorama_prompt=PANORAMA,
+        validator_prompt=VALIDATOR,
+        book="Ruth",
+        book_material=build_book_material("Ruth"),
+        settings=_settings(),
+    )
+
+    assert outcome.fixed_line == "D1", "duas mensagens guardadas davam D2 pela paridade"
+    assert agent.systems == []
+
+
 async def test_a_rejected_panorama_turn_is_never_voiced(patch_agent) -> None:
     patch_agent(
         FakeAgent(
@@ -324,10 +343,10 @@ async def test_the_third_turn_still_carries_the_sessions_first_exchange(
 
     opening_exchange = {"role": "guide", "text": "resposta 1."}
     assert seen_messages[0] == [], "a abertura não tem conversa nenhuma atrás dela"
-    assert opening_exchange in seen_messages[2], (
+    assert opening_exchange["text"] in [m["text"] for m in seen_messages[2]], (
         "o terceiro turno perdeu a primeira troca da sessão — isso é o que uma janela faria"
     )
-    assert seen_messages[2] == [
+    assert [{"role": m["role"], "text": m["text"]} for m in seen_messages[2]] == [
         opening_exchange,
         {"role": "team", "text": "pergunta dois"},
         {"role": "guide", "text": "resposta 2."},

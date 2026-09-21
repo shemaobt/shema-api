@@ -7,7 +7,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.run_turn import (
     TurnOutcome,
@@ -42,7 +42,7 @@ async def speak_back(
     app_context: str,
 ) -> TurnOutcome:
     if not opening and not mother_tongue and (empty or uncertain):
-        line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
+        line, fixed = inaudible_ladder(messages, session.language)
         return TurnOutcome(
             speech=line, transcript="", used_fail_safe=True, degraded=True, fixed_line=fixed
         )

@@ -84,7 +84,7 @@ The act of saying, in the bridge language, what a stretch of the mother tongue h
 _Avoid_: translating (in English prose; the room's own English literal does say translated), transcribing, Contar de volta, Contado de volta, Reconto, Recontar
 
 **Untold**:
-A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called.
+A stretch recorded in the mother tongue that has not been told back yet. It is not a finding: it is only waiting to be told, and the analyst is not called. A current **Part** with no standing stretch is untold ground as well: the check refuses *terminei* on it, naming the part on `untold_take_ids` before the analyst runs, and it refuses the **Release** as `untold_part`.
 _Avoid_: missing, pending, Não contado
 
 **Rehearsal** (`ensaio`):
@@ -198,10 +198,10 @@ A current **Part** of the rehearsal the team's listening report does not cover, 
 _Avoid_: unplayed clip, untold stretch (a stretch never told; this is a part never heard), Parte não ouvida
 
 **Abandoned**:
-A superseded stretch that never got a replacement, which is what starting a telling-back
-over leaves behind on every stretch of a session at once, and what recording a **Part** again
-leaves behind on that part's stretches alone.
-_Avoid_: erased, discarded, cancelled, Abandonada
+A superseded stretch that never got a replacement: what recording a **Part** again leaves
+behind on that part's stretches, and what a session told back and started over before
+2026-09-18 still carries as history.
+_Avoid_: erased, discarded, cancelled, Abandonada, restart (retired: the telling-back started over)
 
 ### Verdict closings
 
@@ -244,6 +244,10 @@ _Avoid_: revision, pass (the count of tellings of a stretch), v-number
 **Packet**:
 The file a release hands to Refine: the rehearsal, the telling-back with its findings and history, the questions, and its own hash as a fingerprint of the content. Its findings travel as a kind and an address, never the analyst's note, which lives in the **Retroverification file** alone.
 _Avoid_: package, artifact (the code's older name), manifest, handoff, Pacote
+
+**Blocker**:
+One of the codes a refused approval names, one string each: the gate's ten plus `no_project`. A blocker says which hole stands; the room's answer at *terminei* and the tablet's doors say where to go.
+_Avoid_: reason, error code, bloqueio, refusal (the answer that carries them)
 
 **Forced release** (`forced_by`, `forced_at`, `forced_open_findings`):
 A **Release** a facilitator minted over an open finding or an unheard part, recorded with who forced it, when, and the findings open at that moment. The team can never force one, and no other blocker yields to the force: comprehension, coverage, audio, a telling-back, its reading and an untold stretch are material, not a dispute.

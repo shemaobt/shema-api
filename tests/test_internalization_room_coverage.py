@@ -2,8 +2,6 @@ import enum
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from app.db.models.internalization_room import IRPromptKey
 from app.services.internalization_room import coverage
 from app.services.internalization_room._default_prompts import (
@@ -48,32 +46,41 @@ def test_the_spine_is_the_passage_itself_not_a_fixed_list() -> None:
 def test_every_kind_the_completion_floor_names_is_present() -> None:
     kinds = {element.kind for element in elements_for(P)}
 
+    assert ElementKind.ARC in kinds
+    assert ElementKind.CONTEXT in kinds
+    assert ElementKind.TONE in kinds
+    assert ElementKind.FUNCTION in kinds
     assert ElementKind.SCENE in kinds
     assert ElementKind.BEING in kinds
     assert ElementKind.ABSENCE in kinds
     assert ElementKind.PRESERVED in kinds
 
 
-def test_an_entity_in_three_scenes_is_one_bead() -> None:
-    """Naomi appears in every scene of P03; the team works with her once."""
+def test_an_entity_in_three_scenes_is_a_bead_in_each_of_them() -> None:
+    """Naomi appears in every scene of P03; the team works with her in each."""
     beings = [e for e in elements_for(P) if e.kind is ElementKind.BEING]
 
     assert len(beings) == len({e.key for e in beings})
-    assert any(e.key == "being:B3" for e in beings)
+    assert [e.scene for e in beings if e.key.endswith(":B3")] == [1, 2, 3]
+    assert not any(e.key == "being:B3" for e in beings)
 
 
-def test_the_same_place_written_differently_is_one_bead() -> None:
+def test_the_same_place_written_differently_is_one_road_in_each_scene() -> None:
     """`the road (implied; continues from P02)` and `the road (continued)` are one road."""
     places = [e for e in elements_for(P) if e.kind is ElementKind.PLACE]
 
-    assert sum(1 for e in places if e.key == "place:the-road") == 1
+    assert [e.key for e in places if e.key.endswith(":the-road")] == [
+        "place:S1:the-road",
+        "place:S2:the-road",
+        "place:S3:the-road",
+    ]
 
 
 def test_coverage_never_moves_backwards() -> None:
-    state = merge(initial_state(P), pericope_num=P, engaged=["being:B9"])
-    state = merge(state, pericope_num=P, surfaced=["being:B9"])
+    state = merge(initial_state(P), pericope_num=P, engaged=["being:S1:B9"])
+    state = merge(state, pericope_num=P, surfaced=["being:S1:B9"])
 
-    assert state["being:B9"] == "engaged"
+    assert state["being:S1:B9"] == "engaged"
 
 
 def test_surfaced_counts_elements_the_team_has_not_worked_yet() -> None:
@@ -280,16 +287,15 @@ def test_a_preservation_rule_the_team_only_echoed_does_not_close_the_passage() -
 def test_a_level_one_axis_meets_the_floor_at_surfaced_and_nothing_else_does() -> None:
     """Her one exemption: "all four Level-1 elements at least `surfaced`" (build_spec.md:333).
 
-    The enum does not hold the four kinds yet — that slice is ENG-752 — so the exemption
-    is read off the kind's value, and this case hands the floor a kind this build does
-    not know, the way the ledger will receive it.
+    The exemption is read off the kind's value, so this case hands the floor a kind spelled
+    outside the enum, the way the ledger would receive it.
     """
 
     class AxisKind(enum.StrEnum):
         ARC = "arc"
 
     axis = Element.model_construct(key="arc", label="Level-1 arc", kind=AxisKind.ARC, scene=None)
-    concrete = elements_for(P)[0]
+    concrete = next(e for e in elements_for(P) if e.kind is ElementKind.SCENE)
     spine = [axis, concrete]
     with_the_axis = {**initial_state(P), "arc": CoverageStatus.SURFACED.value}
 
@@ -301,16 +307,12 @@ def test_a_level_one_axis_meets_the_floor_at_surfaced_and_nothing_else_does() ->
         ) is (False)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ENG-752 adds arc, context, tone and function to ElementKind; drop this mark there",
-)
 def test_the_four_axes_the_floor_exempts_are_kinds_the_enum_names() -> None:
-    """The exemption is keyed on four strings the enum does not hold yet.
+    """The exemption is keyed on four strings the enum holds.
 
-    Nothing else ties the two: if ENG-752 spells an axis kind any other way, the four beads
-    silently need `engaged`, the passage stops closing, and every other test stays green.
-    Strict, so the day the values arrive this goes XPASS and the mark has to come off.
+    Nothing else ties the two: if an axis kind were spelled any other way, the four beads
+    would silently need `engaged`, the passage would stop closing, and every other test
+    would stay green.
     """
     assert {kind.value for kind in ElementKind} >= coverage._EXITS_AT_SURFACED
 

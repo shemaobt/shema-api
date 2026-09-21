@@ -12,11 +12,11 @@ from app.services.internalization_room.back_translation import (
     segments_block,
     the_finding_that_leads,
     unheard_parts,
+    untold_parts,
     verify_correction,
     with_the_whole_stretch_asked_for,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
-from app.services.internalization_room.compose import recompose_passage
 from app.services.internalization_room.hard_stretches import (
     capture_and_note_a_hard_stretch,
     count_an_empty_telling,
@@ -50,10 +50,10 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     append_exchange,
+    append_opening,
     apply_coverage,
     attend,
     back_translation_of,
-    begin_back_translation_again,
     comprehension_of,
     create_session,
     get_session,
@@ -86,10 +86,10 @@ __all__ = [
     "TurnOutcome",
     "analyse_telling_back",
     "append_exchange",
+    "append_opening",
     "apply_coverage",
     "attend",
     "back_translation_of",
-    "begin_back_translation_again",
     "capture_and_note_a_hard_stretch",
     "capture_segment",
     "check_the_telling_back",
@@ -118,7 +118,6 @@ __all__ = [
     "note_a_hard_stretch",
     "parent_of",
     "person_arrived",
-    "recompose_passage",
     "rehearsed_parts",
     "report_playback",
     "retire_the_part_recorded_again",
@@ -140,6 +139,7 @@ __all__ = [
     "told_back",
     "unattend",
     "unheard_parts",
+    "untold_parts",
     "verify_correction",
     "with_the_whole_stretch_asked_for",
 ]

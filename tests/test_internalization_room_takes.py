@@ -78,7 +78,6 @@ async def _keep(db: AsyncSession, store: MemoryStore, *, audio: bytes = AUDIO):
     )
 
 
-@pytest.mark.asyncio
 async def test_the_bytes_that_come_back_are_the_bytes_that_went_in(db_session: AsyncSession):
     store = MemoryStore()
 
@@ -87,7 +86,6 @@ async def test_the_bytes_that_come_back_are_the_bytes_that_went_in(db_session: A
     assert store.objects[take.storage_key] == AUDIO
 
 
-@pytest.mark.asyncio
 async def test_the_checksums_describe_the_stored_bytes(db_session: AsyncSession):
     store = MemoryStore()
 
@@ -98,7 +96,6 @@ async def test_the_checksums_describe_the_stored_bytes(db_session: AsyncSession)
     assert take.size_bytes == len(AUDIO)
 
 
-@pytest.mark.asyncio
 async def test_the_same_take_sent_twice_is_stored_once(db_session: AsyncSession):
     store = MemoryStore()
 
@@ -109,7 +106,6 @@ async def test_the_same_take_sent_twice_is_stored_once(db_session: AsyncSession)
     assert store.writes == 1, "a chave é o hash do áudio — reenviar não pode duplicar nada"
 
 
-@pytest.mark.asyncio
 async def test_a_different_take_gets_its_own_object(db_session: AsyncSession):
     store = MemoryStore()
 
@@ -120,7 +116,6 @@ async def test_a_different_take_gets_its_own_object(db_session: AsyncSession):
     assert len(store.objects) == 2
 
 
-@pytest.mark.asyncio
 async def test_a_bucket_that_refused_leaves_no_row_claiming_the_audio_is_safe(
     db_session: AsyncSession,
 ):
@@ -133,13 +128,11 @@ async def test_a_bucket_that_refused_leaves_no_row_claiming_the_audio_is_safe(
     )
 
 
-@pytest.mark.asyncio
 async def test_an_empty_take_is_refused(db_session: AsyncSession):
     with pytest.raises(ValidationError):
         await _keep(db_session, MemoryStore(), audio=b"")
 
 
-@pytest.mark.asyncio
 async def test_an_oversized_take_is_refused_before_anything_is_stored(db_session: AsyncSession):
     store = MemoryStore()
 
@@ -149,7 +142,6 @@ async def test_an_oversized_take_is_refused_before_anything_is_stored(db_session
     assert store.objects == {}
 
 
-@pytest.mark.asyncio
 async def test_a_retro_take_carries_its_pass_and_its_stretch_position(db_session: AsyncSession):
     store = MemoryStore()
 
@@ -170,7 +162,6 @@ async def test_a_retro_take_carries_its_pass_and_its_stretch_position(db_session
     assert "/retro/" in take.storage_key
 
 
-@pytest.mark.asyncio
 async def test_the_device_is_recorded_and_the_project_comes_from_the_session(
     db_session: AsyncSession,
 ):
@@ -184,14 +175,12 @@ async def test_the_device_is_recorded_and_the_project_comes_from_the_session(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_take_read_back_whole_is_marked_verified(db_session: AsyncSession):
     take = await _keep(db_session, MemoryStore())
 
     assert take.verified_at is not None
 
 
-@pytest.mark.asyncio
 async def test_a_bucket_that_kept_less_than_it_was_given_is_not_verified(
     db_session: AsyncSession,
 ):
@@ -202,14 +191,12 @@ async def test_a_bucket_that_kept_less_than_it_was_given_is_not_verified(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_bucket_with_nothing_under_the_key_is_not_verified(db_session: AsyncSession):
     take = await _keep(db_session, ForgetfulStore())
 
     assert take.verified_at is None
 
 
-@pytest.mark.asyncio
 async def test_an_unverified_take_is_still_recorded(db_session: AsyncSession):
     await _keep(db_session, TruncatingStore())
 
@@ -220,7 +207,6 @@ async def test_an_unverified_take_is_still_recorded(db_session: AsyncSession):
     )
 
 
-@pytest.mark.asyncio
 async def test_two_different_stretches_of_identical_audio_become_one_take(
     db_session: AsyncSession,
 ):

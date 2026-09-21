@@ -72,7 +72,6 @@ SAMPLE_INSTITUTIONS = [
 ]
 
 
-@pytest.mark.asyncio
 async def test_first_pericope_returns_opening_brief(db_session):
     user = await make_user(db_session, email="eb1@test.com")
     book = await make_bible_book(
@@ -109,7 +108,6 @@ async def test_first_pericope_returns_opening_brief(db_session):
     assert brief.bcd_version == 1
 
 
-@pytest.mark.asyncio
 async def test_non_first_pericope_slices_by_entry_verse(db_session):
     user = await make_user(db_session, email="eb2@test.com")
     book = await make_bible_book(
@@ -158,7 +156,6 @@ async def test_non_first_pericope_slices_by_entry_verse(db_session):
     assert "Boaz" not in participant_names
 
 
-@pytest.mark.asyncio
 async def test_entry_brief_filters_threads_by_opened_at(db_session):
     user = await make_user(db_session, email="eb3@test.com")
     book = await make_bible_book(
@@ -202,7 +199,6 @@ async def test_entry_brief_filters_threads_by_opened_at(db_session):
     assert "Loyalty of Ruth" not in thread_labels
 
 
-@pytest.mark.asyncio
 async def test_entry_brief_resolved_thread_excluded_from_established(db_session):
     user = await make_user(db_session, email="eb4@test.com")
     book = await make_bible_book(
@@ -245,7 +241,6 @@ async def test_entry_brief_resolved_thread_excluded_from_established(db_session)
     assert "Famine migration" not in established_names
 
 
-@pytest.mark.asyncio
 async def test_entry_brief_institutions_filtered(db_session):
     user = await make_user(db_session, email="eb5@test.com")
     book = await make_bible_book(
@@ -287,7 +282,6 @@ async def test_entry_brief_institutions_filtered(db_session):
     assert len(brief.institutions) == 0
 
 
-@pytest.mark.asyncio
 async def test_entry_brief_no_approved_bcd_raises(db_session):
     user = await make_user(db_session, email="eb6@test.com")
     book = await make_bible_book(
@@ -312,7 +306,6 @@ async def test_entry_brief_no_approved_bcd_raises(db_session):
         await compute_entry_brief(db_session, pericope.id)
 
 
-@pytest.mark.asyncio
 async def test_entry_brief_nonexistent_pericope_raises(db_session):
     with pytest.raises(NotFoundError, match="Pericope"):
         await compute_entry_brief(db_session, "nonexistent-id")

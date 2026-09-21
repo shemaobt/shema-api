@@ -126,7 +126,6 @@ async def _read(reply: str, patch_analyst):
     )
 
 
-@pytest.mark.asyncio
 async def test_a_well_formed_reply_is_never_thrown_away_whole(patch_analyst) -> None:
     """Case 1, at the parser. The finding on the third stretch exists after the read.
 
@@ -141,7 +140,6 @@ async def test_a_well_formed_reply_is_never_thrown_away_whole(patch_analyst) -> 
     assert analysis.findings[0].segment_id == "segmento-3"
 
 
-@pytest.mark.asyncio
 async def test_what_the_analyst_said_is_written_down_with_what_was_dropped(
     patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -195,7 +193,6 @@ async def test_what_the_analyst_said_is_written_down_with_what_was_dropped(
         ),
     ],
 )
-@pytest.mark.asyncio
 async def test_every_refusal_says_which_condition_and_shows_the_reply(
     reply: str, refused_field: str, patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -213,7 +210,6 @@ async def test_every_refusal_says_which_condition_and_shows_the_reply(
     assert refused_field in _besides_the_reply(caplog, reply), "e diz qual condição recusou"
 
 
-@pytest.mark.asyncio
 async def test_invalid_json_is_still_refused_and_still_written_down(
     patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -404,7 +400,6 @@ async def _resumed(client: httpx.AsyncClient, session_id: str) -> dict[str, Any]
     return dict(standing.json()["back_translation"])
 
 
-@pytest.mark.asyncio
 async def test_the_valid_finding_reaches_the_session(
     client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
@@ -428,7 +423,6 @@ async def test_the_valid_finding_reaches_the_session(
     assert resumed["checked"] is False
 
 
-@pytest.mark.asyncio
 async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     client: httpx.AsyncClient,
     analyst: Analyst,
@@ -472,7 +466,6 @@ async def test_a_reply_the_room_cannot_read_is_not_a_provider_that_is_down(
     assert analyst.readings == 2, "nada foi salvo: o próximo terminei pergunta de novo"
 
 
-@pytest.mark.asyncio
 async def test_a_provider_that_is_down_is_still_an_upstream_failure(
     client: httpx.AsyncClient,
     analyst: Analyst,
@@ -519,7 +512,6 @@ def _a_state_stored_before_the_taxonomy_shrank(segment_id: str) -> dict[str, Any
     }
 
 
-@pytest.mark.asyncio
 async def test_a_session_in_flight_with_a_retired_kind_still_loads_and_still_voices(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -552,7 +544,6 @@ async def test_a_session_in_flight_with_a_retired_kind_still_loads_and_still_voi
     )
 
 
-@pytest.mark.asyncio
 async def test_a_garbled_stretch_is_one_unclear_and_does_not_confer(
     client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
@@ -579,7 +570,6 @@ async def test_a_garbled_stretch_is_one_unclear_and_does_not_confer(
     assert resumed["checked"] is False
 
 
-@pytest.mark.asyncio
 async def test_a_thin_but_legible_telling_back_confers(
     client: httpx.AsyncClient, analyst: Analyst, db_session: AsyncSession
 ) -> None:
@@ -640,7 +630,6 @@ def _a_state_stored_before_the_evidence_flag_went(segment_id: str) -> dict[str, 
     }
 
 
-@pytest.mark.asyncio
 async def test_a_stored_thin_evidence_finding_reads_as_no_finding_at_all(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -709,7 +698,6 @@ async def _stored(
     await db.commit()
 
 
-@pytest.mark.asyncio
 async def test_a_verdict_about_thin_evidence_is_not_served_again(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:
@@ -739,7 +727,6 @@ async def test_a_verdict_about_thin_evidence_is_not_served_again(
     assert body["audio_url"], "e o Falante disse o fechamento de passagem conferida"
 
 
-@pytest.mark.asyncio
 async def test_a_finding_that_survives_the_drop_is_what_the_room_says(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst
 ) -> None:

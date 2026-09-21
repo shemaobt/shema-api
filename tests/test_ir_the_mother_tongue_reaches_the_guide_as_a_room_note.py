@@ -149,7 +149,7 @@ async def test_words_the_room_could_not_make_out_draw_the_d_line_and_travel_no_f
 
     outcome = await _speak(session, uncertain=True, transcript="mmm ne")
 
-    assert outcome.fixed_line == "D1"
+    assert outcome.fixed_line == "D0"
     assert outcome.degraded is True
     assert outcome.transcript == "", (
         "o palpite do reconhecedor viajava dentro da linha que pedia para repetir e era "
@@ -205,10 +205,10 @@ async def test_the_note_is_kept_as_a_fact_about_the_room_never_as_words_the_team
 
     assert answered.status_code == 200, answered.text
     session = await room.get_session(db_session, session_id)
-    assert session.messages == [
-        {"role": "guide", "text": GUIDE_LINE},
-        {"role": "room", "text": NOTE_PT_40},
-        {"role": "guide", "text": GUIDE_LINE},
+    assert [(m["role"], m["text"]) for m in session.messages] == [
+        ("guide", GUIDE_LINE),
+        ("room", NOTE_PT_40),
+        ("guide", GUIDE_LINE),
     ], (
         "as palavras que o reconhecedor inventou ficavam na conversa como fala da equipe, e o "
         "Guia e o Validador as liam de volta no turno seguinte"

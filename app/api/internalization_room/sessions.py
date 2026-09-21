@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import uuid
+from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,7 @@ from app.api.internalization_room._deps import (
 )
 from app.core.config import get_settings
 from app.core.database import get_db
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.core.room_enums import HaltKind
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
@@ -39,6 +40,7 @@ from app.services.internalization_room.canon.book_material import build_book_mat
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
+from app.services.internalization_room.live_turn import current_scene_id
 from app.services.internalization_room.panorama_once import heard_panorama
 from app.services.internalization_room.prepare_opening import (
     hand_over,
@@ -48,7 +50,11 @@ from app.services.internalization_room.prepare_opening import (
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.run_turn import TurnOutcome, detects_peer_cue
 from app.services.internalization_room.sessions import book_of, is_panorama
-from app.services.internalization_room.turn_dedup import answered_turn, remember_turn
+from app.services.internalization_room.turn_dedup import (
+    answer_once,
+    answered_turn,
+    remember_turn,
+)
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from app.services.project.facilitated_scope import facilitated_project_ids
@@ -108,6 +114,22 @@ async def _voice_the_turn(
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def _scene_of(session: IRSession, team_utterance: str = "") -> str | None:
+    """The scene the turn was read against, for the record; a panorama has none.
+
+    The record is written before the exchange is appended, so the utterance being
+    recorded is not in the stored history yet — it is handed in on its own. Without it
+    the first turn of every session would be recorded with no scene, as if the team had
+    not spoken, when the record is precisely about what they just said.
+    """
+    if is_panorama(session.pericope):
+        return None
+    history = list(session.messages or [])
+    if team_utterance:
+        history.append({"role": "team", "text": team_utterance})
+    return current_scene_id(session.coverage_state or {}, session.pericope, history)
 
 
 def _worth_settling(outcome: TurnOutcome, speech_heard: HeardSpeech) -> bool:
@@ -482,11 +504,27 @@ async def take_turn(
     nothing in the other direction: a clip reaches the team only as the handle in this
     response, so a request that fails after synthesis hands the app nothing to play.
 
-    A turn can also end in the hard stop — the assessor failed three times running and the
-    room said so out loud — and that halt is `BLOCKING`: the room is telling the team it
-    cannot go on, which is a different walk for the facilitator than a hard stretch's request
-    for a witness.
+    A turn never halts the session. The graceful pause is a spoken line like any other
+    fail-safe, and the call for a person is the tablet's, on its own triggers.
     """
+    answer = partial(
+        _answer_the_turn, session_id=session_id, background=background, file=file, turn_id=turn_id
+    )
+    if turn_id:
+        return await answer_once(session_id, turn_id, answer)
+    return await answer(db)
+
+
+async def _answer_the_turn(
+    db: AsyncSession,
+    *,
+    session_id: str,
+    background: BackgroundTasks,
+    file: UploadFile | None,
+    turn_id: str | None,
+) -> TurnResponse:
+    bound_s = get_settings().internalization_room_turn_bound_ms / 1000
+    deadline = asyncio.get_running_loop().time() + bound_s
     session = await room.get_session(db, session_id)
 
     if turn_id:
@@ -533,45 +571,58 @@ async def take_turn(
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
-    if is_panorama(session.pericope):
-        book = book_of(session.pericope)
-        outcome = await room.run_panorama_turn(
-            transcript=transcript,
-            messages=session.messages or [],
-            session_language=LANGUAGE_NAMES[session.language],
-            language_code=session.language,
-            panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
-            validator_prompt=validator_prompt,
-            book=book,
-            book_material=build_book_material(book),
-            opening=opening,
-            settings=get_settings(),
-            session_id=session.id,
-        )
-    else:
-        turn = await room.run_comprehension_turn(
-            db,
-            session,
-            speech=speech_heard,
-            opening=opening,
-            guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
-            validator_prompt=validator_prompt,
-            settings=get_settings(),
-        )
-        outcome = turn.outcome
+    try:
+        async with asyncio.timeout_at(deadline):
+            if is_panorama(session.pericope):
+                book = book_of(session.pericope)
+                outcome = await room.run_panorama_turn(
+                    transcript=transcript,
+                    messages=session.messages or [],
+                    session_language=LANGUAGE_NAMES[session.language],
+                    language_code=session.language,
+                    panorama_prompt=get_prompt_text(IRPromptKey.BOOK_PANORAMA),
+                    validator_prompt=validator_prompt,
+                    book=book,
+                    book_material=build_book_material(book),
+                    opening=opening,
+                    settings=get_settings(),
+                    session_id=session.id,
+                )
+            else:
+                turn = await room.run_comprehension_turn(
+                    db,
+                    session,
+                    speech=speech_heard,
+                    opening=opening,
+                    guide_prompt=get_prompt_text(IRPromptKey.GUIDE),
+                    validator_prompt=validator_prompt,
+                    settings=get_settings(),
+                )
+                outcome = turn.outcome
+    except TimeoutError as spent:
+        raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     voiced, segments = await _voice_the_turn(outcome, language=session.language)
-    if turn is not None:
-        session = await room.save_comprehension(db, session, turn.state)
-    session = await room.append_exchange(
-        db,
-        session,
-        team_utterance=outcome.transcript,
-        guide_response=outcome.speech,
-        room_note=outcome.room_note,
-    )
-    if outcome.needs_person:
-        session = await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
+    if opening:
+        await room.append_opening(
+            db,
+            session,
+            guide_response=outcome.speech,
+            outcome=outcome,
+            scene=_scene_of(session),
+            state=turn.state if turn is not None else None,
+        )
+    else:
+        if turn is not None:
+            session = await room.save_comprehension(db, session, turn.state)
+        session = await room.append_exchange(
+            db,
+            session,
+            team_utterance=outcome.transcript,
+            guide_response=outcome.speech,
+            outcome=outcome,
+            scene=_scene_of(session, outcome.transcript),
+        )
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False

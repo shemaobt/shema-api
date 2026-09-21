@@ -203,7 +203,6 @@ def named(payload: dict) -> list[str]:
 # Behaviour 1 — the list is the caller's, and it carries the whole card.
 
 
-@pytest.mark.asyncio
 async def test_the_list_holds_only_the_teams_the_caller_facilitates(client, db_session):
     mine = await a_team(db_session, name="Equipe Terena")
     await a_team(db_session, name="Equipe de Outra Pessoa")
@@ -215,7 +214,6 @@ async def test_the_list_holds_only_the_teams_the_caller_facilitates(client, db_s
     assert named(answer.json()) == ["Equipe Terena"]
 
 
-@pytest.mark.asyncio
 async def test_every_field_the_card_draws_is_answered(client, db_session):
     """The client computes none of them — so each has to arrive, not be derivable."""
     team = await a_team(db_session, name="Equipe Terena", tongue="Terena")
@@ -239,7 +237,6 @@ async def test_every_field_the_card_draws_is_answered(client, db_session):
     assert card["last_activity_at"] is not None
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_never_held_a_session_still_has_a_passage(client, db_session):
     """§4: with no history the team starts at P01. A card with no passage draws nothing."""
     team = await a_team(db_session, name="Equipe Guajajara")
@@ -251,7 +248,6 @@ async def test_a_team_that_has_never_held_a_session_still_has_a_passage(client, 
     assert card["last_activity_at"] is None
 
 
-@pytest.mark.asyncio
 async def test_the_panorama_is_not_a_passage(client, db_session):
     """The panorama is material about the book and plays at the opening of a new passage.
 
@@ -276,7 +272,6 @@ async def test_the_panorama_is_not_a_passage(client, db_session):
 # Behaviour 2 — the counts are of things to do, and they agree with the routes that own them.
 
 
-@pytest.mark.asyncio
 async def test_only_an_open_hand_is_a_hand_that_is_waiting(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
     await a_raised_hand(db_session, team, status=IRQuestionStatus.OPEN)
@@ -290,7 +285,6 @@ async def test_only_an_open_hand_is_a_hand_that_is_waiting(client, db_session):
     assert payload["open_hands_total"] == 1
 
 
-@pytest.mark.asyncio
 async def test_the_device_count_agrees_with_the_device_list_route(client, db_session):
     """One number, two routes. They are allowed to be wrong; they are not allowed to differ."""
     team = await a_team(db_session, name="Equipe Terena")
@@ -305,7 +299,6 @@ async def test_the_device_count_agrees_with_the_device_list_route(client, db_ses
     assert counted == len(listed) == 2
 
 
-@pytest.mark.asyncio
 async def test_a_hand_belonging_to_no_team_is_counted_for_nobody(client, db_session):
     """`project_id` is nullable and null is the normal state until ENG-454 ships.
 
@@ -334,7 +327,6 @@ async def test_a_hand_belonging_to_no_team_is_counted_for_nobody(client, db_sess
 # Behaviour 3 — the state, defined here once and served.
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_closed_every_passage_reads_complete_and_stands_on_none(
     client, db_session
 ):
@@ -354,7 +346,6 @@ async def test_a_team_that_closed_every_passage_reads_complete_and_stands_on_non
     assert card["active_passage"] is None
 
 
-@pytest.mark.asyncio
 async def test_closing_one_passage_moves_the_team_on_rather_than_finishing_it(client, db_session):
     """The case that separates the two meanings of "done" the old state collapsed."""
     team = await a_team(db_session, name="Equipe Kayapó")
@@ -373,7 +364,6 @@ async def test_closing_one_passage_moves_the_team_on_rather_than_finishing_it(cl
     assert card["state"] == "in_progress"
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_finished_the_book_is_still_found_by_name(client, db_session):
     """The search reads the passage's two names, and such a team has neither.
 
@@ -388,7 +378,6 @@ async def test_a_team_that_finished_the_book_is_still_found_by_name(client, db_s
     assert named(answer.json()) == ["Equipe Tikuna"]
 
 
-@pytest.mark.asyncio
 async def test_a_passage_left_untouched_for_long_enough_reads_stalled(client, db_session):
     team = await a_team(db_session, name="Equipe Xavante")
     await a_session(db_session, team, when=datetime.now(UTC) - LONG_AGO)
@@ -399,7 +388,6 @@ async def test_a_passage_left_untouched_for_long_enough_reads_stalled(client, db
     assert card["state"] == "stalled"
 
 
-@pytest.mark.asyncio
 async def test_a_finished_passage_is_never_stalled_however_long_ago_it_was(client, db_session):
     """Stalled means work has stopped, not that the team is quiet. A team that finished
     and moved on is not somebody to chase."""
@@ -415,7 +403,6 @@ async def test_a_finished_passage_is_never_stalled_however_long_ago_it_was(clien
     assert card["state"] == "complete"
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_never_met_is_in_progress_and_not_stalled(client, db_session):
     """ "Never started" is not "stopped".
 
@@ -430,7 +417,6 @@ async def test_a_team_that_has_never_met_is_in_progress_and_not_stalled(client, 
     assert card["state"] == "in_progress"
 
 
-@pytest.mark.asyncio
 async def test_a_hand_raised_since_keeps_a_team_out_of_stalled(client, db_session):
     """A raised hand is the team doing something, and it is not in the session's row."""
     team = await a_team(db_session, name="Equipe Macuxi")
@@ -446,7 +432,6 @@ async def test_a_hand_raised_since_keeps_a_team_out_of_stalled(client, db_sessio
 # Behaviour 4 — the order is the product decision, so it is served.
 
 
-@pytest.mark.asyncio
 async def test_the_queue_is_ordered_by_open_hands_then_by_recent_activity(client, db_session):
     quiet = await a_team(db_session, name="Silenciosa")
     busy = await a_team(db_session, name="Duas maos")
@@ -469,7 +454,6 @@ async def test_the_queue_is_ordered_by_open_hands_then_by_recent_activity(client
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_has_never_acted_sorts_last_rather_than_first(client, db_session):
     never = await a_team(db_session, name="Nunca se reuniu")
     long_quiet = await a_team(db_session, name="Calada ha muito")
@@ -485,7 +469,6 @@ async def test_a_team_that_has_never_acted_sorts_last_rather_than_first(client, 
 # Behaviour 5 — the two empty states are different things and are told apart.
 
 
-@pytest.mark.asyncio
 async def test_a_facilitator_with_no_teams_gets_an_empty_list_and_says_so(client, db_session):
     user = await make_user(db_session, email="sem-equipe@example.com")
     await grant_facilitator_app_role(db_session, user.id)
@@ -497,7 +480,6 @@ async def test_a_facilitator_with_no_teams_gets_an_empty_list_and_says_so(client
     assert answer.json() == {"teams": [], "serves_any_team": False, "open_hands_total": 0}
 
 
-@pytest.mark.asyncio
 async def test_a_restriction_that_matches_nothing_still_says_the_facilitator_has_teams(
     client, db_session
 ):
@@ -521,7 +503,6 @@ async def test_a_restriction_that_matches_nothing_still_says_the_facilitator_has
 # Behaviour 6 — the restriction is the server's, and the totals do not travel with it.
 
 
-@pytest.mark.asyncio
 async def test_the_search_ignores_case_and_accents(client, db_session):
     """Somebody typing at speed does not stop for an accent, and the keyboard may not
     carry one. The shape of the word belongs to whoever wrote it down."""
@@ -533,7 +514,6 @@ async def test_the_search_ignores_case_and_accents(client, db_session):
         assert named(found.json()) == ["Equipe Kaiwá"], typed
 
 
-@pytest.mark.asyncio
 async def test_the_search_reaches_the_tongue_the_pericope_and_the_reference(client, db_session):
     """The card draws all of them, so any of them is what the facilitator remembers."""
     team = await a_team(db_session, name="Equipe Sateré-Mawé", tongue="Sateré-Mawé")
@@ -548,7 +528,6 @@ async def test_the_search_reaches_the_tongue_the_pericope_and_the_reference(clie
         assert named(found.json()) == ["Equipe Sateré-Mawé"], typed
 
 
-@pytest.mark.asyncio
 async def test_each_filter_narrows_to_the_state_it_names(client, db_session):
     with_hands = await a_team(db_session, name="Com maos")
     working = await a_team(db_session, name="Trabalhando")
@@ -574,7 +553,6 @@ async def test_each_filter_narrows_to_the_state_it_names(client, db_session):
     assert await under("complete") == ["Concluida"]
 
 
-@pytest.mark.asyncio
 async def test_the_search_and_the_filter_compose(client, db_session):
     """One question, not two answers for the screen to intersect."""
     quiet_kaiwa = await a_team(db_session, name="Equipe Kaiwá", tongue="Kaiwá")
@@ -593,7 +571,6 @@ async def test_the_search_and_the_filter_compose(client, db_session):
     assert named(answer.json()) == ["Equipe Kaiwá do rio"]
 
 
-@pytest.mark.asyncio
 async def test_the_open_hands_total_does_not_narrow_with_the_restriction(client, db_session):
     """The browser tab draws this number while nobody is looking at the Desk.
 
@@ -614,7 +591,6 @@ async def test_the_open_hands_total_does_not_narrow_with_the_restriction(client,
     assert narrowed["open_hands_total"] == 3
 
 
-@pytest.mark.asyncio
 async def test_a_filter_this_route_does_not_know_is_refused(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
     _user, headers = await a_facilitator(db_session, team)
@@ -627,7 +603,6 @@ async def test_a_filter_this_route_does_not_know_is_refused(client, db_session):
 # Behaviour 7 — one query, whatever the size of the roll.
 
 
-@pytest.mark.asyncio
 async def test_the_number_of_statements_does_not_grow_with_the_teams(
     client, db_session, test_engine
 ):
@@ -676,7 +651,6 @@ async def test_the_number_of_statements_does_not_grow_with_the_teams(
 # Behaviour 8 — a platform admin is not scoped to nothing.
 
 
-@pytest.mark.asyncio
 async def test_a_platform_admin_sees_every_team(client, db_session):
     """Settled by ENG-439 and repeated here rather than assumed: the one person able to
     investigate an installation must not be the one person who sees no team in it."""

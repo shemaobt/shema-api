@@ -1,10 +1,7 @@
-import pytest
-
 from app.services.book_context.check_stale import check_bcd_staleness
 from tests.baker import make_bcd, make_bible_book, make_meaning_map, make_pericope, make_user
 
 
-@pytest.mark.asyncio
 async def test_check_stale_returns_false_when_current(db_session):
     user = await make_user(db_session, email="int1@test.com")
     book = await make_bible_book(
@@ -25,7 +22,6 @@ async def test_check_stale_returns_false_when_current(db_session):
     assert result.is_stale is False
 
 
-@pytest.mark.asyncio
 async def test_check_stale_returns_true_when_bcd_updated(db_session):
     user = await make_user(db_session, email="int2@test.com")
     book = await make_bible_book(
@@ -48,7 +44,6 @@ async def test_check_stale_returns_true_when_bcd_updated(db_session):
     assert result.current_version == 2
 
 
-@pytest.mark.asyncio
 async def test_check_stale_returns_false_when_no_bcd(db_session):
     user = await make_user(db_session, email="int3@test.com")
     book = await make_bible_book(

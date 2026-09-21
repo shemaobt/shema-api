@@ -33,14 +33,11 @@ from app.services.internalization_room.back_translation import (
     BackTranslationState,
     unheard_parts,
 )
-from app.services.internalization_room.segments import capture_segment
-from app.services.internalization_room.sessions import begin_back_translation_again
-from tests.release_harness import ensaio_take, rehearsed_session
+from tests.release_harness import rehearsed_session
 from tests.room_harness import (
     PART_MS,
     PLAYBACK_BLOCKER,
     P,
-    another_rehearsal_take,
     heard_every_part,
     played_every_part,
     press_terminei,
@@ -96,31 +93,17 @@ def _covering(take: IRTake, *, duration_ms: int = PART_MS) -> dict[str, Any]:
     return played_every_part([take.id], duration_ms=duration_ms)["played_by_take"][0]
 
 
-async def _rehearsed_and_told_back(db: AsyncSession) -> IRSession:
-    """A session that needs nothing but the report to travel: one part, one stretch told."""
-    session, take = await rehearsed_session(db, language="pt")
-    await tell_back_about(db, session, take)
-    return session
+async def _rehearsed_and_told_back(db: AsyncSession) -> tuple[IRSession, IRTake]:
+    """A session that needs nothing but the report to travel: one part, one stretch told.
+
+    The part comes back beside it because a case that records it again has to name which part
+    it is recording, and it carries its number for the same reason: the verb for *this part
+    again* is the upload under that number and reads nothing else (ADR 0023).
+    """
+    session, (part,) = await rehearsed_in_parts(db, 1)
+    return session, part
 
 
-async def _told_back_on_a_new_part(db: AsyncSession, session: IRSession, *, sha256: str) -> IRTake:
-    """The team started the telling-back over on a recording they made fresh."""
-    take = ensaio_take(session.id, sha256=sha256)
-    db.add(take)
-    await db.commit()
-    await capture_segment(
-        db,
-        session,
-        take_id=take.id,
-        starts_ms=0,
-        ends_ms=PART_MS,
-        bridge_take_id="retro-do-recomeco",
-        transcript="a passagem contada de novo do comeco",
-    )
-    return take
-
-
-@pytest.mark.asyncio
 async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -148,7 +131,6 @@ async def test_four_parts_heard_confirm_and_a_replaced_part_fails_alone(
     ) == [fresh_a.id], "only the part the team recorded again is unheard"
 
 
-@pytest.mark.asyncio
 async def test_a_replaced_part_heard_again_confirms_without_the_others_replayed(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -175,7 +157,6 @@ async def test_a_replaced_part_heard_again_confirms_without_the_others_replayed(
     assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
 
 
-@pytest.mark.asyncio
 async def test_an_entry_for_a_recording_the_stretches_no_longer_name_is_ignored(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -204,7 +185,6 @@ async def test_an_entry_for_a_recording_the_stretches_no_longer_name_is_ignored(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_flat_report_is_evidence_of_nothing(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -277,7 +257,6 @@ def test_coverage_is_measured_per_part_with_the_tolerance() -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_the_packet_carries_the_report_per_take(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -308,7 +287,6 @@ async def test_the_packet_carries_the_report_per_take(
     assert "clip_duration_ms" not in packet["back_translation"]
 
 
-@pytest.mark.asyncio
 async def test_terminei_without_a_report_takes_nothing_away(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -330,7 +308,6 @@ async def test_terminei_without_a_report_takes_nothing_away(
     ] == per_take
 
 
-@pytest.mark.asyncio
 async def test_a_flat_report_does_not_erase_the_parts_a_newer_build_named(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -356,110 +333,72 @@ async def test_a_flat_report_does_not_erase_the_parts_a_newer_build_named(
     assert packet["back_translation"]["played_by_take"] == per_take
 
 
-@pytest.mark.asyncio
-async def test_a_replaced_attempt_archives_the_report_per_take(
-    client: httpx.AsyncClient, db_session: AsyncSession
-) -> None:
-    """Starting over keeps what the team reported about the rehearsal they threw away.
-
-    Read where Refine reads it. The archived attempt is the history the packet carries, and a
-    report that left no trace there would make the record say the team never listened — on the
-    one recording where what they heard is all that is left of it.
-    """
-    session, parts = await rehearsed_in_parts(db_session, 4)
-    glued = PART_MS * len(parts)
-    per_take = [_covering(part) for part in parts]
-
-    await _finish(
-        client,
-        session.id,
-        report={
-            "played_by_take": per_take,
-            "played_ranges": [[0, glued]],
-            "clip_duration_ms": glued,
-        },
-    )
-    await begin_back_translation_again(db_session, session)
-    started_over = await _told_back_on_a_new_part(db_session, session, sha256="e" * 64)
-    await _finish(client, session.id, report={"played_by_take": [_covering(started_over)]})
-
-    packet = await release_packet(db_session, session)
-    archived = packet["back_translation"]["superseded_attempts"][-1]
-
-    assert archived["played_by_take"] == per_take
-    assert archived["played_ranges"] == [[0, glued]]
-    assert archived["clip_duration_ms"] == glued
-
-
-@pytest.mark.asyncio
 async def test_a_release_with_no_report_of_playback_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """The tablet says nothing about playback, which is what it says whenever the clip did not
     run to its end. Silence is not a claim that the team heard themselves."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(client, session.id)
 
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_a_report_about_a_rehearsal_the_team_re_recorded_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """The report was honest about the clip it was made of, and that clip is gone.
 
-    Starting the telling-back over is what a re-record does, and it takes the report with it,
-    so what reaches the gate is a session that told the new clip back and never said anybody
-    played it. The package would otherwise travel on a report about audio nobody will hear.
+    Recording the part again leaves that report naming a recording no stretch is a slice of any
+    more, so what reaches the gate is a session that told the new clip back and never said
+    anybody played it. The package would otherwise travel on a report about audio nobody hears.
+
+    The reading is not thrown away with the recording — `analysed_segment_ids` stays where it
+    is (ADR 0023) — so the gate says the passage was read and is not checked, which is the
+    other half of what a re-recording leaves behind.
     """
-    session = await _rehearsed_and_told_back(db_session)
+    session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(db_session, session, sha256="b" * 64)
-    await begin_back_translation_again(db_session, session)
+    again = await record_the_part_again(db_session, session, part, sha256="b" * 64)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id)
 
-    assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
+    assert await release_blockers(db_session, session) == [NOT_CHECKED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_an_honest_report_on_the_current_rehearsal_releases(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Control: the team played their own clip through, and the package travels."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
     assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
 
 
-@pytest.mark.asyncio
 async def test_a_fresh_report_after_a_re_record_releases(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Re-recording is the team working, not the team erring, and playing the new clip through
     has to be enough to release it."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, part = await _rehearsed_and_told_back(db_session)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
-    again = await another_rehearsal_take(db_session, session, sha256="b" * 64)
-    await begin_back_translation_again(db_session, session)
+    again = await record_the_part_again(db_session, session, part, sha256="b" * 64)
     await tell_back_about(db_session, session, again)
     await _finish(client, session.id, report=await heard_every_part(db_session, session.id))
 
     assert (await release_packet(db_session, session))["readiness"] == "ready_for_refine"
 
 
-@pytest.mark.asyncio
 async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
     """Control against regression: half a clip played is still half a clip played."""
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(
         client,
@@ -470,7 +409,6 @@ async def test_a_report_that_does_not_reach_the_end_of_its_clip_is_refused(
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_a_report_with_no_clip_to_measure_against_is_refused(
     client: httpx.AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -480,7 +418,7 @@ async def test_a_report_with_no_clip_to_measure_against_is_refused(
     measured, and the other half — a length with nothing played — is a report that the team
     played nothing at all. A part whose length is zero is the first of those on the wire.
     """
-    session = await _rehearsed_and_told_back(db_session)
+    session, _part = await _rehearsed_and_told_back(db_session)
 
     await _finish(
         client, session.id, report=await heard_every_part(db_session, session.id, duration_ms=0)
@@ -489,18 +427,19 @@ async def test_a_report_with_no_clip_to_measure_against_is_refused(
     assert await release_blockers(db_session, session) == [NEVER_ANALYSED, PLAYBACK_BLOCKER]
 
 
-@pytest.mark.asyncio
 async def test_a_session_with_nothing_told_back_is_not_also_blamed_for_playback(
     db_session: AsyncSession,
 ) -> None:
-    """One thing wrong is told to the team once.
+    """Each errand is named once, and only the errands that exist.
 
-    There is nothing to have played back before a stretch exists, so the room names what is
-    actually missing and does not hand the team a second errand that would not help.
+    There is nothing to have played back before a stretch exists, so the room does not hand the
+    team a second errand that would not help. What it does name twice is two different things:
+    the reading is empty, and the recording they made carries nobody's words. A team told only
+    the first would go looking for a list to fill; told only the second, for a recording to make.
     """
     session, _ = await rehearsed_session(db_session, language="pt")
 
     refused = await release_blockers(db_session, session)
 
-    assert "no_telling_back" in refused
+    assert refused == ["no_telling_back", "untold_part"]
     assert PLAYBACK_BLOCKER not in refused

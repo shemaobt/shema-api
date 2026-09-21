@@ -22,6 +22,10 @@ import enum
 
 
 class ElementKind(enum.StrEnum):
+    ARC = "arc"
+    CONTEXT = "context"
+    TONE = "tone"
+    FUNCTION = "function"
     SCENE = "scene"
     BEING = "being"
     PLACE = "place"

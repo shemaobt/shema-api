@@ -88,11 +88,9 @@ async def _scene_they_are_in(
     towards the earliest event that reached the standing status — so the greatest of them is
     the team's most recent real movement and not merely the last turn that mentioned something.
 
-    Null rather than a guess in two cases, and both are the same refusal. A preservation rule
-    belongs to the passage and to none of its scenes. And a bead the canon deduped across
-    scenes — Naomi appears in four of P01's and her bead says the first — cannot say where a
-    team is standing either; naming its first appearance would be a confident wrong answer,
-    which on a position is worse than none. `scene_of` is where that decision lives.
+    Null rather than a guess for a bead that belongs to no scene: a preservation rule and a
+    Level-1 axis belong to the passage and to none of its scenes. `scene_of` is where that
+    decision lives.
     """
     if pericope is None:
         return None
@@ -101,8 +99,6 @@ async def _scene_they_are_in(
     if not history:
         return None
 
-    # Only the beads that belong to exactly one scene can answer this. The rest are entities
-    # deduped across the passage, carrying the scene they first appeared in — see `scene_of`.
     answers = scene_of(pericope, book)
     moved = [key for key in history if key in answers]
     if not moved:

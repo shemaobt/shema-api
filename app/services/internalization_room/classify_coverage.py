@@ -3,19 +3,23 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from typing import Any
 
 from app.core.config import Settings, get_settings
-from app.services.internalization_room.canon.elements import element_keys
+from app.services.internalization_room.canon.elements import Element, element_keys
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import merge, remaining
+from app.services.internalization_room.coverage import (
+    CoverageStatus,
+    merge,
+    remaining,
+    remaining_in_scene,
+)
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import call_agent, classifier_ladder
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
-
-_BRACKETED_KEY = re.compile(r"^-?\s*\[([^\]]+)\]")
 
 #: The shape the classifier is bound to answer in, and the same one `_parse` reads. The two
 #: statuses are named here rather than left to the prompt's prose because a third word coming
@@ -50,22 +54,6 @@ _DECISIONS: dict[str, Any] = {
 _NO_TEAM_UTTERANCE_YET = "(the team has not spoken yet)"
 
 
-def _element_id(named: str) -> str:
-    """The element's key, whether the model sent it bare or as the list prints it.
-
-    The unresolved set reaches the model as `- [being:B3] נָעֳמִי / Naomi`, and the output
-    contract asks for "the id from the provided list". Read against that list, the id is the
-    whole line, and that is what comes back. The key is its bracketed head; `merge` drops
-    every other spelling as an element the passage does not hold.
-
-    The list marker is admitted with it. Production echoes the line without the dash, so
-    nothing today turns on this — but what is being fixed here is a spelling nobody thought
-    to accept, and the dash is how the line is printed.
-    """
-    bracketed = _BRACKETED_KEY.match(named.strip())
-    return bracketed.group(1).strip() if bracketed else named.strip()
-
-
 def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -> None:
     """Say when a decision names an element this passage does not hold.
 
@@ -87,19 +75,91 @@ def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -
         )
 
 
-def _unresolved_block(coverage_state: dict[str, str], pericope_num: str) -> str:
-    left = remaining(coverage_state, pericope_num)
-    if not left:
-        return "(no elements pending)"
-    return "\n".join(f"- [{element.key}] {element.label}" for element in left)
+def _only_offered(verdict: dict[str, list[str]], offered: list[Element]) -> dict[str, list[str]]:
+    """The decisions about beads this turn was shown; the rest are dropped, and said.
+
+    `_report_unknown_elements` makes an id the passage does not hold visible. An id the
+    passage holds but this turn did not offer — a bead from a scene nobody has opened, or
+    one already engaged — used to pass through `merge` like any other, so the model could
+    move a bead it was never asked about. It is inert now as well as visible.
+    """
+    keys = {element.key for element in offered}
+    kept = {status: [key for key in named if key in keys] for status, named in verdict.items()}
+    dropped = sorted({key for named in verdict.values() for key in named} - keys)
+    if dropped:
+        logger.warning(
+            "Coverage classifier named %d elements not offered this turn: %s",
+            len(dropped),
+            dropped[:5],
+        )
+    return kept
+
+
+def _shown_label(element: Element) -> str:
+    return element.label + (f" — {element.detail}" if element.detail else "")
+
+
+def _shown_status(coverage_state: dict[str, str], element: Element) -> str:
+    """The word the classifier is told a bead stands at, out of the two its prompt names.
+
+    A bead still stored under the retired `partially_engaged` is read below the floor
+    exactly as `surfaced` is, so that is the word it is shown under: sending the retired
+    word would name a status her prompt does not have, and not sending the bead at all
+    would freeze it there for good.
+    """
+    standing = coverage_state.get(element.key, CoverageStatus.NOT_ENCOUNTERED.value)
+    if standing == CoverageStatus.PARTIALLY_ENGAGED.value:
+        return CoverageStatus.SURFACED.value
+    return standing
+
+
+def _offered(
+    coverage_state: dict[str, str], pericope_num: str, scene_pointer: str | None
+) -> list[Element]:
+    """The beads this turn may move: the current scene's and the scene-less, or all of them.
+
+    With no pointer there is no scene to narrow to, and the whole unresolved set goes as it
+    always did. The pointer is `None` on a session where nobody has spoken and once every
+    scene is engaged — the second leaves only the scene-less beads on either reading.
+    """
+    if scene_pointer is None:
+        return remaining(coverage_state, pericope_num)
+    return remaining_in_scene(coverage_state, pericope_num, scene_pointer)
+
+
+def _unresolved_block(coverage_state: dict[str, str], offered: list[Element]) -> str:
+    if not offered:
+        return "[]"
+    return json.dumps(
+        [
+            {
+                "id": element.key,
+                "kind": element.kind.value,
+                "label": _shown_label(element),
+                "status": _shown_status(coverage_state, element),
+            }
+            for element in offered
+        ],
+        ensure_ascii=False,
+        indent=2,
+    )
 
 
 def _scenes_block(pericope_num: str) -> str:
     scenes = load_map(pericope_num).scenes
-    return "\n".join(
-        f"- [scene:{scene.number}] {scene.title} ({scene.verses}): {scene.what_happens}"
-        for scene in scenes
+    return json.dumps(
+        [{"id": f"S{scene.number}", "title": scene.title} for scene in scenes],
+        ensure_ascii=False,
+        indent=2,
     )
+
+
+def _the_object_in(text: str) -> str:
+    """Her third fallback: the first brace to the last, when the object came wrapped in prose."""
+    opens, closes = text.find("{"), text.rfind("}")
+    if opens == -1 or closes < opens:
+        return text
+    return text[opens : closes + 1]
 
 
 def _parse(raw: str) -> dict[str, list[str]]:
@@ -125,7 +185,7 @@ def _parse(raw: str) -> dict[str, list[str]]:
     if fenced:
         text = fenced.group(1).strip()
     try:
-        parsed: Any = json.loads(text)
+        parsed: Any = json.loads(_the_object_in(text))
     except json.JSONDecodeError:
         logger.warning("Coverage classifier returned unparseable JSON: %s", raw[:300])
         return verdict
@@ -139,7 +199,7 @@ def _parse(raw: str) -> dict[str, list[str]]:
         element_id = entry.get("element_id") if isinstance(entry, dict) else None
         new_status = entry.get("new_status") if isinstance(entry, dict) else None
         if isinstance(element_id, str) and isinstance(new_status, str) and new_status in verdict:
-            verdict[new_status].append(_element_id(element_id))
+            verdict[new_status].append(element_id.strip())
         else:
             logger.warning("Coverage classifier returned an unusable decision: %s", entry)
     return verdict
@@ -152,6 +212,7 @@ async def classify_coverage(
     guide_response: str,
     classifier_prompt: str,
     pericope_num: str,
+    scene_pointer: str | None = None,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
 ) -> dict[str, str]:
@@ -159,14 +220,19 @@ async def classify_coverage(
 
     Any failure leaves coverage untouched: under-counting delays a session, while
     over-counting lets one complete hollow.
+
+    The scene pointer is bookkeeping: it narrows what the classifier is shown to the scene
+    the team is in, and it goes nowhere else — never to the Guide as a scope on what it may
+    say, which DOCTRINE.md §3 forbids.
     """
     cfg = settings or get_settings()
 
+    offered = _offered(coverage_state, pericope_num, scene_pointer)
     system = render(
         classifier_prompt,
         SESSION_LANGUAGE=session_language,
         SCENES=_scenes_block(pericope_num),
-        COVERAGE_ELEMENTS=_unresolved_block(coverage_state, pericope_num),
+        COVERAGE_ELEMENTS=_unresolved_block(coverage_state, offered),
         TEAM_UTTERANCE=team_utterance or _NO_TEAM_UTTERANCE_YET,
         GUIDE_RESPONSE=guide_response,
     )
@@ -188,9 +254,43 @@ async def classify_coverage(
 
     verdict = _parse(raw)
     _report_unknown_elements(verdict, pericope_num)
+    verdict = _only_offered(verdict, offered)
     return merge(
         coverage_state,
         pericope_num=pericope_num,
         surfaced=verdict["surfaced"],
         engaged=verdict["engaged"],
     )
+
+
+_WORD = re.compile(r"[a-z]{4,}")
+
+
+def _words(text: str) -> set[str]:
+    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().casefold()
+    return set(_WORD.findall(plain))
+
+
+async def classify_coverage_by_keywords(
+    *,
+    coverage_state: dict[str, str],
+    team_utterance: str,
+    guide_response: str,
+    pericope_num: str,
+    scene_pointer: str | None = None,
+    **_: object,
+) -> dict[str, str]:
+    """The classifier with no model in it: her keyword heuristic over the labels.
+
+    A word of the team's that touches a bead's label engages it; a word of the Guide's
+    surfaces it. It is offered exactly what the model would be — the same list, the same
+    label with the map's prose — and it reads the words alone, so it is wrong in the ways
+    a keyword match is wrong and never in a way that costs a call. It stands in for
+    `classify_coverage` wherever a whole room has to run without a provider; the extra
+    keywords the settle passes the real one are taken and ignored.
+    """
+    offered = _offered(coverage_state, pericope_num, scene_pointer)
+    team, guide = _words(team_utterance), _words(guide_response)
+    engaged = [e.key for e in offered if _words(_shown_label(e)) & team]
+    surfaced = [e.key for e in offered if e.key not in engaged and _words(_shown_label(e)) & guide]
+    return merge(coverage_state, pericope_num=pericope_num, surfaced=surfaced, engaged=engaged)

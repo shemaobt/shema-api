@@ -120,7 +120,6 @@ def ids(payload: dict) -> list[str]:
     return [question["question_id"] for question in payload["questions"]]
 
 
-@pytest.mark.asyncio
 async def test_without_a_team_id_only_the_callers_own_teams_are_read(client, db_session):
     """The leak this slice exists to close, stated first.
 
@@ -139,7 +138,6 @@ async def test_without_a_team_id_only_the_callers_own_teams_are_read(client, db_
     assert ids(payload) == [ours.id]
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_is_not_yours_is_refused_exactly_as_one_that_is_absent(
     client, db_session
 ):
@@ -160,7 +158,6 @@ async def test_a_team_that_is_not_yours_is_refused_exactly_as_one_that_is_absent
     assert (not_yours.status_code, not_yours.json()) == (absent.status_code, absent.json())
 
 
-@pytest.mark.asyncio
 async def test_a_team_id_narrows_to_that_team(client, db_session):
     first = await a_team(db_session, name="Equipe Terena")
     second = await a_team(db_session, name="Equipe Guarani")
@@ -173,7 +170,6 @@ async def test_a_team_id_narrows_to_that_team(client, db_session):
     assert ids(payload) == [here.id]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "wanted",
     [IRQuestionStatus.OPEN, IRQuestionStatus.ANSWERED, IRQuestionStatus.RESOLVED],
@@ -199,7 +195,6 @@ async def test_each_of_the_three_card_states_can_be_asked_for(client, db_session
     assert [question["status"] for question in payload["questions"]] == [wanted.value]
 
 
-@pytest.mark.asyncio
 async def test_without_a_status_the_three_states_arrive_together(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
     for state in IRQuestionStatus:
@@ -213,7 +208,6 @@ async def test_without_a_status_the_three_states_arrive_together(client, db_sess
     }
 
 
-@pytest.mark.asyncio
 async def test_open_first_and_the_newest_first_inside_each_group(client, db_session):
     """RF-04's inbox, served. The queue on top, the record below it by recency alone.
 
@@ -236,7 +230,6 @@ async def test_open_first_and_the_newest_first_inside_each_group(client, db_sess
     assert ids(payload) == [new_open.id, old_open.id, new_settled.id, old_settled.id]
 
 
-@pytest.mark.asyncio
 async def test_the_total_counts_the_scope_and_not_the_page(client, db_session):
     """The whole reason the number travels: it is allowed to be larger than the array.
 
@@ -255,7 +248,6 @@ async def test_the_total_counts_the_scope_and_not_the_page(client, db_session):
     assert payload["open_total"] == 3
 
 
-@pytest.mark.asyncio
 async def test_the_total_counts_open_hands_whatever_state_was_asked_for(client, db_session):
     """It answers "how many hands are up", not "how many rows matched"."""
     team = await a_team(db_session, name="Equipe Terena")
@@ -270,7 +262,6 @@ async def test_the_total_counts_open_hands_whatever_state_was_asked_for(client, 
     assert payload["open_total"] == 2
 
 
-@pytest.mark.asyncio
 async def test_the_total_is_scoped_like_the_page_is(client, db_session):
     mine = await a_team(db_session, name="Equipe Terena")
     theirs = await a_team(db_session, name="Equipe Guarani")
@@ -282,7 +273,6 @@ async def test_the_total_is_scoped_like_the_page_is(client, db_session):
     assert (await read(client, headers))["open_total"] == 1
 
 
-@pytest.mark.asyncio
 async def test_the_page_continues_from_the_cursor(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
     hands = [await a_hand(db_session, team, ago=timedelta(hours=n)) for n in (1, 2, 3)]
@@ -295,7 +285,6 @@ async def test_the_page_continues_from_the_cursor(client, db_session):
     assert ids(second) == [hands[2].id]
 
 
-@pytest.mark.asyncio
 async def test_a_question_raised_between_two_pages_does_not_shift_the_second(client, db_session):
     """Stable while new questions arrive — which is not a nicety on this route.
 
@@ -315,7 +304,6 @@ async def test_a_question_raised_between_two_pages_does_not_shift_the_second(cli
     assert ids(second) == [hands[2].id]
 
 
-@pytest.mark.asyncio
 async def test_the_last_page_says_it_is_the_last(client, db_session):
     team = await a_team(db_session, name="Equipe Terena")
     await a_hand(db_session, team)
@@ -324,7 +312,6 @@ async def test_the_last_page_says_it_is_the_last(client, db_session):
     assert (await read(client, headers))["next_cursor"] is None
 
 
-@pytest.mark.asyncio
 async def test_a_cursor_that_cannot_be_read_is_refused(client, db_session):
     """Refused rather than answered with the first page.
 
@@ -340,7 +327,6 @@ async def test_a_cursor_that_cannot_be_read_is_refused(client, db_session):
     assert response.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_a_question_belonging_to_no_team_reaches_nobody(client, db_session):
     """The common case today, and the only honest answer to it.
 
@@ -358,7 +344,6 @@ async def test_a_question_belonging_to_no_team_reaches_nobody(client, db_session
     assert payload["open_total"] == 0
 
 
-@pytest.mark.asyncio
 async def test_a_facilitator_with_no_teams_reads_an_empty_inbox(client, db_session):
     """The fourth shape the restriction takes, and it has to close rather than open.
 
@@ -378,7 +363,6 @@ async def test_a_facilitator_with_no_teams_reads_an_empty_inbox(client, db_sessi
     assert payload["open_total"] == 0
 
 
-@pytest.mark.asyncio
 async def test_a_platform_admin_reads_every_team(client, db_session):
     """As on every other facilitator route: they already hold every other power here, and
     scoping the one person able to investigate an installation to nothing leaves nobody
@@ -397,7 +381,6 @@ async def test_a_platform_admin_reads_every_team(client, db_session):
     assert payload["open_total"] == 2
 
 
-@pytest.mark.asyncio
 async def test_the_page_does_not_pay_a_read_per_question(client, db_session, test_engine):
     """What a longer page costs, measured against the page and not against the clock.
 

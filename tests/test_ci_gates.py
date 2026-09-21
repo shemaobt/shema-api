@@ -101,6 +101,7 @@ JOB_TIMEOUT_MINUTES = {
     ("lint.yml", "boots"): 5,
     ("lint.yml", "mypy"): 5,
     ("lint.yml", "doctrine"): 5,
+    ("migrations.yml", "migrations"): 5,
 }
 
 

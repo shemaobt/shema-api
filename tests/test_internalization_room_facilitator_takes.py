@@ -135,7 +135,6 @@ async def _session_with_a_take(db_session, project_id: str | None = None):
     return session, take
 
 
-@pytest.mark.asyncio
 async def test_a_facilitator_sees_what_a_session_recorded(client, db_session, room_app):
     user, project = await a_facilitator_of_their_own_team(db_session, room_app)
     session, take = await _session_with_a_take(db_session, project.id)
@@ -151,7 +150,6 @@ async def test_a_facilitator_sees_what_a_session_recorded(client, db_session, ro
     assert body["takes"][0]["verified"] is True
 
 
-@pytest.mark.asyncio
 async def test_without_a_login_nobody_listens(client, db_session, room_app):
     session, _take = await _session_with_a_take(db_session)
 
@@ -160,7 +158,6 @@ async def test_without_a_login_nobody_listens(client, db_session, room_app):
     assert response.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_the_room_key_does_not_open_the_facilitator_door(client, db_session, room_app):
     session, _take = await _session_with_a_take(db_session)
 
@@ -174,7 +171,6 @@ async def test_the_room_key_does_not_open_the_facilitator_door(client, db_sessio
     )
 
 
-@pytest.mark.asyncio
 async def test_a_signed_in_user_without_the_app_is_refused(client, db_session, room_app):
     session, _take = await _session_with_a_take(db_session)
     stranger = await make_user(db_session)
@@ -187,7 +183,6 @@ async def test_a_signed_in_user_without_the_app_is_refused(client, db_session, r
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_listening_redirects_to_storage_instead_of_proxying(
     client, db_session, room_app, monkeypatch
 ):
@@ -212,7 +207,6 @@ async def _signed(key: str) -> str:
     return f"https://storage.example/{key}?assinado"
 
 
-@pytest.mark.asyncio
 async def test_listening_without_a_login_is_refused(client, db_session, room_app):
     _session, take = await _session_with_a_take(db_session)
 
@@ -253,7 +247,6 @@ async def test_a_reviewer_can_tell_the_stretches_apart(db_session: AsyncSession)
     )
 
 
-@pytest.mark.asyncio
 async def test_a_take_with_no_pass_holds_its_place_on_either_database(
     db_session: AsyncSession, test_engine
 ) -> None:

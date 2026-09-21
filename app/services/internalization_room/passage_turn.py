@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.config import Settings, get_settings
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.fail_safe import inaudible_ladder
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before
 from app.services.internalization_room.prompt_blocks import (
@@ -43,7 +43,7 @@ async def run_turn(
     cfg = settings or get_settings()
 
     if not opening and not transcript.strip():
-        speech, line = choose(FailSafe.INAUDIBLE, language_code, turn=len(messages))
+        speech, line = inaudible_ladder(messages, language_code)
         return TurnOutcome(
             speech=speech,
             transcript="",

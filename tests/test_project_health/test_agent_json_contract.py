@@ -38,7 +38,6 @@ def _client(response: SimpleNamespace) -> SimpleNamespace:
     )
 
 
-@pytest.mark.asyncio
 async def test_a_caller_that_parses_json_asks_the_model_for_json() -> None:
     """Without JSON mode the model may fence or preface the object, and the parse falls back."""
     client = _client(_response('{"respondent_name": "Maria"}'))
@@ -55,7 +54,6 @@ async def test_a_caller_that_parses_json_asks_the_model_for_json() -> None:
     assert config.response_mime_type == "application/json"
 
 
-@pytest.mark.asyncio
 async def test_prose_mode_is_the_default() -> None:
     """JSON mode is opt-in, so a caller that does not parse its answer is never forced into it.
 
@@ -71,7 +69,6 @@ async def test_prose_mode_is_the_default() -> None:
     assert config.response_mime_type is None
 
 
-@pytest.mark.asyncio
 async def test_a_truncated_answer_is_reported(caplog: pytest.LogCaptureFixture) -> None:
     """The stub still returns — the caller has a fallback — but it stops being invisible.
 
@@ -93,7 +90,6 @@ async def test_a_truncated_answer_is_reported(caplog: pytest.LogCaptureFixture) 
     assert "thinking_tokens=880" in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_a_complete_answer_is_not_reported(caplog: pytest.LogCaptureFixture) -> None:
     client = _client(_response('{"ok": true}'))
     with caplog.at_level("WARNING"), patch.object(llm_client.genai, "Client", return_value=client):
@@ -104,7 +100,6 @@ async def test_a_complete_answer_is_not_reported(caplog: pytest.LogCaptureFixtur
     assert "truncated" not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_the_team_report_names_the_team_it_is_addressed_to(db_session, ph_app) -> None:
     """Project and team come from what the team typed, never from an extraction.
 
@@ -148,7 +143,6 @@ async def test_the_team_report_names_the_team_it_is_addressed_to(db_session, ph_
     assert response.team_name == "Terena Storytellers"
 
 
-@pytest.mark.asyncio
 async def test_thinking_is_bounded_so_the_answer_has_room() -> None:
     """Unbounded thinking spends the whole cap and leaves the JSON truncated.
 
@@ -167,7 +161,6 @@ async def test_thinking_is_bounded_so_the_answer_has_room() -> None:
     assert config.thinking_config.thinking_level == types.ThinkingLevel.LOW
 
 
-@pytest.mark.asyncio
 async def test_the_facilitators_reply_is_also_watched_for_truncation(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

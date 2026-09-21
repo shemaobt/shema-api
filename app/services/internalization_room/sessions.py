@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,7 +15,6 @@ from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTak
 from app.models.internalization_room import PlayedTake
 from app.services.internalization_room.back_translation import (
     BackTranslationState,
-    SupersededAttempt,
     findings_after_a_part_is_recorded_again,
 )
 from app.services.internalization_room.canon.book_material import require_walkable
@@ -44,12 +44,14 @@ from app.services.internalization_room.passage_lines import PANORAMA
 from app.services.internalization_room.progression import active_passage
 from app.services.internalization_room.segments import (
     final_segments,
-    retire_every_segment,
     retire_the_segments_of,
 )
 from app.services.internalization_room.takes import current_parts, takes_of
+from app.services.internalization_room.validated_turn import TurnOutcome
 from app.services.project.facilitated_scope import confined_to, facilitated_project_ids
 from app.services.project.facilitates_project import facilitates_project
+
+logger = logging.getLogger(__name__)
 
 PANORAMA_ALIAS = "OV"
 #: How many tellings of one stretch make it a hard stretch. Three is ours — measured in the
@@ -286,9 +288,23 @@ async def append_exchange(
     *,
     team_utterance: str,
     guide_response: str,
-    room_note: str = "",
+    outcome: TurnOutcome | None = None,
+    scene: str | None = None,
+    told_back: str = "",
 ) -> IRSession:
-    """Append one team/guide turn to the transcript.
+    """Append one team/guide turn to the transcript, and what containment did to it.
+
+    The guide message says whether the draft passed, was mended, or gave way to a fixed
+    line, and how many redrafts it cost. When a fixed line spoke, the message also keeps
+    what her fail-safe spec asks of every firing — the pericope, the scene, the team's
+    words, the Guide's draft, the Validator's verdict and issues, and which family
+    answered — so a session read back later never has to infer any of it. A turn that
+    arrives with no outcome, the prepared opening, is written as it always was.
+
+    In the telling-back round nobody speaks into the conversation, so no team turn is
+    appended; what the team said there is the telling-back itself, and `told_back` is what
+    the record keeps as the team's words when that round fires. It has no scene: the
+    verdict is read against the stretches told, not against a pointer on the map.
 
     A turn that lands is the proof a person came back, so it also releases
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
@@ -306,13 +322,36 @@ async def append_exchange(
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
-    if room_note:
-        messages.append({"role": "room", "text": room_note})
-    messages.append({"role": "guide", "text": guide_response})
+    if outcome is not None and outcome.room_note:
+        messages.append({"role": "room", "text": outcome.room_note})
+    guide: dict[str, Any] = {"role": "guide", "text": guide_response}
+    if outcome is not None:
+        guide["outcome"] = _containment_of(outcome)
+        guide["redrafts"] = outcome.redrafts
+        if outcome.used_fail_safe:
+            guide.update(
+                category=outcome.fixed_line[:1],
+                fixed_line=outcome.fixed_line,
+                pericope=session.pericope,
+                scene=scene,
+                team_utterance=team_utterance or told_back,
+                draft=outcome.draft,
+                verdict=outcome.verdict,
+                issues=outcome.issues,
+            )
+    messages.append(guide)
     values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
     if session.status is IRSessionStatus.NEEDS_PERSON:
         values["status"] = IRSessionStatus.IN_PROGRESS
     return await _land(db, session, values)
+
+
+def _containment_of(outcome: TurnOutcome) -> str:
+    if outcome.used_fail_safe:
+        return "fail_safe"
+    if outcome.verdict == "correct":
+        return "corrected"
+    return "pass"
 
 
 async def apply_coverage(
@@ -373,6 +412,40 @@ def comprehension_of(session: IRSession) -> ComprehensionState:
     except PydanticValidationError:
         stored.pop("active_probe", None)
         return ComprehensionState.model_validate(stored)
+
+
+async def append_opening(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    guide_response: str,
+    outcome: TurnOutcome | None = None,
+    scene: str | None = None,
+    state: ComprehensionState | None = None,
+) -> bool:
+    """The opening written as the session's first line, or dropped when the team spoke first.
+
+    The opening is read off an empty session and only comes back to be written after the
+    Guide has answered, which in the room has taken eleven minutes: long enough for the
+    tablet to give up, the team to speak, and their turn to be stored first. Written then,
+    it stood behind the team's turn as a line the Guide never said in that order; refused by
+    the row's version instead, it was gone and the tablet was never told. So the session is
+    read again here, and an opening that is no longer the first thing said is dropped from
+    the record and logged — the tablet still hears the line it asked for.
+    """
+    await db.refresh(session)
+    if session.messages:
+        logger.warning(
+            "The opening of session %s landed after the team's first turn; dropped, not appended",
+            session.id,
+        )
+        return False
+    if state is not None:
+        session = await save_comprehension(db, session, state)
+    await append_exchange(
+        db, session, team_utterance="", guide_response=guide_response, outcome=outcome, scene=scene
+    )
+    return True
 
 
 async def save_comprehension(
@@ -646,46 +719,6 @@ async def report_playback(
     return state
 
 
-async def begin_back_translation_again(
-    db: AsyncSession, session: IRSession
-) -> BackTranslationState:
-    """Start the telling-back over on a freshly recorded clip, archiving the old attempt.
-
-    Only the re-record reaches here. Telling one stretch again does not pass through: it
-    adds a stretch beside the others, and it is counted where that happens.
-
-    The replaced attempt is kept, clearly marked as superseded, rather than erased: its
-    stretches and findings are the history the Refine artifact carries, and the team's open
-    questions must survive their own retake. The stretches stay where they are and stop
-    counting — nothing takes their place, because the clip they explained was thrown away —
-    and only what was never theirs is copied in here.
-
-    The count of tellings is not carried and does not need to be: it lives on the stretch, and
-    every stretch of the session stops counting here. What the team tells next is a new stretch
-    on a new recording, counted from one — while the hard stretches already noted stay exactly
-    where they are, in a table this does not touch.
-    """
-    state = back_translation_of(session)
-    told = await final_segments(db, session.id)
-    superseded = list(state.superseded)
-    if told or state.findings:
-        superseded.append(
-            SupersededAttempt(
-                findings=state.findings,
-                played_by_take=state.played_by_take,
-                played_ranges=state.played_ranges,
-                clip_duration_ms=state.clip_duration_ms,
-            )
-        )
-    await retire_every_segment(db, session.id)
-    await save_back_translation(
-        db,
-        session,
-        BackTranslationState(scope=state.scope, superseded=superseded),
-    )
-    return back_translation_of(session)
-
-
 async def retire_the_part_recorded_again(
     db: AsyncSession, session: IRSession, take: IRTake
 ) -> None:
@@ -693,16 +726,17 @@ async def retire_the_part_recorded_again(
 
     The verb has no route of its own and no flag: the tablet already sends every part under
     `parte-N` with the number beside it, so a second take under N is the team recording part N
-    again and nothing else could be. It sits here rather than in `store_take`, which is a
-    storage primitive two other callers depend on — the text seam declares its parts through
-    one of them, and the **Rebuild** stores a passage that carries the number of the recording
-    it was built from and must retire none of the stretches it is about to re-address.
+    again and nothing else could be. It sits here rather than in `store_take`, which is a storage
+    primitive that knows nothing of parts: the two routes that keep a telling of a stretch store
+    through it as well, and a room verb inside it would run on every take the room keeps.
 
     What it takes: the stretches whose recording is one of the *other* takes of that number,
     divided parents and their pieces alike; the findings that pointed at them, a **Swap** whole;
     and the check, which starts over because the passage the team is standing on has changed.
-    Zero is a number the text seam uses, so it counts; a take with none is the whole recording,
-    whose route is `begin_back_translation_again` and whose verb is still all of it.
+    Zero is a number the text seam uses, so it counts; a take with none is the rehearsal told
+    whole, and this verb leaves it alone. That ground is answered at `terminei` instead: a
+    current part no standing stretch is a slice of refuses the check and is named there
+    (ADR 0027), which is the question the number cannot settle.
 
     What it leaves: the other parts' stretches, their words and their listening. A part recorded
     again is unheard by construction — a new take is a recording nobody has played — so the

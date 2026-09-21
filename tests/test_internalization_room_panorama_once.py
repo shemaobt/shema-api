@@ -101,7 +101,6 @@ async def having_heard_the_panorama(db: AsyncSession, team) -> None:
 # ------------------------------------------------------------------------------ the defect
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_heard_the_panorama_for_this_passage_is_not_played_it_again(
     db_session: AsyncSession,
 ) -> None:
@@ -115,7 +114,6 @@ async def test_a_team_that_heard_the_panorama_for_this_passage_is_not_played_it_
     assert reopened.pericope == FIRST
 
 
-@pytest.mark.asyncio
 async def test_a_team_reaching_a_new_passage_is_not_played_the_book_again(
     db_session: AsyncSession,
 ) -> None:
@@ -133,7 +131,6 @@ async def test_a_team_reaching_a_new_passage_is_not_played_the_book_again(
     assert arriving.pericope == SECOND
 
 
-@pytest.mark.asyncio
 async def test_another_teams_hearing_does_not_count_for_this_one(
     db_session: AsyncSession,
 ) -> None:
@@ -147,7 +144,6 @@ async def test_another_teams_hearing_does_not_count_for_this_one(
     assert room.is_panorama(launched.pericope)
 
 
-@pytest.mark.asyncio
 async def test_a_passage_opened_in_place_of_the_panorama_does_not_claim_the_meeting(
     db_session: AsyncSession,
 ) -> None:
@@ -165,7 +161,6 @@ async def test_a_passage_opened_in_place_of_the_panorama_does_not_claim_the_meet
     assert reopened.after_panorama is False
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_asks_for_the_panorama_hears_it_even_after_the_book_was_heard(
     db_session: AsyncSession,
 ) -> None:
@@ -185,7 +180,6 @@ async def test_a_team_that_asks_for_the_panorama_hears_it_even_after_the_book_wa
 # ------------------------------------------------------------------------------ controls
 
 
-@pytest.mark.asyncio
 async def test_a_team_that_never_heard_the_panorama_hears_it(db_session: AsyncSession) -> None:
     """Case 3. First launch ever."""
     team = await a_team(db_session, name="Primeira vez")
@@ -195,7 +189,6 @@ async def test_a_team_that_never_heard_the_panorama_hears_it(db_session: AsyncSe
     assert room.is_panorama(launched.pericope)
 
 
-@pytest.mark.asyncio
 async def test_a_panorama_opened_but_never_followed_into_the_passage_is_played_again(
     db_session: AsyncSession,
 ) -> None:
@@ -210,7 +203,6 @@ async def test_a_panorama_opened_but_never_followed_into_the_passage_is_played_a
     assert room.is_panorama(launched.pericope)
 
 
-@pytest.mark.asyncio
 async def test_a_tablet_that_never_said_whose_it_is_always_hears_the_panorama(
     db_session: AsyncSession,
 ) -> None:
@@ -223,7 +215,6 @@ async def test_a_tablet_that_never_said_whose_it_is_always_hears_the_panorama(
     assert room.is_panorama(launched.pericope)
 
 
-@pytest.mark.asyncio
 async def test_a_team_with_nothing_left_to_walk_is_still_given_the_panorama(
     db_session: AsyncSession,
 ) -> None:
@@ -239,7 +230,6 @@ async def test_a_team_with_nothing_left_to_walk_is_still_given_the_panorama(
     assert room.is_panorama(launched.pericope)
 
 
-@pytest.mark.asyncio
 async def test_naming_a_passage_or_none_resolves_as_before_once_the_panorama_was_heard(
     db_session: AsyncSession,
 ) -> None:
@@ -339,7 +329,6 @@ async def the_room_opens(client, headers: dict[str, str], session_id: str) -> di
     return spoken.json()
 
 
-@pytest.mark.asyncio
 async def test_over_http_the_relaunch_lands_on_the_passage_the_bead_opened(
     client, db_session: AsyncSession
 ) -> None:
@@ -360,7 +349,6 @@ async def test_over_http_the_relaunch_lands_on_the_passage_the_bead_opened(
     assert relaunched["pericope"] == FIRST
 
 
-@pytest.mark.asyncio
 async def test_over_http_a_chosen_panorama_opens_and_the_room_speaks_it(
     client, db_session: AsyncSession
 ) -> None:
@@ -382,7 +370,6 @@ async def test_over_http_a_chosen_panorama_opens_and_the_room_speaks_it(
     assert opening["audio_url"].startswith(f"{PREFIX}/voice/")
 
 
-@pytest.mark.asyncio
 async def test_a_second_panorama_spends_no_prepared_opening(
     client, db_session: AsyncSession, prepared: list[str]
 ) -> None:

@@ -42,7 +42,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield door
 
 
-@pytest.mark.asyncio
 async def test_a_clean_check_orders_the_last_listening_and_the_approval(
     client: httpx.AsyncClient,
     db_session: AsyncSession,

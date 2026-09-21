@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import Settings
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.fail_safe import validation_ladder
 from app.services.internalization_room.llm import Turn, cache_break_before
 from app.services.internalization_room.peer_cue import detects_peer_cue
 from app.services.internalization_room.redraft_note import _redraft_note
@@ -47,6 +47,9 @@ from app.services.internalization_room.usage import (
 )
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
 
+#: How many times one draft is put to the Validator before its reply is given up on.
+READINGS_OF_ONE_DRAFT = 2
+
 
 @dataclass
 class TurnOutcome:
@@ -64,7 +67,11 @@ class TurnOutcome:
     #: when the Guide marked the boundary itself. Empty on every other turn and whenever the
     #: mark was not exactly where it was asked for; `speech` always stays the whole text.
     movements: list[str] = field(default_factory=list)
-    needs_person: bool = False
+    #: The last words the Guide drafted and the last verdict the Validator gave on them, as
+    #: it wrote it — empty when no draft was asked for, or when no reply could be read.
+    #: They are what the record keeps of a firing, so a fail-safe can be read back later.
+    draft: str = ""
+    verdict: str = ""
     room_note: str = ""
 
 
@@ -285,7 +292,13 @@ async def _voiced_after_validation(
     as the family-A fail-safe: the next tap failed the same way, and the team heard the
     same canned line over and over with nothing to say a person was needed. The only
     fail-safe this engine still speaks is the designed one — a Validator that will not
-    settle after `MAX_REDRAFTS`.
+    settle after `MAX_REDRAFTS`, or one whose reply cannot be read twice over.
+
+    A reply the room cannot read is not a verdict on the draft, so it costs a second
+    reading of the same draft and never a redraft: the Guide's words were not judged, and
+    sending them back to be rewritten spent the budget that keeps the Guide talking on a
+    fault that was the Validator's. Only when the second reading is unreadable too does the
+    family-A line answer, and the redrafts it reports are the ones actually spent.
     """
     shim = importlib.import_module("app.services.internalization_room.run_turn")
 
@@ -321,29 +334,30 @@ async def _voiced_after_validation(
             FINDING=finding or NOT_THIS_TURN,
             ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
         )
-        raw_verdict = await shim.call_agent(
-            role="validator",
-            system_prompt=validator_system,
-            user_content=VALIDATOR_USER_MESSAGE,
-            max_output_tokens=4096,
-            settings=settings,
-        )
-        verdict, refusal = _parse_verdict(raw_verdict)
-        issues = _issues_as_dicts(verdict.get("issues"))
+        for _reading in range(READINGS_OF_ONE_DRAFT):
+            raw_verdict = await shim.call_agent(
+                role="validator",
+                system_prompt=validator_system,
+                user_content=VALIDATOR_USER_MESSAGE,
+                max_output_tokens=4096,
+                settings=settings,
+            )
+            verdict, refusal = _parse_verdict(raw_verdict)
+            issues = _issues_as_dicts(verdict.get("issues"))
+            if refusal is None:
+                break
+            _refused(refusal, raw_verdict, session_id, attempt + 1)
+        if refusal is not None:
+            break
 
         speech = ""
-        if refusal is None:
-            if verdict.get("verdict") == "pass":
-                speech = draft
-            elif verdict.get("verdict") == "correct":
-                speech = (verdict.get("corrected_response") or "").strip()
-                movements = []
-                if not speech:
-                    refusal = "correct verdict has an empty corrected_response"
-            else:
-                refusal = f"verdict is {verdict.get('verdict')!r}"
-        if refusal is not None:
-            _refused(refusal, raw_verdict, session_id, attempt + 1)
+        if verdict["verdict"] == "pass":
+            speech = draft
+        elif verdict["verdict"] == "correct":
+            speech = str(verdict["corrected_response"]).strip()
+            movements = []
+        else:
+            _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
 
         if speech and shim.strays_from(speech, language_code):
             issues = [*issues, {"problem": "off_bridge_language"}]
@@ -361,6 +375,8 @@ async def _voiced_after_validation(
                     redrafts=attempt,
                     issues=issues,
                     movements=movements,
+                    draft=draft,
+                    verdict=str(verdict["verdict"]),
                 ),
                 started,
                 session_id,
@@ -368,18 +384,20 @@ async def _voiced_after_validation(
             )
 
         redraft_note = _redraft_note(issues, language_code)
-    shim.logger.warning("Fail-safe fired after %s redrafts: issues=%s", shim.MAX_REDRAFTS, issues)
+    shim.logger.warning("Fail-safe fired after %s redrafts: issues=%s", attempt, issues)
 
-    speech, line = choose(FailSafe.UNREPAIRABLE, language_code, turn=len(messages))
+    speech, line = validation_ladder(messages, language_code)
     return _timed(
         TurnOutcome(
             speech=speech,
             transcript=transcript,
             used_fail_safe=True,
             degraded=True,
-            redrafts=shim.MAX_REDRAFTS,
+            redrafts=attempt,
             issues=issues,
             fixed_line=line,
+            draft=draft,
+            verdict=str(verdict.get("verdict", "")),
         ),
         started,
         session_id,

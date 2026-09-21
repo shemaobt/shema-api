@@ -71,6 +71,7 @@ from tests.release_harness import (
     supported_comprehension,
     team_headers,
     team_release,
+    the_one_part_of,
 )
 
 REVISION = "20260911_rel02"
@@ -118,15 +119,23 @@ async def test_a_p02_telling_with_the_swapped_cause_is_refused_by_name(client, d
     `checked` is false because the analyst's reading returned a finding and nobody answered
     it. Before this slice the same request returned the packet, labelled `ready_for_refine`,
     with the finding inside it — and a passage that says God gave the bread read downstream
-    as a passage the daughters-in-law talked Naomi into leaving.
+    as a passage the daughters-in-law talked Naomi into leaving. ENG-954 turned that error into
+    an answer: the team's refusal is a 200 naming the blocker, the way the check's own refusals
+    already are (ENG-889).
     """
     project, credential = await a_claimed_device(db_session)
     session = await a_p02_telling_with_the_swapped_cause(db_session, project)
 
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
-    assert refused.status_code == 409, refused.text
-    assert "telling_back_not_checked" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == ["telling_back_not_checked"]
+    assert body["version"] is None
+    assert body["release_id"] is None
+    assert body["untold_take_ids"] == []
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
 
 
@@ -170,13 +179,17 @@ async def test_the_facilitator_forces_past_a_rehearsal_only_half_heard(
     """
     project, credential = await a_claimed_device(db_session)
     session = await a_rehearsal_only_half_heard(db_session, project)
+    part = await the_one_part_of(db_session, session)
     desk, _facilitator = await at_the_desk(db_session, room_app, project)
 
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
     forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
 
-    assert refused.status_code == 409, refused.text
-    assert "playback_did_not_cover_the_clip" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == ["playback_did_not_cover_the_clip"]
+    assert body["unheard_take_ids"] == [part.id]
+    assert body["version"] is None
     assert forced.status_code == 200, forced.text
     assert forced.json()["version"] == 1
     (row,) = await releases_of(db_session, session.id)
@@ -265,7 +278,7 @@ async def _a_wordless_stretch(db: AsyncSession, session: IRSession) -> None:
     await capture_segment(
         db,
         session,
-        take_id="ensaio-1",
+        take_id=(await the_one_part_of(db, session)).id,
         starts_ms=CLIP_MS,
         ends_ms=CLIP_MS + 9000,
         transcript=None,
@@ -302,6 +315,49 @@ async def test_the_force_waives_only_the_two_blockers_of_her_gate(
 
     assert refused.status_code == 409, refused.text
     assert blocker in refused.json()["detail"]
+    assert await releases_of(db_session, session.id) == []
+
+
+@pytest.mark.parametrize(
+    ("break_it", "expected_blockers", "expected_untold"),
+    [
+        # ADR 0026: retiring every stretch leaves the session's one part standing with no
+        # standing stretch either, so `untold_part` rides beside `no_telling_back` and is the
+        # only one of the two that names ground — measured with the probe in ENG-954's report,
+        # not assumed, because a session with an empty reading and at least one rehearsal take
+        # always trips both.
+        (_nothing_told_back, ["no_telling_back", "untold_part"], True),
+        (_never_analysed, ["telling_back_never_analysed"], False),
+        # `_no_rehearsal_audio` also leaves the open finding of the base fixture unanswered,
+        # so `telling_back_not_checked` rides beside it; neither of the two names ground.
+        (_no_rehearsal_audio, ["no_rehearsal_audio", "telling_back_not_checked"], False),
+    ],
+)
+async def test_the_gates_ground_fields_answer_only_their_own_blocker(
+    client, db_session, break_it, expected_blockers, expected_untold
+):
+    """The route names ground where the gate says to, and nowhere else.
+
+    The rule this pins is the gate's, not the route's: `compose_internalization_release`
+    appends `untold_part` exactly when a current part stands with no standing stretch, and the
+    route's `untold_take_ids` is empty whenever that append did not happen. The first case
+    still has a door on the tablet (`untold_part`); the other two do not, and every ground
+    field stays empty for them.
+    """
+    project, credential = await a_claimed_device(db_session)
+    session = await a_p02_telling_with_the_swapped_cause(db_session, project)
+    part = await the_one_part_of(db_session, session)
+    await break_it(db_session, session)
+
+    refused = await client.post(team_release(session.id), headers=team_headers(credential))
+
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == expected_blockers
+    assert body["version"] is None
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
+    assert body["untold_take_ids"] == ([part.id] if expected_untold else [])
     assert await releases_of(db_session, session.id) == []
 
 
@@ -362,10 +418,11 @@ async def test_the_team_route_never_reads_force(client, db_session):
         team_release(clean.id), headers=team_headers(credential), json={"force": True}
     )
 
-    assert refused.status_code == 409, refused.text
-    assert "telling_back_not_checked" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    assert refused.json()["blockers"] == ["telling_back_not_checked"]
     assert approved.status_code == 200, approved.text
     assert approved.json()["version"] == 1
+    assert approved.json()["blockers"] == []
     (row,) = await releases_of(db_session, clean.id)
     assert row.forced_by is None
     assert row.forced_at is None
@@ -634,12 +691,13 @@ async def test_the_teams_approval_after_a_force_returns_the_forced_release(
     forced = await client.post(desk_release(session.id), headers=desk, json={"force": True})
     again = await client.post(team_release(session.id), headers=team_headers(credential))
 
-    assert refused.status_code == 409, refused.text
-    assert "telling_back_not_checked" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    assert refused.json()["blockers"] == ["telling_back_not_checked"]
     assert forced.status_code == 200, forced.text
     assert again.status_code == 200, again.text
     assert again.json()["release_id"] == forced.json()["release_id"]
     assert again.json()["version"] == 1
+    assert again.json()["blockers"] == []
     (row,) = await releases_of(db_session, session.id)
     await db_session.refresh(row)
     assert row.forced_at is not None
@@ -665,8 +723,9 @@ async def test_a_changed_and_still_blocked_session_is_refused_after_a_force(
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
     assert forced.status_code == 200, forced.text
-    assert refused.status_code == 409, refused.text
-    assert "telling_back_not_checked" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    assert refused.json()["blockers"] == ["telling_back_not_checked"]
+    assert refused.json()["version"] is None
     assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
     forced_again = await client.post(desk_release(session.id), headers=desk, json={"force": True})
@@ -717,8 +776,13 @@ async def test_the_team_route_refuses_a_panorama(client, db_session):
 
     refused = await client.post(team_release(session.id), headers=team_headers(credential))
 
-    assert refused.status_code == 409, refused.text
-    assert "panorama_sessions_never_release" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == ["panorama_sessions_never_release"]
+    assert body["version"] is None
+    assert body["untold_take_ids"] == []
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
 
 

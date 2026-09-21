@@ -5,7 +5,6 @@ from app.services import app_service
 from tests.baker import make_app, make_role, make_user, make_user_app_role
 
 
-@pytest.mark.asyncio
 async def test_list_apps(db_session) -> None:
     await make_app(db_session, app_key="alpha-app", name="Alpha App")
     await make_app(db_session, app_key="beta-app", name="Beta App")
@@ -17,7 +16,6 @@ async def test_list_apps(db_session) -> None:
     assert "meaning-map-generator" in keys
 
 
-@pytest.mark.asyncio
 async def test_create_app_with_all_fields(db_session) -> None:
     app = await app_service.create_app(
         db_session,
@@ -43,14 +41,12 @@ async def test_create_app_with_all_fields(db_session) -> None:
     assert app.id is not None
 
 
-@pytest.mark.asyncio
 async def test_create_app_raises_conflict_on_duplicate_key(db_session) -> None:
     await make_app(db_session, app_key="dup-app", name="First")
     with pytest.raises(ConflictError, match="already exists"):
         await app_service.create_app(db_session, app_key="dup-app", name="Second")
 
 
-@pytest.mark.asyncio
 async def test_get_app_or_404(db_session) -> None:
     created = await make_app(db_session, app_key="findme-app", name="Find Me")
     app = await app_service.get_app_or_404(db_session, created.id)
@@ -58,13 +54,11 @@ async def test_get_app_or_404(db_session) -> None:
     assert app.app_key == "findme-app"
 
 
-@pytest.mark.asyncio
 async def test_get_app_or_404_raises_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match="not found"):
         await app_service.get_app_or_404(db_session, "00000000-0000-0000-0000-000000000000")
 
 
-@pytest.mark.asyncio
 async def test_update_app_name_and_description(db_session) -> None:
     created = await make_app(db_session, app_key="upd-app", name="Old Name")
     updated = await app_service.update_app(
@@ -74,13 +68,11 @@ async def test_update_app_name_and_description(db_session) -> None:
     assert updated.description == "New desc"
 
 
-@pytest.mark.asyncio
 async def test_update_app_raises_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match="not found"):
         await app_service.update_app(db_session, "00000000-0000-0000-0000-000000000000", name="X")
 
 
-@pytest.mark.asyncio
 async def test_list_user_apps_returns_apps_with_roles(db_session) -> None:
     user = await make_user(db_session, email="appuser@example.com")
     app = await make_app(db_session, app_key="user-app", name="User App")
@@ -96,14 +88,12 @@ async def test_list_user_apps_returns_apps_with_roles(db_session) -> None:
     assert sorted(role_keys) == ["admin", "member"]
 
 
-@pytest.mark.asyncio
 async def test_list_user_apps_returns_empty_for_no_roles(db_session) -> None:
     user = await make_user(db_session, email="noroleapp@example.com")
     results = await app_service.list_user_apps(db_session, user.id)
     assert results == []
 
 
-@pytest.mark.asyncio
 async def test_list_app_roles(db_session) -> None:
     app = await make_app(db_session, app_key="roles-app", name="Roles App")
     await make_role(db_session, app.id, role_key="admin", label="Admin")

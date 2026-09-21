@@ -4,33 +4,45 @@ import json
 import re
 from typing import Any
 
-_UNPARSEABLE_VERDICT: dict[str, Any] = {
-    "verdict": "regenerate",
-    "issues": [{"problem": "unparseable_verdict"}],
-}
+_FENCED = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 
 
 def _parse_verdict(raw: str) -> tuple[dict[str, Any], str | None]:
     """The Validator's reply as a verdict, and the condition that refused it when one did.
 
-    A parse failure still returns a usable ``regenerate`` verdict — the loop above asks for
-    another draft either way — but the second element names *why* this reply could not be
-    trusted, so the caller can leave the trace `_refused` exists for instead of the silence
-    that used to sit here for two of these three exits.
+    The object is looked for three ways — the whole reply, a fenced block, the outermost
+    braces — before the reply is given up on. A refused reply is handed back as whatever
+    was read of it, never as a verdict of its own: the second element names *why* it could
+    not be trusted, so the caller can leave the trace `_refused` exists for, and what the
+    caller does about it is the caller's to decide.
     """
     text = raw.strip()
-    fenced = re.search(r"```(?:json)?\s*(.*?)```", text, re.S)
+    verdict = _object_in(text)
+    if verdict is None:
+        return {}, "not a JSON object"
+    if "verdict" not in verdict:
+        return verdict, "verdict reply has no 'verdict' key"
+    if verdict["verdict"] == "correct" and not str(verdict.get("corrected_response") or "").strip():
+        return verdict, "correct verdict has an empty corrected_response"
+    return verdict, None
+
+
+def _object_in(text: str) -> dict[str, Any] | None:
+    candidates = [text]
+    fenced = _FENCED.search(text)
     if fenced:
-        text = fenced.group(1).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return _UNPARSEABLE_VERDICT, "not JSON"
-    if not isinstance(parsed, dict):
-        return _UNPARSEABLE_VERDICT, "verdict reply is not a JSON object"
-    if "verdict" not in parsed:
-        return _UNPARSEABLE_VERDICT, "verdict reply has no 'verdict' key"
-    return parsed, None
+        candidates.append(fenced.group(1).strip())
+    opened, closed = text.find("{"), text.rfind("}")
+    if opened != -1 and closed > opened:
+        candidates.append(text[opened : closed + 1])
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
 
 
 def _issues_as_dicts(raw: Any) -> list[dict[str, Any]]:
