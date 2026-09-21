@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.project import Project
 from app.services.language.get_language_by_id import get_language_by_id
 from app.services.project.get_project_or_404 import get_project_or_404
@@ -19,6 +19,8 @@ async def update_project(
         language = await get_language_by_id(db, language_id)
         if not language:
             raise NotFoundError("Language not found")
+        if not language.is_active:
+            raise ValidationError("Language is not active")
         project.language_id = language_id
     if name is not None:
         project.name = name

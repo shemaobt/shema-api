@@ -12,6 +12,8 @@ class LanguageResponse(BaseModel):
     id: str
     name: str
     code: str
+    is_active: bool
+    created_by: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
