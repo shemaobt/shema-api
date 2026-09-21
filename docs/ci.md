@@ -12,7 +12,8 @@ already walks the graph on Postgres; the three that open a fresh interpreter car
 `fresh_interpreter` and run in Checks, which already boots the application in a clean
 interpreter as one of its seven commands. `tests/test_ci_gates.py` pins the three selections
 as a partition of the whole suite, so a file cannot fall outside all three without that
-turning red. [ADR 0032](adr/0032-the-tests-that-spawn-processes-run-in-the-jobs-beside.md).
+turning red. ADR 0032 (PR #472) records the decision; the file lands in `docs/adr/` once
+that PR merges.
 
 | Workflow | What it gates |
 |---|---|
