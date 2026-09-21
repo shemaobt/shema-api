@@ -1,0 +1,30 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 8,
+      "severity": "minor",
+      "kind": "gap_not_re-rehearsed",
+      "quote": "Tudo bem, vamos em frente. Só guardem esse detalhe no bolso: eles foram morar em Moabe *como estrangeiros*",
+      "why": "O reconto da equipe no turno 7 ficou sem o 'morar como estrangeiros'; o guia nomeou a falta com honestidade, mas quando a equipe pediu para continuar, ele seguiu adiante sem pedir que a parte fosse ensaiada de novo até ficar inteira. Cedeu ao pedido da equipe (adaptativo), mas deixou o reconto incompleto passar."
+    },
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "attribution_slip",
+      "quote": "a história conta que Moabe era a terra de um povo com quem Israel vivia em briga há muito tempo",
+      "why": "A informação está no contexto do material de referência, mas não é algo que a passagem 'conta'; atribuir ao texto o que é pano de fundo é uma pequena imprecisão de enquadramento, não uma afirmação sem base."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se comportou como um par à mesa: cada turno respondeu de verdade ao que a equipe trouxe — a pergunta sobre Moabe, a pergunta sobre Deus ter mandado a fome, o spoiler sobre Boaz, a pressão para saber quem casou com quem. Guardou todos os silêncios como conteúdo (nenhuma causa divina, nenhum par de esposa e marido, nenhum luto) e explicou por que esses silêncios devem continuar na tradução, sem preencher nada. Abriu a primeira cena por inteiro antes de convidar ao ensaio, e só chamou o ensaio quando a equipe disse 'entendemos'. A checagem do reconto foi honesta: elogiou o que estava lá e nomeou com clareza o 'morar como estrangeiros' que faltou. A única fragilidade foi no turno 8: quando a equipe pediu para continuar, o guia seguiu adiante sem mandar ensaiar de novo a parte incompleta — adaptou-se bem, mas o reconto não chegou a ficar inteiro. A transcrição termina com a segunda cena recém-aberta, então não houve fecho com a instrução de gravar; registro plano, sem bênçãos e sem 'o mapa'."
+}
