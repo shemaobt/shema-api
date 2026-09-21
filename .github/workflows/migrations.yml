@@ -39,10 +39,10 @@ jobs:
   migrations:
     runs-on: ubuntu-latest
     # The same ceiling this job carries on `main`, where the whole job — graph check,
-    # upgrade, `alembic check`, the downgrade/upgrade walk, then the migration-marked tests
-    # ENG-980 added below — measured 3m04. This branch's suite is larger and the number is
-    # re-read from this branch's own runs. Without a ceiling the job inherits GitHub's
-    # 360-minute default and a hung run stays "pending" for six hours (ENG-913).
+    # upgrade, the downgrade/upgrade walk, then the migration-marked tests ENG-980 added
+    # below — measured 3m04. Taken from `main` for parity; this branch's one measured run:
+    # the job 1m53. Without a ceiling the job inherits GitHub's 360-minute default and a
+    # hung run stays "pending" for six hours (ENG-913).
     timeout-minutes: 7
 
     services:

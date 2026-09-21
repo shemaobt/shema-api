@@ -138,11 +138,11 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 
 #: A job with no `timeout-minutes` inherits GitHub's 360-minute default, which is how a hung
 #: run stayed "pending" for six hours instead of turning red (ENG-913). The canon check was
-#: the last job left without one. ENG-969 puts every gate under a ceiling: 10 for lint (now
-#: checks), whose seven commands cost 40 seconds of work, and 10 for test, twice the five
-#: minutes its step is expected to take now that the suite runs in four processes. ENG-980
-#: raises the migrations ceiling to fit the `-m migration` step it adds, at twice the 3m04s
-#: the whole job measured on shemaobt/shema-api#474's own CI run.
+#: the last job left without one. ENG-969 puts every gate under a ceiling: 10 for checks
+#: (was lint), whose four commands cost well under a minute of work, and 7 for test, the
+#: number #475 sets on `main` against a step measured there at 2m04-2m31. Migrations carries
+#: 7 for parity with `main`, where the whole job measured 3m04 on shemaobt/shema-api#474's
+#: own run once the `-m migration` step was added; this branch's own run measured 1m53.
 JOB_TIMEOUT_MINUTES = {
     ("test.yml", "test"): 7,
     ("checks.yml", "checks"): 10,
@@ -175,7 +175,7 @@ def _checks_step_running(fragment: str) -> dict:
 
 
 def test_checks_is_one_check_and_not_three() -> None:
-    """Five jobs cost one pull request five lines and four repeated setups for 40 s of work."""
+    """Three jobs cost one pull request three lines and two repeated setups for one job's work."""
     jobs = sorted(_workflow("checks.yml")["jobs"])
 
     assert jobs == ["checks"], f"checks.yml defines {jobs}"
@@ -189,9 +189,9 @@ def test_checks_yml_replaces_lint_yml() -> None:
     assert workflow.get("name") == "Checks", f"checks.yml is named {workflow.get('name')}"
 
 
-def test_the_one_job_runs_every_check_the_five_jobs_ran() -> None:
-    """Collapsing the jobs must not drop a check: the seven commands, then the tests that
-    spawn processes, still run, in order."""
+def test_the_one_job_runs_every_check_the_three_jobs_ran() -> None:
+    """Collapsing the jobs must not drop a check: the four commands this branch has, then
+    the tests that spawn processes, still run, in order."""
     runs = [step["run"] for step in _checks_steps() if "run" in step]
 
     unreached = list(CHECKS_COMMANDS_IN_ORDER)
@@ -231,7 +231,7 @@ def test_the_suite_runs_in_four_processes_split_by_file() -> None:
 
 def test_the_migrations_job_runs_the_migration_marked_tests_with_the_variable_cleared() -> None:
     """G3 (criterion 4): a step `env` cannot unset a job-level `env` in Actions — only the
-    `run` line can, and without it the fourteen would run serially, against the job's
+    `run` line can, and without it the eight would run serially, against the job's
     Postgres, on top of the schema the previous step just migrated."""
     steps = _workflow("migrations.yml")["jobs"]["migrations"]["steps"]
     running = [step for step in steps if "-m migration" in step.get("run", "")]
@@ -263,7 +263,7 @@ def test_the_two_markers_are_registered() -> None:
 def _module_level_marker(path: Path) -> str | None:
     """The name of the mark a file's `pytestmark = pytest.mark.<name>` line carries, by AST.
 
-    Reads the source rather than importing it: importing one of the seventeen files to ask
+    Reads the source rather than importing it: importing one of the nine files to ask
     what it is marked with is exactly the cost this ticket moves out of the PR job.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))

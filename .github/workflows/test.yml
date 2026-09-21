@@ -22,7 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     # Seven, the ceiling #475 sets on `main` over a `Run tests` step measured there at
     # 2m04-2m31 once ENG-980 moved the process-spawning tests to the jobs already beside this
-    # one. This branch's suite is larger; the number is re-read from this branch's own runs.
+    # one. Taken from `main` for parity; this branch's one measured run: the job 4m13, the
+    # step 3m47.
     # The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
     # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
     timeout-minutes: 7
