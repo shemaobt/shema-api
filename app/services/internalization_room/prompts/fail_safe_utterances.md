@@ -54,6 +54,11 @@ This is not strictly a *failure* — it's the designed boundary behavior, but it
 - "That's a good question. This passage doesn't tell us that — it stays focused on what's right here in front of us. Let's stay with what the passage is showing us."
 - "The passage is quiet about that. Let's look at what it does tell us in this part."
 
+### B-pt. (Português brasileiro)
+
+- "Boa pergunta. Isso a passagem não conta — ela fica no que está bem aqui na nossa frente. Vamos ficar com o que ela está mostrando."
+- "A passagem fica quieta sobre isso. Vamos olhar o que ela conta nesta parte."
+
 ### C. The question is important but the map can't answer it (handoff to facilitator)
 Use when a question matters and reaching outside the map would be the only way to answer — route to the human.
 
@@ -61,6 +66,11 @@ Use when a question matters and reaching outside the map would be the only way t
 - "That deserves a real answer, and it's beyond what this passage tells us. Let's set it aside to bring to your facilitator, and keep going here."
 
 *(The UI's "this needs our facilitator" affordance should also be offered here; log the question — it's signal about what the map doesn't cover.)*
+
+### C-pt. (Português brasileiro)
+
+- "Essa pergunta é importante, e é bem do tipo de levar ao facilitador de vocês — alguém que pode ir mais longe do que esta passagem vai sozinha."
+- "Isso merece uma resposta de verdade, e vai além do que esta passagem conta. Vamos guardar para levar ao facilitador de vocês, e seguir por aqui."
 
 ### D. Couldn't hear / transcription failed
 Use when the team's audio didn't come through.
@@ -149,6 +159,10 @@ If fail-safes fire repeatedly across several consecutive turns (e.g. 3+), someth
 - "Let's take a short pause here. This might be a good moment to bring in your facilitator, and we can pick this up again together."
 
 The orchestration should also flag this state for review (it usually means a map-load or service problem, not a content problem).
+
+### E-pt. (Português brasileiro)
+
+- "Vamos fazer uma pausa curta aqui. Pode ser um bom momento para chamar o facilitador de vocês, e a gente retoma isso junto."
 
 ---
 
