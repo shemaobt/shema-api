@@ -13,6 +13,7 @@ import pytest
 
 from app.core.config import Settings
 from app.services.internalization_room import synthesize_facilitator_speech
+from app.services.internalization_room.passage_lines import panorama_line_for
 from app.services.internalization_room.voices import voice_for
 
 ROOM_VOICE_ID = "83Nae6GFQiNslSbuzmE7"
@@ -165,6 +166,35 @@ async def test_a_cold_process_still_finds_the_line_in_the_bucket() -> None:
 
     _, cached = await synthesize_facilitator_speech(
         "A sala continua aqui.",
+        client=client,
+        store=cold,
+        settings=_settings(),
+        language="pt",
+    )
+
+    assert cached is True
+    assert client.post.await_count == 0
+
+
+async def test_the_panoramas_own_line_is_served_from_cache_without_a_model_call() -> None:
+    """The raio rides the same bucket cache as every other facilitator line — a warm cache
+    answers it without ever reaching ElevenLabs."""
+    line = panorama_line_for("pt")
+    warm = MemoryStore()
+    await synthesize_facilitator_speech(
+        line,
+        client=_client(),
+        store=warm,
+        settings=_settings(),
+        language="pt",
+    )
+
+    cold = MemoryStore()
+    cold.objects = dict(warm.objects)
+    client = _client()
+
+    _, cached = await synthesize_facilitator_speech(
+        line,
         client=client,
         store=cold,
         settings=_settings(),
