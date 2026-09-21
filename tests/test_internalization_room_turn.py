@@ -182,10 +182,11 @@ def test_render_fills_every_placeholder() -> None:
 
 def test_the_coverage_block_lists_only_what_is_left() -> None:
     state = merge(initial_state(P), pericope_num=P, engaged=["scene:1", "scene:2"])
-    block = coverage_status_block(state, P)
+    covered, left = coverage_status_block(state, P).split("REMAINING")
 
-    assert "[scene:3]" in block
-    assert "[scene:1]" not in block
+    assert "  scene: S3 (v.18)" in left
+    assert "S1 (v.15)" not in left
+    assert "S1 (v.15)" in covered
 
 
 def test_a_finished_map_says_nothing_remains() -> None:

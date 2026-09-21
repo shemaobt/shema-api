@@ -96,9 +96,9 @@ async def test_the_guide_is_handed_only_what_the_team_still_has_left(
 
     thursday = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
 
-    block = coverage_status_block(thursday.coverage_state, FIRST)
-    assert f"[{keys[-1]}]" in block
-    assert [key for key in keys[:-1] if f"[{key}]" in block] == []
+    state = thursday.coverage_state
+    left = coverage_status_block(state, FIRST).split("REMAINING")[1]
+    assert left.splitlines()[1:] == ["  preserved: R10"]
 
 
 async def test_a_team_that_closed_the_tablet_mid_passage_finishes_it_on_the_second_evening(

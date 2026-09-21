@@ -4,17 +4,84 @@ from app.services.internalization_room.canon.book_material import (
     preservation_rules,
     story_so_far,
 )
+from app.services.internalization_room.canon.elements import (
+    Element,
+    ElementKind,
+    elements_for,
+)
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import remaining
+from app.services.internalization_room.coverage import (
+    CoverageStatus,
+    current_scene,
+    initial_state,
+    remaining,
+)
+
+
+def _short_label(element: Element, scenes: dict[int, str]) -> str:
+    """A label the Guide can say: a scene by its verses, a silence by its scene, a rule by
+    its number, and everything else by the map's own line for it — in the scene it is in,
+    because the team saying "Naomi" in scene 1 does not answer for her in scene 3."""
+    if element.kind is ElementKind.SCENE and element.scene is not None:
+        return scenes[element.scene]
+    if element.kind is ElementKind.ABSENCE:
+        return f"absence @ S{element.scene}"
+    if element.kind is ElementKind.PRESERVED and element.rule_id is not None:
+        return element.rule_id
+    if element.scene is not None:
+        return f"{element.label} @ S{element.scene}"
+    return element.label
 
 
 def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> str:
+    """Her three parts, in her order: the scene, what is behind the team, what is not.
+
+    Information only (DOCTRINE §2.1): the block says where the ledger last saw the team
+    and what they have and have not worked; it never says what to do next. No key and no
+    audit kind reaches it — the Guide speaks names, never codes, and it has no screen to
+    check a code against.
+    """
+    scenes = {
+        scene.number: f"S{scene.number} ({scene.verses})" for scene in load_map(pericope_num).scenes
+    }
+    merged = {**initial_state(pericope_num), **coverage_state}
+    covered = [
+        _short_label(element, scenes)
+        for element in elements_for(pericope_num)
+        if merged.get(element.key) == CoverageStatus.ENGAGED
+    ]
+    scene = current_scene(coverage_state, pericope_num)
+    if scene is not None:
+        scene_line = f"CURRENT SCENE: {scene}"
+    elif all(
+        merged.get(element.key) == CoverageStatus.ENGAGED
+        for element in elements_for(pericope_num)
+        if element.scene is not None
+    ):
+        scene_line = (
+            "CURRENT SCENE: (whole-passage integration — every scene has been engaged; "
+            "check the remaining whole-passage meaning and the team's readiness)"
+        )
+    else:
+        scene_line = (
+            "CURRENT SCENE: (whole-passage opening — help the team feel the shape before "
+            "any one scene)"
+        )
+    covered_line = "COVERED (engaged): " + (
+        "; ".join(covered) if covered else "(nothing engaged yet — the session is just beginning)"
+    )
     left = remaining(coverage_state, pericope_num)
     if not left:
-        return "REMAINING: (none — every element has been worked by the team)"
-    lines = ["REMAINING (not yet worked by the team, in their own words):"]
-    lines.extend(f"- [{element.key}] {element.label}" for element in left)
-    return "\n".join(lines)
+        remaining_lines = ["REMAINING: (none — every element has been worked by the team)"]
+    else:
+        by_kind: dict[ElementKind, list[str]] = {}
+        for element in left:
+            by_kind.setdefault(element.kind, []).append(_short_label(element, scenes))
+        remaining_lines = ["REMAINING (not yet worked by the team, in their own words):"]
+        remaining_lines.extend(
+            f"  {kind}: {', '.join(by_kind[kind])}" for kind in ElementKind if kind in by_kind
+        )
+    return "\n".join([scene_line, "", covered_line, "", *remaining_lines])
 
 
 def meaning_map_block(pericope_num: str, book: str) -> str:

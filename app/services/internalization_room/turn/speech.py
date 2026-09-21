@@ -28,7 +28,6 @@ async def speak_back(
     validator_prompt: str,
     pericope: str,
     settings: Settings,
-    app_context: str,
 ) -> TurnOutcome:
     if mother_tongue:
         line, fixed = choose(FailSafe.OFF_BRIDGE_LANGUAGE, session.language, turn=len(messages))
@@ -58,7 +57,6 @@ async def speak_back(
             opening=opening,
             settings=settings,
             session_id=session.id,
-            app_context=app_context,
             ask_for_movements=opening and not messages,
         )
     return outcome

@@ -22,6 +22,7 @@ class Element(BaseModel):
     label: str
     kind: ElementKind
     scene: int | None = None
+    rule_id: str | None = None
     detail: str = ""
 
 
@@ -157,6 +158,7 @@ def elements_of(meaning_map: MeaningMap, *, book: str | None = None) -> list[Ele
                 key=f"{ElementKind.PRESERVED}:{rule.rule_id}",
                 label=_rule_label(rule),
                 kind=ElementKind.PRESERVED,
+                rule_id=rule.rule_id,
             )
         )
     return elements

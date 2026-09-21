@@ -349,11 +349,12 @@ def test_the_guides_coverage_status_block_is_english_in_both_branches() -> None:
     from app.services.internalization_room.prompt_blocks import coverage_status_block
 
     P = "P01"
-    fully_engaged = merge(initial_state(P), pericope_num=P, engaged=list(initial_state(P).keys()))
+    nothing = initial_state(P)
+    fully_engaged = merge(nothing, pericope_num=P, engaged=list(nothing))
 
-    assert coverage_status_block(fully_engaged, P) == (
+    assert coverage_status_block(fully_engaged, P).endswith(
         "REMAINING: (none — every element has been worked by the team)"
     )
-    assert coverage_status_block(initial_state(P), P).startswith(
-        "REMAINING (not yet worked by the team, in their own words):"
+    assert "REMAINING (not yet worked by the team, in their own words):" in (
+        coverage_status_block(nothing, P)
     )
