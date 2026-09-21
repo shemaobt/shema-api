@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ValidationError
 from app.db.models.auth import AccessRequest, App, User
 from app.services.access_request._default_roles import default_role_for
 from app.services.app.get_app_or_404 import get_app_or_404
@@ -38,6 +39,8 @@ async def update_app(
     if android_url is not None:
         app.android_url = android_url
     if platforms is not None:
+        if not platforms:
+            raise ValidationError("platforms must name at least one platform")
         app.platforms = list(platforms)
     if is_active is not None:
         app.is_active = is_active

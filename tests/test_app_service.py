@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ValidationError as AppValidationError
 from app.models.app import AppCreate, AppUpdate
 from app.services import app_service
 from tests.baker import make_app, make_role, make_user, make_user_app_role
@@ -56,6 +57,22 @@ def test_app_platforms_reject_empty() -> None:
         AppCreate(app_key="x", name="X", platforms=[])
     with pytest.raises(ValidationError):
         AppUpdate(platforms=[])
+
+
+@pytest.mark.asyncio
+async def test_create_app_refuses_an_explicitly_empty_platform_list(db_session) -> None:
+    """An app with no platform is refused, not silently turned into a web app."""
+    with pytest.raises(AppValidationError):
+        await app_service.create_app(db_session, app_key="empty", name="Empty", platforms=[])
+
+
+@pytest.mark.asyncio
+async def test_update_app_refuses_an_explicitly_empty_platform_list(db_session) -> None:
+    """The same rule on the write path the API schema cannot reach from a seed or a script."""
+    created = await app_service.create_app(db_session, app_key="keep", name="Keep")
+    with pytest.raises(AppValidationError):
+        await app_service.update_app(db_session, created.id, platforms=[])
+    assert (await app_service.get_app_or_404(db_session, created.id)).platforms == ["web"]
 
 
 def test_app_platforms_reject_duplicates() -> None:
