@@ -31,6 +31,7 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
+from app.core.room_enums import HaltKind
 from app.services.internalization_room import sessions as room
 from app.services.internalization_room.canon.elements import element_keys, elements_for
 from app.services.internalization_room.canon.parse_map import ROOM_BOOK, load_book
@@ -128,6 +129,36 @@ async def test_the_team_is_served_at_its_own_address(client, db_session) -> None
     assert body["open_raised_hands"] == 0
     assert body["device_count"] == 0
     assert body["last_activity_at"] is None
+
+
+async def test_a_session_nobody_entered_is_not_this_teams_last_activity(client, db_session) -> None:
+    """ENG-964, at the address the queue's own card shares its query with.
+
+    No turn, no take: a session the invitation door or the panorama spoke minted and the
+    stored row won over (ADR 0033 of the internalization-room repository) is not a room of
+    the team, so it must not read as their last activity here any more than it does on the
+    queue's card.
+    """
+    _user, team, headers = await a_facilitator(db_session, email="sem-turno@x.com")
+    await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+
+    assert body["last_activity_at"] is None
+
+
+async def test_a_session_halted_before_any_turn_landed_still_counts_as_activity(
+    client, db_session
+) -> None:
+    """Calling a person is an act of the team, even the very first one (the same exception
+    the queue's own card carries)."""
+    _user, team, headers = await a_facilitator(db_session, email="parada-sem-turno@x.com")
+    session = await room.create_session(db_session, pericope=FIRST, project_id=team.id)
+    await room.mark_needs_person(db_session, session, kind=HaltKind.BLOCKING)
+
+    body = (await client.get(team_url(team.id), headers=headers)).json()
+
+    assert body["last_activity_at"] is not None
 
 
 async def test_the_answer_carries_no_fact_about_the_facilitator(client, db_session) -> None:
