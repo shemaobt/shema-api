@@ -55,4 +55,3 @@ jobs:
         run: uv run pytest tests/ -n 4 --dist loadfile -rfE
         env:
           JWT_SECRET_KEY: test-secret-for-pytest-only
-          DATABASE_URL: sqlite+aiosqlite:///./test.db
