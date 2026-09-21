@@ -1,5 +1,6 @@
 from app.services.project.assert_can_grant_access import assert_can_grant_access
 from app.services.project.assert_can_modify_member_role import assert_can_modify_member_role
+from app.services.project.assign_journey import assign_journey
 from app.services.project.can_access_project import can_access_project
 from app.services.project.count_project_team_sizes import count_project_team_sizes
 from app.services.project.create_project import create_project
@@ -39,6 +40,7 @@ from app.services.project.validate_project_role import validate_project_role
 __all__ = [
     "assert_can_grant_access",
     "assert_can_modify_member_role",
+    "assign_journey",
     "can_access_project",
     "count_project_team_sizes",
     "create_project",

@@ -8,6 +8,7 @@ from app.models.oc_project import OCProjectListResponse
 from app.models.project import ProjectUpdate
 from app.services import phase_service, project_service
 from tests.baker import (
+    make_journey,
     make_language,
     make_organization,
     make_organization_member,
@@ -386,6 +387,7 @@ async def test_revoke_organization_access_raises_not_found(db_session) -> None:
 
 @pytest.mark.asyncio
 async def test_serialize_project_responses_with_phases_and_members(db_session) -> None:
+    stamper = await make_user(db_session, email="stamper@example.com", is_platform_admin=True)
     lang = await make_language(db_session, code="kos")
     rich = await make_project(db_session, language_id=lang.id, name="Rich")
     bare = await make_project(db_session, language_id=lang.id, name="Bare")
@@ -395,8 +397,12 @@ async def test_serialize_project_responses_with_phases_and_members(db_session) -
     await make_project_phase(db_session, rich.id, phase1.id)
     await make_project_phase(db_session, rich.id, phase2.id)
     await make_project_phase(db_session, rich.id, phase3.id)
-    await phase_service.update_project_phase_status(db_session, rich.id, phase1.id, "completed")
-    await phase_service.update_project_phase_status(db_session, rich.id, phase2.id, "in_progress")
+    await phase_service.update_project_phase_status(
+        db_session, rich.id, phase1.id, stamper, status="completed"
+    )
+    await phase_service.update_project_phase_status(
+        db_session, rich.id, phase2.id, stamper, status="in_progress"
+    )
     user1 = await make_user(db_session, email="sp1@example.com", display_name="Member One")
     user2 = await make_user(db_session, email="sp2@example.com", display_name="Member Two")
     await _grant_access_at(
@@ -417,12 +423,57 @@ async def test_serialize_project_responses_with_phases_and_members(db_session) -
 
 
 @pytest.mark.asyncio
+async def test_phases_total_is_the_journey_not_the_stamped_rows(db_session) -> None:
+    """A project on a nine-phase journey reads 1/9 the day it is assigned, not 1/1.
+
+    Counting `ProjectPhase` rows made the denominator grow as the work advanced, so the bar sat
+    full from the first stamp. The journey is the set the project is measured against (OBT-419).
+    """
+    lang = await make_language(db_session, code="jrn")
+    journey = await make_journey(db_session, name="Nine steps")
+    phases = [
+        await make_phase(db_session, name=f"Step {i}", journey_id=journey.id, sort_order=i)
+        for i in range(9)
+    ]
+    project = await make_project(
+        db_session, language_id=lang.id, name="On a journey", journey_id=journey.id
+    )
+    stamper = await make_user(db_session, email="journey-stamp@example.com", is_platform_admin=True)
+    await make_project_phase(db_session, project.id, phases[0].id)
+    await phase_service.update_project_phase_status(
+        db_session, project.id, phases[0].id, stamper, status="completed"
+    )
+
+    (response,) = await project_service.serialize_projects(db_session, [project])
+
+    assert response.phases_completed == 1
+    assert response.phases_total == 9
+
+
+@pytest.mark.asyncio
+async def test_phases_total_falls_back_to_stamped_rows_without_a_journey(db_session) -> None:
+    """A project with no journey has no other set to measure against, so the old count stands."""
+    lang = await make_language(db_session, code="njr")
+    project = await make_project(db_session, language_id=lang.id, name="No journey")
+    loose = await make_phase(db_session, name="Loose")
+    await make_project_phase(db_session, project.id, loose.id)
+
+    (response,) = await project_service.serialize_projects(db_session, [project])
+
+    assert response.phases_completed == 0
+    assert response.phases_total == 1
+
+
+@pytest.mark.asyncio
 async def test_serialize_project_response_detail(db_session) -> None:
     lang = await make_language(db_session, code="kos")
     project = await make_project(db_session, language_id=lang.id, name="Detail")
     phase = await make_phase(db_session, name="Drafting")
+    stamper = await make_user(db_session, email="detail-stamp@example.com", is_platform_admin=True)
     await make_project_phase(db_session, project.id, phase.id)
-    await phase_service.update_project_phase_status(db_session, project.id, phase.id, "completed")
+    await phase_service.update_project_phase_status(
+        db_session, project.id, phase.id, stamper, status="completed"
+    )
     user = await make_user(db_session, email="detail@example.com", display_name="Detail User")
     await _grant_access_at(
         db_session, project.id, user.id, datetime(2026, 7, 1, 12, 0, 0, tzinfo=UTC)

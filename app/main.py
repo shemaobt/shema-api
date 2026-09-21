@@ -19,6 +19,7 @@ from app.api.facilitator.legend import facilitator_legend_router
 from app.api.facilitator.teams import facilitator_teams_router
 from app.api.health import router as health_router
 from app.api.internalization_room import router as internalization_room_router
+from app.api.journeys import router as journeys_router
 from app.api.languages import router as languages_router
 from app.api.meaning_maps import router as meaning_maps_router
 from app.api.notifications import router as notifications_router
@@ -36,6 +37,7 @@ from app.api.oral_collector.storytellers import (
 )
 from app.api.organizations import router as organizations_router
 from app.api.pericopes import router as pericopes_router
+from app.api.phase_categories import router as phase_categories_router
 from app.api.phases import router as phases_router
 from app.api.places import router as places_router
 from app.api.platform import router as platform_router
@@ -182,6 +184,12 @@ def create_app() -> FastAPI:
         tags=["facilitator-legend"],
     )
     app.include_router(devices_router, prefix="/api/devices", tags=["devices"])
+    app.include_router(
+        journeys_router,
+        prefix="/api/journeys",
+        tags=["journeys"],
+        dependencies=console_guard,
+    )
     app.include_router(public_router, prefix="/api/public", tags=["public"])
     app.include_router(
         public_requests_router,
@@ -192,6 +200,12 @@ def create_app() -> FastAPI:
         phases_router,
         prefix="/api/phases",
         tags=["phases"],
+        dependencies=console_guard,
+    )
+    app.include_router(
+        phase_categories_router,
+        prefix="/api/phase-categories",
+        tags=["phase-categories"],
         dependencies=console_guard,
     )
     app.include_router(books_router, prefix="/api/books", tags=["books"])

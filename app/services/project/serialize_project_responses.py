@@ -4,7 +4,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.auth import User
-from app.db.models.phase import ProjectPhase
+from app.db.models.phase import Phase, ProjectPhase
 from app.db.models.project import Project, ProjectUserAccess
 from app.models.project import ProjectMemberPreview, ProjectResponse
 from app.services.project.count_project_team_sizes import count_project_team_sizes
@@ -42,22 +42,42 @@ async def _phase_counts_by_project(
     db: AsyncSession,
     project_ids: Sequence[str],
 ) -> dict[str, tuple[int, int]]:
+    """How many phases a project has finished, out of how many it has at all.
+
+    The denominator is the project's **journey**, not the rows it has stamped. A project on a
+    journey of nine phases that has touched one reads 1/9 from the day it is assigned, which is
+    what the card is for; counting `ProjectPhase` rows made it 1/1 and the bar sat full. This is
+    the same rule `list_phases_by_projects` follows for the listing (OBT-419).
+
+    A project with no journey keeps the old count, because for it there is no other set to
+    measure against. The numerator never changes: only a stamped row can be completed.
+    """
     if not project_ids:
         return {}
-    stmt = (
+    stamped = (
         select(
             ProjectPhase.project_id,
-            func.sum(case((ProjectPhase.status == "completed", 1), else_=0)),
-            func.count(),
+            func.sum(case((ProjectPhase.status == "completed", 1), else_=0)).label("completed"),
+            func.count().label("total"),
         )
         .where(ProjectPhase.project_id.in_(project_ids))
         .group_by(ProjectPhase.project_id)
     )
-    result = await db.execute(stmt)
-    return {
+    counts = {
         project_id: (int(completed or 0), int(total))
-        for project_id, completed, total in result.all()
+        for project_id, completed, total in (await db.execute(stamped)).all()
     }
+
+    journeys = (
+        select(Project.id, func.count(Phase.id))
+        .join(Phase, Phase.journey_id == Project.journey_id)
+        .where(Project.id.in_(project_ids), Project.journey_id.is_not(None))
+        .group_by(Project.id)
+    )
+    for project_id, journey_total in (await db.execute(journeys)).all():
+        completed, _ = counts.get(project_id, (0, 0))
+        counts[project_id] = (completed, int(journey_total))
+    return counts
 
 
 async def _members_preview_by_project(

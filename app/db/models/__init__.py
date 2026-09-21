@@ -29,6 +29,7 @@ from app.db.models.internalization_room import (
     IRSession,
     IRTake,
 )
+from app.db.models.journey import Journey
 from app.db.models.language import Language
 from app.db.models.meaning_map import (
     BibleBook,
@@ -42,7 +43,13 @@ from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.oc_storyteller import OC_Storyteller
 from app.db.models.org import Organization, OrganizationMember
-from app.db.models.phase import Phase, PhaseDependency, ProjectPhase
+from app.db.models.phase import (
+    Phase,
+    PhaseCategory,
+    PhaseDependency,
+    PhaseStatusLog,
+    ProjectPhase,
+)
 from app.db.models.project import (
     Project,
     ProjectInvite,
@@ -145,6 +152,7 @@ __all__ = [
     "IRQuestion",
     "IRSession",
     "IRTake",
+    "Journey",
     "Language",
     "MeaningMap",
     "MeaningMapFeedback",
@@ -165,7 +173,9 @@ __all__ = [
     "Pericope",
     "Permission",
     "Phase",
+    "PhaseCategory",
     "PhaseDependency",
+    "PhaseStatusLog",
     "Project",
     "ProjectInvite",
     "ProjectOrganizationAccess",

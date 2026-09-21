@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_middleware import get_current_user
+from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.core.org_scope import get_managed_project_ids
 from app.db.models.auth import User
@@ -9,6 +9,7 @@ from app.models.phase import (
     DependencyCreate,
     PhaseCreate,
     PhaseDependencyResponse,
+    PhaseReorderRequest,
     PhaseResponse,
     PhasesWithDepsResponse,
     PhaseUpdate,
@@ -22,7 +23,7 @@ router = APIRouter()
 async def create_phase(
     payload: PhaseCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> PhaseResponse:
     phase = await phase_service.create_phase(db, payload)
     return PhaseResponse.model_validate(phase)
@@ -31,15 +32,16 @@ async def create_phase(
 @router.get("", response_model=list[PhaseResponse])
 async def list_phases(
     project_id: str | None = Query(default=None),
+    journey_id: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PhaseResponse]:
     if user.is_platform_admin:
-        phases = await phase_service.list_phases(db, project_id=project_id)
+        phases = await phase_service.list_phases(db, project_id=project_id, journey_id=journey_id)
     else:
         managed_project_ids = await get_managed_project_ids(db, user.id)
         phases = await phase_service.list_phases_by_projects(
-            db, managed_project_ids, project_id=project_id
+            db, managed_project_ids, project_id=project_id, journey_id=journey_id
         )
     return [PhaseResponse.model_validate(phase) for phase in phases]
 
@@ -53,6 +55,15 @@ async def list_phases_with_dependencies(
         return await phase_service.list_all_phases_with_deps(db)
     managed_project_ids = await get_managed_project_ids(db, user.id)
     return await phase_service.list_phases_with_deps_by_projects(db, managed_project_ids)
+
+
+@router.post("/reorder", status_code=status.HTTP_204_NO_CONTENT)
+async def reorder_phases(
+    payload: PhaseReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_platform_admin),
+) -> None:
+    await phase_service.reorder_phases(db, payload.journey_id, payload.phase_ids)
 
 
 @router.get("/{phase_id}", response_model=PhaseResponse)
@@ -71,7 +82,7 @@ async def update_phase(
     phase_id: str,
     payload: PhaseUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> PhaseResponse:
     phase = await phase_service.update_phase(db, phase_id, payload)
     return PhaseResponse.model_validate(phase)
@@ -81,7 +92,7 @@ async def update_phase(
 async def delete_phase(
     phase_id: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> None:
     await phase_service.delete_phase(db, phase_id)
 
@@ -95,7 +106,7 @@ async def add_dependency(
     phase_id: str,
     payload: DependencyCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> PhaseDependencyResponse:
     dep = await phase_service.add_dependency(db, phase_id, payload.depends_on_id)
     return PhaseDependencyResponse.model_validate(dep)
@@ -106,7 +117,7 @@ async def remove_dependency(
     phase_id: str,
     depends_on_id: str,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> None:
     await phase_service.remove_dependency(db, phase_id, depends_on_id)
 

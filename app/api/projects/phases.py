@@ -69,8 +69,9 @@ async def update_project_phase_status(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProjectPhaseResponse:
-    await assert_project_access(db, user, project_id)
-    link = await phase_service.update_project_phase_status(db, project_id, phase_id, payload.status)
+    link = await phase_service.update_project_phase_status(
+        db, project_id, phase_id, user, status=payload.status, note=payload.note
+    )
     phase = await phase_service.get_phase_or_404(db, phase_id)
     return ProjectPhaseResponse(
         id=link.id,
