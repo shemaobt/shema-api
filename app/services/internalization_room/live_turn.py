@@ -27,10 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.comprehension.checkpoints import (
-    checkpoints_for,
-    scene_ids_for,
-)
 from app.services.internalization_room.comprehension.practice import (
     scenes_practiced_by_the_telling_the_guide_invited,
 )
@@ -41,7 +37,6 @@ from app.services.internalization_room.comprehension.state import ComprehensionS
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
-from app.services.internalization_room.turn.context import render_context
 from app.services.internalization_room.turn.scene_view import (
     current_scene_id,
     scene_the_invitation_is_about,
@@ -73,8 +68,6 @@ async def run_comprehension_turn(
     """
     pericope = session.pericope
     book = load_map(pericope).book
-    checkpoints = list(checkpoints_for(pericope, book))
-    scene_ids = scene_ids_for(pericope)
     messages: list[dict[str, Any]] = list(session.messages or [])
     last_guide = next(
         (m.get("text", "") for m in reversed(messages) if m.get("role") == "guide"), ""
@@ -98,14 +91,6 @@ async def run_comprehension_turn(
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
 
-    context = render_context(
-        checkpoints=checkpoints,
-        scene_ids=scene_ids,
-        state=state,
-        projected_practice=projected_practice,
-        scene_pointer=scene_pointer,
-    )
-
     outcome = await speak_back(
         mother_tongue=mother_tongue,
         take_ms=speech.take_ms,
@@ -120,7 +105,6 @@ async def run_comprehension_turn(
         validator_prompt=validator_prompt,
         pericope=pericope,
         settings=settings,
-        app_context=context.app_context,
     )
 
     final_probe = select_probe_after_oral_turn(

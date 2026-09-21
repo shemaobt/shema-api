@@ -47,7 +47,6 @@ async def _speak(session: Any, **overrides: Any) -> Any:
         "validator_prompt": VALIDATOR,
         "pericope": P,
         "settings": settings(),
-        "app_context": "",
     }
     return await speak_back(**{**given, **overrides})
 

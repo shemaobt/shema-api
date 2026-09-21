@@ -39,7 +39,6 @@ async def speak_back(
     validator_prompt: str,
     pericope: str,
     settings: Settings,
-    app_context: str,
 ) -> TurnOutcome:
     if not opening and not mother_tongue and (empty or uncertain):
         line, fixed = inaudible_ladder(messages, session.language)
@@ -60,7 +59,6 @@ async def speak_back(
         opening=opening,
         settings=settings,
         session_id=session.id,
-        app_context=app_context,
         ask_for_movements=opening and not messages,
     )
     if note:

@@ -13,9 +13,7 @@ from app.services.internalization_room.comprehension.checkpoints import Checkpoi
 from app.services.internalization_room.comprehension.evidence import (
     ComprehensionUnit,
     EvidenceEvent,
-    EvidenceResult,
     ReadinessEvaluation,
-    assess_unit,
     evaluate_readiness,
 )
 
@@ -46,60 +44,4 @@ def evaluate_session_comprehension(
         ),
         all_scenes_practiced_in_mother_tongue=all_practiced,
         missing_practice_scene_ids=missing,
-    )
-
-
-def render_comprehension_status(
-    *,
-    checkpoints: list[Checkpoint],
-    scene_ids: list[str],
-    ledger: list[EvidenceEvent],
-    practiced_scene_ids: list[str],
-    current_scene: str | None = None,
-) -> str:
-    """The Guide's status block, read off the same evaluation the system gates on."""
-    readiness = evaluate_session_comprehension(
-        checkpoints=checkpoints,
-        scene_ids=scene_ids,
-        ledger=ledger,
-        practiced_scene_ids=practiced_scene_ids,
-    )
-    supported = set(readiness.evaluation.supported_unit_ids)
-    scope = [c for c in checkpoints if (c.scene_id == current_scene if current_scene else True)]
-
-    def still_needed(checkpoint: Checkpoint) -> bool:
-        if not checkpoint.critical or checkpoint.id in supported:
-            return False
-        assessment = assess_unit(ledger, checkpoint.id)
-        return assessment.has_conflict or (
-            EvidenceResult.CARRY_TO_REFINE not in assessment.open_results
-        )
-
-    next_units = [c.id for c in scope if still_needed(c)][:8]
-    conflicts = [c.id for c in checkpoints if assess_unit(ledger, c.id).has_conflict][:8]
-    open_points = [
-        f"{point.unit_id} ({point.reason})" for point in readiness.evaluation.open_points
-    ][:8]
-    practiced_sorted = sorted(set(practiced_scene_ids))
-
-    return "\n".join(
-        [
-            "COMPREHENSION EVIDENCE (APP-OWNED; separate from engagement and "
-            "bridge-language fluency):",
-            f"READINESS: {readiness.evaluation.outcome.value}",
-            f"SUPPORTED SEMANTIC UNITS: {len(supported)} of {len(checkpoints)}",
-            "NEXT UNITS IN SCOPE: " + ("; ".join(next_units) if next_units else "none"),
-            "OPEN POINTS FOR REFINE: " + ("; ".join(open_points) if open_points else "none"),
-            "CONFLICTS TO CLARIFY: " + ("; ".join(conflicts) if conflicts else "none"),
-            "MOTHER-TONGUE PRACTICE REPORTED: "
-            + (", ".join(practiced_sorted) if practiced_sorted else "none"),
-            "MOTHER-TONGUE PRACTICE STILL NEEDED: "
-            + (
-                ", ".join(readiness.missing_practice_scene_ids)
-                if readiness.missing_practice_scene_ids
-                else "none"
-            ),
-            "Never voice internal unit IDs. Use the Meaning Map to ask about one natural, "
-            "grounded point.",
-        ]
     )
