@@ -43,6 +43,7 @@ from app.services.internalization_room.coverage import CoverageStatus
 from app.services.internalization_room.session_end import SESSION_IDLE_LIMIT
 from tests.baker import (
     grant_facilitator_app_role,
+    keep_a_take,
     make_language,
     make_project,
     make_project_user_access,
@@ -146,8 +147,15 @@ async def a_session(
     opened_at: datetime | None = None,
     last_activity: datetime | None = None,
     ready_to_close: bool = False,
+    entered: bool = True,
 ):
-    """A conversation, optionally moved back in time so it can be an old one."""
+    """A conversation, optionally moved back in time so it can be an old one.
+
+    `entered` lands one turn by default (ENG-964): every case in this file but the ones
+    naming the boundary itself is about a conversation the team held, and a session with
+    no turn and no take is not one. Pass `entered=False` for the cases that test that
+    boundary.
+    """
     session = await room.create_session(
         db,
         pericope=pericope,
@@ -155,6 +163,8 @@ async def a_session(
     )
     if ready_to_close:
         session = await room.save_comprehension(db, session, _ready_comprehension(pericope))
+    if entered:
+        session = await room.append_exchange(db, session, team_utterance="oi", guide_response="ok")
     if opened_at is not None:
         session.created_at = opened_at
     if last_activity is not None:
@@ -290,6 +300,90 @@ async def test_a_conversation_that_belongs_to_no_team_is_served_to_nobody(client
     await a_session(db_session, project_id=None)
 
     assert await read_history(client, project.id, headers) == []
+
+
+# Behaviour 1b — a session nobody entered is not a room (ENG-964).
+
+
+async def test_a_session_nobody_entered_is_not_drawn(client, db_session):
+    """No turn, no take: the invitation door and the panorama spoke mint a session before
+    any stored row is read (ADR 0033 of the internalization-room repository), and the
+    minted one is left unentered when the stored row wins. It is not a room of the team,
+    so the column answers with the live one only.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    live = await a_session(
+        db_session, project_id=project.id, opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC)
+    )
+    await a_session(
+        db_session,
+        project_id=project.id,
+        opened_at=datetime(2026, 8, 19, 9, 0, tzinfo=UTC),
+        entered=False,
+    )
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [live.id]
+
+
+async def test_a_take_with_no_turn_is_still_entered(client, db_session):
+    """A team that recorded and left, without a turn landing, still held the room."""
+    _user, project, headers = await a_facilitator(db_session)
+    session = await a_session(db_session, project_id=project.id, entered=False)
+    await keep_a_take(db_session, session)
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [session.id]
+
+
+async def test_a_session_left_in_the_middle_and_a_halted_one_are_still_answered(client, db_session):
+    """A session with a turn is answered whether it is still open or halted — the rule is
+    about being entered, not about being finished."""
+    _user, project, headers = await a_facilitator(db_session)
+    left_in_the_middle = await a_session(
+        db_session, project_id=project.id, opened_at=datetime(2026, 8, 12, 9, 0, tzinfo=UTC)
+    )
+    halted = await a_session(
+        db_session, project_id=project.id, opened_at=datetime(2026, 8, 19, 9, 0, tzinfo=UTC)
+    )
+    await room.mark_needs_person(db_session, halted, kind=HaltKind.BLOCKING)
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [halted.id, left_in_the_middle.id]
+
+
+async def test_a_session_halted_before_any_turn_landed_is_still_answered(client, db_session):
+    """Calling a person is an act of the team, even the very first one: the tablet can ask
+    for a person before a turn ever lands — a slow-record watchdog, or resuming a passage
+    whose parts never came back — and the facilitator attends from this column.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    halted = await a_session(db_session, project_id=project.id, entered=False)
+    await room.mark_needs_person(db_session, halted, kind=HaltKind.BLOCKING)
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [halted.id]
+
+
+async def test_a_halt_that_never_had_a_turn_outlives_being_attended(client, db_session):
+    """`halt_kind` is written on every halt and cleared by none (`halt.last`'s own rule): a
+    room a facilitator has already gone to does not drop back out of the column just because
+    `attend` lifted its status — the halt it asked for is still a fact of its history.
+    """
+    _user, project, headers = await a_facilitator(db_session)
+    halted = await a_session(db_session, project_id=project.id, entered=False)
+    await room.mark_needs_person(db_session, halted, kind=HaltKind.BLOCKING)
+
+    await room.attend(db_session, halted, by="quem-foi")
+
+    history = await read_history(client, project.id, headers)
+
+    assert [card["session_id"] for card in history] == [halted.id]
+    assert history[0]["needs_person"] is False
 
 
 # Behaviour 2 — a team that is not the caller's refuses exactly as one that does not exist.

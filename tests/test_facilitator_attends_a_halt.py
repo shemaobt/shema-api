@@ -196,12 +196,24 @@ async def facilitator_b(db_session: AsyncSession) -> Facilitator:
 # --- what the tablet and the facilitator do -----------------------------------------------
 
 
-async def a_session(db: AsyncSession, *, team_id: str, ready_to_close: bool = False):
-    return await room.create_session(
+async def a_session(
+    db: AsyncSession, *, team_id: str, ready_to_close: bool = False, entered: bool = True
+):
+    """A conversation, for cases about attending or halting rather than about ENG-964's own
+    boundary. `entered` lands one turn by default (ENG-964) so every case here keeps reading
+    as a room the team held; a halted session would keep reading as one anyway, on its
+    `halt_kind` alone (`entered()`, `app/services/internalization_room/entered.py`), so the
+    two facts are deliberately left to overlap here rather than teasing every call site
+    apart — this file's own subject is attending and halting, not that boundary.
+    """
+    session = await room.create_session(
         db,
         pericope=P,
         project_id=team_id,
     )
+    if entered:
+        session = await room.append_exchange(db, session, team_utterance="oi", guide_response="ok")
+    return session
 
 
 async def the_tablet_halts(client: httpx.AsyncClient, session_id: str) -> None:

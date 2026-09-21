@@ -39,6 +39,7 @@ from app.services.internalization_room.sessions import apply_coverage, create_se
 from tests.baker import (
     grant_facilitator_app_role,
     having_finished_the_passage,
+    keep_a_take,
     make_language,
     make_project,
     make_project_user_access,
@@ -116,13 +117,24 @@ async def a_session(
     pericope: str = "P01",
     status: IRSessionStatus = IRSessionStatus.IN_PROGRESS,
     when: datetime | None = None,
+    entered: bool = True,
 ) -> IRSession:
+    """A conversation, inserted directly rather than through the room (ENG-446's own
+    shortcut, kept for this file's cases about the queue rather than the room's turn loop).
+
+    `entered` carries one turn by default (ENG-964): every case here but the ones naming
+    the boundary itself treats this session as the team's activity, and a session with no
+    turn and no take is not that any more. Pass `entered=False` for the cases that test
+    that boundary.
+    """
     at = when or datetime.now(UTC) - RECENTLY
     session = IRSession(
         pericope=pericope,
         status=status,
         project_id=team.id,
-        messages=[],
+        messages=[{"role": "team", "text": "oi"}, {"role": "guide", "text": "ok"}]
+        if entered
+        else [],
         coverage_state={},
         kept_takes={},
         back_translation={},
@@ -464,6 +476,67 @@ async def test_a_team_that_has_never_acted_sorts_last_rather_than_first(client, 
         "Calada ha muito",
         "Nunca se reuniu",
     ]
+
+
+# Behaviour 4b — a session nobody entered is not the team's activity (ENG-964).
+
+
+async def test_a_session_nobody_entered_does_not_move_the_team_up_the_queue(client, db_session):
+    """A launch that nobody entered must not read as more recent than the team's real,
+    older activity — the empty session's own moment is not `last_activity_at`."""
+    team_a = await a_team(db_session, name="Equipe A")
+    team_b = await a_team(db_session, name="Equipe B")
+    old_turn = datetime.now(UTC) - LONG_AGO
+    between = datetime.now(UTC) - timedelta(days=45)
+    await a_session(db_session, team_a, when=old_turn)
+    await a_session(db_session, team_a, when=datetime.now(UTC) - RECENTLY, entered=False)
+    await a_session(db_session, team_b, when=between)
+    _user, headers = await a_facilitator(db_session, team_a, team_b)
+
+    payload = (await client.get(TEAMS_URL, headers=headers)).json()
+
+    assert named(payload) == ["Equipe B", "Equipe A"]
+    by_name = {team["name"]: team for team in payload["teams"]}
+    assert by_name["Equipe A"]["last_activity_at"].startswith(old_turn.date().isoformat())
+
+
+async def test_a_team_whose_only_session_is_unentered_has_never_acted(client, db_session):
+    team = await a_team(db_session, name="Equipe Munduruku")
+    await a_session(db_session, team, entered=False)
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+
+    assert card["last_activity_at"] is None
+    assert card["state"] == "in_progress"
+
+
+async def test_a_take_newer_than_the_last_turn_still_counts_as_activity(client, db_session):
+    """The other two legs of the union — a take, a raised hand — are untouched: only the
+    session's own leg stops counting an unentered row."""
+    team = await a_team(db_session, name="Equipe Terena")
+    old_turn = datetime.now(UTC) - LONG_AGO
+    await a_session(db_session, team, when=old_turn)
+    empty = await a_session(db_session, team, when=datetime.now(UTC) - RECENTLY, entered=False)
+    await keep_a_take(db_session, empty)
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+
+    assert not card["last_activity_at"].startswith(old_turn.date().isoformat())
+
+
+async def test_a_session_halted_before_any_turn_landed_still_counts_as_activity(client, db_session):
+    """Calling a person is an act of the team, even the very first one: the tablet can ask
+    for a person before a turn ever lands, and the queue must not read that team as never
+    having acted."""
+    team = await a_team(db_session, name="Equipe Kaiwá")
+    await a_session(db_session, team, status=IRSessionStatus.NEEDS_PERSON, entered=False)
+    _user, headers = await a_facilitator(db_session, team)
+
+    card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
+
+    assert card["last_activity_at"] is not None
 
 
 # Behaviour 5 — the two empty states are different things and are told apart.
