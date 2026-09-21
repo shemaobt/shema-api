@@ -148,7 +148,7 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 #: raises the migrations ceiling to fit the `-m migration` step it adds, at twice the 3m04s
 #: the whole job measured on shemaobt/shema-api#474's own CI run.
 JOB_TIMEOUT_MINUTES = {
-    ("test.yml", "test"): 10,
+    ("test.yml", "test"): 7,
     ("checks.yml", "checks"): 10,
     ("migrations.yml", "migrations"): 7,
 }
