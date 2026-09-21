@@ -125,7 +125,7 @@ async def test_a_reply_in_the_promised_shape_still_moves_the_beads(recording_cli
     )
 
 
-async def test_the_classifier_spends_its_ceiling_on_decisions_and_not_on_thinking(
+async def test_a_ceiling_high_enough_now_leaves_room_for_the_thinking_too(
     recording_client,
 ) -> None:
     messages = recording_client()
@@ -133,13 +133,14 @@ async def test_the_classifier_spends_its_ceiling_on_decisions_and_not_on_thinkin
     await _settle()
 
     call = messages.calls[0]
-    assert call["thinking"] == {"type": "disabled"}, (
-        "o pensamento adaptativo comia o teto antes de qualquer saída: no smoke, 3 de 4 "
-        "chamadas pararam em max_tokens e duas voltaram com texto VAZIO"
+    assert call["thinking"] == {"type": "adaptive"}, (
+        "o classificador pensava desligado; em 1500 de teto isso já bastava para esvaziar "
+        "a resposta, e desligar o pensamento em vez de dar-lhe teto é o oposto do que ela quer"
     )
-    assert call["max_tokens"] >= 4096, (
-        "1500 era o teto do Gemini, onde o pensamento não contava na saída; a lista de "
-        "decisões dos 29 elementos de P01 não cabe nele"
+    assert call["max_tokens"] == 6000, (
+        "1500 era o teto de antes, onde o pensamento adaptativo comia a saída inteira e "
+        "voltava vazio em 9 de setembro; no stack dela 6000 é o que sobra pensamento e "
+        "decisão, e o classificador roda fora do voice path, então ninguém espera por isso"
     )
 
 

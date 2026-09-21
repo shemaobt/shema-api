@@ -15,7 +15,7 @@ app/core/config.py::tripod_analysis_model  claude-fable-5-1,claude-opus-5,claude
 app/core/config.py::tripod_classifier_model  claude-sonnet-5,claude-sonnet-4-6  2026-09-03-the-model-seam-is-hers
 app/services/internalization_room/back_translation.py::analyse_telling_back  ladder=analysis_ladder(cfg) max_output_tokens=4096 effort='high' thinks=True  unruled
 app/services/internalization_room/back_translation.py::verify_correction  ladder=analysis_ladder(cfg) max_output_tokens=4096 effort='high' thinks=True  unruled
-app/services/internalization_room/classify_coverage.py::classify_coverage  ladder=classifier_ladder(cfg) max_output_tokens=4096 effort='high' thinks=False  unruled
+app/services/internalization_room/classify_coverage.py::classify_coverage  ladder=classifier_ladder(cfg) max_output_tokens=6000 effort='high' thinks=True  2026-09-21-the-classifier-thinks-with-room-for-it
 app/services/internalization_room/golden_judge.py::judge_session  ladder=voice_ladder(cfg) max_output_tokens=16000 effort='high' thinks=True  unruled
 app/services/internalization_room/validated_turn.py::_draft  ladder=voice_ladder(settings) max_output_tokens=4096 effort='high' thinks=True  unruled
 app/services/internalization_room/validated_turn.py::_voiced_after_validation  ladder=voice_ladder(settings) max_output_tokens=4096 effort='high' thinks=True  unruled
