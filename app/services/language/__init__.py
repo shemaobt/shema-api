@@ -10,6 +10,7 @@ from app.services.language.get_visible_language_or_404 import get_visible_langua
 from app.services.language.list_languages import list_languages
 from app.services.language.list_languages_by_projects import list_languages_by_projects
 from app.services.language.reactivate_language import reactivate_language
+from app.services.language.update_language import update_language
 
 __all__ = [
     "create_language",
@@ -22,4 +23,5 @@ __all__ = [
     "list_languages",
     "list_languages_by_projects",
     "reactivate_language",
+    "update_language",
 ]
