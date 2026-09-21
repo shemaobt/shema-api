@@ -637,7 +637,7 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
     being held at a level the batch cannot clear.
 
     The delete runs on a worker thread, like every other blob call in this package
-    (`gcs_utils`, `cleaning_service`, `upload_processing._verify_blob`). `_delete_gcs_blob` is
+    (`gcs_utils`, `upload_processing._verify_blob`). `_delete_gcs_blob` is
     synchronous, and a batch of blocking round-trips on the event loop would stall the uploads
     the API is serving at the same time.
     """

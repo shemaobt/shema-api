@@ -52,11 +52,11 @@ def test_the_bucket_defaults_to_the_production_one(monkeypatch: pytest.MonkeyPat
 
 def test_the_env_var_sets_the_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
     """What the staging deploy does: set GCS_OC_BUCKET on the Cloud Run service."""
-    monkeypatch.setenv("GCS_OC_BUCKET", "balde-de-staging")
+    monkeypatch.setenv("GCS_OC_BUCKET", STAGING_BUCKET)
 
     settings = Settings(database_url=TEST_DATABASE_URL)
 
-    assert settings.gcs_oc_bucket == "balde-de-staging"
+    assert settings.gcs_oc_bucket == STAGING_BUCKET
 
 
 def test_no_module_hardcodes_the_bucket() -> None:
