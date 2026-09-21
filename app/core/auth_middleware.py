@@ -23,3 +23,18 @@ async def require_platform_admin(
     if not user.is_platform_admin:
         raise AuthorizationError("Forbidden")
     return user
+
+
+async def require_admin_or_manager(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> User:
+    if user.is_platform_admin:
+        return user
+
+    from app.core.org_scope import get_managed_org_ids, get_managed_project_ids
+
+    if await get_managed_org_ids(db, user.id) or await get_managed_project_ids(db, user.id):
+        return user
+
+    raise AuthorizationError("Forbidden")
