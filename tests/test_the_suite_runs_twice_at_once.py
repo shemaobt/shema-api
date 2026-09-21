@@ -1,10 +1,10 @@
 """Two pytest runs in one worktree do not corrupt each other, and the caller's URL is honoured.
 
 The test database was one fixed file in the working directory, named twice and read from
-neither the environment nor the process. So two runs in one worktree shared it: each test drops
-every table and creates them again, and a run doing that under another run takes its tables out
-from under it. The failures land anywhere and look like the code under test — measured twice
-this round, once on each of two agents working the same repository.
+neither the environment nor the process. So two runs in one worktree shared it: every test
+dropped every table and created them again, and a run doing that under another run took its
+tables out from under it. The failures land anywhere and look like the code under test —
+measured twice this round, once on each of two agents working the same repository.
 
 The file is per run now, and `DATABASE_URL` decides when the caller sets one. These two cases
 are what stops it quietly going back to a fixed name.
@@ -21,12 +21,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 #: The smallest module in the suite whose tests write through `db_session`, which is the
-#: fixture that drops and recreates every table. Small so two runs of it stay quick; writing so
-#: that a shared file is a collision rather than a coincidence.
+#: fixture that sweeps the database and seeds it again. Small so two runs of it stay quick;
+#: writing so that a shared file is a collision rather than a coincidence.
 MODULE = "tests/test_rag_admin.py"
 
-#: A table `db_session` creates and seeds, so a database that has it is one the suite actually
-#: worked in rather than one somebody merely connected to. SQLite makes the file on connect.
+#: A table the suite's own fixtures create and seed, so a database that has it is one the
+#: suite actually worked in rather than one somebody merely connected to. SQLite makes the
+#: file on connect.
 SEEDED_TABLE = "apps"
 
 #: Seconds to wait on a child before giving up on it. A run of one small module takes a few;
