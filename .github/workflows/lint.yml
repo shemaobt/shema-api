@@ -20,12 +20,20 @@ env:
   # forced switch. Remove once the runner default is Node 24.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
+permissions:
+  contents: read
+
 jobs:
-  ruff:
+  # Seven checks in a queue, in one job. They were five jobs once, each paying the same four
+  # setup steps for 40 seconds of work between them (ENG-969), and a pull request carried five
+  # lines for it. The clock was never the cost; the list was. The first failure stops the
+  # queue, which is what "in a queue" means here.
+  lint:
     runs-on: ubuntu-latest
-    # Recent green runs finish in well under a minute (ENG-913); 5 leaves headroom for a
-    # cold `uv sync` without inheriting GitHub's 360-minute default.
-    timeout-minutes: 5
+    # The seven commands measure 40 seconds between them; 10 leaves room for a cold `uv sync`
+    # without inheriting GitHub's 360-minute default, which is how a hung job stayed
+    # "pending" for six hours instead of turning red (ENG-913).
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,84 +53,37 @@ jobs:
       - name: Run Ruff format check
         run: uv run ruff format --check .
 
-  # `ruff` and `mypy` read the source without running it, and `test` runs it through a suite
-  # whose collection order can break an import cycle by accident. Nine branches of one stack
-  # were green together while one of them could not boot, and the green was not luck — it was
-  # order: that branch's role-gate suite errored on its own and passed inside the full run.
-  #
-  # It lives here, on the junction, and not on the slice that found it. A gate protects by
-  # being in the ancestor, not by being good: the role gate ENG-438 added only ever guarded
-  # routes whose branch had ENG-438 behind them, which is why later ones were born open. The
-  # same shape, twice. From here this one reaches every line that joins.
-  boots:
-    runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: sqlite+aiosqlite:///./boot-check.db
-      JWT_SECRET_KEY: test-secret-for-ci-only
-      INNGEST_DEV: "1"
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
+      # `ruff` and `mypy` read the source without running it, and `test` runs it through a
+      # suite whose collection order can break an import cycle by accident. Nine branches of
+      # one stack were green together while one of them could not boot, and the green was not
+      # luck — it was order: that branch's role-gate suite errored on its own and passed
+      # inside the full run.
+      #
+      # It lives here, on the junction, and not on the slice that found it. A gate protects by
+      # being in the ancestor, not by being good: the role gate ENG-438 added only ever guarded
+      # routes whose branch had ENG-438 behind them, which is why later ones were born open.
+      # The same shape, twice. From here this one reaches every line that joins.
       - name: The application imports in a clean interpreter
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./boot-check.db
+          JWT_SECRET_KEY: test-secret-for-ci-only
+          INNGEST_DEV: "1"
         run: uv run python -c "import app.main"
-
-  mypy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
 
       - name: Run mypy
         run: uv run mypy app/
 
-  # Marcia's ruling (04/09) bans six mechanisms from code — speech ceilings, probe/station
-  # contracts, memory windows, "say less" notes, a non-frontier model on the voice, app-owned
-  # conversation modes — and her own guard already fails Tripod-Internalization's build if any
-  # returns. `check_doctrine.py` carries the same six rules in the Python spellings our voice
-  # path uses. It runs in report mode against `doctrine_allowlist.ALLOWLIST`, which names every
-  # site the ladder of removal tickets has not deleted yet; it turns fully blocking on its own
-  # the day that list is empty.
-  doctrine:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
+      # Marcia's ruling (04/09) bans six mechanisms from code — speech ceilings, probe/station
+      # contracts, memory windows, "say less" notes, a non-frontier model on the voice, app-owned
+      # conversation modes — and her own guard already fails Tripod-Internalization's build if any
+      # returns. `check_doctrine.py` carries the same six rules in the Python spellings our voice
+      # path uses. It runs in report mode against `doctrine_allowlist.ALLOWLIST`, which names every
+      # site the ladder of removal tickets has not deleted yet; it turns fully blocking on its own
+      # the day that list is empty.
       - name: Run the doctrine guard
         run: uv run python scripts/check_doctrine.py
 
-      # The other half of the same job. `check_doctrine.py` says no banned mechanism came back
+      # The other half of the same guard. `check_doctrine.py` says no banned mechanism came back
       # into the code; this says no artifact of hers moved without her word — a vendored prompt
       # edited instead of re-synced, a model id or token budget off the record in
       # `docs/doctrine/MODEL_SEAM`, or a line of the §4 acceptance bar no test claims. It
@@ -132,26 +93,11 @@ jobs:
       - name: Nothing of Marcia's moved without her word
         run: uv run python scripts/sync_doctrine.py --check
 
-  # `--check` costs two API calls to `MarciaSuzuki/tripod_compiler` and one raw fetch per
-  # vendored file, and nothing invoked it (ENG-926): a vendored map edited by hand, or one
-  # that simply drifted upstream, passed this far green. `GITHUB_TOKEN` raises the runner's
-  # shared, unauthenticated GitHub API rate limit (60 requests/hour per egress IP) to the
-  # per-repository authenticated one — the two API calls are what that ceiling governs.
-  canon:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Set up Python
-        run: uv python install 3.11
-
-      - name: Install dependencies
-        run: uv sync --frozen --group dev
-
+      # `--check` costs two API calls to `MarciaSuzuki/tripod_compiler` and one raw fetch per
+      # vendored file, and nothing invoked it (ENG-926): a vendored map edited by hand, or one
+      # that simply drifted upstream, passed this far green. `GITHUB_TOKEN` raises the runner's
+      # shared, unauthenticated GitHub API rate limit (60 requests/hour per egress IP) to the
+      # per-repository authenticated one — the two API calls are what that ceiling governs.
       - name: Run the canon drift check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
