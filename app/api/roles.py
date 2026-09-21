@@ -65,7 +65,12 @@ async def check_role(
     app_key: str = Query(...),
     role_key: str = Query(...),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    actor: User = Depends(get_current_user),
 ) -> RoleCheckResponse:
+    # A caller may always check their own roles. Probing anyone else's requires the
+    # same authority as granting them (platform admin, or the app's own admin), so
+    # this endpoint cannot be used as a role-membership oracle against other users.
+    if user_id != actor.id:
+        await authorization_service.assert_can_manage_roles(db, actor, app_key)
     allowed = await authorization_service.has_role(db, user_id, app_key, role_key)
     return RoleCheckResponse(allowed=allowed)
