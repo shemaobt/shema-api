@@ -5,7 +5,12 @@ from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.core.org_scope import get_managed_project_ids
 from app.db.models.auth import User
-from app.models.language import LanguageCreate, LanguageResponse, LanguageUpdate
+from app.models.language import (
+    LanguageCreate,
+    LanguageResponse,
+    LanguageStatsResponse,
+    LanguageUpdate,
+)
 from app.services import language_service
 
 router = APIRouter()
@@ -89,3 +94,12 @@ async def update_language(
         db, language_id, name=payload.name, code=payload.code
     )
     return LanguageResponse.model_validate(language)
+
+
+@router.get("/{language_id}/stats", response_model=LanguageStatsResponse)
+async def get_language_stats(
+    language_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_platform_admin),
+) -> LanguageStatsResponse:
+    return await language_service.get_language_stats(db, language_id)

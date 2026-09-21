@@ -23,3 +23,14 @@ class LanguageResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class LanguageProjectRef(BaseModel):
+    id: str
+    name: str
+
+
+class LanguageStatsResponse(BaseModel):
+    language_id: str
+    project_count: int
+    projects: list[LanguageProjectRef]
