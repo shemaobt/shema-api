@@ -30,6 +30,7 @@ from app.services.oral_collector.gcs_utils import (
     upload_gcs_blob,
 )
 from app.services.storage.upload import upload_image
+from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET
 
 APP = Path(__file__).resolve().parent.parent / "app"
 
@@ -38,8 +39,6 @@ APP = Path(__file__).resolve().parent.parent / "app"
 CONFIG = (APP / "core" / "config.py").resolve()
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
-
-PRODUCTION_BUCKET = "tripod-image-uploads"
 
 
 def test_the_bucket_defaults_to_the_production_one(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,8 +71,6 @@ def test_no_module_hardcodes_the_bucket() -> None:
         f"bucket rather than into production's files."
     )
 
-
-STAGING_BUCKET = "balde-de-staging"
 
 GCS_CLIENT = "app.services.oral_collector.gcs_utils.storage.Client"
 
@@ -139,7 +136,11 @@ async def test_the_cleaning_backs_up_and_writes_back_in_the_configured_bucket(
 ) -> None:
     """A row staging inherited from production names production's bucket in its URL. The
     object name comes from the URL and the bucket from the setting, so the backup and the
-    write-back both land in staging's bucket and production's file is never touched."""
+    write-back both land in staging's bucket and production's file is never touched.
+
+    The three calls are the cleaning's own, driven here one by one: the cleaning makes them
+    inside a closure of an Inngest function, which no case in this suite drives.
+    """
     _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
     client = _FakeGcsClient()
     inherited = f"https://storage.googleapis.com/{PRODUCTION_BUCKET}/oral-collector/p/g/r.m4a"
@@ -161,10 +162,14 @@ async def test_the_cleaning_backs_up_and_writes_back_in_the_configured_bucket(
     assert client.uploads == [(STAGING_BUCKET, "oral-collector/p/g/r.m4a")]
 
 
-async def test_every_segment_of_a_cut_lands_in_the_configured_bucket(
+async def test_each_upload_lands_in_the_configured_bucket_and_its_url_says_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Each segment's upload, and the URL its row is given, name the configured bucket."""
+    """The upload the cutting makes per segment, and the URL the segment row is given.
+
+    Driven directly, one call per segment: the cutting makes them inside a closure of an
+    Inngest function, which no case in this suite drives.
+    """
     _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
     client = _FakeGcsClient()
 

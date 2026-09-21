@@ -199,7 +199,7 @@ async def store_artifact(
     by request handlers.
     """
 
-    target_bucket = bucket or gcs_oc_bucket()
+    target_bucket = gcs_oc_bucket() if bucket is None else bucket
     segments = stream.get("segments") or []
     payload = {
         "audio_id": audio_id,

@@ -137,7 +137,7 @@ def blob_name_from_url(gcs_url: str) -> str | None:
     inherited row and still never reaches production's object.
     """
     parts = urlsplit(gcs_url)
-    if parts.netloc != GCS_PUBLIC_HOST:
+    if parts.scheme != "https" or parts.netloc != GCS_PUBLIC_HOST:
         return None
     _, _, blob_name = parts.path.lstrip("/").partition("/")
     return blob_name or None

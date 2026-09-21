@@ -108,12 +108,10 @@ class Settings(BaseSettings):
     #: this; the default is production, so an unset variable deploys what it always did.
     inngest_app_id: str = "tripod-backend"
 
-    #: The bucket the oral-collector's audio and the platform's images live in — one
-    #: bucket today, so one setting. It was a literal, which pointed every service built
-    #: from this image at production: staging's database is a branch of production's, so
-    #: its rows carry production's object keys, and a recording cleaned, sent again or
-    #: deleted on staging reached production's own file. Staging sets this; the default
-    #: is production, so an unset variable deploys what it always did.
+    #: The bucket holding the oral-collector's audio and the console's uploaded images —
+    #: one bucket, not the `gcs_platform_bucket` above. It was a literal, so staging wrote
+    #: into production's own files (ADR 0029). Staging sets this; the default is
+    #: production, so an unset variable deploys what it always did.
     gcs_oc_bucket: str = "tripod-image-uploads"
 
     password_reset_token_expire_minutes: int = 60

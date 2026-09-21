@@ -6,10 +6,12 @@ date: 2026-09-21
 # The oral-collector's bucket is a setting, and a stored URL gives only the object name
 
 The bucket the oral-collector's audio lives in was a literal in Python, written twice — once
-for the audio, once for the platform's images, the same value both times. A service built from
-this image therefore addressed production by construction, and staging could not be pointed
-anywhere. Staging's database is a Neon branch of production's ([ADR 0001](0001-staging-environment.md)),
-so its rows carry production's ids and the object keys derive from those ids: deleting a
+for the audio, once for the images the console uploads (app icons, avatars), the same value
+both times. Those images are not `GCS_PLATFORM_BUCKET`, which is the server-side TTS cache
+and a different bucket. A service built from this image therefore addressed production by
+construction, and staging could not be pointed anywhere. Staging's database is a Neon branch
+of production's ([ADR 0001](0001-staging-environment.md)), so its rows carry production's
+ids and the object keys derive from those ids: deleting a
 recording on staging deleted production's file, re-sending one wrote over it, and the cleaning
 wrote over the original while saving a backup a second pass would overwrite in turn. That was
 live from 2026-09-11 until this change.
@@ -17,7 +19,7 @@ live from 2026-09-11 until this change.
 Decided: the bucket is `Settings.gcs_oc_bucket`, environment variable `GCS_OC_BUCKET`, read on
 every call and never at import, whose default is exactly production's name. Production's deploy
 sets nothing and keeps deploying what it always deployed; `deploy-staging.yml` names
-`tripod-image-uploads-staging`. The audio and the platform's images read the one setting
+`tripod-image-uploads-staging`. The audio and the console's images read the one setting
 because they are one bucket today; giving them two would invent a distinction that does not
 exist.
 
@@ -35,6 +37,13 @@ today and would break on the next merge to `main`; two settings, one for the ima
 the audio, for the reason above; and taking the bucket from the stored URL for writes, which
 reads honestly and is precisely the harm — staging would write into production for every row it
 inherited.
+
+A consequence worth naming, because it looks like a bug the first time it happens: on
+staging, a recording whose row was inherited from production resolves to an object name that
+is not in staging's bucket, so the cleaning's backup copy raises `NotFound` and the Inngest
+function fails its retries. That is the rule working. The audio only ever existed in
+production's bucket, and reaching for it there is the harm this record exists to stop; a
+recording made on staging cleans normally.
 
 Consequences: the staging bucket must exist, with production's CORS
 ([`gcs-cors.json`](../../gcs-cors.json), applied by hand like the others — see
