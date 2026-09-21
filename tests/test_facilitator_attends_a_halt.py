@@ -197,11 +197,17 @@ async def facilitator_b(db_session: AsyncSession) -> Facilitator:
 
 
 async def a_session(db: AsyncSession, *, team_id: str, ready_to_close: bool = False):
-    return await room.create_session(
+    """A conversation, for cases about attending or halting rather than about ENG-964's own
+    boundary. It lands one turn unconditionally (ENG-964) so every case here keeps reading
+    as a room the team held; this file's own subject is attending and halting, not that
+    boundary, and none of its cases need a session without one.
+    """
+    session = await room.create_session(
         db,
         pericope=P,
         project_id=team_id,
     )
+    return await room.append_exchange(db, session, team_utterance="oi", guide_response="ok")
 
 
 async def the_tablet_halts(client: httpx.AsyncClient, session_id: str) -> None:
