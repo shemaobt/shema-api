@@ -5,6 +5,7 @@ import pytest
 
 from app.inngest.schemas import UploadConfirmedPayload
 from app.inngest.upload_processing import verify_gcs_blob
+from tests.oral_collector_harness import STAGING_BUCKET
 
 
 def _base_kwargs() -> dict[str, str | int]:
@@ -167,7 +168,7 @@ async def test_the_verification_reads_the_configured_bucket(
     """The blob is looked for in the bucket the upload was signed for, not in production's."""
     from app.core.config import get_settings
 
-    monkeypatch.setattr(get_settings(), "gcs_oc_bucket", "balde-de-staging")
+    monkeypatch.setattr(get_settings(), "gcs_oc_bucket", STAGING_BUCKET)
 
     client = MagicMock()
     client.bucket.return_value.blob.return_value = _make_blob_mock()
@@ -176,4 +177,4 @@ async def test_the_verification_reads_the_configured_bucket(
     with patch("app.inngest.upload_processing.storage.Client", return_value=client):
         await verify_gcs_blob(payload)
 
-    client.bucket.assert_called_once_with("balde-de-staging")
+    client.bucket.assert_called_once_with(STAGING_BUCKET)
