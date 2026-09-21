@@ -62,7 +62,15 @@ async def test_create_phase_as_non_admin_forbidden(client, db_session):
 
 
 async def test_list_phases_filtered_by_journey_ordered(client, db_session):
-    user = await make_user(db_session, email="viewer@example.com")
+    """The actor is a platform admin now: since #93 this listing answers the caller's own slice.
+
+    It used to hand the whole catalogue to any authenticated account, which is the exposure
+    OBT-506 closed — in `app/main.py` this router sits behind `console_guard`, so the plain
+    `viewer` this test used would never reach the handler in the first place. What the test
+    measures is the journey filter and the `sort_order` ordering, and that needs an actor who
+    legitimately sees the phases.
+    """
+    user = await make_user(db_session, email="viewer@example.com", is_platform_admin=True)
     journey = await make_journey(db_session)
     other = await make_journey(db_session, name="Other")
     p2 = await make_phase(db_session, name="Second", journey_id=journey.id, sort_order=1)
