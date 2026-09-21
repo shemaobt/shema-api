@@ -8,10 +8,29 @@ class LanguageCreate(BaseModel):
     code: str = Field(min_length=1, max_length=3)
 
 
+class LanguageUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    code: str | None = Field(default=None, min_length=1, max_length=3)
+
+
 class LanguageResponse(BaseModel):
     id: str
     name: str
     code: str
+    is_active: bool
+    created_by: str | None
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class LanguageProjectRef(BaseModel):
+    id: str
+    name: str
+
+
+class LanguageStatsResponse(BaseModel):
+    language_id: str
+    project_count: int
+    projects: list[LanguageProjectRef]

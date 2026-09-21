@@ -1,7 +1,12 @@
-"""add change_requests table and language created_by
+"""add change_requests table
+
+`languages.created_by` and `fk_languages_created_by_users` were added here too, until
+`20260704_0004` landed on `dev` ahead of this revision and brought the identical pair. Adding
+a column twice fails on the second, so they are gone from here and this revision chains after
+that one.
 
 Revision ID: 20260714_0101
-Revises: 20260911_shema07
+Revises: 20260710_0001
 Create Date: 2026-07-14
 
 """
@@ -13,7 +18,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "20260714_0101"
-down_revision: str | None = "20260911_shema07"
+down_revision: str | None = "20260710_0001"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -63,18 +68,6 @@ def upgrade() -> None:
         ),
     )
 
-    op.add_column("languages", sa.Column("created_by", sa.String(36), nullable=True))
-    op.create_foreign_key(
-        "fk_languages_created_by_users",
-        "languages",
-        "users",
-        ["created_by"],
-        ["id"],
-        ondelete="SET NULL",
-    )
-
 
 def downgrade() -> None:
-    op.drop_constraint("fk_languages_created_by_users", "languages", type_="foreignkey")
-    op.drop_column("languages", "created_by")
     op.drop_table("change_requests")

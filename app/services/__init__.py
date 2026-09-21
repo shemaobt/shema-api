@@ -12,6 +12,7 @@ from app.services import (
     platform,
     project,
     project_health,
+    public_request,
     rag,
     sound_necklace,
     translation_helper,
@@ -31,6 +32,7 @@ phase_service = phase
 platform_service = platform
 project_service = project
 project_health_service = project_health
+public_request_service = public_request
 rag_service = rag
 sound_necklace_service = sound_necklace
 translation_helper_service = translation_helper
@@ -63,6 +65,8 @@ __all__ = [
     "project_health",
     "project_health_service",
     "project_service",
+    "public_request",
+    "public_request_service",
     "rag",
     "rag_service",
     "sound_necklace",
