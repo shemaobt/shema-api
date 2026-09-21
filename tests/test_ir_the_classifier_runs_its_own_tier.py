@@ -134,11 +134,12 @@ async def test_a_ceiling_high_enough_now_leaves_room_for_the_thinking_too(
 
     call = messages.calls[0]
     assert call["thinking"] == {"type": "adaptive"}, (
-        "o classificador pensava desligado; em 1500 de teto isso já bastava para esvaziar "
-        "a resposta, e desligar o pensamento em vez de dar-lhe teto é o oposto do que ela quer"
+        "o classificador pensava desligado; essa era a saída de engenharia para conter o "
+        "esvaziamento de 9 de setembro, e desligar o pensamento em vez de dar-lhe teto é o "
+        "oposto do que ela quer"
     )
     assert call["max_tokens"] == 6000, (
-        "1500 era o teto de antes, onde o pensamento adaptativo comia a saída inteira e "
+        "4096 era o teto de antes, onde o pensamento adaptativo comia a saída inteira e "
         "voltava vazio em 9 de setembro; no stack dela 6000 é o que sobra pensamento e "
         "decisão, e o classificador roda fora do voice path, então ninguém espera por isso"
     )

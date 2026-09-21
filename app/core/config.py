@@ -47,12 +47,9 @@ class Settings(BaseSettings):
     #: DOCTRINE.md forbids anything but a frontier model there; analysis reads the telling
     #: back against the map; the classifier only moves beads and runs off the voice path.
     #: These and their parameters are Marcia's artifacts (DOCTRINE.md 5.1), not ours to tune —
-    #: including the classifier's own call in classify_coverage.py, ruled 2026-09-21 to run
-    #: adaptive thinking with a 6000-token ceiling: "In my stack the classifier runs with
-    #: adaptive thinking and an output ceiling of 6000 tokens. At 1500 we had exactly your
-    #: empty replies, on 9 September, and 6000 cured them. It is off the voice path, so the
-    #: team never waits for it." — docs/doctrine/rulings/2026-09-21-the-classifier-thinks-
-    #: with-room-for-it.md
+    #: including the classifier's own call in classify_coverage.py, thinking and its ceiling
+    #: ruled 2026-09-21, see docs/doctrine/rulings/2026-09-21-the-classifier-thinks-with-room-
+    #: for-it.md
     tripod_voice_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
     tripod_analysis_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
     tripod_classifier_model: str = "claude-sonnet-5,claude-sonnet-4-6"

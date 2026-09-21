@@ -11,3 +11,9 @@ room. Her word above is the opposite fix — thinking stays on everywhere, per �
 models thinking", and the ceiling moves to what her own stack already measured cured, not
 merely enlarged, the same empty-reply failure. `MODEL_SEAM` now credits the row to this ruling
 instead of freezing it at an engineering default.
+
+This supersedes a sentence in `docs/doctrine/rulings/2026-09-03-the-model-seam-is-hers.md:10-11`
+— "§2.4 allows the classifier off the voice path, which is the one row in `MODEL_SEAM` that
+carries `thinks=False`" — which described that row. The row this ruling governs now carries
+`thinks=True`; that sentence is not amended in place, since her word there stands for what it
+did rule, only the row underneath it moved.

@@ -118,8 +118,9 @@ async def call_agent(
     Thinking is adaptive rather than a level the caller dials: the ladder's rungs disagree
     about the default — omitting it on `claude-opus-4-8` means not thinking at all — so a rung
     that answered well would answer worse purely by being stepped down onto. A caller can turn
-    it off, and only the bookkeeping ones do; `thinks=False` on anything the team hears is what
-    DOCTRINE.md forbids in as many words.
+    it off, and none does: `thinks=False` on anything the team hears is what DOCTRINE.md
+    forbids in as many words, and the classifier — the one call off the voice path — thinks
+    now too, per docs/doctrine/rulings/2026-09-21-the-classifier-thinks-with-room-for-it.md.
 
     **Thinking is spent out of `max_output_tokens`, not beside it.** A ceiling carried over
     from a provider where it was not is a ceiling the reasoning can eat whole, and the call
