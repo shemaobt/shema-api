@@ -35,7 +35,7 @@ async def search_users(
 async def get_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> UserListResponse:
     user = await user_service.get_user_by_id(db, user_id)
     manager_ids = await user_service.get_manager_user_ids(db, [user.id])
@@ -90,7 +90,7 @@ async def delete_user(
 async def list_user_roles(
     user_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_platform_admin),
 ) -> list[UserRoleResponse]:
     roles = await user_service.list_user_roles(db, user_id)
     return [
