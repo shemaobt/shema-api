@@ -30,7 +30,10 @@ async def list_organizations(
         orgs = await organization_service.list_organizations(db)
     else:
         managed_project_ids = await get_managed_project_ids(db, user.id)
-        orgs = await organization_service.list_organizations_by_projects(db, managed_project_ids)
+        managed_org_ids = await get_managed_org_ids(db, user.id)
+        orgs = await organization_service.list_organizations_by_projects(
+            db, managed_project_ids, managed_org_ids
+        )
     return [OrganizationResponse.model_validate(o) for o in orgs]
 
 

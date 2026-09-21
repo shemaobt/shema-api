@@ -3,11 +3,12 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.org_scope import get_managed_project_ids
+from app.core.org_scope import get_managed_org_ids, get_managed_project_ids
 from app.services import language_service, organization_service, phase_service
 from tests.baker import (
     make_language,
     make_organization,
+    make_organization_member,
     make_phase,
     make_project,
     make_project_organization_access,
@@ -69,6 +70,45 @@ async def test_list_organizations_by_projects(db_session) -> None:
 
     assert [o.slug for o in orgs] == ["org-a"]
     assert await organization_service.list_organizations_by_projects(db_session, []) == []
+
+
+@pytest.mark.asyncio
+async def test_list_organizations_includes_the_ones_managed_directly(db_session) -> None:
+    """An organization manager with no project still sees the organization they run."""
+    owner = await make_user(db_session, email="org-owner@example.com")
+    member_manager = await make_user(db_session, email="org-member-manager@example.com")
+    await make_organization(db_session, slug="owned-org", name="Owned", manager_id=owner.id)
+    joined = await make_organization(db_session, slug="joined-org", name="Joined")
+    await make_organization(db_session, slug="stranger-org", name="Stranger")
+    await make_organization_member(db_session, member_manager.id, joined.id, role="manager")
+
+    owner_scope = await get_managed_org_ids(db_session, owner.id)
+    orgs = await organization_service.list_organizations_by_projects(db_session, [], owner_scope)
+    assert [o.slug for o in orgs] == ["owned-org"]
+
+    member_scope = await get_managed_org_ids(db_session, member_manager.id)
+    orgs = await organization_service.list_organizations_by_projects(db_session, [], member_scope)
+    assert [o.slug for o in orgs] == ["joined-org"]
+
+
+@pytest.mark.asyncio
+async def test_list_organizations_unions_project_and_direct_scopes(db_session) -> None:
+    """The two scopes add up instead of one replacing the other."""
+    owner = await make_user(db_session, email="both-scopes@example.com")
+    lang = await make_language(db_session, code="lou")
+    managed = await make_project(db_session, language_id=lang.id, name="Managed")
+    via_project = await make_organization(db_session, slug="via-project", name="A Via Project")
+    await make_project_organization_access(db_session, managed.id, via_project.id)
+    await make_organization(
+        db_session, slug="via-manager", name="B Via Manager", manager_id=owner.id
+    )
+
+    scope = await get_managed_org_ids(db_session, owner.id)
+    orgs = await organization_service.list_organizations_by_projects(
+        db_session, [managed.id], scope
+    )
+
+    assert [o.slug for o in orgs] == ["via-project", "via-manager"]
 
 
 @pytest.mark.asyncio
