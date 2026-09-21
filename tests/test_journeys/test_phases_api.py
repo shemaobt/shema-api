@@ -94,18 +94,27 @@ async def test_list_phases_by_journey_filters_for_a_manager_too(client, db_sessi
     This one covers the manager branch, which reaches the listing through
     `list_phases_by_projects` — without the filter it answered a manager with every phase
     of every project they manage, so the same query said different things by role.
+
+    The manager holds two projects on two journeys, which is what gives the filter something
+    to narrow. A single project would make the filtered and unfiltered answers identical
+    under this branch's rule, and the test would pass without measuring anything.
     """
     manager = await make_user(db_session, email="manager@example.com")
     language = await make_language(db_session)
     journey = await make_journey(db_session)
     other = await make_journey(db_session, name="Other")
     project = await make_project(db_session, language.id, journey_id=journey.id)
-    await make_project_user_access(db_session, project.id, manager.id, role="manager")
+    other_project = await make_project(
+        db_session, language.id, name="Other Project", journey_id=other.id
+    )
+    for scoped in (project, other_project):
+        await make_project_user_access(db_session, scoped.id, manager.id, role="manager")
     first = await make_phase(db_session, name="First", journey_id=journey.id, sort_order=0)
     second = await make_phase(db_session, name="Second", journey_id=journey.id, sort_order=1)
     elsewhere = await make_phase(db_session, name="Elsewhere", journey_id=other.id)
-    for phase in (first, second, elsewhere):
-        await make_project_phase(db_session, project.id, phase.id)
+    await make_project_phase(db_session, project.id, first.id)
+    await make_project_phase(db_session, project.id, second.id)
+    await make_project_phase(db_session, other_project.id, elsewhere.id)
     headers = await auth_header(db_session, manager)
 
     resp = await client.get(f"/api/phases?journey_id={journey.id}", headers=headers)
