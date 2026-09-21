@@ -18,6 +18,7 @@ from app.services.project.list_project_user_access import list_project_user_acce
 from app.services.project.list_projects_accessible_to_user import (
     list_projects_accessible_to_user,
 )
+from app.services.project.list_projects_by_ids import list_projects_by_ids
 from app.services.project.list_projects_by_organization import (
     list_projects_by_organization,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "list_project_organization_access",
     "list_project_user_access",
     "list_projects_accessible_to_user",
+    "list_projects_by_ids",
     "list_projects_by_organization",
     "list_projects_for_user",
     "list_user_project_roles",
