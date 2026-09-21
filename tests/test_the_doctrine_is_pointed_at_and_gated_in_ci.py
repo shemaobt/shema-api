@@ -4,7 +4,7 @@ A record nobody runs is a record. `ENG-827` and `ENG-829` install guards whose m
 doctrine sentence, and until this ticket they pointed at a document a developer could not open;
 the mirror of that failure is a vendored document nothing checks and no file points at.
 
-So: the lint workflow runs the drift check offline, the pull-request template asks for her
+So: the Checks workflow runs the drift check offline, the pull-request template asks for her
 sentence and where it is written before a prompt or a model parameter moves, and `AGENTS.md` and
 `README.md` each carry one line saying where the doctrine is — the way
 `AUTHORITATIVE-SOURCE-SEAM.md` is pointed at from her `CLAUDE.md`.
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from scripts.sync_doctrine import REPO_ROOT
 
-LINT = (REPO_ROOT / ".github/workflows/lint.yml").read_text(encoding="utf-8")
+CHECKS = (REPO_ROOT / ".github/workflows/checks.yml").read_text(encoding="utf-8")
 TEMPLATE_PATH = REPO_ROOT / ".github/pull_request_template.md"
 
 
@@ -26,13 +26,13 @@ def test_the_drift_check_runs_on_every_pull_request() -> None:
     and reads the tree, so it needs no token for a private repository — which is also why the
     re-pin is `--sync` against a checkout and is never run by CI.
     """
-    assert "uv run python scripts/sync_doctrine.py --check" in LINT, (
+    assert "uv run python scripts/sync_doctrine.py --check" in CHECKS, (
         "nothing in CI notices a vendored artefact, a model parameter or a bar line moving"
     )
-    assert "uv run python scripts/check_doctrine.py" in LINT, (
+    assert "uv run python scripts/check_doctrine.py" in CHECKS, (
         "the guard on the six mechanisms was displaced rather than joined"
     )
-    assert "sync_doctrine.py --sync" not in LINT, (
+    assert "sync_doctrine.py --sync" not in CHECKS, (
         "CI would re-pin to her branch tip by itself, which is the one thing a ruling is for"
     )
 

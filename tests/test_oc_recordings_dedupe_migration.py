@@ -26,6 +26,8 @@ import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from tests.alembic_harness import run_alembic, scalar
 
+pytestmark = pytest.mark.migration
+
 PREVIOUS_REVISION = "20260724_0002"
 TARGET_REVISION = "20260601_0001"
 

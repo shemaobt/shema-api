@@ -3,6 +3,8 @@ import sys
 
 import pytest
 
+pytestmark = pytest.mark.fresh_interpreter
+
 ROOM_MODULES = (
     "app.services.internalization_room.passage_turn",
     "app.services.internalization_room.panorama_turn",

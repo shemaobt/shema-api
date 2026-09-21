@@ -22,6 +22,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.fresh_interpreter
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: The DTO layer. `app/models` is request and response shapes, and it sits *below* the

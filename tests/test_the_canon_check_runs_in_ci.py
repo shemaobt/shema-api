@@ -10,10 +10,10 @@ from __future__ import annotations
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LINT = (REPO_ROOT / ".github/workflows/lint.yml").read_text(encoding="utf-8")
+CHECKS = (REPO_ROOT / ".github/workflows/checks.yml").read_text(encoding="utf-8")
 
 
 def test_the_drift_check_runs_on_every_pull_request() -> None:
-    assert "uv run python scripts/sync_internalization_canon.py --check" in LINT, (
+    assert "uv run python scripts/sync_internalization_canon.py --check" in CHECKS, (
         "nothing in CI notices the vendored canon drifting from its pin"
     )

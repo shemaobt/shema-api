@@ -1,4 +1,4 @@
-name: Lint
+name: Checks
 
 on:
   pull_request:
@@ -25,7 +25,7 @@ jobs:
   # setup steps for 40 seconds of work between them (ENG-969), and a pull request carried five
   # lines for it. The clock was never the cost; the list was. The first failure stops the
   # queue, which is what "in a queue" means here.
-  lint:
+  checks:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -101,3 +101,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run python scripts/sync_internalization_canon.py --check
+
+      # The three that open a fresh interpreter to prove what the suite's own process cannot
+      # prove about itself: that a room module reached first still imports, that the
+      # application boots, that two runs of the suite in one checkout do not tear each
+      # other's tables down. They belong beside the boot import above, which already pays for
+      # a clean interpreter as one of its seven commands (ENG-980).
+      - name: Run the tests that open a fresh interpreter
+        env:
+          JWT_SECRET_KEY: test-secret-for-ci-only
+        run: uv run pytest tests/ -rfE -m fresh_interpreter

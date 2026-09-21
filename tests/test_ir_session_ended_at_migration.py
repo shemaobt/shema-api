@@ -27,6 +27,8 @@ import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from tests.alembic_harness import columns_of, run_alembic, scalar
 
+pytestmark = pytest.mark.migration
+
 #: This migration and the revision it hangs on — the coverage-events table, which is what
 #: a session card's portrait is read out of.
 REVISION = "20260820_0003"
