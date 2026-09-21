@@ -21,6 +21,7 @@ from app.db.models.book_context import (
     BCDSectionFeedback,
     BookContextDocument,
 )
+from app.db.models.change_request import ChangeRequest
 from app.db.models.device import Device
 from app.db.models.internalization_room import (
     IRCoverageEvent,
@@ -62,6 +63,7 @@ from app.db.models.project_health import (
     PHLanguage,
     PHReport,
 )
+from app.db.models.public_request import PublicRequest
 from app.db.models.resource_request import (
     RRBoardTransition,
     RRBudgetLine,
@@ -142,6 +144,7 @@ __all__ = [
     "BCDSectionFeedback",
     "BibleBook",
     "BookContextDocument",
+    "ChangeRequest",
     "ChatMessageRole",
     "Device",
     "GranularityLevel",
@@ -178,6 +181,7 @@ __all__ = [
     "ProjectOrganizationAccess",
     "ProjectPhase",
     "ProjectUserAccess",
+    "PublicRequest",
     "RRBoardTransition",
     "RRBudgetLine",
     "RRCurrency",

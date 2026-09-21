@@ -13,6 +13,11 @@ gcloud storage buckets update  gs://sound-necklace-private --cors-file=sound-nec
 What belongs in the allowlist, and why the range header stays while the write verbs went, is
 [ADR 0011](adr/0011-range-stays-in-the-bucket-cors-allowlist.md).
 
+The oral-collector's bucket — its audio and the console's uploaded images, one bucket — is
+named per environment by `GCS_OC_BUCKET`, which is not `GCS_PLATFORM_BUCKET` above: that one
+is the server-side TTS cache. Its CORS is `gcs-cors.json`, applied by hand like the others.
+See [ADR 0029](adr/0029-the-oral-collectors-bucket-is-a-setting.md).
+
 ## Cloud Run origins
 
 A Cloud Run service answers on two URL forms. The deterministic one is

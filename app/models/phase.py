@@ -40,7 +40,13 @@ class PhaseReorderRequest(BaseModel):
 
 
 class ProjectPhaseResponse(BaseModel):
-    id: str
+    """``id`` is the ``project_phases`` row, and is null while the project has no such row.
+
+    It used to fall back to the phase's own id, which left the client unable to tell which
+    entity it had been handed. Mutations are keyed by ``phase_id``, never by this field.
+    """
+
+    id: str | None = None
     phase_id: str
     phase_name: str
     phase_description: str | None

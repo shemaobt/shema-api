@@ -12,6 +12,7 @@ from app.api.auth import router as auth_router
 from app.api.bhsa import router as bhsa_router
 from app.api.book_context import router as book_context_router
 from app.api.books import router as books_router
+from app.api.change_requests import router as change_requests_router
 from app.api.devices import devices_router
 from app.api.facilitator.devices import facilitator_devices_router
 from app.api.facilitator.legend import facilitator_legend_router
@@ -42,6 +43,8 @@ from app.api.places import router as places_router
 from app.api.platform import router as platform_router
 from app.api.project_health import router as project_health_router
 from app.api.projects import router as projects_router
+from app.api.public import router as public_router
+from app.api.public_requests import router as public_requests_router
 from app.api.rag import router as rag_router
 from app.api.resource_requests import router as resource_requests_router
 from app.api.resource_requests.access import router as resource_request_access_router
@@ -134,6 +137,11 @@ def create_app() -> FastAPI:
         prefix="/api/access-requests",
         tags=["access-requests"],
     )
+    app.include_router(
+        change_requests_router,
+        prefix="/api/change-requests",
+        tags=["change-requests"],
+    )
     app.include_router(apps_router, prefix="/api/apps", tags=["apps"])
     app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
     app.include_router(roles_router, prefix="/api/roles", tags=["roles"])
@@ -145,8 +153,19 @@ def create_app() -> FastAPI:
     app.include_router(platform_router, prefix="/api/platform", tags=["platform"])
     app.include_router(uploads_router, prefix="/api/uploads", tags=["uploads"])
     app.include_router(users_router, prefix="/api/users", tags=["users"])
-    app.include_router(languages_router, prefix="/api/languages", tags=["languages"])
-    app.include_router(organizations_router, prefix="/api/organizations", tags=["organizations"])
+    console_guard = [Depends(require_admin_or_manager)]
+    app.include_router(
+        languages_router,
+        prefix="/api/languages",
+        tags=["languages"],
+        dependencies=console_guard,
+    )
+    app.include_router(
+        organizations_router,
+        prefix="/api/organizations",
+        tags=["organizations"],
+        dependencies=console_guard,
+    )
     app.include_router(places_router, prefix="/api/places", tags=["places"])
     app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
     app.include_router(
@@ -165,14 +184,24 @@ def create_app() -> FastAPI:
         tags=["facilitator-legend"],
     )
     app.include_router(devices_router, prefix="/api/devices", tags=["devices"])
-    console_guard = [Depends(require_admin_or_manager)]
     app.include_router(
         journeys_router,
         prefix="/api/journeys",
         tags=["journeys"],
         dependencies=console_guard,
     )
-    app.include_router(phases_router, prefix="/api/phases", tags=["phases"])
+    app.include_router(public_router, prefix="/api/public", tags=["public"])
+    app.include_router(
+        public_requests_router,
+        prefix="/api/public-requests",
+        tags=["public-requests"],
+    )
+    app.include_router(
+        phases_router,
+        prefix="/api/phases",
+        tags=["phases"],
+        dependencies=console_guard,
+    )
     app.include_router(
         phase_categories_router,
         prefix="/api/phase-categories",

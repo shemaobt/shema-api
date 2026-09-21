@@ -42,8 +42,8 @@ from app.models.oc_recording import (
 )
 from app.services.notifications.create_notification import create_notification
 from app.services.notifications.get_oc_app_id import get_oc_app_id
-from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
-from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE, content_type_for_format
+from app.services.oral_collector.constants import GCS_OC_PROJECT, gcs_oc_bucket
+from app.services.oral_collector.gcs_utils import blob_name_from_url, content_type_for_format
 from app.services.oral_collector.review_flags import flag_codes, recompute_review_flags
 
 logger = logging.getLogger(__name__)
@@ -637,7 +637,7 @@ async def purge_failed_uploads(db: AsyncSession) -> int:
     being held at a level the batch cannot clear.
 
     The delete runs on a worker thread, like every other blob call in this package
-    (`gcs_utils`, `cleaning_service`, `upload_processing._verify_blob`). `_delete_gcs_blob` is
+    (`gcs_utils`, `upload_processing._verify_blob`). `_delete_gcs_blob` is
     synchronous, and a batch of blocking round-trips on the event loop would stall the uploads
     the API is serving at the same time.
     """
@@ -682,7 +682,7 @@ async def generate_upload_url(
     blob_path = _gcs_blob_path(recording.project_id, recording.genre_id, recording_id, fmt)
 
     client = _get_gcs_client()
-    bucket = client.bucket(GCS_OC_BUCKET)
+    bucket = client.bucket(gcs_oc_bucket())
     blob = bucket.blob(blob_path)
 
     ct = content_type_for_format(fmt)
@@ -760,7 +760,7 @@ async def generate_resumable_upload_url(
     blob_path = _gcs_blob_path(recording.project_id, recording.genre_id, recording_id, fmt)
 
     client = _get_gcs_client()
-    bucket = client.bucket(GCS_OC_BUCKET)
+    bucket = client.bucket(gcs_oc_bucket())
     blob = bucket.blob(blob_path)
 
     ct = content_type_for_format(fmt)
@@ -786,12 +786,12 @@ async def generate_resumable_upload_url(
 def _delete_gcs_blob(gcs_url: str) -> None:
 
     try:
-        if not gcs_url.startswith(GCS_PUBLIC_BASE):
+        blob_name = blob_name_from_url(gcs_url)
+        if blob_name is None:
             logger.warning("Unexpected GCS URL format: %s", gcs_url)
             return
-        blob_name = gcs_url[len(GCS_PUBLIC_BASE) :]
         client = _get_gcs_client()
-        bucket = client.bucket(GCS_OC_BUCKET)
+        bucket = client.bucket(gcs_oc_bucket())
         blob = bucket.blob(blob_name)
         blob.delete()
     except Exception:

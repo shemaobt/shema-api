@@ -3,7 +3,12 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
+from app.core.exceptions import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from app.db.models.auth import User
 from app.db.models.project import Project, ProjectInvite
 from app.services.project.grant_user_access import grant_user_access
@@ -16,11 +21,21 @@ async def create_invite(
     role: str,
     invited_by: str,
 ) -> ProjectInvite:
+    """Open — or refresh — a pending project invite for a registered address.
 
+    A platform admin is refused here rather than at acceptance. ``grant_user_access``
+    already refuses to link one, so an invite they can never spend would sit pending
+    forever with decline as its only exit; the invite that is never written is the one
+    nobody has to explain.
+    """
     user_stmt = select(User).where(User.email == email, User.is_active.is_(True))
-    user_result = await db.execute(user_stmt)
-    if user_result.scalar_one_or_none() is None:
+    invitee = (await db.execute(user_stmt)).scalar_one_or_none()
+    if invitee is None:
         raise NotFoundError("No registered user found with that email")
+    if invitee.is_platform_admin:
+        raise ValidationError(
+            "Platform admins cannot be invited to a project; they already manage every project."
+        )
 
     stmt = select(ProjectInvite).where(
         ProjectInvite.project_id == project_id,

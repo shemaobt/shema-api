@@ -6,7 +6,7 @@ URL here, no CORS, no public access — it only has to exist and let the service
 and write.
 
 The bucket name comes from Settings (`GCS_PLATFORM_BUCKET`), not from a constant nailed into
-the module the way `storage/upload.py` and `annotation_studio/constants.py` do it.
+the module the way `annotation_studio/constants.py` still does it.
 """
 
 from __future__ import annotations

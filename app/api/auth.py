@@ -4,12 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth_cache import invalidate_user
 from app.core.auth_middleware import get_current_user
 from app.core.database import get_db
-from app.core.org_scope import get_managed_org_ids
+from app.core.org_scope import get_managed_org_ids, get_managed_project_ids
 from app.db.models.auth import User
 from app.models.auth import (
     AuthResponse,
     ForgotPasswordRequest,
     MyManagedOrgsResponse,
+    MyManagedProjectsResponse,
     MyProjectRolesResponse,
     PasswordResetResponse,
     ProfileUpdate,
@@ -84,11 +85,7 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     user = await user_service.update_user(
-        db,
-        current_user.id,
-        display_name=payload.display_name,
-        avatar_url=payload.avatar_url,
-        locale=payload.locale,
+        db, current_user.id, current_user, **payload.model_dump(exclude_unset=True)
     )
     invalidate_user(user.id)
     return _user_response(user)
@@ -133,6 +130,15 @@ async def my_managed_orgs(
 ) -> MyManagedOrgsResponse:
     org_ids = await get_managed_org_ids(db, user.id)
     return MyManagedOrgsResponse(managed_org_ids=org_ids)
+
+
+@router.get("/my-managed-projects", response_model=MyManagedProjectsResponse)
+async def my_managed_projects(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MyManagedProjectsResponse:
+    project_ids = await get_managed_project_ids(db, user.id)
+    return MyManagedProjectsResponse(managed_project_ids=project_ids)
 
 
 @router.post("/forgot-password", response_model=PasswordResetResponse)
