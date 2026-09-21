@@ -17,6 +17,8 @@ class LanguageResponse(BaseModel):
     id: str
     name: str
     code: str
+    is_active: bool
+    created_by: str | None
     created_at: datetime
     updated_at: datetime
 
