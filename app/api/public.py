@@ -20,7 +20,7 @@ async def list_public_languages(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> list[PublicLanguageOption]:
-    languages = await language_service.list_languages(db)
+    languages = await language_service.list_active_languages(db)
     return [PublicLanguageOption.model_validate(lang) for lang in languages]
 
 

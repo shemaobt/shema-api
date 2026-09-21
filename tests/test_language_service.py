@@ -319,3 +319,16 @@ async def test_reactivate_active_language_is_noop(db_session) -> None:
 
     reactivated = await language_service.reactivate_language(db_session, created.id, admin)
     assert reactivated.is_active is True
+
+
+@pytest.mark.asyncio
+async def test_list_active_languages_leaves_out_the_deactivated(db_session) -> None:
+    """The public form never offers a language the platform retired."""
+    admin = await make_user(db_session, email="admin-public@example.com", is_platform_admin=True)
+    kept = await make_language(db_session, code="kos")
+    retired = await make_language(db_session, code="ret")
+    await language_service.deactivate_language(db_session, retired.id, admin)
+
+    languages = await language_service.list_active_languages(db_session)
+
+    assert [lng.code for lng in languages] == [kept.code]
