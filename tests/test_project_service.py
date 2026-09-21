@@ -1,16 +1,32 @@
+from datetime import UTC, datetime
+
 import pytest
 
-from app.core.exceptions import NotFoundError
-from app.services import project_service
+from app.core.exceptions import NotFoundError, ValidationError
+from app.db.models.project import ProjectUserAccess
+from app.models.oc_project import OCProjectListResponse
+from app.models.project import ProjectUpdate
+from app.services import phase_service, project_service
 from tests.baker import (
+    make_journey,
     make_language,
     make_organization,
     make_organization_member,
+    make_phase,
     make_project,
     make_project_organization_access,
+    make_project_phase,
     make_project_user_access,
     make_user,
 )
+
+
+async def _grant_access_at(db_session, project_id, user_id, granted_at) -> ProjectUserAccess:
+    access = ProjectUserAccess(project_id=project_id, user_id=user_id, granted_at=granted_at)
+    db_session.add(access)
+    await db_session.commit()
+    await db_session.refresh(access)
+    return access
 
 
 @pytest.mark.asyncio
@@ -262,6 +278,26 @@ async def test_update_project_raises_not_found_for_invalid_language(db_session) 
 
 
 @pytest.mark.asyncio
+async def test_create_project_rejects_inactive_language(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    lang.is_active = False
+    await db_session.commit()
+    with pytest.raises(ValidationError, match="not active"):
+        await project_service.create_project(db_session, name="X", language_id=lang.id)
+
+
+@pytest.mark.asyncio
+async def test_update_project_rejects_inactive_language(db_session) -> None:
+    active = await make_language(db_session, code="act")
+    inactive = await make_language(db_session, code="ina")
+    project = await make_project(db_session, active.id, name="P")
+    inactive.is_active = False
+    await db_session.commit()
+    with pytest.raises(ValidationError, match="not active"):
+        await project_service.update_project(db_session, project.id, language_id=inactive.id)
+
+
+@pytest.mark.asyncio
 async def test_list_project_user_access_returns_users(db_session) -> None:
     lang = await make_language(db_session, name="English", code="eng")
     project = await make_project(db_session, lang.id, name="Project")
@@ -347,3 +383,213 @@ async def test_revoke_organization_access_raises_not_found(db_session) -> None:
     org = await make_organization(db_session, name="Org", slug="org-norv")
     with pytest.raises(NotFoundError, match="Organization access not found"):
         await project_service.revoke_organization_access(db_session, project.id, org.id)
+
+
+@pytest.mark.asyncio
+async def test_serialize_project_responses_with_phases_and_members(db_session) -> None:
+    stamper = await make_user(db_session, email="stamper@example.com", is_platform_admin=True)
+    lang = await make_language(db_session, code="kos")
+    rich = await make_project(db_session, language_id=lang.id, name="Rich")
+    bare = await make_project(db_session, language_id=lang.id, name="Bare")
+    phase1 = await make_phase(db_session, name="Drafting")
+    phase2 = await make_phase(db_session, name="Checking")
+    phase3 = await make_phase(db_session, name="Publishing")
+    await make_project_phase(db_session, rich.id, phase1.id)
+    await make_project_phase(db_session, rich.id, phase2.id)
+    await make_project_phase(db_session, rich.id, phase3.id)
+    await phase_service.update_project_phase_status(
+        db_session, rich.id, phase1.id, stamper, status="completed"
+    )
+    await phase_service.update_project_phase_status(
+        db_session, rich.id, phase2.id, stamper, status="in_progress"
+    )
+    user1 = await make_user(db_session, email="sp1@example.com", display_name="Member One")
+    user2 = await make_user(db_session, email="sp2@example.com", display_name="Member Two")
+    await _grant_access_at(
+        db_session, rich.id, user1.id, datetime(2026, 7, 1, 12, 0, 0, tzinfo=UTC)
+    )
+    await _grant_access_at(
+        db_session, rich.id, user2.id, datetime(2026, 7, 1, 12, 0, 1, tzinfo=UTC)
+    )
+    responses = await project_service.serialize_projects(db_session, [rich, bare])
+    by_id = {r.id: r for r in responses}
+    assert by_id[rich.id].phases_completed == 1
+    assert by_id[rich.id].phases_total == 3
+    assert [m.user_id for m in by_id[rich.id].members_preview] == [user1.id, user2.id]
+    assert by_id[rich.id].members_preview[0].display_name == "Member One"
+    assert by_id[bare.id].phases_completed == 0
+    assert by_id[bare.id].phases_total == 0
+    assert by_id[bare.id].members_preview == []
+
+
+@pytest.mark.asyncio
+async def test_phases_total_is_the_journey_not_the_stamped_rows(db_session) -> None:
+    """A project on a nine-phase journey reads 1/9 the day it is assigned, not 1/1.
+
+    Counting `ProjectPhase` rows made the denominator grow as the work advanced, so the bar sat
+    full from the first stamp. The journey is the set the project is measured against (OBT-419).
+    """
+    lang = await make_language(db_session, code="jrn")
+    journey = await make_journey(db_session, name="Nine steps")
+    phases = [
+        await make_phase(db_session, name=f"Step {i}", journey_id=journey.id, sort_order=i)
+        for i in range(9)
+    ]
+    project = await make_project(
+        db_session, language_id=lang.id, name="On a journey", journey_id=journey.id
+    )
+    stamper = await make_user(db_session, email="journey-stamp@example.com", is_platform_admin=True)
+    await make_project_phase(db_session, project.id, phases[0].id)
+    await phase_service.update_project_phase_status(
+        db_session, project.id, phases[0].id, stamper, status="completed"
+    )
+
+    (response,) = await project_service.serialize_projects(db_session, [project])
+
+    assert response.phases_completed == 1
+    assert response.phases_total == 9
+
+
+@pytest.mark.asyncio
+async def test_phases_total_falls_back_to_stamped_rows_without_a_journey(db_session) -> None:
+    """A project with no journey has no other set to measure against, so the old count stands."""
+    lang = await make_language(db_session, code="njr")
+    project = await make_project(db_session, language_id=lang.id, name="No journey")
+    loose = await make_phase(db_session, name="Loose")
+    await make_project_phase(db_session, project.id, loose.id)
+
+    (response,) = await project_service.serialize_projects(db_session, [project])
+
+    assert response.phases_completed == 0
+    assert response.phases_total == 1
+
+
+@pytest.mark.asyncio
+async def test_serialize_project_response_detail(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id, name="Detail")
+    phase = await make_phase(db_session, name="Drafting")
+    stamper = await make_user(db_session, email="detail-stamp@example.com", is_platform_admin=True)
+    await make_project_phase(db_session, project.id, phase.id)
+    await phase_service.update_project_phase_status(
+        db_session, project.id, phase.id, stamper, status="completed"
+    )
+    user = await make_user(db_session, email="detail@example.com", display_name="Detail User")
+    await _grant_access_at(
+        db_session, project.id, user.id, datetime(2026, 7, 1, 12, 0, 0, tzinfo=UTC)
+    )
+    response = await project_service.serialize_project(db_session, project)
+    assert response.id == project.id
+    assert response.phases_completed == 1
+    assert response.phases_total == 1
+    assert len(response.members_preview) == 1
+    assert response.members_preview[0].user_id == user.id
+    assert response.members_preview[0].display_name == "Detail User"
+    assert response.members_preview[0].avatar_url is None
+    assert response.image_url is None
+
+
+@pytest.mark.asyncio
+async def test_serialize_members_preview_capped_at_four_ordered_by_granted_at(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id, name="Crowded")
+    users = [
+        await make_user(db_session, email=f"cap{i}@example.com", display_name=f"Member {i}")
+        for i in range(6)
+    ]
+    for i, user in enumerate(reversed(users)):
+        await _grant_access_at(
+            db_session,
+            project.id,
+            user.id,
+            datetime(2026, 7, 1, 12, 0, 5 - i, tzinfo=UTC),
+        )
+    response = await project_service.serialize_project(db_session, project)
+    assert [m.user_id for m in response.members_preview] == [u.id for u in users[:4]]
+
+
+@pytest.mark.asyncio
+async def test_serialize_members_preview_capped_per_project_not_globally(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    first = await make_project(db_session, language_id=lang.id, name="Crowded A")
+    second = await make_project(db_session, language_id=lang.id, name="Crowded B")
+    sparse = await make_project(db_session, language_id=lang.id, name="Sparse")
+    first_users = [
+        await make_user(db_session, email=f"multia{i}@example.com", display_name=f"A {i}")
+        for i in range(5)
+    ]
+    second_users = [
+        await make_user(db_session, email=f"multib{i}@example.com", display_name=f"B {i}")
+        for i in range(5)
+    ]
+    sparse_user = await make_user(db_session, email="multic@example.com", display_name="C")
+    for i in range(5):
+        await _grant_access_at(
+            db_session,
+            first.id,
+            first_users[i].id,
+            datetime(2026, 7, 1, 12, 0, i * 2, tzinfo=UTC),
+        )
+        await _grant_access_at(
+            db_session,
+            second.id,
+            second_users[i].id,
+            datetime(2026, 7, 1, 12, 0, i * 2 + 1, tzinfo=UTC),
+        )
+    await _grant_access_at(
+        db_session, sparse.id, sparse_user.id, datetime(2026, 7, 1, 12, 0, 30, tzinfo=UTC)
+    )
+    responses = await project_service.serialize_projects(db_session, [first, second, sparse])
+    by_id = {r.id: r for r in responses}
+    assert [m.user_id for m in by_id[first.id].members_preview] == [u.id for u in first_users[:4]]
+    assert [m.user_id for m in by_id[second.id].members_preview] == [u.id for u in second_users[:4]]
+    assert [m.user_id for m in by_id[sparse.id].members_preview] == [sparse_user.id]
+
+
+def test_oc_project_list_response_excludes_console_only_fields() -> None:
+    fields = set(OCProjectListResponse.model_fields)
+    assert "phases_completed" not in fields
+    assert "phases_total" not in fields
+    assert "members_preview" not in fields
+    assert "image_url" in fields
+    assert "member_count" in fields
+
+
+@pytest.mark.asyncio
+async def test_update_project_sets_image_url(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id, name="Image")
+    updated = await project_service.update_project(
+        db_session, project.id, image_url="https://example.com/cover.png"
+    )
+    assert updated.image_url == "https://example.com/cover.png"
+    assert updated.name == "Image"
+
+
+@pytest.mark.asyncio
+async def test_update_project_clears_image_url(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id, name="Image")
+    await project_service.update_project(
+        db_session, project.id, image_url="https://example.com/cover.png"
+    )
+    payload = ProjectUpdate.model_validate({"image_url": None})
+    updated = await project_service.update_project(
+        db_session, project.id, **payload.model_dump(exclude_unset=True)
+    )
+    assert updated.image_url is None
+
+
+@pytest.mark.asyncio
+async def test_update_project_keeps_image_url_when_not_provided(db_session) -> None:
+    lang = await make_language(db_session, code="kos")
+    project = await make_project(db_session, language_id=lang.id, name="Image")
+    await project_service.update_project(
+        db_session, project.id, image_url="https://example.com/cover.png"
+    )
+    payload = ProjectUpdate.model_validate({"name": "Renamed"})
+    updated = await project_service.update_project(
+        db_session, project.id, **payload.model_dump(exclude_unset=True)
+    )
+    assert updated.name == "Renamed"
+    assert updated.image_url == "https://example.com/cover.png"
