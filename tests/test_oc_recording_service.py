@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import ModuleType
 
 import pytest
 from sqlalchemy import select, text
@@ -15,7 +16,7 @@ from app.core.exceptions import (
     UnknownReferenceError,
     ValidationError,
 )
-from app.db.models.auth import App
+from app.db.models.auth import App, User
 from app.db.models.notification import Notification
 from app.db.models.oc_genre import OC_Genre, OC_Subcategory
 from app.db.models.oc_recording import OC_Recording
@@ -28,6 +29,7 @@ from app.models.oc_recording import (
     ResumableUploadUrlResponse,
 )
 from app.services.notifications.get_oc_app_id import OC_APP_KEY
+from app.services.oral_collector.gcs_utils import gcs_public_base
 from tests.baker import (
     make_app,
     make_language,
@@ -37,6 +39,7 @@ from tests.baker import (
     make_project,
     make_user,
 )
+from tests.oral_collector_harness import PRODUCTION_BUCKET, STAGING_BUCKET
 
 pytest.importorskip("app.inngest")
 
@@ -51,12 +54,6 @@ def _import_service():
     from app.services.oral_collector import recording_service
 
     return recording_service
-
-
-def _public_base() -> str:
-    from app.services.oral_collector.gcs_utils import gcs_public_base
-
-    return gcs_public_base()
 
 
 @pytest.mark.asyncio
@@ -1632,7 +1629,7 @@ async def test_deleting_a_failed_upload_that_reached_the_bucket_deletes_its_blob
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
 
-    gcs_url = f"{_public_base()}oral-collector/p/g/r.m4a"
+    gcs_url = f"{gcs_public_base()}oral-collector/p/g/r.m4a"
     rec = await make_oc_recording(
         db_session,
         project_id,
@@ -1660,7 +1657,7 @@ async def test_deleting_a_verified_recording_deletes_its_blob(
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
 
-    gcs_url = f"{_public_base()}oral-collector/p/g/verified.m4a"
+    gcs_url = f"{gcs_public_base()}oral-collector/p/g/verified.m4a"
     rec = await make_oc_recording(
         db_session,
         project_id,
@@ -1741,7 +1738,7 @@ async def test_a_failed_upload_past_the_retention_is_deleted_with_its_blob(
     project_id = await _seed_project(db_session)
     genre, sub = await make_oc_taxonomy(db_session)
 
-    gcs_url = f"{_public_base()}oral-collector/p/g/abandoned.m4a"
+    gcs_url = f"{gcs_public_base()}oral-collector/p/g/abandoned.m4a"
     rec = await make_oc_recording(
         db_session,
         project_id,
@@ -1814,7 +1811,7 @@ async def test_a_bucket_that_refuses_the_blob_does_not_keep_the_row(
             sub.id,
             user_id=user.id,
             title=f"abandoned {index}",
-            gcs_url=f"{_public_base()}oral-collector/p/g/abandoned-{index}.m4a",
+            gcs_url=f"{gcs_public_base()}oral-collector/p/g/abandoned-{index}.m4a",
             upload_status=UploadStatus.UPLOAD_FAILED,
         )
         await _age_recording(db_session, rec.id, rs.FAILED_UPLOAD_RETENTION + timedelta(days=1))
@@ -1895,7 +1892,7 @@ async def _seed_abandoned_uploads(
     """Purgeable rows of the given ages, each owning a blob, as `(id, gcs_url)` in seed order."""
     seeded: list[tuple[str, str]] = []
     for age_days in ages_in_days:
-        gcs_url = f"{_public_base()}oral-collector/p/g/abandoned-{age_days}d.m4a"
+        gcs_url = f"{gcs_public_base()}oral-collector/p/g/abandoned-{age_days}d.m4a"
         rec = await make_oc_recording(
             db,
             project_id,
@@ -2014,10 +2011,6 @@ async def test_a_batched_pass_deletes_the_blobs_of_the_rows_it_took_and_no_other
     assert deleted == [oldest_url, second_oldest_url, youngest_url]
 
 
-STAGING_BUCKET = "balde-de-staging"
-PRODUCTION_BUCKET = "tripod-image-uploads"
-
-
 class _FakeGcsBlob:
     """The three calls the service makes on a blob, answering what GCS answers with."""
 
@@ -2059,7 +2052,7 @@ class _FakeGcsClient:
         return _FakeGcsBucket(name, self.deleted)
 
 
-def _fake_the_bucket(monkeypatch: pytest.MonkeyPatch, rs) -> _FakeGcsClient:  # type: ignore[no-untyped-def]
+def _fake_the_bucket(monkeypatch: pytest.MonkeyPatch, rs: ModuleType) -> _FakeGcsClient:
     client = _FakeGcsClient()
     monkeypatch.setattr(rs, "_get_gcs_client", lambda: client)
     monkeypatch.setattr(rs, "_get_signing_info", lambda: ("signer@test", "token"))
@@ -2072,7 +2065,15 @@ def _point_the_bucket_at(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setattr(get_settings(), "gcs_oc_bucket", name)
 
 
-async def _seed_recording(db: AsyncSession, monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
+def _declared_default_bucket() -> str:
+    from app.core.config import Settings
+
+    default = Settings.model_fields["gcs_oc_bucket"].default
+    assert isinstance(default, str)
+    return default
+
+
+async def _seed_recording(db: AsyncSession) -> tuple[OC_Recording, User]:
     user = await make_user(db)
     project_id = await _seed_project(db)
     genre, sub = await make_oc_taxonomy(db)
@@ -2087,7 +2088,7 @@ async def test_the_signed_upload_url_addresses_the_configured_bucket(
     rs = _import_service()
     _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
     _fake_the_bucket(monkeypatch, rs)
-    rec, user = await _seed_recording(db_session, monkeypatch)
+    rec, user = await _seed_recording(db_session)
 
     response = await rs.generate_upload_url(db_session, rec.id, "m4a", user.id)
 
@@ -2100,7 +2101,7 @@ async def test_the_resumable_upload_session_addresses_the_configured_bucket(
     rs = _import_service()
     _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
     _fake_the_bucket(monkeypatch, rs)
-    rec, user = await _seed_recording(db_session, monkeypatch)
+    rec, user = await _seed_recording(db_session)
 
     response = await rs.generate_resumable_upload_url(db_session, rec.id, "m4a", user.id)
 
@@ -2110,10 +2111,15 @@ async def test_the_resumable_upload_session_addresses_the_configured_bucket(
 async def test_without_the_setting_both_upload_urls_address_the_production_bucket(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A missing variable signs for exactly the bucket production signs for today."""
+    """A missing variable signs for exactly the bucket production signs for today.
+
+    The setting is put back to the field's own declared default rather than left to the
+    ambient environment, so the case says what it stands on.
+    """
     rs = _import_service()
+    _point_the_bucket_at(monkeypatch, _declared_default_bucket())
     _fake_the_bucket(monkeypatch, rs)
-    rec, user = await _seed_recording(db_session, monkeypatch)
+    rec, user = await _seed_recording(db_session)
 
     simple = await rs.generate_upload_url(db_session, rec.id, "m4a", user.id)
     resumable = await rs.generate_resumable_upload_url(db_session, rec.id, "m4a", user.id)
@@ -2152,3 +2158,4 @@ def test_a_stored_url_resolves_to_its_object_name_whatever_bucket_it_names(
         == "oral-collector/p/g/r.m4a"
     )
     assert blob_name_from_url("https://elsewhere.example/x") is None
+    assert blob_name_from_url(f"http://storage.googleapis.com/{PRODUCTION_BUCKET}/r.m4a") is None

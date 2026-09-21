@@ -1,3 +1,11 @@
+"""The images the console uploads: app icons, avatars and the rest.
+
+They live in the oral-collector's bucket, and always have — one bucket, not two — so the
+name comes from the same setting (`GCS_OC_BUCKET`) rather than from a constant nailed
+into this module. Splitting them would invent a distinction that does not exist:
+[ADR 0029](../../../docs/adr/0029-the-oral-collectors-bucket-is-a-setting.md).
+"""
+
 import asyncio
 import uuid
 from typing import Any

@@ -6,6 +6,7 @@ from app.core.enums import UploadStatus
 from app.core.exceptions import AuthorizationError
 from app.db.models.oc_recording import OC_Recording
 from app.db.models.project import ProjectUserAccess
+from app.services.oral_collector.gcs_utils import gcs_public_base
 from tests.baker import (
     make_language,
     make_oc_recording,
@@ -21,12 +22,6 @@ def _import_service():
     from app.services.oral_collector import recording_service
 
     return recording_service
-
-
-def _public_base() -> str:
-    from app.services.oral_collector.gcs_utils import gcs_public_base
-
-    return gcs_public_base()
 
 
 async def _seed_project_with_manager(
@@ -145,7 +140,7 @@ async def test_clearing_stale_recordings_deletes_the_bucket_blob_only_of_a_row_t
     deleted_blobs: list[str] = []
     monkeypatch.setattr(rs, "_delete_gcs_blob", deleted_blobs.append)
 
-    blob_url = f"{_public_base()}oral-collector/{project_id}/{genre.id}/in-bucket.m4a"
+    blob_url = f"{gcs_public_base()}oral-collector/{project_id}/{genre.id}/in-bucket.m4a"
     await make_oc_recording(
         db_session,
         project_id,
