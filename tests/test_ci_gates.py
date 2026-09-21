@@ -145,12 +145,12 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 #: the last job left without one. ENG-969 puts every gate under a ceiling: 10 for lint (now
 #: checks), whose seven commands cost 40 seconds of work, and 10 for test, twice the five
 #: minutes its step is expected to take now that the suite runs in four processes. ENG-980
-#: raises the migrations ceiling to fit the `-m migration` step it adds, at twice what the
-#: whole job measures.
+#: raises the migrations ceiling to fit the `-m migration` step it adds, at twice the 3m04s
+#: the whole job measured on shemaobt/shema-api#474's own CI run.
 JOB_TIMEOUT_MINUTES = {
     ("test.yml", "test"): 10,
     ("checks.yml", "checks"): 10,
-    ("migrations.yml", "migrations"): 8,
+    ("migrations.yml", "migrations"): 7,
 }
 
 

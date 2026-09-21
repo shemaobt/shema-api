@@ -39,8 +39,10 @@ jobs:
   migrations:
     runs-on: ubuntu-latest
     # Twice what the whole job (graph check, upgrade, `alembic check`, downgrade/upgrade walk,
-    # then the migration-marked tests) measures on the runner, rounded up (ENG-980).
-    timeout-minutes: 8
+    # then the migration-marked tests) measures on the runner, rounded up: 3m04s measured on
+    # this PR's own run (shemaobt/shema-api#474, job 106511275884), the new step 2m08s of it
+    # (ENG-980).
+    timeout-minutes: 7
 
     services:
       postgres:
