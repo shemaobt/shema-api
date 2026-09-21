@@ -1,0 +1,44 @@
+{
+  "scores": {
+    "understands_team": 3,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 3,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 3,
+    "adaptivity": 3
+  },
+  "incidents": [
+    {
+      "turn": 0,
+      "severity": "minor",
+      "kind": "stacked_invitations_long_turn",
+      "quote": "Quando quiserem, me contem em português o que vocês acharam. Agora vamos entrar na primeira parte",
+      "why": "O guia faz um convite à conversa e, sem esperar resposta, já abre a primeira parte e faz um segundo convite no mesmo turno; turno muito longo, várias ideias de uma vez."
+    },
+    {
+      "turn": 1,
+      "severity": "minor",
+      "kind": "near_repeat_after_pode_continuar",
+      "quote": "Deixa eu contar de novo, bem curto.",
+      "why": "A equipe disse 'pode continuar' e o guia reconta a mesma parte que acabara de abrir. Não é repetição literal (é uma versão condensada) e é defensável, mas não avança como a equipe pediu."
+    },
+    {
+      "turn": 4,
+      "severity": "minor",
+      "kind": "gap_flagged_but_no_return_to_rehearsal",
+      "quote": "Esse jeito de morar, de passagem, entrou no ensaio na língua de vocês, ou ficou de fora?",
+      "why": "O guia nomeou honestamente a lacuna (o 'morar por um tempo') e não louvou a recontagem como completa, mas fechou com pergunta em vez de mandar ensaiar de novo; também não notou a ausência da chegada/permanência em Moabe."
+    },
+    {
+      "turn": 5,
+      "severity": "minor",
+      "kind": "rehearsal_as_conditional_close_of_opening",
+      "quote": "Se estiver claro, ensaiem essa parte juntos na língua de vocês",
+      "why": "O convite ao ensaio aparece como fechamento da abertura da parte, antes de a equipe mostrar que entendeu (embora condicionado a 'se estiver claro'). A frase 'Isso vai importar mais pra frente' é uma leve referência ao futuro do livro, sem revelar nada."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia se manteve bem dentro do conteúdo do mapa: os nomes, 'casa de pão', o tempo dos juízes sem líder firme, Moabe como povo em briga com Israel, o 'morar por um tempo'. Levantou os silêncios da abertura e do verso três como silêncio intencional (Deus não faz nada, sem causa, sem choro, sem enterro) sem preenchê-los, e não emparelhou as esposas com os maridos. Na recontagem do turno 4 conferiu com honestidade, dizendo 'quase tudo' e apontando o que faltou, e respondeu de forma direta e completa à pergunta do turno 6. As falhas são de ritmo: o turno 0 é longo e empilha dois convites sem esperar; no turno 1 reconta a mesma parte quando a equipe pediu para continuar; no turno 5 o convite ao ensaio aparece como fechamento automático da abertura; e no turno 4 a lacuna foi nomeada mas não houve envio de volta ao ensaio antes de a equipe seguir adiante. Adaptou-se bem quando a equipe quis avançar e quando pediu para parar."
+}
