@@ -125,6 +125,23 @@ async def test_list_languages_by_projects(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_languages_by_projects_leaves_out_the_deactivated(db_session) -> None:
+    """A manager's list agrees with a direct read: a deactivated language is absent from both."""
+    active = await make_language(db_session, code="lac")
+    retired = await make_language(db_session, code="lrt")
+    retired.is_active = False
+    await db_session.commit()
+    managed = await make_project(db_session, language_id=active.id, name="Active")
+    also_managed = await make_project(db_session, language_id=retired.id, name="Retired")
+
+    languages = await language_service.list_languages_by_projects(
+        db_session, [managed.id, also_managed.id]
+    )
+
+    assert [lng.code for lng in languages] == ["lac"]
+
+
+@pytest.mark.asyncio
 async def test_list_phases_by_projects(db_session) -> None:
     lang = await make_language(db_session, code="lpp")
     managed = await make_project(db_session, language_id=lang.id, name="Managed")
