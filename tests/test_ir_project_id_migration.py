@@ -21,6 +21,8 @@ import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from tests.alembic_harness import columns_of, indexes_of, run_alembic, scalar
 
+pytestmark = pytest.mark.migration
+
 #: This migration and the revision it sits on. The parent is the merge revision that
 #: joins the room and device lines: stepping back from a merge revision is ambiguous, so
 #: the merge is never a head and this migration is always the thing above it. Both go

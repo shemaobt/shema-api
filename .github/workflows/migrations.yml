@@ -8,7 +8,7 @@ name: Migrations
 on:
   pull_request:
 
-  # See the note in `lint.yml` for why `integration/**` is here and why it stays narrow.
+  # See the note in `checks.yml` for why `integration/**` is here and why it stays narrow.
   #
   # **This job is expected to go red on that branch between certain steps, and that is not
   # a reason to switch it off.** The chain is merged one branch at a time, and every merge
@@ -38,7 +38,9 @@ env:
 jobs:
   migrations:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Twice what the whole job (graph check, upgrade, `alembic check`, downgrade/upgrade walk,
+    # then the migration-marked tests) measures on the runner, rounded up (ENG-980).
+    timeout-minutes: 8
 
     services:
       postgres:
@@ -116,3 +118,15 @@ jobs:
             uv run alembic downgrade "$target"
             uv run alembic upgrade head
           done <<< "$targets"
+
+      # The fourteen migration-walking tests build their own throwaway SQLite file each and
+      # never touch this job's Postgres — but only once `DATABASE_URL` is cleared. The job
+      # sets it at job level, and the suite's conftest honours it when set: left in place, the
+      # fourteen would run against this Postgres instead, serially (AGENTS.md: a run that
+      # names its own database runs without `-n`), and create tables over the schema the
+      # upgrade step above just migrated — a step-level `env` cannot unset a job-level one in
+      # Actions, so the `run` line does it.
+      - name: Run the tests that walk a migration
+        run: env -u DATABASE_URL uv run pytest tests/ -n 4 --dist loadfile -rfE -m migration
+        env:
+          JWT_SECRET_KEY: test-secret-for-ci-only

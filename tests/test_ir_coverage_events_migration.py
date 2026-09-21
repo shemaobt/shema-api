@@ -25,6 +25,8 @@ import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 from tests.alembic_harness import indexes_of, run_alembic, tables_of
 
+pytestmark = pytest.mark.migration
+
 #: This migration and the revision it hangs on. That parent is the room's `project_id`
 #: migration, which is what gives a session the project an event carries.
 REVISION = "20260820_0002"

@@ -18,6 +18,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.fresh_interpreter
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 #: The smallest module in the suite whose tests write through `db_session`, which is the
