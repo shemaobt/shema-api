@@ -46,16 +46,16 @@ class Settings(BaseSettings):
     #: limit keeps the rung it is on. The voice carries the Guide and the Validator, and
     #: DOCTRINE.md forbids anything but a frontier model there; analysis reads the telling
     #: back against the map; the classifier only moves beads and runs off the voice path.
-    #: These and their parameters are Marcia's artifacts (DOCTRINE.md 5.1), not ours to tune.
+    #: These and their parameters are Marcia's artifacts (DOCTRINE.md 5.1), not ours to tune —
+    #: including the classifier's own call in classify_coverage.py, ruled 2026-09-21 to run
+    #: adaptive thinking with a 6000-token ceiling: "In my stack the classifier runs with
+    #: adaptive thinking and an output ceiling of 6000 tokens. At 1500 we had exactly your
+    #: empty replies, on 9 September, and 6000 cured them. It is off the voice path, so the
+    #: team never waits for it." — docs/doctrine/rulings/2026-09-21-the-classifier-thinks-
+    #: with-room-for-it.md
     tripod_voice_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
     tripod_analysis_model: str = "claude-fable-5-1,claude-opus-5,claude-opus-4-8"
     tripod_classifier_model: str = "claude-sonnet-5,claude-sonnet-4-6"
-    #: The classifier's own call (classify_coverage.py) runs adaptive thinking with a
-    #: 6000-token ceiling. Also her artifact (DOCTRINE.md 5.1, docs/doctrine/MODEL_SEAM),
-    #: ruled 2026-09-21: "In my stack the classifier runs with adaptive thinking and an
-    #: output ceiling of 6000 tokens. At 1500 we had exactly your empty replies, on 9
-    #: September, and 6000 cured them. It is off the voice path, so the team never waits
-    #: for it." — docs/doctrine/rulings/2026-09-21-the-classifier-thinks-with-room-for-it.md
     #: The one clock on the room's turn: the deployment's own function ceiling (Cloud Run's
     #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
     #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
