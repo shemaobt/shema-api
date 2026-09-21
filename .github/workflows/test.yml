@@ -20,10 +20,11 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Twice the slowest green run on 8 September (13-20 minutes, ENG-913). Without this the
-    # job inherits GitHub's 360-minute default, which is how one hung run stayed "pending"
-    # for six hours instead of turning red.
-    timeout-minutes: 40
+    # Twice the five minutes the `Run tests` step is expected to take (ENG-969): the ceiling
+    # is on the job, and the five minutes are the target it is calibrated against, not a
+    # second ceiling. Without this the job inherits GitHub's 360-minute default, which is how
+    # one hung run stayed "pending" for six hours instead of turning red (ENG-913).
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,7 +47,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
+      # `--dist loadfile` is load-bearing, not tuning: the schema is created once per process
+      # and two cases of the database's own contract depend on a module running in file order
+      # on one worker. `-v` went with it, because four workers interleaving 3259 lines is not
+      # a log anybody reads.
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -n 4 --dist loadfile -rfE
         env:
           JWT_SECRET_KEY: test-secret-for-pytest-only

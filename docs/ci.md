@@ -8,10 +8,8 @@ named in the table.
 
 | Workflow | What it gates |
 |---|---|
-| Lint | `ruff check` and `ruff format --check` over the repository. |
-| Lint, boot job | The application imports in a clean interpreter. A suite's collection order can hide an import cycle; this cannot. |
-| Lint, mypy job | Type checking over the application package. |
-| Test | The pytest suite on SQLite, with `ffmpeg` installed first so recordings are measured the way the deployed image measures them. |
+| Lint | One job, one check on the pull request, seven commands in a queue under a 10-minute ceiling: `ruff check`, `ruff format --check`, the application importing in a clean interpreter (a suite's collection order can hide an import cycle; this cannot), `mypy app/`, the two passes of the doctrine guard, and the canon drift check, which talks to Marcia's repository and carries `GITHUB_TOKEN` for it. |
+| Test | The pytest suite on SQLite in four processes split by file, with the schema created once per process, under a 10-minute ceiling, which is twice the five minutes the test step is expected to take. `ffmpeg` is installed first so recordings are measured the way the deployed image measures them. |
 | Migrations | The graph stands at one head with no duplicate revision ids, the models match the migrated schema (`alembic check`), and the newest migrations walk down and back up on a clean Postgres. |
 | Deploy | A push to `main` builds the image, upgrades the production database and deploys to Cloud Run. |
 | Deploy staging | A push to `dev` does the same against the Neon `staging` branch and the staging service, then checks that the service answers publicly. |
