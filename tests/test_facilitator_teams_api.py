@@ -31,6 +31,8 @@ from app.db.models.internalization_room import (
     IRQuestionStatus,
     IRSession,
     IRSessionStatus,
+    IRTake,
+    IRTakeKind,
 )
 from app.services.device.create_device import create_device
 from app.services.internalization_room.canon.elements import element_keys
@@ -39,7 +41,6 @@ from app.services.internalization_room.sessions import apply_coverage, create_se
 from tests.baker import (
     grant_facilitator_app_role,
     having_finished_the_passage,
-    keep_a_take,
     make_language,
     make_project,
     make_project_user_access,
@@ -511,19 +512,46 @@ async def test_a_team_whose_only_session_is_unentered_has_never_acted(client, db
     assert card["state"] == "in_progress"
 
 
-async def test_a_take_newer_than_the_last_turn_still_counts_as_activity(client, db_session):
-    """The other two legs of the union — a take, a raised hand — are untouched: only the
-    session's own leg stops counting an unentered row."""
+async def test_a_take_still_counts_even_when_its_own_session_is_unentered(client, db_session):
+    """The take leg of the union is untouched by `entered()`: a take counts by its own
+    `project_id`, whether or not the session it names is itself entered.
+
+    The take's `session_id` here names no session in this test at all (`ir_takes` carries no
+    foreign key, ADR 0006) — on purpose, so a take that would have made its *own* session
+    entered (had it named one) is not this case's confound. The unentered session's own
+    moment is left the most recent of the three, so only the correct exclusion of its row
+    from the session leg lets the take's older moment through as the answer; a session leg
+    that still counted it would answer with its moment instead.
+    """
     team = await a_team(db_session, name="Equipe Terena")
     old_turn = datetime.now(UTC) - LONG_AGO
     await a_session(db_session, team, when=old_turn)
-    empty = await a_session(db_session, team, when=datetime.now(UTC) - RECENTLY, entered=False)
-    await keep_a_take(db_session, empty)
+    await a_session(db_session, team, when=datetime.now(UTC) - RECENTLY, entered=False)
+    take_moment = old_turn + timedelta(days=1)
+    db_session.add(
+        IRTake(
+            session_id="nenhuma-sessao-deste-teste",
+            device_id="tablet-da-equipe",
+            project_id=team.id,
+            pericope="P01",
+            kind=IRTakeKind.ENSAIO,
+            scope="P01",
+            storage_key="x",
+            size_bytes=1,
+            sha256="0" * 64,
+            crc32c="0" * 8,
+            content_type="audio/aac",
+            created_at=take_moment,
+        )
+    )
+    await db_session.commit()
     _user, headers = await a_facilitator(db_session, team)
 
     card = (await client.get(TEAMS_URL, headers=headers)).json()["teams"][0]
 
-    assert not card["last_activity_at"].startswith(old_turn.date().isoformat())
+    assert card["last_activity_at"].startswith(take_moment.date().isoformat()), card[
+        "last_activity_at"
+    ]
 
 
 async def test_a_session_halted_before_any_turn_landed_still_counts_as_activity(client, db_session):

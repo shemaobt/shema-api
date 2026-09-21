@@ -17,9 +17,9 @@ the team up a facilitator's work queue for a passage nobody opened on purpose.
 
 Decided: the server stops showing a session nobody entered. `entered()`
 (`app/services/internalization_room/entered.py`) is the one predicate — `messages` holding at
-least one turn, a row of `ir_takes` naming the session, or a standing `needs_person` halt — and
-both readers filter by it: the Desk's column (`team_sessions._history_of`) and the sessions leg
-of the team's last activity (`list_facilitator_teams._last_activity_subquery`). No route to
+least one turn, a row of `ir_takes` naming the session, or a halt this session ever asked for —
+and both readers filter by it: the Desk's column (`team_sessions._history_of`) and the sessions
+leg of the team's last activity (`list_facilitator_teams._last_activity_subquery`). No route to
 close, delete or sweep a session is added; the server does not answer for a session that was
 never a room, rather than closing one that was. Accepted with the rule: a room just opened
 appears in the Desk's column only when its first turn lands, seconds later — the delay of one
@@ -31,8 +31,14 @@ the tablet can ask for a person (`POST /sessions/{id}/needs-person`) as a slow-r
 or when resuming a passage whose parts never came back, and the Desk attends a halted room from
 this same column. Excluding an unentered-but-halted session by the letter of the rule above
 would have hidden a team that is stuck, which the rule was never meant to do — so `entered()`
-also reads `status == needs_person`, and the boundary this ADR draws is "no turn, no take and
-no halt," not "no turn and no take" alone.
+gains two more branches, both read the way `halt.last` already reads this same fact
+(`app/services/internalization_room/halt.py`): `halt_kind IS NOT NULL`, because `attend`
+answers the halt by putting `status` back to `IN_PROGRESS` without clearing `halt_kind` — a
+room a facilitator has since gone to must not drop back out of the column on that account, and
+`halt_kind` is written on every halt and cleared by none for exactly this reason; and
+`status == needs_person` beside it, for a pre-ENG-609 row that has no `halt_kind` to read but
+may still be standing halted. The boundary this ADR draws is "no turn, no take and no halt,"
+not "no turn and no take" alone.
 
 Rejected: a new route for the tablet to say it is done with the session it opened, so the server
 could close it rather than merely hide it. That is the more exact fix — closing what opened
