@@ -50,12 +50,7 @@ async def update_user(
     current_user: User = Depends(require_platform_admin),
 ) -> UserListResponse:
     user = await user_service.update_user(
-        db,
-        user_id,
-        current_user,
-        is_active=payload.is_active,
-        is_platform_admin=payload.is_platform_admin,
-        avatar_url=payload.avatar_url,
+        db, user_id, current_user, **payload.model_dump(exclude_unset=True)
     )
     manager_ids = await user_service.get_manager_user_ids(db, [user.id])
     return user_service.build_user_list_response(user, is_manager=user.id in manager_ids)

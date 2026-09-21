@@ -56,6 +56,44 @@ async def test_update_user_toggles_is_platform_admin(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_user_clears_avatar_when_explicitly_null(db_session) -> None:
+    admin = await make_user(db_session, email="clearnull-admin@example.com", is_platform_admin=True)
+    created = await make_user(db_session, email="clearnull@example.com")
+    await user_service.update_user(db_session, created.id, admin, avatar_url="https://x/a.png")
+
+    updated = await user_service.update_user(db_session, created.id, admin, avatar_url=None)
+
+    assert updated.avatar_url is None
+
+
+@pytest.mark.asyncio
+async def test_update_user_clears_avatar_when_empty_string(db_session) -> None:
+    admin = await make_user(
+        db_session, email="clearempty-admin@example.com", is_platform_admin=True
+    )
+    created = await make_user(db_session, email="clearempty@example.com")
+    await user_service.update_user(db_session, created.id, admin, avatar_url="https://x/a.png")
+
+    updated = await user_service.update_user(db_session, created.id, admin, avatar_url="")
+
+    assert updated.avatar_url is None
+
+
+@pytest.mark.asyncio
+async def test_update_user_keeps_avatar_when_field_is_omitted(db_session) -> None:
+    """The actor is somebody else on purpose: #101 refuses an admin deactivating themselves."""
+    admin = await make_user(
+        db_session, email="keepavatar-admin@example.com", is_platform_admin=True
+    )
+    created = await make_user(db_session, email="keepavatar@example.com")
+    await user_service.update_user(db_session, created.id, admin, avatar_url="https://x/a.png")
+
+    updated = await user_service.update_user(db_session, created.id, admin, is_active=False)
+
+    assert updated.avatar_url == "https://x/a.png"
+    assert updated.is_active is False
+
+
 async def test_update_user_rejects_self_admin_flag_change(db_session) -> None:
     admin = await make_user(db_session, email="acting@example.com", is_platform_admin=True)
 
