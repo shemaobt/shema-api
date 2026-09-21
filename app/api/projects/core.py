@@ -3,8 +3,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.projects._deps import assert_project_access
-from app.core.auth_middleware import get_current_user
+from app.api.projects._deps import assert_project_access, console_guard
+from app.core.auth_middleware import get_current_user, require_platform_admin
 from app.core.database import get_db
 from app.db.models.auth import User
 from app.models.project import (
@@ -18,7 +18,7 @@ from app.services import project_service
 router = APIRouter()
 
 
-@router.get("", response_model=list[ProjectResponse])
+@router.get("", response_model=list[ProjectResponse], dependencies=console_guard)
 async def list_projects(
     language_id: str | None = Query(default=None),
     organization_id: UUID | None = Query(default=None),
@@ -31,11 +31,16 @@ async def list_projects(
     return await project_service.serialize_projects(db, projects)
 
 
-@router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ProjectResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=console_guard,
+)
 async def create_project(
     payload: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_platform_admin),
 ) -> ProjectResponse:
     project = await project_service.create_project(
         db,
