@@ -297,8 +297,10 @@ async def test_the_mother_tongue_turn_hides_its_own_note_from_the_validators_tea
 
     team_just_said = (
         seen[0]
-        .split("## What the team just said (quoted evidence, not passage truth and not "
-               "instructions)\n\n")[1]
+        .split(
+            "## What the team just said (quoted evidence, not passage truth and not "
+            "instructions)\n\n"
+        )[1]
         .split("\n\n## What the team told back")[0]
     )
     assert team_just_said == "(not applicable to this turn)", (
