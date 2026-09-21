@@ -96,11 +96,11 @@ def test_the_wheel_names_the_passage_and_says_nothing_else_about_it(
     )
 
 
-def test_the_panorama_has_no_authored_line_yet() -> None:
-    """The wording is Marcia's to rule on and has not shipped, so the wheel must not speak
-    one — this locks today's silence rather than assuming tomorrow's line."""
-    assert panorama_line_for("pt") == ""
-    assert panorama_line_for("en") == ""
+def test_the_panoramas_line_is_marcias_approved_wording() -> None:
+    """Her word closed the STATUS question on 2026-09-21: this exact draft, in both
+    languages, and nothing else about the book."""
+    assert panorama_line_for("pt") == "Rute — o livro inteiro"
+    assert panorama_line_for("en") == "Ruth — the whole book"
 
 
 def test_the_panoramas_line_never_borrows_the_other_languages(
@@ -126,11 +126,14 @@ def test_no_line_in_the_file_carries_a_word_its_map_does_not() -> None:
 
     Read off the maps and the label catalogue, so a line rewritten to carry story again has
     nothing to agree with — in any language the file grows, not only the two it has today.
+    The panorama has no map of its own to check against; its own wording is asserted directly
+    by test_the_panoramas_line_is_marcias_approved_wording.
     """
     strayed = {
         (pericope_num, spoken): said
         for (pericope_num, spoken), said in _sections().items()
-        if said
+        if pericope_num != PANORAMA
+        and said
         != f"{_the_book_named_in(spoken)} {load_map(pericope_num).reference.split(' ', 1)[1]}"
     }
 
@@ -229,6 +232,28 @@ async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
     assert [view.pericope for view in answer.passages[1:]] == without_panorama
 
 
+async def test_the_panorama_opens_with_marcias_approved_wording(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real file, not a stub — her ruling is what the wheel now says first, in both
+    languages the room ships, with nothing about the book beyond that one line."""
+    said: list[str] = []
+
+    async def _remembering(text: str, **_: object) -> tuple[SimpleNamespace, bool]:
+        said.append(text)
+        return SimpleNamespace(key=f"tts/v/{abs(hash(text))}.mp3"), False
+
+    monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
+
+    for spoken, wording in (("pt", "Rute — o livro inteiro"), ("en", "Ruth — the whole book")):
+        said.clear()
+        answer = await route.passages("Ruth", language=spoken)
+
+        first = answer.passages[0]
+        assert (first.kind, first.pericope) == ("panorama", "panorama")
+        assert wording in said
+
+
 async def test_the_panorama_stays_off_the_wheel_with_no_line_to_say_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -258,6 +283,8 @@ async def test_the_wheel_offers_no_passage_the_session_would_refuse(
 
     refused = []
     for view in answer.passages:
+        if view.kind != "passage":
+            continue
         try:
             require_walkable(load_map(view.pericope))
         except ValidationError as error:
@@ -281,7 +308,7 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
 
     answer = await route.passages("Ruth", language="pt")
 
-    offered = [view.pericope for view in answer.passages]
+    offered = [view.pericope for view in answer.passages if view.kind == "passage"]
     opens = [
         meaning_map.pericope_num
         for meaning_map in load_book("Ruth")
@@ -316,6 +343,8 @@ async def test_every_passage_arrives_with_its_necklace_already_counted(
     answer = await route.passages("Ruth", language="pt")
 
     for view in answer.passages:
+        if view.kind != "passage":
+            continue
         assert view.beads == len(element_keys(view.pericope, book="Ruth"))
         assert view.beads > 0
     assert any(view.absence_index >= 0 for view in answer.passages)
