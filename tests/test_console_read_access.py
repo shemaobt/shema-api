@@ -4,8 +4,11 @@ These are the gates added for OBT-506. Every negative case here uses a
 *non-admin* account on purpose: `require_platform_admin` and every role guard
 return early for a platform admin, so a per-role gate "proven" with an admin
 account passes for the wrong reason and would keep passing after the guard was
-deleted. The user directory search is verified through its query-length floor
-rather than a role gate, because the pick-a-user flows legitimately call it.
+deleted. The user directory search is verified here through its query-length
+floor only; its role gate arrived with OBT-507 and is proven in
+`test_user_search_guard.py`. The caller in those three is a non-admin Console
+operator, which is the weakest account that still reaches the handler — a plain
+account now stops at the gate and would never exercise the floor.
 """
 
 from __future__ import annotations
@@ -20,7 +23,15 @@ from app.api.users import router as users_router
 from app.core.database import get_db
 from app.core.exceptions import register_exception_handlers
 from app.services.auth.issue_tokens import issue_tokens
-from tests.baker import make_app, make_role, make_user, make_user_app_role
+from tests.baker import (
+    make_app,
+    make_language,
+    make_project,
+    make_project_user_access,
+    make_role,
+    make_user,
+    make_user_app_role,
+)
 
 
 @pytest.fixture()
@@ -92,8 +103,21 @@ async def test_list_user_roles_is_allowed_for_a_platform_admin(db_session, clien
 # --- users/search: query-length floor stops directory enumeration (finding #1) ---
 
 
+async def _a_console_operator(db_session, email: str):
+    """A manager of one project, and not a platform admin.
+
+    `require_admin_or_manager` returns early for an admin, so an admin caller would
+    reach the handler even with the gate removed and prove nothing about the floor.
+    """
+    user = await make_user(db_session, email=email)
+    language = await make_language(db_session)
+    project = await make_project(db_session, language.id)
+    await make_project_user_access(db_session, project.id, user.id, role="manager")
+    return user
+
+
 async def test_search_with_empty_query_returns_no_one(db_session, client) -> None:
-    caller = await make_user(db_session, email="searcher@example.com")
+    caller = await _a_console_operator(db_session, "searcher@example.com")
     await make_user(db_session, email="alice@example.com", display_name="Alice")
     await make_user(db_session, email="bob@example.com", display_name="Bob")
     headers = await _headers(db_session, caller)
@@ -105,7 +129,7 @@ async def test_search_with_empty_query_returns_no_one(db_session, client) -> Non
 
 
 async def test_search_with_one_character_returns_no_one(db_session, client) -> None:
-    caller = await make_user(db_session, email="searcher2@example.com")
+    caller = await _a_console_operator(db_session, "searcher2@example.com")
     await make_user(db_session, email="alice2@example.com", display_name="Alice")
     headers = await _headers(db_session, caller)
 
@@ -116,7 +140,7 @@ async def test_search_with_one_character_returns_no_one(db_session, client) -> N
 
 
 async def test_search_with_a_real_query_still_finds_matches(db_session, client) -> None:
-    caller = await make_user(db_session, email="searcher3@example.com")
+    caller = await _a_console_operator(db_session, "searcher3@example.com")
     await make_user(db_session, email="zephyr@example.com", display_name="Zephyr")
     headers = await _headers(db_session, caller)
 

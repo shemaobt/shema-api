@@ -15,7 +15,7 @@ async def list_journeys(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[JourneyResponse]:
-    return await journey_service.list_journeys(db)
+    return await journey_service.list_journeys_for_user(db, user)
 
 
 @router.post("", response_model=JourneyResponse, status_code=status.HTTP_201_CREATED)
@@ -34,6 +34,7 @@ async def get_journey(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> JourneyResponse:
+    await journey_service.assert_journey_visible(db, user, journey_id)
     return await journey_service.get_journey_with_counts(db, journey_id)
 
 

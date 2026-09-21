@@ -13,6 +13,7 @@ from app.services.project.grant_user_access import grant_user_access
 from app.services.project.is_project_manager import is_project_manager
 from app.services.project.list_all_projects import list_all_projects
 from app.services.project.list_facilitated_project_ids import list_facilitated_project_ids
+from app.services.project.list_managed_project_ids import list_managed_project_ids
 from app.services.project.list_project_organization_access import (
     list_project_organization_access,
 )
@@ -53,6 +54,7 @@ __all__ = [
     "is_project_manager",
     "list_all_projects",
     "list_facilitated_project_ids",
+    "list_managed_project_ids",
     "list_project_organization_access",
     "list_project_user_access",
     "list_projects_accessible_to_user",

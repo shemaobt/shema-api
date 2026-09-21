@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,8 +9,19 @@ from app.db.models.project import Project
 from app.models.journey import JourneyResponse
 
 
-async def list_journeys(db: AsyncSession) -> list[JourneyResponse]:
-    result = await db.execute(select(Journey).order_by(Journey.created_at, Journey.id))
+async def list_journeys(
+    db: AsyncSession, journey_ids: Sequence[str] | None = None
+) -> list[JourneyResponse]:
+    """Every journey, or only the given ids when the caller is scoped.
+
+    `None` and an empty sequence are different answers: `None` is "no filter"
+    (a platform admin), an empty list is "this account manages no project that
+    carries a journey" and has to come back empty.
+    """
+    stmt = select(Journey).order_by(Journey.created_at, Journey.id)
+    if journey_ids is not None:
+        stmt = stmt.where(Journey.id.in_(journey_ids))
+    result = await db.execute(stmt)
     journeys = list(result.scalars().all())
 
     phase_counts_result = await db.execute(
