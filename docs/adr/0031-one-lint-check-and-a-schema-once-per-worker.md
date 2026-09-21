@@ -33,8 +33,9 @@ and each test is given a clean database by a **sweep** — every row of every ta
 one transaction in reverse dependency order, then the two seeded `App` rows written again.
 Measured at 0.014 s (0.016 / 0.013 / 0.014 / 0.014 / 0.013), a fifteenth of the DDL cycle.
 The suite runs `pytest -n 4 --dist loadfile`, four processes split by file, with
-`pytest-xdist` as a development dependency only. Both ceilings are 10 minutes, and the test
-step itself is held to five.
+`pytest-xdist` as a development dependency only. Both ceilings are 10 minutes, each of them on the job: the
+five minutes are what the test step is expected to take and what the ceiling is calibrated
+against, and nothing enforces them separately.
 
 Rejected: a per-test rollback, which reads as the obvious answer and cannot work here — 24
 sites in `app/` open their own session from `AsyncSessionLocal` and commit on another

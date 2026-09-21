@@ -20,9 +20,6 @@ env:
   # forced switch. Remove once the runner default is Node 24.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
-permissions:
-  contents: read
-
 jobs:
   # Seven checks in a queue, in one job. They were five jobs once, each paying the same four
   # setup steps for 40 seconds of work between them (ENG-969), and a pull request carried five
@@ -30,6 +27,8 @@ jobs:
   # queue, which is what "in a queue" means here.
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     # The seven commands measure 40 seconds between them; 10 leaves room for a cold `uv sync`
     # without inheriting GitHub's 360-minute default, which is how a hung job stayed
     # "pending" for six hours instead of turning red (ENG-913).
