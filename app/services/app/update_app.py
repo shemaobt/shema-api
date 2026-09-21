@@ -1,8 +1,10 @@
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ValidationError
 from app.db.models.auth import AccessRequest, App, User
 from app.services.access_request._default_roles import default_role_for
 from app.services.app.get_app_or_404 import get_app_or_404
@@ -18,7 +20,7 @@ async def update_app(
     app_url: str | None = None,
     ios_url: str | None = None,
     android_url: str | None = None,
-    platform: str | None = None,
+    platforms: Sequence[str] | None = None,
     is_active: bool | None = None,
     auto_approve: bool | None = None,
     actor: User | None = None,
@@ -36,8 +38,10 @@ async def update_app(
         app.ios_url = ios_url
     if android_url is not None:
         app.android_url = android_url
-    if platform is not None:
-        app.platform = platform
+    if platforms is not None:
+        if not platforms:
+            raise ValidationError("platforms must name at least one platform")
+        app.platforms = list(platforms)
     if is_active is not None:
         app.is_active = is_active
 
