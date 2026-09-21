@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from sqlalchemy import select
 
@@ -355,3 +357,27 @@ async def test_list_and_mine(db_session) -> None:
     assert user.email == "r@example.com"
     mine = await change_request_service.list_my_change_requests(db_session, requester.id)
     assert len(mine) == 1
+
+
+def test_apply_never_commits_so_the_approval_lands_as_one_transaction() -> None:
+    """The write and the status stamp commit together, or neither does.
+
+    An inner ``commit()`` in ``_apply`` persisted the language before the request was stamped;
+    a failure in between left the request ``pending`` over an entity that already existed, and
+    the retry raised ``ConflictError`` on the taken code — the request could never be approved.
+    Reading the source is what keeps the rule, because the failure it guards only shows up when
+    the outer commit dies.
+    """
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "services"
+        / "change_request"
+        / "review_change_request.py"
+    ).read_text()
+    after_apply = source.split("async def _apply(")[1]
+    apply_body = after_apply.split("async def _create_requested_language(")[0]
+
+    assert "db.commit()" not in apply_body
+    assert "db.flush()" in apply_body
+    assert source.count("await db.commit()") == 1

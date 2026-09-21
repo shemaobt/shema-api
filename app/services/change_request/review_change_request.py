@@ -43,6 +43,18 @@ async def review_change_request(
 
 
 async def _apply(db: AsyncSession, request: ChangeRequest, grant_manager_access: bool) -> str:
+    """Write what the request asks for, flushing only — the caller owns the one commit.
+
+    An inner ``commit()`` here was a trap and not a saving: it persisted the language while
+    the status stamp was still unwritten, so a failure after it left the request ``pending``
+    over an entity that already existed. The retry then found the code taken and raised
+    ``ConflictError``, and the request could never be approved again.
+
+    The ``CREATE_PROJECT`` branch is **not** atomic yet, and this is the one seam left:
+    ``create_project`` commits inside itself, before it grants the creator manager access.
+    Closing that means making the project service flush-only for all three of its callers,
+    which is a change of its own and not a rider on this one.
+    """
     if request.kind == ChangeRequestKind.CREATE_PROJECT:
         name = request.name
         assert name is not None
@@ -64,8 +76,7 @@ async def _apply(db: AsyncSession, request: ChangeRequest, grant_manager_access:
             raise ConflictError("Language code already exists")
         language = Language(name=name, code=code, created_by=request.requester_user_id)
         db.add(language)
-        await db.commit()
-        await db.refresh(language)
+        await db.flush()
         return language.id
 
     language_id = request.language_id
@@ -79,8 +90,7 @@ async def _apply(db: AsyncSession, request: ChangeRequest, grant_manager_access:
     new_name = request.name
     if new_name:
         language.name = new_name
-    await db.commit()
-    await db.refresh(language)
+    await db.flush()
     return language.id
 
 
