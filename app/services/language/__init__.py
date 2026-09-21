@@ -8,6 +8,7 @@ from app.services.language.get_visible_language_by_code_or_404 import (
 )
 from app.services.language.get_visible_language_or_404 import get_visible_language_or_404
 from app.services.language.list_languages import list_languages
+from app.services.language.list_languages_by_projects import list_languages_by_projects
 
 __all__ = [
     "create_language",
@@ -18,4 +19,5 @@ __all__ = [
     "get_visible_language_by_code_or_404",
     "get_visible_language_or_404",
     "list_languages",
+    "list_languages_by_projects",
 ]

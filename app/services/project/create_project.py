@@ -4,6 +4,7 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.project import Project
 from app.services.language.get_language_by_id import get_language_by_id
 from app.services.project.grant_user_access import grant_user_access
+from app.services.user.get_user_by_id import get_user_by_id
 
 
 async def create_project(
@@ -34,6 +35,8 @@ async def create_project(
     await db.refresh(project)
 
     if creator_user_id:
-        await grant_user_access(db, project.id, creator_user_id, role="manager")
+        creator = await get_user_by_id(db, creator_user_id)
+        if not creator.is_platform_admin:
+            await grant_user_access(db, project.id, creator_user_id, role="manager")
 
     return project
