@@ -37,8 +37,18 @@ class PublicProjectRequestCreate(BaseModel):
 
     @model_validator(mode="after")
     def _one_language_mode(self) -> "PublicProjectRequestCreate":
+        """Exactly one complete language mode: an existing id, or a new name *and* code.
+
+        Refusing both was only half the rule. Neither, and a half-named new language, used to
+        pass here and reach the reviewer, where applying the request had nothing to build a
+        project on — the approval then died on an assertion instead of telling anyone the form
+        was incomplete. The visitor is the one who can still fix it, so the refusal belongs at
+        their end of the wire.
+        """
         if self.language_id and (self.new_language_name or self.new_language_code):
             raise ValueError("Provide an existing language or a new one, not both")
+        if not self.language_id and not (self.new_language_name and self.new_language_code):
+            raise ValueError("Provide an existing language, or the name and the code of a new one")
         return self
 
 

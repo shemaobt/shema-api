@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import PublicRequestKind, PublicRequestStatus
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.db.models.auth import User
 from app.db.models.language import Language
 from app.db.models.public_request import PublicRequest
@@ -48,7 +48,8 @@ async def _apply(db: AsyncSession, request: PublicRequest) -> str:
         return project.id
 
     code = request.code
-    assert code is not None
+    if code is None:
+        raise ValidationError("This request has no language code to create")
     if await get_language_by_code(db, code):
         raise ConflictError("Language code already exists")
     language = Language(name=request.name, code=code)
@@ -58,9 +59,17 @@ async def _apply(db: AsyncSession, request: PublicRequest) -> str:
 
 
 async def _create_requested_language(db: AsyncSession, request: PublicRequest) -> str:
+    """The new language a project request asked for, refused in words if it is half-filled.
+
+    ``assert`` was wrong twice here: it answers 500 to a reviewer who can do nothing about it,
+    and ``python -O`` drops it, which would carry a ``None`` name into the row instead. Rows
+    written before ``PublicProjectRequestCreate`` required both fields can still be pending,
+    so the write path states the rule even though the edge now does too.
+    """
     name = request.new_language_name
     code = request.new_language_code
-    assert name is not None and code is not None
+    if name is None or code is None:
+        raise ValidationError("This request has no new language to create")
     if await get_language_by_code(db, code):
         raise ConflictError("Language code already exists")
     language = Language(name=name, code=code)

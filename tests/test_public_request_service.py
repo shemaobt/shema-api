@@ -260,6 +260,59 @@ def test_public_project_request_rejects_both_language_modes():
         )
 
 
+def test_public_project_request_rejects_neither_language_mode():
+    """A project request with no language at all used to reach the reviewer and die there."""
+    with pytest.raises(PydanticValidationError):
+        PublicProjectRequestCreate(
+            requester_name="Ana",
+            requester_email="ana@example.com",
+            name="Projeto",
+        )
+
+
+def test_public_project_request_rejects_a_half_named_new_language():
+    """A name without a code is not a language anyone can create."""
+    with pytest.raises(PydanticValidationError):
+        PublicProjectRequestCreate(
+            requester_name="Ana",
+            requester_email="ana@example.com",
+            name="Projeto",
+            new_language_name="Arara",
+        )
+    with pytest.raises(PydanticValidationError):
+        PublicProjectRequestCreate(
+            requester_name="Ana",
+            requester_email="ana@example.com",
+            name="Projeto",
+            new_language_code="ARA",
+        )
+
+
+async def test_reviewing_a_half_filled_stored_request_refuses_in_words(db_session):
+    """A row written before the edge carried the rule answers 400, never an AssertionError."""
+    from app.db.models.public_request import PublicRequest
+
+    reviewer = await make_user(db_session, email="admin-half@example.com", is_platform_admin=True)
+    request = PublicRequest(
+        kind="create_project",
+        status=PublicRequestStatus.PENDING,
+        requester_name="Ana",
+        requester_email="ana@example.com",
+        name="Projeto sem idioma",
+    )
+    db_session.add(request)
+    await db_session.commit()
+
+    with pytest.raises(ValidationError):
+        await public_request_service.review_public_request(
+            db_session,
+            reviewer,
+            request.id,
+            PublicRequestStatus.APPROVED,
+            None,
+        )
+
+
 async def test_create_language_request_stores_description(db_session):
     request = await public_request_service.create_language_request(
         db_session,
