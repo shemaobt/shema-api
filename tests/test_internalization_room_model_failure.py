@@ -16,7 +16,6 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.internalization_room.fail_safe import FailSafe
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.platform.tts import SynthesizedSpeech
 
@@ -135,14 +134,14 @@ async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx
     )
 
 
-async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
-    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+async def test_a_rehearsal_in_the_teams_own_language_is_voiced_by_the_guide_not_from_the_tin(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, spoken: list[str]
 ) -> None:
-    """Both turns are voiced from the tin, and only one of them is a room in trouble.
-
-    The tablet counts canned answers toward fetching a facilitator, so a team rehearsing in
+    """The tablet counts canned answers toward fetching a facilitator, so a team rehearsing in
     its own language — the one thing the room asks them for — spent that count three turns
-    running and stopped the session for someone who was not in the house.
+    running and stopped the session for someone who was not in the house. The room used to
+    keep it off the count by marking the line affirming; now no line is drawn from the tin at
+    all, and the Guide answers the fact of the rehearsal in its own words.
     """
     from app.api.internalization_room import sessions as sessions_api
 
@@ -155,6 +154,7 @@ async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
             text="koeti yoko vitukeovo enepone itukovo",
             language_code="und",
             language_probability=0.99,
+            take_ms=12_000,
         )
 
     monkeypatch.setattr(sessions_api, "heard_speech", _rehearsed_in_their_own_language)
@@ -163,9 +163,12 @@ async def test_the_wire_tells_an_affirming_canned_line_apart_from_a_broken_one(
 
     assert answered.status_code == 200, answered.text[:300]
     body = answered.json()
-    assert body["fixed_line"].startswith(FailSafe.OFF_BRIDGE_LANGUAGE)
-    assert body["used_fail_safe"] is True
+    assert body["fixed_line"] == "", "a sala respondia com a linha fixa G, da lata"
+    assert body["used_fail_safe"] is False
     assert body["degraded"] is False
+    assert body["transcript"] == ""
+    assert body["audio_url"], "o turno não trazia clipe nenhum para o tablet tocar"
+    assert spoken[-1] == GUIDE_LINE
 
 
 async def test_a_validator_listing_its_issues_as_plain_strings_still_gets_a_second_draft(

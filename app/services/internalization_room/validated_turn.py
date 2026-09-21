@@ -72,25 +72,33 @@ class TurnOutcome:
     #: They are what the record keeps of a firing, so a fail-safe can be read back later.
     draft: str = ""
     verdict: str = ""
+    room_note: str = ""
 
 
 def _conversation_turns(messages: list[dict[str, Any]]) -> list[Turn]:
     """The session as the two speakers a model knows, oldest first and all of it.
 
-    The room stores its own two: the team and the Guide. Which of them is the assistant is
-    the only thing being decided here, and nothing is left out — a session grows for as long
-    as it runs, and what pays for the length is the cache, not a window.
+    The room stores three: the team, its own notes, and the Guide. Which of the three is the
+    assistant is the only thing being decided here — a room note collapses onto the team's
+    side the same as the team's own words do, because the API knows only two roles, and
+    nothing is left out — a session grows for as long as it runs, and what pays for the
+    length is the cache, not a window.
     """
     return [
         Turn(
-            role="user" if message.get("role") == "team" else "assistant",
+            role="assistant" if message.get("role") == "guide" else "user",
             text=str(message.get("text", "")),
         )
         for message in messages
     ]
 
 
-def _conversation_as_evidence(conversation: list[Turn]) -> str:
+#: How each stored role is quoted back into the Validator's evidence block. Anything else
+#: (the team's own words) falls through to "Team" below.
+_EVIDENCE_LABELS = {"guide": "Guide", "room": "Room"}
+
+
+def _conversation_as_evidence(messages: list[dict[str, Any]]) -> str:
     """The whole session, quoted, for the Validator to check a recollection against.
 
     The Guide hears every turn (no window), so it may say what the team told it three
@@ -99,11 +107,19 @@ def _conversation_as_evidence(conversation: list[Turn]) -> str:
     recollection of the team's own words died as an "epistemic" violation and the team heard
     the pause line for asking what it had said. This is quoted evidence, never a window — it
     is all of it, oldest first, and the doctrine forbids the window, not the record.
+
+    Takes the raw stored messages, not `Turn`s: a room note is stored as its own role
+    (`sessions.append_exchange`), and the API's two-role `Turn` has already folded it onto
+    the team's side by the time `_conversation_turns` is done with it. Quoting it back as
+    `Team:` would credit the team with words it never said in the session language — this
+    labels it `Room:` instead, the one thing the Guide's own prompt already knows to do with
+    a bracketed note but the Validator's prompt is never told.
     """
-    if not conversation:
+    if not messages:
         return NOT_THIS_TURN
     return "\n".join(
-        f"{'Team' if turn['role'] == 'user' else 'Guide'}: {turn['text']}" for turn in conversation
+        f"{_EVIDENCE_LABELS.get(str(message.get('role')), 'Team')}: {message.get('text', '')}"
+        for message in messages
     )
 
 
@@ -267,6 +283,7 @@ async def _voiced_after_validation(
     telling_back: str = "",
     finding: str = "",
     ordered_closing: str = "",
+    mother_tongue: bool = False,
 ) -> TurnOutcome:
     """Draft, gate, and only then voice — the rule that governs every session type.
 
@@ -278,6 +295,14 @@ async def _voiced_after_validation(
     Speaker was ordered to write. Every other turn leaves them empty, and the Validator is told
     in words that an empty block is a block that does not apply to this turn rather than
     evidence being withheld, so nothing about a conversation turn changes.
+
+    `mother_tongue` is the one case where `transcript` is not the team's own words in the
+    session language — `turn.speech.speak_back` puts the app's own note there instead, so the
+    Guide has something to draft against. The Validator's `{{TEAM_UTTERANCE}}` is quoted
+    evidence of what the team *said*, under a heading no prompt tells it to read as a fact
+    about the room rather than speech; this turn's note has not reached `messages` yet
+    either, so nothing in `RECENT_CONVERSATION` catches it. Left alone, the slot would credit
+    the team with a sentence in the session language it never spoke.
 
     The movement mark is cut from the draft and never from the validated speech: the Validator
     must judge exactly the words the team will hear, and it is told to write plain speakable
@@ -326,8 +351,12 @@ async def _voiced_after_validation(
             cache_break_before(validator_prompt, "{{RECENT_CONVERSATION}}"),
             SESSION_LANGUAGE=session_language,
             MEANING_MAP=standard_of_truth,
-            RECENT_CONVERSATION=_conversation_as_evidence(conversation),
-            TEAM_UTTERANCE=transcript or _nobody_spoke_this_turn(telling_back),
+            RECENT_CONVERSATION=_conversation_as_evidence(messages),
+            TEAM_UTTERANCE=(
+                NOT_THIS_TURN
+                if mother_tongue
+                else transcript or _nobody_spoke_this_turn(telling_back)
+            ),
             DRAFTED_RESPONSE=draft,
             TELLING_BACK=telling_back or NOT_THIS_TURN,
             FINDING=finding or NOT_THIS_TURN,

@@ -322,6 +322,8 @@ async def append_exchange(
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
         messages.append({"role": "team", "text": team_utterance})
+    if outcome is not None and outcome.room_note:
+        messages.append({"role": "room", "text": outcome.room_note})
     guide: dict[str, Any] = {"role": "guide", "text": guide_response}
     if outcome is not None:
         guide["outcome"] = _containment_of(outcome)

@@ -1,5 +1,5 @@
 """The comprehension-aware turn as a whole: probes persist only when voiced, practice is
-spoken as fixed process speech, and mother-tongue speech meets the fixed boundary."""
+spoken as fixed process speech, and mother-tongue speech is a fact the Guide is handed."""
 
 import json
 import sys
@@ -365,17 +365,13 @@ async def test_the_rehearsal_invitation_is_never_a_fixed_line_the_app_says(
     assert not recovery.outcome.used_fail_safe
 
 
-async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe(
+async def test_mother_tongue_speech_is_an_ordinary_guide_turn_that_credits_nothing(
     db_session: AsyncSession, approve_all: None
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="quem aparece nesta parte?"
     )
-    seeded = ComprehensionState.model_validate(
-        {"active_probe": {"id": "consent-1", "purpose": "recording_handoff_consent"}}
-    )
-    session = await save_comprehension(db_session, session, seeded)
 
     turn = await run_comprehension_turn(
         db_session,
@@ -384,6 +380,7 @@ async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe
             text="koeti yoko vitukeovo enepone itukovo",
             language_code="und",
             language_probability=0.99,
+            take_ms=12_000,
         ),
         opening=False,
         guide_prompt=GUIDE,
@@ -391,11 +388,13 @@ async def test_mother_tongue_speech_meets_the_fixed_boundary_and_keeps_the_probe
         settings=_settings(),
     )
 
-    assert turn.outcome.used_fail_safe
-    assert not turn.outcome.degraded
-    assert turn.outcome.fixed_line.startswith("G")
-    assert turn.state.active_probe is not None
-    assert turn.state.active_probe.id == "consent-1"
+    assert not turn.outcome.used_fail_safe, "a sala respondia com a linha fixa G"
+    assert turn.outcome.fixed_line == ""
+    assert turn.outcome.transcript == ""
+    assert turn.outcome.room_note == (
+        "[A equipe falou na língua materna por cerca de 12 segundos; sem transcrição]"
+    )
+    assert turn.state.practiced_scene_ids == []
     assert all(event.kind != "evidence" for event in turn.state.ledger)
 
 

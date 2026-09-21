@@ -75,17 +75,6 @@ Use when the team's audio didn't come through.
 - "Essa me escapou. Podem dizer de novo?"
 - "O som não chegou bem — podem falar mais uma vez?"
 
-### G. Confidently detected speech outside the bridge language
-Use when automatic language detection is highly confident that the team has just practiced in
-another language. Affirm the practice, state the Guide's boundary, and request a telling-back in
-the bridge language. Never feed the uncertain transcript to the Guide as if it were bridge speech.
-
-- "Good — you tried it in your own language. I can't check those words directly. Now, could someone tell me in English what you said?"
-
-### G-pt. (Português brasileiro)
-
-- "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
-
 ### F. Instant acknowledgements (played the moment the team finishes speaking)
 Not a failure path — the *pacing* path. Each real turn takes several seconds of honest work
 (transcribe → draft → validate → voice). So the instant the team stops talking, the app voices one

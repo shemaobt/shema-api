@@ -223,14 +223,14 @@ async def test_a_turn_that_fell_to_a_canned_line_is_tagged_fail_safe(client, mon
     assert body["outcome"] == "fail_safe"
 
 
-MOTHER_TONGUE_NOTE = "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição]"
-OFF_BRIDGE_LINE = (
-    "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas "
-    "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
+HER_RUNNER_NOTE = (
+    "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
+    "palavra chegou até você.]"
 )
+MOTHER_TONGUE_NOTE = "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição]"
 
 
-async def test_mother_tongue_enters_where_the_recognizer_would_have_flagged_it(
+async def test_mother_tongue_enters_as_the_fact_of_a_forty_second_rehearsal(
     client, monkeypatch
 ) -> None:
     session_id = await _an_open_session(client)
@@ -238,16 +238,18 @@ async def test_mother_tongue_enters_where_the_recognizer_would_have_flagged_it(
 
     answered = await client.post(
         f"{SEAM}/turn",
-        json={"sessionId": session_id, "text": MOTHER_TONGUE_NOTE, "motherTongue": 40},
+        json={"sessionId": session_id, "text": HER_RUNNER_NOTE, "motherTongue": 40},
     )
 
+    assert answered.status_code == 200, answered.text
     body = answered.json()
-    assert body["guideText"] == OFF_BRIDGE_LINE, (
-        "a nota chegava como palavras da equipe e o Guia respondia a ela em vez de a sala "
-        "tomar o caminho que já tem para uma fala fora da língua-ponte"
+    assert agent.guide_inputs == [MOTHER_TONGUE_NOTE], (
+        "a sala respondia com a linha fixa G e o Guia nunca era chamado; os 40 segundos que o "
+        "runner manda eram ignorados"
     )
-    assert body["outcome"] == "fail_safe"
-    assert agent.guide_inputs == [], "nenhum modelo é chamado numa fala em língua materna"
+    assert body["guideText"] == GUIDE_LINE
+    assert body["outcome"] == "pass"
+    assert body["transcript"] == "", "a nota voltava como se fosse a transcrição da equipe"
 
 
 async def test_the_fourth_turn_is_run_over_every_earlier_exchange_not_a_window(

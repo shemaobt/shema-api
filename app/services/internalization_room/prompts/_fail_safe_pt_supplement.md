@@ -3,7 +3,7 @@
 The underscore marks this as ours, not one of the project's authored prompts. It carries two
 kinds of thing.
 
-First, the `-pt` blocks the authored file does not ship. It has them for sections A, D, F and G
+First, the `-pt` blocks the authored file does not ship. It has them for sections A, D and F
 but not for B, C and E — and the room speaks Portuguese, so without these the Facilitator would
 switch to English at exactly the worst moment: a question the map cannot answer, a handoff, a
 hard stop.
