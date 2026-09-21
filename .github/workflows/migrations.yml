@@ -38,6 +38,10 @@ env:
 jobs:
   migrations:
     runs-on: ubuntu-latest
+    # The same ceiling this job carries on `main`, and for the reason ENG-913 found: without
+    # one the job inherits GitHub's 360-minute default and a hung run stays "pending" for
+    # six hours instead of turning red.
+    timeout-minutes: 5
 
     services:
       postgres:

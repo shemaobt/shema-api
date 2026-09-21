@@ -104,13 +104,15 @@ def test_the_gate_still_carries_the_jobs_it_is_named_for(filename: str, jobs: se
 
 
 #: A job with no `timeout-minutes` inherits GitHub's 360-minute default, which is how a hung
-#: run stayed "pending" for six hours instead of turning red (ENG-913). Neither pull request
-#: gate on this branch had one. ENG-969 gives both a ceiling: 10 for lint, whose four
-#: commands cost well under a minute of work, and 10 for test, twice the five minutes its
-#: step is expected to take now that the suite runs in four processes.
+#: run stayed "pending" for six hours instead of turning red (ENG-913). Not one pull request
+#: gate on this branch had a ceiling. ENG-969 gives all three: 10 for lint, whose four
+#: commands cost well under a minute of work, 10 for test, twice the five minutes its step
+#: is expected to take now that the suite runs in four processes, and 5 for migrations,
+#: which is what it already carries on `main`.
 JOB_TIMEOUT_MINUTES = {
     ("lint.yml", "lint"): 10,
     ("test.yml", "test"): 10,
+    ("migrations.yml", "migrations"): 5,
 }
 
 

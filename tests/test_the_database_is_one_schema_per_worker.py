@@ -12,7 +12,7 @@ that each worker owns its own file.
 No model is imported at the top of this file, and that is the point of the third case: what
 the schema has must come from the conftest importing `app.db.models`, never from what this
 module happened to reach for. A module-level `from app.db.models.auth import App` runs the
-package's `__init__` and registers all 69 tables, which would make that case unable to fail.
+package's `__init__` and registers all 104 tables, which would make that case unable to fail.
 """
 
 import os

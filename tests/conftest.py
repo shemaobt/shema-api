@@ -85,6 +85,13 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
     #
     # Latent until BE-04 (OBT-453), which is the first issue to write `revision_of_id`.
     # Enforcing referential integrity while emptying every table protects nothing.
+    #
+    # The PRAGMA takes effect because pysqlite opens the transaction at the first DML and
+    # not before, so this statement runs outside it; the same reason is why turning them
+    # back on at the end would not. Nothing needs to: aiosqlite on a file engine pools with
+    # `NullPool`, so the next connection is a new one and the `connect` listener above puts
+    # foreign keys back on for it. A pooled connection would carry this off, and the line
+    # is here to name that.
     async with test_engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
 
@@ -105,8 +112,6 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
         for _, sql in guards:
             await conn.exec_driver_sql(sql)
-
-        await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
 
     session_factory = async_sessionmaker(
         test_engine, expire_on_commit=False, class_=AsyncSession, autoflush=False

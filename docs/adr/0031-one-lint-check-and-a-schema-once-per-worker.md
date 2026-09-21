@@ -61,3 +61,16 @@ conftest too, names a file, and the workers inherit that name through their envi
 measured, two workers both landed on `shema-api-test-<controller pid>.db`. The conftest
 publishes the URL it generated beside the value, so a worker overrides an inherited name of
 the suite's own making while a `DATABASE_URL` a caller set on purpose is still honoured.
+
+**On dev**, two of those answers come out the other way, because this branch's schema is not
+`main`'s. The `PRAGMA foreign_keys=OFF` rejected above **is kept** here: `rr_requests` and
+`rr_snapshots` reference each other, so there is no order in which both can be emptied with
+the constraint enforced, and the drop this sweep replaced already turned them off for exactly
+that. It is not the no-op it would be mid-transaction, because pysqlite opens the transaction
+at the first DML statement and not before, so the PRAGMA runs ahead of it — proved by probe,
+not assumed. And seven tables here are append-only, guarded by a SQLite trigger that aborts
+any `DELETE`; dropping the schema stepped over them and a sweep cannot, so the sweep reads
+those guards out of `sqlite_master`, drops them, empties the tables and writes them back,
+inside its own transaction. Cases in `test_shema` and `test_resource_requests` hold that
+guard by asserting it raises, so removing it for good was never on the table. The sweep
+measures 0.023-0.029 s against 0.25-0.32 s for the 104-table DDL cycle.
