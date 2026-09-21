@@ -1,24 +1,29 @@
 import asyncio
 import contextlib
 from datetime import timedelta
+from urllib.parse import urlsplit
 
 import google.auth
 import google.auth.transport.requests
 from google.api_core.exceptions import NotFound
 from google.cloud import storage
 
-from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
+from app.services.oral_collector.constants import GCS_OC_PROJECT, gcs_oc_bucket
 
-GCS_PUBLIC_BASE = f"https://storage.googleapis.com/{GCS_OC_BUCKET}/"
+GCS_PUBLIC_HOST = "storage.googleapis.com"
+
+
+def gcs_public_base() -> str:
+    return f"https://{GCS_PUBLIC_HOST}/{gcs_oc_bucket()}/"
 
 
 async def upload_gcs_blob(blob_name: str, data: bytes, content_type: str) -> str:
     def _blocking() -> str:
         client = storage.Client(project=GCS_OC_PROJECT)
-        bucket = client.bucket(GCS_OC_BUCKET)
+        bucket = client.bucket(gcs_oc_bucket())
         blob = bucket.blob(blob_name)
         blob.upload_from_string(data, content_type=content_type)
-        return f"{GCS_PUBLIC_BASE}{blob_name}"
+        return f"{gcs_public_base()}{blob_name}"
 
     return await asyncio.to_thread(_blocking)
 
@@ -85,7 +90,7 @@ async def generate_signed_download_url(
 async def copy_gcs_blob(source_name: str, dest_name: str) -> None:
     def _blocking() -> None:
         client = storage.Client(project=GCS_OC_PROJECT)
-        bucket = client.bucket(GCS_OC_BUCKET)
+        bucket = client.bucket(gcs_oc_bucket())
         source_blob = bucket.blob(source_name)
         bucket.copy_blob(source_blob, bucket, dest_name)
 
@@ -125,9 +130,17 @@ async def download_gcs_object(bucket_name: str, blob_name: str) -> bytes:
 
 
 def blob_name_from_url(gcs_url: str) -> str | None:
-    if not gcs_url.startswith(GCS_PUBLIC_BASE):
+    """The object name a stored URL carries, whatever bucket that URL names.
+
+    Staging's rows are a branch of production's and carry production's prefix. The name
+    is theirs to give; the bucket it is read in is the setting's, so staging resolves an
+    inherited row and still never reaches production's object.
+    """
+    parts = urlsplit(gcs_url)
+    if parts.scheme != "https" or parts.netloc != GCS_PUBLIC_HOST:
         return None
-    return gcs_url[len(GCS_PUBLIC_BASE) :]
+    _, _, blob_name = parts.path.lstrip("/").partition("/")
+    return blob_name or None
 
 
 def original_blob_name(blob_name: str) -> str:

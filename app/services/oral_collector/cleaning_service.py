@@ -1,8 +1,6 @@
-import asyncio
 import logging
 
 import inngest
-from google.cloud import storage
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +9,6 @@ from app.core.exceptions import NotFoundError, ValidationError
 from app.core.inngest_client import inngest_client
 from app.db.models.oc_recording import OC_Recording
 from app.inngest.schemas import CleanRequestedPayload
-from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
 from app.services.oral_collector.require_manager import require_project_manager
 
 logger = logging.getLogger(__name__)
@@ -25,24 +22,6 @@ async def _get_recording(db: AsyncSession, recording_id: str) -> OC_Recording:
     if not recording:
         raise NotFoundError("Recording not found")
     return recording
-
-
-async def _copy_gcs_blob(source_name: str, dest_name: str) -> None:
-    def _blocking() -> None:
-        client = storage.Client(project=GCS_OC_PROJECT)
-        bucket = client.bucket(GCS_OC_BUCKET)
-        source_blob = bucket.blob(source_name)
-        bucket.copy_blob(source_blob, bucket, dest_name)
-
-    await asyncio.to_thread(_blocking)
-
-
-def _blob_name_from_url(gcs_url: str) -> str | None:
-
-    prefix = f"https://storage.googleapis.com/{GCS_OC_BUCKET}/"
-    if not gcs_url.startswith(prefix):
-        return None
-    return gcs_url[len(prefix) :]
 
 
 def _original_blob_name(blob_name: str) -> str:

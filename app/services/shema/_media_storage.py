@@ -4,7 +4,7 @@
 sentence and the reason this file exists rather than an import of the module next door.
 ``app/services/storage/upload.py`` is refused by name, the way
 ``app/services/resource_request/_attachment_storage.py`` refuses it: it is a proxy upload to
-the open ``tripod-image-uploads`` bucket that answers a plain
+the open bucket named by ``GCS_OC_BUCKET`` that answers a plain
 ``https://storage.googleapis.com/...`` object URL, and four things about it bite here in
 order — an unsigned URL makes ``can_share_media`` decorative; its accept list is images only,
 while a material is ``text | audio | video`` and a prayer request carries audio; its 5 MB
