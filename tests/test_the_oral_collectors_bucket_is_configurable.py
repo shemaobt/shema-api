@@ -1,12 +1,17 @@
-"""No module may name the oral-collector's bucket in its own source.
+"""The oral-collector's bucket as a setting: the setting itself, and the paths that read it.
 
-The bucket holding the oral-collector's audio — and the platform's images, the same
-bucket today — was a literal written twice, so a second service built from this image
-could not be pointed anywhere: it addressed production by construction. Staging's
-database is a branch of production's, so its rows carry production's ids and its object
-keys; writing, cleaning or deleting a recording on staging reached production's file.
-Here the bucket is an environment variable whose default is production's name, so an
-unset variable deploys what it always deployed and staging names its own.
+The bucket holding the oral-collector's audio — and the images the console uploads, the
+same bucket today — was a literal written twice, so a service built from this image could
+not be pointed anywhere: it addressed production by construction. Staging's database is a
+branch of production's, so its rows carry production's ids and its object keys; writing,
+cleaning or deleting a recording on staging reached production's own file.
+
+The cases here are the setting (its default, the environment variable, and that no module
+under `app/` names the bucket but `config.py`), the two deploys that decide what each
+service runs with, and the paths with no test module of their own: the prefix a confirmed
+upload stores, the copy and the upload the cleaning and the cutting make, the acousteme
+artefact and the console's images. The signed uploads, the deletion and the reader live
+with the recording service's cases, and the verification with the upload processing's.
 """
 
 from __future__ import annotations
@@ -121,6 +126,43 @@ def _point_the_bucket_at(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
     monkeypatch.setattr(get_settings(), "gcs_oc_bucket", name)
 
 
+def _deploy_env_vars(workflow: str) -> dict[str, str]:
+    """The plain variables a deploy workflow tells its Cloud Run service to run with.
+
+    They travel in one token of the `gcloud run deploy` command, and `^|^` names `|` as the
+    separator because `CORS_ORIGINS` is itself a comma-separated list. Reading the token
+    rather than the whole command is what makes this a statement about the service's
+    environment and not about a string appearing somewhere in a shell script.
+    """
+    import yaml
+
+    path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / workflow
+    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
+    deploy_step = next(step for step in steps if step["name"] == "Deploy Backend")
+    token = next(
+        word for word in deploy_step["run"].split() if word.startswith("--update-env-vars=")
+    )
+    body = token.split("=", 1)[1].strip('"')
+    assert body.startswith("^|^"), f"{workflow} no longer names its own separator"
+    return dict(pair.split("=", 1) for pair in body[3:].split("|"))
+
+
+def test_the_staging_deploy_names_its_own_bucket() -> None:
+    """Nothing else points the staging service anywhere: this line is the whole mechanism."""
+    staging = _deploy_env_vars("deploy-staging.yml")
+
+    assert staging.get("GCS_OC_BUCKET") == "tripod-image-uploads-staging"
+
+
+def test_the_production_deploy_names_no_bucket_and_so_runs_the_default() -> None:
+    """Production keeps deploying what it always deployed, and by the shortest route.
+
+    Naming it there would be a second place to keep in step with the default, and a wrong
+    value in either would repoint production in silence.
+    """
+    assert "GCS_OC_BUCKET" not in _deploy_env_vars("deploy.yml")
+
+
 def test_the_url_a_confirmed_upload_stores_carries_the_configured_bucket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -131,15 +173,16 @@ def test_the_url_a_confirmed_upload_stores_carries_the_configured_bucket(
     assert gcs_public_base() == f"https://storage.googleapis.com/{STAGING_BUCKET}/"
 
 
-async def test_the_cleaning_backs_up_and_writes_back_in_the_configured_bucket(
+async def test_copy_gcs_blob_acts_in_the_configured_bucket(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A row staging inherited from production names production's bucket in its URL. The
-    object name comes from the URL and the bucket from the setting, so the backup and the
-    write-back both land in staging's bucket and production's file is never touched.
+    """The backup the cleaning takes before it writes over the original.
 
-    The three calls are the cleaning's own, driven here one by one: the cleaning makes them
-    inside a closure of an Inngest function, which no case in this suite drives.
+    The URL is one staging inherited from production, so it names production's bucket. The
+    object name is the URL's and the bucket is the setting's: source and destination are
+    both staging's, and production's file is never touched. `clean_recording_fn` makes this
+    call inside a closure of an Inngest function, which no case in this suite drives, so it
+    is driven here directly.
     """
     _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
     client = _FakeGcsClient()
@@ -149,7 +192,6 @@ async def test_the_cleaning_backs_up_and_writes_back_in_the_configured_bucket(
         blob_name = blob_name_from_url(inherited)
         assert blob_name == "oral-collector/p/g/r.m4a"
         await copy_gcs_blob(blob_name, original_blob_name(blob_name))
-        await upload_gcs_blob(blob_name, b"cleaned audio", "application/octet-stream")
 
     assert client.copies == [
         (
@@ -159,31 +201,26 @@ async def test_the_cleaning_backs_up_and_writes_back_in_the_configured_bucket(
             "oral-collector/p/g/r_original.m4a",
         )
     ]
-    assert client.uploads == [(STAGING_BUCKET, "oral-collector/p/g/r.m4a")]
 
 
-async def test_each_upload_lands_in_the_configured_bucket_and_its_url_says_so(
+async def test_upload_gcs_blob_acts_in_the_configured_bucket_and_says_so_in_its_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The upload the cutting makes per segment, and the URL the segment row is given.
+    """The write-back the cleaning makes, and the upload the cutting makes per segment.
 
-    Driven directly, one call per segment: the cutting makes them inside a closure of an
-    Inngest function, which no case in this suite drives.
+    The URL it answers with is the one the row is given, so the bucket reaches the database
+    through it. Both `clean_recording_fn` and `split_recording_fn` make this call inside a
+    closure of an Inngest function, which no case in this suite drives, so it is driven
+    here directly.
     """
     _point_the_bucket_at(monkeypatch, STAGING_BUCKET)
     client = _FakeGcsClient()
 
     with patch(GCS_CLIENT, return_value=client):
-        urls = [
-            await upload_gcs_blob(f"oral-collector/p/g/seg-{index}.m4a", b"audio", "audio/mp4")
-            for index in range(2)
-        ]
+        url = await upload_gcs_blob("oral-collector/p/g/seg-0.m4a", b"audio", "audio/mp4")
 
-    assert [bucket for bucket, _ in client.uploads] == [STAGING_BUCKET, STAGING_BUCKET]
-    assert urls == [
-        f"https://storage.googleapis.com/{STAGING_BUCKET}/oral-collector/p/g/seg-0.m4a",
-        f"https://storage.googleapis.com/{STAGING_BUCKET}/oral-collector/p/g/seg-1.m4a",
-    ]
+    assert client.uploads == [(STAGING_BUCKET, "oral-collector/p/g/seg-0.m4a")]
+    assert url == f"https://storage.googleapis.com/{STAGING_BUCKET}/oral-collector/p/g/seg-0.m4a"
 
 
 async def test_the_acousteme_artifact_is_stored_in_the_configured_bucket(

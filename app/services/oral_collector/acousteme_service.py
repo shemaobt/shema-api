@@ -197,6 +197,11 @@ async def store_artifact(
     redundant per-frame ``timestamps`` array is dropped if present — it is
     derivable from hop_sec and num_frames. Called by the ingestion pipeline, not
     by request handlers.
+
+    ``bucket`` left as ``None`` resolves to the oral-collector's configured bucket
+    when the call runs, never when this module is imported, so a deploy that names
+    its own bucket is honoured here too. An empty string is not that: it is the
+    caller's mistake, and it reaches GCS as one.
     """
 
     target_bucket = gcs_oc_bucket() if bucket is None else bucket
