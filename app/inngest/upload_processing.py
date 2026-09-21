@@ -21,8 +21,8 @@ from app.inngest.helpers import (
     update_recording_fields,
 )
 from app.inngest.schemas import BlobVerificationResult, UploadConfirmedPayload
-from app.services.oral_collector.constants import GCS_OC_BUCKET, GCS_OC_PROJECT
-from app.services.oral_collector.gcs_utils import GCS_PUBLIC_BASE
+from app.services.oral_collector.constants import GCS_OC_PROJECT, gcs_oc_bucket
+from app.services.oral_collector.gcs_utils import gcs_public_base
 from app.services.oral_collector.recording_service import (
     fail_stalled_uploads,
     purge_failed_uploads,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 async def verify_gcs_blob(payload: UploadConfirmedPayload) -> BlobVerificationResult:
     def _blocking() -> BlobVerificationResult:
         client = storage.Client(project=GCS_OC_PROJECT)
-        bucket = client.bucket(GCS_OC_BUCKET)
+        bucket = client.bucket(gcs_oc_bucket())
         blob = bucket.blob(payload.expected_blob_path)
 
         if not blob.exists():
@@ -99,7 +99,7 @@ async def process_upload_fn(ctx: inngest.Context, step: inngest.Step) -> str:
             recording = await db.get(OC_Recording, payload.recording_id)
             if not recording:
                 raise inngest.NonRetriableError("Recording not found")
-            gcs_url = f"{GCS_PUBLIC_BASE}{payload.expected_blob_path}"
+            gcs_url = f"{gcs_public_base()}{payload.expected_blob_path}"
             recording.gcs_url = gcs_url
             recording.uploaded_at = datetime.now(UTC)
             recording.upload_status = UploadStatus.UPLOADED

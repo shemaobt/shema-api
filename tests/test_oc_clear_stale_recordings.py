@@ -23,6 +23,12 @@ def _import_service():
     return recording_service
 
 
+def _public_base() -> str:
+    from app.services.oral_collector.gcs_utils import gcs_public_base
+
+    return gcs_public_base()
+
+
 async def _seed_project_with_manager(
     db: AsyncSession,
     *,
@@ -139,7 +145,7 @@ async def test_clearing_stale_recordings_deletes_the_bucket_blob_only_of_a_row_t
     deleted_blobs: list[str] = []
     monkeypatch.setattr(rs, "_delete_gcs_blob", deleted_blobs.append)
 
-    blob_url = f"{rs.GCS_PUBLIC_BASE}oral-collector/{project_id}/{genre.id}/in-bucket.m4a"
+    blob_url = f"{_public_base()}oral-collector/{project_id}/{genre.id}/in-bucket.m4a"
     await make_oc_recording(
         db_session,
         project_id,

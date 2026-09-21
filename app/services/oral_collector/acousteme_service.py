@@ -12,7 +12,7 @@ from app.core.enums import AcoustemeStatus
 from app.core.exceptions import NotFoundError, ValidationError
 from app.db.models.oc_acousteme import OC_AcoustemeArtifact
 from app.models.oc_acousteme import AcoustemeAudioResponse, AcoustemeStreamResponse
-from app.services.oral_collector.constants import GCS_OC_BUCKET
+from app.services.oral_collector.constants import gcs_oc_bucket
 from app.services.oral_collector.gcs_utils import (
     generate_signed_download_url,
     upload_gcs_object,
@@ -184,7 +184,7 @@ async def store_artifact(
     audio_id: str,
     codebook_version: str,
     stream: dict[str, Any],
-    bucket: str = GCS_OC_BUCKET,
+    bucket: str | None = None,
     audio_bucket: str | None = None,
     audio_object: str | None = None,
     title: str | None = None,
@@ -199,6 +199,7 @@ async def store_artifact(
     by request handlers.
     """
 
+    target_bucket = bucket or gcs_oc_bucket()
     segments = stream.get("segments") or []
     payload = {
         "audio_id": audio_id,
@@ -216,7 +217,9 @@ async def store_artifact(
     sha256 = hashlib.sha256(raw).hexdigest()
 
     blob_name = acousteme_blob_path(audio_id, codebook_version)
-    await upload_gcs_object(bucket, blob_name, gz, "application/json", content_encoding="gzip")
+    await upload_gcs_object(
+        target_bucket, blob_name, gz, "application/json", content_encoding="gzip"
+    )
 
     artifact = await db.get(
         OC_AcoustemeArtifact,
@@ -231,7 +234,7 @@ async def store_artifact(
     if title is not None:
         artifact.title = title
     artifact.status = AcoustemeStatus.READY
-    artifact.gcs_bucket = bucket
+    artifact.gcs_bucket = target_bucket
     artifact.gcs_object = blob_name
     artifact.content_encoding = "gzip"
     artifact.audio_bucket = audio_bucket

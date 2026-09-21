@@ -7,9 +7,9 @@ from google.api_core.exceptions import Forbidden, GoogleAPIError, Unauthorized
 from google.auth.exceptions import GoogleAuthError
 from google.cloud import storage
 
+from app.core.config import get_settings
 from app.core.exceptions import StorageUnavailableError, UpstreamServiceError
 
-GCS_UPLOADS_BUCKET = "tripod-image-uploads"
 GCS_PROJECT = "gen-lang-client-0886209230"
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/svg+xml"}
@@ -35,12 +35,13 @@ async def upload_image(file: UploadFile, folder: str = "images") -> str:
 
     ext = _extension_for(file.content_type)
     blob_name = f"{folder}/{uuid.uuid4().hex}{ext}"
+    bucket_name = get_settings().gcs_oc_bucket
 
     def _connect() -> Any:
         return storage.Client(project=GCS_PROJECT)
 
     def _upload(client: Any) -> None:
-        blob = client.bucket(GCS_UPLOADS_BUCKET).blob(blob_name)
+        blob = client.bucket(bucket_name).blob(blob_name)
         blob.upload_from_string(contents, content_type=file.content_type)
 
     # Building the client is what resolves this deployment's credentials, so an OSError
@@ -59,7 +60,7 @@ async def upload_image(file: UploadFile, folder: str = "images") -> str:
         raise StorageUnavailableError(CREDENTIALS_REFUSED) from e
     except (GoogleAPIError, OSError) as e:
         raise UpstreamServiceError("Google Cloud Storage could not store the image.") from e
-    return f"https://storage.googleapis.com/{GCS_UPLOADS_BUCKET}/{blob_name}"
+    return f"https://storage.googleapis.com/{bucket_name}/{blob_name}"
 
 
 def _extension_for(content_type: str | None) -> str:
