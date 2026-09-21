@@ -228,3 +228,54 @@ async def test_get_visible_language_by_code_missing_raises_not_found(db_session)
     manager = await make_user(db_session, email="manager@example.com")
     with pytest.raises(NotFoundError, match="Language not found"):
         await language_service.get_visible_language_by_code_or_404(db_session, "zzz", manager)
+
+
+@pytest.mark.asyncio
+async def test_reactivate_language_sets_active(db_session) -> None:
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    created = await make_language(db_session, code="kos")
+    await language_service.deactivate_language(db_session, created.id, admin)
+
+    reactivated = await language_service.reactivate_language(db_session, created.id, admin)
+    assert reactivated.is_active is True
+
+
+@pytest.mark.asyncio
+async def test_reactivate_language_forbidden_for_non_admin(db_session) -> None:
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    other = await make_user(db_session, email="other@example.com")
+    created = await make_language(db_session, code="kos")
+    await language_service.deactivate_language(db_session, created.id, admin)
+
+    with pytest.raises(AuthorizationError, match="Only platform admins"):
+        await language_service.reactivate_language(db_session, created.id, other)
+
+
+@pytest.mark.asyncio
+async def test_reactivate_language_missing_raises_not_found(db_session) -> None:
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    with pytest.raises(NotFoundError, match=r"Language .* not found"):
+        await language_service.reactivate_language(
+            db_session, "00000000-0000-0000-0000-000000000000", admin
+        )
+
+
+@pytest.mark.asyncio
+async def test_reactivate_language_restores_default_list_visibility(db_session) -> None:
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    created = await make_language(db_session, code="kos")
+    await language_service.deactivate_language(db_session, created.id, admin)
+    assert await language_service.list_languages(db_session, admin) == []
+
+    await language_service.reactivate_language(db_session, created.id, admin)
+    languages = await language_service.list_languages(db_session, admin)
+    assert [lang.id for lang in languages] == [created.id]
+
+
+@pytest.mark.asyncio
+async def test_reactivate_active_language_is_noop(db_session) -> None:
+    admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
+    created = await make_language(db_session, code="kos")
+
+    reactivated = await language_service.reactivate_language(db_session, created.id, admin)
+    assert reactivated.is_active is True

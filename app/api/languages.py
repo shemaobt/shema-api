@@ -66,3 +66,13 @@ async def deactivate_language(
     user: User = Depends(require_platform_admin),
 ) -> None:
     await language_service.deactivate_language(db, language_id, user)
+
+
+@router.post("/{language_id}/reactivate", response_model=LanguageResponse)
+async def reactivate_language(
+    language_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_platform_admin),
+) -> LanguageResponse:
+    language = await language_service.reactivate_language(db, language_id, user)
+    return LanguageResponse.model_validate(language)
