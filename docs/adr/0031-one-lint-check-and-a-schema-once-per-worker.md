@@ -37,6 +37,11 @@ The suite runs `pytest -n 4 --dist loadfile`, four processes split by file, with
 five minutes are what the test step is expected to take and what the ceiling is calibrated
 against, and nothing enforces them separately.
 
+On the clock that decides it, the runner's: the suite's step went from 1682-3665 s to
+**429 s** and the whole job to 8m05 against the 10-minute ceiling, while lint went from five
+checks to one that takes 1m00. Four workers on this runner do not reach the five minutes the
+target names — 429 s is where the four land — and the ceiling was not moved to make them fit.
+
 Rejected: a per-test rollback, which reads as the obvious answer and cannot work here — 24
 sites in `app/` open their own session from `AsyncSessionLocal` and commit on another
 connection to the same file, and several cases deliberately read the result back through a
