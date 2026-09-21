@@ -36,6 +36,15 @@ today. Line E's Portuguese she fixed herself, as *"chamar o facilitador de você
 about the text of B, C and E. The header therefore stays as corrected. The text still goes
 to her, as she asked on 2026-09-04.
 
+**2026-09-17.** The 10/08 text was sent to her.
+
+**2026-09-21.** She confirmed it (ENG-833, item A1): "B and C: already confirmed ... in
+exactly this text, as reserve, with 'o facilitador de vocês' ... You can enter them." and
+"E: yes, the whole sentence, as you wrote it." B, C and E moved into the authored file's own
+`B-pt`/`C-pt`/`E-pt`, byte-identical to what this supplement carried — see
+`docs/doctrine/rulings/2026-09-21-the-portuguese-b-c-and-e-lines-enter-her-file.md`. This
+supplement no longer carries them.
+
 ## What that means for the file
 
 The approval of 2026-08-10 was **oral, and relayed** — João's account of a conversation, not
@@ -43,6 +52,6 @@ a document of hers. It is not evidence of nothing: it is one person's contempora
 written down the same minute. It is simply not the written word the header claimed, and the
 header has been corrected to say which it is.
 
-Nothing here changes the lines themselves. Whether the Portuguese B, C and E stand as
-written is her decision to make once she has the text, and it is tracked separately from
-this record.
+Whether the Portuguese B, C and E stood as written was her decision to make once she had the
+text; she made it on 2026-09-21, above. Nothing here changes the lines themselves — this
+record stays for H and I, the two families this file still carries.

@@ -51,6 +51,8 @@ Use when the Guide couldn't produce a safe answer. Re-anchor to the current scen
 ### B. The team's question is outside the map (the honest-silence path)
 This is not strictly a *failure* — it's the designed boundary behavior, but it lives here because the orchestration may route to it when a question can't be answered from the map. (The Guide prompt also handles this inline; these are backups.)
 
+**Ruled by Marcia 2026-09-21** (ENG-833, item A1) — B-pt is hers, verbatim, entered as reserve: "already confirmed ... in exactly this text, as reserve." Reserve means present, never called; nothing in code may route to `FailSafe.OUTSIDE_MAP` (`tests/test_ir_b_and_c_have_no_caller.py`).
+
 - "That's a good question. This passage doesn't tell us that — it stays focused on what's right here in front of us. Let's stay with what the passage is showing us."
 - "The passage is quiet about that. Let's look at what it does tell us in this part."
 
@@ -61,6 +63,8 @@ This is not strictly a *failure* — it's the designed boundary behavior, but it
 
 ### C. The question is important but the map can't answer it (handoff to facilitator)
 Use when a question matters and reaching outside the map would be the only way to answer — route to the human.
+
+**Ruled by Marcia 2026-09-21** (ENG-833, item A1) — C-pt is hers, verbatim, entered as reserve alongside B-pt, on the same word: "already confirmed ... in exactly this text, as reserve." Nothing in code may route to `FailSafe.HANDOFF` (`tests/test_ir_b_and_c_have_no_caller.py`).
 
 - "That's an important question, and it's exactly the kind to bring to your facilitator — someone who can take it further than this passage goes on its own."
 - "That deserves a real answer, and it's beyond what this passage tells us. Let's set it aside to bring to your facilitator, and keep going here."
@@ -155,6 +159,8 @@ Marcia's ruling 2026-09-08 (João's question: the listener must know they are re
 
 ### E. Hard stop (repeated failures across multiple turns)
 If fail-safes fire repeatedly across several consecutive turns (e.g. 3+), something is wrong (a bad map load, an outage). Don't loop forever. Degrade to a graceful pause and surface the facilitator handoff.
+
+**Ruled by Marcia 2026-09-21** (ENG-833, item A1) — E-pt is hers, "the whole sentence, as you wrote it."
 
 - "Let's take a short pause here. This might be a good moment to bring in your facilitator, and we can pick this up again together."
 

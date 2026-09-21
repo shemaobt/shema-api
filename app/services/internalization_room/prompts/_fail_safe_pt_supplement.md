@@ -6,7 +6,8 @@ Marcia confirmed the text 2026-09-21, "as reserve, with 'o facilitador de vocês
 this file with one kind of thing: the sections the authored file has no counterpart for in
 any language, because the situations they name did not exist when that file was written —
 H and I. Each carries its own English block here as well as its `-pt` one, since there is no
-authored English to fall back to.
+authored English to fall back to. The record of that move — and of everything this file used
+to carry — is beside it, in `_fail_safe_pt_supplement_provenance.md`.
 
 ## H. A stretch is still waiting to be told back
 

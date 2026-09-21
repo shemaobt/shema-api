@@ -13,6 +13,12 @@ for the one shape that actually reaches a reserve line — `FailSafe.OUTSIDE_MAP
 `FailSafe.HANDOFF` as an attribute access — the same way
 `tests/test_the_harness_is_the_only_door_between_test_modules.py` already asserts an absence
 across the tree instead of across the text.
+
+`fail_safe.py` itself is scanned too, not skipped: `OUTSIDE_MAP = "B"` and `HANDOFF = "C"` on
+the enum are assignment targets, not `ast.Attribute` nodes, so the enum's own declaration was
+never going to trip this — but a ladder inside the module reaching for a reserve line, the way
+`validation_ladder` reaches for `FailSafe.HARD_STOP`, is exactly the attribute-access shape this
+walks for, and would have gone unseen behind a module-wide skip.
 """
 
 from __future__ import annotations
@@ -22,7 +28,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "app"
-FAIL_SAFE_MODULE = APP / "services" / "internalization_room" / "fail_safe.py"
 
 RESERVE = {"OUTSIDE_MAP", "HANDOFF"}
 
@@ -41,8 +46,6 @@ def _reserve_references(module: Path) -> list[str]:
 def test_b_and_c_have_no_caller() -> None:
     hits: list[str] = []
     for module in sorted(APP.rglob("*.py")):
-        if module == FAIL_SAFE_MODULE:
-            continue
         hits.extend(_reserve_references(module))
 
     assert hits == [], (
