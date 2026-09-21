@@ -23,10 +23,10 @@ PYTHONWARNINGS=error::UserWarning uv run alembic heads   # exactly one head, no 
 ```
 
 A test that spawns a process to prove what it proves does not run in the first line, the
-`test` job's own selection. The six lines between the blank ones, plus the `fresh_interpreter`
-selection right after them, are the `checks` job — the seven commands the old `lint` job ran,
-in order, then the three files that each open a clean interpreter to prove something the
-suite's own process cannot. The `migration` selection is the `migrations` job's own step,
+`test` job's own selection. The seven lines between the blank ones are the `checks` job — the
+seven commands the old `lint` job ran, in order, then the `fresh_interpreter` selection: the
+three files that each open a clean interpreter to prove something the suite's own process
+cannot. The `migration` selection is the `migrations` job's own step,
 `DATABASE_URL` cleared: that job sets it at job level for its Postgres container, and left in
 place the fourteen migration-walking files would run against that Postgres instead of the
 SQLite file each builds for itself. The three selections partition the whole suite, pinned in
