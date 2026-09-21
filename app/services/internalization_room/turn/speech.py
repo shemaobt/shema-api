@@ -60,6 +60,7 @@ async def speak_back(
         settings=settings,
         session_id=session.id,
         ask_for_movements=opening and not messages,
+        mother_tongue=mother_tongue,
     )
     if note:
         return replace(outcome, transcript="", room_note=note)
