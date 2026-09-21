@@ -3,6 +3,7 @@ from app.services import (
     app,
     auth,
     authorization,
+    change_request,
     journey,
     language,
     meaning_map,
@@ -13,6 +14,7 @@ from app.services import (
     platform,
     project,
     project_health,
+    public_request,
     rag,
     sound_necklace,
     translation_helper,
@@ -24,6 +26,7 @@ app_service = app
 auth_service = auth
 authorization_service = authorization
 journey_service = journey
+change_request_service = change_request
 language_service = language
 meaning_map_service = meaning_map
 notification_service = notifications
@@ -33,6 +36,7 @@ phase_category_service = phase_category
 platform_service = platform
 project_service = project
 project_health_service = project_health
+public_request_service = public_request
 rag_service = rag
 sound_necklace_service = sound_necklace
 translation_helper_service = translation_helper
@@ -47,6 +51,8 @@ __all__ = [
     "auth_service",
     "authorization",
     "authorization_service",
+    "change_request",
+    "change_request_service",
     "journey",
     "journey_service",
     "language",
@@ -67,6 +73,8 @@ __all__ = [
     "project_health",
     "project_health_service",
     "project_service",
+    "public_request",
+    "public_request_service",
     "rag",
     "rag_service",
     "sound_necklace",

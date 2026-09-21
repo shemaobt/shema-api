@@ -51,7 +51,7 @@ async def create_app(
         app_url=payload.app_url,
         ios_url=payload.ios_url,
         android_url=payload.android_url,
-        platform=payload.platform or "web",
+        platforms=payload.platforms,
         is_active=payload.is_active if payload.is_active is not None else True,
         auto_approve=payload.auto_approve if payload.auto_approve is not None else False,
     )
@@ -84,7 +84,7 @@ async def update_app(
         app_url=payload.app_url,
         ios_url=payload.ios_url,
         android_url=payload.android_url,
-        platform=payload.platform,
+        platforms=payload.platforms,
         is_active=payload.is_active,
         auto_approve=payload.auto_approve,
         actor=actor,
