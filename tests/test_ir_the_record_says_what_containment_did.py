@@ -164,6 +164,37 @@ async def test_a_fail_safe_is_recorded_with_everything_her_spec_asks_for(
     }
 
 
+async def test_a_firing_in_the_telling_back_round_keeps_what_was_told_back(
+    db_session: AsyncSession,
+) -> None:
+    session = await create_session(db_session, pericope=P)
+    outcome = TurnOutcome(
+        speech="Vamos com calma.",
+        transcript="",
+        used_fail_safe=True,
+        degraded=True,
+        redrafts=2,
+        fixed_line="A0",
+        draft="Rute casou com Malom",
+        verdict="regenerate",
+    )
+
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance="",
+        guide_response="Vamos com calma.",
+        outcome=outcome,
+        told_back="1. Noemi mandou Rute voltar.\n2. Rute disse que ia junto.",
+    )
+
+    assert [m["role"] for m in session.messages] == ["guide"]
+    assert session.messages[-1]["team_utterance"] == (
+        "1. Noemi mandou Rute voltar.\n2. Rute disse que ia junto."
+    )
+    assert session.messages[-1]["scene"] is None
+
+
 async def test_a_turn_taken_through_the_route_leaves_its_outcome_in_the_record(
     client, db_session: AsyncSession, the_room_hears
 ) -> None:

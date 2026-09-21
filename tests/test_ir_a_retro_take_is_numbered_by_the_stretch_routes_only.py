@@ -193,7 +193,7 @@ async def test_the_generic_route_keeps_a_rehearsal_takes_number(
     """Only a retro take loses the number: the rule is about telling a stretch back.
 
     A rehearsal take is a part of the passage, and its number is how the tablet finds again,
-    on resume, which part a rebuilt recording answers for.
+    on resume, which part it recorded again.
     """
     session_id = await open_session(client)
 

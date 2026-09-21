@@ -325,7 +325,6 @@ async def _a_correction_verified_as(
     return answered.json(), corrected
 
 
-@pytest.mark.asyncio
 async def test_an_element_counted_as_no_longer_told_is_a_finding_on_that_stretch(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -355,7 +354,6 @@ async def test_an_element_counted_as_no_longer_told_is_a_finding_on_that_stretch
     assert body["checked"] is False
 
 
-@pytest.mark.asyncio
 async def test_the_team_is_told_which_element_fell(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -394,7 +392,6 @@ def _the_finding_the_speaker_was_given(spoken: list[str]) -> str:
     return "\n".join(found)
 
 
-@pytest.mark.asyncio
 async def test_a_count_with_nothing_lost_and_nothing_reported_is_a_clean_mend(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -417,7 +414,6 @@ async def test_a_count_with_nothing_lost_and_nothing_reported_is_a_clean_mend(
     assert body["finding_kind"] is None
 
 
-@pytest.mark.asyncio
 async def test_an_element_both_counted_and_reported_is_heard_once(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -447,7 +443,6 @@ async def test_an_element_both_counted_and_reported_is_heard_once(
     assert body["finding_segment_id"] == corrected.id
 
 
-@pytest.mark.asyncio
 async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -471,7 +466,6 @@ async def test_counting_does_not_turn_another_kind_of_finding_into_a_loss(
     assert body["finding_kind"] == "addition"
 
 
-@pytest.mark.asyncio
 async def test_a_correction_check_that_names_a_retired_kind_reads_as_addition(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -506,7 +500,6 @@ async def test_a_correction_check_that_names_a_retired_kind_reads_as_addition(
     assert "cannot judge" not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_an_element_the_map_gives_that_only_the_new_telling_states_is_a_clean_mend(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -536,7 +529,6 @@ async def test_an_element_the_map_gives_that_only_the_new_telling_states_is_a_cl
     assert body["finding_kind"] is None
 
 
-@pytest.mark.asyncio
 async def test_an_addition_matching_what_was_brought_back_is_suppressed(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -573,7 +565,6 @@ async def test_an_addition_matching_what_was_brought_back_is_suppressed(
         ),
     ],
 )
-@pytest.mark.asyncio
 async def test_a_count_that_cannot_be_read_leaves_the_reported_findings_standing(
     client: httpx.AsyncClient,
     db_session: AsyncSession,

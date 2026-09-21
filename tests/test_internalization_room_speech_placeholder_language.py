@@ -96,7 +96,6 @@ def _patch_analyst_capture(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     return captured
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
 async def test_the_validator_opens_the_session_in_english_whichever_language_it_is(
     monkeypatch: pytest.MonkeyPatch, language_code: str
@@ -127,7 +126,6 @@ async def test_the_validator_opens_the_session_in_english_whichever_language_it_
     assert _EXPECTED_VALIDATOR_OPENING["es"] not in system
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
 async def test_the_classifier_sees_the_no_utterance_placeholder_in_english(
     monkeypatch: pytest.MonkeyPatch, language_code: str
@@ -152,7 +150,6 @@ async def test_the_classifier_sees_the_no_utterance_placeholder_in_english(
     assert _EXPECTED_CLASSIFIER_NO_UTTERANCE["es"] not in system
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("language_code", ROOM_LANGUAGES)
 async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_sessions_own_language(
     monkeypatch: pytest.MonkeyPatch, language_code: str
@@ -176,7 +173,6 @@ async def test_the_analyst_sees_the_nothing_told_back_placeholder_in_the_session
             assert sentence not in system
 
 
-@pytest.mark.asyncio
 async def test_a_language_the_room_does_not_claim_gets_the_english_floor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

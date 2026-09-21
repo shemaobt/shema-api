@@ -13,7 +13,6 @@ from app.services.project_health import (
 from tests.baker import make_user
 
 
-@pytest.mark.asyncio
 async def test_get_admin_interview_detail_returns_full_row(db_session, ph_app, stub_llm):
     interview, _token, _exp, _msg, _cov = await create_interview(
         db_session, project_name="A", team_name="T", language=PHLanguage.EN
@@ -27,13 +26,11 @@ async def test_get_admin_interview_detail_returns_full_row(db_session, ph_app, s
     assert isinstance(fetched.messages, list)
 
 
-@pytest.mark.asyncio
 async def test_get_admin_interview_detail_404_for_unknown(db_session, ph_app):
     with pytest.raises(NotFoundError):
         await get_admin_interview_detail(db_session, "00000000-0000-0000-0000-000000000000")
 
 
-@pytest.mark.asyncio
 async def test_delete_interview_removes_row_and_cascades_report(db_session, ph_app, stub_llm):
     interview, _token, _exp, _msg, _cov = await create_interview(
         db_session, project_name="A", team_name="T", language=PHLanguage.EN
@@ -62,20 +59,17 @@ async def test_delete_interview_removes_row_and_cascades_report(db_session, ph_a
     assert await db_session.get(PHReport, interview_id) is None
 
 
-@pytest.mark.asyncio
 async def test_delete_interview_404_for_unknown(db_session, ph_app):
     with pytest.raises(NotFoundError):
         await delete_interview(db_session, "00000000-0000-0000-0000-000000000000")
 
 
-@pytest.mark.asyncio
 async def test_require_platform_admin_rejects_non_platform_admin(db_session):
     user = await make_user(db_session, email="ph_admin@example.com", is_platform_admin=False)
     with pytest.raises(AuthorizationError):
         await require_platform_admin(user=user)
 
 
-@pytest.mark.asyncio
 async def test_require_platform_admin_allows_platform_admin(db_session):
     admin = await make_user(db_session, email="platform@example.com", is_platform_admin=True)
     result = await require_platform_admin(user=admin)

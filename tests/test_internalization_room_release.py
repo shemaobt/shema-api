@@ -48,7 +48,6 @@ from tests.release_harness import (
 )
 
 
-@pytest.mark.asyncio
 async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) -> None:
     """`telling_back_not_checked` left this list with ENG-584 and came back with ENG-882: a
     telling-back has to exist, which `no_telling_back` already says, and it has to have come
@@ -66,7 +65,6 @@ async def test_an_unready_session_names_every_blocker(db_session: AsyncSession) 
     }
 
 
-@pytest.mark.asyncio
 async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
     session = await create_session(db_session, pericope="OV")
 
@@ -76,7 +74,6 @@ async def test_a_panorama_never_releases(db_session: AsyncSession) -> None:
     assert blocked.value.blockers == ["panorama_sessions_never_release"]
 
 
-@pytest.mark.asyncio
 async def test_a_ready_session_releases_a_labeled_sealed_package(
     db_session: AsyncSession,
 ) -> None:
@@ -119,7 +116,6 @@ class _FixedClock:
         return self._instants.pop(0)
 
 
-@pytest.mark.asyncio
 async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -138,7 +134,6 @@ async def test_two_reads_of_one_session_carry_one_hash_and_two_clocks(
     )
 
 
-@pytest.mark.asyncio
 async def test_one_more_stretch_told_changes_the_packet_hash(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -155,7 +150,6 @@ async def test_one_more_stretch_told_changes_the_packet_hash(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_carried_point_travels_with_its_canonical_material(
     db_session: AsyncSession,
 ) -> None:
@@ -171,7 +165,6 @@ async def test_a_carried_point_travels_with_its_canonical_material(
     assert artifact["open_questions"] >= 1
 
 
-@pytest.mark.asyncio
 async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession) -> None:
     session = await ready_session(db_session)
     state = await checked_telling_back(db_session, session)
@@ -183,7 +176,6 @@ async def test_a_half_listened_clip_blocks_the_release(db_session: AsyncSession)
     assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
 
 
-@pytest.mark.asyncio
 async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_release(
     db_session: AsyncSession,
 ) -> None:
@@ -203,7 +195,6 @@ async def test_a_listening_report_that_cannot_be_about_this_clip_blocks_the_rele
     assert blocked.value.blockers == ["playback_did_not_cover_the_clip"]
 
 
-@pytest.mark.asyncio
 async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSession) -> None:
     session = await ready_session(db_session)
     state = await checked_telling_back(db_session, session)
@@ -229,7 +220,6 @@ async def test_superseded_attempts_travel_clearly_marked(db_session: AsyncSessio
     assert [one["segment_id"] for one in artifact["back_translation"]["segments"]] == [kept.id]
 
 
-@pytest.mark.asyncio
 async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     db_session: AsyncSession,
 ) -> None:
@@ -246,6 +236,10 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
 
     The whole-passage take `ready_session` leaves is a part of its own: it carries no number,
     and the undivided recording reads before the numbered parts on either engine.
+
+    Composed rather than built, because the gate is not the subject: the two takes under part
+    one carry no telling of their own, which is a part nobody told back and a refusal of its
+    own file's. What this case asks is which of them the packet calls the part.
     """
     session = await ready_session(db_session)
     db_session.add(
@@ -270,7 +264,7 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     )
     await db_session.commit()
 
-    artifact = await build_internalization_release(db_session, session)
+    artifact, _blockers = await compose_internalization_release(db_session, session)
     file = await retroverification_file(db_session, session)
 
     seen = [
@@ -288,7 +282,6 @@ async def test_the_rehearsal_they_replaced_is_told_apart_from_the_one_they_kept(
     )
 
 
-@pytest.mark.asyncio
 async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
     db_session: AsyncSession,
 ) -> None:
@@ -324,7 +317,6 @@ async def test_ordinal_less_retro_takes_are_listed_by_pass_then_by_creation(
     ], "sem ordinal, o pacote lista pela passada e depois pela chegada"
 
 
-@pytest.mark.asyncio
 async def test_a_session_carrying_an_open_finding_is_refused(
     db_session: AsyncSession,
 ) -> None:
@@ -351,7 +343,6 @@ async def test_a_session_carrying_an_open_finding_is_refused(
     assert blocked.value.blockers == ["telling_back_not_checked"]
 
 
-@pytest.mark.asyncio
 async def test_a_never_analysed_telling_back_is_named_before_the_open_finding(
     db_session: AsyncSession,
 ) -> None:
@@ -372,7 +363,6 @@ async def test_a_never_analysed_telling_back_is_named_before_the_open_finding(
     assert blocked.value.blockers == ["telling_back_never_analysed"]
 
 
-@pytest.mark.asyncio
 async def test_a_session_that_never_told_anything_back_is_still_refused(
     db_session: AsyncSession,
 ) -> None:
@@ -387,7 +377,6 @@ async def test_a_session_that_never_told_anything_back_is_still_refused(
     assert "no_telling_back" in blocked.value.blockers
 
 
-@pytest.mark.asyncio
 async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSession) -> None:
     session = await ready_session(db_session)
 
@@ -398,7 +387,6 @@ async def test_a_checked_session_releases_exactly_as_before(db_session: AsyncSes
     assert artifact["back_translation"]["findings"] == []
 
 
-@pytest.mark.asyncio
 async def test_the_forced_row_keeps_the_note_the_packet_lost(
     db_session: AsyncSession,
 ) -> None:
@@ -436,7 +424,6 @@ async def test_the_forced_row_keeps_the_note_the_packet_lost(
     ] == carried
 
 
-@pytest.mark.asyncio
 async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     """One item leaves the list; its neighbours are not loosened with it."""
     session = await ready_session(db_session)
@@ -456,7 +443,6 @@ async def test_the_other_doors_are_still_shut(db_session: AsyncSession) -> None:
     }
 
 
-@pytest.mark.asyncio
 async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     db_session: AsyncSession,
 ) -> None:
@@ -480,7 +466,6 @@ async def test_a_telling_back_nobody_read_does_not_leave_looking_clean(
     assert "telling_back_never_analysed" in blocked.value.blockers
 
 
-@pytest.mark.asyncio
 async def test_what_the_team_said_before_dividing_a_stretch_still_travels(
     db_session: AsyncSession,
 ) -> None:
@@ -543,7 +528,6 @@ async def _a_row_written_before_the_taxonomy_shrank(db: AsyncSession, session: I
     await db.commit()
 
 
-@pytest.mark.asyncio
 async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
     db_session: AsyncSession,
 ) -> None:
@@ -570,7 +554,6 @@ async def test_the_packet_carries_only_the_kinds_the_analyst_reports(
     ] == ["addition"]
 
 
-@pytest.mark.asyncio
 async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     db_session: AsyncSession,
 ) -> None:
@@ -617,7 +600,6 @@ async def test_the_package_says_nothing_about_a_flag_the_room_no_longer_writes(
     assert package["checked"] is False
 
 
-@pytest.mark.asyncio
 async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
     db_session: AsyncSession,
 ) -> None:
@@ -636,7 +618,6 @@ async def test_the_finding_the_packet_carries_is_counted_in_its_headline(
     assert artifact["open_questions"] == 1
 
 
-@pytest.mark.asyncio
 async def test_a_standing_swap_is_one_open_question_in_the_headline(
     db_session: AsyncSession,
 ) -> None:
@@ -673,7 +654,6 @@ async def test_a_standing_swap_is_one_open_question_in_the_headline(
     assert artifact["open_questions"] == 1
 
 
-@pytest.mark.asyncio
 async def test_a_superseded_telling_back_is_history_and_counts_nothing(
     db_session: AsyncSession,
 ) -> None:
@@ -692,7 +672,6 @@ async def test_a_superseded_telling_back_is_history_and_counts_nothing(
     )
 
 
-@pytest.mark.asyncio
 async def test_the_carried_point_and_the_open_finding_add_in_the_headline(
     db_session: AsyncSession,
 ) -> None:

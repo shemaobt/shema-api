@@ -121,7 +121,6 @@ async def _the_team_answers(room: _Room, session_id: str) -> httpx.Response:
     return answered
 
 
-@pytest.mark.asyncio
 async def test_a_fail_safe_still_hands_over_what_the_team_said(room: _Room, passage: str) -> None:
     """The Guide having nothing sayable is not evidence that the team said nothing.
 
@@ -141,7 +140,6 @@ async def test_a_fail_safe_still_hands_over_what_the_team_said(room: _Room, pass
     )
 
 
-@pytest.mark.asyncio
 async def test_an_opening_names_beads_the_team_never_spoke_toward_and_settles_none_of_them(
     room: _Room, passage: str
 ) -> None:
@@ -163,7 +161,6 @@ async def test_an_opening_names_beads_the_team_never_spoke_toward_and_settles_no
     )
 
 
-@pytest.mark.asyncio
 async def test_a_turn_nobody_could_be_heard_in_is_not_settled(room: _Room, passage: str) -> None:
     """An inaudible answer is not the opening it resembles, and settles no more than it did.
 
@@ -183,7 +180,6 @@ async def test_a_turn_nobody_could_be_heard_in_is_not_settled(room: _Room, passa
     )
 
 
-@pytest.mark.asyncio
 async def test_an_opening_the_room_could_not_phrase_hands_over_nothing(
     room: _Room, passage: str
 ) -> None:
@@ -204,7 +200,6 @@ async def test_an_opening_the_room_could_not_phrase_hands_over_nothing(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_transcript_the_hearing_does_not_trust_hands_over_nothing(
     room: _Room, passage: str
 ) -> None:
@@ -229,7 +224,6 @@ async def test_a_transcript_the_hearing_does_not_trust_hands_over_nothing(
     )
 
 
-@pytest.mark.asyncio
 async def test_an_answer_left_in_another_language_hands_over_nothing(
     room: _Room, passage: str
 ) -> None:
@@ -256,7 +250,6 @@ async def test_an_answer_left_in_another_language_hands_over_nothing(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_turn_with_no_team_utterance_promises_no_classification(
     room: _Room, passage: str
 ) -> None:
@@ -272,7 +265,6 @@ async def test_a_turn_with_no_team_utterance_promises_no_classification(
     )
 
 
-@pytest.mark.asyncio
 async def test_an_answer_the_classifier_will_read_is_promised_under_the_turn_it_settles(
     room: _Room, passage: str
 ) -> None:
@@ -291,7 +283,6 @@ async def test_an_answer_the_classifier_will_read_is_promised_under_the_turn_it_
     )
 
 
-@pytest.mark.asyncio
 async def test_a_panorama_answer_is_heard_but_promises_no_classification(
     room: _Room, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

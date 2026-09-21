@@ -44,19 +44,18 @@ from app.services.internalization_room.segments import (
 )
 from app.services.internalization_room.sessions import (
     back_translation_of,
-    begin_back_translation_again,
 )
 from tests.release_harness import (
     P,
     ready_session,
     reported_playback,
     retro_take,
+    the_one_part_of,
 )
-from tests.room_harness import a_piece_still_to_be_told
+from tests.room_harness import a_piece_still_to_be_told, record_the_part_again
 
 TEAM = "equipe-de-rute"
 TABLET = "tablet-1"
-REHEARSAL = "ensaio-1"
 CLIP_MS = 61000
 
 #: One rehearsal told back in three stretches, each a slice of the same recording. The texts
@@ -114,12 +113,13 @@ async def _three_stretches(db: AsyncSession, session: IRSession) -> BackTranslat
     Each on a retro take of its own, because which take gave a stretch its words is half of
     what a frozen entry says.
     """
+    part = await the_one_part_of(db, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         retro = await _a_retro_take(db, session, f"retro-{starts_ms}")
         await capture_segment(
             db,
             session,
-            take_id=REHEARSAL,
+            take_id=part.id,
             starts_ms=starts_ms,
             ends_ms=ends_ms,
             bridge_take_id=retro.id,
@@ -128,9 +128,14 @@ async def _three_stretches(db: AsyncSession, session: IRSession) -> BackTranslat
     return await _read(db, session)
 
 
-async def _told_in_three_stretches(db: AsyncSession) -> IRSession:
-    """A session the team could approve, told back in three stretches."""
-    return await ready_session(db, project_id=TEAM, tell=_three_stretches)
+async def _told_in_three_stretches(db: AsyncSession, *, ordinal: int | None = None) -> IRSession:
+    """A session the team could approve, told back in three stretches.
+
+    ``ordinal`` is named only by the case that records the part again: that verb reads the
+    number the tablet sends and nothing else (ADR 0023), and a rehearsal recorded in one go
+    carries none.
+    """
+    return await ready_session(db, project_id=TEAM, ordinal=ordinal, tell=_three_stretches)
 
 
 async def _tell_again(
@@ -156,7 +161,6 @@ async def _stored_again(db: AsyncSession, release: IRRelease) -> IRRelease:
     return release
 
 
-@pytest.mark.asyncio
 async def test_the_approved_packet_numbers_every_stretch_from_one_in_listening_order(
     db_session: AsyncSession,
 ) -> None:
@@ -184,7 +188,6 @@ async def test_the_approved_packet_numbers_every_stretch_from_one_in_listening_o
     )
 
 
-@pytest.mark.asyncio
 async def test_a_cut_after_the_approval_appears_only_in_the_next_version(
     db_session: AsyncSession,
 ) -> None:
@@ -219,7 +222,6 @@ async def test_a_cut_after_the_approval_appears_only_in_the_next_version(
     assert [entry["segment_id"] for entry in _frozen(stored)] == before
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_told_again_in_place_keeps_its_frase_in_the_next_version(
     db_session: AsyncSession,
 ) -> None:
@@ -258,27 +260,29 @@ async def test_a_stretch_told_again_in_place_keeps_its_frase_in_the_next_version
     assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
 
 
-@pytest.mark.asyncio
-async def test_starting_the_telling_back_over_numbers_only_the_next_version(
+async def test_recording_the_part_again_numbers_only_the_next_version(
     db_session: AsyncSession,
 ) -> None:
-    """The team threw the recording away and told the passage back again, from the top.
+    """The team recorded the part again and told the passage back over it, from the top.
 
     Every stretch of version one stopped counting and three new ones were told, so the second
     approval numbers three stretches nobody had seen. Version one is untouched: its frases
     still name the stretches that were abandoned.
     """
-    session = await _told_in_three_stretches(db_session)
+    session = await _told_in_three_stretches(db_session, ordinal=1)
     first = await approve_release(db_session, session, device_id=TABLET)
     before = [stretch.id for stretch in await final_segments(db_session, session.id)]
 
-    await begin_back_translation_again(db_session, session)
+    await record_the_part_again(
+        db_session, session, await the_one_part_of(db_session, session), sha256="b" * 64
+    )
+    part = await the_one_part_of(db_session, session)
     for text, starts_ms, ends_ms in THREE_STRETCHES:
         retro = await _a_retro_take(db_session, session, f"retro-de-novo-{starts_ms}")
         await capture_segment(
             db_session,
             session,
-            take_id=REHEARSAL,
+            take_id=part.id,
             starts_ms=starts_ms,
             ends_ms=ends_ms,
             bridge_take_id=retro.id,
@@ -297,7 +301,6 @@ async def test_starting_the_telling_back_over_numbers_only_the_next_version(
     assert [entry["frase"] for entry in _frozen(stored)] == [1, 2, 3]
 
 
-@pytest.mark.asyncio
 async def test_a_standing_finding_keeps_its_stretch_when_frase_three_is_divided(
     db_session: AsyncSession,
 ) -> None:
@@ -410,7 +413,6 @@ async def _every_shape_of_retro_take(
     )
 
 
-@pytest.mark.asyncio
 async def test_a_superseded_an_empty_and_a_divided_parents_retro_take_never_enter_the_frozen_list(
     db_session: AsyncSession,
 ) -> None:
@@ -452,7 +454,6 @@ async def test_a_superseded_an_empty_and_a_divided_parents_retro_take_never_ente
     )
 
 
-@pytest.mark.asyncio
 async def test_frase_and_segment_id_are_each_unique_within_a_version(
     db_session: AsyncSession,
 ) -> None:
@@ -473,7 +474,6 @@ async def test_frase_and_segment_id_are_each_unique_within_a_version(
     assert len({entry["segment_id"] for entry in frozen}) == len(frozen)
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_left_untold_by_a_cut_cannot_be_approved(
     db_session: AsyncSession,
 ) -> None:

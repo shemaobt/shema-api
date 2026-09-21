@@ -7,7 +7,6 @@ from app.services import authorization_service
 from tests.baker import make_app, make_role, make_user, make_user_app_role
 
 
-@pytest.mark.asyncio
 async def test_has_role_true_when_assignment_exists(db_session) -> None:
     user = await make_user(db_session, email="has-role@example.com")
     app = await make_app(db_session, app_key="my-app")
@@ -17,7 +16,6 @@ async def test_has_role_true_when_assignment_exists(db_session) -> None:
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_has_role_false_when_no_assignment(db_session) -> None:
     user = await make_user(db_session, email="no-role@example.com")
     app = await make_app(db_session, app_key="other-app")
@@ -26,20 +24,17 @@ async def test_has_role_false_when_no_assignment(db_session) -> None:
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_has_role_false_when_app_missing(db_session) -> None:
     user = await make_user(db_session, email="user@example.com")
     result = await authorization_service.has_role(db_session, user.id, "nonexistent-app", "admin")
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_assert_can_manage_roles_passes_for_platform_admin(db_session) -> None:
     admin = await make_user(db_session, email="admin@example.com", is_platform_admin=True)
     await authorization_service.assert_can_manage_roles(db_session, admin, "any-app")
 
 
-@pytest.mark.asyncio
 async def test_assert_can_manage_roles_passes_for_app_admin(db_session) -> None:
     user = await make_user(db_session, email="app-admin@example.com")
     app = await make_app(db_session, app_key="studio")
@@ -48,7 +43,6 @@ async def test_assert_can_manage_roles_passes_for_app_admin(db_session) -> None:
     await authorization_service.assert_can_manage_roles(db_session, user, "studio")
 
 
-@pytest.mark.asyncio
 async def test_assert_can_manage_roles_raises_for_regular_user(db_session) -> None:
     user = await make_user(db_session, email="regular@example.com")
     app = await make_app(db_session, app_key="studio")
@@ -57,7 +51,6 @@ async def test_assert_can_manage_roles_raises_for_regular_user(db_session) -> No
         await authorization_service.assert_can_manage_roles(db_session, user, "studio")
 
 
-@pytest.mark.asyncio
 async def test_assign_role_creates_assignment(db_session) -> None:
     actor = await make_user(db_session, email="actor@example.com")
     target = await make_user(db_session, email="target@example.com")
@@ -75,7 +68,6 @@ async def test_assign_role_creates_assignment(db_session) -> None:
     assert assignment.revoked_at is None
 
 
-@pytest.mark.asyncio
 async def test_assign_role_returns_existing_when_already_assigned(db_session) -> None:
     actor = await make_user(db_session, email="actor2@example.com")
     target = await make_user(db_session, email="target2@example.com")
@@ -93,7 +85,6 @@ async def test_assign_role_returns_existing_when_already_assigned(db_session) ->
     assert assignment.id == existing.id
 
 
-@pytest.mark.asyncio
 async def test_assign_role_raises_when_app_not_found(db_session) -> None:
     actor = await make_user(db_session, email="actor3@example.com", is_platform_admin=True)
     target = await make_user(db_session, email="target3@example.com")
@@ -102,7 +93,6 @@ async def test_assign_role_raises_when_app_not_found(db_session) -> None:
         await authorization_service.assign_role(db_session, actor, target.id, "fake-app", "member")
 
 
-@pytest.mark.asyncio
 async def test_revoke_role_sets_revoked_at(db_session) -> None:
     actor = await make_user(db_session, email="revoker@example.com")
     target = await make_user(db_session, email="revoked@example.com")
@@ -118,7 +108,6 @@ async def test_revoke_role_sets_revoked_at(db_session) -> None:
     assert assignment.revoked_at is not None
 
 
-@pytest.mark.asyncio
 async def test_revoke_role_raises_when_no_active_assignment(db_session) -> None:
     actor = await make_user(db_session, email="revoker2@example.com")
     target = await make_user(db_session, email="no-assignment@example.com")
@@ -133,7 +122,6 @@ async def test_revoke_role_raises_when_no_active_assignment(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_list_roles_returns_assigned_roles(db_session) -> None:
     user = await make_user(db_session, email="list-roles@example.com")
     app1 = await make_app(db_session, app_key="app-one")
@@ -150,7 +138,6 @@ async def test_list_roles_returns_assigned_roles(db_session) -> None:
     assert filtered == [("app-one", "admin")]
 
 
-@pytest.mark.asyncio
 async def test_list_roles_excludes_revoked(db_session) -> None:
     user = await make_user(db_session, email="revoked-list@example.com")
     app = await make_app(db_session, app_key="app-revoked")

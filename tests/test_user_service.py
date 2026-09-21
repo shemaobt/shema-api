@@ -5,7 +5,6 @@ from app.services import user_service
 from tests.baker import make_app, make_role, make_user, make_user_app_role
 
 
-@pytest.mark.asyncio
 async def test_list_users(db_session) -> None:
     await make_user(db_session, email="alice@example.com", display_name="Alice")
     await make_user(db_session, email="bob@example.com", display_name="Bob")
@@ -15,7 +14,6 @@ async def test_list_users(db_session) -> None:
     assert "bob@example.com" in emails
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id(db_session) -> None:
     created = await make_user(db_session, email="findme@example.com")
     user = await user_service.get_user_by_id(db_session, created.id)
@@ -23,13 +21,11 @@ async def test_get_user_by_id(db_session) -> None:
     assert user.email == "findme@example.com"
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id_raises_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match="not found"):
         await user_service.get_user_by_id(db_session, "00000000-0000-0000-0000-000000000000")
 
 
-@pytest.mark.asyncio
 async def test_update_user_toggles_is_active(db_session) -> None:
     created = await make_user(db_session, email="toggle@example.com", is_active=True)
     assert created.is_active is True
@@ -37,7 +33,6 @@ async def test_update_user_toggles_is_active(db_session) -> None:
     assert updated.is_active is False
 
 
-@pytest.mark.asyncio
 async def test_update_user_toggles_is_platform_admin(db_session) -> None:
     created = await make_user(db_session, email="admin@example.com", is_platform_admin=False)
     assert created.is_platform_admin is False
@@ -45,7 +40,6 @@ async def test_update_user_toggles_is_platform_admin(db_session) -> None:
     assert updated.is_platform_admin is True
 
 
-@pytest.mark.asyncio
 async def test_update_user_raises_not_found(db_session) -> None:
     with pytest.raises(NotFoundError, match="not found"):
         await user_service.update_user(
@@ -53,7 +47,6 @@ async def test_update_user_raises_not_found(db_session) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_list_user_roles_returns_roles(db_session) -> None:
     user = await make_user(db_session, email="roled@example.com")
     app = await make_app(db_session, app_key="my-app", name="My App")
@@ -67,7 +60,6 @@ async def test_list_user_roles_returns_roles(db_session) -> None:
     assert granted_at is not None
 
 
-@pytest.mark.asyncio
 async def test_list_user_roles_returns_empty_for_no_roles(db_session) -> None:
     user = await make_user(db_session, email="noroles@example.com")
     roles = await user_service.list_user_roles(db_session, user.id)

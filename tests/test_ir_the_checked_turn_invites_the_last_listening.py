@@ -107,7 +107,6 @@ async def _checked_turn_with_loop(draft: str, patch_loop):
     return outcome, agent
 
 
-@pytest.mark.asyncio
 async def test_a_checked_turn_invites_the_last_listening_and_the_approval(patch_speaker) -> None:
     """Case 1. Sem achado e com evidência suficiente, o fechamento nomeia o último passo.
 
@@ -127,7 +126,6 @@ async def test_a_checked_turn_invites_the_last_listening_and_the_approval(patch_
     assert CONTINUES_TELLING_BACK not in spoken_to
 
 
-@pytest.mark.asyncio
 async def test_the_validator_is_shown_the_checked_closing_not_the_plain_one(
     patch_loop,
 ) -> None:
@@ -150,7 +148,6 @@ async def test_the_validator_is_shown_the_checked_closing_not_the_plain_one(
         assert word in agent.briefs[0]
 
 
-@pytest.mark.asyncio
 async def test_an_obedient_narrator_passes_the_checked_turn(patch_loop) -> None:
     """Case 3. O convite que o fechamento mandou dar atravessa o validador e é falado.
 

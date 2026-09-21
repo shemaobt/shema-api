@@ -381,7 +381,6 @@ def test_no_other_family_changed(language: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_one(
     client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
@@ -405,7 +404,6 @@ async def test_the_room_asks_for_the_whole_stretch_when_the_verdict_points_at_on
     )
 
 
-@pytest.mark.asyncio
 async def test_the_verdict_is_still_said_first(
     client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
@@ -427,7 +425,6 @@ async def test_the_verdict_is_still_said_first(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_a_clean_verdict_asks_for_nothing_to_be_told_over(
     client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
@@ -440,7 +437,6 @@ async def test_a_clean_verdict_asks_for_nothing_to_be_told_over(
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, room: Room
 ) -> None:
@@ -458,7 +454,6 @@ async def test_a_stretch_still_waiting_is_not_a_stretch_to_tell_over(
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
     client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
@@ -477,7 +472,6 @@ async def test_a_finding_the_team_cannot_locate_is_not_a_stretch_to_tell_over(
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
     client: httpx.AsyncClient, analyst: Analyst, room: Room, db_session: AsyncSession
 ) -> None:
@@ -496,7 +490,6 @@ async def test_an_evidence_limit_on_a_stretch_is_not_a_stretch_to_tell_over(
     assert not _asked_for_the_whole_stretch(room.said[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -528,12 +521,15 @@ async def test_a_verdict_that_fell_back_to_a_fail_safe_carries_nothing_after_it(
     assert body["used_fail_safe"], "este caso só vale se o turno tiver mesmo degradado"
     assert body["finding_segment_id"], "e o achado continua apontando um trecho"
     assert room.said == [], "nada foi sintetizado: a fala vem do pacote do app"
-    assert not _asked_for_the_whole_stretch(
-        _last_guide_turn(await get_session(db_session, session_id))
+    remembered = await get_session(db_session, session_id)
+    assert not _asked_for_the_whole_stretch(_last_guide_turn(remembered))
+    recorded = remembered.messages[-1]
+    assert recorded["outcome"] == "fail_safe"
+    assert "Noemi" in recorded["team_utterance"], (
+        "a rodada de recontagem disparou e o registro não guardava o que a equipe contou"
     )
 
 
-@pytest.mark.asyncio
 async def test_what_the_room_said_is_what_the_session_remembers(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: Analyst, room: Room
 ) -> None:

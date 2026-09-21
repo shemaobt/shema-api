@@ -52,7 +52,6 @@ def llm():
     return mock
 
 
-@pytest.mark.asyncio
 async def test_upload_splits_embeds_and_upserts(qdrant, settings, embeddings) -> None:
     content = "# Title\n\n" + ("Lorem ipsum dolor sit amet. " * 30)
     result = await upload_document(
@@ -83,7 +82,6 @@ async def test_upload_splits_embeds_and_upserts(qdrant, settings, embeddings) ->
     assert "uploaded_at" in payload
 
 
-@pytest.mark.asyncio
 async def test_upload_rejects_non_md(qdrant, settings) -> None:
     with pytest.raises(ValueError, match=r"Only \.md files"):
         await upload_document(
@@ -95,7 +93,6 @@ async def test_upload_rejects_non_md(qdrant, settings) -> None:
         )
 
 
-@pytest.mark.asyncio
 async def test_upload_rejects_empty_content(qdrant, settings, embeddings) -> None:
     with pytest.raises(ValueError, match="empty"):
         await upload_document(
@@ -108,7 +105,6 @@ async def test_upload_rejects_empty_content(qdrant, settings, embeddings) -> Non
         )
 
 
-@pytest.mark.asyncio
 async def test_query_returns_answer_and_sources(qdrant, settings, embeddings, llm) -> None:
     point = MagicMock()
     point.payload = {
@@ -143,7 +139,6 @@ async def test_query_returns_answer_and_sources(qdrant, settings, embeddings, ll
     assert call_kw["query_filter"] is not None
 
 
-@pytest.mark.asyncio
 async def test_query_empty_collection_returns_fallback(qdrant, settings, embeddings) -> None:
     result_obj = MagicMock()
     result_obj.points = []
@@ -161,7 +156,6 @@ async def test_query_empty_collection_returns_fallback(qdrant, settings, embeddi
     assert result.sources == []
 
 
-@pytest.mark.asyncio
 async def test_delete_filters_by_namespace_and_doc_id(qdrant, settings) -> None:
     mock_points = [MagicMock() for _ in range(3)]
     qdrant.scroll = AsyncMock(return_value=(mock_points, None))
@@ -178,7 +172,6 @@ async def test_delete_filters_by_namespace_and_doc_id(qdrant, settings) -> None:
     assert "doc_id" in field_names
 
 
-@pytest.mark.asyncio
 async def test_delete_returns_zero_when_not_found(qdrant, settings) -> None:
     qdrant.scroll = AsyncMock(return_value=([], None))
 
@@ -186,7 +179,6 @@ async def test_delete_returns_zero_when_not_found(qdrant, settings) -> None:
     assert deleted == 0
 
 
-@pytest.mark.asyncio
 async def test_list_groups_by_doc_id(qdrant, settings) -> None:
     doc_id_a = str(uuid.uuid4())
     doc_id_b = str(uuid.uuid4())
@@ -215,7 +207,6 @@ async def test_list_groups_by_doc_id(qdrant, settings) -> None:
     assert by_id[doc_id_b].chunk_count == 2
 
 
-@pytest.mark.asyncio
 async def test_list_empty_namespace(qdrant, settings) -> None:
     qdrant.scroll = AsyncMock(return_value=([], None))
 

@@ -349,7 +349,6 @@ async def _the_missing_listed_before_the_addition(
     return session_id, dict(first.json())
 
 
-@pytest.mark.asyncio
 async def test_a_missing_listed_first_loses_to_an_addition(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -376,7 +375,6 @@ async def test_a_missing_listed_first_loses_to_an_addition(
     assert voiced["findings_remaining"] == 2
 
 
-@pytest.mark.asyncio
 async def test_the_replay_and_the_resume_name_the_finding_that_was_spoken(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings
 ) -> None:
@@ -400,7 +398,6 @@ async def test_the_replay_and_the_resume_name_the_finding_that_was_spoken(
     assert resumed["finding_segment_id"] == replayed["finding_segment_id"]
 
 
-@pytest.mark.asyncio
 async def test_a_filled_silence_is_raised_before_a_missing_and_still_reads_as_addition(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -460,7 +457,6 @@ async def _the_check_raised_an_unclear_on_the_stretch_just_retold(
     return session_id, (await service.final_segments(db, session_id))[4]
 
 
-@pytest.mark.asyncio
 async def test_what_a_correction_broke_leads_over_a_higher_finding_elsewhere(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -484,7 +480,6 @@ async def test_what_a_correction_broke_leads_over_a_higher_finding_elsewhere(
     assert body["findings_remaining"] == 2
 
 
-@pytest.mark.asyncio
 async def test_an_unresolved_correction_keeps_the_front(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -509,7 +504,6 @@ async def test_an_unresolved_correction_keeps_the_front(
     assert THE_MISSING not in speaker[-1]
 
 
-@pytest.mark.asyncio
 async def test_a_loss_the_count_found_leads_over_an_unclear_the_same_check_raised(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:
@@ -544,7 +538,6 @@ async def test_a_loss_the_count_found_leads_over_an_unclear_the_same_check_raise
     assert THE_CHECKS_UNCLEAR not in speaker[-1]
 
 
-@pytest.mark.asyncio
 async def test_a_silence_a_check_raised_leads_over_an_addition_it_also_raised(
     client: httpx.AsyncClient, db_session: AsyncSession, analyst: ReaderOfTellings, speaker
 ) -> None:

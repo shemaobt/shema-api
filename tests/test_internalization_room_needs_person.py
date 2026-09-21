@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.room_enums import HaltKind
 from app.db.models.internalization_room import IRHardStretch, IRSessionStatus
 from app.services.internalization_room import sessions as service
+from tests.room_harness import record_the_part_again, rehearsed_in_parts, stretch_on
 
 
 @pytest.fixture()
@@ -45,34 +46,23 @@ async def test_a_finished_passage_does_not_reopen_itself(db_session: AsyncSessio
     )
 
 
-async def test_starting_over_starts_the_count_again_and_leaves_the_mark_standing(
+async def test_recording_the_part_again_starts_the_count_again_and_leaves_the_mark_standing(
     db_session: AsyncSession,
 ) -> None:
-    """Starting the telling-back over is the team throwing the recording away.
+    """Recording a **Part** again retires the stretches that explained the audio it replaced.
 
-    Every stretch of the session is retired, so the stretches they tell next are counted from
-    one.
     What may not go with them is the record that one of them was hard: that fact is the
-    consultant's, and starting over is not evidence against it.
+    consultant's, and the team recording again is not evidence against it.
     """
     from app.services.internalization_room.hard_stretches import note_a_hard_stretch
-    from app.services.internalization_room.segments import capture_segment
 
-    session = await service.create_session(db_session, pericope="P01")
-    told = await capture_segment(
-        db_session,
-        session,
-        take_id="ensaio-1",
-        starts_ms=0,
-        ends_ms=9000,
-        bridge_take_id="retro-1",
-        transcript="o trecho",
-    )
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    told = await stretch_on(db_session, session, part)
     told.tellings = service.RETELLS_BEFORE_A_WARNING
     await db_session.commit()
     assert await note_a_hard_stretch(db_session, session, told) is True
 
-    await service.begin_back_translation_again(db_session, session)
+    await record_the_part_again(db_session, session, part, sha256="b" * 64)
 
     told_id = told.id
     marks = list(
@@ -85,7 +75,7 @@ async def test_starting_over_starts_the_count_again_and_leaves_the_mark_standing
         ).scalars()
     )
     assert [mark.segment_id for mark in marks] == [told_id], (
-        "o contado de volta é jogado fora; o que a sala já registrou sobre ele, não"
+        "o contado de volta é aposentado; o que a sala já registrou sobre ele, não"
     )
 
 

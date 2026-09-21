@@ -316,15 +316,6 @@ async def test_the_mark_survives_everything_that_follows(
     assert (await _attend(client, session_id, facilitator)).status_code == 200
     assert await _standing() == kept
 
-    restarted = await client.post(
-        f"{IR}/sessions/{session_id}/back-translation/restart",
-        headers={"X-Room-Key": ROOM_KEY},
-    )
-    assert restarted.status_code == 200, restarted.text
-    assert await _standing() == kept, (
-        "recomeçar o contado de volta aposenta todo trecho; a marca não é parte dele"
-    )
-
 
 # ---------------------------------------------------------------------------
 # 4. A blocking halt after a warning still clears the stamps

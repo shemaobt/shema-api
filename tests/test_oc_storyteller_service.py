@@ -42,7 +42,6 @@ def _import_service():
     return storyteller_service
 
 
-@pytest.mark.asyncio
 async def test_create_storyteller_as_manager(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, manager = await _seed_project_with_manager(db_session)
@@ -67,7 +66,6 @@ async def test_create_storyteller_as_manager(db_session: AsyncSession) -> None:
     assert st.created_by_user_id == manager.id
 
 
-@pytest.mark.asyncio
 async def test_create_storyteller_as_member(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, _ = await _seed_project_with_manager(db_session)
@@ -80,7 +78,6 @@ async def test_create_storyteller_as_member(db_session: AsyncSession) -> None:
     assert st.external_acceptance_confirmed_by == member.id
 
 
-@pytest.mark.asyncio
 async def test_create_storyteller_non_member_blocked(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, _ = await _seed_project_with_manager(db_session)
@@ -91,13 +88,11 @@ async def test_create_storyteller_non_member_blocked(db_session: AsyncSession) -
         await ss.create_storyteller(db_session, project_id, data, outsider)
 
 
-@pytest.mark.asyncio
 async def test_create_storyteller_rejects_unconfirmed_at_schema() -> None:
     with pytest.raises(PydanticValidationError):
         StorytellerCreate(name="Ana", sex="female", external_acceptance_confirmed=False)
 
 
-@pytest.mark.asyncio
 async def test_create_storyteller_service_guards_unconfirmed(
     db_session: AsyncSession,
 ) -> None:
@@ -116,7 +111,6 @@ async def test_create_storyteller_service_guards_unconfirmed(
         await ss.create_storyteller(db_session, project_id, data, manager)
 
 
-@pytest.mark.asyncio
 async def test_list_project_storytellers_ordered_by_name(
     db_session: AsyncSession,
 ) -> None:
@@ -135,7 +129,6 @@ async def test_list_project_storytellers_ordered_by_name(
     assert [r.name for r in rows] == ["Ana", "Marcos", "Zelda"]
 
 
-@pytest.mark.asyncio
 async def test_update_own_storyteller_as_member(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, _ = await _seed_project_with_manager(db_session)
@@ -154,7 +147,6 @@ async def test_update_own_storyteller_as_member(db_session: AsyncSession) -> Non
     assert updated.dialect == "Trumai"
 
 
-@pytest.mark.asyncio
 async def test_update_other_members_storyteller_blocked(
     db_session: AsyncSession,
 ) -> None:
@@ -176,7 +168,6 @@ async def test_update_other_members_storyteller_blocked(
         )
 
 
-@pytest.mark.asyncio
 async def test_manager_can_update_any_storyteller(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, manager = await _seed_project_with_manager(db_session)
@@ -195,7 +186,6 @@ async def test_manager_can_update_any_storyteller(db_session: AsyncSession) -> N
     assert updated.dialect == "Kuikuro"
 
 
-@pytest.mark.asyncio
 async def test_update_storyteller_non_member_blocked(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, manager = await _seed_project_with_manager(db_session)
@@ -214,7 +204,6 @@ async def test_update_storyteller_non_member_blocked(db_session: AsyncSession) -
         )
 
 
-@pytest.mark.asyncio
 async def test_platform_admin_can_edit_any_storyteller(
     db_session: AsyncSession,
 ) -> None:
@@ -235,7 +224,6 @@ async def test_platform_admin_can_edit_any_storyteller(
     assert updated.name == "Anna"
 
 
-@pytest.mark.asyncio
 async def test_update_storyteller_preserves_audit_fields(
     db_session: AsyncSession,
 ) -> None:
@@ -258,7 +246,6 @@ async def test_update_storyteller_preserves_audit_fields(
     assert refreshed.external_acceptance_confirmed_by == confirmed_by
 
 
-@pytest.mark.asyncio
 async def test_delete_own_storyteller_as_member(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, _ = await _seed_project_with_manager(db_session)
@@ -277,7 +264,6 @@ async def test_delete_own_storyteller_as_member(db_session: AsyncSession) -> Non
         await ss.get_storyteller(db_session, st.id)
 
 
-@pytest.mark.asyncio
 async def test_delete_other_members_storyteller_blocked(
     db_session: AsyncSession,
 ) -> None:
@@ -297,7 +283,6 @@ async def test_delete_other_members_storyteller_blocked(
         await ss.delete_storyteller(db_session, st.id, other.id)
 
 
-@pytest.mark.asyncio
 async def test_manager_can_delete_any_storyteller(db_session: AsyncSession) -> None:
     ss = _import_service()
     project_id, manager = await _seed_project_with_manager(db_session)
@@ -316,7 +301,6 @@ async def test_manager_can_delete_any_storyteller(db_session: AsyncSession) -> N
         await ss.get_storyteller(db_session, st.id)
 
 
-@pytest.mark.asyncio
 async def test_delete_storyteller_nulls_recording_link(
     db_session: AsyncSession,
 ) -> None:
@@ -354,7 +338,6 @@ async def test_delete_storyteller_nulls_recording_link(
     assert result2.scalar_one_or_none() is None
 
 
-@pytest.mark.asyncio
 async def test_get_storyteller_not_found(db_session: AsyncSession) -> None:
     ss = _import_service()
     with pytest.raises(NotFoundError):

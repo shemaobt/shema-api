@@ -17,7 +17,6 @@ from app.services.project_health import (
 from app.services.project_health.complete_interview import InterviewIncompleteError
 
 
-@pytest.mark.asyncio
 async def test_create_interview_returns_token_and_first_message(db_session, ph_app, language_en):
     interview, token, expires_at, first_message, coverage = await create_interview(
         db_session,
@@ -38,13 +37,11 @@ async def test_create_interview_returns_token_and_first_message(db_session, ph_a
     assert claims.interview_id == interview.id
 
 
-@pytest.mark.asyncio
 async def test_decode_rejects_invalid_token(db_session, ph_app):
     with pytest.raises(AuthenticationError):
         decode_interview_token("not-a-real-token")
 
 
-@pytest.mark.asyncio
 async def test_post_message_appends_turns(db_session, ph_app, language_en, stub_llm):
     interview, _, _, _, _ = await create_interview(
         db_session,
@@ -66,7 +63,6 @@ async def test_post_message_appends_turns(db_session, ph_app, language_en, stub_
     assert roles == ["facilitator", "team", "facilitator"]
 
 
-@pytest.mark.asyncio
 async def test_post_message_rejects_completed_interview(db_session, ph_app, language_en):
     interview, _, _, _, _ = await create_interview(
         db_session,
@@ -81,7 +77,6 @@ async def test_post_message_rejects_completed_interview(db_session, ph_app, lang
         await post_message(db_session, interview.id, "hello")
 
 
-@pytest.mark.asyncio
 async def test_complete_blocked_when_coverage_incomplete(db_session, ph_app, language_en):
     interview, _, _, _, _ = await create_interview(
         db_session,
@@ -100,7 +95,6 @@ async def test_complete_blocked_when_coverage_incomplete(db_session, ph_app, lan
     assert "local_leadership" in payload.missing_domains
 
 
-@pytest.mark.asyncio
 async def test_complete_writes_report_and_flips_status(db_session, ph_app, language_en, stub_llm):
     interview, _, _, _, _ = await create_interview(
         db_session,
@@ -157,7 +151,6 @@ async def test_complete_writes_report_and_flips_status(db_session, ph_app, langu
     assert report.id == report_id
 
 
-@pytest.mark.asyncio
 async def test_complete_idempotent_when_report_exists(db_session, ph_app, language_en, stub_llm):
     interview, _, _, _, _ = await create_interview(
         db_session,

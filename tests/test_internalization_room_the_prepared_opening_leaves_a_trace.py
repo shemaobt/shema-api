@@ -45,7 +45,6 @@ def _warnings(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_refused_opening_names_the_session_the_pericope_and_the_reason(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -75,7 +74,6 @@ async def test_a_refused_opening_names_the_session_the_pericope_and_the_reason(
     assert "imported_knowledge" in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_a_refused_opening_still_leaves_the_session_with_nothing_prepared(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -102,7 +100,6 @@ async def test_a_refused_opening_still_leaves_the_session_with_nothing_prepared(
     assert refreshed.prepared_audio_key is None
 
 
-@pytest.mark.asyncio
 async def test_a_transport_error_names_the_session_and_the_pericope_not_the_passage(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -132,7 +129,6 @@ async def test_a_transport_error_names_the_session_and_the_pericope_not_the_pass
     assert PASSAGE_TEXT not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_a_transport_error_never_raises_out_of_the_background_job(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -66,7 +66,6 @@ def _stub_client(response: SimpleNamespace) -> SimpleNamespace:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_returns_trimmed_text() -> None:
     client = _stub_client(_stt_response("  hello world  "))
     text = await transcribe_audio(b"abc", filename="clip.wav", settings=_settings(), client=client)
@@ -74,7 +73,6 @@ async def test_transcribe_audio_returns_trimmed_text() -> None:
     assert client.post.await_count == 1
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_hits_elevenlabs_url_with_scribe_model() -> None:
     client = _stub_client(_stt_response("ok"))
     await transcribe_audio(b"abc", filename="clip.wav", settings=_settings(), client=client)
@@ -85,7 +83,6 @@ async def test_transcribe_audio_hits_elevenlabs_url_with_scribe_model() -> None:
     assert call.kwargs["headers"]["xi-api-key"] == "fake-elevenlabs"
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_sniffs_wav_when_filename_and_mime_missing() -> None:
     """B-4: unknown audio + no metadata should sniff the magic bytes, not fall back
     silently to audio/mpeg."""
@@ -96,7 +93,6 @@ async def test_transcribe_audio_sniffs_wav_when_filename_and_mime_missing() -> N
     assert sent_mime == "audio/wav"
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_warns_on_missing_mime(caplog) -> None:
     """B-4: when neither filename, mime, nor a sniffable magic byte is available,
     we should log a warning so the operator can debug a confused STT call."""
@@ -110,7 +106,6 @@ async def test_transcribe_audio_warns_on_missing_mime(caplog) -> None:
     assert any("mime-type fallback" in r.message for r in caplog.records)
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_rejects_empty_payload() -> None:
     client = _stub_client(_stt_response("ignored"))
     with pytest.raises(ValidationError):
@@ -118,21 +113,18 @@ async def test_transcribe_audio_rejects_empty_payload() -> None:
     assert client.post.await_count == 0
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_raises_when_empty_response() -> None:
     client = _stub_client(_stt_response(""))
     with pytest.raises(ValidationError):
         await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_raises_when_api_error() -> None:
     client = _stub_client(_err(500, "internal"))
     with pytest.raises(ValidationError):
         await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
 
 
-@pytest.mark.asyncio
 async def test_transcribe_audio_requires_api_key() -> None:
     s = Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="")
     client = _stub_client(_stt_response("ignored"))
@@ -145,7 +137,6 @@ async def test_transcribe_audio_requires_api_key() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_caches_on_repeat_calls() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"MP3DATA"))
@@ -174,7 +165,6 @@ def _request_body(call) -> dict[str, Any]:
     return call.kwargs["json"]
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_detects_portuguese_and_picks_pt_voice() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"PT_MP3"))
@@ -188,7 +178,6 @@ async def test_synthesize_speech_detects_portuguese_and_picks_pt_voice() -> None
     assert _request_body(call)["language_code"] == "pt"
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_detects_spanish_and_picks_es_voice() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"ES_MP3"))
@@ -202,7 +191,6 @@ async def test_synthesize_speech_detects_spanish_and_picks_es_voice() -> None:
     assert _request_body(call)["language_code"] == "es"
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_falls_back_to_default_on_short_text() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"OK_MP3"))
@@ -212,7 +200,6 @@ async def test_synthesize_speech_falls_back_to_default_on_short_text() -> None:
     assert _request_body(call)["language_code"] == "en"
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_explicit_language_overrides_detection() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"FORCED_MP3"))
@@ -226,7 +213,6 @@ async def test_synthesize_speech_explicit_language_overrides_detection() -> None
     assert _voice_id_in_url(call) == VOICE_MAP["en-US"]["voice_id"]
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_voice_name_overrides_voice_id() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"CUSTOM_MP3"))
@@ -241,7 +227,6 @@ async def test_synthesize_speech_voice_name_overrides_voice_id() -> None:
     assert _voice_id_in_url(call) == "custom_voice_xyz"
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_sends_model_and_output_format() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"MP3"))
@@ -251,14 +236,12 @@ async def test_synthesize_speech_sends_model_and_output_format() -> None:
     assert body["output_format"] == "mp3_44100_128"
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_rejects_empty_text() -> None:
     client = _stub_client(_tts_response(b""))
     with pytest.raises(ValidationError):
         await synthesize_speech("   ", client=client, settings=_settings())
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_raises_when_no_audio() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b""))
@@ -266,7 +249,6 @@ async def test_synthesize_speech_raises_when_no_audio() -> None:
         await synthesize_speech("hello world", client=client, settings=_settings())
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_raises_when_api_error() -> None:
     audio_cache.clear()
     client = _stub_client(_err(429, "rate limit"))
@@ -274,7 +256,6 @@ async def test_synthesize_speech_raises_when_api_error() -> None:
         await synthesize_speech("hello", client=client, settings=_settings())
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_requires_api_key() -> None:
     audio_cache.clear()
     s = Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="")
@@ -288,7 +269,6 @@ async def test_synthesize_speech_requires_api_key() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_synthesize_speech_aggregates_sentence_marks_from_alignment() -> None:
     audio_cache.clear()
     text = "Hello world. Second sentence here."
@@ -450,7 +430,6 @@ def _tts_payload(audio: bytes = b"ID3-audio", text: str = "Alpha. Beta.") -> dic
     }
 
 
-@pytest.mark.asyncio
 async def test_a_clip_in_the_bucket_is_not_synthesized_again() -> None:
     """The durable cache is the point: a cold worker must not re-pay ElevenLabs.
 
@@ -479,7 +458,6 @@ async def test_a_clip_in_the_bucket_is_not_synthesized_again() -> None:
     assert second.timepoints == first.timepoints, "karaoke marks must survive the bucket"
 
 
-@pytest.mark.asyncio
 async def test_a_broken_bucket_still_returns_audio() -> None:
     """Caching is an optimisation. Losing it must not lose the request.
 
@@ -501,7 +479,6 @@ async def test_a_broken_bucket_still_returns_audio() -> None:
     assert entry.audio == b"ID3-audio"
 
 
-@pytest.mark.asyncio
 async def test_unreadable_marks_still_serve_the_audio() -> None:
     """Corrupt sentence marks cost the highlight on one clip, never the sound."""
     audio_cache.clear()

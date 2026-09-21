@@ -19,7 +19,6 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_export_json_returns_valid_json(db_session) -> None:
     user = await make_user(db_session, email="analyst43@test.com")
     book = await make_bible_book(db_session)
@@ -30,7 +29,6 @@ async def test_export_json_returns_valid_json(db_session) -> None:
     assert parsed == SAMPLE_MM_DATA
 
 
-@pytest.mark.asyncio
 async def test_export_json_empty_data(db_session) -> None:
     user = await make_user(db_session, email="analyst44@test.com")
     book = await make_bible_book(db_session)
@@ -40,7 +38,6 @@ async def test_export_json_empty_data(db_session) -> None:
     assert json.loads(result) == {}
 
 
-@pytest.mark.asyncio
 async def test_export_prose_contains_arc(db_session) -> None:
     user = await make_user(db_session, email="analyst45@test.com")
     book = await make_bible_book(db_session)
@@ -52,7 +49,6 @@ async def test_export_prose_contains_arc(db_session) -> None:
     assert "Level 1 — The Arc" in result
 
 
-@pytest.mark.asyncio
 async def test_export_prose_contains_scene_details(db_session) -> None:
     user = await make_user(db_session, email="analyst46@test.com")
     book = await make_bible_book(db_session)
@@ -68,7 +64,6 @@ async def test_export_prose_contains_scene_details(db_session) -> None:
     assert "2E — Communicative Purpose" in result
 
 
-@pytest.mark.asyncio
 async def test_export_prose_contains_propositions(db_session) -> None:
     user = await make_user(db_session, email="analyst47@test.com")
     book = await make_bible_book(db_session)
@@ -79,7 +74,6 @@ async def test_export_prose_contains_propositions(db_session) -> None:
     assert "What happens?" in result
 
 
-@pytest.mark.asyncio
 async def test_export_prose_empty_data(db_session) -> None:
     user = await make_user(db_session, email="analyst48@test.com")
     book = await make_bible_book(db_session)
@@ -89,7 +83,6 @@ async def test_export_prose_empty_data(db_session) -> None:
     assert "# Bible Meaning Map" in result
 
 
-@pytest.mark.asyncio
 async def test_resolve_feedback_success(db_session) -> None:
     user = await make_user(db_session, email="analyst49@test.com")
     reviewer = await make_user(db_session, email="reviewer3@test.com")
@@ -102,7 +95,6 @@ async def test_resolve_feedback_success(db_session) -> None:
     assert resolved.resolved is True
 
 
-@pytest.mark.asyncio
 async def test_resolve_feedback_raises_if_not_found(db_session) -> None:
     user = await make_user(db_session, email="analyst50@test.com")
     book = await make_bible_book(db_session)
@@ -112,7 +104,6 @@ async def test_resolve_feedback_raises_if_not_found(db_session) -> None:
         await resolve_feedback(db_session, mm.id, "nonexistent-id")
 
 
-@pytest.mark.asyncio
 async def test_resolve_feedback_wrong_meaning_map(db_session) -> None:
     user = await make_user(db_session, email="analyst51@test.com")
     reviewer = await make_user(db_session, email="reviewer4@test.com")
@@ -126,7 +117,6 @@ async def test_resolve_feedback_wrong_meaning_map(db_session) -> None:
         await resolve_feedback(db_session, mm2.id, fb.id)
 
 
-@pytest.mark.asyncio
 async def test_seed_books_inserts_all_66(db_session) -> None:
     count = await seed_books(db_session)
     assert count == 66
@@ -134,7 +124,6 @@ async def test_seed_books_inserts_all_66(db_session) -> None:
     assert len(books) == 66
 
 
-@pytest.mark.asyncio
 async def test_seed_books_idempotent(db_session) -> None:
     first = await seed_books(db_session)
     assert first == 66
@@ -144,7 +133,6 @@ async def test_seed_books_idempotent(db_session) -> None:
     assert len(books) == 66
 
 
-@pytest.mark.asyncio
 async def test_seed_books_ot_enabled_nt_disabled(db_session) -> None:
     await seed_books(db_session)
     books = await list_books(db_session)
@@ -155,13 +143,11 @@ async def test_seed_books_ot_enabled_nt_disabled(db_session) -> None:
             assert book.is_enabled is False, f"{book.name} should be disabled"
 
 
-@pytest.mark.asyncio
 async def test_ensure_ot_passes_for_enabled_book(db_session) -> None:
     book = await make_bible_book(db_session, is_enabled=True)
     ensure_ot(book)
 
 
-@pytest.mark.asyncio
 async def test_ensure_ot_raises_for_disabled_book(db_session) -> None:
     book = await make_bible_book(
         db_session,

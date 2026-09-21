@@ -1,11 +1,8 @@
-import pytest
-
 from app.services.book_context.check_stale import check_bcd_staleness
 from app.services.book_context.validate_against_brief import validate_map_against_brief
 from tests.baker import make_bcd, make_bible_book, make_meaning_map, make_pericope, make_user
 
 
-@pytest.mark.asyncio
 async def test_staleness_check_current_version(db_session):
     user = await make_user(db_session, email="stale1@test.com")
     book = await make_bible_book(
@@ -25,7 +22,6 @@ async def test_staleness_check_current_version(db_session):
     assert result.is_stale is False
 
 
-@pytest.mark.asyncio
 async def test_staleness_check_outdated_version(db_session):
     user = await make_user(db_session, email="stale2@test.com")
     book = await make_bible_book(
@@ -47,7 +43,6 @@ async def test_staleness_check_outdated_version(db_session):
     assert result.current_version == 5
 
 
-@pytest.mark.asyncio
 async def test_staleness_check_no_bcd_at_all(db_session):
     user = await make_user(db_session, email="stale3@test.com")
     book = await make_bible_book(
@@ -64,7 +59,6 @@ async def test_staleness_check_no_bcd_at_all(db_session):
     assert result.is_stale is False
 
 
-@pytest.mark.asyncio
 async def test_staleness_check_no_version_on_mm(db_session):
     user = await make_user(db_session, email="stale4@test.com")
     book = await make_bible_book(
@@ -82,7 +76,6 @@ async def test_staleness_check_no_version_on_mm(db_session):
     assert result.is_stale is False
 
 
-@pytest.mark.asyncio
 async def test_validate_non_first_pericope_no_established(db_session):
     user = await make_user(db_session, email="val_api1@test.com")
     book = await make_bible_book(
@@ -127,7 +120,6 @@ async def test_validate_non_first_pericope_no_established(db_session):
     assert any(i.severity == "error" and "Already Established" in i.message for i in issues)
 
 
-@pytest.mark.asyncio
 async def test_validate_first_pericope_no_issues(db_session):
     user = await make_user(db_session, email="val_api2@test.com")
     book = await make_bible_book(
@@ -163,7 +155,6 @@ async def test_validate_first_pericope_no_issues(db_session):
     assert not any(i.severity == "error" for i in issues)
 
 
-@pytest.mark.asyncio
 async def test_validate_detects_established_name_in_propositions(db_session):
     user = await make_user(db_session, email="val_api3@test.com")
     book = await make_bible_book(

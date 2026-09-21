@@ -121,7 +121,6 @@ async def _say(db_session: AsyncSession, session: IRSession, utterance: str) -> 
     return turn.outcome.speech
 
 
-@pytest.mark.asyncio
 async def test_a_passage_worked_through_is_finished_without_a_consent_answer(
     db_session: AsyncSession, approve_all: None
 ) -> None:
@@ -139,7 +138,6 @@ async def test_a_passage_worked_through_is_finished_without_a_consent_answer(
     assert session_is_done(session)
 
 
-@pytest.mark.asyncio
 async def test_the_refine_package_never_waits_on_a_recording_consent(
     db_session: AsyncSession,
 ) -> None:
@@ -156,7 +154,6 @@ async def test_the_refine_package_never_waits_on_a_recording_consent(
 
 
 @pytest.mark.parametrize("language", ROOM_LANGUAGES)
-@pytest.mark.asyncio
 async def test_a_finished_passage_is_never_asked_whether_to_record(
     db_session: AsyncSession, approve_all: None, language: str
 ) -> None:

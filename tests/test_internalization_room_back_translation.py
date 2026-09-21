@@ -159,7 +159,6 @@ def test_an_empty_telling_back_says_so_rather_than_looking_complete() -> None:
     assert "ainda não traduziu" in segments_block([], language_code="pt")
 
 
-@pytest.mark.asyncio
 async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> None:
     patch_analyst(json.dumps({"findings": []}))
 
@@ -175,7 +174,6 @@ async def test_a_faithful_telling_back_produces_no_findings(patch_analyst) -> No
     assert analysis.findings == []
 
 
-@pytest.mark.asyncio
 async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
     patch_analyst(
         json.dumps(
@@ -200,7 +198,6 @@ async def test_findings_are_parsed_with_their_kind(patch_analyst) -> None:
     assert [f.kind for f in analysis.findings] == [FindingKind.MISSING, FindingKind.ADDITION]
 
 
-@pytest.mark.asyncio
 async def test_an_unparseable_analysis_invents_nothing_and_claims_nothing(
     patch_analyst,
 ) -> None:
@@ -267,7 +264,6 @@ def test_no_findings_reads_as_complete() -> None:
     assert "nenhum achado" in findings_block([], Addresses())
 
 
-@pytest.mark.asyncio
 async def test_the_verdict_is_validated_before_it_is_voiced(patch_speaker) -> None:
     agent = patch_speaker("No que você me contou, Orfa não apareceu.")
 
@@ -328,7 +324,6 @@ def test_a_stretch_told_back_again_earns_a_fresh_reading_at_the_same_count() -> 
     assert not state.already_analysed(told)
 
 
-@pytest.mark.asyncio
 async def test_the_analyst_pointer_is_resolved_to_the_stretch_it_names(patch_analyst) -> None:
     """The analyst answers with a position and the room stores an address.
 
@@ -351,7 +346,6 @@ async def test_the_analyst_pointer_is_resolved_to_the_stretch_it_names(patch_ana
     ]
 
 
-@pytest.mark.asyncio
 async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> None:
     """The number the analyst gave is kept beside the stretch it resolved to.
 
@@ -388,7 +382,6 @@ async def test_the_analysts_frase_number_stays_on_the_finding(patch_analyst) -> 
     ]
 
 
-@pytest.mark.asyncio
 async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     patch_analyst,
 ) -> None:
@@ -411,7 +404,6 @@ async def test_a_finding_that_cannot_name_a_piece_falls_back_to_the_whole(
     assert [f.segment_id for f in analysis.findings] == [None, None, None]
 
 
-@pytest.mark.asyncio
 async def test_an_analyst_outage_never_becomes_a_clean_verdict(patch_analyst) -> None:
     """The one that matters: a failed call must not read as "checked".
 
@@ -452,7 +444,6 @@ def test_a_clean_reading_is_still_allowed_to_close_the_passage() -> None:
     "retired",
     ["meaning_change", "wrong_relation", "reordered_event", "preservation_violation", "silence"],
 )
-@pytest.mark.asyncio
 async def test_a_retired_kind_reads_as_addition(
     retired: str, patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -492,7 +483,6 @@ async def test_a_retired_kind_reads_as_addition(
     assert "refused" not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_one_malformed_finding_rejects_the_whole_reading(patch_analyst) -> None:
     """Dropping one malformed finding could award a false clean verdict."""
     patch_analyst(
@@ -515,7 +505,6 @@ async def test_one_malformed_finding_rejects_the_whole_reading(patch_analyst) ->
     assert analysis is None
 
 
-@pytest.mark.asyncio
 async def test_a_thin_reading_that_names_no_difference_is_no_finding(patch_analyst) -> None:
     """Thin evidence about a legible frase is no finding, so this reading confers.
 
@@ -537,7 +526,6 @@ async def test_a_thin_reading_that_names_no_difference_is_no_finding(patch_analy
     assert analysis.findings == []
 
 
-@pytest.mark.asyncio
 async def test_an_evidence_flag_of_any_shape_is_read_and_ignored(patch_analyst) -> None:
     """A key the server no longer defines cannot refuse a reply that still carries it.
 
@@ -566,7 +554,6 @@ async def test_an_evidence_flag_of_any_shape_is_read_and_ignored(patch_analyst) 
     assert [f.kind for f in analysis.findings] == [FindingKind.MISSING]
 
 
-@pytest.mark.asyncio
 async def test_the_retired_evidence_kind_is_dropped_and_the_rest_of_the_reply_kept(
     patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -604,7 +591,6 @@ async def test_the_retired_evidence_kind_is_dropped_and_the_rest_of_the_reply_ke
     assert "refused" not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_the_retired_evidence_kind_is_dropped_from_a_correction_too(
     patch_analyst, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -729,7 +715,6 @@ async def _verdict_for(findings: list[Finding], patch_speaker) -> str:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
 async def test_an_addition_and_a_missing_on_the_same_frase_reach_the_speaker_together(
     patch_speaker,
 ) -> None:
@@ -756,7 +741,6 @@ async def test_an_addition_and_a_missing_on_the_same_frase_reach_the_speaker_tog
     assert said != "A frase 1 de novo.", "o par pede o trecho inteiro, como qualquer achado nele"
 
 
-@pytest.mark.asyncio
 async def test_a_missing_placed_after_the_same_frase_still_pairs(patch_speaker) -> None:
     """Acceptance 2. The pair is keyed on the frase, never on the stretch each resolved to.
 
@@ -819,7 +803,6 @@ def test_a_pair_that_is_not_the_current_finding_still_counts_as_one() -> None:
     assert findings_remaining(state.findings) == 2
 
 
-@pytest.mark.asyncio
 async def test_an_addition_alone_is_voiced_as_today(patch_speaker) -> None:
     """The regression that catches a reader built around the pair (*P02-causa-a-mais*).
 
@@ -839,7 +822,6 @@ async def test_an_addition_alone_is_voiced_as_today(patch_speaker) -> None:
     assert findings_remaining(state.findings) == 1
 
 
-@pytest.mark.asyncio
 async def test_the_validator_judges_the_same_block_the_speaker_was_handed(patch_speaker) -> None:
     """The gate before the team's ears is shown the swap, not half of it.
 
@@ -889,7 +871,6 @@ def test_a_missing_element_with_nowhere_to_point_never_pairs() -> None:
     assert findings_remaining(state.findings) == 2
 
 
-@pytest.mark.asyncio
 async def test_a_finding_on_a_stretch_hands_the_choice_to_the_screen(patch_speaker) -> None:
     spoken_to = await _verdict_for([_on_a_stretch(FindingKind.ADDITION)], patch_speaker)
 
@@ -897,7 +878,6 @@ async def test_a_finding_on_a_stretch_hands_the_choice_to_the_screen(patch_speak
     assert CLOSING_SPOKEN not in spoken_to
 
 
-@pytest.mark.asyncio
 async def test_a_finding_with_no_stretch_keeps_asking_out_loud(patch_speaker) -> None:
     """Scenario 4, the middle of the slice.
 
@@ -912,7 +892,6 @@ async def test_a_finding_with_no_stretch_keeps_asking_out_loud(patch_speaker) ->
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
 
 
-@pytest.mark.asyncio
 async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_speaker) -> None:
     """`unclear` names a stretch and still asks nothing to hand over.
 
@@ -926,7 +905,6 @@ async def test_an_evidence_limit_keeps_asking_out_loud_even_on_a_stretch(patch_s
     assert CLOSING_ON_SCREEN.format(session_language="Portuguese") not in spoken_to
 
 
-@pytest.mark.asyncio
 async def test_the_verdict_stays_anchored_in_what_the_team_told_back(patch_speaker) -> None:
     """Scenario 2. The one law, which the new closing may not loosen along with the rest.
 
@@ -954,7 +932,6 @@ def test_a_garbled_stretch_is_still_not_a_stretch_to_hand_over() -> None:
     assert frozenset({FindingKind.UNCLEAR}) == EVIDENCE_LIMIT_KINDS
 
 
-@pytest.mark.asyncio
 async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> None:
     """A speaker prompt missing the closing slot would swallow it without a word.
 
@@ -978,7 +955,6 @@ async def test_a_stored_prompt_without_the_slot_is_refused(patch_speaker) -> Non
         )
 
 
-@pytest.mark.asyncio
 async def test_a_turn_with_no_finding_is_not_told_about_one(patch_speaker) -> None:
     """The closing may not talk about a finding on the turn that has none.
 
@@ -993,7 +969,6 @@ async def test_a_turn_with_no_finding_is_not_told_about_one(patch_speaker) -> No
     assert CLOSING_MISSING_TO_REHEARSAL not in spoken_to
 
 
-@pytest.mark.asyncio
 async def test_the_closing_speaks_the_language_the_turn_was_given(patch_speaker) -> None:
     """One source for the language, not two defaults that agree by luck.
 
@@ -1270,7 +1245,6 @@ async def _straight_from_rehearsal(draft: str, patch_loop) -> tuple[Any, Any]:
     return outcome, agent
 
 
-@pytest.mark.asyncio
 async def test_the_verdict_is_spoken_to_a_team_that_only_told_back(patch_loop) -> None:
     """Acceptance 1: the finding reaches the team instead of a fail-safe line.
 
@@ -1285,7 +1259,6 @@ async def test_the_verdict_is_spoken_to_a_team_that_only_told_back(patch_loop) -
     assert "Elimeleque" in outcome.speech
 
 
-@pytest.mark.asyncio
 async def test_the_validator_is_shown_what_the_team_told_back(patch_loop) -> None:
     """Acceptance 6, first of three: the telling-back reaches the judge.
 
@@ -1299,7 +1272,6 @@ async def test_the_validator_is_shown_what_the_team_told_back(patch_loop) -> Non
     assert OPENING_PLACEHOLDER not in agent.briefs[0]
 
 
-@pytest.mark.asyncio
 async def test_the_validator_is_shown_the_finding_and_the_closing_it_was_given(
     patch_loop,
 ) -> None:
@@ -1317,7 +1289,6 @@ async def test_the_validator_is_shown_the_finding_and_the_closing_it_was_given(
     assert "record this part again" not in agent.briefs[0]
 
 
-@pytest.mark.asyncio
 async def test_navigation_the_app_never_ordered_is_still_refused(patch_loop) -> None:
     """Acceptance 3, the control this whole slice turns on.
 
@@ -1332,7 +1303,6 @@ async def test_navigation_the_app_never_ordered_is_still_refused(patch_loop) -> 
     assert NAVIGATION_POLICY in agent.briefs[0]
 
 
-@pytest.mark.asyncio
 async def test_a_claim_the_team_never_made_is_still_refused(patch_loop) -> None:
     """Acceptance 4: the check against the telling-back gets stricter, not looser.
 
@@ -1346,7 +1316,6 @@ async def test_a_claim_the_team_never_made_is_still_refused(patch_loop) -> None:
     assert "Every claim about the telling-back is measured against that block" in agent.briefs[0]
 
 
-@pytest.mark.asyncio
 async def test_an_ordinary_conversation_turn_is_untouched(patch_loop) -> None:
     """Acceptance 5: nothing about the verdict leaks into the room's other turns.
 
@@ -1378,7 +1347,6 @@ async def test_an_ordinary_conversation_turn_is_untouched(patch_loop) -> None:
     assert "Noemi mandou Rute voltar." not in agent.briefs[0]
 
 
-@pytest.mark.asyncio
 async def test_a_stored_validator_without_the_context_slots_is_refused(patch_loop) -> None:
     """The guard the Speaker side already had, on the side where its absence cost a session.
 
@@ -1422,7 +1390,6 @@ def _missing(segment_id: str | None) -> Finding:
     return Finding(kind=FindingKind.MISSING, note="Orfa não apareceu.", segment_id=segment_id)
 
 
-@pytest.mark.asyncio
 async def test_a_missing_element_on_a_stretch_closes_like_any_other_finding(patch_speaker) -> None:
     """R10 (servidor, 2026-09-03), reversing ENG-710. The screen shows two microphones again.
 
@@ -1438,7 +1405,6 @@ async def test_a_missing_element_on_a_stretch_closes_like_any_other_finding(patc
     assert CLOSING_MISSING_TO_REHEARSAL not in spoken_to
 
 
-@pytest.mark.asyncio
 async def test_a_missing_element_after_everything_told_sends_them_on_to_record(
     patch_speaker,
 ) -> None:
@@ -1474,7 +1440,6 @@ def test_the_closing_to_rehearsal_names_the_microphone_and_the_green_button() ->
     assert "green button" in CLOSING_MISSING_TO_REHEARSAL
 
 
-@pytest.mark.asyncio
 async def test_the_validator_sees_the_microphone_and_the_green_button_too(patch_loop) -> None:
     """The Validator judges the Speaker against the same order it was given.
 
@@ -1529,7 +1494,6 @@ def test_every_other_kind_closes_exactly_as_before(
     assert closing_block(finding) == (CLOSING_ON_SCREEN if asked_on_a_stretch else CLOSING_SPOKEN)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("finding", "obedient_draft", "ordered", "retired"),
     [
@@ -1755,7 +1719,6 @@ def test_marcias_items_keep_the_relation_rule_and_the_marked_silence() -> None:
     )
 
 
-@pytest.mark.asyncio
 async def test_a_missing_start_is_recorded_again_on_the_first_stretch_not_rehearsed(
     patch_analyst,
 ) -> None:

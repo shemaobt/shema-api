@@ -86,7 +86,6 @@ def _records(caplog: pytest.LogCaptureFixture, reading: str) -> list[logging.Log
     ]
 
 
-@pytest.mark.asyncio
 async def test_an_accepted_analysis_reading_leaves_an_info_record(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -119,7 +118,6 @@ async def test_an_accepted_analysis_reading_leaves_an_info_record(
     assert raw in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_an_accepted_correction_reading_leaves_an_info_record(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -165,7 +163,6 @@ async def test_an_accepted_correction_reading_leaves_an_info_record(
     assert raw in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_the_teams_own_words_do_not_reach_this_logger(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -205,7 +202,6 @@ async def test_the_teams_own_words_do_not_reach_this_logger(
     assert marker not in logger_text
 
 
-@pytest.mark.asyncio
 async def test_a_refused_reading_leaves_only_the_refusal_trace(
     patch_model, caplog: pytest.LogCaptureFixture
 ) -> None:

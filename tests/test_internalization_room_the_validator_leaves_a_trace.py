@@ -78,7 +78,6 @@ async def _a_turn(session_id: str, **overrides: Any):
     return await run_turn(**kwargs)
 
 
-@pytest.mark.asyncio
 async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_draft(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -111,7 +110,6 @@ async def test_a_validator_answering_loose_text_twice_leaves_two_traces_on_one_d
         assert "desculpe, não consigo" in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_json_without_a_verdict_key_also_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -129,7 +127,6 @@ async def test_json_without_a_verdict_key_also_leaves_a_trace(
         assert '"ok": true' in record.getMessage().lower()
 
 
-@pytest.mark.asyncio
 async def test_a_regenerate_verdict_leaves_the_whole_reply(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -157,7 +154,6 @@ async def test_a_regenerate_verdict_leaves_the_whole_reply(
         assert "claims_to_see_the_screen" in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_a_correct_verdict_with_no_text_leaves_a_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -176,7 +172,6 @@ async def test_a_correct_verdict_with_no_text_leaves_a_trace(
         assert "corrected_response" in record.getMessage()
 
 
-@pytest.mark.asyncio
 async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_words(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -208,7 +203,6 @@ async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_w
             assert draft not in str(value)
 
 
-@pytest.mark.asyncio
 async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -237,7 +231,6 @@ async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(
     assert TEAM_ANSWER not in caplog.text
 
 
-@pytest.mark.asyncio
 async def test_every_refusal_carries_the_sessions_own_id(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -260,7 +253,6 @@ async def test_every_refusal_carries_the_sessions_own_id(
         assert record.__dict__["session_id"] != "?"
 
 
-@pytest.mark.asyncio
 async def test_a_passing_verdict_leaves_no_refusal_trace(
     patch_agent, caplog: pytest.LogCaptureFixture
 ) -> None:

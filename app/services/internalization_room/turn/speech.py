@@ -6,7 +6,7 @@ from typing import Any
 
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
-from app.services.internalization_room.fail_safe import FailSafe, choose
+from app.services.internalization_room.fail_safe import FailSafe, choose, inaudible_ladder
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.run_turn import (
     TurnOutcome,
@@ -35,7 +35,7 @@ async def speak_back(
             speech=line, transcript=transcript, used_fail_safe=True, fixed_line=fixed
         )
     elif not opening and (empty or uncertain):
-        line, fixed = choose(FailSafe.INAUDIBLE, session.language, turn=len(messages))
+        line, fixed = inaudible_ladder(messages, session.language)
         outcome = TurnOutcome(
             speech=line,
             transcript=transcript,

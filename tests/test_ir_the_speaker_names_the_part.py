@@ -159,7 +159,6 @@ def _addition(chunk: int, note: str = "o pedido das noras") -> dict[str, Any]:
     return {"kind": "addition", "note": note, "chunk": chunk}
 
 
-@pytest.mark.asyncio
 async def test_a_finding_on_part_two_of_a_three_scene_passage_names_the_scene(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -182,7 +181,6 @@ async def test_a_finding_on_part_two_of_a_three_scene_passage_names_the_scene(
     assert _addresses(room.briefs[-1]) == [f"frase 5 — a parte 2 — {title}, das frases 4 a 7"]
 
 
-@pytest.mark.asyncio
 async def test_a_four_part_rehearsal_names_the_part_by_number_alone(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -205,7 +203,6 @@ async def test_a_four_part_rehearsal_names_the_part_by_number_alone(
     assert title and title not in _block(room.briefs[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_passage_without_portuguese_titles_names_the_number_alone(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -229,7 +226,6 @@ async def test_a_passage_without_portuguese_titles_names_the_number_alone(
     assert in_english and in_english not in _block(room.briefs[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_rehearsal_told_whole_is_the_whole_recording(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -270,7 +266,6 @@ def test_every_language_the_room_speaks_has_its_own_address_words(language: str)
         )
 
 
-@pytest.mark.asyncio
 async def test_a_part_with_no_number_beside_the_scenes_does_not_cost_the_titles(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -298,7 +293,6 @@ async def test_a_part_with_no_number_beside_the_scenes_does_not_cost_the_titles(
     assert _addresses(room.briefs[-1]) == [f"frase 7 — a parte 2 — {title}, das frases 6 a 9"]
 
 
-@pytest.mark.asyncio
 async def test_a_whole_recording_beside_numbered_parts_does_not_shift_their_numbers(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -324,7 +318,6 @@ async def test_a_whole_recording_beside_numbered_parts_does_not_shift_their_numb
     assert _addresses(room.briefs[-1]) == ["frase 4 — a parte 1, das frases 3 a 5"]
 
 
-@pytest.mark.asyncio
 async def test_a_holed_catalogue_costs_the_title_and_not_the_verdict(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -354,7 +347,6 @@ async def test_a_holed_catalogue_costs_the_title_and_not_the_verdict(
     assert room.said, "the room still spoke a verdict"
 
 
-@pytest.mark.asyncio
 async def test_an_english_session_names_the_part_in_english(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -381,7 +373,6 @@ async def test_an_english_session_names_the_part_in_english(
     assert "frase" not in _block(room.briefs[-1])
 
 
-@pytest.mark.asyncio
 async def test_a_part_with_one_frase_says_the_frase(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -399,7 +390,6 @@ async def test_a_part_with_one_frase_says_the_frase(
     assert _addresses(room.briefs[-1]) == [f"frase 8 — a parte 3 — {title}, da frase 8"]
 
 
-@pytest.mark.asyncio
 async def test_a_missing_without_an_address_names_no_part(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -421,7 +411,6 @@ async def test_a_missing_without_an_address_names_no_part(
     assert _addresses(room.briefs[-1]) == ["frase 9"]
 
 
-@pytest.mark.asyncio
 async def test_a_missing_after_a_frase_names_the_next_stretches_part(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -445,7 +434,6 @@ async def test_a_missing_after_a_frase_names_the_next_stretches_part(
     assert _addresses(room.briefs[-1]) == [f"frase 3 — a parte 2 — {title}, das frases 4 a 7"]
 
 
-@pytest.mark.asyncio
 async def test_a_swap_carries_two_addresses_the_addition_first(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -466,7 +454,6 @@ async def test_a_swap_carries_two_addresses_the_addition_first(
     assert lines[1].startswith(f"- missing [frase 5 — a parte 2 — {title}, das frases 4 a 7]:")
 
 
-@pytest.mark.asyncio
 async def test_the_validator_is_handed_the_same_address(
     client: httpx.AsyncClient,
     db_session: AsyncSession,
@@ -622,7 +609,6 @@ def _frase(key: str, text: str, **extra: Any) -> dict[str, Any]:
     return {"clipKey": key, "coversFrom": 0, "coversTo": 10, "text": text, **extra}
 
 
-@pytest.mark.asyncio
 async def test_the_seam_declares_parts_from_one(
     seam_client: httpx.AsyncClient,
     seam_analyst: Analyst,
@@ -656,7 +642,6 @@ async def test_the_seam_declares_parts_from_one(
     assert _addresses(seam_room.briefs[-1]) == [f"frase 1 — a parte 1 — {title}, da frase 1"]
 
 
-@pytest.mark.asyncio
 async def test_the_correction_check_reads_the_address(
     client: httpx.AsyncClient,
     db_session: AsyncSession,

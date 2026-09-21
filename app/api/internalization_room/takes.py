@@ -82,9 +82,9 @@ async def keep_take(
     and this call is the whole of that verb: the app says which part it is recording by the
     number it sends, so nothing else has to be asked of it. What follows from it — which
     stretches stop counting, which findings go with them, and that the check starts over — is
-    one service, called once the bytes are safe. It does not live inside the storing: the same
-    primitive stores a **Rebuild**, which carries the number of the recording it was built from
-    and must retire none of the stretches it is about to re-address.
+    one service, called once the bytes are safe. It does not live inside the storing: that
+    primitive knows nothing of parts — the routes that keep a telling of a stretch store through
+    it as well — and what follows from a part arriving is the room's question, not storage's.
     """
     session = await room.get_session(db, session_id)
     take_kind = _kind(kind)

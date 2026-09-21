@@ -12,6 +12,7 @@ import sys
 from typing import Any
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
@@ -101,7 +102,7 @@ async def _post_a_turn(client, session_id: str, *, turn_id: str):
 
 
 async def test_the_same_turn_id_posted_twice_runs_the_fan_out_once_and_appends_one_exchange(
-    client, db_session, fan_out
+    client, db_session, test_engine, fan_out
 ) -> None:
     session = await create_session(db_session, language="pt", pericope=P)
 
@@ -116,7 +117,8 @@ async def test_the_same_turn_id_posted_twice_runs_the_fan_out_once_and_appends_o
     assert fan_out["model"].calls == 2, "the Guide or the Validator ran a second time"
     assert fan_out["voice"].calls == 1, "the line was synthesized twice"
 
-    reread = await get_session(db_session, session.id)
+    async with async_sessionmaker(test_engine, class_=AsyncSession)() as fresh_db:
+        reread = await get_session(fresh_db, session.id)
     guide_lines = [m["text"] for m in (reread.messages or []) if m.get("role") == "guide"]
     assert guide_lines == [GUIDE_LINE], "the resend appended a second exchange to the transcript"
 

@@ -150,6 +150,8 @@ async def test_approving_again_with_nothing_changed_returns_the_same_release(cli
     assert second.json()["release_id"] == first.json()["release_id"]
     assert first.json()["version"] == 1
     assert second.json()["version"] == 1
+    assert first.json()["blockers"] == []
+    assert second.json()["blockers"] == []
     assert [row.version for row in await releases_of(db_session, session.id)] == [1]
 
 
@@ -158,10 +160,10 @@ async def test_a_re_record_approved_again_mints_version_two_and_keeps_version_on
 ):
     """One more stretch told is what moves the content here, and it stands for the re-record.
 
-    A **Rebuild** reaches the packet the same way — it re-points every stretch at the file it
-    rebuilt, so the composed content differs — and it costs a whole recording to stage. What
-    the version turns on is the hash, not which edit changed it, so the cheaper change proves
-    the rule; `compose.py` owns the rebuild path and its own tests.
+    A part recorded again reaches the packet the same way — the take under that number
+    changes, so the content differs — and it costs a whole recording to stage. What the version
+    turns on is the hash, not which edit changed it, so the cheaper change proves the rule; the
+    re-recording has its own file of cases.
     """
     project, credential = await a_claimed_device(db_session)
     session = await ready_session(db_session, project_id=project.id)
@@ -252,9 +254,7 @@ async def test_the_version_is_never_the_callers(client, db_session):
     assert approved.json()["version"] == 1
 
 
-async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
-    client, db_session, room_app
-):
+async def test_a_session_on_the_shared_key_is_refused_by_name(client, db_session, room_app):
     project, _credential = await a_claimed_device(db_session)
     session = await ready_session(db_session)
     desk = await _facilitator(db_session, room_app, project)
@@ -265,8 +265,13 @@ async def test_a_session_on_the_shared_key_is_refused_with_a_named_conflict(
     )
     read = await client.get(f"{PREFIX}/facilitator/sessions/{session.id}/release", headers=desk)
 
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["code"] == "RELEASE_WITHOUT_PROJECT"
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == ["no_project"]
+    assert body["version"] is None
+    assert body["untold_take_ids"] == []
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
     assert read.status_code == 404, (
         "a leitura do facilitador para uma sessão sem projeto continua sendo 404, como na main"
@@ -287,8 +292,9 @@ async def test_a_passage_the_packet_refuses_is_not_approved_either(client, db_se
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
 
-    assert refused.status_code == 409, refused.text
-    assert "no_telling_back" in refused.json()["detail"]
+    assert refused.status_code == 200, refused.text
+    assert "no_telling_back" in refused.json()["blockers"]
+    assert refused.json()["version"] is None
     assert await releases_of(db_session, session.id) == []
 
 
@@ -415,8 +421,13 @@ async def test_a_credentialed_tablet_is_refused_by_name_on_a_session_with_no_pro
         f"{PREFIX}/sessions/{session.id}/release", headers=team_headers(credential)
     )
 
-    assert refused.status_code == 409, refused.text
-    assert refused.json()["code"] == "RELEASE_WITHOUT_PROJECT"
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    assert body["blockers"] == ["no_project"]
+    assert body["version"] is None
+    assert body["untold_take_ids"] == []
+    assert body["unheard_take_ids"] == []
+    assert body["untold_segment_id"] is None
     assert await releases_of(db_session, session.id) == []
 
 

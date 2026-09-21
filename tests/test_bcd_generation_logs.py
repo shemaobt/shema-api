@@ -5,7 +5,6 @@ from app.services.book_context.track_step import track_step
 from tests.baker import make_bcd, make_bible_book, make_user
 
 
-@pytest.mark.asyncio
 async def test_track_step_creates_log_on_start(db_session):
     user = await make_user(db_session, email="log1@test.com")
     book = await make_bible_book(
@@ -24,7 +23,6 @@ async def test_track_step_creates_log_on_start(db_session):
         assert logs[0].input_summary == "4 chapters"
 
 
-@pytest.mark.asyncio
 async def test_track_step_marks_completed_on_success(db_session):
     user = await make_user(db_session, email="log2@test.com")
     book = await make_bible_book(
@@ -45,7 +43,6 @@ async def test_track_step_marks_completed_on_success(db_session):
     assert logs[0].output_summary == "8 participants found"
 
 
-@pytest.mark.asyncio
 async def test_track_step_marks_failed_on_exception(db_session):
     user = await make_user(db_session, email="log3@test.com")
     book = await make_bible_book(
@@ -66,7 +63,6 @@ async def test_track_step_marks_failed_on_exception(db_session):
     assert "LLM broke" in logs[0].error_detail
 
 
-@pytest.mark.asyncio
 async def test_list_generation_logs_ordered_by_step(db_session):
     user = await make_user(db_session, email="log4@test.com")
     book = await make_bible_book(

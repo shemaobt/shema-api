@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room import live_turn
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
-from app.services.internalization_room.sessions import create_session
+from app.services.internalization_room.sessions import append_exchange, create_session
 from app.services.internalization_room.turn import scene_view
 from app.services.internalization_room.turn.speech import speak_back
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings, the_agent_answers
@@ -20,7 +20,11 @@ OFF_BRIDGE_LINE = (
     "Que bom — vocês experimentaram na língua de vocês. Eu não consigo conferir essas "
     "palavras diretamente. Agora, alguém pode me contar em português o que vocês disseram?"
 )
-SECOND_INAUDIBLE_LINE = "Essa me escapou. Podem dizer de novo?"
+INAUDIBLE_LINES = [
+    "Desculpa, não consegui ouvir direito — podem repetir?",
+    "Essa me escapou. Podem dizer de novo?",
+    "O som não chegou bem — podem falar mais uma vez?",
+]
 
 
 class RecordingAgent:
@@ -94,18 +98,72 @@ async def test_speech_in_the_teams_own_language_meets_the_g_line_without_waking_
     assert agent.calls == 0
 
 
-async def test_speech_the_room_could_not_hear_draws_the_d_line_the_turn_count_points_at(
+async def _missed(db: AsyncSession, session: Any, *, times: int) -> Any:
+    """That many turns the room could not hear, each written down the way the route does."""
+    for _ in range(times):
+        outcome = await _speak(
+            session, uncertain=True, transcript="mmm ne", messages=list(session.messages or [])
+        )
+        session = await append_exchange(
+            db,
+            session,
+            team_utterance=outcome.transcript,
+            guide_response=outcome.speech,
+            outcome=outcome,
+        )
+    return session
+
+
+async def test_the_first_miss_after_a_heard_conversation_draws_the_first_d_line(
     db_session: AsyncSession, agent: RecordingAgent
 ) -> None:
+    """Four exchanges the room heard used to put the first miss on the second line."""
     session = await create_session(db_session, language="pt", pericope=P)
-    four_exchanges = [{"role": "guide", "text": "…"}] * 4
+    four_exchanges = [{"role": "guide", "text": "…", "outcome": "pass"}] * 4
 
     outcome = await _speak(session, uncertain=True, transcript="mmm ne", messages=four_exchanges)
 
-    assert outcome.speech == SECOND_INAUDIBLE_LINE
-    assert outcome.fixed_line == "D1"
+    assert outcome.speech == INAUDIBLE_LINES[0]
+    assert outcome.fixed_line == "D0"
     assert outcome.degraded is True
     assert agent.calls == 0
+
+
+async def test_misses_in_a_row_walk_the_three_d_lines_in_order_and_stay_on_the_third(
+    db_session: AsyncSession, agent: RecordingAgent
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    session = await _missed(db_session, session, times=4)
+
+    spoken = [m["fixed_line"] for m in session.messages if m.get("role") == "guide"]
+
+    assert spoken == ["D0", "D1", "D2", "D2"], (
+        "a escada rodava com o tamanho da conversa: dois turnos por erro, então a segunda "
+        "falha pulava para D2 e a quarta voltava para D0"
+    )
+
+
+async def test_a_turn_the_room_heard_starts_the_d_ladder_over(
+    db_session: AsyncSession, agent: RecordingAgent
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    session = await _missed(db_session, session, times=2)
+    heard = await _speak(session, messages=list(session.messages))
+    session = await append_exchange(
+        db_session,
+        session,
+        team_utterance=heard.transcript,
+        guide_response=heard.speech,
+        outcome=heard,
+    )
+
+    outcome = await _speak(
+        session, uncertain=True, transcript="mmm ne", messages=list(session.messages)
+    )
+
+    assert heard.used_fail_safe is False
+    assert outcome.fixed_line == "D0"
+    assert outcome.speech == INAUDIBLE_LINES[0]
 
 
 async def test_everything_else_reaches_the_guide_with_the_ledger_in_hand(

@@ -18,7 +18,6 @@ from tests.baker import (
 )
 
 
-@pytest.mark.asyncio
 async def test_delete_meaning_map_success(db_session) -> None:
     user = await make_user(db_session, email="analyst13@test.com")
     book = await make_bible_book(db_session)
@@ -29,7 +28,6 @@ async def test_delete_meaning_map_success(db_session) -> None:
         await get_meaning_map_or_404(db_session, mm.id)
 
 
-@pytest.mark.asyncio
 async def test_delete_meaning_map_raises_if_not_draft(db_session) -> None:
     user = await make_user(db_session, email="analyst14@test.com")
     book = await make_bible_book(db_session)
@@ -39,7 +37,6 @@ async def test_delete_meaning_map_raises_if_not_draft(db_session) -> None:
         await delete_meaning_map(db_session, mm, user.id)
 
 
-@pytest.mark.asyncio
 async def test_delete_meaning_map_raises_if_not_analyst(db_session) -> None:
     analyst = await make_user(db_session, email="analyst15@test.com")
     other = await make_user(db_session, email="other@test.com")
@@ -52,7 +49,6 @@ async def test_delete_meaning_map_raises_if_not_analyst(db_session) -> None:
         await delete_meaning_map(db_session, mm, other.id)
 
 
-@pytest.mark.asyncio
 async def test_update_meaning_map_data_success(db_session) -> None:
     user = await make_user(db_session, email="analyst16@test.com")
     book = await make_bible_book(db_session)
@@ -62,7 +58,6 @@ async def test_update_meaning_map_data_success(db_session) -> None:
     assert updated.data == SAMPLE_MM_DATA
 
 
-@pytest.mark.asyncio
 async def test_update_meaning_map_data_by_lock_holder(db_session) -> None:
     user = await make_user(db_session, email="analyst17@test.com")
     book = await make_bible_book(db_session)
@@ -74,7 +69,6 @@ async def test_update_meaning_map_data_by_lock_holder(db_session) -> None:
     assert updated.data == {"new": "data"}
 
 
-@pytest.mark.asyncio
 async def test_update_meaning_map_data_raises_if_locked_by_other(db_session) -> None:
     analyst = await make_user(db_session, email="analyst18@test.com")
     other = await make_user(db_session, email="other2@test.com")
@@ -87,7 +81,6 @@ async def test_update_meaning_map_data_raises_if_locked_by_other(db_session) -> 
         await update_meaning_map_data(db_session, mm, {"x": 1}, analyst.id)
 
 
-@pytest.mark.asyncio
 async def test_update_meaning_map_data_raises_if_approved(db_session) -> None:
     user = await make_user(db_session, email="analyst19@test.com")
     book = await make_bible_book(db_session)
@@ -97,7 +90,6 @@ async def test_update_meaning_map_data_raises_if_approved(db_session) -> None:
         await update_meaning_map_data(db_session, mm, {"x": 1}, user.id)
 
 
-@pytest.mark.asyncio
 async def test_update_meaning_map_data_unlocked_map(db_session) -> None:
     user = await make_user(db_session, email="analyst20@test.com")
     book = await make_bible_book(db_session)
@@ -107,7 +99,6 @@ async def test_update_meaning_map_data_unlocked_map(db_session) -> None:
     assert updated.data == {"replaced": True}
 
 
-@pytest.mark.asyncio
 async def test_transition_draft_to_cross_check(db_session) -> None:
     user = await make_user(db_session, email="analyst21@test.com")
     book = await make_bible_book(db_session)
@@ -121,7 +112,6 @@ async def test_transition_draft_to_cross_check(db_session) -> None:
     assert result.locked_at is None
 
 
-@pytest.mark.asyncio
 async def test_transition_cross_check_to_approved(db_session) -> None:
     analyst = await make_user(db_session, email="analyst22@test.com")
     reviewer = await make_user(db_session, email="reviewer22@test.com")
@@ -136,7 +126,6 @@ async def test_transition_cross_check_to_approved(db_session) -> None:
     assert result.locked_by is None
 
 
-@pytest.mark.asyncio
 async def test_transition_cross_check_to_draft(db_session) -> None:
     analyst = await make_user(db_session, email="analyst23@test.com")
     reviewer = await make_user(db_session, email="reviewer23@test.com")
@@ -148,7 +137,6 @@ async def test_transition_cross_check_to_draft(db_session) -> None:
     assert result.locked_by is None
 
 
-@pytest.mark.asyncio
 async def test_transition_invalid_draft_to_approved(db_session) -> None:
     user = await make_user(db_session, email="analyst24@test.com")
     book = await make_bible_book(db_session)
@@ -158,7 +146,6 @@ async def test_transition_invalid_draft_to_approved(db_session) -> None:
         await transition_status(db_session, mm, "approved", user.id)
 
 
-@pytest.mark.asyncio
 async def test_transition_approved_to_draft_invalid(db_session) -> None:
     user = await make_user(db_session, email="analyst25@test.com")
     book = await make_bible_book(db_session)
@@ -168,7 +155,6 @@ async def test_transition_approved_to_draft_invalid(db_session) -> None:
         await transition_status(db_session, mm, "draft", user.id)
 
 
-@pytest.mark.asyncio
 async def test_transition_approved_to_cross_check_invalid(db_session) -> None:
     user = await make_user(db_session, email="analyst26@test.com")
     book = await make_bible_book(db_session)
@@ -178,7 +164,6 @@ async def test_transition_approved_to_cross_check_invalid(db_session) -> None:
         await transition_status(db_session, mm, "cross_check", user.id)
 
 
-@pytest.mark.asyncio
 async def test_transition_raises_if_locked_by_other(db_session) -> None:
     analyst = await make_user(db_session, email="analyst27@test.com")
     other = await make_user(db_session, email="other3@test.com")
@@ -195,7 +180,6 @@ async def test_transition_raises_if_locked_by_other(db_session) -> None:
         await transition_status(db_session, mm, "cross_check", analyst.id)
 
 
-@pytest.mark.asyncio
 async def test_transition_same_status_invalid(db_session) -> None:
     user = await make_user(db_session, email="analyst28@test.com")
     book = await make_bible_book(db_session)
@@ -205,7 +189,6 @@ async def test_transition_same_status_invalid(db_session) -> None:
         await transition_status(db_session, mm, "draft", user.id)
 
 
-@pytest.mark.asyncio
 async def test_transition_lock_holder_can_transition(db_session) -> None:
     user = await make_user(db_session, email="analyst29@test.com")
     book = await make_bible_book(db_session)
@@ -217,7 +200,6 @@ async def test_transition_lock_holder_can_transition(db_session) -> None:
     assert result.status == "cross_check"
 
 
-@pytest.mark.asyncio
 async def test_transition_cross_check_to_approved_clears_lock(db_session) -> None:
     analyst = await make_user(db_session, email="analyst30@test.com")
     reviewer = await make_user(db_session, email="reviewer30@test.com")
@@ -236,7 +218,6 @@ async def test_transition_cross_check_to_approved_clears_lock(db_session) -> Non
     assert result.locked_at is None
 
 
-@pytest.mark.asyncio
 async def test_lock_map_success(db_session) -> None:
     user = await make_user(db_session, email="analyst31@test.com")
     book = await make_bible_book(db_session)
@@ -247,7 +228,6 @@ async def test_lock_map_success(db_session) -> None:
     assert result.locked_at is not None
 
 
-@pytest.mark.asyncio
 async def test_lock_map_already_locked_by_self(db_session) -> None:
     user = await make_user(db_session, email="analyst32@test.com")
     book = await make_bible_book(db_session)
@@ -259,7 +239,6 @@ async def test_lock_map_already_locked_by_self(db_session) -> None:
     assert result.locked_by == user.id
 
 
-@pytest.mark.asyncio
 async def test_lock_map_raises_if_locked_by_other(db_session) -> None:
     user1 = await make_user(db_session, email="analyst33@test.com")
     user2 = await make_user(db_session, email="other4@test.com")
@@ -272,7 +251,6 @@ async def test_lock_map_raises_if_locked_by_other(db_session) -> None:
         await lock_map(db_session, mm, user2.id)
 
 
-@pytest.mark.asyncio
 async def test_lock_map_raises_if_approved(db_session) -> None:
     user = await make_user(db_session, email="analyst34@test.com")
     book = await make_bible_book(db_session)
@@ -282,7 +260,6 @@ async def test_lock_map_raises_if_approved(db_session) -> None:
         await lock_map(db_session, mm, user.id)
 
 
-@pytest.mark.asyncio
 async def test_unlock_map_success(db_session) -> None:
     user = await make_user(db_session, email="analyst35@test.com")
     book = await make_bible_book(db_session)
@@ -295,7 +272,6 @@ async def test_unlock_map_success(db_session) -> None:
     assert result.locked_at is None
 
 
-@pytest.mark.asyncio
 async def test_unlock_map_not_locked_returns_unchanged(db_session) -> None:
     user = await make_user(db_session, email="analyst36@test.com")
     book = await make_bible_book(db_session)
@@ -305,7 +281,6 @@ async def test_unlock_map_not_locked_returns_unchanged(db_session) -> None:
     assert result.locked_by is None
 
 
-@pytest.mark.asyncio
 async def test_unlock_map_raises_if_locked_by_other_non_admin(db_session) -> None:
     user1 = await make_user(db_session, email="analyst37@test.com")
     user2 = await make_user(db_session, email="other5@test.com")
@@ -318,7 +293,6 @@ async def test_unlock_map_raises_if_locked_by_other_non_admin(db_session) -> Non
         await unlock_map(db_session, mm, user2.id)
 
 
-@pytest.mark.asyncio
 async def test_unlock_map_admin_can_unlock_others(db_session) -> None:
     user1 = await make_user(db_session, email="analyst38@test.com")
     admin = await make_user(db_session, email="admin@test.com")
@@ -331,7 +305,6 @@ async def test_unlock_map_admin_can_unlock_others(db_session) -> None:
     assert result.locked_by is None
 
 
-@pytest.mark.asyncio
 async def test_lock_map_cross_check_status(db_session) -> None:
     user = await make_user(db_session, email="analyst39@test.com")
     book = await make_bible_book(db_session)

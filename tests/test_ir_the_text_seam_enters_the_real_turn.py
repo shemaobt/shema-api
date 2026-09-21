@@ -36,7 +36,9 @@ from tests.text_seam_harness import (
 
 SEAM = "/api/internalization-room/text-seam"
 CORRECTED_LINE = "Vamos ficar com o que a passagem conta."
-UNREPAIRABLE_LINE = "Quero que a gente fique perto da passagem. Vamos voltar juntos a esta cena."
+UNREPAIRABLE_LINE = (
+    "Vamos parar um instante aqui e olhar de novo o que está acontecendo nesta parte da passagem."
+)
 
 
 @pytest.fixture()
