@@ -129,10 +129,13 @@ def _point_the_bucket_at(monkeypatch: pytest.MonkeyPatch, name: str) -> None:
 def _deploy_env_vars(workflow: str) -> dict[str, str]:
     """The plain variables a deploy workflow tells its Cloud Run service to run with.
 
-    They travel in one token of the `gcloud run deploy` command, and `^|^` names `|` as the
-    separator because `CORS_ORIGINS` is itself a comma-separated list. Reading the token
-    rather than the whole command is what makes this a statement about the service's
-    environment and not about a string appearing somewhere in a shell script.
+    They travel in one token of the `gcloud run deploy` command. Its separator is a comma
+    unless the value opens with `^SEP^`, which is gcloud's own way of naming another one —
+    a workflow whose `CORS_ORIGINS` is itself a comma-separated list has to. Both forms are
+    read here rather than one being assumed, because the two deploys do not have to agree
+    and a wrong guess would read the whole line as a single variable and quietly pass.
+    Reading the token rather than the whole command is what makes this a statement about
+    the service's environment and not about a string appearing somewhere in a shell script.
     """
     import yaml
 
@@ -143,8 +146,11 @@ def _deploy_env_vars(workflow: str) -> dict[str, str]:
         word for word in deploy_step["run"].split() if word.startswith("--update-env-vars=")
     )
     body = token.split("=", 1)[1].strip('"')
-    assert body.startswith("^|^"), f"{workflow} no longer names its own separator"
-    return dict(pair.split("=", 1) for pair in body[3:].split("|"))
+    if body.startswith("^"):
+        separator, _, body = body[1:].partition("^")
+    else:
+        separator = ","
+    return dict(pair.split("=", 1) for pair in body.split(separator))
 
 
 def test_the_staging_deploy_names_its_own_bucket() -> None:
