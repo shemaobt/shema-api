@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth_middleware import get_current_user, require_platform_admin
+from app.core.auth_middleware import (
+    get_current_user,
+    require_admin_or_manager,
+    require_platform_admin,
+)
 from app.core.database import get_db
 from app.db.models.auth import User
 from app.models.user import UserListResponse, UserRoleResponse, UserUpdate
@@ -23,7 +27,7 @@ async def list_users(
 async def search_users(
     q: str = "",
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin_or_manager),
 ) -> list[UserListResponse]:
     users = await user_service.search_users(db, q)
     return [UserListResponse.model_validate(u) for u in users]
