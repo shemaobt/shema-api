@@ -54,9 +54,10 @@ def test_the_passage_stays_focused_line_says_which_question_it_is_for() -> None:
 
     "a linha B nunca responde a um pedido de entender ('explica de novo', 'quem é esse') —
     isso a voz responde a partir da passagem. B é só para pergunta que está fora da passagem."
-    Nothing fires that line by code on our side — `FailSafe.OUTSIDE_MAP` has no caller — so the
-    whole exposure was that the Guide held the words with no rule about when they are the wrong
-    words. The words stay; the paragraph now says which ask they belong to.
+    Nothing fires that line by code on our side —
+    `tests/test_ir_b_and_c_have_no_caller.py` asserts `FailSafe.OUTSIDE_MAP` has no caller — so
+    the whole exposure was that the Guide held the words with no rule about when they are the
+    wrong words. The words stay; the paragraph now says which ask they belong to.
     """
     anchor = "**If the map simply does not address the question at all**"
     assert anchor in GUIDE
