@@ -17,13 +17,25 @@
 > **One block per language.** The room speaks the language the tablet is set to, so every
 > language it claims needs all fourteen lines. A language with none written falls back to the
 > floor rather than emptying the wheel — an empty wheel tells a team the book is finished.
+> That fallback is for the passage lines only. The panorama's line is offered in a language
+> only when it is written in that language, or not at all: a missing `panorama-xx` block takes
+> the wheel's front door away in that language, so author it with the others.
 
-> ⚠️ **STATUS: the lines are the maps' own references, and only that is settled.** Her rule of
-> 4 September — nothing about a passage is said outside the map — is what these lines obey, and
-> the form is the one her menu shows. What still awaits her word is whether the wheel should
-> speak a reference aloud at all; until she says, the wheel speaks these and nothing more.
+> **STATUS: settled, 2026-09-21.** Her rule of 4 September — nothing about a passage is said
+> outside the map — is what these lines obey, and the form is the one her menu shows. She has
+> now ruled that the wheel speaks a bare reference and nothing else, and approved the panorama's
+> own line below as drafted. See
+> `docs/doctrine/rulings/2026-09-21-the-wheel-speaks-bare-references-and-the-panorama-spoke.md`.
 
 ---
+
+## Panorama
+
+### panorama-pt
+- "Rute — o livro inteiro"
+
+### panorama-en
+- "Ruth — the whole book"
 
 ## Ruth
 

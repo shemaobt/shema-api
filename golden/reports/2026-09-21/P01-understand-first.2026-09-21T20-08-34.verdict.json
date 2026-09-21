@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 3,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 4
+  },
+  "incidents": [
+    {
+      "turn": 0,
+      "severity": "minor",
+      "kind": "rushed_elicitation",
+      "quote": "Agora conversem entre vocês, na língua de vocês: que caminho essa história faz, do começo até o fim?",
+      "why": "A abertura foi muito curta (sem nomes, sem lugares, sem os passos) antes de mandar a equipe conversar; a equipe reagiu no turno seguinte pedindo para explicar de novo porque não tinha entendido."
+    },
+    {
+      "turn": 9,
+      "severity": "minor",
+      "kind": "incomplete_check",
+      "quote": "Uma coisa eu não ouvi, bem na parte da morte de Elimeleque.",
+      "why": "A checagem foi honesta e apontou a falta de 'Noemi ficou com os dois filhos', mas deixou passar outras lacunas do reconto: a saída de Belém de Judá, o clã dos efrateus e o morar como estrangeiro de passagem (já apontado no turno 5) não apareceram e não foram nomeados."
+    },
+    {
+      "turn": 10,
+      "severity": "minor",
+      "kind": "closed_with_gap",
+      "quote": "Tudo bem, vocês trabalharam bem. Antes de gravar, só duas coisas pra guardar.",
+      "why": "A equipe pediu para encerrar e o guia atendeu, mas o reconto anterior ainda tinha lacunas não resolvidas; o guia não retomou o pedaço faltante da morte de Elimeleque nem o morar como estrangeiro nas lembranças finais. Não elogiou como completo, então é apenas menor."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia respondeu a cada pedido de entendimento contando de novo a partir do mapa, com calma e em palavras simples, sem nunca redirecionar nem repetir turno anterior. A contenção foi exemplar: manteve o silêncio sobre Deus como causa, sobre o luto, sobre a falta de filhos, e recusou fazer o par Rute–Malom, tratando cada silêncio como parte da história. As checagens dos recontos foram honestas (apontou o morar como estrangeiro no turno 5 e o 'ficou com os dois filhos' no turno 9), mas no turno 9 deixou passar outras faltas como Belém de Judá e os efrateus. O maior tropeço foi no turno 0, quando pediu à equipe para conversar antes de abrir a passagem de verdade, o que fez a equipe pedir para recomeçar. Adaptou-se bem quando a equipe pulou adiante e quando pediu para encerrar, e fechou mandando gravar em Terena sem bênção nem menção ao mapa."
+}
