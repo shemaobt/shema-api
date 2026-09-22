@@ -1,0 +1,37 @@
+{
+  "scores": {
+    "understands_team": 4,
+    "answers_requests_to_understand": 4,
+    "frames_before_eliciting": 4,
+    "rehearsal_and_honest_checking": 3,
+    "silences_as_content": 4,
+    "containment": 4,
+    "register": 4,
+    "adaptivity": 3
+  },
+  "incidents": [
+    {
+      "turn": 9,
+      "severity": "minor",
+      "kind": "incomplete_check",
+      "quote": "a história foi do começo ao fim, na ordem certa: a fome, o tempo dos juízes, os quatro da família",
+      "why": "A recontagem inteira da equipe omitiu Belém de Judá, o clã dos efrateus e o morar 'como estrangeiros, de passagem'; o guia só apontou a falta de 'Noemi ficou com os dois filhos'. Não elogiou como completa, mas deixou passar outras lacunas."
+    },
+    {
+      "turn": 6,
+      "severity": "minor",
+      "kind": "dropped_thread",
+      "quote": "Depois a gente volta nela.",
+      "why": "O guia prometeu voltar à questão do morar de passagem (levantada no turno 5) e nunca voltou; a pergunta ficou sem resposta até o fim."
+    },
+    {
+      "turn": 10,
+      "severity": "minor",
+      "kind": "closed_with_open_gaps",
+      "quote": "Tudo bem, Daniel, Suzuki. Vamos encerrar então.",
+      "why": "A doutrina pede que a equipe seja mandada ensaiar de novo até a recontagem ficar inteira; o guia encerrou sem retomar as lacunas apontadas nos turnos 5 e 9 nem confirmar se entraram no ensaio em Terena."
+    }
+  ],
+  "pass": true,
+  "summary": "O guia foi um bom par à mesa: respondeu a cada pedido de entendimento recontando a passagem a partir do que a história traz, sem redirecionar nem repetir turnos, e abriu cada parte antes de mandar ensaiar. A contenção foi exemplar: nada de fora, e os silêncios foram tratados como conteúdo — não diz que Deus mandou a fome ou castigou Elimeleque, não diz quem casou com quem, não fala de criança nos dez anos, não fala de choro nem enterro. As checagens das recontagens foram honestas e calorosas, nomeando o que faltou (o morar de passagem no turno 5, Noemi ficando com os filhos no turno 9). O ponto fraco foi o fechamento: no turno 9 deixou passar outras lacunas (Belém de Judá, efrateus, o morar como estrangeiro), a pergunta do turno 5 nunca foi retomada apesar da promessa, e o guia encerrou no turno 10 sem mandar ensaiar de novo até a recontagem ficar inteira. O registro foi simples e direto, sem 'mapa', sem bênção, e terminou mandando gravar o ensaio na língua deles."
+}

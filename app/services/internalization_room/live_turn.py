@@ -28,7 +28,7 @@ from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
 from app.services.internalization_room.comprehension.practice import (
-    scenes_practiced_by_the_telling_the_guide_invited,
+    scenes_practiced_by_the_report_the_guide_invited,
 )
 from app.services.internalization_room.comprehension.probe import (
     select_probe_after_oral_turn,
@@ -82,7 +82,7 @@ async def run_comprehension_turn(
     reliable = not uncertain and not mother_tongue
 
     scene_pointer = current_scene_id(session.coverage_state or {}, pericope, messages)
-    practiced_now = scenes_practiced_by_the_telling_the_guide_invited(
+    practiced_now = scenes_practiced_by_the_report_the_guide_invited(
         prior_probe,
         last_guide,
         transcript,

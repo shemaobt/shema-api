@@ -7,12 +7,9 @@ word it wants back.
 """
 
 from app.services.internalization_room.comprehension.practice import (
-    bridge_language_retelling_completes_practice,
     confirms_completed_mother_tongue_practice,
     guide_invited_mother_tongue_practice,
-    is_bare_polar_answer,
-    is_semantically_empty_answer,
-    scenes_practiced_by_the_telling_the_guide_invited,
+    scenes_practiced_by_the_report_the_guide_invited,
 )
 
 INVITATION = {
@@ -141,73 +138,36 @@ _INVITATION = (
 )
 
 
-def test_the_room_hearing_itself_never_finishes_the_practice() -> None:
-    """A microphone that picks up the app's own voice must not close the rehearsal.
-
-    The telling the invitation asks for is the team's. The invitation itself, and the head
-    or tail of it that a speaker can feed back into the microphone, are the room hearing
-    itself — the one thing that is certainly not a rehearsal that happened.
-
-    The head and the tail, and not the middle: a team whose telling repeats a phrase the
-    Guide just used is telling, and refusing it would be the refusal this ticket exists to
-    remove. The last case fixes that choice, so a widening to plain containment fails
-    here instead of quietly costing real retellings."""
-    assert not bridge_language_retelling_completes_practice(_INVITATION, _INVITATION, True)
-    assert not bridge_language_retelling_completes_practice(
-        _INVITATION, "come back and tell me in English what you understood", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        _INVITATION, "A famine comes, and a family leaves Bethlehem for the fields of Moab.", True
-    )
-    assert bridge_language_retelling_completes_practice(
-        _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True
-    )
-    assert bridge_language_retelling_completes_practice(
-        _INVITATION, "a family leaves Bethlehem for the fields of Moab", True
-    )
-
-
-def test_a_real_invitation_still_marks_the_scene_it_asked_about() -> None:
-    """What the reader was refusing alongside the invitations is gone, not loosened.
-
-    The room used to have recording speech of its own — a yes/no consent question and the
-    readiness cue after it — and both read exactly like an invitation to rehearse: they
-    carried the practice stem and the mother-tongue phrase in every language the room
-    spoke, so a team agreeing to record was read as a team reporting a rehearsal of
-    whatever scene the pointer happened to be on. The reader had to name those lines and
-    refuse them. ENG-777 took the lines away, and the refusal went with them; what is left
-    is the case they were guarding, which still has to work.
+def test_a_fluent_retelling_alone_never_marks_the_scene_it_retold() -> None:
+    """The Guide checks a retelling itself, item by item against the pinned map, with the
+    whole conversation in context (DOCTRINE.md §4) — the app never claims to know what a
+    mother-tongue rehearsal said, in the bridge language or otherwise. A retelling used to
+    be read here on its own terms — fluent, substantial, no question, no hedge, no denial,
+    no echo of the room's own voice — and none of that reading survives: only the team's
+    own report that the rehearsal is finished marks the scene.
     """
-    assert scenes_practiced_by_the_telling_the_guide_invited(
-        None,
-        INVITATION["en"],
+    for reply in (
+        _INVITATION,
+        "come back and tell me in English what you understood",
+        "A famine comes, and a family leaves Bethlehem for the fields of Moab.",
         "A famine came and a family left Bethlehem to live in Moab",
-        True,
-        "S1",
-    ) == ["S1"]
-
-
-def test_an_announced_plan_is_not_the_telling_the_invitation_asked_for() -> None:
-    """The likeliest reply to an invitation is the team saying it is about to obey.
-
-    A plan is the one thing the other completion path had always refused, and the telling
-    path was written without it: fluent, substantial, no question, no hedge, no denial, no
-    echo — and no rehearsal yet. The scene would enter the practised list on a rehearsal
-    that had not started."""
-    invitation_pt = INVITATION["pt"]
-    invitation_es = INVITATION["es"]
-
-    assert not bridge_language_retelling_completes_practice(
-        invitation_pt, "vamos ensaiar essa cena agora", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        _INVITATION, "we are going to rehearse it now", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        invitation_es, "ya vamos a ensayar esta escena", True
-    )
-    assert bridge_language_retelling_completes_practice(
-        _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True
+        "a family leaves Bethlehem for the fields of Moab",
+        "vamos ensaiar essa cena agora",
+        "we are going to rehearse it now",
+    ):
+        assert (
+            scenes_practiced_by_the_report_the_guide_invited(None, _INVITATION, reply, True, "S1")
+            == []
+        ), reply
+    assert (
+        scenes_practiced_by_the_report_the_guide_invited(
+            None,
+            INVITATION["en"],
+            "A famine came and a family left Bethlehem to live in Moab",
+            True,
+            "S1",
+        )
+        == []
     )
 
 
@@ -226,236 +186,19 @@ _TELLING_PT = (
 )
 
 
-def test_a_reflexive_se_in_the_telling_is_not_a_condition() -> None:
-    """Session 1d142af3, in Portuguese, on the phone: the scene came back told and stayed
-    unpractised.
+def test_a_portuguese_retelling_never_marks_the_scene_it_retold() -> None:
+    """Session 1d142af3, in Portuguese, on the phone: a fluent retelling used to be read as
+    the completion report itself.
 
-    "teve que se mudar" is a verb carrying its clitic, and the guard read those two letters
-    as the opening of a condition — so the one reply the invitation had asked for was filed
-    as a team that had committed to nothing, and the next turn asked for the rehearsal
-    again. Nearly every telling in Portuguese or Spanish carries a "se" like this one, and
-    English carries none, which is why the same turn closed the practice three times over
-    in English on the same day."""
-    assert bridge_language_retelling_completes_practice(_INVITATION_PT, _TELLING_PT, True)
-    assert scenes_practiced_by_the_telling_the_guide_invited(
-        None, _INVITATION_PT, _TELLING_PT, True, "S1"
-    ) == ["S1"]
-
-
-_INVITATION_FOR_THE_LAST_TWO_SCENES = (
-    "Entendo. E vocês têm razão numa coisa: vocês já entenderam a história inteira. Isso "
-    "ficou claro no que me contaram.\n\n"
-    "Mas entender é só uma parte. A outra parte é a história viver na boca de vocês, na "
-    "língua de vocês. As duas últimas cenas ainda não passaram por aí. Não leva muito tempo.\n\n"
-    "Então façam assim. Ensaiem juntos, na língua de vocês, a cena dos casamentos e dos dez "
-    "anos, e depois a cena em que Malom e Quiliom morrem e Noemi fica sozinha, sem os dois "
-    "filhos e sem o marido. Podem fazer as duas cenas seguidas. Quando terminarem, voltem e "
-    "me contem em português, bem curto, o que vocês disseram no ensaio.\n\n"
-    "Depois disso, vamos pro próximo passo."
-)
-_TELLING_OF_THE_LOSS = (
-    "A gente ensaiou juntos na nossa língua a cena dos casamentos e dos 10 anos, e depois a "
-    "cena em que Malone e Kleon morrer-morreram, e Noemí fica sozinha, sem os filhos e sem o "
-    "marido."
-)
-#: The same session's earlier telling, with its "certo?" tags taken off: it opens "no tempo
-#: dos juízes", and it names what the story keeps silent about — no child, no mourning,
-#: nothing said of God.
-_TELLING_WITH_THE_STORYS_SILENCES = (
-    "Tudo isso aconteceu no tempo que os juízes julgavam Israel, antes de ter rei. Os dois "
-    "filhos tomaram esposas dentre as mulheres de Moabe, Orfa e Rute, e moraram lá uns dez "
-    "anos. A história não fala de nenhum filho nascido nesses casamentos, nenhuma criança é "
-    "mencionada. Quando Elimeleque morre, Noemi ficou com os dois filhos, e quando Malom e "
-    "Quiliom morreram ela sobrou sozinha, sem os dois filhos e sem o marido. A história não "
-    "descreve o luto, nenhum choro, nem nada de enterro, e não diz que Deus fez nada disso."
-)
-#: Tellers in the first person negating the story, not the doing.
-_TELLING_THAT_FORGETS_A_NAME = (
-    "A gente ensaiou a cena dos casamentos. Os dois filhos casaram com mulheres de Moabe, "
-    "uma era Rute, eu não lembro o nome da outra, e eles moraram lá uns dez anos."
-)
-_TELLING_THAT_KEEPS_THE_STORYS_SILENCE = (
-    "The two sons married women from Moab, Orpah and Ruth, and lived there about ten years. "
-    "We didn't hear which son married which woman, the story keeps that quiet, and we never "
-    "heard why the famine came."
-)
-
-
-def test_what_the_story_takes_away_is_not_the_team_declining() -> None:
-    """Session dce19a6b, in Portuguese, on the pilot device: the scene came back told and
-    stayed unpractised.
-
-    Ruth 1:3-5 is a story of loss, and a team telling it says so: Noemi is left "sem os
-    filhos e sem o marido"; the story "não fala de nenhum filho", "não diz que Deus fez
-    nada disso". The reader took every one of those for a denial — the same word list that
-    catches "ainda não ensaiamos" — and filed the telling the invitation had asked for as a
-    team that had done nothing. What the story takes away is content the team told back.
-
-    The denial the reader guards is the team refusing the doing, and a told scene comes
-    back in the third person, about the family — so inside a telling the negation that
-    still refuses is the team's own: on the rehearsal ("não ensaiamos", "contamos sem
-    ensaiar"), in the first person ("a gente não teve tempo", "nós não conseguimos", "we
-    didn't do it"), or nobody's doing at all ("não deu", "ainda não", "no time"). The first
-    person is bound to the doing, because a teller says "eu não lembro o nome" and "we
-    didn't hear who married whom" about the story. A short reply keeps the flat reading,
-    where any negation is the team declining. "No tempo dos juízes" is how the passage
-    opens, and it is not "no time"."""
-    for told in (
-        _TELLING_OF_THE_LOSS,
-        _TELLING_WITH_THE_STORYS_SILENCES,
-        _TELLING_THAT_FORGETS_A_NAME,
-    ):
-        assert bridge_language_retelling_completes_practice(
-            _INVITATION_FOR_THE_LAST_TWO_SCENES, told, True
-        ), told
-    assert bridge_language_retelling_completes_practice(
-        INVITATION["en"], _TELLING_THAT_KEEPS_THE_STORYS_SILENCE, True
-    )
-    for declined in (
-        "ainda não",
-        "não ensaiamos ainda",
-        "a gente não conseguiu ensaiar, ficou difícil",
-        "a gente não ensaiou na nossa língua, mas entendemos que Elimeleque morreu e Noemi "
-        "ficou sozinha com os dois filhos em Moabe",
-        "contamos sem ensaiar: a família saiu de Belém por causa da fome e foi morar em "
-        "Moabe como estrangeiros",
-        "A gente não teve tempo de fazer isso agora",
-        "a gente não fez ainda, a gente só conversou sobre a história em português",
-        "ainda não deu, ficou pra depois",
-        "nós não conseguimos, ficou difícil combinar quem fala primeiro",
-        "we didn't have time to do it now",
-        "we couldn't do it now, we only talked it through in English",
-        "We never got around to it, we only talked the story through in English",
-        "we had no time to do it before the tablet went off",
-        "no tuvimos tiempo de hacerlo ahora",
-    ):
-        assert not bridge_language_retelling_completes_practice(
-            _INVITATION_FOR_THE_LAST_TWO_SCENES, declined, True
-        ), declined
-
-
-def test_a_condition_that_opens_the_clause_holds_the_telling_back_without_a_subject() -> None:
-    """ "Se quiserem a gente ensaia" names nobody and is still a condition.
-
-    The subject list catches the same word inside a short reply; at the head of a clause
-    the position alone says what the word is, because no clitic opens a clause. The reply
-    the room must not be wrong about is the one that closes a practice that has not begun,
-    and this is that reply one word away from the ones already refused.
-    """
-    for reply in (
-        "Se quiserem a gente ensaia essa cena agora e depois conta pra você",
-        "Se der tempo a gente ensaia essa cena e volta contando",
-        "If possible we rehearse this scene together and then tell you",
-        "Si es posible ensayamos esta escena juntos y luego les contamos",
-    ):
-        assert not bridge_language_retelling_completes_practice(_INVITATION_PT, reply, True), reply
-    assert bridge_language_retelling_completes_practice(_INVITATION_PT, _TELLING_PT, True)
-
-
-def test_a_told_scene_may_open_a_clause_on_the_clitic() -> None:
-    """ "…, mas se mudaram pra Moabe" reaches the reader as the clause "se mudaram pra Moabe".
-
-    A contrast marker splits the telling, and the second half opens on the clitic; Spanish
-    drops the subject and opens on it outright. Both are session 1d142af3 one clause over,
-    and refusing them would ask for the rehearsal again after the team had told it.
-    """
-    invitation_es = (
-        "Ahora ensayen esta escena juntos en su lengua; cuando terminen, vuelvan y "
-        "cuéntenme en español lo que entendieron."
-    )
-    for invitation, telling in (
-        (
-            _INVITATION_PT,
-            "Eles ficaram em Belém por um tempo, mas se mudaram pra Moabe por causa da fome",
-        ),
-        (
-            invitation_es,
-            "Se mudaron a los campos de Moab, y allí murió Elimelec el marido de Noemí",
-        ),
-    ):
-        assert bridge_language_retelling_completes_practice(invitation, telling, True), telling
-
-
-def test_a_hedge_over_one_long_breath_still_holds_the_telling_back() -> None:
-    """Counting a long single clause as a scene relieves the clitic, not the hedge.
-
-    "Acho que a família se mudou pra Moabe por causa da fome e ficou lá" is one breath of
-    doubt, however many words it takes; the hedge keeps refusing it, while the clitic in
-    the same clause no longer does.
-    """
-    hedged = "Acho que a família se mudou pra Moabe por causa da fome e ficou lá um tempo"
-    assert not bridge_language_retelling_completes_practice(_INVITATION_PT, hedged, True)
-
-
-def test_a_told_reply_in_the_voices_own_words_is_not_a_telling() -> None:
-    """Relaxing the hedge for a told reply must not relax the room hearing its words back.
-
-    A team that says "você disse que a família se mudou e que Elimeleque morreu lá" is
-    reporting the Voice, not the scene, however many clauses it takes to do it.
-    """
-    reported = (
-        "Você disse que a família se mudou pra Moabe por causa da fome, "
-        "e você disse que Elimeleque morreu lá"
-    )
-    assert not bridge_language_retelling_completes_practice(_INVITATION_PT, reported, True)
-
-
-def test_a_told_scene_closes_the_practice_where_a_real_condition_still_refuses() -> None:
-    """The clitic and the condition are the same two letters, and only one of them is a
-    reason to refuse.
-
-    A family that moved, a couple that married — the tellings this room exists to receive
-    are full of them, in Portuguese and in Spanish alike, and each one was being read as a
-    team that had not committed to anything. What a condition actually looks like is
-    unchanged: it opens its clause and names who it is about, and a reply that is one short
-    clause is still refused for a condition anywhere in it, so "a gente ensaia se vocês
-    quiserem" does not become a rehearsal either."""
-    invitation_pt = INVITATION["pt"]
-    invitation_es = INVITATION["es"]
-
-    assert bridge_language_retelling_completes_practice(
-        invitation_es, "La familia se mudó a Moab por el hambre", True
-    )
-    assert bridge_language_retelling_completes_practice(
-        invitation_pt, "A família se mudou pra Moabe", True
-    )
-    assert bridge_language_retelling_completes_practice(
-        invitation_pt, "Eles se casaram e ficaram lá dez anos", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        invitation_pt, "Se vocês quiserem a gente ensaia", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        _INVITATION, "If you want we can rehearse", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        invitation_pt, "Acho que não ensaiamos ainda", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        invitation_pt, "A gente ensaia se vocês quiserem", True
-    )
-    assert not bridge_language_retelling_completes_practice(
-        invitation_pt, "Se vocês quiserem a gente ensaia. Depois a gente conta tudo pra você", True
-    )
-
-
-def test_a_hedge_inside_a_told_scene_is_a_person_remembering_not_a_refusal() -> None:
-    """Half remembering a scene out loud is how a scene comes back, not a team holding out.
-
-    "acho que" between two told clauses is the sound of someone reaching for a name, and
-    the gate read it the same way it reads "acho que a gente ensaiou" — a reply with no
-    telling around it at all, where the hedge really is the whole answer. Two clauses of
-    three words or more are what separates them."""
-    invitation_pt = INVITATION["pt"]
-
-    assert bridge_language_retelling_completes_practice(
-        invitation_pt,
-        "Tava tendo uma fome muito grande em Belém. Acho que a família do Elimeleque foi pra "
-        "Moabe com a Noemi e os dois filhos",
-        True,
-    )
-    assert not bridge_language_retelling_completes_practice(
-        invitation_pt, "Acho que a gente ensaiou", True
+    "Tava tendo uma fome... uma família teve que se mudar pra os campos de Moabe" tells the
+    scene back whole, but it says nothing about a rehearsal having finished — the report the
+    invitation asked for is the team's own word, not the app's judgment of the retelling's
+    content, which is the Guide's job alone (DOCTRINE.md §4)."""
+    assert (
+        scenes_practiced_by_the_report_the_guide_invited(
+            None, _INVITATION_PT, _TELLING_PT, True, "S1"
+        )
+        == []
     )
 
 
@@ -484,54 +227,20 @@ _TELLING_THAT_CLOSES_ON_A_TAG = (
 )
 
 
-def test_a_telling_that_closes_on_a_confirmation_tag_is_not_a_question() -> None:
-    """Session dce19a6b, message 12: scene 2 told back whole, and the scene stayed unpractised.
+def test_a_telling_that_closes_on_a_confirmation_tag_still_marks_nothing() -> None:
+    """Session dce19a6b, message 12: scene 2 told back whole, tag and all.
 
     The team closed its telling with "né?" and checked itself twice along the way with
-    "certo?", and every one of those is the Brazilian habit of asking the listener to nod,
-    not a question about the passage. The reader took the question mark for a question and
-    filed the telling as a team asking something, so the Guide invited the rehearsal again
-    for a scene it had just heard.
+    "certo?" — the Brazilian habit of asking the listener to nod, not a question about the
+    passage. Read as a question or not, the telling was never the report: only the team's
+    own word that the rehearsal is finished marks a scene, and this reply never says one.
     """
-    assert bridge_language_retelling_completes_practice(
-        _INVITATION_FOR_THE_SECOND_SCENE, _TELLING_THAT_CLOSES_ON_A_TAG, True
-    )
-    assert scenes_practiced_by_the_telling_the_guide_invited(
-        None, _INVITATION_FOR_THE_SECOND_SCENE, _TELLING_THAT_CLOSES_ON_A_TAG, True, "S2"
-    ) == ["S2"]
-
-
-def test_a_confirmation_tag_is_relieved_for_a_telling_and_a_real_question_still_refuses() -> None:
-    """The tag is the listener being asked to nod; the question is the team asking the room.
-
-    "…, né?", "…, certo?", "…, não é?", "…, tá?" and "…, right?" close a telling in either
-    language without asking anything about the passage. A question about the passage is
-    still a question, with or without a telling in front of it, and a tag on a reply that
-    tells nothing is still read as the question it might be — the tag is relieved for the
-    telling, never for the reply that is only the tag.
-    """
-    told_pt = "Elimeleque morreu lá em Moabe, e Noemi ficou com os dois filhos"
-    told_en = "Elimelech died there in Moab, and Naomi was left with her two sons"
-    for invitation, telling in (
-        (INVITATION["pt"], f"{told_pt}, né?"),
-        (INVITATION["pt"], f"{told_pt}, certo?"),
-        (INVITATION["pt"], f"{told_pt}, não é?"),
-        (INVITATION["pt"], f"{told_pt}, tá?"),
-        (INVITATION["en"], f"{told_en}, right?"),
-    ):
-        assert bridge_language_retelling_completes_practice(invitation, telling, True), telling
-    for invitation, question in (
-        (INVITATION["pt"], "quem casou com quem?"),
-        (INVITATION["pt"], f"{told_pt}. Quem casou com quem?"),
-        (INVITATION["pt"], f"{told_pt}, certo? E quem casou com quem?"),
-        (INVITATION["en"], "who married whom?"),
-        (INVITATION["en"], f"{told_en}, right? And who married whom?"),
-        (INVITATION["pt"], "ensaiamos, né?"),
-        (INVITATION["pt"], "certo?"),
-    ):
-        assert not bridge_language_retelling_completes_practice(invitation, question, True), (
-            question
+    assert (
+        scenes_practiced_by_the_report_the_guide_invited(
+            None, _INVITATION_FOR_THE_SECOND_SCENE, _TELLING_THAT_CLOSES_ON_A_TAG, True, "S2"
         )
+        == []
+    )
 
 
 _BOUNDARY_QUESTIONS = (
@@ -572,16 +281,23 @@ def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
     for language, question in _BOUNDARY_QUESTIONS:
         assert not guide_invited_mother_tongue_practice(question), question
         assert (
-            scenes_practiced_by_the_telling_the_guide_invited(
+            scenes_practiced_by_the_report_the_guide_invited(
                 None, question, "estava sim, nós dissemos que ela voltou com Rute", True, "S1"
             )
             == []
         ), language
 
     assert guide_invited_mother_tongue_practice(_INVITATION)
-    assert scenes_practiced_by_the_telling_the_guide_invited(
-        None, _INVITATION, "A famine came and a family left Bethlehem to live in Moab", True, "S1"
-    ) == ["S1"]
+    assert (
+        scenes_practiced_by_the_report_the_guide_invited(
+            None,
+            _INVITATION,
+            "A famine came and a family left Bethlehem to live in Moab",
+            True,
+            "S1",
+        )
+        == []
+    )
     for language in ("pt", "en", "es"):
         assert guide_invited_mother_tongue_practice(INVITATION[language])
 
@@ -622,14 +338,3 @@ def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
         "Isso apareceu na prática na língua de vocês?",
     ):
         assert not guide_invited_mother_tongue_practice(about_a_rehearsal), about_a_rehearsal
-
-
-def test_bare_polar_answers_are_semantically_empty() -> None:
-    """The reader came here with the assessor's parser, and this is what it is for: a shrug
-    is not a report, and it is not a misunderstanding either."""
-    for text in ("sim", "não", "isso mesmo", "aham", "ok"):
-        assert is_bare_polar_answer(text)
-        assert is_semantically_empty_answer(text)
-    assert not is_bare_polar_answer("Noemi voltou")
-    assert is_semantically_empty_answer("não sei")
-    assert not is_semantically_empty_answer("sim, Noemi voltou para Belém")

@@ -3,8 +3,9 @@
 The Guide and the Validator answer a script, the way every turn test here has them answer,
 and the beads move on her keyword classifier instead of on a model. What that buys is the
 whole loop — the pointer walking the scenes, the settle narrowing the list to the scene
-the team is in, the practice credited off the invitation, the floor closing the passage —
-exercised on every commit rather than paid for by hand.
+the team is in, the practice credited off the team's own report that it rehearsed (never
+off the telling-back itself — ENG-788), the floor closing the passage — exercised on every
+commit rather than paid for by hand.
 """
 
 from __future__ import annotations
@@ -46,19 +47,27 @@ THE_GUIDE_SAYS = [
     "You have told the whole passage. Record the rehearsal in your own language.",
 ]
 
+#: The team's own word that the rehearsal happened. Only this marks a scene practiced;
+#: the telling that follows is for the Guide to check, and the app never grades it.
+REPORTED = "We have rehearsed it in our own language. "
+
 THE_TEAM_SAYS = [
     "We are here and ready, tell us the story.",
-    "In the days of the judges there was a famine in the land, so Elimelech and Naomi with "
+    REPORTED
+    + "In the days of the judges there was a famine in the land, so Elimelech and Naomi with "
     "their sons Mahlon and Chilion, Ephrathites from Bethlehem of Judah, went sojourning in "
     "the fields of Moab. The narrator just tells it, the family left because of the famine.",
-    "Elimelech died there in the fields of Moab, and Naomi was left with Mahlon and Chilion. "
+    REPORTED
+    + "Elimelech died there in the fields of Moab, and Naomi was left with Mahlon and Chilion. "
     "The narrator tells of the death in a single clause, with the same plain image kept "
     "from before.",
-    "Mahlon and Chilion took wives from the women of Moab, Orpah and Ruth, and Naomi stayed "
+    REPORTED
+    + "Mahlon and Chilion took wives from the women of Moab, Orpah and Ruth, and Naomi stayed "
     "there with them about ten years, the marriages and the time passing. The narrator tells "
     "how long they lived there and speaks of the children only by their absence, and the "
     "source text keeps the wives apart from their husbands.",
-    "Then Mahlon and Chilion died too there in the fields of Moab, and the woman Naomi was "
+    REPORTED
+    + "Then Mahlon and Chilion died too there in the fields of Moab, and the woman Naomi was "
     "left alone, with her two sons gone and her husband gone. The narrator reports the "
     "deaths in one line and stops, the losses simply listed.",
 ]
