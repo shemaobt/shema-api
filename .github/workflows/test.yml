@@ -20,11 +20,12 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Twice the five minutes the `Run tests` step is expected to take (ENG-969): the ceiling
-    # is on the job, and the five minutes are the target it is calibrated against, not a
-    # second ceiling. Without this the job inherits GitHub's 360-minute default, which is how
-    # one hung run stayed "pending" for six hours instead of turning red (ENG-913).
-    timeout-minutes: 10
+    # Seven, over a `Run tests` step measured at 2m04-2m31 on the runner since ENG-980 moved
+    # the process-spawning tests to the jobs already beside this one, with the whole job at
+    # 2m32-3m06 (five runs: 35653484356, 35653965653, 35654431223, 35655564859, 35655963815).
+    # The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
+    # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
+    timeout-minutes: 7
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
