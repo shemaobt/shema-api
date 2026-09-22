@@ -145,12 +145,18 @@ async def transcribe_audio_detailed(
 
     upload_name = _filename_for_upload(filename, resolved_mime)
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
-        headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
-        files={"file": (upload_name, audio_bytes, resolved_mime)},
-        data={"model_id": cfg.elevenlabs_stt_model},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
+            headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
+            files={"file": (upload_name, audio_bytes, resolved_mime)},
+            data={"model_id": cfg.elevenlabs_stt_model},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs STT unreachable: %s", error)
+        raise UpstreamServiceError(
+            f"Transcription request could not reach ElevenLabs: {error}"
+        ) from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs STT failed: status=%s body=%s",

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from app.core.config import Settings
@@ -132,6 +133,17 @@ async def test_transcribe_audio_treats_a_rate_limit_or_outage_as_upstream_not_ou
 async def test_transcribe_audio_keeps_a_bad_request_as_ours(status: int) -> None:
     client = _stub_client(_err(status, "malformed"))
     with pytest.raises(ValidationError):
+        await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
+
+
+@pytest.mark.parametrize(
+    "failure", [httpx.ConnectError("boom"), httpx.ReadTimeout("boom")], ids=["connect", "timeout"]
+)
+async def test_transcribe_audio_treats_a_dropped_connection_as_upstream_too(
+    failure: Exception,
+) -> None:
+    client = SimpleNamespace(post=AsyncMock(side_effect=failure))
+    with pytest.raises(UpstreamServiceError):
         await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
 
 
