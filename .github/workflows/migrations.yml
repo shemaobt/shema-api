@@ -8,7 +8,7 @@ name: Migrations
 on:
   pull_request:
 
-  # See the note in `lint.yml` for why `integration/**` is here and why it stays narrow.
+  # See the note in `checks.yml` for why `integration/**` is here and why it stays narrow.
   #
   # **This job is expected to go red on that branch between certain steps, and that is not
   # a reason to switch it off.** The chain is merged one branch at a time, and every merge
@@ -38,6 +38,12 @@ env:
 jobs:
   migrations:
     runs-on: ubuntu-latest
+    # The same ceiling this job carries on `main`, where the whole job — graph check,
+    # upgrade, the downgrade/upgrade walk, then the migration-marked tests ENG-980 added
+    # below — measured 3m04. Taken from `main` for parity; this branch's one measured run:
+    # the job 1m53. Without a ceiling the job inherits GitHub's 360-minute default and a
+    # hung run stays "pending" for six hours (ENG-913).
+    timeout-minutes: 7
 
     services:
       postgres:
@@ -104,3 +110,15 @@ jobs:
             uv run alembic downgrade "$target"
             uv run alembic upgrade head
           done <<< "$targets"
+
+      # The migration-walking tests build their own throwaway SQLite file each and never
+      # touch this job's Postgres — but only once `DATABASE_URL` is cleared. The job sets it
+      # at job level, and the suite's conftest honours it when set: left in place, they would
+      # run against this Postgres instead, serially (AGENTS.md: a run that names its own
+      # database runs without `-n`), and create tables over the schema the upgrade step above
+      # just migrated — a step-level `env` cannot unset a job-level one in Actions, so the
+      # `run` line does it. `main` sends fourteen files here; this branch has eight of them.
+      - name: Run the tests that walk a migration
+        run: env -u DATABASE_URL uv run pytest tests/ -n 4 --dist loadfile -rfE -m migration
+        env:
+          JWT_SECRET_KEY: test-secret-for-ci-only

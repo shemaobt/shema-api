@@ -3,7 +3,7 @@ name: Test
 on:
   pull_request:
 
-  # See the note in `lint.yml` for why `integration/**` is here at all.
+  # See the note in `checks.yml` for why `integration/**` is here at all.
   #
   # The narrowness of the filter is this file's own concern more than any other's: this job
   # is the one measured between 6 and 56 minutes (ENG-556), and the chain is merged a step
@@ -20,6 +20,13 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Seven, the ceiling #475 sets on `main` over a `Run tests` step measured there at
+    # 2m04-2m31 once ENG-980 moved the process-spawning tests to the jobs already beside this
+    # one. Taken from `main` for parity; this branch's one measured run: the job 4m13, the
+    # step 3m47.
+    # The ceiling is on the job. Without one it inherits GitHub's 360-minute default, which
+    # is how a hung run stayed "pending" for six hours instead of turning red (ENG-913).
+    timeout-minutes: 7
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,8 +49,11 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen --group dev
 
+      # `--dist loadfile` is load-bearing, not tuning: the schema is created once per process
+      # and two cases of the database's own contract depend on a module running in file order
+      # on one worker. `-v` went with it, because four workers interleaving 4000 lines is not
+      # a log anybody reads.
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -n 4 --dist loadfile -rfE -m "not migration and not fresh_interpreter"
         env:
           JWT_SECRET_KEY: test-secret-for-pytest-only
-          DATABASE_URL: sqlite+aiosqlite:///./test.db

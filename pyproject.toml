@@ -58,6 +58,7 @@ dev = [
     "mypy>=1.19.1",
     "pyyaml>=6.0.3",
     "types-pyyaml>=6.0.12.20260724",
+    "pytest-xdist>=3.6",
 ]
 
 [tool.ruff]
@@ -84,3 +85,7 @@ exclude = ["alembic/", "tests/"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "migration: walks a migration against its own throwaway SQLite file; runs in the Migrations job",
+    "fresh_interpreter: opens a clean interpreter to prove what the suite's own process cannot; runs in Checks",
+]

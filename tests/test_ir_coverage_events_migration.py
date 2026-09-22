@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import app.db.models  # noqa: F401  (populates Base.metadata with every table)
 from app.core.database import Base
 
+pytestmark = pytest.mark.migration
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: This migration and the revision it hangs on. That parent is the room's `project_id`
