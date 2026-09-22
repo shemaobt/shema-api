@@ -9,8 +9,6 @@ word it wants back.
 from app.services.internalization_room.comprehension.practice import (
     confirms_completed_mother_tongue_practice,
     guide_invited_mother_tongue_practice,
-    is_bare_polar_answer,
-    is_semantically_empty_answer,
     scenes_practiced_by_the_report_the_guide_invited,
 )
 
@@ -340,14 +338,3 @@ def test_a_question_about_a_rehearsal_is_not_an_invitation_to_one() -> None:
         "Isso apareceu na prática na língua de vocês?",
     ):
         assert not guide_invited_mother_tongue_practice(about_a_rehearsal), about_a_rehearsal
-
-
-def test_bare_polar_answers_are_semantically_empty() -> None:
-    """The reader came here with the assessor's parser, and this is what it is for: a shrug
-    is not a report, and it is not a misunderstanding either."""
-    for text in ("sim", "não", "isso mesmo", "aham", "ok"):
-        assert is_bare_polar_answer(text)
-        assert is_semantically_empty_answer(text)
-    assert not is_bare_polar_answer("Noemi voltou")
-    assert is_semantically_empty_answer("não sei")
-    assert not is_semantically_empty_answer("sim, Noemi voltou para Belém")

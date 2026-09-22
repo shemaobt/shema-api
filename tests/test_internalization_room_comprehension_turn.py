@@ -759,7 +759,11 @@ async def test_a_complete_portuguese_retelling_leaves_the_practice_record_untouc
     await _say(
         db_session,
         session,
-        "Ensaiamos e entendemos que uma fome chegou e a família saiu de Belém para Moabe",
+        # No report in it: a pure telling, so the assertion proves what the name says.
+        # ("Ensaiamos …" alone would not count either — the report reader wants "já
+        # ensaiamos" / "acabamos de ensaiar" — but that is ENG-987's question, not this one.)
+        "Entendemos que uma fome chegou e a família saiu de Belém para Moabe, e lá o marido "
+        "de Noemi morreu",
     )
 
     assert comprehension_of(session).practiced_scene_ids == []
