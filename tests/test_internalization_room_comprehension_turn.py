@@ -541,24 +541,15 @@ _THE_TELLING_OF_BOTH = (
 )
 
 
-async def test_a_full_necklace_still_lets_the_telling_mark_the_scene_it_reported(
+async def test_a_full_necklace_does_not_let_a_telling_mark_a_scene_it_only_retold(
     db_session: AsyncSession, approve_all: None
 ) -> None:
-    """Session dce19a6b, on the pilot device, the day #431 was tested: every bead engaged,
-    one scene reported, and the room could no longer record a rehearsal at all.
+    """Session dce19a6b, on the pilot device: every bead engaged, one scene already reported.
 
-    The scene a telling is read against was the coverage pointer — the first scene not yet
-    fully engaged — and with the necklace full there is none, so the reply the invitation
-    had asked for marked nothing, the Guide sent the team to record on what it had heard,
-    and the gate held the session open on a practice record that could never grow again.
-    Before ENG-780 the full necklace itself counted as practiced, so this had no way to show.
-
-    With nothing left to open, the invitation can only be about a rehearsal still owed, and
-    the telling marks the first scene the room told the Guide was still needed. One scene
-    per telling: the Guide here invited two, and the app cannot read that off its prose —
-    the second stays on the STILL NEEDED line for the Guide to invite again. Had the fix
-    been in from the session's start, the second scene's own telling would already have
-    been recorded and this one would land on the third."""
+    The Guide invited a rehearsal of the two scenes still owed, and the team told both back
+    at length instead of reporting a finished rehearsal. The Guide checks a retelling itself,
+    item by item against the pinned map (DOCTRINE.md §4) — the app does not, on a full
+    necklace or otherwise — so the practice record stays exactly what it was."""
     passage = "P01"
     session = await create_session(db_session, language="pt", pericope=passage)
     session = await save_comprehension(
@@ -586,7 +577,7 @@ async def test_a_full_necklace_still_lets_the_telling_mark_the_scene_it_reported
         settings=_settings(),
     )
 
-    assert turn.state.practiced_scene_ids == ["S1", "S2"]
+    assert turn.state.practiced_scene_ids == ["S1"]
 
 
 class InvitingAgentAskingForTheWord:
@@ -637,16 +628,16 @@ async def test_the_closing_word_the_guide_asked_for_closes_the_scene(
     assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
 
 
-async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
+async def test_the_guide_invites_the_rehearsal_and_a_retelling_alone_does_not_finish_it(
     db_session: AsyncSession, guide_invites: None
 ) -> None:
     """Session 735b5eda: the opening carried no invitation, so the fixed line arrived after.
 
     The Guide closed the scene with a passage question and the app said its own sentence a
     turn later, asking for the same rehearsal under a different contract. The invitation
-    belongs at the end of the opening, in the Guide's voice, and it asks the team to come
-    back telling in the bridge language what it understood — so that telling is what
-    finishes the practice, and the fixed line has nothing left to add."""
+    belongs at the end of the opening, in the Guide's voice — but the telling the team sends
+    back is not, on its own, the report that closes the practice: only the team's own word
+    that the rehearsal is finished does that (DOCTRINE.md §4)."""
     session = await create_session(db_session, language="en", pericope=P)
     session = await append_exchange(
         db_session, session, team_utterance="", guide_response="opening"
@@ -666,7 +657,7 @@ async def test_the_guide_invites_the_rehearsal_and_the_retelling_finishes_it(
         db_session, session, "A famine came and a family left Bethlehem to live in Moab"
     )
     assert answer != FIXED_PRACTICE_INVITATION
-    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
+    assert comprehension_of(session).practiced_scene_ids == []
 
 
 class RecordingInvitingAgent:
@@ -686,37 +677,6 @@ class RecordingInvitingAgent:
         )
 
 
-async def test_the_telling_that_answers_the_invitation_lands_before_any_probe_exists(
-    db_session: AsyncSession, guide_invites: None
-) -> None:
-    """Session 23520187: the team did exactly what it was asked and it counted for nothing.
-
-    The invitation is said at the end of the opening, a turn before the planner has any
-    reason to raise a practice probe for that scene. A team that obeys answers on the very
-    next turn — so requiring a standing probe threw away the one reply the invitation had
-    asked for. The scene stayed unpractised, the probe was raised afterwards, and the room
-    went back to asking for the rehearsal the team had already told, until the validator
-    started refusing the Guide's drafts for not honouring a contract nobody could satisfy.
-    """
-    session = await create_session(db_session, language="en", pericope=P)
-    session = await append_exchange(
-        db_session, session, team_utterance="", guide_response="opening"
-    )
-
-    invitation = await _say(db_session, session, "we can start")
-    assert guide_invited_mother_tongue_practice(invitation)
-    assert comprehension_of(session).active_probe is None
-
-    await _say(
-        db_session,
-        session,
-        "A famine came, and Elimelech took Naomi and their two sons from Bethlehem to Moab",
-    )
-
-    assert comprehension_of(session).practiced_scene_ids == [scene_ids_for(P)[0]]
-    assert comprehension_of(session).active_probe is None
-
-
 async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
     db_session: AsyncSession, guide_invites_pt: None
 ) -> None:
@@ -725,7 +685,8 @@ async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
     With the first scene worked through, the planner walked straight into a checkpoint
     question about a scene the room had never told, and the app's fixed line — which may
     carry no passage content — could not have opened it either. The Guide opens it and
-    invites the rehearsal in the same turn, and the telling that comes back closes it.
+    invites the rehearsal in the same turn — but the telling that comes back is not the
+    report, so it does not close the scene on its own.
     """
     session = await create_session(db_session, language="pt", pericope=P)
     session = await append_exchange(
@@ -769,4 +730,36 @@ async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
         settings=_settings(),
     )
 
-    assert "S2" in told_back.state.practiced_scene_ids
+    assert "S2" not in told_back.state.practiced_scene_ids
+
+
+async def test_a_complete_portuguese_retelling_leaves_the_practice_record_untouched(
+    db_session: AsyncSession, guide_invites_pt: None
+) -> None:
+    """The Guide checks the retelling itself, item by item against the pinned map, with the
+    whole conversation in context (DOCTRINE.md §4) — the app never claims to know what a
+    mother-tongue rehearsal said. A team that tells the scene back whole and fluently, right
+    after a real invitation, has not thereby reported anything: only the team's own word that
+    the rehearsal is finished does that.
+    """
+    session = await create_session(db_session, language="pt", pericope=P)
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="opening"
+    )
+    first_scene_element = next(e for e in elements_for(P) if e.scene == 1)
+    session.coverage_state = {
+        **(session.coverage_state or {}),
+        first_scene_element.key: "surfaced",
+    }
+    await db_session.commit()
+
+    invitation = await _say(db_session, session, "podemos começar")
+    assert guide_invited_mother_tongue_practice(invitation)
+
+    await _say(
+        db_session,
+        session,
+        "Ensaiamos e entendemos que uma fome chegou e a família saiu de Belém para Moabe",
+    )
+
+    assert comprehension_of(session).practiced_scene_ids == []
