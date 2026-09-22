@@ -50,7 +50,7 @@ def test_the_bucket_defaults_to_the_production_one(monkeypatch: pytest.MonkeyPat
     """A missing variable deploys what has always been deployed."""
     monkeypatch.delenv("GCS_OC_BUCKET", raising=False)
 
-    settings = Settings(database_url=TEST_DATABASE_URL)
+    settings = Settings(_env_file=None, database_url=TEST_DATABASE_URL)
 
     assert settings.gcs_oc_bucket == PRODUCTION_BUCKET
 
@@ -59,7 +59,7 @@ def test_the_env_var_sets_the_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
     """What the staging deploy does: set GCS_OC_BUCKET on the Cloud Run service."""
     monkeypatch.setenv("GCS_OC_BUCKET", STAGING_BUCKET)
 
-    settings = Settings(database_url=TEST_DATABASE_URL)
+    settings = Settings(_env_file=None, database_url=TEST_DATABASE_URL)
 
     assert settings.gcs_oc_bucket == STAGING_BUCKET
 
@@ -154,13 +154,16 @@ def test_the_staging_deploy_names_its_own_bucket() -> None:
     assert staging.get("GCS_OC_BUCKET") == "tripod-image-uploads-staging"
 
 
-def test_the_production_deploy_names_no_bucket_and_so_runs_the_default() -> None:
-    """Production keeps deploying what it always deployed, and by the shortest route.
-
-    Naming it there would be a second place to keep in step with the default, and a wrong
-    value in either would repoint production in silence.
+def test_the_production_deploy_names_its_bucket_and_it_is_the_default() -> None:
+    """The running service declared this nowhere, on the workflow or by hand (ADR 0033):
+    it reached the right bucket only by the Python default, one silent edit of `config.py`
+    away from redirecting production. Naming it here and tying it to the default is what
+    keeps the two places from drifting apart in silence.
     """
-    assert "GCS_OC_BUCKET" not in _deploy_env_vars("deploy.yml")
+    deployed = _deploy_env_vars("deploy.yml")
+
+    assert deployed["GCS_OC_BUCKET"] == "tripod-image-uploads"
+    assert deployed["GCS_OC_BUCKET"] == Settings.model_fields["gcs_oc_bucket"].default
 
 
 def test_the_url_a_confirmed_upload_stores_carries_the_configured_bucket(

@@ -52,3 +52,6 @@ until that deploy runs, staging still writes into production's bucket. The sound
 `GCS_SN_BUCKET` and the annotation studio's `GCS_AS_BUCKET` are exposed the same way and are
 ENG-967's, not this record's. The objects staging already wrote into production's bucket since
 2026-09-11 are extra files under new keys, none written over another, and are a separate check.
+
+2026-09-22: production's deploy now names this setting after all — see
+[ADR 0033](0033-production-declares-its-own-bucket.md).
