@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.config import Settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.services.translation_helper.audio_cache import AudioCache, audio_cache
 from app.services.translation_helper.synthesize_speech import (
     VOICE_MAP,
@@ -119,8 +119,18 @@ async def test_transcribe_audio_raises_when_empty_response() -> None:
         await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
 
 
-async def test_transcribe_audio_raises_when_api_error() -> None:
-    client = _stub_client(_err(500, "internal"))
+@pytest.mark.parametrize("status", [429, 500, 503])
+async def test_transcribe_audio_treats_a_rate_limit_or_outage_as_upstream_not_ours(
+    status: int,
+) -> None:
+    client = _stub_client(_err(status, "internal"))
+    with pytest.raises(UpstreamServiceError):
+        await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
+
+
+@pytest.mark.parametrize("status", [400, 404, 422])
+async def test_transcribe_audio_keeps_a_bad_request_as_ours(status: int) -> None:
+    client = _stub_client(_err(status, "malformed"))
     with pytest.raises(ValidationError):
         await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
 
