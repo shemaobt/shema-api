@@ -1,5 +1,6 @@
 """The text seam's own turn, counted the way `test_ir_a_voiced_turn_commits_once.py` counts
-the voiced one: at the engine, by the `commit` event, never by reading the code back.
+the voiced one: at the engine, by every `commit` event that carried a write, never by reading
+the code back.
 
 The seam is `text_seam.py`'s door, not `sessions.py`'s — the voiced turn already proved the
 service layer lands a turn in one UPDATE (ENG-1021); what was still open here was whether the

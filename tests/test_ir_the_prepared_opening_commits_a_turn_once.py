@@ -1,5 +1,6 @@
 """The prepared opening's own turn, counted the way `test_ir_a_voiced_turn_commits_once.py`
-counts the voiced one: at the engine, by the `commit` event, never by reading the code back.
+counts the voiced one: at the engine, by every `commit` event that carried a write, never by
+reading the code back.
 
 `take_prepared` and `remember_turn` are ENG-1021's own shape already; what was still open was
 whether this branch of `_answer_the_turn` asked for the single landing UPDATE once or three

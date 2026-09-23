@@ -14,7 +14,7 @@ import sys
 from typing import Any
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
@@ -70,8 +70,9 @@ async def _noop_settle(**_: Any) -> None:
 
 
 @pytest.fixture()
-async def client(db_session, monkeypatch):
-    async with room_client(db_session, monkeypatch) as c:
+async def client(db_session, monkeypatch, test_engine):
+    per_request = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with room_client(db_session, monkeypatch, per_request=per_request) as c:
         yield c
 
 
