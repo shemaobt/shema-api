@@ -4,7 +4,7 @@ from app.models.book_context import ArcEntry as ArcEntrySchema
 from app.models.book_context import BCDInstitution as InstitutionSchema
 from app.models.book_context import BCDObject as ObjectSchema
 from app.models.book_context import BCDPlace as PlaceSchema
-from app.models.book_context import EntryProvenance
+from app.models.book_context import EntryProvenance, ParticipantEntityType, ParticipantType
 from app.models.book_context import EpisodeStatus as EpisodeStatusSchema
 from app.models.book_context import GenreContext as GenreContextSchema
 from app.models.book_context import MaintenanceNotes as MaintenanceNotesSchema
@@ -15,8 +15,8 @@ from app.models.book_context import VerseRef as VerseRefSchema
 class ParticipantSchema(BaseModel):
     name: str
     english_gloss: str = ""
-    entity_type: str = "person"
-    type: str = "named"
+    entity_type: ParticipantEntityType = ParticipantEntityType.PERSON
+    type: ParticipantType = ParticipantType.NAMED
     entry_verse: VerseRefSchema
     exit_verse: VerseRefSchema | None = None
     appears_in: list[VerseRefSchema] = Field(default_factory=list)
