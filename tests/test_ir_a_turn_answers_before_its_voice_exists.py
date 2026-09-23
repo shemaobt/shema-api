@@ -481,3 +481,50 @@ async def test_a_fixed_line_hands_out_no_address_and_voices_nothing(
     assert answered.json()["audio_url"] == ""
     assert answered.json()["segments"] == []
     assert elevenlabs.texts == [], "a fala fixa, que o app já tem em áudio, era sintetizada"
+
+
+async def test_a_return_while_the_bucket_refuses_every_write_never_leaves_two_renderings(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    bucket: WriteOnceBucket,
+) -> None:
+    elevenlabs.renderings = [b"turn", b"return", b"first get", b"second get"]
+    bucket.refusals = 2
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+    await asyncio.sleep(0.05)
+    again = await asyncio.wait_for(client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1)
+    here = await client.get(answered.json()["audio_url"])
+    another_instance()
+    there = await client.get(answered.json()["audio_url"])
+
+    assert again.status_code == 502, (
+        "o diga de novo respondia com um endereço cuja fala o bucket nunca guardou"
+    )
+    assert here.content == there.content, "duas instâncias serviam duas renderizações da mesma fala"
+
+
+async def test_an_opening_the_record_dropped_never_waits_on_its_voice_past_the_turns_bound(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import get_settings
+
+    _the_team_speaks_before_the_opening_lands(monkeypatch, db_session, panorama)
+    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 200)
+    elevenlabs.held.clear()
+    try:
+        answered = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+        )
+    finally:
+        elevenlabs.held.set()
+
+    assert answered.status_code == 502, (
+        "a abertura descartada esperava a voz sem prazo, além do limite que o turno carrega"
+    )

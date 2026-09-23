@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import logging
 import re
 import uuid
@@ -42,7 +41,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
-from app.services.internalization_room.clip_flight import fly, in_flight
+from app.services.internalization_room.clip_flight import fly
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -97,11 +96,17 @@ def _addresses(
     ]
 
 
-async def _once_in_flight_lands(text: str, *, language: str) -> None:
-    flight = in_flight(room.facilitator_speech_to_come(text, language=language)[0])
-    if flight is not None:
-        with contextlib.suppress(Exception):
-            await asyncio.shield(flight)
+async def _kept_before(deadline: float, flights: list[asyncio.Task[bytes]]) -> None:
+    try:
+        async with asyncio.timeout_at(deadline):
+            landed = await asyncio.gather(
+                *(asyncio.shield(flight) for flight in flights), return_exceptions=True
+            )
+    except TimeoutError as spent:
+        raise UpstreamServiceError("a voz desta fala não ficou pronta a tempo") from spent
+    failed = next((result for result in landed if isinstance(result, BaseException)), None)
+    if failed is not None:
+        raise UpstreamServiceError("a voz desta fala não pôde ser feita") from failed
 
 
 def _voice_in_flight(text: str, *, language: str) -> tuple[str, asyncio.Task[bytes]]:
@@ -541,7 +546,9 @@ async def a_person_arrived(
     )
 
 
-async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnResponse:
+async def _say_it_again(
+    session: IRSession, *, turn_id: str | None, deadline: float
+) -> TurnResponse:
     """Where the room already was, for a team walking back in.
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
@@ -556,16 +563,13 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         ),
         "",
     )
+    key = ""
     if last:
-        await _once_in_flight_lands(last, language=session.language)
-    voiced = (
-        (await room.synthesize_facilitator_speech(last, language=session.language))[0]
-        if last
-        else None
-    )
+        key, voice = room.facilitator_speech_to_come(last, language=session.language)
+        await _kept_before(deadline, [fly(key, voice)])
     return TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=clip_url(key) if key else "",
         transcript="",
         peer_cue=detects_peer_cue(last),
         coverage=coverage_view(session),
@@ -668,7 +672,7 @@ async def _answer_the_turn(
     transcript = speech_heard.text
 
     if file is None and not opening:
-        return await _say_it_again(session, turn_id=turn_id)
+        return await _say_it_again(session, turn_id=turn_id, deadline=deadline)
 
     ready = await take_prepared(db, session) if opening else None
     if ready is not None:
@@ -731,10 +735,7 @@ async def _answer_the_turn(
     if landed:
         audio_url, segments = _addresses(voiced, partial(turn_clip_url, session.id))
     else:
-        try:
-            await asyncio.gather(*(asyncio.shield(flight) for _, flight in voiced))
-        except Exception as error:
-            raise UpstreamServiceError("a abertura não pôde ser falada") from error
+        await _kept_before(deadline, [flight for _, flight in voiced])
         audio_url, segments = _addresses(voiced, clip_url)
 
     response_turn_id = turn_id or str(uuid.uuid4())

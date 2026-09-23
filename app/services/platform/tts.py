@@ -158,7 +158,7 @@ async def synthesize_speech(
     if cached is not None:
         return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
-    audio = await _cache_quietly(speech_store, key, await voiced())
+    audio, _ = await _cache_quietly(speech_store, key, await voiced())
     return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
 
 
@@ -188,7 +188,9 @@ async def synthesize_speech_key(
     if _is_kept(key) or await speech_store.exists(key):
         return SpeechKey(key, cached=True)
 
-    _remember_fresh(key, await _cache_quietly(speech_store, key, await voiced()))
+    audio, kept = await _cache_quietly(speech_store, key, await voiced())
+    if kept:
+        _remember_fresh(key, audio)
     return SpeechKey(key, cached=False)
 
 
@@ -314,7 +316,7 @@ async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
     return await store.get(key)
 
 
-async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> bytes:
+async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> tuple[bytes, bool]:
     """Store the clip, but never fail the request over it.
 
     We already paid ElevenLabs for these bytes. A missing bucket or a wrong IAM binding is
@@ -325,9 +327,9 @@ async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> bytes:
         kept = await store.put_once(key, audio, MIME_TYPE)
     except Exception:
         logger.exception("failed to cache TTS clip key=%s", key)
-        return audio
+        return audio, False
     _mark_kept(key)
-    return kept
+    return kept, True
 
 
 async def _synthesize(
