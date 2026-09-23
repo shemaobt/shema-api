@@ -145,7 +145,7 @@ async def test_a_terminei_after_the_reading_ahead_asks_the_analyst_nothing_and_s
 ) -> None:
     async with room_client(db_session, monkeypatch, per_request=per_request) as client:
         with monkeypatch.context() as cold:
-            cold.setattr(bt_api, "read_ahead", _nothing_read_ahead, raising=False)
+            cold.setattr(bt_api, "read_ahead", _nothing_read_ahead)
             cold_id, cold_stretch = await _a_second_stretch_after_the_first_terminei(
                 client, db_session, analyst
             )
