@@ -100,6 +100,7 @@ async def store_take(
     already = existing.scalar_one_or_none()
     if already is not None:
         return already
+    await db.commit()
 
     speech_store = store or _store()
     await speech_store.put(key, audio, content_type)

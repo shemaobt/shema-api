@@ -122,6 +122,7 @@ async def add_chunk(
         ordinal=None,
         content_type=file.content_type or "audio/mp4",
     )
+    await db.commit()
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
