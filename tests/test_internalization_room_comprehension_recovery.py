@@ -131,6 +131,64 @@ def test_the_closing_word_is_heard_at_the_end_of_a_clause_too() -> None:
     assert not confirms_completed_mother_tongue_practice(INVITATION["es"], "ya no está listo")
 
 
+def test_a_bare_past_tense_that_opens_the_reply_reports_a_finished_rehearsal() -> None:
+    """ENG-987: "Ensaiamos, e entendemos que..." answers the invitation and tells the scene
+    back in the same breath, with no "já" or "acabamos de" in front of the verb. ENG-788
+    left only the team's own report to mark a scene, and a report spoken this way — the
+    plain past tense, first word back — went unread: the scene stayed owed a rehearsal the
+    team had just finished."""
+    assert confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Ensaiamos, e entendemos que a fome levou a família para Moabe."
+    )
+    assert confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Ensaiámos, e entendemos que a fome levou a família para Moabe."
+    )
+    assert confirms_completed_mother_tongue_practice(
+        INVITATION["en"], "We rehearsed it, and we understood why the family left."
+    )
+
+
+def test_a_bare_past_tense_still_obeys_every_refusal_guard() -> None:
+    """The bare past tense earns exactly the refusals every other report already had: a
+    question about it, a negation in the same breath, a plan for later, and a hedge — none
+    of them is a finished rehearsal."""
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Ensaiamos?")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Não ensaiamos.")
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Ensaiamos, não terminamos a cena toda ainda."
+    )
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Vamos ensaiar.")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Acho que ensaiamos.")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["en"], "We rehearsed it?")
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["en"], "We did not rehearse it."
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["en"], "We rehearsed it, we did not finish it yet."
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["en"], "We are going to rehearse it."
+    )
+
+
+def test_a_bare_past_tense_that_does_not_open_the_reply_never_reports() -> None:
+    """The verb has to be the reply's own first word, not merely present in it — sitting
+    later in the same clause, or opening a clause of its own further along, is not the
+    team's first word back to the invitation."""
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Lemos tudo de novo, ensaiamos uma parte, e ainda temos uma dúvida."
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Lemos tudo de novo. Ensaiamos e seguimos para a próxima cena."
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["en"], "We read it again, we rehearsed part of it, and we have a question."
+    )
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["en"], "We read it again. We rehearsed it and moved on."
+    )
+
+
 _INVITATION = (
     "A famine comes, and a family leaves Bethlehem for the fields of Moab. "
     "Rehearse this scene together in your own language; when you have finished, "
@@ -169,6 +227,19 @@ def test_a_fluent_retelling_alone_never_marks_the_scene_it_retold() -> None:
         )
         == []
     )
+
+
+def test_a_bare_past_tense_that_reports_and_retells_in_one_breath_marks_the_scene() -> None:
+    """ENG-987: "We rehearsed it, and we understood..." answers the invitation and tells the
+    scene back in the same breath. The report is read on its own terms — the Guide is still
+    the one who checks whatever comes after it against the map."""
+    assert scenes_practiced_by_the_report_the_guide_invited(
+        None,
+        _INVITATION,
+        "We rehearsed it, and we understood the family left Bethlehem for Moab.",
+        True,
+        "S1",
+    ) == ["S1"]
 
 
 _INVITATION_PT = (

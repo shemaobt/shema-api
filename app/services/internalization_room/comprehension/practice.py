@@ -68,6 +68,15 @@ _COMPLETED_REPORT = (
         r"\b(rehears|practic|retell|tried\s+\w*\s*tell)\w*"
     ),
 )
+#: A bare past tense of the rehearsal verb, read only when it opens the team's first clause
+#: back — "Ensaiamos, e entendemos que..." — never when it merely appears somewhere in the
+#: reply. The anchor alone is not enough: a later clause can open with the same verb ("Lemos
+#: tudo. Ensaiamos e seguimos.") without being the team's answer to the invitation, so the
+#: caller checks this only against clause index 0.
+_BARE_PAST_REPORT = (
+    re.compile(r"^ensaiamos\b"),
+    re.compile(r"^we\s+rehearsed\b"),
+)
 _FUTURE_REPORT = (
     re.compile(
         r"\b(vamos|iremos|queremos|pretendemos|podemos)\b.{0,32}"
@@ -148,13 +157,16 @@ def _explicit_completed_practice_report(team_utterance: str) -> bool:
         return False
     if oral_utterance_is_interrogative(team_utterance):
         return False
-    return any(
-        not oral_clause_has_negation(clause)
-        and not oral_clause_is_non_committal(clause)
-        and not any(pattern.search(clause) for pattern in _FUTURE_REPORT)
-        and any(pattern.search(clause) for pattern in _COMPLETED_REPORT)
-        for clause in oral_decision_clauses(team_utterance)
-    )
+    for index, clause in enumerate(oral_decision_clauses(team_utterance)):
+        if oral_clause_has_negation(clause) or oral_clause_is_non_committal(clause):
+            continue
+        if any(pattern.search(clause) for pattern in _FUTURE_REPORT):
+            continue
+        if any(pattern.search(clause) for pattern in _COMPLETED_REPORT):
+            return True
+        if index == 0 and any(pattern.search(clause) for pattern in _BARE_PAST_REPORT):
+            return True
+    return False
 
 
 def confirms_completed_mother_tongue_practice(
