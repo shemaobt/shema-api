@@ -1,4 +1,15 @@
+---
+status: superseded in its credit rule by ADR 0036; the ledger line stands
+date: 2026-09-23
+---
+
 # A rehearsal is credited to the scene its invitation named
+
+**Superseded in part by [ADR 0036](0036-a-rehearsal-is-credited-to-the-first-scene-still-owed-one.md)
+on 23 September 2026.** The credit is still recorded on the invite turn and read back on
+the report, as decided here; but the scene recorded is the first scene still owed a
+rehearsal, not the **Scene pointer**, which on that turn has not yet settled. The ledger
+line and the report gate stand as written below.
 
 ## Context
 
