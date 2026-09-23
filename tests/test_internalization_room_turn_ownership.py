@@ -19,7 +19,7 @@ from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import create_session
 from app.services.platform.tts import SynthesizedSpeech
-from tests.release_harness import KEY, P, PREFIX, a_claimed_device, team_headers
+from tests.release_harness import KEY, PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client
 
 TEAM_ANSWER = "Noemi voltou para Belem com Rute no tempo da colheita"
@@ -93,7 +93,9 @@ def fan_out(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return {"hearing": hearing, "model": model, "voice": voice}
 
 
-async def _post_a_turn(client, session_id: str, headers: dict[str, str], *, turn_id: str | None = None):
+async def _post_a_turn(
+    client, session_id: str, headers: dict[str, str], *, turn_id: str | None = None
+):
     data = {"turn_id": turn_id} if turn_id else {}
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
@@ -107,7 +109,9 @@ async def test_a_turn_from_another_projects_device_is_refused_before_any_work_ru
     client, db_session: AsyncSession, fan_out
 ) -> None:
     owner, credential_owner = await a_claimed_device(db_session, email="owner@example.com")
-    _stranger, credential_stranger = await a_claimed_device(db_session, email="stranger@example.com")
+    _stranger, credential_stranger = await a_claimed_device(
+        db_session, email="stranger@example.com"
+    )
     session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
 
     stranger = await _post_a_turn(client, session.id, team_headers(credential_stranger))
@@ -128,7 +132,9 @@ async def test_a_hot_language_memo_does_not_speculate_for_another_project(
     already warmed for the room let a stranger's turn begin work no check had cleared.
     """
     owner, credential_owner = await a_claimed_device(db_session, email="owner4@example.com")
-    _stranger, credential_stranger = await a_claimed_device(db_session, email="stranger4@example.com")
+    _stranger, credential_stranger = await a_claimed_device(
+        db_session, email="stranger4@example.com"
+    )
     session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
 
     warm = await _post_a_turn(client, session.id, team_headers(credential_owner))
@@ -143,20 +149,23 @@ async def test_a_hot_language_memo_does_not_speculate_for_another_project(
     assert fan_out["hearing"].calls == 0, "a transcrição especulativa rodou para outro projeto"
 
 
-async def test_a_room_key_caller_is_refused_on_a_project_owned_session(
+async def test_a_room_key_caller_with_no_device_still_continues_a_project_owned_session(
     client, db_session: AsyncSession, fan_out
 ) -> None:
+    """The shared key names no device and so no project — `_deps.py`'s own "dated
+    compromise, not a design" — and a tablet that has not yet claimed one still has a
+    session to continue, the way a facilitator's queue already relies on elsewhere. This
+    ticket closes the gap a *device* opens by naming another project, not the one the
+    shared key has always had by naming none.
+    """
     owner, _credential = await a_claimed_device(db_session, email="owner2@example.com")
     session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
 
-    refused = await _post_a_turn(
+    answered = await _post_a_turn(
         client, session.id, {"X-Room-Key": KEY, "X-Room-Device": "tablet-sem-dono"}
     )
 
-    assert refused.status_code == 404, refused.text[:300]
-    assert fan_out["hearing"].calls == 0
-    assert fan_out["model"].calls == 0
-    assert fan_out["voice"].calls == 0
+    assert answered.status_code == 200, answered.text[:300]
 
 
 async def test_a_replay_is_not_handed_to_another_project(
@@ -167,10 +176,14 @@ async def test_a_replay_is_not_handed_to_another_project(
     from ever reaching the check that would have refused it.
     """
     owner, credential_owner = await a_claimed_device(db_session, email="owner5@example.com")
-    _stranger, credential_stranger = await a_claimed_device(db_session, email="stranger5@example.com")
+    _stranger, credential_stranger = await a_claimed_device(
+        db_session, email="stranger5@example.com"
+    )
     session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
 
-    first = await _post_a_turn(client, session.id, team_headers(credential_owner), turn_id="turno-1")
+    first = await _post_a_turn(
+        client, session.id, team_headers(credential_owner), turn_id="turno-1"
+    )
     assert first.status_code == 200, first.text[:300]
 
     stranger = await _post_a_turn(
@@ -178,6 +191,25 @@ async def test_a_replay_is_not_handed_to_another_project(
     )
     assert stranger.status_code == 404, stranger.text[:300]
 
-    again = await _post_a_turn(client, session.id, team_headers(credential_owner), turn_id="turno-1")
+    again = await _post_a_turn(
+        client, session.id, team_headers(credential_owner), turn_id="turno-1"
+    )
     assert again.status_code == 200, again.text[:300]
     assert again.json() == first.json(), "o dono perdeu a resposta já dada ao pedir de novo"
+
+
+async def test_a_room_key_replay_still_works_on_a_project_owned_session(
+    client, db_session: AsyncSession, fan_out
+) -> None:
+    owner, _credential = await a_claimed_device(db_session, email="owner6@example.com")
+    session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
+    headers = {"X-Room-Key": KEY, "X-Room-Device": "tablet-sem-dono"}
+
+    first = await _post_a_turn(client, session.id, headers, turn_id="turno-1")
+    assert first.status_code == 200, first.text[:300]
+
+    again = await _post_a_turn(client, session.id, headers, turn_id="turno-1")
+    assert again.status_code == 200, again.text[:300]
+    assert again.json() == first.json(), (
+        "o reenvio sem device recomeçou o turno em vez de repeti-lo"
+    )

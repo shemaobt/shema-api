@@ -54,20 +54,19 @@ async def answered_turn(
 ) -> dict[str, Any] | None:
     """The response already given for this turn id, to the project that may hear it.
 
-    Joined against the session rather than read from `IRTurn` alone, which names no
-    project of its own: a turn belonging to somebody else's session reads as not landed
-    yet, the same as a turn nobody has answered, so it falls through to the ownership
-    check `get_session_for_room_caller` already gives that caller its own refusal from.
+    A caller naming no project is judged the way the session read beside this one
+    judges it — by id alone — so only a caller naming one joins against the session,
+    which names none of its own: a turn belonging to somebody else's session reads as
+    not landed yet, the same as a turn nobody has answered, so it falls through to the
+    ownership check the session read below already gives that caller its own refusal
+    from.
     """
-    result = await db.execute(
-        select(IRTurn)
-        .join(IRSession, IRSession.id == IRTurn.session_id)
-        .where(
-            IRTurn.session_id == session_id,
-            IRTurn.turn_id == turn_id,
-            or_(IRSession.project_id.is_(None), IRSession.project_id == project_id),
+    query = select(IRTurn).where(IRTurn.session_id == session_id, IRTurn.turn_id == turn_id)
+    if project_id is not None:
+        query = query.join(IRSession, IRSession.id == IRTurn.session_id).where(
+            or_(IRSession.project_id.is_(None), IRSession.project_id == project_id)
         )
-    )
+    result = await db.execute(query)
     turn = result.scalar_one_or_none()
     return turn.response if turn is not None else None
 

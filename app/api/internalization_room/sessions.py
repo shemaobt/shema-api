@@ -681,7 +681,11 @@ async def _answer_the_turn(
 
     try:
         with stage("db_read"):
-            session = await room.get_session_for_room_caller(db, session_id, project_id)
+            session = (
+                await room.get_session_for_room_caller(db, session_id, project_id)
+                if project_id is not None
+                else await room.get_session(db, session_id)
+            )
     except BaseException:
         if stt is not None:
             await _cancelled(stt)
