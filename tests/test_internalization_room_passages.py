@@ -2,6 +2,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room import passages as route
 from app.core.exceptions import ValidationError
@@ -193,6 +194,7 @@ def test_the_region_never_decides_whether_a_passage_can_be_named(tag: str) -> No
 
 async def test_every_passage_the_wheel_offers_says_its_own_kind(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """A caller reading the wheel needs to tell a passage from a panorama without guessing
     from its id — kind says which, plainly, for every passage entry the wheel returns.
@@ -203,24 +205,26 @@ async def test_every_passage_the_wheel_offers_says_its_own_kind(
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
-    answer = await route.passages("Ruth", language="pt")
+    answer = await route.passages("Ruth", language="pt", db=db_session)
 
     assert [view.kind for view in answer.passages] == ["passage"] * len(answer.passages)
 
 
 async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """Once Marcia's word lands and a line is authored, the panorama has to be the first
     thing the team hears turning the wheel — it is the front door to the whole book."""
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
     without_panorama = [
-        view.pericope for view in (await route.passages("Ruth", language="pt")).passages
+        view.pericope
+        for view in (await route.passages("Ruth", language="pt", db=db_session)).passages
     ]
 
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "Rute, o livro")
-    answer = await route.passages("Ruth", language="pt")
+    answer = await route.passages("Ruth", language="pt", db=db_session)
 
     first = answer.passages[0]
     assert (first.kind, first.pericope) == ("panorama", "panorama")
@@ -234,6 +238,7 @@ async def test_the_panorama_opens_the_wheel_when_it_has_a_line(
 
 async def test_the_panorama_opens_with_marcias_approved_wording(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """The real file, not a stub — her ruling is what the wheel now says first, in both
     languages the room ships, with nothing about the book beyond that one line."""
@@ -247,7 +252,7 @@ async def test_the_panorama_opens_with_marcias_approved_wording(
 
     for spoken, wording in (("pt", "Rute — o livro inteiro"), ("en", "Ruth — the whole book")):
         said.clear()
-        answer = await route.passages("Ruth", language=spoken)
+        answer = await route.passages("Ruth", language=spoken, db=db_session)
 
         first = answer.passages[0]
         assert (first.kind, first.pericope) == ("panorama", "panorama")
@@ -256,19 +261,21 @@ async def test_the_panorama_opens_with_marcias_approved_wording(
 
 async def test_the_panorama_stays_off_the_wheel_with_no_line_to_say_it(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """No line for this language means no spoke, exactly as an unwritten passage is left
     out — the room must never read the panorama's id aloud as a stand-in for its voice."""
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
     monkeypatch.setattr(route, "panorama_line_for", lambda language: "")
 
-    answer = await route.passages("Ruth", language="pt")
+    answer = await route.passages("Ruth", language="pt", db=db_session)
 
     assert all(view.kind != "panorama" for view in answer.passages)
 
 
 async def test_the_wheel_offers_no_passage_the_session_would_refuse(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """A team choosing by ear must be able to enter every spoke it hears.
 
@@ -279,7 +286,7 @@ async def test_the_wheel_offers_no_passage_the_session_would_refuse(
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
-    answer = await route.passages("Ruth", language="pt")
+    answer = await route.passages("Ruth", language="pt", db=db_session)
 
     refused = []
     for view in answer.passages:
@@ -297,6 +304,7 @@ async def test_the_wheel_offers_no_passage_the_session_would_refuse(
 
 async def test_the_wheel_still_offers_every_passage_that_does_open(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """The counterweight, and the more expensive of the two failures.
 
@@ -306,7 +314,7 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
     """
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instantly_voiced)
 
-    answer = await route.passages("Ruth", language="pt")
+    answer = await route.passages("Ruth", language="pt", db=db_session)
 
     offered = [view.pericope for view in answer.passages if view.kind == "passage"]
     opens = [
@@ -326,6 +334,7 @@ async def test_the_wheel_still_offers_every_passage_that_does_open(
 
 async def test_every_passage_arrives_with_its_necklace_already_counted(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """The app strings the necklace the moment the conversa opens.
 
@@ -340,7 +349,7 @@ async def test_every_passage_arrives_with_its_necklace_already_counted(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _instant)
 
-    answer = await route.passages("Ruth", language="pt")
+    answer = await route.passages("Ruth", language="pt", db=db_session)
 
     for view in answer.passages:
         if view.kind != "passage":
@@ -352,6 +361,7 @@ async def test_every_passage_arrives_with_its_necklace_already_counted(
 
 async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """Fourteen round trips in a row did not fit the app's ninety-second budget.
 
@@ -374,7 +384,7 @@ async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _slow)
 
-    answer = await route.passages("Ruth", language="pt")
+    answer = await route.passages("Ruth", language="pt", db=db_session)
 
     assert len(answer.passages) > 1
     assert peak > 1, "uma linha por vez é o que estourava o orçamento do cliente"
@@ -383,6 +393,7 @@ async def test_the_catalogue_does_not_wait_for_one_line_before_asking_the_next(
 
 async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     """A roda vem antes de qualquer sessão, então é o único lugar da sala que negocia
     idioma por pedido — sem isso, uma equipe em inglês gira uma roda em português."""
@@ -394,9 +405,9 @@ async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
 
-    await route.passages("Ruth", language="pt")
+    await route.passages("Ruth", language="pt", db=db_session)
     in_portuguese = said.pop("spoken")
-    await route.passages("Ruth", language="en")
+    await route.passages("Ruth", language="en", db=db_session)
     in_english = said.pop("spoken")
 
     assert len(in_portuguese) == len(in_english)
@@ -405,6 +416,7 @@ async def test_the_wheel_names_the_passages_in_the_language_the_request_asks_for
 
 async def test_the_wheel_asked_for_nothing_speaks_the_floor(
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     said: list[str] = []
 
@@ -414,7 +426,7 @@ async def test_the_wheel_asked_for_nothing_speaks_the_floor(
 
     monkeypatch.setattr(route.room, "synthesize_facilitator_speech", _remembering)
 
-    await route.passages("Ruth")
+    await route.passages("Ruth", db=db_session)
 
     assert line_for("P01", FLOOR) in said
     assert line_for("P01", "pt") not in said

@@ -99,6 +99,7 @@ async def transcribe_question(*, question_id: str, audio: bytes) -> None:
         async with AsyncSessionLocal() as db:
             question = await get_question(db, question_id)
             spoken = (await get_session(db, question.session_id)).language
+            await db.commit()
             await transcribe_for_the_desk(db, question, audio, language=spoken)
     except TranscriptionDefect:
         logger.exception("Transcription of question %s broke on our side", question_id)

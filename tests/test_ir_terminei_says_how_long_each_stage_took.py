@@ -19,7 +19,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room import llm, usage
-from tests.room_harness import played_every_part, press_terminei, rehearsed_in_parts, room_client
+from tests.room_harness import (
+    a_piece_still_to_be_told,
+    played_every_part,
+    press_terminei,
+    rehearsed_in_parts,
+    room_client,
+    stretch_on,
+)
 
 ANALYST_MS = 70
 GUIDE_MS = 60
@@ -100,3 +107,54 @@ async def test_terminei_says_how_long_the_reading_the_verdict_and_the_voice_each
     assert spent["voice"] >= VOICE_MS, "a voz do veredito não era medida"
     assert "db_write" in spent, "a gravação do veredito não era medida"
     assert spent["total"] >= ANALYST_MS + GUIDE_MS + VALIDATOR_MS + VOICE_MS
+
+
+def _stages(caplog: pytest.LogCaptureFixture) -> dict[str, int]:
+    lines = [r.getMessage() for r in caplog.records if "[bt-timing]" in r.getMessage()]
+    assert len(lines) == 1, lines
+    return {name: int(ms) for name, ms in re.findall(r" (\w+)=(\d+)ms", lines[0])}
+
+
+async def test_letting_the_read_go_before_the_verdict_is_timed_on_its_own_not_hidden_in_total(
+    client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    session, parts = await rehearsed_in_parts(db_session, 1)
+
+    with caplog.at_level(logging.INFO):
+        answered = await press_terminei(
+            client, session.id, report=played_every_part([part.id for part in parts])
+        )
+
+    assert answered.status_code == 200, answered.text
+    assert "db_let_go" in _stages(caplog), (
+        "o COMMIT que solta a leitura antes do veredito só aparecia somado no total"
+    )
+
+
+async def test_letting_the_read_go_before_naming_an_unheard_part_is_timed_on_its_own_too(
+    client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    session, (first, _second) = await rehearsed_in_parts(db_session, 2)
+
+    with caplog.at_level(logging.INFO):
+        answered = await press_terminei(client, session.id, report=played_every_part([first.id]))
+
+    assert answered.status_code == 200, answered.text
+    assert "db_let_go" in _stages(caplog), (
+        "o COMMIT que solta a leitura antes da fala de quem não ouviu só aparecia somado no total"
+    )
+
+
+async def test_letting_the_read_go_before_naming_an_untold_stretch_is_timed_on_its_own_too(
+    client: httpx.AsyncClient, db_session: AsyncSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    await a_piece_still_to_be_told(db_session, session, await stretch_on(db_session, session, part))
+
+    with caplog.at_level(logging.INFO):
+        answered = await press_terminei(client, session.id)
+
+    assert answered.status_code == 200, answered.text
+    assert "db_let_go" in _stages(caplog), (
+        "o COMMIT que solta a leitura antes do recado do não contado só aparecia somado no total"
+    )
