@@ -44,9 +44,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
+from app.services.internalization_room import questions as question_service
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.takes import store_take, takes_of
+from app.services.internalization_room.voice_handles import to_handle
 from tests.release_harness import KEY, PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.room_route_audit_harness import room_app_routes
@@ -519,3 +521,91 @@ async def test_a_hand_over_naming_no_such_session_leaves_no_new_session(
         f"uma sessao orfa ficou para tras num hand-over para um after_session inexistente: "
         f"{before} antes, {after} depois"
     )
+
+
+# ---------------------------------------------------------------------------
+# A third shape `room_caller_session_routes()` cannot see: `GET
+# .../questions/audio/{handle}` names a question by an opaque handle, never by
+# `{session_id}` in the path, for the same reason `POST /questions` and `POST
+# /sessions` above are audited by hand. ENG-1063.
+# ---------------------------------------------------------------------------
+
+
+class _CountingStore:
+    """The bucket seam, counting every `get` — a refusal that still reads is not a refusal."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+        self.reads = 0
+
+    async def get(self, key: str) -> bytes | None:
+        self.reads += 1
+        return self.objects.get(key)
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.objects[key] = data
+
+
+def _question_audio_url(question: Any) -> str:
+    return f"{PREFIX}/questions/audio/{to_handle(question.audio_key)}"
+
+
+async def test_a_device_of_another_projects_question_audio_is_refused_before_any_bucket_read(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _CountingStore()
+    monkeypatch.setattr(question_service, "_store", lambda *_, **__: store)
+    owner, owner_credential = await a_claimed_device(db_session, email="owner-qa@example.com")
+    _stranger, stranger_credential = await a_claimed_device(
+        db_session, email="stranger-qa@example.com"
+    )
+    question = await question_service.raise_question(
+        db_session,
+        device_id="tablet-owner",
+        session_id="sessao-qa",
+        pericope=P,
+        audio=b"a equipe perguntou",
+        project_id=owner.id,
+        store=store,
+    )
+
+    refused = await client.get(
+        _question_audio_url(question), headers=team_headers(stranger_credential)
+    )
+
+    assert refused.status_code == 404, refused.text[:300]
+    assert store.reads == 0, (
+        f"a pergunta de outro projeto foi lida do bucket antes da recusa: {store.reads} leitura(s)"
+    )
+
+    allowed = await client.get(
+        _question_audio_url(question), headers=team_headers(owner_credential)
+    )
+
+    assert allowed.status_code == 200, allowed.text[:300]
+    assert allowed.content == b"a equipe perguntou"
+
+
+async def test_a_room_key_caller_still_reaches_a_project_owned_questions_audio(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shared key names no device and so no project — `_deps.py`'s own "dated
+    compromise, not a design" — and this route kept answering it before this ticket.
+    """
+    store = _CountingStore()
+    monkeypatch.setattr(question_service, "_store", lambda *_, **__: store)
+    owner, _credential = await a_claimed_device(db_session, email="key-owner-qa@example.com")
+    question = await question_service.raise_question(
+        db_session,
+        device_id="tablet-sala",
+        session_id="sessao-qa-key",
+        pericope=P,
+        audio=b"a equipe perguntou pela chave",
+        project_id=owner.id,
+        store=store,
+    )
+
+    allowed = await client.get(_question_audio_url(question), headers=ROOM_KEY_HEADERS)
+
+    assert allowed.status_code == 200, allowed.text[:300]
+    assert allowed.content == b"a equipe perguntou pela chave"

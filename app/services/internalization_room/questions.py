@@ -243,6 +243,33 @@ async def audio_of_a_question_this_facilitator_facilitates(
     return found
 
 
+async def question_for_room_caller(
+    db: AsyncSession, key: str, project_id: str | None
+) -> IRQuestion:
+    """The question an audio key addresses, on the room's own ownership rule.
+
+    Same rule as ``session_for_room_caller``: a device that names a project reads only
+    that project's own questions; the shared key names no device and so no project, and
+    keeps the by-id read its real facilitator flow has always depended on.
+    """
+    found = (
+        (
+            await db.execute(
+                select(IRQuestion).where(
+                    or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if found is None:
+        raise NotFoundError("No such audio")
+    if project_id is not None and found.project_id is not None and found.project_id != project_id:
+        raise NotFoundError("No such audio")
+    return found
+
+
 #: §7's own number, and the one the Desk models against fixtures as ``RAISED_HANDS_PAGE_SIZE``.
 DEFAULT_PAGE = 50
 

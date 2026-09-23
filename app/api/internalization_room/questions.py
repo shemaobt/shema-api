@@ -111,13 +111,19 @@ async def replies(
 
 
 @router.get("/questions/audio/{handle}", dependencies=[room_caller_dep])
-async def team_audio(handle: str, db: AsyncSession = Depends(get_db)) -> Response:
+async def team_audio(
+    handle: str, project_id: str | None = device_project_dep, db: AsyncSession = Depends(get_db)
+) -> Response:
     """Serve a facilitator's spoken reply to the app that asked.
 
     The room's voice route cannot carry these bytes: it only answers for keys under the
     room's synthesized speech, so every reply address it was handed came back a 404 and
     the answer never reached the team. This route reads the one folder a question writes.
     """
+    key = from_question_handle(handle)
+    if key is None:
+        raise NotFoundError("No such audio")
+    await service.question_for_room_caller(db, key, project_id)
     await db.commit()
     return await _audio(handle)
 
