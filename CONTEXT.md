@@ -131,7 +131,7 @@ _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
 The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move, nor the scene a rehearsal is credited to: that is the **Invited scene**.
-_Avoid_: current scene (the ledger's line says CURRENT SCENE; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
+_Avoid_: current scene (the retired heading of the ledger's scene line, which now names what it computes; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
 
 **Invited scene** (`invited_scene_id`):
 The scene a rehearsal invitation is about: the first scene of the passage still owed a rehearsal on the turn the Guide invites, kept with the turn's record and credited when the team reports the rehearsal done. Never the **Scene pointer**, which has not settled when the invitation is spoken.
