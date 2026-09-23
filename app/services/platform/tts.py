@@ -350,12 +350,16 @@ async def _synthesize(
         body["voice_settings"] = dict(voice_settings)
 
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
-        json=body,
-        params={"output_format": cfg.elevenlabs_output_format},
-        headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
+            json=body,
+            params={"output_format": cfg.elevenlabs_output_format},
+            headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs TTS unreachable: %s", error)
+        raise UpstreamServiceError(f"Speech request could not reach ElevenLabs: {error}") from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs TTS failed: status=%s body=%s",
