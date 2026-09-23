@@ -380,6 +380,9 @@ async def create_session(
     written live, with the wait the prepared one spares. A model call and a clip on every
     second hearing, most of which end on the wheel, is the dearer side of that trade.
     """
+    previous = None
+    if payload.after_session:
+        previous = await room.session_for_room_caller(db, payload.after_session, project_id)
     session = await room.create_session(
         db,
         pericope=payload.pericope,
@@ -390,8 +393,7 @@ async def create_session(
     )
     if caller is not None:
         await clear_needs_person(db, caller.id)
-    if payload.after_session:
-        previous = await room.session_for_room_caller(db, payload.after_session, project_id)
+    if previous is not None:
         if hand_over(previous, session):
             await db.commit()
     elif is_panorama(session.pericope) and not await heard_panorama(
