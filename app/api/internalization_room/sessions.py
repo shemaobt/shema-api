@@ -122,6 +122,11 @@ async def _voice_the_turn(
 
 _PENDING_WHOLE_LINE_TASKS: set[asyncio.Task[SpeechKey]] = set()
 
+#: The same tasks as `_PENDING_WHOLE_LINE_TASKS`, keyed by the (text, language) they were
+#: started for — `_say_it_again` needs to find the one task that matches its own turn, and
+#: a bare set cannot answer "which one", only "how many".
+_PENDING_WHOLE_LINE_BY_TEXT: dict[tuple[str, str], asyncio.Task[SpeechKey]] = {}
+
 
 def _start_the_whole_line(text: str, language: str) -> asyncio.Task[SpeechKey]:
     """Voice an opening's whole line on a task of its own, beside its two movements.
@@ -133,12 +138,21 @@ def _start_the_whole_line(text: str, language: str) -> asyncio.Task[SpeechKey]:
     starts, and the caller's list has already been gathered by the time a task left behind
     finishes, so appending to it would lose the upload rather than defer it.
     `synthesize_facilitator_speech` uploads its own clip when it is not given one, which is
-    exactly what lets `_say_it_again` find it later.
+    exactly what lets `_say_it_again` find it later — and while it is still in flight,
+    `_PENDING_WHOLE_LINE_BY_TEXT` is how `_say_it_again` joins it instead of asking
+    ElevenLabs for the same words a second time.
     """
     task = asyncio.create_task(_the_whole_line(text, language))
     _PENDING_WHOLE_LINE_TASKS.add(task)
     task.add_done_callback(_PENDING_WHOLE_LINE_TASKS.discard)
+    key = (text, language)
+    _PENDING_WHOLE_LINE_BY_TEXT[key] = task
+    task.add_done_callback(partial(_forget_the_whole_line, key))
     return task
+
+
+def _forget_the_whole_line(key: tuple[str, str], _task: asyncio.Task[SpeechKey]) -> None:
+    _PENDING_WHOLE_LINE_BY_TEXT.pop(key, None)
 
 
 async def _the_whole_line(text: str, language: str) -> SpeechKey:
@@ -612,8 +626,11 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
     """Where the room already was, for a team walking back in.
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
-    The synthesiser is content-addressed, so the very same words come straight back out of
-    the bucket — this costs one lookup and no waiting.
+    The synthesiser is content-addressed, so the very same words usually come straight back
+    out of the bucket — except for an opening whose whole line is still being voiced in the
+    background (`_start_the_whole_line`), where the bucket is empty and a plain lookup would
+    pay ElevenLabs a second time for a clip already on its way. That case joins the pending
+    task in `_PENDING_WHOLE_LINE_BY_TEXT` instead of asking again.
     """
     last = next(
         (
@@ -623,11 +640,16 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         ),
         "",
     )
-    voiced = (
-        (await room.synthesize_facilitator_speech(last, language=session.language))[0]
-        if last
-        else None
-    )
+    voiced: SpeechKey | None = None
+    if last:
+        joining = _PENDING_WHOLE_LINE_BY_TEXT.get((last, session.language))
+        if joining is not None:
+            try:
+                voiced = await joining
+            except Exception:
+                voiced = None
+        if voiced is None:
+            voiced = (await room.synthesize_facilitator_speech(last, language=session.language))[0]
     return TurnResponse(
         session_id=session.id,
         audio_url=clip_url(voiced.key) if voiced else "",

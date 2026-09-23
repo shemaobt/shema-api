@@ -114,6 +114,7 @@ async def _no_whole_line_outlives_its_test() -> AsyncIterator[None]:
     if left:
         await asyncio.wait(left)
     sessions_api._PENDING_WHOLE_LINE_TASKS.clear()
+    sessions_api._PENDING_WHOLE_LINE_BY_TEXT.clear()
 
 
 async def _client(
@@ -222,6 +223,43 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
         "o diga de novo pagou a ElevenLabs outra vez por uma linha que o segundo plano já "
         "tinha posto no bucket"
     )
+
+
+async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_joins_it(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    elevenlabs = _Elevenlabs(holds=WHOLE)
+    _opens_in_two_movements(monkeypatch)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+        assert opened.status_code == 200
+
+        pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
+        assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
+
+        again = asyncio.create_task(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+        )
+        await asyncio.wait({again}, timeout=0.2)
+        assert not again.done(), "o diga de novo respondeu sem esperar a linha inteira ainda em voo"
+
+        elevenlabs.may_proceed.set()
+        again_resp = await asyncio.wait_for(again, timeout=2)
+
+    assert again_resp.status_code == 200, again_resp.text[:300]
+    assert elevenlabs.calls.count(WHOLE) == 1, (
+        "o diga de novo pediu a linha inteira de novo enquanto ela ainda estava em voo, em "
+        "vez de se juntar à síntese já a caminho"
+    )
+    assert again_resp.json()["audio_url"], "o diga de novo voltou sem áudio nenhum"
 
 
 async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
