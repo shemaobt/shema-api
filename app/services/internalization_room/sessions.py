@@ -305,6 +305,7 @@ async def append_exchange(
     told_back: str = "",
     state: ComprehensionState | None = None,
     commit: bool = True,
+    halted_at_start: bool | None = None,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -324,7 +325,9 @@ async def append_exchange(
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
     `attend` is the other, and is the one a facilitator controls (ENG-609). The lift itself
     is untouched by that slice: the team resuming still ends the halt, and both kinds of halt
-    end this way.
+    end this way. Only a halt already standing when the turn began is lifted: one the tablet
+    raised while the Guide was still answering is a request nobody has answered yet. A caller
+    that re-read the row since the turn began says what it saw first in ``halted_at_start``.
 
     It does clear `lifted_halt`, which is the record of a halt an outstanding visit lifted and
     which undoing that visit would put back. Once a turn lands there is nothing left to put
@@ -355,7 +358,9 @@ async def append_exchange(
             )
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
-    if session.status is IRSessionStatus.NEEDS_PERSON:
+    if halted_at_start is None:
+        halted_at_start = session.status is IRSessionStatus.NEEDS_PERSON
+    if halted_at_start:
         values["status"] = IRSessionStatus.IN_PROGRESS
     if state is not None:
         values["comprehension"] = state.model_dump(mode="json")
@@ -450,6 +455,7 @@ async def append_opening(
     read again here, and an opening that is no longer the first thing said is dropped from
     the record and logged — the tablet still hears the line it asked for.
     """
+    halted_at_start = session.status is IRSessionStatus.NEEDS_PERSON
     await db.refresh(session)
     if session.messages:
         logger.warning(
@@ -466,6 +472,7 @@ async def append_opening(
         scene=scene,
         state=state,
         commit=commit,
+        halted_at_start=halted_at_start,
     )
     return True
 

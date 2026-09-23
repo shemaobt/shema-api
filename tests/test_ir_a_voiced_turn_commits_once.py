@@ -216,6 +216,34 @@ async def test_a_person_asked_for_while_the_guide_thinks_is_still_asked_for_afte
     assert after.halt_kind == HaltKind.BLOCKING.value
 
 
+async def test_a_person_asked_for_while_the_guide_composes_the_opening_is_still_asked_for(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    async def the_tablet_asks_for_a_person() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, session.id)
+            await mark_needs_person(rival, halted, kind=HaltKind.BLOCKING)
+
+    models.while_the_guide_thinks = the_tablet_asks_for_a_person
+
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert models.while_the_guide_thinks is None, "o Guia falso não compôs a abertura"
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, session.id)
+    assert after.messages, "a abertura não foi gravada"
+    assert after.status is IRSessionStatus.NEEDS_PERSON, (
+        "a releitura da abertura pegava o pedido de pessoa e a primeira fala o soltava"
+    )
+    assert after.halt_kind == HaltKind.BLOCKING.value
+
+
 async def test_a_turn_with_its_id_is_remembered_in_the_same_commit_as_its_exchange(
     client: httpx.AsyncClient, waiting_room: IRSession, commits: list[object]
 ) -> None:
