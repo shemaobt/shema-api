@@ -18,6 +18,7 @@ from anthropic.types import (
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UpstreamServiceError
+from app.core.stage_clock import stage
 from app.services.internalization_room.usage import cost_of, record
 
 logger = logging.getLogger(__name__)
@@ -166,15 +167,16 @@ async def call_agent(
         started = time.monotonic()
         try:
             async with asyncio.timeout(bound_s):
-                response = await client.messages.create(
-                    model=model,
-                    max_tokens=max_output_tokens,
-                    thinking=thinking,
-                    output_config=output_config,
-                    system=_system_blocks(system_prompt),
-                    messages=messages,
-                    timeout=bound_s,
-                )
+                with stage(role.replace(" ", "_")):
+                    response = await client.messages.create(
+                        model=model,
+                        max_tokens=max_output_tokens,
+                        thinking=thinking,
+                        output_config=output_config,
+                        system=_system_blocks(system_prompt),
+                        messages=messages,
+                        timeout=bound_s,
+                    )
         except TimeoutError as hang:
             raise _timed_out(model, role=role, started=started, bound_s=bound_s) from hang
         except asyncio.CancelledError:
