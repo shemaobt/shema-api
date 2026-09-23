@@ -24,6 +24,7 @@ from app.services.platform.tts import SynthesizedSpeech
 PREFIX = "/api/internalization-room"
 VOICED_HERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/aaa111/voiced-here.mp3"
 VOICED_ELSEWHERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/bbb222/voiced-elsewhere.mp3"
+NEVER_STORED = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/ccc333/never-stored.mp3"
 CLIP = b"x" * 1234
 AUTH_MS = 100
 BUCKET_MS = 100
@@ -34,9 +35,9 @@ synthesis = importlib.import_module(
 
 
 class _SlowBucket:
-    async def get(self, key: str) -> bytes:
+    async def get(self, key: str) -> bytes | None:
         await asyncio.sleep(BUCKET_MS / 1000)
-        return CLIP
+        return None if key == NEVER_STORED else CLIP
 
 
 async def _slow_gate(db: AsyncSession, credential: str) -> Any:
@@ -90,11 +91,11 @@ async def test_a_clip_fetch_says_how_long_the_gate_and_the_bucket_each_took(
     assert fetched.status_code == 200, fetched.text
     lines = _voice_get_lines(caplog)
     assert len(lines) == 1, "a leitura do clipe nunca tinha sido cronometrada"
-    spent = {name: int(ms) for name, ms in re.findall(r"(\w+_ms)=(\d+)", lines[0])}
-    assert spent["auth_ms"] >= AUTH_MS, "a autenticação do tablet não era medida"
-    assert spent["gcs_ms"] >= BUCKET_MS
-    assert spent["auth_ms"] < AUTH_MS + BUCKET_MS, "o tempo do bucket caía na conta da porta"
-    assert spent["gcs_ms"] < AUTH_MS + BUCKET_MS, "o tempo da porta caía na conta do bucket"
+    spent = {name: int(ms) for name, ms in re.findall(r" (\w+)=(\d+)ms", lines[0])}
+    assert spent["auth"] >= AUTH_MS, "a autenticação do tablet não era medida"
+    assert spent["gcs"] >= BUCKET_MS
+    assert spent["auth"] < AUTH_MS + BUCKET_MS, "o tempo do bucket caía na conta da porta"
+    assert spent["gcs"] < AUTH_MS + BUCKET_MS, "o tempo da porta caía na conta do bucket"
     assert " bytes=1234 " in lines[0]
     assert lines[0].endswith(" same_instance=no")
 
@@ -139,3 +140,16 @@ async def test_an_instance_up_for_months_remembers_only_its_latest_clips(
     assert not synthesis.voiced_here("tts/v/segunda.mp3"), "o registro crescia sem limite"
     assert synthesis.voiced_here("tts/v/primeira.mp3"), "a fala repetida era a primeira a sair"
     assert synthesis.voiced_here("tts/v/terceira.mp3")
+
+
+async def test_a_clip_the_bucket_does_not_hold_still_says_how_long_the_miss_took(
+    client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        fetched = await _fetch(client, NEVER_STORED)
+
+    assert fetched.status_code == 404
+    lines = _voice_get_lines(caplog)
+    assert len(lines) == 1, "o clipe que o bucket não tinha sumia do cronômetro"
+    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no$", lines[0])
+    assert missed is not None and int(missed.group(1)) >= BUCKET_MS

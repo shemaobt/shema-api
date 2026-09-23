@@ -48,15 +48,15 @@ async def clip(
     reading = time.monotonic()
     audio = await fetch_clip(key, store=GcsPlatformStore(cfg))
     read = time.monotonic()
-    if audio is None:
-        raise NotFoundError("No such clip")
     logger.info(
-        "[voice-get] auth_ms=%s gcs_ms=%s bytes=%s same_instance=%s",
+        "[voice-get] auth=%sms gcs=%sms bytes=%s same_instance=%s",
         _ms(arrived, reading),
         _ms(reading, read),
-        len(audio),
+        len(audio or b""),
         "yes" if voiced_here(key) else "no",
     )
+    if audio is None:
+        raise NotFoundError("No such clip")
     return Response(
         content=audio,
         media_type=_media_type(key),
