@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
@@ -13,6 +13,7 @@ from app.models.internalization_room import (
     FinishBackTranslationRequest,
 )
 from app.services import internalization_room as room
+from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.fail_safe import FailSafe, choose, process_line
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import refuse_a_slice_that_is_not_one
@@ -36,6 +37,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 )
 async def add_chunk(
     session_id: str,
+    background: BackgroundTasks,
     file: UploadFile = File(...),
     take_id: str = Form(...),
     starts_ms: int = Form(...),
@@ -142,6 +144,7 @@ async def add_chunk(
         replaces=retold,
         state=state,
     )
+    background.add_task(read_ahead, session_id=session.id)
     return BackTranslationChunkResponse(
         session_id=session.id,
         chunks=len(told) if retold is not None else len(told) + 1,

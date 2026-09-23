@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
-from tests.room_harness import heard_every_part, press_terminei
+from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -68,6 +68,11 @@ NO_LONGER_TOLD = "havia pão em Belém"
 #: The element the finding on the first stretch names as missing — "Orfa não apareceu neste
 #: trecho." A correction that brings it back is the answer arriving, never an addition.
 BROUGHT_BACK = "Orfa é citada pelo nome"
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:
