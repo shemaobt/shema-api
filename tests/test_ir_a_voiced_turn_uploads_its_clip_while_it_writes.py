@@ -54,8 +54,9 @@ class _Elevenlabs:
 
 
 class _BucketThatWaitsForTheWrite:
-    def __init__(self, written: asyncio.Event) -> None:
-        self.written = written
+    def __init__(self) -> None:
+        self.uploading = asyncio.Event()
+        self.written = asyncio.Event()
         self.objects: dict[str, bytes] = {}
 
     async def get(self, key: str) -> bytes | None:
@@ -65,6 +66,7 @@ class _BucketThatWaitsForTheWrite:
         return key in self.objects
 
     async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.uploading.set()
         await asyncio.wait_for(self.written.wait(), timeout=1)
         await asyncio.sleep(0.05)
         self.objects[key] = data
@@ -89,7 +91,7 @@ def _forget_which_rung_answered():
 
 @pytest.fixture()
 def bucket() -> _BucketThatWaitsForTheWrite:
-    return _BucketThatWaitsForTheWrite(asyncio.Event())
+    return _BucketThatWaitsForTheWrite()
 
 
 @pytest.fixture()
@@ -119,6 +121,7 @@ async def client(
 
     async def _append_then_say_so(*args: Any, **kwargs: Any) -> IRSession:
         session = await appended(*args, **kwargs)
+        await asyncio.wait_for(bucket.uploading.wait(), timeout=1)
         bucket.written.set()
         return session
 
@@ -159,7 +162,10 @@ async def test_the_clip_uploads_while_the_turn_is_written_and_lands_before_the_a
         files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
     )
 
-    assert answered.status_code == 200, answered.text[:300]
+    assert answered.status_code == 200, (
+        "a escrita no banco terminava inteira antes de o upload começar, e a resposta "
+        "esperava as duas coisas uma atrás da outra"
+    )
     handle = answered.json()["audio_url"].rsplit("/", 1)[-1]
     key = from_handle(handle, settings=get_settings())
     assert key in bucket.objects, (
