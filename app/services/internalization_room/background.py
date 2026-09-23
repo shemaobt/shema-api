@@ -14,7 +14,6 @@ from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
 from app.services.internalization_room.sessions import apply_coverage, get_session
-from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)
@@ -39,11 +38,6 @@ async def settle_coverage(
     be written into a total already logged. Its own book also puts the classifier's money
     where it belongs — on the session, which is what pays for it — without adding a turn the
     team did not take.
-
-    The scene pointer is read off the session as it stands here, by the same reading the
-    turn uses to open a scene, so the classifier is shown the scene the team is in and not
-    the whole passage. It is the app's bookkeeping and it stops here: the Guide is never
-    handed it as a scope on what it may say.
     """
     with stopwatch("[coverage-timing]", session_id):
         try:
@@ -58,9 +52,6 @@ async def settle_coverage(
                     guide_response=guide_response,
                     classifier_prompt=classifier_prompt,
                     pericope_num=pericope_num,
-                    scene_pointer=current_scene_id(
-                        coverage_state, pericope_num, list(session.messages or [])
-                    ),
                     session_language=LANGUAGE_NAMES[session.language],
                 )
                 async with AsyncSessionLocal() as db:
