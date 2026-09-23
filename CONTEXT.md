@@ -130,8 +130,8 @@ What a bead of the Meaning Map is. Six kinds sit in a scene of the passage — s
 _Avoid_: type, category, Tipo de elemento
 
 **Scene pointer** (`current_scene_id`):
-The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it, a rehearsal invitation is read against it — and never a scope on what a turn may move.
-_Avoid_: current scene (the ledger's line says CURRENT SCENE; the term is the pointer), eligibility, scope, progress, Ponteiro de cena
+The scene the ledger last places the team in: the first scene whose beads are not all engaged, once the team has spoken, and none at all before that. It is information — the Guide's ledger block carries it, a turn's record keeps it — and never a scope on what a turn may move. A rehearsal is credited to the first scene still owed a rehearsal, recorded on the turn the invitation is spoken — never to the pointer (ADR 0035).
+_Avoid_: current scene, eligibility, scope, progress, Ponteiro de cena
 
 **Coverage event** (`ir_coverage_events`):
 One recorded movement of a bead from one coverage state to the next.

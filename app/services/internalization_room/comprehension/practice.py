@@ -194,9 +194,10 @@ def scenes_practiced_by_the_report_the_guide_invited(
     previous_guide_utterance: str,
     team_utterance: str,
     reliable_bridge_speech: bool,
-    current_scene: str | None,
+    invited_scene: str | None,
 ) -> list[str]:
-    """The scene just opened, when the team's own report of a finished rehearsal comes back.
+    """The scene the invitation named, when the team's own report of a finished rehearsal
+    comes back.
 
     The invitation ends the opening of a scene, which is a turn before the planner has any
     reason to raise a practice probe for it — the scene is only opened by that very turn. A
@@ -206,30 +207,31 @@ def scenes_practiced_by_the_report_the_guide_invited(
     retelling against the map, item by item, with the whole conversation in context; the
     app never claims to know what a mother-tongue rehearsal said.
 
-    The scope is the scene the caller says the invitation was about — the one the Guide is
-    opening while beads are still being opened, the first scene still owed a rehearsal once
-    the necklace is full (`turn.scene_view.scene_the_invitation_is_about`); the Guide never
-    chooses a scene itself. Nothing is marked when there is no scene in scope, and nothing
-    is marked when the last line was not an invitation, which is what keeps an ordinary
-    answer to an ordinary question from counting as a rehearsal.
+    The scope is the scene recorded on the turn the invitation was spoken: the first scene
+    still owed a rehearsal. Never the pointer — on the invite turn it has not yet seen what
+    the team just told, and by the report beads may have closed in later scenes and moved it
+    on (ADR 0035). The Guide never chooses a scene itself. Nothing is marked when no
+    invitation was recorded, and nothing is marked when the last line was not an
+    invitation, which is what keeps an ordinary answer to an ordinary question from
+    counting as a rehearsal.
 
     A process-only probe of another purpose standing is the room saying what the turn is
     about, and it is not this — a scene opening included: it names the scene it is inviting
-    for, and that scope is the probe's to give, not the pointer's. A semantic probe is no
+    for, and that scope is the probe's to give, not the invitation's. A semantic probe is no
     such claim — the Guide asks its question and invites the rehearsal in the same breath,
     which is the turn this exists for. That matters most for the recording-handoff consent,
     whose fixed question — record the first rehearsal in your own language? — carries the
     practice stem and the mother-tongue phrase in every language the room speaks, so a team
     agreeing to record would otherwise be read as a team reporting a rehearsal of whatever
-    scene the pointer was on.
+    scene was last invited.
     """
     if prior_probe is not None:
         return []
-    if current_scene is None:
+    if invited_scene is None:
         return []
     reported = reliable_bridge_speech and confirms_completed_mother_tongue_practice(
         previous_guide_utterance, team_utterance
     )
     if not reported:
         return []
-    return [current_scene]
+    return [invited_scene]

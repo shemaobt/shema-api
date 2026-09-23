@@ -44,7 +44,7 @@ def current_scene_id(
 def scene_the_invitation_is_about(
     scene_pointer: str | None, pericope: str, practiced_scene_ids: list[str]
 ) -> str | None:
-    """The scene a rehearsal invitation is read against, when the telling comes back.
+    """The scene the pointer names, or the first scene still owed a rehearsal once it is blank.
 
     While a scene is still being opened it is that one: the invitation ends the opening
     of the scene the pointer names. Once every bead is engaged there is nothing left to

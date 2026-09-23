@@ -27,7 +27,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.parse_map import load_map
+from app.services.internalization_room.comprehension.checkpoints import scene_ids_for
 from app.services.internalization_room.comprehension.practice import (
+    guide_invited_mother_tongue_practice,
     scenes_practiced_by_the_report_the_guide_invited,
 )
 from app.services.internalization_room.comprehension.probe import (
@@ -37,10 +39,7 @@ from app.services.internalization_room.comprehension.state import ComprehensionS
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import comprehension_of
-from app.services.internalization_room.turn.scene_view import (
-    current_scene_id,
-    scene_the_invitation_is_about,
-)
+from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.turn.speech import speak_back
 
 
@@ -81,13 +80,12 @@ async def run_comprehension_turn(
     empty = not transcript.strip()
     reliable = not uncertain and not mother_tongue
 
-    scene_pointer = current_scene_id(session.coverage_state or {}, pericope, messages)
     practiced_now = scenes_practiced_by_the_report_the_guide_invited(
         prior_probe,
         last_guide,
         transcript,
         reliable,
-        scene_the_invitation_is_about(scene_pointer, pericope, state.practiced_scene_ids),
+        state.invited_scene_id,
     )
     projected_practice = list(dict.fromkeys([*state.practiced_scene_ids, *practiced_now]))
 
@@ -116,10 +114,20 @@ async def run_comprehension_turn(
         transcript_empty=empty,
     )
 
+    if guide_invited_mother_tongue_practice(outcome.speech):
+        invited_scene_id = next(
+            (s for s in scene_ids_for(pericope) if s not in projected_practice), None
+        )
+    elif practiced_now:
+        invited_scene_id = None
+    else:
+        invited_scene_id = state.invited_scene_id
+
     new_state = ComprehensionState(
         ledger=state.ledger,
         active_probe=final_probe,
         practiced_scene_ids=projected_practice,
+        invited_scene_id=invited_scene_id,
     )
     return ComprehensionTurn(outcome=outcome, state=new_state)
 
