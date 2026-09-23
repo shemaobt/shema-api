@@ -640,7 +640,7 @@ async def take_turn(
     )
     with stopwatch("[turn-timing]", session_id) as clock:
         if turn_id:
-            reply = await answer_once(session_id, turn_id, answer)
+            reply = await answer_once(session_id, turn_id, project_id, answer)
         else:
             reply = await answer(db)
     response.headers["Server-Timing"] = clock.server_timing()

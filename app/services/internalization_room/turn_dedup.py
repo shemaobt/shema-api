@@ -13,12 +13,15 @@ from app.core.stage_clock import StageClock, adopt, current_clock
 from app.db.models.internalization_room import IRSession, IRTurn
 from app.models.internalization_room import TurnResponse
 
-_in_flight: dict[tuple[str, str], tuple[asyncio.Task[TurnResponse], StageClock | None]] = {}
+_in_flight: dict[
+    tuple[str, str, str | None], tuple[asyncio.Task[TurnResponse], StageClock | None]
+] = {}
 
 
 async def answer_once(
     session_id: str,
     turn_id: str,
+    project_id: str | None,
     answer: Callable[[AsyncSession], Coroutine[Any, Any, TurnResponse]],
 ) -> TurnResponse:
     """Run this turn once while it is in flight; a resend joins it and hears the same answer.
@@ -30,8 +33,13 @@ async def answer_once(
     of its own, the way `settle_coverage` is, because the request's session closes when
     that request unwinds, and a turn that outlives it would otherwise write through a
     session that is no longer there.
+
+    Keyed on the caller's project along with the session and turn id, so a stranger's
+    request landing on the same turn id while the owner's is still in flight runs its own
+    answer and its own ownership check, rather than joining the owner's and hearing back
+    a reply it was never checked against.
     """
-    key = (session_id, turn_id)
+    key = (session_id, turn_id, project_id)
     if key not in _in_flight:
         task = asyncio.create_task(_on_a_session_of_its_own(answer))
         _in_flight[key] = (task, current_clock())

@@ -8,6 +8,7 @@ before the room ever turned it away.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from typing import Any
@@ -213,3 +214,58 @@ async def test_a_room_key_replay_still_works_on_a_project_owned_session(
     assert again.json() == first.json(), (
         "o reenvio sem device recomeçou o turno em vez de repeti-lo"
     )
+
+
+class _OwnershipCheckThatWaitsToBeReleased:
+    """The real `get_session_for_room_caller`, held open so a resend or a stranger's
+    request has a chance to arrive while the owner's own turn is still in flight.
+    """
+
+    def __init__(self, real: Any) -> None:
+        self._real = real
+        self.calls = 0
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, db: AsyncSession, session_id: str, project_id: str | None) -> Any:
+        self.calls += 1
+        self.entered.set()
+        await asyncio.wait_for(self.release.wait(), timeout=1)
+        return await self._real(db, session_id, project_id)
+
+
+async def test_a_concurrent_turn_from_another_project_does_not_join_the_owners_flight(
+    client, db_session: AsyncSession, fan_out, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`answer_once` deduped on `(session_id, turn_id)` alone, so a stranger's request
+    landing while the owner's own turn was still in flight joined that same flight and
+    came back with the owner's answer — transcript, audio handle and all — without its
+    own project ever reaching the check that would have refused it.
+    """
+    owner, credential_owner = await a_claimed_device(db_session, email="owner7@example.com")
+    _stranger, credential_stranger = await a_claimed_device(
+        db_session, email="stranger7@example.com"
+    )
+    session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
+
+    reads = _OwnershipCheckThatWaitsToBeReleased(sessions_api.room.get_session_for_room_caller)
+    monkeypatch.setattr(sessions_api.room, "get_session_for_room_caller", reads)
+
+    async def _release_once_the_owners_turn_is_waiting() -> None:
+        await asyncio.wait_for(reads.entered.wait(), timeout=1)
+        await asyncio.sleep(0.05)  # give the resend and the stranger a chance to arrive too
+        reads.release.set()
+
+    first, resend, stranger, _ = await asyncio.gather(
+        _post_a_turn(client, session.id, team_headers(credential_owner), turn_id="turno-1"),
+        _post_a_turn(client, session.id, team_headers(credential_owner), turn_id="turno-1"),
+        _post_a_turn(client, session.id, team_headers(credential_stranger), turn_id="turno-1"),
+        _release_once_the_owners_turn_is_waiting(),
+    )
+
+    assert first.status_code == 200, first.text[:300]
+    assert resend.status_code == 200, resend.text[:300]
+    assert resend.json() == first.json(), "o reenvio do dono não se juntou ao voo do dono"
+    assert stranger.status_code == 404, stranger.text[:300]
+    assert reads.calls == 2, "o voo do dono foi conferido um número errado de vezes"
+    assert fan_out["model"].calls == 2, "o turno do dono rodou o fan-out mais de uma vez"
