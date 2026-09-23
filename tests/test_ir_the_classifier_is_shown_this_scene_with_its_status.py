@@ -38,6 +38,7 @@ from app.services.internalization_room.coverage import (
     remaining,
     remaining_in_scene,
 )
+from app.services.internalization_room.llm import CACHE_BREAK
 
 P = "P01"
 CLASSIFIER = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
@@ -65,7 +66,7 @@ def the_classifier_answers(monkeypatch: pytest.MonkeyPatch):
 def _the_ids_shown(system_prompt: str) -> list[str]:
     heading = "## The coverage elements (current unresolved set)"
     block = system_prompt.split(heading, 1)[1].split("## This turn's exchange", 1)[0]
-    return [entry["id"] for entry in json.loads(block)]
+    return [entry["id"] for entry in json.loads(block.replace(CACHE_BREAK, ""))]
 
 
 def test_every_element_the_classifier_is_shown_carries_its_current_status() -> None:

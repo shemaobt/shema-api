@@ -16,7 +16,7 @@ from app.services.internalization_room.coverage import (
     remaining_in_scene,
 )
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
-from app.services.internalization_room.llm import call_agent, classifier_ladder
+from app.services.internalization_room.llm import cache_break_before, call_agent, classifier_ladder
 from app.services.internalization_room.render import render
 
 logger = logging.getLogger(__name__)
@@ -229,7 +229,7 @@ async def classify_coverage(
 
     offered = _offered(coverage_state, pericope_num, scene_pointer)
     system = render(
-        classifier_prompt,
+        cache_break_before(classifier_prompt, "{{COVERAGE_ELEMENTS}}"),
         SESSION_LANGUAGE=session_language,
         SCENES=_scenes_block(pericope_num),
         COVERAGE_ELEMENTS=_unresolved_block(coverage_state, offered),
