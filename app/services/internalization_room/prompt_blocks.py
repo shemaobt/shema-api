@@ -41,8 +41,8 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
 
     Information only (DOCTRINE §2.1): the block says the first scene whose beads are not
     all closed and what the team has and has not worked; it never says what to do next. No
-    key and no audit kind reaches it — the Guide speaks names, never codes, and it has no screen to
-    check a code against.
+    key and no audit kind reaches it — the Guide speaks names, never codes, and it has no
+    screen to check a code against.
     """
     scenes = {
         scene.number: f"S{scene.number} ({scene.verses})" for scene in load_map(pericope_num).scenes
