@@ -650,6 +650,14 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         if joining is not None:
             try:
                 voiced = await asyncio.shield(joining)
+            except asyncio.CancelledError:
+                # The shield only guards one way. A whole line cancelled by its own opening
+                # (dropped mid-flight) reaches us as CancelledError too; that one falls back
+                # to the synthesis below. Our own cancellation still propagates.
+                current = asyncio.current_task()
+                if not joining.cancelled() or (current is not None and current.cancelling()):
+                    raise
+                voiced = None
             except Exception:
                 voiced = None
         if voiced is None:
