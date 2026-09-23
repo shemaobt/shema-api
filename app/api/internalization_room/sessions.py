@@ -174,7 +174,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
 #: grow this without bound.
 _LANGUAGE_MEMO_MAX = 1024
-_LANGUAGE_MEMO: OrderedDict[str, str] = OrderedDict()
+_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str | None]] = OrderedDict()
 
 
 def forget_session_languages() -> None:
@@ -182,8 +182,8 @@ def forget_session_languages() -> None:
     _LANGUAGE_MEMO.clear()
 
 
-def _remember_language(session_id: str, language: str) -> None:
-    _LANGUAGE_MEMO[session_id] = language
+def _remember_language(session_id: str, language: str, project_id: str | None) -> None:
+    _LANGUAGE_MEMO[session_id] = (language, project_id)
     _LANGUAGE_MEMO.move_to_end(session_id)
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
         _LANGUAGE_MEMO.popitem(last=False)
@@ -667,15 +667,15 @@ async def _answer_the_turn(
 
     stt: asyncio.Task[HeardSpeech] | None = None
     if file is not None:
-        known_language = _LANGUAGE_MEMO.get(session_id)
-        if known_language is not None:
+        known = _LANGUAGE_MEMO.get(session_id)
+        if known is not None and known[1] == project_id:
             audio_bytes = await _read_capped_audio(file)
             stt = asyncio.create_task(
                 _timed_stt(
                     audio_bytes,
                     filename=file.filename,
                     mime_type=file.content_type,
-                    language=known_language,
+                    language=known[0],
                 )
             )
 
@@ -686,7 +686,7 @@ async def _answer_the_turn(
         if stt is not None:
             await _cancelled(stt)
         raise
-    _remember_language(session_id, session.language)
+    _remember_language(session_id, session.language, project_id)
 
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])

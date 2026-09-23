@@ -121,7 +121,7 @@ async def test_the_session_language_is_remembered_once_the_session_has_been_read
     opened = await _an_opening_turn(client, session.id)
 
     assert opened.status_code == 200, opened.text[:300]
-    assert sessions_api._LANGUAGE_MEMO.get(session.id) == "pt", (
+    assert sessions_api._LANGUAGE_MEMO.get(session.id) == ("pt", None), (
         "a sessão foi lida e a língua dela não ficou guardada para o próximo turno"
     )
 
@@ -132,7 +132,7 @@ def test_the_memo_holds_at_most_a_thousand_and_twenty_four_sessions(
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
 
     for n in range(sessions_api._LANGUAGE_MEMO_MAX + 5):
-        sessions_api._remember_language(f"session-{n}", "pt")
+        sessions_api._remember_language(f"session-{n}", "pt", None)
 
     assert len(sessions_api._LANGUAGE_MEMO) == sessions_api._LANGUAGE_MEMO_MAX
     assert "session-0" not in sessions_api._LANGUAGE_MEMO, (
@@ -152,17 +152,17 @@ class _HearingThatSignalsItStarted:
 
 
 class _SessionReadThatWaitsToBeReleased:
-    """The real `get_session`, held open until the test says the STT has had its turn."""
+    """The real `get_session_for_room_caller`, held open until the STT has had its turn."""
 
-    def __init__(self, real_get_session: Any) -> None:
-        self._real = real_get_session
+    def __init__(self, real_get_session_for_room_caller: Any) -> None:
+        self._real = real_get_session_for_room_caller
         self.entered = asyncio.Event()
         self.release = asyncio.Event()
 
-    async def __call__(self, db: AsyncSession, session_id: str) -> Any:
+    async def __call__(self, db: AsyncSession, session_id: str, project_id: str | None) -> Any:
         self.entered.set()
         await asyncio.wait_for(self.release.wait(), timeout=1)
-        return await self._real(db, session_id)
+        return await self._real(db, session_id, project_id)
 
 
 async def test_a_known_language_starts_transcription_before_the_session_read_finishes(
@@ -170,12 +170,12 @@ async def test_a_known_language_starts_transcription_before_the_session_read_fin
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
     session = await create_session(db_session, language="pt", pericope=P)
-    sessions_api._remember_language(session.id, session.language)
+    sessions_api._remember_language(session.id, session.language, None)
 
     hearing = _HearingThatSignalsItStarted()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
-    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session)
-    monkeypatch.setattr(sessions_api.room, "get_session", reads)
+    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session_for_room_caller)
+    monkeypatch.setattr(sessions_api.room, "get_session_for_room_caller", reads)
 
     async def _release_the_read_once_stt_has_started() -> None:
         await asyncio.wait_for(hearing.started.wait(), timeout=1)
@@ -244,7 +244,7 @@ async def test_a_missing_session_cancels_the_speculative_transcription_and_still
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    sessions_api._remember_language("sessao-fantasma", "pt")
+    sessions_api._remember_language("sessao-fantasma", "pt", None)
     hearing = _HearingThatWaitsToBeCancelled()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
 
@@ -272,8 +272,8 @@ async def test_without_a_known_language_the_session_is_still_read_before_transcr
 
     hearing = _HearingThatSignalsItStarted()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
-    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session)
-    monkeypatch.setattr(sessions_api.room, "get_session", reads)
+    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session_for_room_caller)
+    monkeypatch.setattr(sessions_api.room, "get_session_for_room_caller", reads)
 
     async def _confirm_no_overlap_then_release() -> None:
         await asyncio.wait_for(reads.entered.wait(), timeout=1)

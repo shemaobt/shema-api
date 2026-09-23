@@ -118,6 +118,29 @@ async def test_a_turn_from_another_projects_device_is_refused_before_any_work_ru
     assert fan_out["voice"].calls == 1, "a linha foi sintetizada para o estranho"
 
 
+async def test_a_hot_language_memo_does_not_speculate_for_another_project(
+    client, db_session: AsyncSession, fan_out
+) -> None:
+    """The memo ENG-991 reads before the session is a language, and the language alone
+    used to be enough to start transcribing — so a session another project's owner had
+    already warmed for the room let a stranger's turn begin work no check had cleared.
+    """
+    owner, credential_owner = await a_claimed_device(db_session, email="owner4@example.com")
+    _stranger, credential_stranger = await a_claimed_device(db_session, email="stranger4@example.com")
+    session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
+
+    warm = await _post_a_turn(client, session.id, team_headers(credential_owner))
+    assert warm.status_code == 200, warm.text[:300]
+    fan_out["hearing"].calls = 0
+    fan_out["model"].calls = 0
+    fan_out["voice"].calls = 0
+
+    stranger = await _post_a_turn(client, session.id, team_headers(credential_stranger))
+
+    assert stranger.status_code == 404, stranger.text[:300]
+    assert fan_out["hearing"].calls == 0, "a transcrição especulativa rodou para outro projeto"
+
+
 async def test_a_room_key_caller_is_refused_on_a_project_owned_session(
     client, db_session: AsyncSession, fan_out
 ) -> None:
