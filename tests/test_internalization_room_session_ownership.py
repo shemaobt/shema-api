@@ -49,6 +49,7 @@ from app.services.internalization_room.segments import capture_segment, final_se
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.takes import store_take, takes_of
 from app.services.internalization_room.voice_handles import to_handle
+from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import KEY, PREFIX, P, a_claimed_device, team_headers
 from tests.room_harness import room_client, the_bucket_is_in_memory
 from tests.room_route_audit_harness import room_app_routes
@@ -531,19 +532,16 @@ async def test_a_hand_over_naming_no_such_session_leaves_no_new_session(
 # ---------------------------------------------------------------------------
 
 
-class _CountingStore:
+class _CountingStore(MemoryStore):
     """The bucket seam, counting every `get` — a refusal that still reads is not a refusal."""
 
     def __init__(self) -> None:
-        self.objects: dict[str, bytes] = {}
+        super().__init__()
         self.reads = 0
 
     async def get(self, key: str) -> bytes | None:
         self.reads += 1
-        return self.objects.get(key)
-
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        self.objects[key] = data
+        return await super().get(key)
 
 
 def _question_audio_url(question: Any) -> str:
