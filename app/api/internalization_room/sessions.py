@@ -174,7 +174,7 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 #: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
 #: grow this without bound.
 _LANGUAGE_MEMO_MAX = 1024
-_LANGUAGE_MEMO: OrderedDict[str, str] = OrderedDict()
+_LANGUAGE_MEMO: OrderedDict[str, tuple[str, str | None]] = OrderedDict()
 
 
 def forget_session_languages() -> None:
@@ -182,8 +182,8 @@ def forget_session_languages() -> None:
     _LANGUAGE_MEMO.clear()
 
 
-def _remember_language(session_id: str, language: str) -> None:
-    _LANGUAGE_MEMO[session_id] = language
+def _remember_language(session_id: str, language: str, project_id: str | None) -> None:
+    _LANGUAGE_MEMO[session_id] = (language, project_id)
     _LANGUAGE_MEMO.move_to_end(session_id)
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
         _LANGUAGE_MEMO.popitem(last=False)
@@ -607,6 +607,7 @@ async def take_turn(
     file: UploadFile | None = File(default=None),
     turn_id: str | None = Form(default=None, max_length=64),
     client_timing: str | None = Form(default=None),
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -630,11 +631,16 @@ async def take_turn(
     if client_timing is not None:
         _log_client_timing(session_id, client_timing)
     answer = partial(
-        _answer_the_turn, session_id=session_id, background=background, file=file, turn_id=turn_id
+        _answer_the_turn,
+        session_id=session_id,
+        background=background,
+        file=file,
+        turn_id=turn_id,
+        project_id=project_id,
     )
     with stopwatch("[turn-timing]", session_id) as clock:
         if turn_id:
-            reply = await answer_once(session_id, turn_id, answer)
+            reply = await answer_once(session_id, turn_id, project_id, answer)
         else:
             reply = await answer(db)
     response.headers["Server-Timing"] = clock.server_timing()
@@ -648,38 +654,43 @@ async def _answer_the_turn(
     background: BackgroundTasks,
     file: UploadFile | None,
     turn_id: str | None,
+    project_id: str | None,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
 
     if turn_id:
         with stage("db_read"):
-            replay = await answered_turn(db, session_id, turn_id)
+            replay = await answered_turn(db, session_id, turn_id, project_id)
         if replay is not None:
             return TurnResponse(**replay)
 
     stt: asyncio.Task[HeardSpeech] | None = None
     if file is not None:
-        known_language = _LANGUAGE_MEMO.get(session_id)
-        if known_language is not None:
+        known = _LANGUAGE_MEMO.get(session_id)
+        if known is not None and known[1] == project_id:
             audio_bytes = await _read_capped_audio(file)
             stt = asyncio.create_task(
                 _timed_stt(
                     audio_bytes,
                     filename=file.filename,
                     mime_type=file.content_type,
-                    language=known_language,
+                    language=known[0],
                 )
             )
 
     try:
         with stage("db_read"):
-            session = await room.get_session(db, session_id)
+            session = (
+                await room.get_session_for_room_caller(db, session_id, project_id)
+                if project_id is not None
+                else await room.get_session(db, session_id)
+            )
     except BaseException:
         if stt is not None:
             await _cancelled(stt)
         raise
-    _remember_language(session_id, session.language)
+    _remember_language(session_id, session.language, project_id)
 
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])
