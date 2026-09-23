@@ -357,7 +357,6 @@ async def synthesize_speech(
         "text": text,
         "model_id": model_id or cfg.elevenlabs_tts_model,
         "language_code": voice_cfg["language_code"],
-        "output_format": cfg.elevenlabs_output_format,
     }
     if voice_settings:
         body["voice_settings"] = voice_settings
@@ -368,7 +367,9 @@ async def synthesize_speech(
     }
 
     http = client or _make_client()
-    response = await http.post(url, json=body, headers=headers)
+    response = await http.post(
+        url, json=body, params={"output_format": cfg.elevenlabs_output_format}, headers=headers
+    )
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs TTS failed: status=%s body=%s",

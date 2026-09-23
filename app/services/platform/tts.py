@@ -172,7 +172,6 @@ async def _synthesize(
     body: dict[str, object] = {
         "text": text,
         "model_id": model,
-        "output_format": cfg.elevenlabs_output_format,
         "language_code": language_hint(language),
     }
     if voice_settings:
@@ -182,6 +181,7 @@ async def _synthesize(
     response = await http.post(
         f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
         json=body,
+        params={"output_format": cfg.elevenlabs_output_format},
         headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
     )
     if response.status_code >= 400:

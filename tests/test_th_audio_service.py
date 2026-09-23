@@ -232,6 +232,10 @@ def _request_body(call) -> dict[str, Any]:
     return call.kwargs["json"]
 
 
+def _request_params(call) -> dict[str, Any]:
+    return call.kwargs["params"]
+
+
 async def test_synthesize_speech_detects_portuguese_and_picks_pt_voice() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"PT_MP3"))
@@ -298,9 +302,10 @@ async def test_synthesize_speech_sends_model_and_output_format() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"MP3"))
     await synthesize_speech("hello", language_code="en-US", client=client, settings=_settings())
-    body = _request_body(client.post.await_args)
-    assert body["model_id"] == "eleven_multilingual_v2"
-    assert body["output_format"] == "mp3_44100_128"
+    call = client.post.await_args
+    assert _request_body(call)["model_id"] == "eleven_multilingual_v2"
+    assert _request_params(call)["output_format"] == "mp3_44100_128"
+    assert "output_format" not in _request_body(call)
 
 
 async def test_synthesize_speech_rejects_empty_text() -> None:
