@@ -41,6 +41,7 @@ class Elevenlabs:
 class WriteOnceBucket:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
+        self.refusals = 0
 
     async def get(self, key: str) -> bytes | None:
         return self.objects.get(key)
@@ -49,6 +50,9 @@ class WriteOnceBucket:
         return key in self.objects
 
     async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
+        if self.refusals:
+            self.refusals -= 1
+            raise OSError("the bucket refused the write")
         return self.objects.setdefault(key, data)
 
 

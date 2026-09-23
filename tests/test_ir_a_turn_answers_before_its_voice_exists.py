@@ -271,3 +271,31 @@ async def test_the_turns_clip_answers_a_range_like_every_other_clip(
 
     assert heard.status_code == 206, "a fala do turno ignorava o Range que o tablet mandou"
     assert heard.content == b"rendering"
+
+
+async def test_a_resume_on_another_instance_never_splices_a_second_rendering_into_the_first(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    bucket: WriteOnceBucket,
+) -> None:
+    elevenlabs.renderings = [b"first instance rendering", b"second instance rendering"]
+    bucket.refusals = 1
+    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    await asyncio.sleep(0.05)
+    first = await client.get(answered.json()["audio_url"])
+    another_instance()
+
+    resumed = await client.get(
+        answered.json()["audio_url"],
+        headers={"Range": "bytes=6-", "If-Range": first.headers["ETag"]},
+    )
+
+    assert first.status_code == 200
+    if resumed.status_code == 206:
+        assert resumed.content == first.content[6:], (
+            "a retomada em outra instância emendava o fim de outra renderização no começo "
+            "da que o tablet já tocava"
+        )
+    else:
+        assert resumed.status_code == 200
