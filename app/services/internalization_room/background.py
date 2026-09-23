@@ -1,23 +1,44 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import TranscriptionDefect
-from app.core.stage_clock import count, stopwatch
-from app.db.models.internalization_room import IRPromptKey
+from app.core.stage_clock import count, stage, stopwatch
+from app.db.models.internalization_room import IRPromptKey, IRSegment, IRSession
 from app.models.internalization_room import CoverageFrame
+from app.services.internalization_room.back_translation import (
+    BackTranslationState,
+    ReadAhead,
+    analyse_telling_back,
+    rehearsed_parts,
+    unheard_parts,
+    untold_parts,
+)
 from app.services.internalization_room.classify_coverage import classify_coverage
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.coverage_channel import publish
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.prompts import get_prompt_text
 from app.services.internalization_room.questions import get_question, transcribe_for_the_desk
-from app.services.internalization_room.sessions import apply_coverage, get_session
+from app.services.internalization_room.segments import final_segments, first_untold, told_back
+from app.services.internalization_room.sessions import (
+    apply_coverage,
+    back_translation_of,
+    get_session,
+    save_back_translation,
+)
+from app.services.internalization_room.takes import current_parts, takes_of
 from app.services.internalization_room.turn.scene_view import current_scene_id
 from app.services.internalization_room.usage import counted_for
 
 logger = logging.getLogger(__name__)
+
+_reading: dict[str, tuple[list[str], asyncio.Task[ReadAhead | None]]] = {}
 
 
 async def settle_coverage(
@@ -103,3 +124,64 @@ async def transcribe_question(*, question_id: str, audio: bytes) -> None:
         logger.exception("Transcription of question %s broke on our side", question_id)
     except Exception:
         logger.exception("Transcription of question %s failed", question_id)
+
+
+async def read_ahead(*, session_id: str) -> None:
+    async with AsyncSessionLocal() as db:
+        session = await get_session(db, session_id)
+        state = back_translation_of(session)
+        final = await final_segments(db, session_id)
+        rehearsed = rehearsed_parts(final)
+        if (
+            first_untold(final) is not None
+            or untold_parts(current_parts(await takes_of(db, session_id)), rehearsed)
+            or unheard_parts(state, rehearsed)
+        ):
+            return
+        told = told_back(final)
+        key = [segment.id for segment in told]
+        with counted_for(session_id):
+            running = asyncio.create_task(_read_and_keep(db, session, state, told))
+            _reading[session_id] = (key, running)
+            try:
+                await running
+            finally:
+                if _reading.get(session_id) == (key, running):
+                    del _reading[session_id]
+
+
+async def _read_and_keep(
+    db: AsyncSession, session: IRSession, state: BackTranslationState, told: list[IRSegment]
+) -> ReadAhead | None:
+    try:
+        read = await analyse_telling_back(
+            segments=told,
+            scope=state.scope or session.pericope,
+            pericope_num=session.pericope,
+            analyst_prompt=get_prompt_text(IRPromptKey.BT_ANALYST),
+            session_language=LANGUAGE_NAMES[session.language],
+            language_code=session.language,
+            settings=get_settings(),
+            session_id=session.id,
+        )
+        if read is None:
+            return None
+        ahead = ReadAhead(segment_ids=[segment.id for segment in told], findings=read.findings)
+        await db.refresh(session)
+        kept = back_translation_of(session)
+        kept.read_ahead = ahead
+        await save_back_translation(db, session, kept)
+        return ahead
+    except Exception:
+        logger.exception("Reading ahead failed for session %s", session.id)
+        return None
+
+
+async def the_reading_ahead(
+    session_id: str, state: BackTranslationState, told: list[IRSegment]
+) -> ReadAhead | None:
+    running = _reading.get(session_id)
+    if running is not None and running[0] == [segment.id for segment in told]:
+        with stage("read_ahead"):
+            return await asyncio.shield(running[1])
+    return state.read_ahead_of(told)
