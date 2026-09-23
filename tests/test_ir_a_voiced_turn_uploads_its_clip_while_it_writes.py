@@ -179,21 +179,10 @@ FIRST = "O todo da passagem."
 SECOND = "A cena e o convite."
 
 
-class _ElevenlabsThatRefusesTheWholeLine:
-    def __init__(self) -> None:
-        self.first_voiced = asyncio.Event()
-        self.whole_refused = asyncio.Event()
-
+class _ElevenlabsWhereASceneFailsAndSoDoesTheWholeLine:
     async def post(self, *_: Any, json: dict[str, Any], **__: Any) -> SimpleNamespace:
         if json["text"] == FIRST:
-            self.first_voiced.set()
             return SimpleNamespace(status_code=200, content=b"o todo", text="")
-        if json["text"] == SECOND:
-            await asyncio.wait_for(self.whole_refused.wait(), timeout=1)
-            await asyncio.sleep(0.05)
-            return SimpleNamespace(status_code=200, content=b"a cena", text="")
-        await asyncio.wait_for(self.first_voiced.wait(), timeout=1)
-        self.whole_refused.set()
         return SimpleNamespace(status_code=503, content=b"", text="busy")
 
 
@@ -220,7 +209,7 @@ async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_
     async def _opening(**_: Any) -> TurnOutcome:
         return TurnOutcome(speech=WHOLE, transcript="", movements=[FIRST, SECOND])
 
-    elevenlabs = _ElevenlabsThatRefusesTheWholeLine()
+    elevenlabs = _ElevenlabsWhereASceneFailsAndSoDoesTheWholeLine()
     store = _Bucket()
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
     monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
@@ -233,10 +222,6 @@ async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_
 
     assert refused.status_code == 502
     assert b"o todo" in store.objects.values(), (
-        "a fala inteira falhava depois de o movimento ter sido sintetizado, e o clipe já "
+        "a cena falhava e o fallback da fala inteira falhava atrás dela, e o movimento já "
         "pago à ElevenLabs nunca chegava ao bucket"
-    )
-    assert b"a cena" in store.objects.values(), (
-        "um movimento ainda em síntese quando a fala inteira falhou terminava depois, pago, "
-        "e ninguém mais o subia"
     )

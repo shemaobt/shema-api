@@ -87,12 +87,11 @@ async def _voice_the_turn(
     language: str,
     uploads: list[Upload],
 ) -> tuple[SpeechKey | None, list[SpokenSegment]]:
-    """The turn's audio: the whole line, and the opening's movements beside it.
+    """The turn's audio: the opening's movements, or the whole line on its own.
 
-    All of it at once — three short syntheses in parallel cost the wall clock of the
-    slowest, where three in a row cost the sum and the room has ninety seconds before the
-    app decides the network is gone. A movement that will not synthesize is dropped rather
-    than raised: the whole line already succeeded, and one clip is the room's own fallback.
+    A marked opening speaks only its two movements — the reply needs neither the whole
+    line's words nor its wait. The whole line is synthesized only if a movement will not
+    synthesize, standing in for it at once.
     """
     if outcome.fixed_line:
         return None, []
@@ -103,25 +102,14 @@ async def _voice_the_turn(
         )
         return entry
 
-    async def movements() -> list[str | None]:
-        return list(
-            await asyncio.gather(
-                *(
-                    _clip_or_none(part, language=language, uploads=uploads)
-                    for part in outcome.movements
-                )
-            )
-        )
-
-    voicing = asyncio.create_task(movements())
-    try:
-        whole = await whole_line()
-    finally:
-        parts = await voicing
+    parts = await asyncio.gather(
+        *(_clip_or_none(part, language=language, uploads=uploads) for part in outcome.movements)
+    )
     keys = [key for key in parts if key is not None]
     if len(keys) != len(_SEGMENT_ROLES):
-        return whole, []
-    return whole, [
+        return await whole_line(), []
+
+    return SpeechKey(keys[0], cached=False), [
         SpokenSegment(role=role, audio_url=clip_url(key))
         for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
     ]
