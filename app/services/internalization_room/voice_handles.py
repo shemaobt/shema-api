@@ -48,6 +48,11 @@ def from_handle(handle: str, *, settings: Settings) -> str | None:
     Voices, plural, since the room speaks one language per voice. Widening this to a prefix
     that covers them all would reach the whole bucket; the set stays exact, so a language the
     room does not speak addresses nothing.
+
+    With a signing key configured, None also means the signature is missing or wrong: the
+    address was not minted by `clip_url` for this key. The signature is compared as bytes on
+    purpose — `hmac.compare_digest` raises on a non-ASCII `str`, so comparing strings would
+    turn a forged segment into a 500 instead of the 404 every other unknown handle gets.
     """
     signing_key = settings.internalization_room_clip_signing_key
     if signing_key:
