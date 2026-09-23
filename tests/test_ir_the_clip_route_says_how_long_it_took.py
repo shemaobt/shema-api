@@ -12,6 +12,7 @@ import logging
 import re
 import threading
 import time
+from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any
 
@@ -97,6 +98,15 @@ async def _fetch(client: httpx.AsyncClient, key: str) -> httpx.Response:
     )
 
 
+async def _fetch_range(
+    client: httpx.AsyncClient, key: str, range_header: str, **extra_headers: str
+) -> httpx.Response:
+    return await client.get(
+        f"{PREFIX}/voice/{to_handle(key)}",
+        headers={"X-Device-Credential": "tablet", "Range": range_header, **extra_headers},
+    )
+
+
 def _voice_get_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [r.getMessage() for r in caplog.records if "[voice-get]" in r.getMessage()]
 
@@ -116,7 +126,7 @@ async def test_a_clip_fetch_says_how_long_the_gate_and_the_bucket_each_took(
     assert spent["auth"] < AUTH_MS + BUCKET_MS, "o tempo do bucket caía na conta da porta"
     assert spent["gcs"] < AUTH_MS + BUCKET_MS, "o tempo da porta caía na conta do bucket"
     assert " bytes=1234 " in lines[0]
-    assert lines[0].endswith(" same_instance=no")
+    assert lines[0].endswith(" same_instance=no range=full")
 
 
 async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhere(
@@ -133,10 +143,10 @@ async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhe
         await _fetch(client, VOICED_ELSEWHERE)
 
     here, elsewhere = _voice_get_lines(caplog)
-    assert here.endswith(" same_instance=yes"), (
+    assert here.endswith(" same_instance=yes range=full"), (
         "ninguém sabia quantos clipes um cache em memória desta instância teria servido"
     )
-    assert elsewhere.endswith(" same_instance=no")
+    assert elsewhere.endswith(" same_instance=no range=full")
 
 
 async def test_an_instance_up_for_months_remembers_only_its_latest_clips(
@@ -166,7 +176,7 @@ async def test_a_clip_the_bucket_does_not_hold_still_says_how_long_the_miss_took
     assert fetched.status_code == 404
     lines = _voice_get_lines(caplog)
     assert len(lines) == 1, "o clipe que o bucket não tinha sumia do cronômetro"
-    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no$", lines[0])
+    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no range=none$", lines[0])
     assert missed is not None and int(missed.group(1)) >= BUCKET_MS
 
 
@@ -496,3 +506,165 @@ async def test_a_refused_read_keeps_its_permit_until_the_download_on_its_thread_
             break
         await asyncio.sleep(0.01)
     assert not permits.locked(), "a licença não voltou depois que o download terminou"
+
+
+async def test_a_full_clip_says_it_can_be_answered_by_range(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert fetched.headers["accept-ranges"] == "bytes"
+
+
+async def test_the_etag_comes_from_the_clips_key_not_a_hash_of_its_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert fetched.headers["etag"] == sha256(VOICED_ELSEWHERE.encode()).hexdigest()[:32]
+    assert fetched.headers["etag"] != sha256(CLIP).hexdigest()[:32]
+
+
+async def test_a_range_inside_the_clip_returns_only_those_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-19")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[10:20]
+    assert fetched.headers["content-range"] == f"bytes 10-19/{len(CLIP)}"
+
+
+async def test_an_open_range_returns_everything_from_its_start_to_the_end(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=1200-")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[1200:]
+    assert fetched.headers["content-range"] == f"bytes 1200-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_suffix_range_returns_only_the_last_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=-34")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[-34:]
+    assert fetched.headers["content-range"] == f"bytes {len(CLIP) - 34}-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_range_past_the_end_of_the_clip_is_refused_not_clamped(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, f"bytes={len(CLIP)}-{len(CLIP) + 10}")
+
+    assert fetched.status_code == 416, fetched.text
+    assert fetched.headers["content-range"] == f"bytes */{len(CLIP)}"
+    assert fetched.content == b""
+    assert fetched.headers["cache-control"] == "no-store", (
+        "a 416 decided by the Range header was stored under the handle alone as immutable, "
+        "so a tablet that once asked past the end kept refusing a clip it can play"
+    )
+
+
+async def test_multiple_ranges_are_ignored_not_refused(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=0-10,20-30")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_a_range_behind_a_stale_if_range_etag_is_ignored_not_honoured(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(
+        client, VOICED_ELSEWHERE, "bytes=10-19", **{"If-Range": "not-the-current-etag"}
+    )
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_the_voice_get_line_names_the_slice_it_served(
+    client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-19")
+
+    assert fetched.status_code == 206, fetched.text
+    (line,) = _voice_get_lines(caplog)
+    assert line.endswith(" same_instance=no range=10-19")
+
+
+async def test_a_revoked_credential_is_still_refused_with_zero_bytes_when_a_range_is_asked(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=0-10")
+
+    assert fetched.status_code == 403
+    assert fetched.json()["code"] == "DEVICE_REVOKED"
+    assert CLIP not in fetched.content
+
+
+async def test_a_range_whose_end_reaches_past_the_clip_is_clamped_to_its_last_byte(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=1200-9999")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[1200:]
+    assert fetched.headers["content-range"] == f"bytes 1200-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_zero_length_suffix_range_is_refused_not_served_inverted(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=-0")
+
+    assert fetched.status_code == 416, fetched.text
+    assert fetched.headers["content-range"] == f"bytes */{len(CLIP)}"
+    assert fetched.content == b""
+
+
+async def test_a_suffix_range_longer_than_the_clip_serves_the_whole_clip(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, f"bytes=-{len(CLIP) + 9999}")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP
+    assert fetched.headers["content-range"] == f"bytes 0-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_an_inverted_range_is_ignored_not_served_as_an_empty_slice(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-5")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_a_range_this_route_does_not_understand_is_ignored_not_refused(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "items=0-10")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers

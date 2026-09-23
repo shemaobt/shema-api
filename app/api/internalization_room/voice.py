@@ -1,7 +1,9 @@
 import asyncio
 import logging
+import re
 import time
 from collections.abc import Callable, Coroutine
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
 
@@ -37,6 +39,47 @@ IMMUTABLE = "private, max-age=31536000, immutable"
 #: mint another under the room's voice, so a junk credential can still buy a read that the
 #: gate then refuses. At most two of those at once leaves the uploads their threads.
 _SPECULATIVE_READS = asyncio.Semaphore(2)
+
+
+@dataclass(frozen=True)
+class ByteRange:
+    start: int
+    #: Inclusive, the way `Content-Range` counts it.
+    end: int
+
+
+class RangeNotSatisfiable(Exception):
+    pass
+
+
+_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
+    """The single byte range this request asks for, or `None` to serve the whole clip.
+
+    Raises `RangeNotSatisfiable` for a range this function understands but that names no
+    byte the clip actually has.
+    """
+    if range_header is None:
+        return None
+    match = _RANGE_RE.match(range_header.strip())
+    if match is None:
+        return None
+    first, last = match.group(1), match.group(2)
+    if first == "":
+        if last == "":
+            return None
+        if int(last) <= 0:
+            raise RangeNotSatisfiable()
+        return ByteRange(start=max(total - int(last), 0), end=total - 1)
+    start = int(first)
+    if last and int(last) < start:
+        return None
+    if start >= total:
+        raise RangeNotSatisfiable()
+    end = min(int(last), total - 1) if last else total - 1
+    return ByteRange(start=start, end=end)
 
 
 async def _arrived() -> float:
@@ -93,6 +136,8 @@ async def clip(
     db: AsyncSession = Depends(get_db),
     x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
     x_room_key: str | None = Header(default=None),
+    x_range: str | None = Header(default=None, alias="Range"),
+    x_if_range: str | None = Header(default=None, alias="If-Range"),
 ) -> Response:
     """Serve one synthesized line by the handle a turn handed out.
 
@@ -110,6 +155,9 @@ async def clip(
     as is rather than teach that cache about requests that were never actually let in.
     Cancelling a read already on its GCS thread only stops the route from waiting on it;
     the download still runs to completion in the background, its bytes discarded.
+
+    A 416 is the one answer decided by the `Range` header alone, so it is sent `no-store`:
+    stored as immutable under the handle, it kept a tablet refusing a clip it can play.
     """
     return await _serve(
         handle,
@@ -118,6 +166,8 @@ async def clip(
         db=db,
         x_device_credential=x_device_credential,
         x_room_key=x_room_key,
+        x_range=x_range,
+        x_if_range=x_if_range,
     )
 
 
@@ -129,6 +179,8 @@ async def turn_clip(
     db: AsyncSession = Depends(get_db),
     x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
     x_room_key: str | None = Header(default=None),
+    x_range: str | None = Header(default=None, alias="Range"),
+    x_if_range: str | None = Header(default=None, alias="If-Range"),
 ) -> Response:
     return await _serve(
         handle,
@@ -137,6 +189,8 @@ async def turn_clip(
         db=db,
         x_device_credential=x_device_credential,
         x_room_key=x_room_key,
+        x_range=x_range,
+        x_if_range=x_if_range,
     )
 
 
@@ -148,6 +202,8 @@ async def _serve(
     db: AsyncSession,
     x_device_credential: str | None,
     x_room_key: str | None,
+    x_range: str | None,
+    x_if_range: str | None,
 ) -> Response:
     cfg = get_settings()
     key = from_handle(handle, settings=cfg)
@@ -197,20 +253,65 @@ async def _serve(
             except Exception as error:
                 raise UpstreamServiceError("a voz desta fala não pôde ser feita") from error
             flight_ms += _ms(flying, time.monotonic())
+
+    etag = sha256(key.encode()).hexdigest()[:32]
+    byte_range: ByteRange | None = None
+    unsatisfiable = False
+    if audio is not None:
+        range_header = None if x_if_range is not None and x_if_range != etag else x_range
+        try:
+            byte_range = _resolve_range(range_header, total=len(audio))
+        except RangeNotSatisfiable:
+            unsatisfiable = True
+
+    if unsatisfiable or audio is None:
+        served = "none"
+    elif byte_range is None:
+        served = "full"
+    else:
+        served = f"{byte_range.start}-{byte_range.end}"
+
     logger.info(
-        "[voice-get] auth=%sms flight=%sms gcs=%sms bytes=%s same_instance=%s",
+        "[voice-get] auth=%sms flight=%sms gcs=%sms bytes=%s same_instance=%s range=%s",
         _ms(arrived, authed),
         flight_ms,
         gcs_ms,
         len(audio or b""),
         "yes" if voiced_here(key) else "no",
+        served,
     )
     if audio is None:
         raise NotFoundError("No such clip")
+    if unsatisfiable:
+        return Response(
+            status_code=416,
+            headers={
+                "Cache-Control": "no-store",
+                "ETag": etag,
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes */{len(audio)}",
+            },
+        )
+    if byte_range is not None:
+        return Response(
+            content=audio[byte_range.start : byte_range.end + 1],
+            media_type=_media_type(key),
+            status_code=206,
+            headers={
+                "Cache-Control": IMMUTABLE,
+                "ETag": etag,
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {byte_range.start}-{byte_range.end}/{len(audio)}",
+            },
+        )
     return Response(
         content=audio,
         media_type=_media_type(key),
-        headers={"Cache-Control": IMMUTABLE, "ETag": sha256(audio).hexdigest()[:32]},
+        headers={
+            "Cache-Control": IMMUTABLE,
+            "ETag": etag,
+            "Accept-Ranges": "bytes",
+        },
     )
 
 

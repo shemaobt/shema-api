@@ -260,3 +260,14 @@ async def test_the_voice_route_says_how_long_it_waited_on_the_line_being_voiced(
     waited = re.search(r" flight=(\d+)ms", lines[0])
     assert waited is not None, "a espera pela síntese em voo não aparecia em lugar nenhum"
     assert int(waited.group(1)) >= 90
+
+
+async def test_the_turns_clip_answers_a_range_like_every_other_clip(
+    client: httpx.AsyncClient, panorama: IRSession
+) -> None:
+    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+
+    heard = await client.get(answered.json()["audio_url"], headers={"Range": "bytes=4-12"})
+
+    assert heard.status_code == 206, "a fala do turno ignorava o Range que o tablet mandou"
+    assert heard.content == b"rendering"
