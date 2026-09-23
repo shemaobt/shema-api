@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from types import SimpleNamespace
 from typing import Any
@@ -322,3 +323,48 @@ async def test_a_call_that_wrote_nothing_to_the_cache_says_zero_for_both_lifetim
         await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
 
     assert "cache_write=0 cache_write_5m=0 cache_write_1h=0 " in caplog.text
+
+
+@pytest.fixture
+def counted_builds(monkeypatch: pytest.MonkeyPatch) -> list[FakeClient]:
+    built: list[FakeClient] = []
+
+    def _build(**options: Any) -> FakeClient:
+        built.append(FakeClient(_reply("ok"), **options))
+        return built[-1]
+
+    monkeypatch.setattr(llm.anthropic, "AsyncAnthropic", _build)
+    return built
+
+
+async def test_two_calls_on_one_event_loop_share_one_client_instead_of_one_each(
+    counted_builds: list[FakeClient],
+) -> None:
+    await llm.call_agent(system_prompt="s", user_content="u", role="guide", settings=_settings())
+    await llm.call_agent(
+        system_prompt="s", user_content="u", role="validator", settings=_settings()
+    )
+
+    assert len(counted_builds) == 1, (
+        "cada chamada do Guia e do Validador abria um cliente novo, com handshake TLS e "
+        "contexto SSL, enquanto a equipe esperava a resposta"
+    )
+
+
+def test_a_second_event_loop_builds_its_own_client_rather_than_borrowing_one(
+    counted_builds: list[FakeClient],
+) -> None:
+    async def _ask() -> str:
+        return await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    for _ in range(2):
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_ask())
+        finally:
+            loop.close()
+
+    assert len(counted_builds) == 2, (
+        "um cliente preso a um loop fechado era entregue a outro, e a conexão dele não "
+        "responde fora do loop que a abriu"
+    )

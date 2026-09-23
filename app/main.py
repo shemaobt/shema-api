@@ -53,6 +53,7 @@ from app.core.logging import setup_logging
 from app.core.qdrant import close_qdrant, init_qdrant
 from app.core.rate_limit import limiter
 from app.services.bhsa import loader
+from app.services.internalization_room.llm import close_clients
 from app.services.meaning_map.seed_books import seed_books
 from app.services.project_health.prompts.seed_prompts import seed_default_prompts
 from app.services.translation_helper.seed_agent_prompts import seed_agent_prompts
@@ -93,6 +94,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await close_clients()
         await close_qdrant()
         await close_db()
 
