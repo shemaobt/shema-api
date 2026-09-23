@@ -125,7 +125,6 @@ async def store_take(
     )
     db.add(take)
     await db.commit()
-    await db.refresh(take)
     return take
 
 

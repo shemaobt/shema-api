@@ -7,11 +7,14 @@ transcriber read `in_transaction()` on the request's own session when they are c
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.services.platform.storage import StoredObject
 from tests.hard_stretch_harness import MemoryStore
@@ -101,4 +104,72 @@ async def test_a_stretch_replaced_is_kept_and_heard_with_the_database_let_go(
     assert replaced.json()["captured"] is True
     assert held == {"put": False, "stat": False, "stt": False}, (
         "a troca do trecho transcrevia com a transação que o refresh do take reabria"
+    )
+
+
+@contextmanager
+def _checkouts(test_engine: AsyncEngine) -> Iterator[list[object]]:
+    counted: list[object] = []
+
+    def _count(connection: object, *_: object) -> None:
+        counted.append(connection)
+
+    event.listen(test_engine.sync_engine, "checkout", _count)
+    try:
+        yield counted
+    finally:
+        event.remove(test_engine.sync_engine, "checkout", _count)
+
+
+async def test_a_stretch_told_back_again_takes_three_connections_not_four(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    test_engine: AsyncEngine,
+    held: dict[str, bool],
+) -> None:
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    await db_session.commit()
+
+    with _checkouts(test_engine) as checkouts:
+        told = await client.post(
+            f"{PREFIX}/sessions/{session.id}/back-translation/chunks",
+            headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+            data={
+                "take_id": part.id,
+                "starts_ms": "0",
+                "ends_ms": str(PART_MS),
+                "retelling": "true",
+            },
+            files={"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")},
+        )
+
+    assert told.status_code == 200, told.text
+    assert len(checkouts) == 3, (
+        "o refresh do take recém-gravado reabria uma conexão só para reler o que o INSERT já"
+        " tinha devolvido"
+    )
+
+
+async def test_a_stretch_replaced_takes_four_connections_not_five(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    test_engine: AsyncEngine,
+    held: dict[str, bool],
+) -> None:
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    stretch = await stretch_on(db_session, session, part)
+    await db_session.commit()
+
+    with _checkouts(test_engine) as checkouts:
+        replaced = await client.post(
+            f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace",
+            headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+            data={"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)},
+            files={"file": ("trecho.m4a", b"a equipe contou outra vez", "audio/mp4")},
+        )
+
+    assert replaced.status_code == 200, replaced.text
+    assert len(checkouts) == 4, (
+        "o refresh do take recém-gravado reabria uma conexão só para reler o que o INSERT já"
+        " tinha devolvido"
     )
