@@ -391,7 +391,7 @@ async def create_session(
     if caller is not None:
         await clear_needs_person(db, caller.id)
     if payload.after_session:
-        previous = await room.get_session(db, payload.after_session)
+        previous = await room.session_for_room_caller(db, payload.after_session, project_id)
         if hand_over(previous, session):
             await db.commit()
     elif is_panorama(session.pericope) and not await heard_panorama(
@@ -406,8 +406,12 @@ async def create_session(
     response_model=SessionStateResponse,
     dependencies=[room_caller_dep],
 )
-async def read_session(session_id: str, db: AsyncSession = Depends(get_db)) -> SessionStateResponse:
-    session = await room.get_session(db, session_id)
+async def read_session(
+    session_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> SessionStateResponse:
+    session = await room.session_for_room_caller(db, session_id, project_id)
     return await _state(db, session)
 
 
@@ -524,14 +528,16 @@ async def facilitator_sessions(
     dependencies=[room_caller_dep],
 )
 async def ask_for_a_person(
-    session_id: str, db: AsyncSession = Depends(get_db)
+    session_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> NeedsPersonResponse:
     """The room in front of the team decided it cannot go on without a person.
 
     `needs_person` had a consumer in the app and no producer here, so a room that had
     already halted still reported `in_progress` and no facilitator could be told.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     await room.mark_needs_person(db, session, kind=HaltKind.BLOCKING)
     return NeedsPersonResponse(
         session_id=session.id,
@@ -545,7 +551,9 @@ async def ask_for_a_person(
     dependencies=[room_caller_dep],
 )
 async def a_person_arrived(
-    session_id: str, db: AsyncSession = Depends(get_db)
+    session_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> PersonArrivedResponse:
     """Somebody long-pressed the halted room to say they are standing in it (ENG-792).
 
@@ -557,7 +565,7 @@ async def a_person_arrived(
     because nothing visibly happened is told the same thing every time. `person_arrived` is
     where that and the clearing on a new halt are argued.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     arrived = await room.person_arrived(db, session)
     return PersonArrivedResponse(
         session_id=session.id, person_arrived_at=as_utc(arrived).isoformat()

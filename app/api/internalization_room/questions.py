@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Resp
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
@@ -52,6 +52,7 @@ async def raise_question(
     device_id: str = DeviceId,
     element_key: str | None = Form(default=None),
     file: UploadFile = File(...),
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> QuestionRaisedResponse:
     """Take the hand down and keep what was asked.
@@ -76,7 +77,7 @@ async def raise_question(
     audio = await file.read()
     if len(audio) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
-    session = await session_service.get_session(db, session_id)
+    session = await session_service.session_for_room_caller(db, session_id, project_id)
     question = await service.raise_question(
         db,
         device_id=device_id,
