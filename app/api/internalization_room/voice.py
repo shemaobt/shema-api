@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import logging
 import time
 from hashlib import sha256
@@ -23,6 +22,14 @@ router = APIRouter()
 
 IMMUTABLE = "private, max-age=31536000, immutable"
 
+#: Bounds how many clip reads race the device check at once. `GcsPlatformStore` runs the
+#: blocking GCS call on `asyncio.to_thread`, the same default executor the room's voice
+#: uploads share — a burst of requests carrying a bad or missing credential must not starve
+#: it of threads over a read nobody will ever receive. Past this many in flight, a request
+#: falls back to reading only once the gate has passed, exactly as it did before this route
+#: learned to race the two.
+_SPECULATIVE_READS = asyncio.Semaphore(4)
+
 
 async def _arrived() -> float:
     return time.monotonic()
@@ -36,6 +43,13 @@ async def _timed_fetch_clip(key: str, *, store: SpeechStore) -> tuple[bytes | No
     started = time.monotonic()
     audio = await fetch_clip(key, store=store)
     return audio, _ms(started, time.monotonic())
+
+
+async def _speculative_fetch_clip(key: str, *, store: SpeechStore) -> tuple[bytes | None, int]:
+    try:
+        return await _timed_fetch_clip(key, store=store)
+    finally:
+        _SPECULATIVE_READS.release()
 
 
 @router.get("/voice/{handle}")
@@ -53,24 +67,43 @@ async def clip(
     nothing to hear again.
 
     The device check runs beside the read, not before it — the two are independent, and a
-    tablet that is still welcome pays for whichever one is slower, not their sum. A refusal
-    cancels the read; a read that had already failed on its own is discarded rather than
-    reported, because the caller's own credential is why this request ends, not the bucket.
+    tablet that is still welcome pays for whichever one is slower, not their sum. But the
+    gate always answers first: a handle that does not decode to this room's own voice
+    waits behind the same check a good one does, so a caller with no working credential
+    cannot tell "not ours" apart from "yours, but refused" by watching which error comes
+    back. A refusal cancels the read and discards whatever it turns up — even a hit
+    already moved to the front of the in-memory cache's eviction order, which this leaves
+    as is rather than teach that cache about requests that were never actually let in.
+    Cancelling a read already on its GCS thread only stops the route from waiting on it;
+    the download still runs to completion in the background, its bytes discarded.
     """
     cfg = get_settings()
     key = from_handle(handle, settings=cfg)
-    if key is None:
-        raise NotFoundError("No such clip")
-    read_task = asyncio.create_task(_timed_fetch_clip(key, store=GcsPlatformStore(cfg)))
+    read_task: asyncio.Task[tuple[bytes | None, int]] | None = None
+    if key is not None and not _SPECULATIVE_READS.locked():
+        await _SPECULATIVE_READS.acquire()
+        read_task = asyncio.create_task(_speculative_fetch_clip(key, store=GcsPlatformStore(cfg)))
+
+    gate_passed = False
     try:
         await require_room_caller(db, x_device_credential, x_room_key)
-    except Exception:
-        read_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            await read_task
-        raise
+        gate_passed = True
+    finally:
+        if not gate_passed and read_task is not None:
+            if not read_task.done():
+                read_task.cancel()
+            await asyncio.wait({read_task})
+            if not read_task.cancelled():
+                read_task.exception()
+
+    if key is None:
+        raise NotFoundError("No such clip")
+
     authed = time.monotonic()
-    audio, gcs_ms = await read_task
+    if read_task is None:
+        audio, gcs_ms = await _timed_fetch_clip(key, store=GcsPlatformStore(cfg))
+    else:
+        audio, gcs_ms = await read_task
     logger.info(
         "[voice-get] auth=%sms gcs=%sms bytes=%s same_instance=%s",
         _ms(arrived, authed),

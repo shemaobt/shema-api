@@ -10,6 +10,7 @@ import asyncio
 import importlib
 import logging
 import re
+import time
 from types import SimpleNamespace
 from typing import Any
 
@@ -30,6 +31,9 @@ PREFIX = "/api/internalization-room"
 VOICED_HERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/aaa111/voiced-here.mp3"
 VOICED_ELSEWHERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/bbb222/voiced-elsewhere.mp3"
 NEVER_STORED = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/ccc333/never-stored.mp3"
+#: Well-formed base64, but not this room's own voice namespace — `from_handle` refuses it
+#: the same way it refuses garbage, and neither should be answered before the gate.
+FOREIGN_HANDLE = to_handle("tts/AnotherApp/m/f/x.mp3")
 CLIP = b"x" * 1234
 AUTH_MS = 100
 BUCKET_MS = 100
@@ -262,22 +266,26 @@ async def test_a_clip_the_tablet_just_played_outlives_one_nobody_asked_for(
     )
 
 
-class _CancelObservingBucket:
+class _RealisticSlowBucket:
+    """Shaped like `GcsPlatformStore`: the blocking read runs on a thread via
+    `asyncio.to_thread`, the same primitive production uses — so, exactly like
+    production, cancelling the coroutine that awaits it does not stop the thread. This
+    file cannot claim the read was stopped, only that its bytes never reached the client.
+    """
+
     def __init__(self) -> None:
         self.entered = False
-        self.cancelled = False
 
     async def get(self, key: str) -> bytes | None:
         self.entered = True
-        try:
-            await asyncio.sleep(10)
-        except asyncio.CancelledError:
-            self.cancelled = True
-            raise
+        return await asyncio.to_thread(self._blocking_read)
+
+    def _blocking_read(self) -> bytes:
+        time.sleep(0.05)
         return CLIP
 
 
-async def test_a_revoked_credential_is_refused_and_the_read_it_started_is_abandoned(
+async def test_a_revoked_credential_is_refused_with_zero_bytes_even_with_a_read_already_on_a_thread(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
@@ -285,7 +293,7 @@ async def test_a_revoked_credential_is_refused_and_the_read_it_started_is_abando
         raise DeviceRevoked("This device is no longer linked.")
 
     monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
-    bucket = _CancelObservingBucket()
+    bucket = _RealisticSlowBucket()
     monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
 
     fetched = await _fetch(client, VOICED_ELSEWHERE)
@@ -293,7 +301,104 @@ async def test_a_revoked_credential_is_refused_and_the_read_it_started_is_abando
     assert fetched.status_code == 403
     assert fetched.json()["code"] == "DEVICE_REVOKED"
     assert bucket.entered, "a leitura nem chegava a começar ao lado da porta"
-    assert bucket.cancelled, "a leitura seguia rodando depois que a porta já tinha recusado"
+    assert CLIP not in fetched.content, "os bytes do clipe chegaram numa resposta de recusa"
+
+
+async def test_a_refusal_leaves_no_read_task_still_pending(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+    bucket = _RealisticSlowBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+    before = asyncio.all_tasks()
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 403
+    leftover = asyncio.all_tasks() - before - {asyncio.current_task()}
+    assert not leftover, "a leitura ficou pendurada, ainda pendente, depois que a porta recusou"
+
+
+async def test_when_the_semaphore_is_full_the_read_waits_for_the_gate_like_before(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(voice_api, "_SPECULATIVE_READS", asyncio.Semaphore(0))
+    bucket = _EventGatedBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+    observed_while_still_at_the_gate = []
+
+    async def _gate_that_peeks(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(AUTH_MS / 1000)
+        observed_while_still_at_the_gate.append(bucket.entered.is_set())
+        return SimpleNamespace(project_id=None)
+
+    monkeypatch.setattr(_deps, "authenticate_device", _gate_that_peeks)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert observed_while_still_at_the_gate == [False], (
+        "a leitura começava mesmo com o semáforo cheio, disputando threads com o upload "
+        "da voz por um pedido que talvez nem passasse na porta"
+    )
+
+
+async def test_a_revoked_credential_refuses_a_foreign_handle_before_the_bucket_gets_a_say(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+
+    fetched = await client.get(
+        f"{PREFIX}/voice/{FOREIGN_HANDLE}", headers={"X-Device-Credential": "tablet"}
+    )
+
+    assert fetched.status_code == 403, (
+        "um handle que não decodifica respondia antes da porta, e a recusa virava um 404 "
+        "que não diz nada sobre a credencial"
+    )
+    assert fetched.json()["code"] == "DEVICE_REVOKED"
+
+
+async def test_no_credential_gets_401_not_404_on_a_foreign_handle(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        get_settings(), "internalization_room_api_key", "the-room-key", raising=False
+    )
+
+    fetched = await client.get(f"{PREFIX}/voice/{FOREIGN_HANDLE}")
+
+    assert fetched.status_code == 401, (
+        "sem nenhuma credencial, um handle que não decodifica ainda assim virava 404 antes "
+        "da porta, o que diz a quem não tem credencial nenhuma se o handle é nosso"
+    )
+
+
+async def test_an_unrecognised_credential_gets_401_not_404_on_a_foreign_handle(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _unrecognised_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        return None
+
+    monkeypatch.setattr(_deps, "authenticate_device", _unrecognised_gate)
+
+    fetched = await client.get(
+        f"{PREFIX}/voice/{FOREIGN_HANDLE}", headers={"X-Device-Credential": "unknown"}
+    )
+
+    assert fetched.status_code == 401, (
+        "uma credencial desconhecida também virava 404 antes da porta, num handle que "
+        "não decodifica"
+    )
 
 
 class _EventGatedBucket:
