@@ -240,3 +240,24 @@ async def test_the_clips_kept_in_memory_are_bounded_by_bytes_the_oldest_leaving_
     assert bucket.asked == [oldest], (
         "a memória de clipes crescia sem limite numa instância que fica de pé por semanas"
     )
+
+
+async def test_a_clip_the_tablet_just_played_outlives_one_nobody_asked_for(
+    client: httpx.AsyncClient,
+    bucket: _SlowBucket,
+    the_room_can_speak: _Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tts, "_FRESH_MAX_BYTES", 1000)
+    played = await _voiced_here("Primeira fala.", the_room_can_speak)
+    ignored = await _voiced_here("Segunda fala.", the_room_can_speak)
+    assert (await _fetch(client, played)).status_code == 200
+    await _voiced_here("Terceira fala.", the_room_can_speak)
+
+    await _fetch(client, played)
+    await _fetch(client, ignored)
+
+    assert bucket.asked == [ignored], (
+        "a memória esquecia pela ordem de gravação, e o clipe que o tablet acabara de "
+        "tocar saía antes de um que ninguém pediu"
+    )
