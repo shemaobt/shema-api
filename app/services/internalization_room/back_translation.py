@@ -196,8 +196,10 @@ class BackTranslationState(BaseModel):
     #:
     #: `None` for a telling-back no verdict has reached, and for every row written before this
     #: field existed: the state is a JSON column revalidated on every request, so an older row
-    #: loads with it absent and nothing was migrated (the precedent `chunk` set). The restart
-    #: builds a fresh state, which resets this with everything else.
+    #: loads with it absent and nothing was migrated (the precedent `chunk` set). No route
+    #: starts a telling-back over yet — `retire_every_segment` and `superseded` are written
+    #: only by tests — so nothing resets this today; the route that one day starts it over
+    #: owns clearing it with the rest of the state.
     checked_at: datetime | None = None
     superseded: list[SupersededAttempt] = Field(default_factory=list)
     #: What the team listened to, one entry per rehearsal part, each in that part's own
