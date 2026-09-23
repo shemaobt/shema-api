@@ -516,14 +516,38 @@ async def test_a_full_clip_says_it_can_be_answered_by_range(
     assert fetched.headers["accept-ranges"] == "bytes"
 
 
-async def test_the_etag_comes_from_the_clips_key_not_a_hash_of_its_bytes(
-    client: httpx.AsyncClient,
-) -> None:
-    fetched = await _fetch(client, VOICED_ELSEWHERE)
+class _TwoRenderings:
+    """One key, two renderings: what two instances missing the same clip at once can leave.
 
-    assert fetched.status_code == 200
-    assert fetched.headers["etag"] == sha256(VOICED_ELSEWHERE.encode()).hexdigest()[:32]
-    assert fetched.headers["etag"] != sha256(CLIP).hexdigest()[:32]
+    The GCS put has no precondition, so the second synthesis overwrites the first, and the
+    instance that made the first still serves its own bytes from memory in the meantime.
+    """
+
+    def __init__(self) -> None:
+        self.renderings = [b"a" * 64, b"b" * 64]
+
+    async def get(self, key: str) -> bytes | None:
+        return self.renderings.pop(0) if len(self.renderings) > 1 else self.renderings[0]
+
+
+async def test_two_renderings_of_one_clip_never_share_an_etag_so_a_resume_cannot_splice_them(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bucket = _TwoRenderings()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+
+    first = await _fetch(client, VOICED_ELSEWHERE)
+    resumed = await _fetch_range(
+        client, VOICED_ELSEWHERE, "bytes=10-19", **{"If-Range": first.headers["etag"]}
+    )
+
+    assert first.headers["etag"] == sha256(b"a" * 64).hexdigest()[:32]
+    assert resumed.status_code == 200, (
+        "a resume that named the first rendering was answered with a slice of the second: "
+        "the ETag named the key, not the bytes, so If-Range could not see the difference, and "
+        "the tablet would splice two renderings of one line"
+    )
+    assert resumed.content == b"b" * 64
 
 
 async def test_a_range_inside_the_clip_returns_only_those_bytes(
