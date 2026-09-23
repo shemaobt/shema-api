@@ -114,6 +114,7 @@ async def _no_whole_line_outlives_its_test() -> AsyncIterator[None]:
     if left:
         await asyncio.wait(left)
     sessions_api._PENDING_WHOLE_LINE_TASKS.clear()
+    sessions_api._PENDING_WHOLE_LINE_BY_TEXT.clear()
 
 
 async def _client(
@@ -222,6 +223,175 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
         "o diga de novo pagou a ElevenLabs outra vez por uma linha que o segundo plano já "
         "tinha posto no bucket"
     )
+
+
+async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_joins_it(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    elevenlabs = _Elevenlabs(holds=WHOLE)
+    _opens_in_two_movements(monkeypatch)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+        assert opened.status_code == 200
+
+        pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
+        assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
+
+        again = asyncio.create_task(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+        )
+        await asyncio.wait({again}, timeout=0.2)
+        assert not again.done(), "o diga de novo respondeu sem esperar a linha inteira ainda em voo"
+
+        elevenlabs.may_proceed.set()
+        again_resp = await asyncio.wait_for(again, timeout=2)
+
+    assert again_resp.status_code == 200, again_resp.text[:300]
+    assert elevenlabs.calls.count(WHOLE) == 1, (
+        "o diga de novo pediu a linha inteira de novo enquanto ela ainda estava em voo, em "
+        "vez de se juntar à síntese já a caminho"
+    )
+    assert again_resp.json()["audio_url"], "o diga de novo voltou sem áudio nenhum"
+
+
+async def test_a_cancelled_say_it_again_does_not_cancel_the_whole_line_it_joined(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    """Giving up on "say it again" must not reach into another request's synthesis.
+
+    `_say_it_again` awaits the shared whole-line task directly; a task suspended on
+    `await other_task` ties its own cancellation to `other_task` (asyncio sets it as the
+    `_fut_waiter` and cancels it too), so a client that stops waiting on its own "say it
+    again" would cancel the opening's still-running background synthesis along with the
+    clip it was about to cache — a request belonging to someone else.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    elevenlabs = _Elevenlabs(holds=WHOLE)
+    _opens_in_two_movements(monkeypatch)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+        assert opened.status_code == 200
+
+        pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
+        assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
+        whole_task = next(iter(pending))
+
+        again = asyncio.create_task(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+        )
+        await asyncio.wait({again}, timeout=0.2)
+        assert not again.done(), "o diga de novo respondeu sem esperar a linha inteira ainda em voo"
+
+        again.cancel()
+        await asyncio.wait({again})
+        assert again.cancelled()
+        assert not whole_task.done(), "a tarefa em voo terminou cedo demais para este teste"
+        assert not whole_task.cancelled(), (
+            "cancelar o diga de novo cancelou a síntese em voo de outra sessão"
+        )
+
+        elevenlabs.may_proceed.set()
+        result = await asyncio.wait_for(whole_task, timeout=2)
+
+    assert result.key, "a linha inteira não terminou nem guardou o clipe depois do cancelamento"
+    assert elevenlabs.calls.count(WHOLE) == 1
+
+
+async def test_a_say_it_again_whose_whole_line_was_cancelled_falls_back_to_its_own_synthesis(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    """The shield keeps "say it again" out of the background task, not the other way round.
+
+    The opening request ties its own cancellation to the shared whole-line task, so an
+    opening dropped mid-flight cancels it, and a joined "say it again" would then receive
+    CancelledError — which `except Exception` does not catch. It must fall back to the
+    plain synthesis the PR promises for a task that did not deliver, not answer with nothing.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    elevenlabs = _Elevenlabs(holds=WHOLE)
+    _opens_in_two_movements(monkeypatch)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+        assert opened.status_code == 200
+        pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
+        assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
+        whole_task = next(iter(pending))
+
+        again = asyncio.create_task(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+        )
+        await asyncio.wait({again}, timeout=0.2)
+        assert not again.done(), "o diga de novo respondeu sem esperar a linha inteira ainda em voo"
+
+        whole_task.cancel()
+        await asyncio.wait({whole_task})
+        assert whole_task.cancelled()
+
+        elevenlabs.may_proceed.set()
+        again_resp = await asyncio.wait_for(again, timeout=2)
+
+    assert again_resp.status_code == 200, again_resp.text[:300]
+    assert again_resp.json()["audio_url"], (
+        "com a linha inteira cancelada, o diga de novo voltou sem áudio em vez de sintetizar"
+    )
+    # The fake records a call only once it completes; the cancelled background call never
+    # did, so the one recorded is the fallback's own synthesis.
+    assert elevenlabs.calls.count(WHOLE) == 1, "o diga de novo não caiu na própria síntese"
+
+
+async def test_a_stale_whole_line_callback_does_not_evict_a_newer_tasks_entry() -> None:
+    """Two openings landing on the same whole line share one key; only one may hold it.
+
+    Two sessions on the same pericope and language can produce the very same whole line,
+    so the second `_start_the_whole_line` overwrites the first's entry in
+    `_PENDING_WHOLE_LINE_BY_TEXT` under the same key. The first task's own done-callback
+    still fires after that overwrite — it must forget only the entry it put there, never
+    whatever the second task left behind, or a `_say_it_again` for the second session
+    finds nothing to join and pays ElevenLabs again, the exact bug this file guards
+    against, reached from two sessions instead of one.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _done() -> tts.SpeechKey:
+        return tts.SpeechKey(key="tts/whatever", cached=False)
+
+    key = ("mesma linha", "pt")
+    stale_task = asyncio.create_task(_done())
+    current_task = asyncio.create_task(_done())
+    await stale_task
+    await current_task
+    sessions_api._PENDING_WHOLE_LINE_BY_TEXT[key] = current_task
+
+    sessions_api._forget_the_whole_line(key, stale_task)
+
+    assert sessions_api._PENDING_WHOLE_LINE_BY_TEXT.get(key) is current_task, (
+        "o callback de uma tarefa antiga apagou a entrada da tarefa atual para a mesma chave"
+    )
+
+    sessions_api._forget_the_whole_line(key, current_task)
+    assert key not in sessions_api._PENDING_WHOLE_LINE_BY_TEXT
 
 
 async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
