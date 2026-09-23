@@ -68,12 +68,24 @@ def _dependency_calls(dependant) -> set:
     return calls
 
 
+def _direct_calls(endpoint) -> set:
+    """Gate functions the endpoint's own body calls by name, bypassing ``Depends``.
+
+    `voice.py`'s clip route awaits `require_room_caller` directly so it can run beside the
+    GCS read — a call the dependant tree above never sees. Its name still shows up in the
+    function's own bytecode, resolved against the module it was imported into.
+    """
+    names = getattr(getattr(endpoint, "__code__", None), "co_names", ())
+    scope = getattr(endpoint, "__globals__", {})
+    return {scope[name] for name in names if callable(scope.get(name))}
+
+
 def room_app_routes() -> list:
     """Every mounted route a tablet can reach, in path order.
 
-    Identified by the room's own gates appearing in the route's dependency tree. Renaming a
-    gate without updating this set would silently empty it, which is what
-    ``test_the_audit_is_not_empty`` is here to catch.
+    Identified by the room's own gates appearing in the route's dependency tree, or called
+    by the endpoint itself. Renaming a gate without updating this set would silently empty
+    it, which is what ``test_the_audit_is_not_empty`` is here to catch.
     """
     from app.api.internalization_room import _deps
     from app.main import app
@@ -84,7 +96,7 @@ def room_app_routes() -> list:
             route
             for route in app.routes
             if getattr(route, "dependant", None) is not None
-            and gates & _dependency_calls(route.dependant)
+            and gates & (_dependency_calls(route.dependant) | _direct_calls(route.endpoint))
         ),
         key=lambda route: (route.path, sorted(route.methods)),
     )
@@ -112,6 +124,18 @@ async def a_credential_that_works(db: AsyncSession) -> str:
     return claimed.credential
 
 
+def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_by_hand() -> None:
+    """ENG-993 moved the clip route's device check out of `Depends` and into its body, so
+    it can run beside the GCS read instead of ahead of it. `room_app_routes` only walks
+    `Depends` trees, so that route would otherwise vanish from the set these two audits
+    exercise, and stop being checked for the exact leak this file exists to catch."""
+    paths = {route.path for route in room_app_routes()}
+    assert any(path.endswith("/voice/{handle}") for path in paths), (
+        "a rota do clipe chama require_room_caller direto no corpo, sem Depends, e a "
+        "auditoria parou de enxergá-la"
+    )
+
+
 def test_the_audit_is_not_empty() -> None:
     """The guard on every other case in this file.
 
@@ -126,15 +150,25 @@ def test_the_audit_is_not_empty() -> None:
 
 
 async def test_no_room_route_echoes_an_unrecognised_credential(client, caplog) -> None:
-    """The refusal path, over every room route."""
+    """The refusal path, over every room route.
+
+    Every case here proves something about a response the gate produced. A route that
+    answers before the gate ever ran — a 404 from a handle that failed to decode, say —
+    would pass every assertion below by construction, having never gone near the code
+    this file exists to audit. `not_refused` closes that hole: the credential's shape
+    guarantees a 401 from the gate on every route that actually reaches it.
+    """
     caplog.set_level(logging.DEBUG)
     echoed = []
+    not_refused = []
 
     for route in room_app_routes():
         for method, path in _exercisable(route):
             answer = await client.request(
                 method, path, headers={DEVICE_CREDENTIAL_HEADER: UNRECOGNISED}
             )
+            if answer.status_code != 401:
+                not_refused.append((method, path, answer.status_code))
             if UNRECOGNISED in answer.text:
                 echoed.append((method, path))
 
@@ -142,6 +176,9 @@ async def test_no_room_route_echoes_an_unrecognised_credential(client, caplog) -
 
     assert not echoed, f"estas rotas devolveram a credencial no corpo: {echoed}"
     assert not logged, f"a credencial foi parar no log: {logged}"
+    assert not not_refused, (
+        f"estas rotas responderam antes de chegar ao portão, sem 401: {not_refused}"
+    )
 
 
 async def test_no_room_route_echoes_a_credential_that_works(client, db_session, caplog) -> None:
