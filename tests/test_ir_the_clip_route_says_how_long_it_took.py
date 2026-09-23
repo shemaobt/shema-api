@@ -554,3 +554,13 @@ async def test_a_suffix_range_returns_only_the_last_bytes(
     assert fetched.status_code == 206, fetched.text
     assert fetched.content == CLIP[-34:]
     assert fetched.headers["content-range"] == f"bytes {len(CLIP) - 34}-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_range_past_the_end_of_the_clip_is_refused_not_clamped(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, f"bytes={len(CLIP)}-{len(CLIP) + 10}")
+
+    assert fetched.status_code == 416, fetched.text
+    assert fetched.headers["content-range"] == f"bytes */{len(CLIP)}"
+    assert fetched.content == b""

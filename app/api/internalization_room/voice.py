@@ -42,11 +42,19 @@ class ByteRange:
     end: int  # inclusive
 
 
+class RangeNotSatisfiable(Exception):
+    pass
+
+
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
 
 def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
-    """The single byte range this request asks for, or `None` to serve the whole clip."""
+    """The single byte range this request asks for, or `None` to serve the whole clip.
+
+    Raises `RangeNotSatisfiable` for a range this function understands but that names no
+    byte the clip actually has.
+    """
     if range_header is None:
         return None
     match = _RANGE_RE.match(range_header.strip())
@@ -58,6 +66,8 @@ def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
             return None
         return ByteRange(start=total - int(last), end=total - 1)
     start = int(first)
+    if start >= total:
+        raise RangeNotSatisfiable()
     end = int(last) if last else total - 1
     return ByteRange(start=start, end=end)
 
@@ -174,7 +184,18 @@ async def clip(
     if audio is None:
         raise NotFoundError("No such clip")
     etag = sha256(key.encode()).hexdigest()[:32]
-    byte_range = _resolve_range(x_range, total=len(audio))
+    try:
+        byte_range = _resolve_range(x_range, total=len(audio))
+    except RangeNotSatisfiable:
+        return Response(
+            status_code=416,
+            headers={
+                "Cache-Control": IMMUTABLE,
+                "ETag": etag,
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes */{len(audio)}",
+            },
+        )
     if byte_range is not None:
         return Response(
             content=audio[byte_range.start : byte_range.end + 1],
