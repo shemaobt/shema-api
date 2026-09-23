@@ -3,7 +3,6 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from hashlib import sha256
 
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +15,7 @@ from app.services.internalization_room.questions import AUDIO_MIME
 from app.services.internalization_room.synthesize_facilitator_speech import voiced_here
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform.storage import GcsPlatformStore
-from app.services.platform.tts import MIME_TYPE, SpeechStore, fetch_clip
+from app.services.platform.tts import MIME_TYPE, SpeechStore, etag_of, fetch_clip
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +137,14 @@ async def clip(
 
     The key behind the handle is content-addressed, so these bytes can never change: the
     app may keep them for as long as it has room, and a line it has already heard costs
-    nothing to hear again.
+    nothing to hear again. The key names the words, though, not one rendering of them: two
+    instances missing the same clip at once can each synthesize it, and the unconditional
+    put lets the second overwrite the first while the first still serves its own copy. So
+    the ETag hashes the bytes actually served, and an `If-Range` resume that lands on the
+    other rendering gets the whole clip, never a slice spliced onto the first. A bare
+    `Range`, with no `If-Range`, is still served off whichever rendering this instance
+    holds; the app always resumes with `If-Range`, and the write-once put that leaves one
+    rendering per key is ENG-996's.
 
     The device check runs beside the read, not before it — the two are independent, and a
     tablet that is still welcome pays for whichever one is slower, not their sum. But the
@@ -184,7 +190,7 @@ async def clip(
     else:
         audio, gcs_ms = await read_task
 
-    etag = sha256(key.encode()).hexdigest()[:32]
+    etag = etag_of(audio) if audio is not None else ""
     byte_range: ByteRange | None = None
     unsatisfiable = False
     if audio is not None:

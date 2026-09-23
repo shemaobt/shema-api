@@ -156,11 +156,11 @@ async def synthesize_speech(
     )
     cached = await speech_store.get(key)
     if cached is not None:
-        return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
+        return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
     audio = await voiced()
     await _cache_quietly(speech_store, key, audio)
-    return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
+    return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
 
 
 async def synthesize_speech_key(
@@ -350,7 +350,7 @@ def _upstream_or_validation_error(status_code: int) -> Exception:
     return ValidationError(message)
 
 
-def _etag(audio: bytes) -> str:
+def etag_of(audio: bytes) -> str:
     return hashlib.sha256(audio).hexdigest()[:32]
 
 
