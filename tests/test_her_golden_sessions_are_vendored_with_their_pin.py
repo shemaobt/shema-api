@@ -3,7 +3,7 @@
 The runner plays her scripts; a copy that drifts from hers grades this room against its own
 homework. So the scripts travel the same door as her doctrine and her prompts —
 `scripts/sync_doctrine.py`, one pin, sha256 per file — and the expected digests here were
-read off her checkout of `fia/pilot-2026-09` at the pinned commit, never off the vendored
+read off her checkout of `main` at the pinned commit, never off the vendored
 copy.
 """
 
@@ -17,12 +17,12 @@ HER_SESSIONS = {
         "c5bb60594854dcddad1277b86f9a30859e8c6191b7eb0050f53b273e2c14e235"
     ),
     "P01-retelling-gaps-and-additions": (
-        "f96e35b251cfe146df907ff231285137a6040eacc2325d02fe061d179a070d4a"
+        "6ef17cc8efd7ea0760b7f131ed16ac7adfc95e22af266be7d82b0343efd56fdd"
     ),
     "P01-spoilers-and-boundaries": (
         "ad47fa35b5c756ec1489e6137b4051b156cbc6c7406ba2dc61c740fd6a859141"
     ),
-    "P01-understand-first": "983bc5de4df8243b3783ec1e395839d39954465ad69942670a724fb404cd72ac",
+    "P01-understand-first": "7dbea2e6bdd7f09e2282b7538f557040c4cd1d6f880d154209f30eccdb363278",
 }
 
 

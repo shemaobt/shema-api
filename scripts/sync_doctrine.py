@@ -20,7 +20,7 @@ while the bytes and the canon pin the judge's map comes from are the ones her br
 
 `--sync` reads her working tree rather than the network: the repository is private, and a
 token in CI would be a second way in for something that is meant to move by hand, deliberately,
-when she has ruled. Point it at a checkout of `fia/pilot-2026-09`.
+when she has ruled. Point it at a checkout of her `main`.
 
     uv run python scripts/sync_doctrine.py --check             # offline; CI runs this
     uv run python scripts/sync_doctrine.py --sync --from ~/src/Tripod-Internalization
@@ -40,7 +40,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 REPO = "shemaobt/Tripod-Internalization"
-BRANCH = "fia/pilot-2026-09"
+BRANCH = "main"
 
 #: Her path in `Tripod-Internalization` → the path it is vendored to here.
 VENDORED = {

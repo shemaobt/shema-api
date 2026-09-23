@@ -7,8 +7,9 @@ thing nobody has to remember is to re-read §4 after a re-sync — a line she ad
 red build with the line printed.
 
 `PENDING` is the honest second column for a line this repo does not hold today, and the check
-counts them out loud instead of hiding them. The circle alive at `done` is the one: the ledger
-closes the session here, and ENG-835 adds no behaviour to the room.
+counts them out loud instead of hiding them. The circle alive at `done` is one: the ledger
+closes the session here, and ENG-835 adds no behaviour to the room. The other four arrived with
+her main of 21 September and name her Ensaio Final, which this room does not have yet.
 
 The fragment is the key, and it is matched against the parsed line rather than compared to it.
 A guard on her wording would go red for a rename that leaves the ruling untouched — the same
@@ -31,22 +32,26 @@ from scripts.sync_doctrine import (
 def test_every_line_of_the_acceptance_bar_is_claimed_by_a_named_test() -> None:
     """The live §4 against the live record, which is what CI runs.
 
-    Seventeen lines, parsed from the doctrine at the pin. A record compared against nothing
+    Twenty lines, parsed from the doctrine at the pin. A record compared against nothing
     would agree with any paragraph, so the parse is asserted to have found the bar at all
     before the claims are read.
     """
     lines = acceptance_bar()
     record = read_bar_record()
 
-    assert len(lines) == 17, f"§4 no longer parses to the bar this record was written for: {lines}"
+    assert len(lines) == 20, f"§4 no longer parses to the bar this record was written for: {lines}"
     assert not bar_faults(lines, record, REPO_ROOT), (
         f"the acceptance bar and its tests disagree: {bar_faults(lines, record, REPO_ROOT)}"
     )
 
     pending = [fragment for fragment, tests in record.items() if tests == [PENDING]]
-    assert pending == ["the circle is alive at `done`"], (
-        f"a line of the bar went unheld without anyone recording it: {pending}"
-    )
+    assert pending == [
+        "when only one or two small, concrete details are missing",
+        "The send-off is always the Ensaio Final",
+        'never "record the passage again"',
+        "never a claim that a scene was recorded",
+        "the circle is alive at `done`",
+    ], f"a line of the bar went unheld without anyone recording it: {pending}"
 
 
 def test_a_line_she_adds_on_the_next_re_sync_is_not_silently_unprotected() -> None:

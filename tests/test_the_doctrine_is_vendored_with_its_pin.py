@@ -50,6 +50,23 @@ def test_every_vendored_artefact_is_in_the_repo_at_the_sha_the_pin_records() -> 
     assert not drift(pin), f"a vendored artefact no longer matches the pin: {drift(pin)}"
 
 
+def test_the_pin_names_her_main_not_the_pilot_branch_she_left() -> None:
+    """Her current prompts live on her main; the pilot branch stopped moving 279 commits ago.
+
+    Her target of 4 September, restated on 21 September, is that the room runs her current
+    prompts whole. A diff against a copy she no longer edits classifies divergences she has
+    already resolved, so the pin itself has to name the commit her main is at.
+    """
+    pin = read_pin()
+
+    assert (pin.repo, pin.branch) == ("shemaobt/Tripod-Internalization", "main"), (
+        f"the pin still names {pin.branch}, a branch she no longer edits"
+    )
+    assert pin.commit == "17ba6fc10dd062189f61283262ad70cd7cc31552", (
+        f"the pin names {pin.commit[:12]}, not her main of 2026-09-21"
+    )
+
+
 def test_her_guide_prompt_is_vendored_beside_ours_and_not_over_it() -> None:
     """Ours stays where it is, and hers lands next to it, so the difference is one command.
 

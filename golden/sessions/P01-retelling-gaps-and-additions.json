@@ -2,10 +2,11 @@
   "name": "P01-retelling-gaps-and-additions",
   "pericopeId": "P01",
   "language": "Brazilian Portuguese",
-  "why": "Honest checking: an omission in a retelling must never pass; an addition (a cause, a pairing, grief) must be named warmly and sent back; a filled silence is a teaching moment. The final telling must be checked most carefully of all.",
+  "why": "Honest checking: an omission in a retelling must never pass; an addition (a cause, a pairing, grief) must be named warmly and sent back; a filled silence is a teaching moment. The ending follows Marcia's ruling of 2026-09-21 (docs/ENSAIO-FINAL-SPEC.md §8.1): the team no longer tells the whole passage back. It tells again the LAST parts — the ones its additions had spoiled — first with two small details missing ('o marido de Noemi', 'sem o marido'), then whole, with the first part's 'como estrangeiros, só por um tempo' restored, and says it is satisfied. The last telling is checked as carefully as the first; the guide never asks for the whole passage, and its last word is the Ensaio Final send-off (the orange dot), never 'gravem o ensaio' nor 'traduzam a gravação'. Every telling in this session is ORAL, so the app's SCENE REHEARSALS fact lists every scene under 'none': the send-off must say those scenes have no recording yet. SCREEN NOTE (Stage 1, as built): with no sent scene rehearsal at all the Ensaio Final plan has nothing to join, so the orange dot behind this send-off still opens the record screen of before (its title is not yet 'Ensaio Final') — an open call for Marcia (docs/HANDOFF.md), not something this script can see: a golden session reads the voice, never the screen.",
   "turns": [
     {
-      "team": "Bom dia. Estamos prontos. Pode abrir a passagem pra gente."
+      "team": "Bom dia. Estamos prontos. Pode abrir a passagem pra gente.",
+      "sceneRehearsals": []
     },
     {
       "team": "Entendemos. Vamos ensaiar essa parte em Terena."
@@ -59,19 +60,23 @@
       }
     },
     {
-      "team": "Entendido. A mulher ficou sem os dois filhos e sem o marido. A história não diz que foi Deus. Vamos ensaiar tudo em Terena."
+      "team": "Entendido. A história não diz que foi Deus. Vamos ensaiar de novo em Terena as partes que a gente errou."
     },
     {
-      "team": "Passagem inteira: nos dias dos juízes teve fome. Elimeleque, Noemi, Malom e Quiliom, de Belém de Judá, foram morar em Moabe. Elimeleque morreu e Noemi ficou com os filhos. Os filhos casaram com Orfa e Rute, moabitas, e moraram lá uns dez anos. Depois os dois morreram, e a mulher ficou sem os filhos e sem o marido.",
+      "team": "Contando de volta essas partes: Elimeleque morreu e Noemi ficou com os filhos. Os filhos casaram com Orfa e Rute, moabitas, e moraram lá uns dez anos. Depois os dois morreram, e a mulher ficou sem os filhos.",
       "expect": {
-        "no_fail_safe": true
+        "no_fail_safe": true,
+        "no_whole_retelling_request": true
       }
     },
     {
-      "team": "Contamos de novo, agora inteira: nos dias dos juízes teve fome na terra. Elimeleque, Noemi, Malom e Quiliom, efrateus de Belém de Judá, foram morar em Moabe como estrangeiros, só por um tempo. Elimeleque, o marido de Noemi, morreu, e ela ficou com os dois filhos. Os filhos casaram com Orfa e Rute, moabitas, e moraram lá uns dez anos. Depois os dois morreram, e a mulher ficou sem os filhos e sem o marido. Estamos satisfeitos.",
+      "team": "Contamos de novo essas partes: Elimeleque, o marido de Noemi, morreu, e ela ficou com os dois filhos. Os filhos casaram com Orfa e Rute, moabitas, e moraram lá uns dez anos. Depois os dois morreram, e a mulher ficou sem os dois filhos e sem o marido. E na primeira parte, eles foram morar em Moabe como estrangeiros, só por um tempo. Estamos satisfeitos.",
       "expect": {
         "no_fail_safe": true,
-        "send_off_record": true
+        "send_off_ensaio_final": true,
+        "no_record_again": true,
+        "no_whole_retelling_request": true,
+        "send_off_names_unrecorded_scene": true
       }
     }
   ]
