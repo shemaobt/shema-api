@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
@@ -5,12 +6,13 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import event
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.database import engine as app_engine
+from app.core.exceptions import UpstreamServiceError
 from app.core.room_enums import CoverageStatus, HaltKind
-from app.db.models.internalization_room import IRSession, IRSessionStatus
+from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTurn
 from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import (
@@ -20,7 +22,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     mark_needs_person,
 )
-from app.services.platform.tts import SynthesizedSpeech
+from app.services.platform.tts import SynthesizedSpeech, Upload
 from tests.release_harness import KEY, PREFIX
 from tests.room_harness import room_client
 
@@ -53,15 +55,34 @@ def rival_factory(test_engine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
 
 
-async def _voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
-    entry = SynthesizedSpeech(
-        audio=b"audio",
-        mime_type="audio/mpeg",
-        etag="e",
-        cached=False,
-        key=f"tts/voice/m/f/{len(text)}.mp3",
-    )
-    return entry, False
+class _Voice:
+    def __init__(self) -> None:
+        self.the_bucket_is_down = False
+        self.written = asyncio.Event()
+
+    async def _the_bucket_refuses_once_the_turn_is_written(self) -> None:
+        await asyncio.wait_for(self.written.wait(), timeout=1)
+        raise UpstreamServiceError("the bucket is down")
+
+    async def __call__(
+        self, text: str, *, uploads: list[Upload] | None = None, **_: Any
+    ) -> tuple[SynthesizedSpeech, bool]:
+        if self.the_bucket_is_down and uploads is not None:
+            self.the_bucket_is_down = False
+            uploads.append(self._the_bucket_refuses_once_the_turn_is_written)
+        entry = SynthesizedSpeech(
+            audio=b"audio",
+            mime_type="audio/mpeg",
+            etag="e",
+            cached=False,
+            key=f"tts/voice/m/f/{len(text)}.mp3",
+        )
+        return entry, False
+
+
+@pytest.fixture()
+def voice() -> _Voice:
+    return _Voice()
 
 
 async def _heard(audio: bytes, **_: Any) -> HeardSpeech:
@@ -74,14 +95,14 @@ async def _settled_later(**_: Any) -> None:
 
 @pytest.fixture()
 async def client(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, models: _Models
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, models: _Models, voice: _Voice
 ) -> AsyncIterator[httpx.AsyncClient]:
     from app.api.internalization_room import sessions as sessions_api
 
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", models
     )
-    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
     monkeypatch.setattr(sessions_api, "settle_coverage", _settled_later)
     async with room_client(db_session, monkeypatch) as c:
@@ -193,3 +214,77 @@ async def test_a_person_asked_for_while_the_guide_thinks_is_still_asked_for_afte
         "o turno relia o status depois do primeiro commit e soltava o pedido de pessoa"
     )
     assert after.halt_kind == HaltKind.BLOCKING.value
+
+
+async def test_a_turn_with_its_id_is_remembered_in_the_same_commit_as_its_exchange(
+    client: httpx.AsyncClient, waiting_room: IRSession, commits: list[object]
+) -> None:
+    answered = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert len(commits) == 1, "a resposta lembrada do turno era gravada num commit a mais"
+
+
+async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exchange(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def a_resend_is_answered_first() -> None:
+        async with rival_factory() as rival:
+            rival.add(IRTurn(session_id=waiting_room.id, turn_id="turno-1", response={}))
+            await rival.commit()
+
+    models.while_the_guide_thinks = a_resend_is_answered_first
+
+    answered = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [
+        FIRST_QUESTION,
+        GUIDE_LINE,
+    ], "a resposta lembrada em duplicata voltava a transação e levava a troca junto"
+
+
+async def test_a_turn_whose_clip_never_reached_the_bucket_is_not_written_and_its_resend_is(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    voice: _Voice,
+    rival_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    append = sessions_api.room.append_exchange
+
+    async def append_then_say_so(*args: Any, **kwargs: Any) -> IRSession:
+        appended = await append(*args, **kwargs)
+        voice.written.set()
+        return appended
+
+    monkeypatch.setattr(sessions_api.room, "append_exchange", append_then_say_so)
+    voice.the_bucket_is_down = True
+
+    failed = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
+
+    assert failed.status_code >= 500, failed.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+        remembered = (await fresh.execute(select(IRTurn))).scalars().all()
+    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [FIRST_QUESTION], (
+        "a troca ficava gravada sem a equipe ter ouvido nada"
+    )
+    assert remembered == []
+
+    resent = await _the_team_answers(client, waiting_room.id, turn_id="turno-1")
+
+    assert resent.status_code == 200, resent.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert [m["text"] for m in after.messages if m["role"] == "guide"] == [
+        FIRST_QUESTION,
+        GUIDE_LINE,
+    ], "o reenvio repetia o turno e gravava a troca duas vezes"

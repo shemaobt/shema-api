@@ -639,6 +639,7 @@ async def _answer_the_turn(
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
+            await db.commit()
         return reply
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
@@ -719,6 +720,5 @@ async def _answer_the_turn(
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-        else:
-            await db.commit()
+        await db.commit()
     return reply
