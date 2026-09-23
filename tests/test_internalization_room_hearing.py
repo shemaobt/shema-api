@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.config import Settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.services.internalization_room import hearing
 
 
@@ -45,6 +45,30 @@ async def test_silence_and_mangled_audio_answer_empty_rather_than_raise(
     monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
 
     assert await hearing.heard(b"audio", settings=_settings()) == ""
+
+
+async def test_an_elevenlabs_outage_reaches_heard_as_an_error_not_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _transcribe(*_: object, **__: object) -> str:
+        raise UpstreamServiceError("Transcription request failed with status 503")
+
+    monkeypatch.setattr(hearing, "transcribe_audio", _transcribe)
+
+    with pytest.raises(UpstreamServiceError):
+        await hearing.heard(b"audio", settings=_settings())
+
+
+async def test_an_elevenlabs_outage_reaches_heard_speech_as_an_error_not_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _transcribe_detailed(*_: object, **__: object) -> object:
+        raise UpstreamServiceError("Transcription request failed with status 503")
+
+    monkeypatch.setattr(hearing, "transcribe_audio_detailed", _transcribe_detailed)
+
+    with pytest.raises(UpstreamServiceError):
+        await hearing.heard_speech(b"audio", settings=_settings())
 
 
 async def test_an_empty_answer_is_what_the_fail_safe_line_was_written_for() -> None:
