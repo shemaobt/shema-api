@@ -30,20 +30,31 @@ class ListPrice:
 
     input: float
     output: float
-    cache_write: float
+    cache_write_5m: float
+    cache_write_1h: float
     cache_read: float
 
 
-#: Every rung of the room's three ladders, at the price published on 2026-06-24. A cache write
-#: is the five-minute entry, at 1.25x input; a cache read is 0.1x input on every rung but
+#: Every rung of the room's three ladders, at the price published on 2026-06-24. A 5-minute
+#: cache write is 1.25x input, a 1-hour one is 2x; a cache read is 0.1x input on every rung but
 #: Claude Fable 5.1, whose read is 0.025x — which is the whole reason a 896-thousand-token map
 #: can be pinned in front of every turn of a session at all.
 LIST_PRICES: dict[str, ListPrice] = {
-    "claude-fable-5-1": ListPrice(input=10.0, output=50.0, cache_write=12.50, cache_read=0.25),
-    "claude-opus-5": ListPrice(input=5.0, output=25.0, cache_write=6.25, cache_read=0.50),
-    "claude-opus-4-8": ListPrice(input=5.0, output=25.0, cache_write=6.25, cache_read=0.50),
-    "claude-sonnet-5": ListPrice(input=2.0, output=10.0, cache_write=2.50, cache_read=0.20),
-    "claude-sonnet-4-6": ListPrice(input=3.0, output=15.0, cache_write=3.75, cache_read=0.30),
+    "claude-fable-5-1": ListPrice(
+        input=10.0, output=50.0, cache_write_5m=12.50, cache_write_1h=20.0, cache_read=0.25
+    ),
+    "claude-opus-5": ListPrice(
+        input=5.0, output=25.0, cache_write_5m=6.25, cache_write_1h=10.0, cache_read=0.50
+    ),
+    "claude-opus-4-8": ListPrice(
+        input=5.0, output=25.0, cache_write_5m=6.25, cache_write_1h=10.0, cache_read=0.50
+    ),
+    "claude-sonnet-5": ListPrice(
+        input=2.0, output=10.0, cache_write_5m=2.50, cache_write_1h=4.0, cache_read=0.20
+    ),
+    "claude-sonnet-4-6": ListPrice(
+        input=3.0, output=15.0, cache_write_5m=3.75, cache_write_1h=6.0, cache_read=0.30
+    ),
 }
 
 
@@ -52,7 +63,8 @@ def cost_of(
     *,
     input_tokens: int,
     output_tokens: int,
-    cache_write_tokens: int,
+    cache_write_5m_tokens: int,
+    cache_write_1h_tokens: int,
     cache_read_tokens: int,
 ) -> float | None:
     """What one call cost at list price, or nothing for a rung this table has never priced.
@@ -61,6 +73,10 @@ def cost_of(
     model released after this table was written, and neither losing the team's turn to a
     `KeyError` nor reporting that turn as free is an answer. An unpriced rung says so, and the
     tokens it burned are still counted.
+
+    The two cache-write counts are priced apart, never summed and priced once: a write that
+    bought the hour costs 2x input against a 5-minute write's 1.25x, and a ledger that priced
+    both at one rate would underreport every session that ever wrote to the 1-hour cache.
     """
     price = LIST_PRICES.get(model)
     if price is None:
@@ -68,7 +84,8 @@ def cost_of(
     dollars = (
         input_tokens * price.input
         + output_tokens * price.output
-        + cache_write_tokens * price.cache_write
+        + cache_write_5m_tokens * price.cache_write_5m
+        + cache_write_1h_tokens * price.cache_write_1h
         + cache_read_tokens * price.cache_read
     ) / _A_MILLION
     return round(dollars, 6)

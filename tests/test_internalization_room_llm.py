@@ -6,6 +6,7 @@ from typing import Any
 import anthropic
 import httpx2
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError
@@ -294,6 +295,69 @@ async def test_a_caller_that_names_no_conversation_still_sends_one_user_message(
     assert holder["client"].messages.kwargs["messages"] == [{"role": "user", "content": "u"}]
 
 
+async def test_the_guide_and_the_validator_prefix_cache_for_an_hour_by_default(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("guide", "validator"):
+        await llm.call_agent(
+            system_prompt=f"map{llm.CACHE_BREAK}turn",
+            user_content="u",
+            role=role,
+            settings=_settings(),
+        )
+
+        assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+            "type": "ephemeral",
+            "ttl": "1h",
+        }, (
+            f"o prefixo do {role} caía a cada 5 minutos e a pausa de ensaio da equipe relia "
+            f"~16k/14k tokens do zero na volta"
+        )
+
+
+async def test_the_judge_and_the_classifier_stay_on_the_five_minute_cache(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("judge", "analyst", "correction check", "classifier", "?"):
+        await llm.call_agent(
+            system_prompt=f"map{llm.CACHE_BREAK}turn",
+            user_content="u",
+            role=role,
+            settings=_settings(),
+        )
+
+        assert "ttl" not in holder["client"].messages.kwargs["system"][0]["cache_control"], (
+            f"o {role} não fica no caminho da voz, e uma escrita de 1h custa o dobro de uma "
+            f"de 5 min sem nenhum ganho — a doutrina só cobre a voz"
+        )
+
+
+async def test_the_hour_cache_reverts_to_five_minutes_through_a_setting(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(
+        system_prompt=f"map{llm.CACHE_BREAK}turn",
+        user_content="u",
+        role="guide",
+        settings=_settings(internalization_room_voice_cache_ttl=""),
+    )
+
+    assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+        "type": "ephemeral"
+    }, (
+        "um deployment que precisasse voltar aos 5 minutos não tinha como, sem esperar um "
+        "novo deploy do código"
+    )
+
+
+def test_a_mistyped_ttl_setting_is_refused_at_boot() -> None:
+    with pytest.raises(PydanticValidationError):
+        _settings(internalization_room_voice_cache_ttl="1H")
+
+    with pytest.raises(PydanticValidationError):
+        _settings(internalization_room_voice_cache_ttl="5m")
+
+
 async def test_the_usage_line_says_which_cache_lifetime_each_written_token_bought(
     fake_client, caplog
 ):
@@ -311,6 +375,59 @@ async def test_the_usage_line_says_which_cache_lifetime_each_written_token_bough
 
     assert "cache_write=93000 cache_write_5m=3000 cache_write_1h=90000 " in caplog.text, (
         "a escrita no cache era um número só, e a de 1 hora custa 2x o input contra 1,25x"
+    )
+
+
+async def test_an_hour_of_cache_write_costs_twice_a_five_minute_one(fake_client, caplog):
+    fake_client(
+        _reply(
+            "ok",
+            cache_creation=SimpleNamespace(
+                ephemeral_5m_input_tokens=0, ephemeral_1h_input_tokens=1_000_000
+            ),
+        )
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    record = next(r for r in caplog.records if getattr(r, "cost_usd", None) is not None)
+    assert record.cost_usd == pytest.approx(20.0001), (
+        "o milhão de tokens de escrita de 1h era cobrado ao preço de 5 min (US$ 12,50 no "
+        "Fable 5.1), e o total do turno saía US$ 7,50 abaixo do que ele de fato custou"
+    )
+
+
+async def test_a_cache_write_with_no_lifetime_breakdown_still_costs_the_five_minute_rate(
+    fake_client, caplog
+):
+    reply = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="ok")],
+        stop_reason="end_turn",
+        model="claude-fable-5-1",
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=0,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=1_000_000,
+            cache_creation=None,
+        ),
+    )
+    fake_client(reply)
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    record = next(r for r in caplog.records if getattr(r, "cost_usd", None) is not None)
+    assert record.cost_usd == pytest.approx(12.5001), (
+        "um milhão de tokens de escrita sem o detalhe de vida (uma resposta sem o "
+        "campo novo da API) virava custo zero em vez do preço de 5 minutos, e o total do "
+        "turno caía a menos da metade do que de fato custou"
+    )
+    assert "cache_write=1000000 cache_write_5m=0 cache_write_1h=0 " in caplog.text, (
+        "a linha [llm-usage] imprimia o palpite de preço (5m) como se fosse o que a API "
+        "de fato disse, e uma escrita sem atribuição ficava indistinguível de uma de 5 "
+        "minutos confirmada"
     )
 
 

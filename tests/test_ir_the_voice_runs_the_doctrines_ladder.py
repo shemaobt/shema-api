@@ -161,8 +161,9 @@ async def test_the_map_that_repeats_every_turn_rides_in_one_cached_block(
             f"o system do {role} ia como um texto só, sem fronteira entre o que repete e o "
             f"que muda, e o cache não tem onde ser marcado"
         )
-        assert first[0]["cache_control"] == {"type": "ephemeral"}, (
-            f"o prefixo do {role} ia inteiro a cada turno e o mapa era relido do zero"
+        assert first[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}, (
+            f"o prefixo do {role} caía a cada 5 minutos e a pausa de ensaio da equipe "
+            f"relia o mapa do zero na volta"
         )
         assert first[0]["text"] == second[0]["text"], (
             f"o prefixo do {role} mudava de bytes entre turnos, então nada era servido do cache"
@@ -239,8 +240,8 @@ async def test_the_book_the_panorama_reads_from_is_sent_once_and_cached(
     assert isinstance(first, list), (
         "o panorama mandava o livro inteiro como texto solto, sem fronteira de cache"
     )
-    assert first[0]["cache_control"] == {"type": "ephemeral"}, (
-        "os digests do livro e as regras de preservação iam como entrada nova a cada turno, "
+    assert first[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}, (
+        "os digests do livro e as regras de preservação caíam do cache a cada 5 minutos, "
         "e o panorama é a sessão que mais dura"
     )
     assert first[0]["text"] == second[0]["text"], (
@@ -286,8 +287,8 @@ async def test_the_verdict_the_guide_speaks_on_a_telling_back_rides_its_map_in_o
         "o veredito ia como um texto só, sem fronteira de cache, e cada redraft do mesmo "
         "turno pagava o mapa inteiro de novo: in=11405 cache_read=0 cache_write=0, três vezes"
     )
-    assert first[0]["cache_control"] == {"type": "ephemeral"}, (
-        "o prefixo do veredito ia inteiro a cada chamada e o mapa era relido do zero"
+    assert first[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}, (
+        "o prefixo do veredito caía a cada 5 minutos e o mapa era relido do zero entre achados"
     )
     assert first[0]["text"] == second[0]["text"], (
         "o prefixo do veredito mudava de bytes entre um achado e o outro, e nada era servido "
