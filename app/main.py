@@ -1,9 +1,11 @@
+import asyncio
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langdetect.detector_factory import init_factory
 
 from app.api.access_requests import router as access_requests_router
 from app.api.annotation_studio import router as annotation_studio_router
@@ -53,6 +55,7 @@ from app.core.logging import setup_logging
 from app.core.qdrant import close_qdrant, init_qdrant
 from app.core.rate_limit import limiter
 from app.services.bhsa import loader
+from app.services.internalization_room.llm import close_clients
 from app.services.meaning_map.seed_books import seed_books
 from app.services.project_health.prompts.seed_prompts import seed_default_prompts
 from app.services.translation_helper.seed_agent_prompts import seed_agent_prompts
@@ -89,10 +92,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 flush=True,
             )
     await init_qdrant()
+    await asyncio.to_thread(init_factory)
     threading.Thread(target=_load_bhsa_background, daemon=True).start()
     try:
         yield
     finally:
+        await close_clients()
         await close_qdrant()
         await close_db()
 

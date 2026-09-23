@@ -58,7 +58,7 @@ from app.services.internalization_room.turn_dedup import (
     remember_turn,
 )
 from app.services.internalization_room.voice_handles import clip_url
-from app.services.platform.tts import SynthesizedSpeech
+from app.services.platform.tts import SpeechKey, Upload
 from app.services.project.facilitated_scope import facilitated_project_ids
 from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
@@ -70,9 +70,11 @@ router = APIRouter()
 _SEGMENT_ROLES = ("panorama", "scene")
 
 
-async def _clip_or_none(text: str, *, language: str) -> str | None:
+async def _clip_or_none(text: str, *, language: str, uploads: list[Upload]) -> str | None:
     try:
-        entry, _ = await room.synthesize_facilitator_speech(text, language=language)
+        entry, _ = await room.synthesize_facilitator_speech(
+            text, language=language, uploads=uploads
+        )
     except Exception:
         logger.warning("A movement of the opening could not be voiced; sending it whole")
         return None
@@ -83,7 +85,8 @@ async def _voice_the_turn(
     outcome: room.TurnOutcome,
     *,
     language: str,
-) -> tuple[SynthesizedSpeech | None, list[SpokenSegment]]:
+    uploads: list[Upload],
+) -> tuple[SpeechKey | None, list[SpokenSegment]]:
     """The turn's audio: the whole line, and the opening's movements beside it.
 
     All of it at once — three short syntheses in parallel cost the wall clock of the
@@ -94,18 +97,27 @@ async def _voice_the_turn(
     if outcome.fixed_line:
         return None, []
 
-    async def whole_line() -> SynthesizedSpeech:
-        entry, _ = await room.synthesize_facilitator_speech(outcome.speech, language=language)
+    async def whole_line() -> SpeechKey:
+        entry, _ = await room.synthesize_facilitator_speech(
+            outcome.speech, language=language, uploads=uploads
+        )
         return entry
 
     async def movements() -> list[str | None]:
         return list(
             await asyncio.gather(
-                *(_clip_or_none(part, language=language) for part in outcome.movements)
+                *(
+                    _clip_or_none(part, language=language, uploads=uploads)
+                    for part in outcome.movements
+                )
             )
         )
 
-    whole, parts = await asyncio.gather(whole_line(), movements())
+    voicing = asyncio.create_task(movements())
+    try:
+        whole = await whole_line()
+    finally:
+        parts = await voicing
     keys = [key for key in parts if key is not None]
     if len(keys) != len(_SEGMENT_ROLES):
         return whole, []
@@ -113,6 +125,42 @@ async def _voice_the_turn(
         SpokenSegment(role=role, audio_url=clip_url(key))
         for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
     ]
+
+
+async def _write_the_turn(
+    db: AsyncSession,
+    session: IRSession,
+    *,
+    outcome: room.TurnOutcome,
+    turn: room.ComprehensionTurn | None,
+    opening: bool,
+) -> IRSession:
+    with stage("db_write"):
+        if opening:
+            await room.append_opening(
+                db,
+                session,
+                guide_response=outcome.speech,
+                outcome=outcome,
+                scene=_scene_of(session),
+                state=turn.state if turn is not None else None,
+            )
+            return session
+        if turn is not None:
+            session = await room.save_comprehension(db, session, turn.state)
+        return await room.append_exchange(
+            db,
+            session,
+            team_utterance=outcome.transcript,
+            guide_response=outcome.speech,
+            outcome=outcome,
+            scene=_scene_of(session, outcome.transcript),
+        )
+
+
+async def _upload(uploads: list[Upload]) -> None:
+    with stage("upload"):
+        await asyncio.gather(*(upload() for upload in uploads))
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -625,29 +673,20 @@ async def _answer_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    with stage("voice"):
-        voiced, segments = await _voice_the_turn(outcome, language=session.language)
-    with stage("db_write"):
-        if opening:
-            await room.append_opening(
-                db,
-                session,
-                guide_response=outcome.speech,
-                outcome=outcome,
-                scene=_scene_of(session),
-                state=turn.state if turn is not None else None,
+    uploads: list[Upload] = []
+    try:
+        with stage("voice"):
+            voiced, segments = await _voice_the_turn(
+                outcome, language=session.language, uploads=uploads
             )
-        else:
-            if turn is not None:
-                session = await room.save_comprehension(db, session, turn.state)
-            session = await room.append_exchange(
-                db,
-                session,
-                team_utterance=outcome.transcript,
-                guide_response=outcome.speech,
-                outcome=outcome,
-                scene=_scene_of(session, outcome.transcript),
-            )
+    except BaseException:
+        if uploads:
+            await _upload(uploads)
+        raise
+    session, _ = await asyncio.gather(
+        _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening),
+        _upload(uploads),
+    )
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False

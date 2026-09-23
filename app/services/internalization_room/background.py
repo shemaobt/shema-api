@@ -50,19 +50,20 @@ async def settle_coverage(
             with counted_for(session_id):
                 async with AsyncSessionLocal() as db:
                     session = await get_session(db, session_id)
-                    coverage_state = session.coverage_state or {}
-                    classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
-                    updated = await classify_coverage(
-                        coverage_state=coverage_state,
-                        team_utterance=team_utterance,
-                        guide_response=guide_response,
-                        classifier_prompt=classifier_prompt,
-                        pericope_num=pericope_num,
-                        scene_pointer=current_scene_id(
-                            coverage_state, pericope_num, list(session.messages or [])
-                        ),
-                        session_language=LANGUAGE_NAMES[session.language],
-                    )
+                coverage_state = session.coverage_state or {}
+                classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
+                updated = await classify_coverage(
+                    coverage_state=coverage_state,
+                    team_utterance=team_utterance,
+                    guide_response=guide_response,
+                    classifier_prompt=classifier_prompt,
+                    pericope_num=pericope_num,
+                    scene_pointer=current_scene_id(
+                        coverage_state, pericope_num, list(session.messages or [])
+                    ),
+                    session_language=LANGUAGE_NAMES[session.language],
+                )
+                async with AsyncSessionLocal() as db:
                     settled = await apply_coverage(db, session_id, updated)
             settled_frame = CoverageFrame(
                 turn_id=turn_id, status="settled", coverage=coverage_view(settled)

@@ -18,8 +18,10 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.services.internalization_room.voice_handles import to_handle
-from app.services.platform.tts import SynthesizedSpeech
+from app.services.platform import tts
+from app.services.platform.tts import SpeechKey
 
 PREFIX = "/api/internalization-room"
 VOICED_HERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/aaa111/voiced-here.mp3"
@@ -35,7 +37,11 @@ synthesis = importlib.import_module(
 
 
 class _SlowBucket:
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
     async def get(self, key: str) -> bytes | None:
+        self.asked.append(key)
         await asyncio.sleep(BUCKET_MS / 1000)
         return None if key == NEVER_STORED else CLIP
 
@@ -46,7 +52,12 @@ async def _slow_gate(db: AsyncSession, credential: str) -> Any:
 
 
 @pytest.fixture()
-async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
+def bucket() -> _SlowBucket:
+    return _SlowBucket()
+
+
+@pytest.fixture()
+async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _SlowBucket):
     from fastapi import FastAPI
 
     from app.api.internalization_room import _deps, router
@@ -57,7 +68,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(get_settings(), "internalization_room_voice_id", "RoomVoice", raising=False)
     monkeypatch.setattr(_deps, "authenticate_device", _slow_gate)
-    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: _SlowBucket())
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -103,12 +114,10 @@ async def test_a_clip_fetch_says_how_long_the_gate_and_the_bucket_each_took(
 async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhere(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    async def _voiced(text: str, **_: Any) -> SynthesizedSpeech:
-        return SynthesizedSpeech(
-            audio=CLIP, mime_type="audio/mpeg", etag="e", cached=False, key=VOICED_HERE
-        )
+    async def _voiced(text: str, **_: Any) -> SpeechKey:
+        return SpeechKey(key=VOICED_HERE, cached=False)
 
-    monkeypatch.setattr(synthesis, "platform_speech", _voiced)
+    monkeypatch.setattr(synthesis, "synthesize_speech_key", _voiced)
     await synthesis.synthesize_facilitator_speech("Vamos ouvir de novo.", language="pt")
 
     with caplog.at_level(logging.INFO):
@@ -125,12 +134,10 @@ async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhe
 async def test_an_instance_up_for_months_remembers_only_its_latest_clips(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _voiced(text: str, **_: Any) -> SynthesizedSpeech:
-        return SynthesizedSpeech(
-            audio=CLIP, mime_type="audio/mpeg", etag="e", cached=False, key=f"tts/v/{text}.mp3"
-        )
+    async def _voiced(text: str, **_: Any) -> SpeechKey:
+        return SpeechKey(key=f"tts/v/{text}.mp3", cached=False)
 
-    monkeypatch.setattr(synthesis, "platform_speech", _voiced)
+    monkeypatch.setattr(synthesis, "synthesize_speech_key", _voiced)
     monkeypatch.setattr(synthesis, "_VOICED_HERE", synthesis.OrderedDict())
     monkeypatch.setattr(synthesis, "_VOICED_HERE_KEPT", 2)
 
@@ -153,3 +160,100 @@ async def test_a_clip_the_bucket_does_not_hold_still_says_how_long_the_miss_took
     assert len(lines) == 1, "o clipe que o bucket não tinha sumia do cronômetro"
     missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no$", lines[0])
     assert missed is not None and int(missed.group(1)) >= BUCKET_MS
+
+
+class _Elevenlabs:
+    def __init__(self) -> None:
+        self.spoken = 0
+
+    async def post(self, *_: Any, **__: Any) -> SimpleNamespace:
+        self.spoken += 1
+        return SimpleNamespace(status_code=200, content=f"mp3-{self.spoken}".encode() * 100)
+
+
+class _Written:
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    async def get(self, key: str) -> bytes | None:
+        return self.objects.get(key)
+
+    async def exists(self, key: str) -> bool:
+        return key in self.objects
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.objects[key] = data
+
+
+async def _voiced_here(line: str, voice: _Elevenlabs) -> str:
+    speech, _ = await synthesis.synthesize_facilitator_speech(
+        line, language="pt", client=voice, store=_Written(), settings=get_settings()
+    )
+    return speech.key
+
+
+@pytest.fixture()
+def the_room_can_speak(monkeypatch: pytest.MonkeyPatch) -> _Elevenlabs:
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
+    return _Elevenlabs()
+
+
+async def test_a_clip_fetched_right_after_it_was_voiced_here_never_reaches_the_bucket(
+    client: httpx.AsyncClient,
+    bucket: _SlowBucket,
+    the_room_can_speak: _Elevenlabs,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    key = await _voiced_here("Vamos ouvir a parte de novo.", the_room_can_speak)
+
+    with caplog.at_level(logging.INFO):
+        fetched = await _fetch(client, key)
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == b"mp3-1" * 100
+    assert bucket.asked == [], (
+        "o tablet pedia o clipe à mesma instância que acabara de gravá-lo, e ela ia buscá-lo "
+        "no GCS em vez de entregar os bytes que ainda tinha na mão"
+    )
+    (line,) = _voice_get_lines(caplog)
+    assert " gcs=0ms " in line
+
+
+async def test_the_clips_kept_in_memory_are_bounded_by_bytes_the_oldest_leaving_first(
+    client: httpx.AsyncClient,
+    bucket: _SlowBucket,
+    the_room_can_speak: _Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tts, "_FRESH_MAX_BYTES", 1000)
+    oldest = await _voiced_here("Primeira fala.", the_room_can_speak)
+    middle = await _voiced_here("Segunda fala.", the_room_can_speak)
+    newest = await _voiced_here("Terceira fala.", the_room_can_speak)
+
+    for key in (newest, middle, oldest):
+        assert (await _fetch(client, key)).status_code == 200
+
+    assert bucket.asked == [oldest], (
+        "a memória de clipes crescia sem limite numa instância que fica de pé por semanas"
+    )
+
+
+async def test_a_clip_the_tablet_just_played_outlives_one_nobody_asked_for(
+    client: httpx.AsyncClient,
+    bucket: _SlowBucket,
+    the_room_can_speak: _Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tts, "_FRESH_MAX_BYTES", 1000)
+    played = await _voiced_here("Primeira fala.", the_room_can_speak)
+    ignored = await _voiced_here("Segunda fala.", the_room_can_speak)
+    assert (await _fetch(client, played)).status_code == 200
+    await _voiced_here("Terceira fala.", the_room_can_speak)
+
+    await _fetch(client, played)
+    await _fetch(client, ignored)
+
+    assert bucket.asked == [ignored], (
+        "a memória esquecia pela ordem de gravação, e o clipe que o tablet acabara de "
+        "tocar saía antes de um que ninguém pediu"
+    )

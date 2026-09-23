@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Literal, TypedDict
+from weakref import WeakKeyDictionary
 
 import anthropic
 from anthropic.types import (
@@ -99,6 +100,29 @@ def _ladder(configured: str) -> list[str]:
 #: thing. Cleared only by a restart, which is also when a key's entitlements can have changed.
 _SETTLED: dict[str, str] = {}
 
+_CLIENTS: WeakKeyDictionary[
+    asyncio.AbstractEventLoop,
+    dict[tuple[Callable[..., anthropic.AsyncAnthropic], str, str], anthropic.AsyncAnthropic],
+] = WeakKeyDictionary()
+
+
+def _client(settings: Settings) -> anthropic.AsyncAnthropic:
+    build = anthropic.AsyncAnthropic
+    identity = (build, settings.anthropic_api_key, settings.anthropic_workspace_id.strip())
+    kept = _CLIENTS.setdefault(asyncio.get_running_loop(), {})
+    if identity not in kept:
+        kept[identity] = build(
+            api_key=settings.anthropic_api_key,
+            default_headers=_workspace_header(settings),
+            max_retries=0,
+        )
+    return kept[identity]
+
+
+async def close_clients() -> None:
+    for client in _CLIENTS.pop(asyncio.get_running_loop(), {}).values():
+        await client.close()
+
 
 async def call_agent(
     *,
@@ -157,11 +181,7 @@ async def call_agent(
         {"role": turn["role"], "content": turn["text"]} for turn in conversation or ()
     ]
     messages.append({"role": "user", "content": user_content})
-    client = anthropic.AsyncAnthropic(
-        api_key=settings.anthropic_api_key,
-        default_headers=_workspace_header(settings),
-        max_retries=0,
-    )
+    client = _client(settings)
     refused_above = False
     for model in _from_the_settled_rung(rungs):
         started = time.monotonic()

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from http import HTTPStatus
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ValidationError
@@ -58,6 +59,9 @@ class GcsPlatformStore:
         """The object's bytes, or `None` if it does not exist."""
         return await asyncio.to_thread(self._get_sync, key)
 
+    async def exists(self, key: str) -> bool:
+        return await asyncio.to_thread(self._exists_sync, key)
+
     async def put(self, key: str, data: bytes, content_type: str) -> None:
         """Write the object (overwrites)."""
         await asyncio.to_thread(self._put_sync, key, data, content_type)
@@ -79,16 +83,15 @@ class GcsPlatformStore:
         return StoredObject(size=int(blob.size or 0), crc32c=str(blob.crc32c or ""))
 
     def _get_sync(self, key: str) -> bytes | None:
-        # `exists()` + download costs two GCS round trips; catching `NotFound` would cost
-        # one. But `from google.cloud.exceptions import NotFound` imports from a TYPED
-        # package (google-cloud-core), which makes mypy "wake up" the `google.cloud`
-        # namespace — and then `ignore_missing_imports` in pyproject stops masking the five
-        # `from google.cloud import storage` already in the repo, breaking the build in
-        # files unrelated to this one. Two round trips is the price of not stepping on that.
-        blob = _blob(key, self._settings)
-        if not blob.exists():
-            return None
-        return bytes(blob.download_as_bytes())
+        try:
+            return bytes(_blob(key, self._settings).download_as_bytes())
+        except Exception as error:
+            if getattr(error, "code", None) == HTTPStatus.NOT_FOUND:
+                return None
+            raise
+
+    def _exists_sync(self, key: str) -> bool:
+        return bool(_blob(key, self._settings).exists())
 
     def _put_sync(self, key: str, data: bytes, content_type: str) -> None:
         _blob(key, self._settings).upload_from_string(data, content_type=content_type)

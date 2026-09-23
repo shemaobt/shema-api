@@ -20,6 +20,7 @@ read off it raises. The tests reach the same module the same way.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import time
 from dataclasses import dataclass, field
@@ -387,7 +388,7 @@ async def _voiced_after_validation(
         else:
             _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
 
-        if speech and shim.strays_from(speech, language_code):
+        if speech and await asyncio.to_thread(shim.strays_from, speech, language_code):
             issues = [*issues, {"problem": "off_bridge_language"}]
             _draft_rejected(
                 "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
