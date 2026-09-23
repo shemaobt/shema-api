@@ -50,9 +50,10 @@ class MemoryStore:
         self.reads += 1
         return self.objects.get(key)
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
         self.writes += 1
         self.objects[key] = data
+        return data
 
 
 async def test_synthesizes_and_returns_the_mp3() -> None:
@@ -254,7 +255,7 @@ async def test_a_cache_write_failure_does_not_throw_away_the_audio_we_paid_for()
     # The window between merge and the two manual `gcloud` commands: with no bucket (or a
     # wrong IAM binding) the upload raises. We paid for the synthesis — a 500 burns money.
     class BrokenStore(MemoryStore):
-        async def put(self, key: str, data: bytes, content_type: str) -> None:
+        async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
             raise RuntimeError("404 bucket does not exist")
 
     result = await synthesize_speech(

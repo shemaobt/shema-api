@@ -54,13 +54,14 @@ class MemoryStore:
         self.asked.append("exists")
         return key in self.objects
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
         self.asked.append("put")
         self.objects[key] = data
+        return data
 
 
 class RefusingStore(MemoryStore):
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
         self.asked.append("put")
         raise OSError("the bucket refused the write")
 

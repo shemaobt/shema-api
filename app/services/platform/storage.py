@@ -66,6 +66,9 @@ class GcsPlatformStore:
         """Write the object (overwrites)."""
         await asyncio.to_thread(self._put_sync, key, data, content_type)
 
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
+        return await asyncio.to_thread(self._put_once_sync, key, data, content_type)
+
     async def stat(self, key: str) -> StoredObject | None:
         """What the bucket holds under `key`, without downloading it.
 
@@ -95,3 +98,13 @@ class GcsPlatformStore:
 
     def _put_sync(self, key: str, data: bytes, content_type: str) -> None:
         _blob(key, self._settings).upload_from_string(data, content_type=content_type)
+
+    def _put_once_sync(self, key: str, data: bytes, content_type: str) -> bytes:
+        blob = _blob(key, self._settings)
+        try:
+            blob.upload_from_string(data, content_type=content_type, if_generation_match=0)
+        except Exception as error:
+            if getattr(error, "code", None) != HTTPStatus.PRECONDITION_FAILED:
+                raise
+            return bytes(blob.download_as_bytes())
+        return data

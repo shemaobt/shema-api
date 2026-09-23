@@ -65,11 +65,12 @@ class _BucketThatWaitsForTheWrite:
     async def exists(self, key: str) -> bool:
         return key in self.objects
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
         self.uploading.set()
         await asyncio.wait_for(self.written.wait(), timeout=1)
         await asyncio.sleep(0.05)
         self.objects[key] = data
+        return data
 
 
 async def _hearing(audio: bytes, **_: Any) -> HeardSpeech:
@@ -207,8 +208,9 @@ class _Bucket:
     async def exists(self, key: str) -> bool:
         return key in self.objects
 
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes:
         self.objects[key] = data
+        return data
 
 
 async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_line_fails(

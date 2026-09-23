@@ -74,6 +74,8 @@ class SpeechStore(Protocol):
 
     async def put(self, key: str, data: bytes, content_type: str) -> None: ...
 
+    async def put_once(self, key: str, data: bytes, content_type: str) -> bytes: ...
+
 
 def forget_what_is_kept() -> None:
     _KEPT.clear()
@@ -158,8 +160,7 @@ async def synthesize_speech(
     if cached is not None:
         return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
 
-    audio = await voiced()
-    await _cache_quietly(speech_store, key, audio)
+    audio = await _cache_quietly(speech_store, key, await voiced())
     return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
 
 
@@ -191,12 +192,11 @@ async def synthesize_speech_key(
         return SpeechKey(key, cached=True)
 
     audio = await voiced()
-    _remember_fresh(key, audio)
-    upload = partial(_cache_quietly, speech_store, key, audio)
     if uploads is None:
-        await upload()
+        _remember_fresh(key, await _cache_quietly(speech_store, key, audio))
     else:
-        uploads.append(upload)
+        _remember_fresh(key, audio)
+        uploads.append(partial(_upload_quietly, speech_store, key, audio))
     return SpeechKey(key, cached=False)
 
 
@@ -285,7 +285,7 @@ async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
     return await store.get(key)
 
 
-async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
+async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> bytes:
     """Store the clip, but never fail the request over it.
 
     We already paid ElevenLabs for these bytes. A missing bucket or a wrong IAM binding is
@@ -293,11 +293,16 @@ async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
     caller nothing.
     """
     try:
-        await store.put(key, audio, MIME_TYPE)
+        kept = await store.put_once(key, audio, MIME_TYPE)
     except Exception:
         logger.exception("failed to cache TTS clip key=%s", key)
-        return
+        return audio
     _mark_kept(key)
+    return kept
+
+
+async def _upload_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
+    await _cache_quietly(store, key, audio)
 
 
 async def _synthesize(
