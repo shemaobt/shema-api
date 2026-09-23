@@ -39,7 +39,8 @@ _SPECULATIVE_READS = asyncio.Semaphore(2)
 @dataclass(frozen=True)
 class ByteRange:
     start: int
-    end: int  # inclusive
+    #: Inclusive, the way `Content-Range` counts it.
+    end: int
 
 
 class RangeNotSatisfiable(Exception):
@@ -149,6 +150,9 @@ async def clip(
     as is rather than teach that cache about requests that were never actually let in.
     Cancelling a read already on its GCS thread only stops the route from waiting on it;
     the download still runs to completion in the background, its bytes discarded.
+
+    A 416 is the one answer decided by the `Range` header alone, so it is sent `no-store`:
+    stored as immutable under the handle, it kept a tablet refusing a clip it can play.
     """
     cfg = get_settings()
     key = from_handle(handle, settings=cfg)
@@ -190,10 +194,8 @@ async def clip(
         except RangeNotSatisfiable:
             unsatisfiable = True
 
-    if unsatisfiable:
+    if unsatisfiable or audio is None:
         served = "none"
-    elif audio is None:
-        served = "none" if x_range is not None else "full"
     elif byte_range is None:
         served = "full"
     else:
@@ -213,7 +215,7 @@ async def clip(
         return Response(
             status_code=416,
             headers={
-                "Cache-Control": IMMUTABLE,
+                "Cache-Control": "no-store",
                 "ETag": etag,
                 "Accept-Ranges": "bytes",
                 "Content-Range": f"bytes */{len(audio)}",

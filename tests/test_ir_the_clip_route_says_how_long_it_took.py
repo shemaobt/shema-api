@@ -176,7 +176,7 @@ async def test_a_clip_the_bucket_does_not_hold_still_says_how_long_the_miss_took
     assert fetched.status_code == 404
     lines = _voice_get_lines(caplog)
     assert len(lines) == 1, "o clipe que o bucket não tinha sumia do cronômetro"
-    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no range=full$", lines[0])
+    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no range=none$", lines[0])
     assert missed is not None and int(missed.group(1)) >= BUCKET_MS
 
 
@@ -564,6 +564,10 @@ async def test_a_range_past_the_end_of_the_clip_is_refused_not_clamped(
     assert fetched.status_code == 416, fetched.text
     assert fetched.headers["content-range"] == f"bytes */{len(CLIP)}"
     assert fetched.content == b""
+    assert fetched.headers["cache-control"] == "no-store", (
+        "a 416 decided by the Range header was stored under the handle alone as immutable, "
+        "so a tablet that once asked past the end kept refusing a clip it can play"
+    )
 
 
 async def test_multiple_ranges_are_ignored_not_refused(
