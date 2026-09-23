@@ -133,7 +133,7 @@ async def transcribe_audio_detailed(
         raise ValidationError("Audio payload is empty")
     cfg = settings or get_settings()
     if not cfg.elevenlabs_api_key:
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     resolved_mime = _guess_mime_type(filename, mime_type)
     if resolved_mime == "audio/mpeg" and not filename and not mime_type:

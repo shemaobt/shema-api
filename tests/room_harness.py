@@ -14,16 +14,18 @@ from __future__ import annotations
 
 import importlib
 import json
-from collections.abc import AsyncIterator, Iterable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.core.database import engine as app_engine
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
@@ -194,6 +196,29 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", voice)
     return room
+
+
+@contextmanager
+def counting_commits(test_engine: AsyncEngine) -> Iterator[list[object]]:
+    """Every COMMIT that reaches the database while the block runs, on both engines.
+
+    Both, because a turn with a turn_id runs on `AsyncSessionLocal` (the app's engine)
+    while the fixtures write through the test's own; counting only one of them would let
+    a second commit hide on the other.
+    """
+    counted: list[object] = []
+
+    def _count(connection: object) -> None:
+        counted.append(connection)
+
+    engines = (test_engine.sync_engine, app_engine.sync_engine)
+    for each in engines:
+        event.listen(each, "commit", _count)
+    try:
+        yield counted
+    finally:
+        for each in engines:
+            event.remove(each, "commit", _count)
 
 
 @asynccontextmanager

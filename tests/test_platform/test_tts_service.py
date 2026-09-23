@@ -281,7 +281,7 @@ async def test_a_cache_write_failure_does_not_throw_away_the_audio_we_paid_for()
 
 
 async def test_without_an_api_key_it_is_a_configuration_error() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await synthesize_speech(
             QUESTION,
             language="pt-BR",

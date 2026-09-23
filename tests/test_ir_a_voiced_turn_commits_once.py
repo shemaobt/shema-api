@@ -6,10 +6,9 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import event, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.database import engine as app_engine
 from app.core.exceptions import UpstreamServiceError
 from app.core.room_enums import CoverageStatus, HaltKind
 from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTurn
@@ -24,7 +23,7 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
 from tests.release_harness import KEY, PREFIX
-from tests.room_harness import room_client
+from tests.room_harness import counting_commits, room_client
 
 P = "P03"
 FIRST_QUESTION = "Quem aparece nesta parte?"
@@ -119,19 +118,8 @@ async def waiting_room(db_session: AsyncSession) -> IRSession:
 
 @pytest.fixture()
 def commits(test_engine) -> Iterator[list[object]]:
-    counted: list[object] = []
-
-    def _count(connection: object) -> None:
-        counted.append(connection)
-
-    engines = (test_engine.sync_engine, app_engine.sync_engine)
-    for each in engines:
-        event.listen(each, "commit", _count)
-    try:
+    with counting_commits(test_engine) as counted:
         yield counted
-    finally:
-        for each in engines:
-            event.remove(each, "commit", _count)
 
 
 async def _the_team_answers(
