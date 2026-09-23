@@ -6,7 +6,7 @@ import math
 import httpx
 
 from app.core.config import Settings, get_settings
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UpstreamServiceError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,18 @@ def _guess_mime_type(filename: str | None, fallback: str | None) -> str:
     if fallback:
         return fallback
     return "audio/mpeg"
+
+
+def _upstream_or_validation_error(status_code: int) -> Exception:
+    """Their outage is not our client's bad request.
+
+    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
+    limit is: both mean ElevenLabs refused the request, not that the room said nothing.
+    """
+    message = f"Transcription request failed with status {status_code}"
+    if status_code in (401, 403, 429) or status_code >= 500:
+        return UpstreamServiceError(message)
+    return ValidationError(message)
 
 
 def _filename_for_upload(filename: str | None, mime_type: str) -> str:
@@ -137,19 +149,25 @@ async def transcribe_audio_detailed(
 
     upload_name = _filename_for_upload(filename, resolved_mime)
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
-        headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
-        files={"file": (upload_name, audio_bytes, resolved_mime)},
-        data={"model_id": cfg.elevenlabs_stt_model},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
+            headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
+            files={"file": (upload_name, audio_bytes, resolved_mime)},
+            data={"model_id": cfg.elevenlabs_stt_model},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs STT unreachable: %s", error)
+        raise UpstreamServiceError(
+            f"Transcription request could not reach ElevenLabs: {error}"
+        ) from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs STT failed: status=%s body=%s",
             response.status_code,
             response.text[:500],
         )
-        raise ValidationError(f"Transcription request failed with status {response.status_code}")
+        raise _upstream_or_validation_error(response.status_code)
 
     payload = response.json()
     text = (payload.get("text") or "").strip()
