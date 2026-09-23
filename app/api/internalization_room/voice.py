@@ -27,8 +27,11 @@ IMMUTABLE = "private, max-age=31536000, immutable"
 #: uploads share — a burst of requests carrying a bad or missing credential must not starve
 #: it of threads over a read nobody will ever receive. Past this many in flight, a request
 #: falls back to reading only once the gate has passed, exactly as it did before this route
-#: learned to race the two.
-_SPECULATIVE_READS = asyncio.Semaphore(4)
+#: learned to race the two. Two, because that executor is ``min(32, cpu_count + 4)`` threads,
+#: five on a one-vCPU instance, and handles are unsigned: anyone who was ever handed one can
+#: mint another under the room's voice, so a junk credential can still buy a read that the
+#: gate then refuses. At most two of those at once leaves the uploads their threads.
+_SPECULATIVE_READS = asyncio.Semaphore(2)
 
 
 async def _arrived() -> float:
@@ -112,7 +115,9 @@ async def clip(
 
     gate_passed = False
     try:
-        await require_room_caller(db, x_device_credential, x_room_key)
+        await require_room_caller(
+            db, x_device_credential=x_device_credential, x_room_key=x_room_key
+        )
         gate_passed = True
     finally:
         if not gate_passed and read_task is not None:
