@@ -9,10 +9,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.core.stage_clock import StageClock, adopt, current_clock
 from app.db.models.internalization_room import IRTurn
 from app.models.internalization_room import TurnResponse
 
-_in_flight: dict[tuple[str, str], asyncio.Task[TurnResponse]] = {}
+_in_flight: dict[tuple[str, str], tuple[asyncio.Task[TurnResponse], StageClock | None]] = {}
 
 
 async def answer_once(
@@ -31,12 +32,14 @@ async def answer_once(
     session that is no longer there.
     """
     key = (session_id, turn_id)
-    running = _in_flight.get(key)
-    if running is None:
-        running = asyncio.create_task(_on_a_session_of_its_own(answer))
-        _in_flight[key] = running
-        running.add_done_callback(lambda _: _in_flight.pop(key, None))
-    return await asyncio.shield(running)
+    if key not in _in_flight:
+        task = asyncio.create_task(_on_a_session_of_its_own(answer))
+        _in_flight[key] = (task, current_clock())
+        task.add_done_callback(lambda _: _in_flight.pop(key, None))
+    running, clock = _in_flight[key]
+    answered = await asyncio.shield(running)
+    adopt(clock)
+    return answered
 
 
 async def _on_a_session_of_its_own(

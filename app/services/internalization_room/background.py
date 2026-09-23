@@ -4,6 +4,7 @@ import logging
 
 from app.core.database import AsyncSessionLocal
 from app.core.exceptions import TranscriptionDefect
+from app.core.stage_clock import count, stopwatch
 from app.db.models.internalization_room import IRPromptKey
 from app.models.internalization_room import CoverageFrame
 from app.services.internalization_room.classify_coverage import classify_coverage
@@ -44,31 +45,33 @@ async def settle_coverage(
     the whole passage. It is the app's bookkeeping and it stops here: the Guide is never
     handed it as a scope on what it may say.
     """
-    try:
-        with counted_for(session_id):
-            async with AsyncSessionLocal() as db:
-                session = await get_session(db, session_id)
-                coverage_state = session.coverage_state or {}
-                classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
-                updated = await classify_coverage(
-                    coverage_state=coverage_state,
-                    team_utterance=team_utterance,
-                    guide_response=guide_response,
-                    classifier_prompt=classifier_prompt,
-                    pericope_num=pericope_num,
-                    scene_pointer=current_scene_id(
-                        coverage_state, pericope_num, list(session.messages or [])
-                    ),
-                    session_language=LANGUAGE_NAMES[session.language],
-                )
-                settled = await apply_coverage(db, session_id, updated)
-        publish(
-            session_id,
-            CoverageFrame(turn_id=turn_id, status="settled", coverage=coverage_view(settled)),
-        )
-    except Exception:
-        logger.exception("Coverage settle failed for session %s", session_id)
-        publish(session_id, CoverageFrame(turn_id=turn_id, status="failed", coverage=None))
+    with stopwatch("[coverage-timing]", session_id):
+        try:
+            with counted_for(session_id):
+                async with AsyncSessionLocal() as db:
+                    session = await get_session(db, session_id)
+                    coverage_state = session.coverage_state or {}
+                    classifier_prompt = get_prompt_text(IRPromptKey.COVERAGE_CLASSIFIER)
+                    updated = await classify_coverage(
+                        coverage_state=coverage_state,
+                        team_utterance=team_utterance,
+                        guide_response=guide_response,
+                        classifier_prompt=classifier_prompt,
+                        pericope_num=pericope_num,
+                        scene_pointer=current_scene_id(
+                            coverage_state, pericope_num, list(session.messages or [])
+                        ),
+                        session_language=LANGUAGE_NAMES[session.language],
+                    )
+                    settled = await apply_coverage(db, session_id, updated)
+            settled_frame = CoverageFrame(
+                turn_id=turn_id, status="settled", coverage=coverage_view(settled)
+            )
+            count("delivered", publish(session_id, settled_frame))
+        except Exception:
+            logger.exception("Coverage settle failed for session %s", session_id)
+            failed_frame = CoverageFrame(turn_id=turn_id, status="failed", coverage=None)
+            count("delivered", publish(session_id, failed_frame))
 
 
 async def transcribe_question(*, question_id: str, audio: bytes) -> None:

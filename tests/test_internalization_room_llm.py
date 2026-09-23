@@ -41,6 +41,7 @@ def _reply(
     stop_reason: str = "end_turn",
     output: int = 0,
     cache_read: int = 0,
+    cache_creation: SimpleNamespace | None = None,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         content=[SimpleNamespace(type="text", text=text)],
@@ -50,7 +51,12 @@ def _reply(
             input_tokens=10,
             output_tokens=output,
             cache_read_input_tokens=cache_read,
-            cache_creation_input_tokens=0,
+            cache_creation_input_tokens=(
+                cache_creation.ephemeral_5m_input_tokens + cache_creation.ephemeral_1h_input_tokens
+                if cache_creation
+                else 0
+            ),
+            cache_creation=cache_creation,
         ),
     )
 
@@ -285,3 +291,34 @@ async def test_a_caller_that_names_no_conversation_still_sends_one_user_message(
     await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
 
     assert holder["client"].messages.kwargs["messages"] == [{"role": "user", "content": "u"}]
+
+
+async def test_the_usage_line_says_which_cache_lifetime_each_written_token_bought(
+    fake_client, caplog
+):
+    fake_client(
+        _reply(
+            "ok",
+            cache_creation=SimpleNamespace(
+                ephemeral_5m_input_tokens=3_000, ephemeral_1h_input_tokens=90_000
+            ),
+        )
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert "cache_write=93000 cache_write_5m=3000 cache_write_1h=90000 " in caplog.text, (
+        "a escrita no cache era um número só, e a de 1 hora custa 2x o input contra 1,25x"
+    )
+
+
+async def test_a_call_that_wrote_nothing_to_the_cache_says_zero_for_both_lifetimes(
+    fake_client, caplog
+):
+    fake_client(_reply("ok"))
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    assert "cache_write=0 cache_write_5m=0 cache_write_1h=0 " in caplog.text

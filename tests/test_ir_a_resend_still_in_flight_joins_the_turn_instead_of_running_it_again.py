@@ -14,6 +14,7 @@ session would serialise them and hide the overlap entirely.
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 from typing import Any
 
@@ -144,3 +145,43 @@ async def test_the_tablet_that_gave_up_does_not_take_the_turn_away_from_the_one_
     assert [message["text"] for message in reread.messages] == [OPENING], (
         "o turno em voo escrevia pela sessão do request que desistiu, já fechada"
     )
+
+
+async def test_a_resend_that_joins_the_turn_answers_with_the_turns_own_stages_not_only_its_wait(
+    db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    voicing_ms = 60
+
+    async def _slow_voice(text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
+        await asyncio.sleep(voicing_ms / 1000)
+        entry = SynthesizedSpeech(
+            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key=VOICED_AS
+        )
+        return entry, False
+
+    session = await create_session(db_session, pericope=P, language="pt")
+    guide = _GuideStillThinking()
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", guide
+    )
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _slow_voice)
+
+    async with (
+        rival_factory() as one,
+        rival_factory() as two,
+        room_client(one, monkeypatch) as first_tablet,
+        room_client(two, monkeypatch) as resending_tablet,
+    ):
+        first = asyncio.create_task(_ask_for_the_opening(first_tablet, session.id))
+        await asyncio.wait_for(guide.thinking.wait(), timeout=5)
+        second = asyncio.create_task(_ask_for_the_opening(resending_tablet, session.id))
+        await asyncio.wait({second}, timeout=0.2)
+        guide.answer.set()
+        _, resent = await asyncio.gather(first, second)
+
+    assert resent.status_code == 200, resent.text[:300]
+    timing = dict(re.findall(r"(\w+);dur=(\d+)", resent.headers["Server-Timing"]))
+    assert int(timing.get("voice", -1)) >= voicing_ms, (
+        "o reenvio que se juntava ao turno em voo só dizia quanto esperou, nunca em quê"
+    )
+    assert "db_write" in timing

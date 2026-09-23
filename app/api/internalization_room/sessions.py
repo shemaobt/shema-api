@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import uuid
 from functools import partial
 
@@ -16,6 +17,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import UpstreamServiceError, ValidationError
 from app.core.room_enums import HaltKind
+from app.core.stage_clock import count, stage, stopwatch
 from app.db.models.device import Device
 from app.db.models.internalization_room import IRPromptKey, IRSession, IRSessionStatus
 from app.models.internalization_room import (
@@ -114,6 +116,16 @@ async def _voice_the_turn(
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+_CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
+_CLIENT_TIMING_LONGEST = 512
+
+
+def _log_client_timing(session_id: str, client_timing: str) -> None:
+    if len(client_timing) <= _CLIENT_TIMING_LONGEST and _CLIENT_TIMING.fullmatch(client_timing):
+        logger.info("[client-timing] session=%s %s", session_id, client_timing)
+    else:
+        logger.warning("[client-timing] rejected session=%s", session_id)
 
 
 def _scene_of(session: IRSession, team_utterance: str = "") -> str | None:
@@ -487,6 +499,7 @@ async def take_turn(
     response: Response,
     file: UploadFile | None = File(default=None),
     turn_id: str | None = Form(default=None, max_length=64),
+    client_timing: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -507,12 +520,18 @@ async def take_turn(
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
     """
+    if client_timing is not None:
+        _log_client_timing(session_id, client_timing)
     answer = partial(
         _answer_the_turn, session_id=session_id, background=background, file=file, turn_id=turn_id
     )
-    if turn_id:
-        return await answer_once(session_id, turn_id, answer)
-    return await answer(db)
+    with stopwatch("[turn-timing]", session_id) as clock:
+        if turn_id:
+            reply = await answer_once(session_id, turn_id, answer)
+        else:
+            reply = await answer(db)
+    response.headers["Server-Timing"] = clock.server_timing()
+    return reply
 
 
 async def _answer_the_turn(
@@ -525,10 +544,12 @@ async def _answer_the_turn(
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
-    session = await room.get_session(db, session_id)
+    with stage("db_read"):
+        session = await room.get_session(db, session_id)
 
     if turn_id:
-        replay = await answered_turn(db, session.id, turn_id)
+        with stage("db_read"):
+            replay = await answered_turn(db, session.id, turn_id)
         if replay is not None:
             return TurnResponse(**replay)
 
@@ -536,14 +557,16 @@ async def _answer_the_turn(
     opening = file is None and not (session.messages or [])
     if file is not None:
         audio_bytes = await file.read()
+        count("upload_bytes", len(audio_bytes))
         if len(audio_bytes) > MAX_AUDIO_BYTES:
             raise ValidationError("Audio payload exceeds 25 MB limit")
-        speech_heard = await heard_speech(
-            audio_bytes,
-            filename=file.filename,
-            mime_type=file.content_type,
-            language=session.language,
-        )
+        with stage("stt"):
+            speech_heard = await heard_speech(
+                audio_bytes,
+                filename=file.filename,
+                mime_type=file.content_type,
+                language=session.language,
+            )
     transcript = speech_heard.text
 
     if file is None and not opening:
@@ -602,27 +625,29 @@ async def _answer_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    voiced, segments = await _voice_the_turn(outcome, language=session.language)
-    if opening:
-        await room.append_opening(
-            db,
-            session,
-            guide_response=outcome.speech,
-            outcome=outcome,
-            scene=_scene_of(session),
-            state=turn.state if turn is not None else None,
-        )
-    else:
-        if turn is not None:
-            session = await room.save_comprehension(db, session, turn.state)
-        session = await room.append_exchange(
-            db,
-            session,
-            team_utterance=outcome.transcript,
-            guide_response=outcome.speech,
-            outcome=outcome,
-            scene=_scene_of(session, outcome.transcript),
-        )
+    with stage("voice"):
+        voiced, segments = await _voice_the_turn(outcome, language=session.language)
+    with stage("db_write"):
+        if opening:
+            await room.append_opening(
+                db,
+                session,
+                guide_response=outcome.speech,
+                outcome=outcome,
+                scene=_scene_of(session),
+                state=turn.state if turn is not None else None,
+            )
+        else:
+            if turn is not None:
+                session = await room.save_comprehension(db, session, turn.state)
+            session = await room.append_exchange(
+                db,
+                session,
+                team_utterance=outcome.transcript,
+                guide_response=outcome.speech,
+                outcome=outcome,
+                scene=_scene_of(session, outcome.transcript),
+            )
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -650,7 +675,8 @@ async def _answer_the_turn(
         classification_pending=pending,
     )
     if turn_id:
-        await remember_turn(
-            db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
-        )
+        with stage("db_write"):
+            await remember_turn(
+                db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
+            )
     return reply
