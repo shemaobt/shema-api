@@ -735,6 +735,7 @@ async def _answer_the_turn(
         await db.commit()
         return reply
 
+    await db.commit()
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     try:

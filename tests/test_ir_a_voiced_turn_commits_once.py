@@ -402,3 +402,41 @@ async def test_a_turn_whose_row_moved_while_the_guide_thought_is_refused_not_wri
     assert [m["text"] for m in after.messages] == [FIRST_QUESTION, "Rute ficou", "E depois?"], (
         "com a transação solta antes do Guia, o turno escrevia por cima da troca que chegou antes"
     )
+
+
+async def test_an_opening_the_room_voices_live_is_composed_with_the_database_let_go(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert held == {"guide": False, "validator": False, "voice": False}, (
+        "a abertura ao vivo compunha e falava com a leitura da sessão ainda aberta"
+    )
+
+
+async def test_a_line_said_again_is_voiced_with_the_database_let_go(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    again = await client.post(
+        f"{PREFIX}/sessions/{waiting_room.id}/turns", headers={"X-Room-Key": KEY}
+    )
+
+    assert again.status_code == 200, again.text[:300]
+    assert held == {"voice": False}, (
+        "o diga-de-novo sintetizava a última fala com a leitura da sessão ainda aberta"
+    )
