@@ -34,7 +34,7 @@ from app.services.internalization_room import llm
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.tts import SynthesizedSpeech
-from tests.clip_flight_harness import voiced_through
+from tests.clip_flight_harness import WriteOnceBucket, voiced_through
 
 MODEL = "claude-fable-5-1"
 
@@ -385,22 +385,10 @@ async def test_a_broken_microphone_is_answered_the_same_way_as_a_broken_model(
     )
 
 
-class _EmptyBucket:
-    """A bucket that never has the clip, so a request that reaches it always calls out."""
-
-    async def get(self, key: str) -> bytes | None:
-        return None
-
-    async def exists(self, key: str) -> bool:
-        return False
-
-    async def put(self, key: str, data: bytes, content_type: str) -> None:
-        return None
-
-
 async def test_a_broken_voice_reaches_the_tablet_as_the_same_502_on_its_clip(
     client: httpx.AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     spoken: list[str],
 ) -> None:
     """ElevenLabs speaks the turn as well as it hears one: a dropped connection on the way
@@ -420,22 +408,25 @@ async def test_a_broken_voice_reaches_the_tablet_as_the_same_502_on_its_clip(
 
     monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
     monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", facilitator_speech_to_come)
-    monkeypatch.setattr(tts_module, "_default_store", lambda _cfg: _EmptyBucket())
-    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _cfg: _EmptyBucket())
-    monkeypatch.setattr(
-        tts_module,
-        "_make_client",
-        lambda: SimpleNamespace(post=AsyncMock(side_effect=httpx.ConnectError("boom"))),
-    )
+    bucket = WriteOnceBucket()
+    monkeypatch.setattr(tts_module, "_default_store", lambda _cfg: bucket)
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _cfg: bucket)
+    post = AsyncMock(side_effect=httpx.ConnectError("boom"))
+    monkeypatch.setattr(tts_module, "_make_client", lambda: SimpleNamespace(post=post))
 
-    answered = await _the_team_answers(client, session_id)
-    heard = await client.get(answered.json()["audio_url"], headers={"X-Room-Key": KEY})
+    with caplog.at_level(logging.WARNING):
+        answered = await _the_team_answers(client, session_id)
+        heard = await client.get(answered.json()["audio_url"], headers={"X-Room-Key": KEY})
 
     assert answered.status_code == 200, answered.text[:300]
     assert heard.status_code == 502, (
         f"uma queda no ElevenLabs ao falar virava 500, não 502: {heard.text[:300]}"
     )
     assert heard.json()["code"] == "UPSTREAM_ERROR"
+    assert post.await_count == 2, "a queda tem de vir da ElevenLabs: o voo do turno e a re-síntese"
+    assert "a clip could not be voiced: UpstreamServiceError" in caplog.text, (
+        "a conexão que caía chegava crua ao voo, não como a queda que é"
+    )
 
 
 async def test_a_failed_turn_logs_its_cause_and_never_what_the_team_said(
