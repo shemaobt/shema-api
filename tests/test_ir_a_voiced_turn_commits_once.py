@@ -17,11 +17,15 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import (
     append_exchange,
     apply_coverage,
+    attend,
     create_session,
     get_session,
     mark_needs_person,
+    save_comprehension,
+    unattend,
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
+from tests.baker import fully_supported_comprehension
 from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 
@@ -473,4 +477,145 @@ async def test_an_opening_the_tablet_names_is_composed_with_every_session_let_go
     assert held == {"guide": False, "validator": False, "voice": False}, (
         "a abertura com turn_id corria numa sessão própria que ninguém olhava, com a leitura"
         " ainda aberta nela"
+    )
+
+
+async def test_a_halt_the_tablet_raises_while_the_guide_answers_a_halted_room_stays_standing(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await mark_needs_person(db_session, waiting_room, kind=HaltKind.WARNING)
+
+    async def the_tablet_asks_for_a_person() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, waiting_room.id)
+            await mark_needs_person(rival, halted, kind=HaltKind.BLOCKING)
+
+    models.while_the_guide_thinks = the_tablet_asks_for_a_person
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert after.status is IRSessionStatus.NEEDS_PERSON, (
+        "o turno que começou parado soltava também o pedido que o tablet fez durante o Guia"
+    )
+    assert after.halt_kind == HaltKind.BLOCKING.value
+
+
+async def test_a_passage_the_settle_closes_while_the_guide_answers_a_halted_room_stays_closed(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await save_comprehension(db_session, waiting_room, fully_supported_comprehension(P))
+    await mark_needs_person(db_session, waiting_room, kind=HaltKind.BLOCKING)
+
+    async def a_visit_and_then_the_last_settle_close_the_passage() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, waiting_room.id)
+            await attend(rival, halted, by="facilitadora")
+            await apply_coverage(
+                rival,
+                waiting_room.id,
+                dict.fromkeys(initial_state(P), CoverageStatus.ENGAGED.value),
+            )
+
+    models.while_the_guide_thinks = a_visit_and_then_the_last_settle_close_the_passage
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert after.status is IRSessionStatus.DONE, (
+        "o turno que começou parado reabria como em curso a passagem que o settle fechou"
+        " durante o Guia, com o ended_at ainda carimbado"
+    )
+
+
+async def test_undoing_a_visit_to_a_halt_raised_while_the_guide_answered_puts_the_halt_back(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def the_tablet_asks_and_a_facilitator_marks_the_visit() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, waiting_room.id)
+            await mark_needs_person(rival, halted, kind=HaltKind.BLOCKING)
+            await attend(rival, halted, by="facilitadora")
+
+    models.while_the_guide_thinks = the_tablet_asks_and_a_facilitator_marks_the_visit
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+    assert undone.status is IRSessionStatus.NEEDS_PERSON, (
+        "o turno apagava o lifted_halt de uma parada que nem existia quando começou, e"
+        " desfazer a visita não trazia o pedido de volta"
+    )
+    assert undone.halt_kind == HaltKind.BLOCKING.value
+
+
+async def test_undoing_a_visit_to_the_halt_the_turn_began_in_does_not_stop_the_team_again(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    await mark_needs_person(db_session, waiting_room, kind=HaltKind.BLOCKING)
+
+    async def a_facilitator_marks_the_visit() -> None:
+        async with rival_factory() as rival:
+            await attend(rival, await get_session(rival, waiting_room.id), by="facilitadora")
+
+    models.while_the_guide_thinks = a_facilitator_marks_the_visit
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    async with rival_factory() as fresh:
+        undone = await unattend(fresh, await get_session(fresh, waiting_room.id))
+    assert undone.status is IRSessionStatus.IN_PROGRESS, (
+        "o turno teria soltado essa parada com ou sem a visita, e desfazer a visita parava"
+        " a conversa que a equipe já tinha retomado"
+    )
+
+
+async def test_undoing_a_visit_to_a_halt_raised_while_the_opening_was_composed_puts_it_back(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    async def the_tablet_asks_and_a_facilitator_marks_the_visit() -> None:
+        async with rival_factory() as rival:
+            halted = await get_session(rival, session.id)
+            await mark_needs_person(rival, halted, kind=HaltKind.BLOCKING)
+            await attend(rival, halted, by="facilitadora")
+
+    models.while_the_guide_thinks = the_tablet_asks_and_a_facilitator_marks_the_visit
+
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert models.while_the_guide_thinks is None, "o Guia falso não compôs a abertura"
+    async with rival_factory() as fresh:
+        undone = await unattend(fresh, await get_session(fresh, session.id))
+    assert undone.messages, "a abertura não foi gravada"
+    assert undone.status is IRSessionStatus.NEEDS_PERSON, (
+        "a abertura relia a visita junto com as mensagens, tomava-a por anterior ao Guia"
+        " e apagava o que desfazê-la traria de volta"
     )

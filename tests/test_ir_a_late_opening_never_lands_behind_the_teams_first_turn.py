@@ -22,10 +22,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
+from app.core.room_enums import CoverageStatus
 from app.services.internalization_room.comprehension.state import ComprehensionState
+from app.services.internalization_room.coverage import initial_state
 from app.services.internalization_room.sessions import (
     append_exchange,
     append_opening,
+    apply_coverage,
     create_session,
     get_session,
     save_comprehension,
@@ -173,3 +176,34 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
     async with rival_factory() as fresh_db:
         reread = await get_session(fresh_db, session.id)
     assert [message["text"] for message in reread.messages] == [TEAM_ANSWER, TEAM_TURN_LINE]
+
+
+class _TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(_TeamSpeaksWhileTheGuideThinks):
+    async def __call__(self, *, system_prompt: str, **_: Any) -> str:
+        line = await super().__call__(system_prompt=system_prompt)
+        if "corrected_response" not in system_prompt:
+            lit = dict(initial_state(P))
+            lit[next(iter(lit))] = CoverageStatus.ENGAGED.value
+            async with self.rival_factory() as rival_db:
+                await apply_coverage(rival_db, self.session_id, lit)
+        return line
+
+
+async def test_an_opening_dropped_behind_the_teams_turn_answers_with_the_beads_that_turn_lit(
+    client, db_session: AsyncSession, rival_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = await create_session(db_session, pericope=P, language="pt")
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _RecordingVoice())
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"],
+        "call_agent",
+        _TeamSpeaksAndItsSettleLandsWhileTheGuideThinks(rival_factory, session.id),
+    )
+
+    late = await _ask_for_the_opening(client, session.id)
+
+    assert late.status_code == 200, late.text[:300]
+    assert late.json()["coverage"]["engaged"] == 1, (
+        "a abertura descartada respondia com as contas lidas antes do Guia, e a conta que o"
+        " turno da equipe acendeu apagava na tela"
+    )
