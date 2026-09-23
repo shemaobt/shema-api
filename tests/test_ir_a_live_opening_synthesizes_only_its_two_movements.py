@@ -9,6 +9,7 @@ waited for whichever of the three came back last.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
 
@@ -64,6 +65,25 @@ class _Elevenlabs:
 @pytest.fixture()
 def bucket() -> _Bucket:
     return _Bucket()
+
+
+@pytest.fixture(autouse=True)
+async def _no_whole_line_outlives_its_test() -> AsyncIterator[None]:
+    """The pending set is the module's, not the test's.
+
+    A test that never releases its held whole line leaves that task in the set, waiting on
+    a fake nobody will set again; on an event loop shared between tests it would still be
+    there when the next test reads the set.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    yield
+    left = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
+    for task in left:
+        task.cancel()
+    if left:
+        await asyncio.wait(left)
+    sessions_api._PENDING_WHOLE_LINE_TASKS.clear()
 
 
 async def _client(
@@ -145,13 +165,14 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
     session = await create_session(db_session, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
             client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
             timeout=2,
         )
         assert opened.status_code == 200
 
-        pending = list(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
         assert pending, (
             "a linha inteira só era sintetizada quando alguém pedia, nunca sozinha depois "
             "da abertura já ter respondido"
@@ -184,6 +205,7 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
     session = await create_session(db_session, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
             client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
             timeout=2,
@@ -192,7 +214,7 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
             "a resposta da abertura dependia de uma síntese que só roda depois, em segundo plano"
         )
 
-        pending = list(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
         assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
         elevenlabs.may_proceed.set()
         await asyncio.wait_for(asyncio.gather(*pending), timeout=2)
@@ -213,10 +235,12 @@ async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
     session = await create_session(db_session, language="pt", pericope="OV")
 
     async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
         opened = await asyncio.wait_for(
             client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
             timeout=2,
         )
+        left_behind = sessions_api._PENDING_WHOLE_LINE_TASKS - before
 
     assert opened.status_code == 200
     assert set(elevenlabs.calls[:2]) == {FIRST, SECOND}
@@ -226,7 +250,7 @@ async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
     body = opened.json()
     assert body["segments"] == [], "o fallback ainda devolvia os movimentos parciais"
     assert body["audio_url"], "a fala inteira deveria ter voltado como o áudio do turno"
-    assert not sessions_api._PENDING_WHOLE_LINE_TASKS, (
+    assert not left_behind, (
         "o fallback síncrono não devia agendar outra síntese da mesma fala em segundo plano"
     )
 
