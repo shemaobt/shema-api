@@ -201,6 +201,7 @@ async def facilitator_audio(
     if key is None:
         raise NotFoundError("No such audio")
     await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
+    await db.commit()
     return await _audio(handle)
 
 
@@ -225,6 +226,7 @@ async def listen_to_question(
     question = await service.get_question_for_facilitator(db, user, question_id)
     if not question.audio_key:
         raise NotFoundError("No such recording")
+    await db.commit()
     signed = await service.listen_address(question.audio_key)
     return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
 
