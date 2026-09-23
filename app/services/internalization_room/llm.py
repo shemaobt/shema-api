@@ -337,9 +337,10 @@ def _workspace_header(settings: Settings) -> dict[str, str] | None:
 
 #: The two roles a team hears — Guide and Validator — plus whoever speaks through them:
 #: panorama and the retro verdict speaker both draft and validate on these same two role
-#: strings (see `_draft`/`_validate` in validated_turn.py), so gating on the string is gating
-#: on every voiced surface at once. The judge, the analyst, the correction check and the
-#: classifier are not on the voice path and stay off.
+#: strings (see `_draft` and the validator call inside `_voiced_after_validation`, both in
+#: validated_turn.py), so gating on the string is gating on every voiced surface at once. The
+#: judge, the analyst, the correction check and the classifier are not on the voice path and
+#: stay off.
 _VOICED_ROLES = frozenset({"guide", "validator"})
 
 
