@@ -154,6 +154,48 @@ async def test_a_spoken_turn_warms_the_elevenlabs_connection_once_when_the_valid
     assert "json" not in kwargs, "um GET de aquecimento não carrega o texto a sintetizar"
 
 
+async def test_a_redraft_still_only_warms_the_connection_once(
+    monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+) -> None:
+    from app.services.internalization_room.coverage import initial_state
+    from app.services.internalization_room.run_turn import run_turn
+    from tests.turn_harness import GUIDE, VALIDATOR, FakeAgent, P, settings, the_agent_answers
+
+    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
+    agent = the_agent_answers(
+        monkeypatch,
+        FakeAgent(
+            verdicts=[
+                {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]},
+                {"verdict": "pass", "issues": []},
+            ]
+        ),
+    )
+
+    outcome = await run_turn(
+        session_language="Portuguese",
+        language_code="pt",
+        transcript="alguma coisa",
+        coverage_state=initial_state(P),
+        messages=[],
+        guide_prompt=GUIDE,
+        validator_prompt=VALIDATOR,
+        pericope_num=P,
+        settings=settings(),
+    )
+    await asyncio.gather(*tts._PENDING_WARMUPS, return_exceptions=True)
+
+    assert agent.calls == ["guide", "validator", "guide", "validator"], (
+        "o cenário precisa de um redraft de verdade — uma segunda passagem pelo Guia — "
+        "não só de uma segunda leitura do mesmo rascunho"
+    )
+    assert outcome.redrafts == 1
+    assert elevenlabs.get.await_count == 1, (
+        "um redraft manda o Validador ler de novo numa segunda tentativa, e o aquecimento "
+        "não pode disparar de novo por isso"
+    )
+
+
 async def _slow_failure(*_: Any, **__: Any) -> SimpleNamespace:
     await asyncio.sleep(0.2)
     raise RuntimeError("connection refused")
