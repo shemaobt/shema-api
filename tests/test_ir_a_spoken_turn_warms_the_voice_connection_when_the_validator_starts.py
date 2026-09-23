@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import json
+import time
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import AsyncMock
+
+import httpx
+import pytest
+from httpx import ASGITransport
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.models.internalization_room import IRSession
+from app.services.internalization_room import llm, usage
+from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
+from app.services.internalization_room.hearing import HeardSpeech
+from app.services.internalization_room.sessions import (
+    append_exchange,
+    comprehension_of,
+    create_session,
+    save_comprehension,
+)
+from app.services.platform import tts
+
+PREFIX = "/api/internalization-room"
+KEY = "sala-de-teste"
+P = "P03"
+GUIDE_LINE = "Vamos ficar nesta cena. O que vocês contariam uns aos outros sobre ela?"
+
+
+class _Models:
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        system = "".join(block["text"] for block in kwargs["system"])
+        validating = "corrected_response" in system
+        text = json.dumps({"verdict": "pass", "issues": []}) if validating else GUIDE_LINE
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=text)],
+            stop_reason="end_turn",
+            model=kwargs["model"],
+            usage=SimpleNamespace(
+                input_tokens=10,
+                output_tokens=10,
+                cache_creation_input_tokens=0,
+                cache_read_input_tokens=0,
+                cache_creation=None,
+            ),
+        )
+
+
+class _Bucket:
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    async def get(self, key: str) -> bytes | None:
+        return self.objects.get(key)
+
+    async def exists(self, key: str) -> bool:
+        return key in self.objects
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.objects[key] = data
+
+
+async def _hearing(audio: bytes, **_: Any) -> HeardSpeech:
+    return HeardSpeech(text="Noemi voltou para Belém com Rute no tempo da colheita")
+
+
+async def _settles_nothing(**_: Any) -> None:
+    return None
+
+
+@pytest.fixture(autouse=True)
+def _forget_which_rung_answered():
+    llm._SETTLED.clear()
+    usage.forget_sessions()
+    yield
+    llm._SETTLED.clear()
+    usage.forget_sessions()
+
+
+@pytest.fixture()
+def elevenlabs() -> SimpleNamespace:
+    return SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(status_code=200, content=b"", text="")),
+        post=AsyncMock(return_value=SimpleNamespace(status_code=200, content=b"mp3", text="")),
+    )
+
+
+@pytest.fixture()
+async def client(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, elevenlabs: SimpleNamespace
+):
+    from fastapi import FastAPI
+
+    from app.api.internalization_room import router
+    from app.api.internalization_room import sessions as sessions_api
+    from app.core.config import get_settings
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+
+    monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
+    monkeypatch.setattr(sessions_api, "heard_speech", _hearing)
+    monkeypatch.setattr(sessions_api, "settle_coverage", _settles_nothing)
+    monkeypatch.setattr(
+        llm.anthropic, "AsyncAnthropic", lambda **_: SimpleNamespace(messages=_Models())
+    )
+    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
+    monkeypatch.setattr(tts, "_default_store", lambda _: _Bucket())
+
+    test_app = FastAPI()
+    test_app.include_router(router, prefix=PREFIX)
+    register_exception_handlers(test_app)
+
+    async def _get_db():
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    transport = ASGITransport(app=test_app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture()
+async def waiting_room(db_session: AsyncSession) -> IRSession:
+    session = await create_session(db_session, language="pt", pericope=P)
+    session = await append_exchange(
+        db_session, session, team_utterance="", guide_response="Quem aparece nesta parte?"
+    )
+    state = comprehension_of(session)
+    state.active_probe = ActiveProbe(id="probe-1", purpose=ProbePurpose.RECORDING_HANDOFF_CONSENT)
+    return await save_comprehension(db_session, session, state)
+
+
+async def test_a_spoken_turn_warms_the_elevenlabs_connection_once_when_the_validator_starts(
+    client: httpx.AsyncClient, waiting_room: IRSession, elevenlabs: SimpleNamespace
+) -> None:
+    answered = await client.post(
+        f"{PREFIX}/sessions/{waiting_room.id}/turns",
+        headers={"X-Room-Key": KEY},
+        files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
+    )
+
+    assert answered.status_code == 200
+    assert elevenlabs.get.await_count == 1, (
+        "o turno passou por um único Validador, e o aquecimento devia ter disparado uma vez"
+    )
+    args, kwargs = elevenlabs.get.await_args
+    assert "/v1/models" in args[0], "o aquecimento deveria bater num endpoint sem custo"
+    assert "json" not in kwargs, "um GET de aquecimento não carrega o texto a sintetizar"

@@ -14,6 +14,7 @@ that evaporates on every deploy.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -37,6 +38,8 @@ MIME_TYPE = "audio/mpeg"
 Upload = Callable[[], Awaitable[None]]
 
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
+
+_PENDING_WARMUPS: set[asyncio.Task[None]] = set()
 
 _FRESH_MAX_BYTES = 64 * 1024 * 1024
 _FRESH: OrderedDict[str, bytes] = OrderedDict()
@@ -195,6 +198,25 @@ async def synthesize_speech_key(
     else:
         uploads.append(upload)
     return SpeechKey(key, cached=False)
+
+
+def warm_connection_in_background(*, api_key: str, settings: Settings | None = None) -> None:
+    """Open a no-cost connection to ElevenLabs ahead of the synthesis call that will need it.
+
+    Fire-and-forget: the caller does not await this, so a slow or failing warm-up never
+    delays or breaks the turn it is meant to speed up. The task is kept in `_PENDING_WARMUPS`
+    until it finishes, because an unreferenced `asyncio.Task` can be garbage-collected
+    mid-flight, silently cancelling it before the connection ever opens.
+    """
+    task = asyncio.create_task(_warm_connection(api_key=api_key, settings=settings))
+    _PENDING_WARMUPS.add(task)
+    task.add_done_callback(_PENDING_WARMUPS.discard)
+
+
+async def _warm_connection(*, api_key: str, settings: Settings | None) -> None:
+    cfg = settings or get_settings()
+    http = _make_client()
+    await http.get(f"{cfg.elevenlabs_base_url}/v1/models", headers={"xi-api-key": api_key})
 
 
 def _addressed(
