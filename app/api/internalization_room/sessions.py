@@ -183,6 +183,37 @@ def _remember_language(session_id: str, language: str) -> None:
     while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
         _LANGUAGE_MEMO.popitem(last=False)
 
+
+async def _read_capped_audio(file: UploadFile) -> bytes:
+    audio_bytes = await file.read()
+    count("upload_bytes", len(audio_bytes))
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise ValidationError("Audio payload exceeds 25 MB limit")
+    return audio_bytes
+
+
+async def _timed_stt(
+    audio_bytes: bytes, *, filename: str | None, mime_type: str | None, language: str
+) -> HeardSpeech:
+    with stage("stt"):
+        return await heard_speech(
+            audio_bytes, filename=filename, mime_type=mime_type, language=language
+        )
+
+
+async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
+    """Stop a transcription started ahead of the session read and wait for it to unwind.
+
+    Its result is going nowhere either way — a replay already has its answer and a session
+    that is gone has nobody to hear it for — so this reads whatever the task ends with and
+    drops it, the only way to keep asyncio from logging it later as never retrieved.
+    """
+    task.cancel()
+    try:
+        await task
+    except BaseException:
+        pass
+
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
 _CLIENT_TIMING_LONGEST = 512
 
@@ -610,30 +641,49 @@ async def _answer_the_turn(
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
-    with stage("db_read"):
-        session = await room.get_session(db, session_id)
+
+    stt: asyncio.Task[HeardSpeech] | None = None
+    if file is not None:
+        known_language = _LANGUAGE_MEMO.get(session_id)
+        if known_language is not None:
+            audio_bytes = await _read_capped_audio(file)
+            stt = asyncio.create_task(
+                _timed_stt(
+                    audio_bytes,
+                    filename=file.filename,
+                    mime_type=file.content_type,
+                    language=known_language,
+                )
+            )
+
+    try:
+        with stage("db_read"):
+            session = await room.get_session(db, session_id)
+
+        replay = None
+        if turn_id:
+            with stage("db_read"):
+                replay = await answered_turn(db, session.id, turn_id)
+    except BaseException:
+        if stt is not None:
+            await _cancelled(stt)
+        raise
     _remember_language(session_id, session.language)
 
-    if turn_id:
-        with stage("db_read"):
-            replay = await answered_turn(db, session.id, turn_id)
-        if replay is not None:
-            return TurnResponse(**replay)
+    if replay is not None:
+        if stt is not None:
+            await _cancelled(stt)
+        return TurnResponse(**replay)
 
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])
-    if file is not None:
-        audio_bytes = await file.read()
-        count("upload_bytes", len(audio_bytes))
-        if len(audio_bytes) > MAX_AUDIO_BYTES:
-            raise ValidationError("Audio payload exceeds 25 MB limit")
-        with stage("stt"):
-            speech_heard = await heard_speech(
-                audio_bytes,
-                filename=file.filename,
-                mime_type=file.content_type,
-                language=session.language,
-            )
+    if stt is not None:
+        speech_heard = await stt
+    elif file is not None:
+        audio_bytes = await _read_capped_audio(file)
+        speech_heard = await _timed_stt(
+            audio_bytes, filename=file.filename, mime_type=file.content_type, language=session.language
+        )
     transcript = speech_heard.text
 
     if file is None and not opening:

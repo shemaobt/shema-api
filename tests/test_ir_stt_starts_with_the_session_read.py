@@ -10,6 +10,7 @@ session that no longer exists.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from collections import OrderedDict
@@ -132,3 +133,148 @@ def test_the_memo_holds_at_most_a_thousand_and_twenty_four_sessions(
     )
     newest = f"session-{sessions_api._LANGUAGE_MEMO_MAX + 4}"
     assert newest in sessions_api._LANGUAGE_MEMO
+
+
+class _HearingThatSignalsItStarted:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def __call__(self, *_: Any, **__: Any) -> HeardSpeech:
+        self.started.set()
+        return HeardSpeech(text=TEAM_ANSWER)
+
+
+class _SessionReadThatWaitsToBeReleased:
+    """The real `get_session`, held open until the test says the STT has had its turn."""
+
+    def __init__(self, real_get_session: Any) -> None:
+        self._real = real_get_session
+        self.entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def __call__(self, db: AsyncSession, session_id: str) -> Any:
+        self.entered.set()
+        await asyncio.wait_for(self.release.wait(), timeout=1)
+        return await self._real(db, session_id)
+
+
+async def test_a_known_language_starts_transcription_before_the_session_read_finishes(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
+    session = await create_session(db_session, language="pt", pericope=P)
+    sessions_api._remember_language(session.id, session.language)
+
+    hearing = _HearingThatSignalsItStarted()
+    monkeypatch.setattr(sessions_api, "heard_speech", hearing)
+    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session)
+    monkeypatch.setattr(sessions_api.room, "get_session", reads)
+
+    async def _release_the_read_once_stt_has_started() -> None:
+        await asyncio.wait_for(hearing.started.wait(), timeout=1)
+        reads.release.set()
+
+    answered, _ = await asyncio.gather(
+        _a_spoken_turn(client, session.id), _release_the_read_once_stt_has_started()
+    )
+
+    assert answered.status_code == 200, (
+        f"a leitura da sessão nunca terminava porque a transcrição não tinha começado: "
+        f"{answered.text[:300]}"
+    )
+
+
+class _HearingThatWaitsToBeCancelled:
+    """A transcription that never finishes on its own — only a cancel ends it."""
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.cancelled = False
+        self.charged = False
+
+    async def __call__(self, *_: Any, **__: Any) -> HeardSpeech:
+        self.started.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        self.charged = True
+        return HeardSpeech(text=TEAM_ANSWER)
+
+
+async def test_a_replay_cancels_the_speculative_transcription_and_never_pays_for_it(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
+    session = await create_session(db_session, language="pt", pericope=P)
+    first = await _a_spoken_turn(client, session.id, turn_id="turno-1")
+    assert first.status_code == 200, first.text[:300]
+
+    hearing = _HearingThatWaitsToBeCancelled()
+    monkeypatch.setattr(sessions_api, "heard_speech", hearing)
+
+    second = await _a_spoken_turn(client, session.id, turn_id="turno-1")
+
+    assert second.status_code == 200, second.text[:300]
+    assert second.json() == first.json(), "um reenvio tem de responder com o turno já dado"
+    assert hearing.started.is_set(), (
+        "a asserção só prova cancelamento se a transcrição especulativa tiver mesmo começado"
+    )
+    assert hearing.cancelled is True, (
+        "a transcrição especulativa continuou correndo depois de o replay ser encontrado"
+    )
+    assert hearing.charged is False, (
+        "a transcrição especulativa terminou e cobrou mesmo com o replay já encontrado"
+    )
+
+
+async def test_a_missing_session_cancels_the_speculative_transcription_and_still_answers_404(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
+    sessions_api._remember_language("sessao-fantasma", "pt")
+    hearing = _HearingThatWaitsToBeCancelled()
+    monkeypatch.setattr(sessions_api, "heard_speech", hearing)
+
+    answered = await _a_spoken_turn(client, "sessao-fantasma")
+
+    assert answered.status_code == 404, answered.text[:300]
+    assert hearing.started.is_set(), (
+        "a asserção só prova cancelamento se a transcrição especulativa tiver mesmo começado"
+    )
+    assert hearing.cancelled is True, (
+        "a transcrição especulativa continuou correndo depois de a sessão não ser encontrada"
+    )
+    assert hearing.charged is False, (
+        "a transcrição especulativa terminou e cobrou mesmo com a sessão inexistente"
+    )
+
+
+async def test_without_a_known_language_the_session_is_still_read_before_transcription_starts(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The first turn a process sees for a session has nothing in the memo yet — same order
+    as before this ticket: the session read finishes before transcription is ever started."""
+    monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    hearing = _HearingThatSignalsItStarted()
+    monkeypatch.setattr(sessions_api, "heard_speech", hearing)
+    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session)
+    monkeypatch.setattr(sessions_api.room, "get_session", reads)
+
+    async def _confirm_no_overlap_then_release() -> None:
+        await asyncio.wait_for(reads.entered.wait(), timeout=1)
+        await asyncio.sleep(0.05)  # give a wrongly-started speculative task a chance to run
+        assert not hearing.started.is_set(), (
+            "a transcrição começou antes de a sessão ser lida, mesmo sem a língua no memo"
+        )
+        reads.release.set()
+
+    answered, _ = await asyncio.gather(
+        _a_spoken_turn(client, session.id), _confirm_no_overlap_then_release()
+    )
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert hearing.started.is_set(), "a transcrição nunca chegou a rodar"
