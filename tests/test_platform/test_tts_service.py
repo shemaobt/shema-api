@@ -73,6 +73,19 @@ async def test_synthesizes_and_returns_the_mp3() -> None:
     assert kwargs["headers"]["xi-api-key"] == "fake-elevenlabs"
 
 
+async def test_the_output_format_reaches_elevenlabs_in_the_query_not_the_body() -> None:
+    client = _client(_ok())
+    store = MemoryStore()
+
+    await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    _, kwargs = client.post.await_args
+    assert kwargs["params"]["output_format"] == "mp3_44100_128"
+    assert "output_format" not in kwargs["json"]
+
+
 async def test_second_call_with_same_text_does_not_hit_elevenlabs() -> None:
     """The heart of the issue: each question is synthesized ONCE, forever, for every app."""
     client = _client(_ok(), _ok())
