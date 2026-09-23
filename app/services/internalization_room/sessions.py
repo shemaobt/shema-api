@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import and_, case, or_, select, update
+from sqlalchemy import and_, case, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -387,7 +387,7 @@ async def append_exchange(
                     IRSession.status == IRSessionStatus.NEEDS_PERSON,
                     IRSession.halt_kind == session.halt_kind,
                 ),
-                IRSessionStatus.IN_PROGRESS,
+                literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),
             ),
             else_=IRSession.status,
         )
