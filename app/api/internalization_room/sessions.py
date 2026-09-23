@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 import uuid
+from collections import OrderedDict
 from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
@@ -165,6 +166,63 @@ async def _upload(uploads: list[Upload]) -> None:
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+#: A session's language, once this process has read it. Neon sits in us-east-1 and every
+#: session row carries a growing `messages`/`coverage_state` JSON blob, so the read that would
+#: tell a turn its own language is the one costing 20-30 ms round trips each way; a later turn
+#: for the same session can start transcription without waiting on it. Capped like
+#: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
+#: grow this without bound.
+_LANGUAGE_MEMO_MAX = 1024
+_LANGUAGE_MEMO: OrderedDict[str, str] = OrderedDict()
+
+
+def forget_session_languages() -> None:
+    """Empty the memo, the way `tts.forget_what_is_kept` empties the clip caches between tests."""
+    _LANGUAGE_MEMO.clear()
+
+
+def _remember_language(session_id: str, language: str) -> None:
+    _LANGUAGE_MEMO[session_id] = language
+    _LANGUAGE_MEMO.move_to_end(session_id)
+    while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
+        _LANGUAGE_MEMO.popitem(last=False)
+
+
+async def _read_capped_audio(file: UploadFile) -> bytes:
+    audio_bytes = await file.read()
+    count("upload_bytes", len(audio_bytes))
+    if len(audio_bytes) > MAX_AUDIO_BYTES:
+        raise ValidationError("Audio payload exceeds 25 MB limit")
+    return audio_bytes
+
+
+async def _timed_stt(
+    audio_bytes: bytes, *, filename: str | None, mime_type: str | None, language: str
+) -> HeardSpeech:
+    with stage("stt"):
+        return await heard_speech(
+            audio_bytes, filename=filename, mime_type=mime_type, language=language
+        )
+
+
+async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
+    """Stop a transcription started ahead of the session read and read its outcome.
+
+    A session the read could not find has nobody left to hear the transcript, so its task
+    is stopped rather than left to run to an answer nobody reads. `asyncio.wait` rather than
+    a plain `await`: this runs while unwinding from `get_session`'s own failure, and a plain
+    `await task` inside `except BaseException: pass` would also swallow a cancellation aimed
+    at this request itself, arriving at exactly this suspension point — `wait` never raises
+    the waited task's own exception into its caller, so only that task's outcome is being
+    read here, never the caller's. `task.exception()` marks a real failure as read without
+    raising it; skipped when the task ended up cancelled, since reading it then would raise.
+    """
+    task.cancel()
+    await asyncio.wait({task})
+    if not task.cancelled():
+        task.exception()
+
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
 _CLIENT_TIMING_LONGEST = 512
@@ -593,29 +651,48 @@ async def _answer_the_turn(
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
-    with stage("db_read"):
-        session = await room.get_session(db, session_id)
 
     if turn_id:
         with stage("db_read"):
-            replay = await answered_turn(db, session.id, turn_id)
+            replay = await answered_turn(db, session_id, turn_id)
         if replay is not None:
             return TurnResponse(**replay)
 
+    stt: asyncio.Task[HeardSpeech] | None = None
+    if file is not None:
+        known_language = _LANGUAGE_MEMO.get(session_id)
+        if known_language is not None:
+            audio_bytes = await _read_capped_audio(file)
+            stt = asyncio.create_task(
+                _timed_stt(
+                    audio_bytes,
+                    filename=file.filename,
+                    mime_type=file.content_type,
+                    language=known_language,
+                )
+            )
+
+    try:
+        with stage("db_read"):
+            session = await room.get_session(db, session_id)
+    except BaseException:
+        if stt is not None:
+            await _cancelled(stt)
+        raise
+    _remember_language(session_id, session.language)
+
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])
-    if file is not None:
-        audio_bytes = await file.read()
-        count("upload_bytes", len(audio_bytes))
-        if len(audio_bytes) > MAX_AUDIO_BYTES:
-            raise ValidationError("Audio payload exceeds 25 MB limit")
-        with stage("stt"):
-            speech_heard = await heard_speech(
-                audio_bytes,
-                filename=file.filename,
-                mime_type=file.content_type,
-                language=session.language,
-            )
+    if stt is not None:
+        speech_heard = await stt
+    elif file is not None:
+        audio_bytes = await _read_capped_audio(file)
+        speech_heard = await _timed_stt(
+            audio_bytes,
+            filename=file.filename,
+            mime_type=file.content_type,
+            language=session.language,
+        )
     transcript = speech_heard.text
 
     if file is None and not opening:
