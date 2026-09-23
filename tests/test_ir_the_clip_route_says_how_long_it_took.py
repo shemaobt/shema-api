@@ -18,7 +18,10 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import _deps
+from app.api.internalization_room import voice as voice_api
 from app.core.config import get_settings
+from app.core.exceptions import DeviceRevoked
 from app.services.internalization_room.voice_handles import to_handle
 from app.services.platform import tts
 from app.services.platform.tts import SpeechKey
@@ -256,4 +259,69 @@ async def test_a_clip_the_tablet_just_played_outlives_one_nobody_asked_for(
     assert bucket.asked == [ignored], (
         "a memória esquecia pela ordem de gravação, e o clipe que o tablet acabara de "
         "tocar saía antes de um que ninguém pediu"
+    )
+
+
+class _CancelObservingBucket:
+    def __init__(self) -> None:
+        self.entered = False
+        self.cancelled = False
+
+    async def get(self, key: str) -> bytes | None:
+        self.entered = True
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        return CLIP
+
+
+async def test_a_revoked_credential_is_refused_and_the_read_it_started_is_abandoned(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)  # a real device check awaits the database at least once
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+    bucket = _CancelObservingBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 403
+    assert fetched.json()["code"] == "DEVICE_REVOKED"
+    assert bucket.entered, "a leitura nem chegava a começar ao lado da porta"
+    assert bucket.cancelled, "a leitura seguia rodando depois que a porta já tinha recusado"
+
+
+class _EventGatedBucket:
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+
+    async def get(self, key: str) -> bytes | None:
+        self.entered.set()
+        return CLIP
+
+
+async def test_the_read_begins_before_a_slow_gate_lets_the_caller_through(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bucket = _EventGatedBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+    observed_while_still_at_the_gate = []
+
+    async def _gate_that_peeks(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(AUTH_MS / 1000)
+        observed_while_still_at_the_gate.append(bucket.entered.is_set())
+        return SimpleNamespace(project_id=None)
+
+    monkeypatch.setattr(_deps, "authenticate_device", _gate_that_peeks)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert observed_while_still_at_the_gate == [True], (
+        "a leitura só começava depois que a porta liberava o pedido, e devia correr ao lado dela"
     )
