@@ -34,6 +34,7 @@ from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
@@ -214,6 +215,7 @@ def speaker(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return (type("Voiced", (), {"key": "clipe"})(), 0)
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(_voice))
     return handed
 
 

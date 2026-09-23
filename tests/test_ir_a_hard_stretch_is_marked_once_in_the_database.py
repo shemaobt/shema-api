@@ -40,6 +40,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.clip_flight_harness import voiced_through
 from tests.hard_stretch_harness import (
     DESK,
     DEVICE,
@@ -109,6 +110,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(_voice))
 
     said: list[str] = []
 

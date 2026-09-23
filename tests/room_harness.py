@@ -45,6 +45,7 @@ from app.services.internalization_room.sessions import (
     save_comprehension,
 )
 from app.services.internalization_room.takes import take_by_id
+from tests.clip_flight_harness import voiced_through
 from tests.hard_stretch_harness import MemoryStore
 from tests.release_harness import (
     KEY,
@@ -193,6 +194,7 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
         return (type("Voiced", (), {"key": f"clipe-{len(room.said)}"})(), 0)
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(voice))
     return room
 
 

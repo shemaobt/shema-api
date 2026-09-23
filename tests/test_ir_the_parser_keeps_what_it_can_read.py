@@ -41,6 +41,7 @@ from app.services.internalization_room._default_prompts import default_prompt
 from app.services.internalization_room.back_translation import FindingKind, analyse_telling_back
 from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.storage import StoredObject
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
@@ -298,6 +299,7 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return (type("Voiced", (), {"key": f"clipe-{len(spoken)}"})(), 0)
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(_voice))
     return spoken
 
 

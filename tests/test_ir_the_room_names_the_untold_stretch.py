@@ -35,6 +35,7 @@ from app.services.internalization_room import segments as service
 from app.services.internalization_room.fail_safe import FailSafe, utterances
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.storage import StoredObject
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import (
     a_piece_still_to_be_told,
     heard_every_part,
@@ -128,6 +129,7 @@ def spoken(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         return (type("Voiced", (), {"key": f"clipe-{len(said_aloud)}"})(), 0)
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(bt_api.room, "facilitator_speech_to_come", voiced_through(_voice))
     return said_aloud
 
 

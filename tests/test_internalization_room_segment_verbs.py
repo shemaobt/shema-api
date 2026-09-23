@@ -26,6 +26,7 @@ from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.internalization_room.sessions import RETELLS_BEFORE_A_WARNING
 from app.services.platform.storage import StoredObject
+from tests.clip_flight_harness import voiced_through
 from tests.room_harness import heard_every_part, press_terminei
 
 PREFIX = "/api/internalization-room"
@@ -426,6 +427,11 @@ async def test_the_back_translation_the_room_already_does_goes_on_working(
         sys.modules["app.api.internalization_room.back_translation"].room,
         "synthesize_facilitator_speech",
         _voice,
+    )
+    monkeypatch.setattr(
+        sys.modules["app.api.internalization_room.back_translation"].room,
+        "facilitator_speech_to_come",
+        voiced_through(_voice),
     )
 
     verdict = await press_terminei(
