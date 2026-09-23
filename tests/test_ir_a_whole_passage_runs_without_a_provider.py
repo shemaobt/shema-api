@@ -33,13 +33,10 @@ from app.services.internalization_room.classify_coverage import (
 )
 from app.services.internalization_room.coverage import CoverageStatus, floor_met
 from tests.text_seam_harness import RUNNER_KEY, the_app
+from tests.turn_harness import INVITATION
 
 SEAM = "/api/internalization-room/text-seam"
 
-INVITATION = (
-    " Now rehearse this scene together in your own language; when you have finished, come "
-    "back and tell me in English what you understood."
-)
 
 THE_GUIDE_SAYS = [
     "Welcome. Let me tell you the whole passage first, from the famine to the empty house.",

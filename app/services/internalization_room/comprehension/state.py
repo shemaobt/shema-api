@@ -17,3 +17,4 @@ class ComprehensionState(BaseModel):
     ledger: list[EvidenceEvent] = Field(default_factory=list)
     active_probe: ActiveProbe | None = None
     practiced_scene_ids: list[str] = Field(default_factory=list)
+    invited_scene_id: str | None = None
