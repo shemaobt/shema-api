@@ -36,7 +36,10 @@ def room_app_routes() -> list:
 
     Identified by the room's own gates appearing in the route's dependency tree, or called
     by the endpoint itself. Renaming a gate without updating this set would silently empty
-    it, which is what each audit's own "not empty" case exists to catch.
+    it, and a gate called by hand would silently drop its route. With one walker there is
+    one outcome for every audit built on it, so each of those is guarded once, in
+    `test_room_credential_never_surfaces.py`: `test_the_audit_is_not_empty` and
+    `test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_by_hand`.
     """
     from app.api.internalization_room import _deps
     from app.main import app

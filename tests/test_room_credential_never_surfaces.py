@@ -86,9 +86,10 @@ async def a_credential_that_works(db: AsyncSession) -> str:
 
 def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_by_hand() -> None:
     """ENG-993 moved the clip route's device check out of `Depends` and into its body, so
-    it can run beside the GCS read instead of ahead of it. `room_app_routes` only walks
-    `Depends` trees, so that route would otherwise vanish from the set these two audits
-    exercise, and stop being checked for the exact leak this file exists to catch."""
+    it can run beside the GCS read instead of ahead of it. A walk of `Depends` trees alone
+    would drop that route from the set both audits share, and it would stop being checked
+    for the exact leak this file exists to catch — and, in the transcript audit, for the
+    question's transcript."""
     paths = {route.path for route in room_app_routes()}
     assert any(path.endswith("/voice/{handle}") for path in paths), (
         "a rota do clipe chama require_room_caller direto no corpo, sem Depends, e a "

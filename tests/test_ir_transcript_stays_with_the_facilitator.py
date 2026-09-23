@@ -101,19 +101,6 @@ def _named(route) -> tuple[str, str]:
     return sorted(route.methods - {"HEAD", "OPTIONS"})[0], route.path
 
 
-def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_by_hand() -> None:
-    """ENG-993 moved the clip route's device check out of `Depends` and into its body, so it
-    can run beside the GCS read instead of ahead of it. `room_app_routes` walking only
-    `Depends` trees would drop that route from this audit's structural check too — the same
-    blind spot ENG-1039 found here after ENG-993 had already fixed it in the credential
-    audit."""
-    paths = {route.path for route in room_app_routes()}
-    assert any(path.endswith("/voice/{handle}") for path in paths), (
-        "a rota do clipe chama require_room_caller direto no corpo, sem Depends, e esta "
-        "auditoria parou de enxerga-la"
-    )
-
-
 def test_no_route_the_room_reaches_serves_a_question_beside_its_transcript() -> None:
     """The structural half, over every route the tablet can call.
 
