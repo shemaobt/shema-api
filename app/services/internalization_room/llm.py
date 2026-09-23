@@ -419,13 +419,19 @@ def _report_spend(
     cache_read = _counted(usage.cache_read_input_tokens)
     cache_write = _counted(usage.cache_creation_input_tokens)
     lifetimes = usage.cache_creation
-    cache_write_5m = lifetimes.ephemeral_5m_input_tokens if lifetimes else cache_write
+    cache_write_5m = lifetimes.ephemeral_5m_input_tokens if lifetimes else 0
     cache_write_1h = lifetimes.ephemeral_1h_input_tokens if lifetimes else 0
+    #: What the write is priced at — an unattributed write still prices at the 5-minute rate,
+    #: the API's own default. Kept apart from `cache_write_5m` above, which is what the API
+    #: actually said and is what the line below reports: pricing a guess is not the same as
+    #: reporting it as a fact, and a write with no breakdown would otherwise read as a
+    #: confirmed 5-minute one.
+    priced_write_5m = cache_write_5m if lifetimes else cache_write
     cost = cost_of(
         model,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
-        cache_write_5m_tokens=cache_write_5m,
+        cache_write_5m_tokens=priced_write_5m,
         cache_write_1h_tokens=cache_write_1h,
         cache_read_tokens=cache_read,
     )

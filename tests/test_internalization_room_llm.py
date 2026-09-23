@@ -415,6 +415,11 @@ async def test_a_cache_write_with_no_lifetime_breakdown_still_costs_the_five_min
         "campo novo da API) virava custo zero em vez do preço de 5 minutos, e o total do "
         "turno caía a menos da metade do que de fato custou"
     )
+    assert "cache_write=1000000 cache_write_5m=0 cache_write_1h=0 " in caplog.text, (
+        "a linha [llm-usage] imprimia o palpite de preço (5m) como se fosse o que a API "
+        "de fato disse, e uma escrita sem atribuição ficava indistinguível de uma de 5 "
+        "minutos confirmada"
+    )
 
 
 async def test_a_call_that_wrote_nothing_to_the_cache_says_zero_for_both_lifetimes(
