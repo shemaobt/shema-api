@@ -208,6 +208,10 @@ def warm_connection_in_background(*, api_key: str, settings: Settings | None = N
     until it finishes, because an unreferenced `asyncio.Task` can be garbage-collected
     mid-flight, silently cancelling it before the connection ever opens.
     """
+    if not api_key:
+        # The synthesis refuses before the network when no key is configured
+        # (`_addressed`); a warm-up with nothing to authenticate with has nothing to open.
+        return
     task = asyncio.create_task(_warm_connection(api_key=api_key, settings=settings))
     _PENDING_WARMUPS.add(task)
     task.add_done_callback(_PENDING_WARMUPS.discard)

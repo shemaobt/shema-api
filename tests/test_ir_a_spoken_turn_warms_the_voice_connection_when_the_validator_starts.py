@@ -181,7 +181,7 @@ async def test_a_redraft_still_only_warms_the_connection_once(
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
         pericope_num=P,
-        settings=settings(),
+        settings=settings().model_copy(update={"elevenlabs_api_key": "fake-elevenlabs"}),
     )
     await asyncio.gather(*tts._PENDING_WARMUPS, return_exceptions=True)
 
@@ -197,7 +197,7 @@ async def test_a_redraft_still_only_warms_the_connection_once(
 
 
 async def _slow_failure(*_: Any, **__: Any) -> SimpleNamespace:
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(2.0)
     raise RuntimeError("connection refused")
 
 
@@ -221,7 +221,7 @@ async def test_a_warm_up_that_fails_never_slows_the_turn_and_logs_only_the_excep
         elapsed = time.monotonic() - started
 
         assert answered.status_code == 200, "uma falha do aquecimento não pode derrubar o turno"
-        assert elapsed < 0.15, "o turno não pode esperar pelo aquecimento em segundo plano"
+        assert elapsed < 0.5, "o turno não pode esperar pelo aquecimento em segundo plano"
 
         await asyncio.gather(*tts._PENDING_WARMUPS, return_exceptions=True)
 
