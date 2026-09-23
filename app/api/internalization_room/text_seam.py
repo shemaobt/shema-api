@@ -227,7 +227,6 @@ async def take_text_turn(
             settings=get_settings(),
         )
         outcome = turn.outcome
-        session = await room.save_comprehension(db, session, turn.state)
         session = await room.append_exchange(
             db,
             session,
@@ -235,6 +234,7 @@ async def take_text_turn(
             guide_response=outcome.speech,
             outcome=outcome,
             scene=_scene_of(session),
+            state=turn.state,
         )
         if _worth_settling(outcome, heard):
             await settle_coverage(
