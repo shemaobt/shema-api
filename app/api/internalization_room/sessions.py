@@ -661,7 +661,7 @@ async def _answer_the_turn(
 
     if turn_id:
         with stage("db_read"):
-            replay = await answered_turn(db, session_id, turn_id)
+            replay = await answered_turn(db, session_id, turn_id, project_id)
         if replay is not None:
             return TurnResponse(**replay)
 

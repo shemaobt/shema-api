@@ -4,13 +4,13 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.stage_clock import StageClock, adopt, current_clock
-from app.db.models.internalization_room import IRTurn
+from app.db.models.internalization_room import IRSession, IRTurn
 from app.models.internalization_room import TurnResponse
 
 _in_flight: dict[tuple[str, str], tuple[asyncio.Task[TurnResponse], StageClock | None]] = {}
@@ -49,10 +49,24 @@ async def _on_a_session_of_its_own(
         return await answer(db)
 
 
-async def answered_turn(db: AsyncSession, session_id: str, turn_id: str) -> dict[str, Any] | None:
-    """The response already given for this turn id, or nothing if it has not landed yet."""
+async def answered_turn(
+    db: AsyncSession, session_id: str, turn_id: str, project_id: str | None
+) -> dict[str, Any] | None:
+    """The response already given for this turn id, to the project that may hear it.
+
+    Joined against the session rather than read from `IRTurn` alone, which names no
+    project of its own: a turn belonging to somebody else's session reads as not landed
+    yet, the same as a turn nobody has answered, so it falls through to the ownership
+    check `get_session_for_room_caller` already gives that caller its own refusal from.
+    """
     result = await db.execute(
-        select(IRTurn).where(IRTurn.session_id == session_id, IRTurn.turn_id == turn_id)
+        select(IRTurn)
+        .join(IRSession, IRSession.id == IRTurn.session_id)
+        .where(
+            IRTurn.session_id == session_id,
+            IRTurn.turn_id == turn_id,
+            or_(IRSession.project_id.is_(None), IRSession.project_id == project_id),
+        )
     )
     turn = result.scalar_one_or_none()
     return turn.response if turn is not None else None

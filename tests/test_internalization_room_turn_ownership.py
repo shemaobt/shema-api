@@ -93,10 +93,12 @@ def fan_out(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return {"hearing": hearing, "model": model, "voice": voice}
 
 
-async def _post_a_turn(client, session_id: str, headers: dict[str, str]):
+async def _post_a_turn(client, session_id: str, headers: dict[str, str], *, turn_id: str | None = None):
+    data = {"turn_id": turn_id} if turn_id else {}
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
         headers=headers,
+        data=data,
         files={"file": ("resposta.m4a", b"audio", "audio/m4a")},
     )
 
@@ -155,3 +157,27 @@ async def test_a_room_key_caller_is_refused_on_a_project_owned_session(
     assert fan_out["hearing"].calls == 0
     assert fan_out["model"].calls == 0
     assert fan_out["voice"].calls == 0
+
+
+async def test_a_replay_is_not_handed_to_another_project(
+    client, db_session: AsyncSession, fan_out
+) -> None:
+    """`answered_turn` used to look up a turn id with no regard for whose session it named,
+    so the very shortcut that spares a resend the fan-out also spared an impostor's request
+    from ever reaching the check that would have refused it.
+    """
+    owner, credential_owner = await a_claimed_device(db_session, email="owner5@example.com")
+    _stranger, credential_stranger = await a_claimed_device(db_session, email="stranger5@example.com")
+    session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
+
+    first = await _post_a_turn(client, session.id, team_headers(credential_owner), turn_id="turno-1")
+    assert first.status_code == 200, first.text[:300]
+
+    stranger = await _post_a_turn(
+        client, session.id, team_headers(credential_stranger), turn_id="turno-1"
+    )
+    assert stranger.status_code == 404, stranger.text[:300]
+
+    again = await _post_a_turn(client, session.id, team_headers(credential_owner), turn_id="turno-1")
+    assert again.status_code == 200, again.text[:300]
+    assert again.json() == first.json(), "o dono perdeu a resposta já dada ao pedir de novo"
