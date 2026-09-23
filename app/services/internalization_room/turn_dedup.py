@@ -4,21 +4,24 @@ import asyncio
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_, select
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.stage_clock import StageClock, adopt, current_clock
-from app.db.models.internalization_room import IRTurn
+from app.db.models.internalization_room import IRSession, IRTurn
 from app.models.internalization_room import TurnResponse
 
-_in_flight: dict[tuple[str, str], tuple[asyncio.Task[TurnResponse], StageClock | None]] = {}
+_in_flight: dict[
+    tuple[str, str, str | None], tuple[asyncio.Task[TurnResponse], StageClock | None]
+] = {}
 
 
 async def answer_once(
     session_id: str,
     turn_id: str,
+    project_id: str | None,
     answer: Callable[[AsyncSession], Coroutine[Any, Any, TurnResponse]],
 ) -> TurnResponse:
     """Run this turn once while it is in flight; a resend joins it and hears the same answer.
@@ -30,8 +33,13 @@ async def answer_once(
     of its own, the way `settle_coverage` is, because the request's session closes when
     that request unwinds, and a turn that outlives it would otherwise write through a
     session that is no longer there.
+
+    Keyed on the caller's project along with the session and turn id, so a stranger's
+    request landing on the same turn id while the owner's is still in flight runs its own
+    answer and its own ownership check, rather than joining the owner's and hearing back
+    a reply it was never checked against.
     """
-    key = (session_id, turn_id)
+    key = (session_id, turn_id, project_id)
     if key not in _in_flight:
         task = asyncio.create_task(_on_a_session_of_its_own(answer))
         _in_flight[key] = (task, current_clock())
@@ -49,11 +57,24 @@ async def _on_a_session_of_its_own(
         return await answer(db)
 
 
-async def answered_turn(db: AsyncSession, session_id: str, turn_id: str) -> dict[str, Any] | None:
-    """The response already given for this turn id, or nothing if it has not landed yet."""
-    result = await db.execute(
-        select(IRTurn).where(IRTurn.session_id == session_id, IRTurn.turn_id == turn_id)
-    )
+async def answered_turn(
+    db: AsyncSession, session_id: str, turn_id: str, project_id: str | None
+) -> dict[str, Any] | None:
+    """The response already given for this turn id, to the project that may hear it.
+
+    A caller naming no project is judged the way the session read beside this one
+    judges it — by id alone — so only a caller naming one joins against the session,
+    which names none of its own: a turn belonging to somebody else's session reads as
+    not landed yet, the same as a turn nobody has answered, so it falls through to the
+    ownership check the session read below already gives that caller its own refusal
+    from.
+    """
+    query = select(IRTurn).where(IRTurn.session_id == session_id, IRTurn.turn_id == turn_id)
+    if project_id is not None:
+        query = query.join(IRSession, IRSession.id == IRTurn.session_id).where(
+            or_(IRSession.project_id.is_(None), IRSession.project_id == project_id)
+        )
+    result = await db.execute(query)
     turn = result.scalar_one_or_none()
     return turn.response if turn is not None else None
 
@@ -61,16 +82,10 @@ async def answered_turn(db: AsyncSession, session_id: str, turn_id: str) -> dict
 async def remember_turn(
     db: AsyncSession, *, session_id: str, turn_id: str, response: dict[str, Any]
 ) -> None:
-    """Record this turn's answer, once, so a resend finds it instead of repeating the work.
-
-    Caught rather than avoided, the way ``working_time.py`` catches its own tick's race:
-    ``ON CONFLICT`` is not spelled the same on Postgres and the SQLite the suite runs
-    against, and the unique constraint is the guard that actually holds either way. A
-    genuinely simultaneous resend loses this insert; it has already been answered from
-    whatever the winner wrote, so there is nothing here worth keeping.
-    """
-    db.add(IRTurn(session_id=session_id, turn_id=turn_id, response=response))
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
+    """Record this turn's answer, once, so a resend finds it instead of repeating the work."""
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    await db.execute(
+        insert(IRTurn)
+        .values(session_id=session_id, turn_id=turn_id, response=response)
+        .on_conflict_do_nothing(index_elements=["session_id", "turn_id"])
+    )

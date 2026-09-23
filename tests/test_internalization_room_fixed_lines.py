@@ -10,6 +10,8 @@ import json
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -42,6 +44,26 @@ def test_the_render_script_needs_to_be_told_where_the_bundle_is(
 
     assert refused.value.code == 2
     assert "--out" in capsys.readouterr().err
+
+
+async def test_a_line_rendered_twice_is_written_with_its_sound_both_times(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import get_settings
+    from app.services.platform import tts
+
+    voiced = SimpleNamespace(status_code=200, content=b"\xff\xfbvoz", text="")
+    elevenlabs = SimpleNamespace(post=AsyncMock(return_value=voiced))
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
+    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
+
+    await render.render(tmp_path, "pt", force=True)
+    await render.render(tmp_path, "pt", force=True)
+
+    assert {clip.read_bytes() for clip in tmp_path.rglob("*.mp3")} == {b"\xff\xfbvoz"}, (
+        "a sala devolvia ao script só a chave da fala: ele quebrava perguntando ao bucket se o "
+        "clipe existia, e uma fala já conhecida ia para o bundle como arquivo vazio"
+    )
 
 
 @pytest.mark.parametrize("spoken", ROOM_LANGUAGES)

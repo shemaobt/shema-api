@@ -33,9 +33,24 @@ os.environ.setdefault("INNGEST_DEV", "1")
 
 import app.db.models  # noqa: F401
 from app.core.database import Base
+from app.services.internalization_room import llm
+from app.services.platform import tts
 
 #: The one the app is already pointed at, so the fixtures and the routes share a database.
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
+
+
+@pytest.fixture(autouse=True)
+def _nothing_kept_outlives_its_test():
+    from app.api.internalization_room.sessions import forget_session_languages
+
+    llm._CLIENTS.clear()
+    tts.forget_what_is_kept()
+    forget_session_languages()
+    yield
+    llm._CLIENTS.clear()
+    tts.forget_what_is_kept()
+    forget_session_languages()
 
 
 @pytest.fixture(scope="session")

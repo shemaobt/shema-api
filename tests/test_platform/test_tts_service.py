@@ -1,11 +1,14 @@
+import asyncio
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.services.platform import stt, tts
 from app.services.platform.tts import cache_key, synthesize_speech
 from app.services.platform.voices import VOICES, resolve_voice
 
@@ -71,6 +74,19 @@ async def test_synthesizes_and_returns_the_mp3() -> None:
     assert kwargs["json"]["text"] == QUESTION
     assert kwargs["json"]["model_id"] == "eleven_multilingual_v2"
     assert kwargs["headers"]["xi-api-key"] == "fake-elevenlabs"
+
+
+async def test_the_output_format_reaches_elevenlabs_in_the_query_not_the_body() -> None:
+    client = _client(_ok())
+    store = MemoryStore()
+
+    await synthesize_speech(
+        QUESTION, language="pt-BR", settings=_settings(), client=client, store=store
+    )
+
+    _, kwargs = client.post.await_args
+    assert kwargs["params"]["output_format"] == "mp3_44100_128"
+    assert "output_format" not in kwargs["json"]
 
 
 async def test_second_call_with_same_text_does_not_hit_elevenlabs() -> None:
@@ -224,6 +240,20 @@ async def test_elevenlabs_unavailability_is_an_upstream_failure_not_a_client_err
     assert store.writes == 0  # no half-clip in the cache
 
 
+@pytest.mark.parametrize(
+    "failure", [httpx.ConnectError("boom"), httpx.ReadTimeout("boom")], ids=["connect", "timeout"]
+)
+async def test_a_dropped_connection_to_elevenlabs_is_an_upstream_failure_too(
+    failure: Exception,
+) -> None:
+    client = SimpleNamespace(post=AsyncMock(side_effect=failure))
+
+    with pytest.raises(UpstreamServiceError):
+        await synthesize_speech(
+            QUESTION, language="pt-BR", settings=_settings(), client=client, store=MemoryStore()
+        )
+
+
 async def test_a_malformed_request_to_elevenlabs_stays_a_business_error() -> None:
     with pytest.raises(ValidationError):
         await synthesize_speech(
@@ -251,7 +281,7 @@ async def test_a_cache_write_failure_does_not_throw_away_the_audio_we_paid_for()
 
 
 async def test_without_an_api_key_it_is_a_configuration_error() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await synthesize_speech(
             QUESTION,
             language="pt-BR",
@@ -385,3 +415,31 @@ async def test_an_own_key_stands_in_for_a_missing_shared_one() -> None:
     )
 
     assert client.post.await_count == 1
+
+
+async def test_the_tts_client_holds_its_connection_a_minute_the_stt_client_still_lets_go_at_five(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tts, "_DEFAULT_CLIENT", None)
+    monkeypatch.setattr(stt, "_DEFAULT_CLIENT", None)
+
+    tts_client = tts._make_client()
+    stt_client = stt._make_client()
+
+    assert tts_client._transport._pool._keepalive_expiry == 60.0
+    assert stt_client._transport._pool._keepalive_expiry == 5.0
+
+
+async def test_a_warm_up_without_an_api_key_never_reaches_elevenlabs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    elevenlabs = SimpleNamespace(get=AsyncMock())
+    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
+
+    tts.warm_connection_in_background(api_key="")
+    await asyncio.gather(*tts._PENDING_WARMUPS, return_exceptions=True)
+
+    assert elevenlabs.get.await_count == 0, (
+        "sem chave configurada, a síntese recusa antes da rede; o aquecimento ia até "
+        "api.elevenlabs.io mesmo assim, inclusive de dentro da suíte"
+    )

@@ -223,6 +223,27 @@ async def test_a_turn_that_fell_to_a_canned_line_is_tagged_fail_safe(client, mon
     assert body["outcome"] == "fail_safe"
 
 
+async def test_a_canned_line_on_the_first_text_answer_is_recorded_in_the_scene_just_opened(
+    client, monkeypatch, db_session: AsyncSession
+) -> None:
+    session_id = await _an_open_session(client)
+    regenerate = json.dumps(
+        {"verdict": "regenerate", "issues": [{"problem": "imported_knowledge"}]}
+    )
+    the_models_answer(monkeypatch, None, regenerate, None, regenerate, None, regenerate)
+
+    answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": TEAM_LINE})
+
+    assert answered.json()["outcome"] == "fail_safe"
+    stored = await room.get_session(db_session, session_id)
+    await db_session.refresh(stored)
+    fired = [m for m in stored.messages or [] if m.get("outcome") == "fail_safe"]
+    assert fired and fired[-1].get("scene") is not None, (
+        "a costura gravava o disparo do fail-safe sem cena na primeira resposta da equipe, "
+        "a mesma lacuna que f50a7a54 fechou na rota falada"
+    )
+
+
 HER_RUNNER_NOTE = (
     "[A equipe falou na língua materna por cerca de 40 segundos; sem transcrição — nenhuma "
     "palavra chegou até você.]"

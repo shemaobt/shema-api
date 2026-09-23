@@ -2,8 +2,9 @@
 
 Her injection contract (`prompts/vendor/classifier_system_prompt.md`, runtime injection 1):
 the elements go as structured entries carrying their **current status**, and only the ones
-still at `not_encountered` or `surfaced`. Eligibility is the app's: the current scene's
-beads plus the ones that belong to no scene, and an id that was not offered moves nothing.
+still at `not_encountered` or `surfaced`. The offer is every bead short of `engaged`, of any
+scene or of none — the Scene pointer is never a scope on it — and an id that was not offered
+moves nothing.
 """
 
 from __future__ import annotations
@@ -36,8 +37,8 @@ from app.services.internalization_room.coverage import (
     initial_state,
     merge,
     remaining,
-    remaining_in_scene,
 )
+from app.services.internalization_room.llm import CACHE_BREAK
 
 P = "P01"
 CLASSIFIER = default_prompt(IRPromptKey.COVERAGE_CLASSIFIER)["prompt"]
@@ -65,7 +66,7 @@ def the_classifier_answers(monkeypatch: pytest.MonkeyPatch):
 def _the_ids_shown(system_prompt: str) -> list[str]:
     heading = "## The coverage elements (current unresolved set)"
     block = system_prompt.split(heading, 1)[1].split("## This turn's exchange", 1)[0]
-    return [entry["id"] for entry in json.loads(block)]
+    return [entry["id"] for entry in json.loads(block.replace(CACHE_BREAK, ""))]
 
 
 def test_every_element_the_classifier_is_shown_carries_its_current_status() -> None:
@@ -129,99 +130,68 @@ def test_a_decision_buried_in_a_sentence_of_prose_still_moves_the_beads() -> Non
     )
 
 
-THIS_SCENE_AND_THE_SCENELESS = [
-    "arc",
-    "context",
-    "tone",
-    "function",
-    "scene:2",
-    "being:S2:B2",
-    "being:S2:B3",
-    "being:S2:B4",
-    "being:S2:B5",
-    "place:S2:PL2",
-    "absence:2",
-    "preserved:R3",
-    "preserved:R5",
-    "preserved:R10",
-]
-
-
-def test_the_scene_scoped_list_holds_this_scenes_beads_and_the_ones_of_no_scene() -> None:
-    left = [element.key for element in remaining_in_scene(initial_state(P), P, "S2")]
-
-    assert left == THIS_SCENE_AND_THE_SCENELESS, (
-        "a lista inteira da passagem ia ao classificador com a equipe ainda na cena 1: contas "
-        "de cenas que ninguém abriu, e Noemi da cena 4 respondendo pela Noemi da cena 2"
-    )
-
-
-async def test_the_classifier_is_offered_the_current_scene_and_the_sceneless_beads_only(
-    the_classifier_answers,
-) -> None:
-    agent = the_classifier_answers(json.dumps({"decisions": []}))
-
-    await classify_coverage(
-        coverage_state=initial_state(P),
-        team_utterance="Elimelech died there in Moab",
-        guide_response="what happened to the family after that",
-        classifier_prompt=CLASSIFIER,
-        pericope_num=P,
-        scene_pointer="S2",
-        settings=_settings(),
-    )
-
-    assert _the_ids_shown(agent.system) == THIS_SCENE_AND_THE_SCENELESS, (
-        "o classificador via a passagem inteira em todo turno; o ponteiro de cena existia "
-        "(live_turn.current_scene_id) mas só o planejador de sondas o lia"
-    )
-
-
 @asynccontextmanager
 async def _handed(db_session: AsyncSession) -> AsyncIterator[AsyncSession]:
     yield db_session
 
 
-async def test_a_settle_narrows_the_list_to_the_scene_the_team_is_in(
+async def test_a_settle_offers_every_bead_short_of_engaged_whatever_scene_holds_the_pointer(
     db_session: AsyncSession, the_classifier_answers, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    agent = the_classifier_answers(json.dumps({"decisions": []}))
+    ruth_in_scene_three = "being:S3:B9"
+    agent = the_classifier_answers(
+        json.dumps({"decisions": [{"element_id": ruth_in_scene_three, "new_status": "engaged"}]})
+    )
     monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
     session = await service.create_session(db_session, pericope=P)
-    scene_one = [element.key for element in elements_for(P) if element.scene == 1]
+    worked = [element.key for element in elements_for(P) if element.scene == 1]
+    worked.remove("absence:1")
     await service.apply_coverage(
-        db_session, session.id, merge(initial_state(P), pericope_num=P, engaged=scene_one)
-    )
-    await service.append_exchange(
         db_session,
-        session,
-        team_utterance="a famine came and the family left Bethlehem",
-        guide_response="and then Elimelech died there",
+        session.id,
+        merge(initial_state(P), pericope_num=P, surfaced=["absence:1"], engaged=worked),
     )
+    for team_utterance, guide_response in [
+        ("a famine came and the family left Bethlehem", "and then Elimelech died there"),
+        ("Elimelech died and Naomi was left with her sons", "and what did the sons do"),
+        ("the sons married Orpah and Ruth and ten years passed", "and after those years"),
+        ("then Mahlon and Chilion died and the woman was alone", "tell me about her"),
+    ]:
+        await service.append_exchange(
+            db_session, session, team_utterance=team_utterance, guide_response=guide_response
+        )
 
     await background.settle_coverage(
         session_id=session.id,
-        turn_id="turn-2",
-        team_utterance="Elimelech died there in Moab",
-        guide_response="what happened to the family after that",
+        turn_id="turn-5",
+        team_utterance="Ruth stayed with Naomi in Moab",
+        guide_response="what happened to the two women",
         pericope_num=P,
     )
 
-    assert _the_ids_shown(agent.system) == THIS_SCENE_AND_THE_SCENELESS, (
-        "background.settle_coverage passava o estado inteiro; o ponteiro de cena nunca "
-        "chegava ao classificador, só ao planejador de sondas"
+    assert set(_the_ids_shown(agent.system)) == set(element_keys(P)) - set(worked), (
+        "com o silêncio da cena 1 só levantado, o ponteiro ficava na cena 1 e o classificador "
+        "nunca via uma conta das cenas 2, 3 e 4, por mais que a equipe as contasse"
+    )
+    await db_session.refresh(session)
+    assert session.coverage_state[ruth_in_scene_three] == CoverageStatus.ENGAGED.value, (
+        "a resposta do classificador sobre uma conta da cena 3 tem de chegar ao registro"
+    )
+    assert session.coverage_state["absence:1"] == CoverageStatus.SURFACED.value, (
+        "o classificador não nomeou o silêncio: ele fica onde estava"
     )
 
 
 async def test_an_id_the_classifier_was_not_offered_this_turn_moves_nothing(
     the_classifier_answers, caplog
 ) -> None:
-    ruth_in_scene_three = "being:S3:B9"
+    naomi_before_the_scenes = "being:B3"
+    stored = {**initial_state(P), naomi_before_the_scenes: CoverageStatus.NOT_ENCOUNTERED.value}
     the_classifier_answers(
         json.dumps(
             {
                 "decisions": [
-                    {"element_id": ruth_in_scene_three, "new_status": "engaged"},
+                    {"element_id": naomi_before_the_scenes, "new_status": "engaged"},
                     {"element_id": "scene:1", "new_status": "engaged"},
                 ]
             }
@@ -230,19 +200,18 @@ async def test_an_id_the_classifier_was_not_offered_this_turn_moves_nothing(
 
     with caplog.at_level(logging.WARNING):
         settled = await classify_coverage(
-            coverage_state=initial_state(P),
-            team_utterance="a famine came and the family left for Moab",
+            coverage_state=stored,
+            team_utterance="a famine came and Naomi left for Moab",
             guide_response="tell me what happened next",
             classifier_prompt=CLASSIFIER,
             pericope_num=P,
-            scene_pointer="S1",
             settings=_settings(),
         )
 
     assert settled["scene:1"] == CoverageStatus.ENGAGED.value
-    assert settled[ruth_in_scene_three] == CoverageStatus.NOT_ENCOUNTERED.value, (
-        "uma chave que a passagem tem mas o turno não ofereceu passava pelo merge como "
-        "qualquer outra: o modelo movia uma conta de uma cena que ninguém abriu"
+    assert settled[naomi_before_the_scenes] == CoverageStatus.NOT_ENCOUNTERED.value, (
+        "uma chave que o registro guardado ainda tem mas o mapa não tem mais passava pelo "
+        "merge como qualquer outra: o modelo movia uma conta que o turno nunca ofereceu"
     )
     assert "not offered" in caplog.text
 
@@ -262,7 +231,6 @@ async def test_the_keyword_classifier_moves_beads_from_the_words_alone_with_no_p
         team_utterance="Naomi and her husband went away because of the famine, Ruth too",
         guide_response="They left Bethlehem of Judah for the fields of Moab.",
         pericope_num=P,
-        scene_pointer="S1",
     )
 
     assert settled["being:S1:B3"] == CoverageStatus.ENGAGED.value, (
@@ -276,6 +244,6 @@ async def test_the_keyword_classifier_moves_beads_from_the_words_alone_with_no_p
     assert settled["being:S1:B2"] == CoverageStatus.NOT_ENCOUNTERED.value, (
         "'her husband' não toca o rótulo de Elimeleque; nada de engajamento inventado"
     )
-    assert settled["being:S3:B9"] == CoverageStatus.NOT_ENCOUNTERED.value, (
-        "Rute é da cena 3; com a equipe na cena 1 ela não está na lista e não se move"
+    assert settled["being:S3:B9"] == CoverageStatus.ENGAGED.value, (
+        "Rute é da cena 3 e nenhuma conta aquém de engaged fica fora da lista, em cena nenhuma"
     )

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
@@ -44,6 +44,7 @@ async def add_chunk(
     ends_ms: int = Form(...),
     retelling: bool = Form(default=False),
     device_id: str = device_dep,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationChunkResponse:
     """One piece told back in the bridge language, while the team's own recording plays.
@@ -83,7 +84,7 @@ async def add_chunk(
     it were one recording, which is what made re-recording one stretch move every stretch after
     it; a slice with no file to be a slice of would be the same defect under another name.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
@@ -119,6 +120,7 @@ async def add_chunk(
         ordinal=None,
         content_type=file.content_type or "audio/mp4",
     )
+    await db.commit()
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
@@ -172,6 +174,8 @@ async def _the_untold_errand(
     by the field and never by what is missing from the body.
     """
     waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
+    with stage("db_let_go"):
+        await db.commit()
     spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
     state.waited += 1
     await room.save_back_translation(db, session, state)
@@ -194,6 +198,7 @@ async def _the_untold_errand(
 async def finish(
     session_id: str,
     payload: FinishBackTranslationRequest | None = None,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> BackTranslationVerdictResponse:
     """`terminei` — compare the telling-back to the map and voice one finding, or the badge.
@@ -268,13 +273,16 @@ async def finish(
     never heard.
     """
     with stopwatch("[bt-timing]", session_id):
-        return await _finished(session_id, payload, db)
+        return await _finished(session_id, payload, project_id, db)
 
 
 async def _finished(
-    session_id: str, payload: FinishBackTranslationRequest | None, db: AsyncSession
+    session_id: str,
+    payload: FinishBackTranslationRequest | None,
+    project_id: str | None,
+    db: AsyncSession,
 ) -> BackTranslationVerdictResponse:
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     state = room.back_translation_of(session)
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)
@@ -305,6 +313,8 @@ async def _finished(
     unheard = room.unheard_parts(state, rehearsed)
     if unheard:
         line, _ = process_line("P", "unheard", session.language)
+        with stage("db_let_go"):
+            await db.commit()
         spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]
         return BackTranslationVerdictResponse(
             session_id=session.id,
@@ -347,11 +357,14 @@ async def _finished(
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
+    retired = await room.retired_segments(db, session.id)
+    with stage("db_let_go"):
+        await db.commit()
     verdict = await room.check_the_telling_back(
         session,
         state=state,
         told=told,
-        retired=await room.retired_segments(db, session.id),
+        retired=retired,
         takes=takes,
         settings=get_settings(),
     )

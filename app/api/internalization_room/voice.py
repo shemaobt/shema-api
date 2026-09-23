@@ -1,24 +1,79 @@
+import asyncio
 import logging
+import re
 import time
-from hashlib import sha256
+from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import room_caller_dep
+from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER, require_room_caller
 from app.core.config import get_settings
+from app.core.database import get_db
 from app.core.exceptions import NotFoundError
-from app.db.models.device import Device
 from app.services.internalization_room.questions import AUDIO_MIME
 from app.services.internalization_room.synthesize_facilitator_speech import voiced_here
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform.storage import GcsPlatformStore
-from app.services.platform.tts import MIME_TYPE, fetch_clip
+from app.services.platform.tts import MIME_TYPE, SpeechStore, etag_of, fetch_clip
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 IMMUTABLE = "private, max-age=31536000, immutable"
+
+#: Bounds how many clip reads race the device check at once. `GcsPlatformStore` runs the
+#: blocking GCS call on `asyncio.to_thread`, the same default executor the room's voice
+#: uploads share — a burst of requests carrying a bad or missing credential must not starve
+#: it of threads over a read nobody will ever receive. Past this many in flight, a request
+#: falls back to reading only once the gate has passed, exactly as it did before this route
+#: learned to race the two. Two, because that executor is ``min(32, cpu_count + 4)`` threads,
+#: five on a one-vCPU instance, and handles are unsigned: anyone who was ever handed one can
+#: mint another under the room's voice, so a junk credential can still buy a read that the
+#: gate then refuses. At most two of those at once leaves the uploads their threads.
+_SPECULATIVE_READS = asyncio.Semaphore(2)
+
+
+@dataclass(frozen=True)
+class ByteRange:
+    start: int
+    #: Inclusive, the way `Content-Range` counts it.
+    end: int
+
+
+class RangeNotSatisfiable(Exception):
+    pass
+
+
+_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
+    """The single byte range this request asks for, or `None` to serve the whole clip.
+
+    Raises `RangeNotSatisfiable` for a range this function understands but that names no
+    byte the clip actually has.
+    """
+    if range_header is None:
+        return None
+    match = _RANGE_RE.match(range_header.strip())
+    if match is None:
+        return None
+    first, last = match.group(1), match.group(2)
+    if first == "":
+        if last == "":
+            return None
+        if int(last) <= 0:
+            raise RangeNotSatisfiable()
+        return ByteRange(start=max(total - int(last), 0), end=total - 1)
+    start = int(first)
+    if last and int(last) < start:
+        return None
+    if start >= total:
+        raise RangeNotSatisfiable()
+    end = min(int(last), total - 1) if last else total - 1
+    return ByteRange(start=start, end=end)
 
 
 async def _arrived() -> float:
@@ -29,38 +84,169 @@ def _ms(started: float, ended: float) -> int:
     return round((ended - started) * 1000)
 
 
+async def _timed_fetch_clip(key: str, *, store: SpeechStore) -> tuple[bytes | None, int]:
+    started = time.monotonic()
+    audio = await fetch_clip(key, store=store)
+    return audio, _ms(started, time.monotonic())
+
+
+def _speculate(key: str, *, store: SpeechStore) -> asyncio.Task[tuple[bytes | None, int]]:
+    """Start the read beside the gate, holding one of the speculative permits for it.
+
+    The permit is held by the read itself, not by whoever awaits it. A refusal cancels the
+    awaiting task, but the download underneath runs on a `to_thread` worker that no cancel
+    reaches, so the permit is handed back only when that inner read has really ended; handed
+    back on the cancel, the bound would count waits instead of threads. A task cancelled
+    before its first step — a gate that refuses without awaiting anything — never starts the
+    inner read, so the permit comes back through the outer task's own callback instead.
+    """
+    started: list[asyncio.Future[tuple[bytes | None, int]]] = []
+
+    async def read() -> tuple[bytes | None, int]:
+        inner = asyncio.ensure_future(_timed_fetch_clip(key, store=store))
+        started.append(inner)
+        inner.add_done_callback(_speculation_ended)
+        return await asyncio.shield(inner)
+
+    def _never_started(_: asyncio.Task[tuple[bytes | None, int]]) -> None:
+        if not started:
+            _SPECULATIVE_READS.release()
+
+    outer = asyncio.create_task(read())
+    outer.add_done_callback(_never_started)
+    return outer
+
+
+def _speculation_ended(inner: asyncio.Future[tuple[bytes | None, int]]) -> None:
+    _SPECULATIVE_READS.release()
+    if not inner.cancelled():
+        inner.exception()
+
+
 @router.get("/voice/{handle}")
 async def clip(
     handle: str,
     arrived: float = Depends(_arrived),
-    _caller: Device | None = room_caller_dep,
+    db: AsyncSession = Depends(get_db),
+    x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
+    x_room_key: str | None = Header(default=None),
+    x_range: str | None = Header(default=None, alias="Range"),
+    x_if_range: str | None = Header(default=None, alias="If-Range"),
 ) -> Response:
     """Serve one synthesized line by the handle a turn handed out.
 
     The key behind the handle is content-addressed, so these bytes can never change: the
     app may keep them for as long as it has room, and a line it has already heard costs
-    nothing to hear again.
+    nothing to hear again. The key names the words, though, not one rendering of them: two
+    instances missing the same clip at once can each synthesize it, and the unconditional
+    put lets the second overwrite the first while the first still serves its own copy. So
+    the ETag hashes the bytes actually served, and an `If-Range` resume that lands on the
+    other rendering gets the whole clip, never a slice spliced onto the first. A bare
+    `Range`, with no `If-Range`, is still served off whichever rendering this instance
+    holds; the app always resumes with `If-Range`, and the write-once put that leaves one
+    rendering per key is ENG-996's.
+
+    The device check runs beside the read, not before it — the two are independent, and a
+    tablet that is still welcome pays for whichever one is slower, not their sum. But the
+    gate always answers first: a handle that does not decode to this room's own voice
+    waits behind the same check a good one does, so a caller with no working credential
+    cannot tell "not ours" apart from "yours, but refused" by watching which error comes
+    back. A refusal cancels the read and discards whatever it turns up — even a hit
+    already moved to the front of the in-memory cache's eviction order, which this leaves
+    as is rather than teach that cache about requests that were never actually let in.
+    Cancelling a read already on its GCS thread only stops the route from waiting on it;
+    the download still runs to completion in the background, its bytes discarded.
+
+    A 416 is the one answer decided by the `Range` header alone, so it is sent `no-store`:
+    stored as immutable under the handle, it kept a tablet refusing a clip it can play.
     """
     cfg = get_settings()
     key = from_handle(handle, settings=cfg)
+    read_task: asyncio.Task[tuple[bytes | None, int]] | None = None
+    if key is not None and not _SPECULATIVE_READS.locked():
+        await _SPECULATIVE_READS.acquire()
+        read_task = _speculate(key, store=GcsPlatformStore(cfg))
+
+    gate_passed = False
+    try:
+        await require_room_caller(
+            db, x_device_credential=x_device_credential, x_room_key=x_room_key
+        )
+        gate_passed = True
+    finally:
+        if not gate_passed and read_task is not None:
+            if not read_task.done():
+                read_task.cancel()
+            await asyncio.wait({read_task})
+            if not read_task.cancelled():
+                read_task.exception()
+
     if key is None:
         raise NotFoundError("No such clip")
-    reading = time.monotonic()
-    audio = await fetch_clip(key, store=GcsPlatformStore(cfg))
-    read = time.monotonic()
+
+    authed = time.monotonic()
+    if read_task is None:
+        audio, gcs_ms = await _timed_fetch_clip(key, store=GcsPlatformStore(cfg))
+    else:
+        audio, gcs_ms = await read_task
+
+    etag = etag_of(audio) if audio is not None else ""
+    byte_range: ByteRange | None = None
+    unsatisfiable = False
+    if audio is not None:
+        range_header = None if x_if_range is not None and x_if_range != etag else x_range
+        try:
+            byte_range = _resolve_range(range_header, total=len(audio))
+        except RangeNotSatisfiable:
+            unsatisfiable = True
+
+    if unsatisfiable or audio is None:
+        served = "none"
+    elif byte_range is None:
+        served = "full"
+    else:
+        served = f"{byte_range.start}-{byte_range.end}"
+
     logger.info(
-        "[voice-get] auth=%sms gcs=%sms bytes=%s same_instance=%s",
-        _ms(arrived, reading),
-        _ms(reading, read),
+        "[voice-get] auth=%sms gcs=%sms bytes=%s same_instance=%s range=%s",
+        _ms(arrived, authed),
+        gcs_ms,
         len(audio or b""),
         "yes" if voiced_here(key) else "no",
+        served,
     )
     if audio is None:
         raise NotFoundError("No such clip")
+    if unsatisfiable:
+        return Response(
+            status_code=416,
+            headers={
+                "Cache-Control": "no-store",
+                "ETag": etag,
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes */{len(audio)}",
+            },
+        )
+    if byte_range is not None:
+        return Response(
+            content=audio[byte_range.start : byte_range.end + 1],
+            media_type=_media_type(key),
+            status_code=206,
+            headers={
+                "Cache-Control": IMMUTABLE,
+                "ETag": etag,
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {byte_range.start}-{byte_range.end}/{len(audio)}",
+            },
+        )
     return Response(
         content=audio,
         media_type=_media_type(key),
-        headers={"Cache-Control": IMMUTABLE, "ETag": sha256(audio).hexdigest()[:32]},
+        headers={
+            "Cache-Control": IMMUTABLE,
+            "ETag": etag,
+            "Accept-Ranges": "bytes",
+        },
     )
 
 

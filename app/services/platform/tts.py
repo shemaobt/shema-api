@@ -14,11 +14,15 @@ that evaporates on every deploy.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
-from collections.abc import Mapping
+import time
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from typing import Protocol
 
 import httpx
@@ -31,7 +35,17 @@ logger = logging.getLogger(__name__)
 
 MIME_TYPE = "audio/mpeg"
 
+Upload = Callable[[], Awaitable[None]]
+
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
+
+_PENDING_WARMUPS: set[asyncio.Task[None]] = set()
+
+_FRESH_MAX_BYTES = 64 * 1024 * 1024
+_FRESH: OrderedDict[str, bytes] = OrderedDict()
+
+_KEPT_FOR_S = 3600
+_KEPT: OrderedDict[str, float] = OrderedDict()
 
 
 @dataclass(frozen=True)
@@ -45,12 +59,45 @@ class SynthesizedSpeech:
     key: str = ""
 
 
+@dataclass(frozen=True)
+class SpeechKey:
+    key: str
+    cached: bool
+
+
 class SpeechStore(Protocol):
     """The bucket seam: tests pass an in-memory dict, no GCS."""
 
     async def get(self, key: str) -> bytes | None: ...
 
+    async def exists(self, key: str) -> bool: ...
+
     async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+
+def forget_what_is_kept() -> None:
+    _KEPT.clear()
+    _FRESH.clear()
+
+
+def _remember_fresh(key: str, audio: bytes) -> None:
+    _FRESH[key] = audio
+    _FRESH.move_to_end(key)
+    while sum(map(len, _FRESH.values())) > _FRESH_MAX_BYTES:
+        _FRESH.popitem(last=False)
+
+
+def _is_kept(key: str) -> bool:
+    kept_at = _KEPT.get(key)
+    return kept_at is not None and time.monotonic() - kept_at < _KEPT_FOR_S
+
+
+def _mark_kept(key: str) -> None:
+    now = time.monotonic()
+    while _KEPT and now - next(iter(_KEPT.values())) >= _KEPT_FOR_S:
+        _KEPT.popitem(last=False)
+    _KEPT[key] = now
+    _KEPT.move_to_end(key)
 
 
 def cache_key(
@@ -96,6 +143,101 @@ async def synthesize_speech(
     `settings`, `client` and `store` are injectable — that is what makes the service testable
     without network and without GCS.
     """
+    key, speech_store, voiced = _addressed(
+        text,
+        language=language,
+        voice_id=voice_id,
+        model=model,
+        voice_settings=voice_settings,
+        api_key=api_key,
+        settings=settings,
+        client=client,
+        store=store,
+    )
+    cached = await speech_store.get(key)
+    if cached is not None:
+        return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
+
+    audio = await voiced()
+    await _cache_quietly(speech_store, key, audio)
+    return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
+
+
+async def synthesize_speech_key(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None = None,
+    model: str | None = None,
+    voice_settings: Mapping[str, float | bool] | None = None,
+    api_key: str | None = None,
+    settings: Settings | None = None,
+    client: httpx.AsyncClient | None = None,
+    store: SpeechStore | None = None,
+    uploads: list[Upload] | None = None,
+) -> SpeechKey:
+    key, speech_store, voiced = _addressed(
+        text,
+        language=language,
+        voice_id=voice_id,
+        model=model,
+        voice_settings=voice_settings,
+        api_key=api_key,
+        settings=settings,
+        client=client,
+        store=store,
+    )
+    if _is_kept(key) or await speech_store.exists(key):
+        return SpeechKey(key, cached=True)
+
+    audio = await voiced()
+    _remember_fresh(key, audio)
+    upload = partial(_cache_quietly, speech_store, key, audio)
+    if uploads is None:
+        await upload()
+    else:
+        uploads.append(upload)
+    return SpeechKey(key, cached=False)
+
+
+def warm_connection_in_background(*, api_key: str, settings: Settings | None = None) -> None:
+    """Open a no-cost connection to ElevenLabs ahead of the synthesis call that will need it.
+
+    Fire-and-forget: the caller does not await this, so a slow or failing warm-up never
+    delays or breaks the turn it is meant to speed up. The task is kept in `_PENDING_WARMUPS`
+    until it finishes, because an unreferenced `asyncio.Task` can be garbage-collected
+    mid-flight, silently cancelling it before the connection ever opens.
+    """
+    if not api_key:
+        # The synthesis refuses before the network when no key is configured
+        # (`_addressed`); a warm-up with nothing to authenticate with has nothing to open.
+        return
+    task = asyncio.create_task(_warm_connection(api_key=api_key, settings=settings))
+    _PENDING_WARMUPS.add(task)
+    task.add_done_callback(_PENDING_WARMUPS.discard)
+
+
+async def _warm_connection(*, api_key: str, settings: Settings | None) -> None:
+    cfg = settings or get_settings()
+    http = _make_client()
+    try:
+        await http.get(f"{cfg.elevenlabs_base_url}/v1/models", headers={"xi-api-key": api_key})
+    except Exception as exc:
+        logger.warning("ElevenLabs warm-up failed: %s", type(exc).__name__)
+
+
+def _addressed(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None,
+    model: str | None,
+    voice_settings: Mapping[str, float | bool] | None,
+    api_key: str | None,
+    settings: Settings | None,
+    client: httpx.AsyncClient | None,
+    store: SpeechStore | None,
+) -> tuple[str, SpeechStore, Callable[[], Awaitable[bytes]]]:
     if not text or not text.strip():
         raise ValidationError("text must not be empty")
 
@@ -105,7 +247,7 @@ async def synthesize_speech(
         # ponytail: project_health uses a SECOND key (`ph_elevenlabs_api_key`), and the
         # internalization room now brings its own. A caller that passes none still falls
         # back to the shared one, so nothing that worked before needs to change.
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     voice = voice_id or resolve_voice(language)
     chosen_model = model or cfg.elevenlabs_tts_model
@@ -116,13 +258,8 @@ async def synthesize_speech(
         output_format=cfg.elevenlabs_output_format,
         voice_settings=voice_settings,
     )
-    speech_store = store or _default_store(cfg)
-
-    cached = await speech_store.get(key)
-    if cached is not None:
-        return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
-
-    audio = await _synthesize(
+    voiced = partial(
+        _synthesize,
         text,
         voice_id=voice,
         language=language,
@@ -132,8 +269,7 @@ async def synthesize_speech(
         client=client,
         api_key=credential,
     )
-    await _cache_quietly(speech_store, key, audio)
-    return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
+    return key, store or _default_store(cfg), voiced
 
 
 async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
@@ -142,6 +278,10 @@ async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
     Content-addressed keys never point at different bytes, which is what lets the route
     that serves them promise an immutable cache.
     """
+    fresh = _FRESH.get(key)
+    if fresh is not None:
+        _FRESH.move_to_end(key)
+        return fresh
     return await store.get(key)
 
 
@@ -156,6 +296,8 @@ async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
         await store.put(key, audio, MIME_TYPE)
     except Exception:
         logger.exception("failed to cache TTS clip key=%s", key)
+        return
+    _mark_kept(key)
 
 
 async def _synthesize(
@@ -172,18 +314,22 @@ async def _synthesize(
     body: dict[str, object] = {
         "text": text,
         "model_id": model,
-        "output_format": cfg.elevenlabs_output_format,
         "language_code": language_hint(language),
     }
     if voice_settings:
         body["voice_settings"] = dict(voice_settings)
 
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
-        json=body,
-        headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
+            json=body,
+            params={"output_format": cfg.elevenlabs_output_format},
+            headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs TTS unreachable: %s", error)
+        raise UpstreamServiceError(f"Speech request could not reach ElevenLabs: {error}") from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs TTS failed: status=%s body=%s",
@@ -208,7 +354,7 @@ def _upstream_or_validation_error(status_code: int) -> Exception:
     return ValidationError(message)
 
 
-def _etag(audio: bytes) -> str:
+def etag_of(audio: bytes) -> str:
     return hashlib.sha256(audio).hexdigest()[:32]
 
 
@@ -221,5 +367,8 @@ def _default_store(cfg: Settings) -> SpeechStore:
 def _make_client() -> httpx.AsyncClient:
     global _DEFAULT_CLIENT
     if _DEFAULT_CLIENT is None:
-        _DEFAULT_CLIENT = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
+        _DEFAULT_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            limits=httpx.Limits(keepalive_expiry=60.0),
+        )
     return _DEFAULT_CLIENT

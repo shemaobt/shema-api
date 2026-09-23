@@ -26,6 +26,7 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.services.device import claim_device_as_facilitator, create_device
 from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.room_route_audit_harness import room_app_routes
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -61,35 +62,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield c
 
 
-def _dependency_calls(dependant) -> set:
-    calls = {dependant.call}
-    for sub in dependant.dependencies:
-        calls |= _dependency_calls(sub)
-    return calls
-
-
-def room_app_routes() -> list:
-    """Every mounted route a tablet can reach, in path order.
-
-    Identified by the room's own gates appearing in the route's dependency tree. Renaming a
-    gate without updating this set would silently empty it, which is what
-    ``test_the_audit_is_not_empty`` is here to catch.
-    """
-    from app.api.internalization_room import _deps
-    from app.main import app
-
-    gates = {_deps.require_room_caller, _deps.require_device}
-    return sorted(
-        (
-            route
-            for route in app.routes
-            if getattr(route, "dependant", None) is not None
-            and gates & _dependency_calls(route.dependant)
-        ),
-        key=lambda route: (route.path, sorted(route.methods)),
-    )
-
-
 def _exercisable(route) -> list[tuple[str, str]]:
     """(method, concrete path) for each method the route answers."""
     path = route.path
@@ -112,6 +84,19 @@ async def a_credential_that_works(db: AsyncSession) -> str:
     return claimed.credential
 
 
+def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_by_hand() -> None:
+    """ENG-993 moved the clip route's device check out of `Depends` and into its body, so
+    it can run beside the GCS read instead of ahead of it. A walk of `Depends` trees alone
+    would drop that route from the set both audits share, and it would stop being checked
+    for the exact leak this file exists to catch — and, in the transcript audit, for the
+    question's transcript."""
+    paths = {route.path for route in room_app_routes()}
+    assert any(path.endswith("/voice/{handle}") for path in paths), (
+        "a rota do clipe chama require_room_caller direto no corpo, sem Depends, e a "
+        "auditoria parou de enxergá-la"
+    )
+
+
 def test_the_audit_is_not_empty() -> None:
     """The guard on every other case in this file.
 
@@ -126,15 +111,25 @@ def test_the_audit_is_not_empty() -> None:
 
 
 async def test_no_room_route_echoes_an_unrecognised_credential(client, caplog) -> None:
-    """The refusal path, over every room route."""
+    """The refusal path, over every room route.
+
+    Every case here proves something about a response the gate produced. A route that
+    answers before the gate ever ran — a 404 from a handle that failed to decode, say —
+    would pass every assertion below by construction, having never gone near the code
+    this file exists to audit. `not_refused` closes that hole: the credential's shape
+    guarantees a 401 from the gate on every route that actually reaches it.
+    """
     caplog.set_level(logging.DEBUG)
     echoed = []
+    not_refused = []
 
     for route in room_app_routes():
         for method, path in _exercisable(route):
             answer = await client.request(
                 method, path, headers={DEVICE_CREDENTIAL_HEADER: UNRECOGNISED}
             )
+            if answer.status_code != 401:
+                not_refused.append((method, path, answer.status_code))
             if UNRECOGNISED in answer.text:
                 echoed.append((method, path))
 
@@ -142,6 +137,9 @@ async def test_no_room_route_echoes_an_unrecognised_credential(client, caplog) -
 
     assert not echoed, f"estas rotas devolveram a credencial no corpo: {echoed}"
     assert not logged, f"a credencial foi parar no log: {logged}"
+    assert not not_refused, (
+        f"estas rotas responderam antes de chegar ao portão, sem 401: {not_refused}"
+    )
 
 
 async def test_no_room_route_echoes_a_credential_that_works(client, db_session, caplog) -> None:

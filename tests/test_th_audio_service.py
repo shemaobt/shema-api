@@ -151,7 +151,7 @@ async def test_transcribe_audio_treats_a_dropped_connection_as_upstream_too(
 async def test_transcribe_audio_requires_api_key() -> None:
     s = Settings(database_url="sqlite+aiosqlite:///./test.db", elevenlabs_api_key="")
     client = _stub_client(_stt_response("ignored"))
-    with pytest.raises(ValidationError):
+    with pytest.raises(UpstreamServiceError):
         await transcribe_audio(b"abc", filename="x.wav", settings=s, client=client)
 
 
@@ -232,6 +232,10 @@ def _request_body(call) -> dict[str, Any]:
     return call.kwargs["json"]
 
 
+def _request_params(call) -> dict[str, Any]:
+    return call.kwargs["params"]
+
+
 async def test_synthesize_speech_detects_portuguese_and_picks_pt_voice() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"PT_MP3"))
@@ -298,9 +302,10 @@ async def test_synthesize_speech_sends_model_and_output_format() -> None:
     audio_cache.clear()
     client = _stub_client(_tts_response(b"MP3"))
     await synthesize_speech("hello", language_code="en-US", client=client, settings=_settings())
-    body = _request_body(client.post.await_args)
-    assert body["model_id"] == "eleven_multilingual_v2"
-    assert body["output_format"] == "mp3_44100_128"
+    call = client.post.await_args
+    assert _request_body(call)["model_id"] == "eleven_multilingual_v2"
+    assert _request_params(call)["output_format"] == "mp3_44100_128"
+    assert "output_format" not in _request_body(call)
 
 
 async def test_synthesize_speech_rejects_empty_text() -> None:

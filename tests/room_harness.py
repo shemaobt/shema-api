@@ -14,16 +14,18 @@ from __future__ import annotations
 
 import importlib
 import json
-from collections.abc import AsyncIterator, Iterable
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterable, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
 from httpx import ASGITransport
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from app.core.database import engine as app_engine
 from app.db.models.internalization_room import IRSegment, IRSession, IRTake, IRTakeKind
 from app.services.internalization_room.back_translation import BackTranslationState
 from app.services.internalization_room.canon.elements import element_keys
@@ -205,6 +207,42 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
 
     monkeypatch.setattr(bt_api.room, "synthesize_facilitator_speech", voice)
     return room
+
+
+@contextmanager
+def counting_commits(test_engine: AsyncEngine) -> Iterator[list[object]]:
+    """Every COMMIT that carries a write to the database while the block runs, on both engines.
+
+    Both, because a turn with a turn_id runs on `AsyncSessionLocal` (the app's engine)
+    while the fixtures write through the test's own; counting only one of them would let
+    a second commit hide on the other.
+    """
+    counted: list[object] = []
+    written: set[object] = set()
+
+    def _write(connection: object, _cursor: object, statement: str, *_: object) -> None:
+        if not statement.lstrip().upper().startswith("SELECT"):
+            written.add(connection)
+
+    def _count(connection: object) -> None:
+        if connection in written:
+            written.discard(connection)
+            counted.append(connection)
+
+    def _forget(connection: object) -> None:
+        written.discard(connection)
+
+    listeners = (("before_cursor_execute", _write), ("commit", _count), ("rollback", _forget))
+    engines = (test_engine.sync_engine, app_engine.sync_engine)
+    for each in engines:
+        for name, listener in listeners:
+            event.listen(each, name, listener)
+    try:
+        yield counted
+    finally:
+        for each in engines:
+            for name, listener in listeners:
+                event.remove(each, name, listener)
 
 
 @asynccontextmanager

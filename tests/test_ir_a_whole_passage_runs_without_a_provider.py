@@ -2,8 +2,8 @@
 
 The Guide and the Validator answer a script, the way every turn test here has them answer,
 and the beads move on her keyword classifier instead of on a model. What that buys is the
-whole loop — the pointer walking the scenes, the settle narrowing the list to the scene
-the team is in, the practice credited off the team's own report that it rehearsed (never
+whole loop — the settle offering every bead the team has not yet engaged, the practice
+credited off the team's own report that it rehearsed (never
 off the telling-back itself — ENG-788), the floor closing the passage — exercised on every
 commit rather than paid for by hand.
 """
@@ -25,7 +25,13 @@ from app.core.config import get_settings
 from app.db.models.internalization_room import IRSessionStatus
 from app.services import internalization_room as room
 from app.services.internalization_room import background, llm
-from app.services.internalization_room.classify_coverage import classify_coverage_by_keywords
+from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.classify_coverage import (
+    _shown_label,
+    _words,
+    classify_coverage_by_keywords,
+)
+from app.services.internalization_room.coverage import CoverageStatus, floor_met
 from tests.text_seam_harness import RUNNER_KEY, the_app
 
 SEAM = "/api/internalization-room/text-seam"
@@ -44,6 +50,7 @@ THE_GUIDE_SAYS = [
     "The sons married women of Moab, Orpah and Ruth, and they lived there about ten years."
     + INVITATION,
     "Then Mahlon and Chilion also died, and the woman was left alone." + INVITATION,
+    "Tell me once more how the sons died and the woman was left alone." + INVITATION,
     "You have told the whole passage. Record the rehearsal in your own language.",
 ]
 
@@ -70,6 +77,7 @@ THE_TEAM_SAYS = [
     + "Then Mahlon and Chilion died too there in the fields of Moab, and the woman Naomi was "
     "left alone, with her two sons gone and her husband gone. The narrator reports the "
     "deaths in one line and stops, the losses simply listed.",
+    REPORTED + "Mahlon and Chilion died, the deaths of the sons, and Naomi was left alone.",
 ]
 
 
@@ -119,13 +127,7 @@ async def test_ruth_one_runs_to_done_on_the_keyword_classifier_and_no_provider(
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", scripted
     )
-    pointers: list[str | None] = []
-
-    async def by_keywords(**kwargs: Any) -> dict[str, str]:
-        pointers.append(kwargs["scene_pointer"])
-        return await classify_coverage_by_keywords(**kwargs)
-
-    monkeypatch.setattr(background, "classify_coverage", by_keywords)
+    monkeypatch.setattr(background, "classify_coverage", classify_coverage_by_keywords)
 
     created = await client.post(f"{SEAM}/session", json={"pericopeId": "P01", "language": "en"})
     assert created.status_code == 200, created.text
@@ -143,6 +145,57 @@ async def test_ruth_one_runs_to_done_on_the_keyword_classifier_and_no_provider(
         "ninguém conseguia rodar a sala inteira sem pagar por ela; a passagem tem de chegar a "
         "done com o classificador por palavras e nenhuma chamada a provedor"
     )
-    assert pointers == ["S1", "S1", "S2", "S3", "S4"], (
-        "as contas avançam cena a cena: o ponteiro só anda quando a cena inteira engaja"
+
+
+#: The four scenes told in the team's words, and never a word of scene one's silence: the
+#: Guide names the famine, so that silence is only ever mentioned.
+THE_TEAM_LEAVES_THE_SILENCE_UNTOLD = [
+    "We are here and ready, tell us the story.",
+    "Elimelech and Naomi and their sons Mahlon and Chilion lived in Bethlehem of Judah.",
+    "Then Elimelech died, and his death left Naomi alone and the two sons.",
+    "The sons married Orpah and Ruth, women of Moab, and lived there about ten years.",
+    "Then Mahlon and Chilion died too, the deaths of the sons, and the woman Naomi was alone.",
+]
+
+
+async def test_a_silence_only_mentioned_in_scene_one_does_not_hold_back_the_later_scenes(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    beads = elements_for("P01")
+    silence = next(element for element in beads if element.key == "absence:1")
+    for said in THE_TEAM_LEAVES_THE_SILENCE_UNTOLD:
+        assert not _words(said) & _words(_shown_label(silence)), said
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"],
+        "call_agent",
+        ScriptedRoom(THE_GUIDE_SAYS),
+    )
+    monkeypatch.setattr(background, "classify_coverage", classify_coverage_by_keywords)
+
+    created = await client.post(f"{SEAM}/session", json={"pericopeId": "P01", "language": "en"})
+    assert created.status_code == 200, created.text
+    session_id = created.json()["sessionId"]
+    kickoff = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "kickoff": True})
+    assert kickoff.status_code == 200, kickoff.text
+    for said in THE_TEAM_LEAVES_THE_SILENCE_UNTOLD:
+        answered = await client.post(f"{SEAM}/turn", json={"sessionId": session_id, "text": said})
+        assert answered.status_code == 200, answered.text
+
+    session = await room.get_session(db_session, session_id)
+    await db_session.refresh(session)
+    ledger = session.coverage_state
+    engaged_scenes = {
+        element.scene
+        for element in beads
+        if element.scene is not None and ledger[element.key] == CoverageStatus.ENGAGED.value
+    }
+    assert engaged_scenes == {1, 2, 3, 4}, (
+        "um silêncio da cena 1 só levantado segurava a oferta na cena 1 pelo resto da sessão: "
+        "a equipe contava as cenas 2, 3 e 4 e nenhuma conta delas se movia"
+    )
+    assert ledger["absence:1"] == CoverageStatus.SURFACED.value, (
+        "o Guia falou da fome e a equipe nunca tocou o silêncio: levantado, não engajado"
+    )
+    assert not floor_met(ledger, "P01"), (
+        "o piso pede toda conta concreta engajada; um silêncio só mencionado deixa a sala aberta"
     )

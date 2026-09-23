@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Resp
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.api.internalization_room.voice import IMMUTABLE
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError, ValidationError
@@ -52,6 +52,7 @@ async def raise_question(
     device_id: str = DeviceId,
     element_key: str | None = Form(default=None),
     file: UploadFile = File(...),
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> QuestionRaisedResponse:
     """Take the hand down and keep what was asked.
@@ -76,7 +77,7 @@ async def raise_question(
     audio = await file.read()
     if len(audio) > MAX_AUDIO_BYTES:
         raise ValidationError("Audio payload exceeds 25 MB limit")
-    session = await session_service.get_session(db, session_id)
+    session = await session_service.session_for_room_caller(db, session_id, project_id)
     question = await service.raise_question(
         db,
         device_id=device_id,
@@ -110,13 +111,14 @@ async def replies(
 
 
 @router.get("/questions/audio/{handle}", dependencies=[room_caller_dep])
-async def team_audio(handle: str) -> Response:
+async def team_audio(handle: str, db: AsyncSession = Depends(get_db)) -> Response:
     """Serve a facilitator's spoken reply to the app that asked.
 
     The room's voice route cannot carry these bytes: it only answers for keys under the
     room's synthesized speech, so every reply address it was handed came back a 404 and
     the answer never reached the team. This route reads the one folder a question writes.
     """
+    await db.commit()
     return await _audio(handle)
 
 
@@ -199,6 +201,7 @@ async def facilitator_audio(
     if key is None:
         raise NotFoundError("No such audio")
     await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
+    await db.commit()
     return await _audio(handle)
 
 
@@ -223,6 +226,7 @@ async def listen_to_question(
     question = await service.get_question_for_facilitator(db, user, question_id)
     if not question.audio_key:
         raise NotFoundError("No such recording")
+    await db.commit()
     signed = await service.listen_address(question.audio_key)
     return QuestionAudioResponse(url=signed.url, expires_at=_stamp(signed.expires_at))
 

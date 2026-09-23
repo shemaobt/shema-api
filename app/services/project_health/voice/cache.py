@@ -25,8 +25,8 @@ class AudioCache:
         self._entries: OrderedDict[str, CachedAudio] = OrderedDict()
 
     @staticmethod
-    def make_key(text: str, language: str, voice_id: str) -> str:
-        raw = f"{language}|{voice_id}|{text}".encode()
+    def make_key(text: str, language: str, voice_id: str, output_format: str) -> str:
+        raw = f"{language}|{voice_id}|{output_format}|{text}".encode()
         return hashlib.sha256(raw).hexdigest()
 
     @staticmethod

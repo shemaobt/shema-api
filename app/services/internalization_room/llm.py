@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Literal, TypedDict
+from weakref import WeakKeyDictionary
 
 import anthropic
 from anthropic.types import (
+    CacheControlEphemeralParam,
     Message,
     MessageParam,
     OutputConfigParam,
@@ -99,6 +101,29 @@ def _ladder(configured: str) -> list[str]:
 #: thing. Cleared only by a restart, which is also when a key's entitlements can have changed.
 _SETTLED: dict[str, str] = {}
 
+_CLIENTS: WeakKeyDictionary[
+    asyncio.AbstractEventLoop,
+    dict[tuple[Callable[..., anthropic.AsyncAnthropic], str, str], anthropic.AsyncAnthropic],
+] = WeakKeyDictionary()
+
+
+def _client(settings: Settings) -> anthropic.AsyncAnthropic:
+    build = anthropic.AsyncAnthropic
+    identity = (build, settings.anthropic_api_key, settings.anthropic_workspace_id.strip())
+    kept = _CLIENTS.setdefault(asyncio.get_running_loop(), {})
+    if identity not in kept:
+        kept[identity] = build(
+            api_key=settings.anthropic_api_key,
+            default_headers=_workspace_header(settings),
+            max_retries=0,
+        )
+    return kept[identity]
+
+
+async def close_clients() -> None:
+    for client in _CLIENTS.pop(asyncio.get_running_loop(), {}).values():
+        await client.close()
+
 
 async def call_agent(
     *,
@@ -157,11 +182,7 @@ async def call_agent(
         {"role": turn["role"], "content": turn["text"]} for turn in conversation or ()
     ]
     messages.append({"role": "user", "content": user_content})
-    client = anthropic.AsyncAnthropic(
-        api_key=settings.anthropic_api_key,
-        default_headers=_workspace_header(settings),
-        max_retries=0,
-    )
+    client = _client(settings)
     refused_above = False
     for model in _from_the_settled_rung(rungs):
         started = time.monotonic()
@@ -173,7 +194,7 @@ async def call_agent(
                         max_tokens=max_output_tokens,
                         thinking=thinking,
                         output_config=output_config,
-                        system=_system_blocks(system_prompt),
+                        system=_system_blocks(system_prompt, ttl=_prefix_cache_ttl(role, settings)),
                         messages=messages,
                         timeout=bound_s,
                     )
@@ -314,7 +335,23 @@ def _workspace_header(settings: Settings) -> dict[str, str] | None:
     return {"anthropic-workspace-id": workspace}
 
 
-def _system_blocks(system_prompt: str) -> str | list[TextBlockParam]:
+#: The two roles a team hears — Guide and Validator — plus whoever speaks through them:
+#: panorama and the retro verdict speaker both draft and validate on these same two role
+#: strings (see `_draft` and the validator call inside `_voiced_after_validation`, both in
+#: validated_turn.py), so gating on the string is gating on every voiced surface at once. The
+#: judge, the analyst, the correction check and the classifier are not on the voice path and
+#: stay off.
+_VOICED_ROLES = frozenset({"guide", "validator"})
+
+
+def _prefix_cache_ttl(role: str, settings: Settings) -> Literal["1h"] | None:
+    """The cache TTL a role's prefix earns, or nothing for the API's own 5-minute default."""
+    if role not in _VOICED_ROLES:
+        return None
+    return settings.internalization_room_voice_cache_ttl or None
+
+
+def _system_blocks(system_prompt: str, *, ttl: Literal["1h"] | None) -> str | list[TextBlockParam]:
     """Split a system prompt at its cache mark, marking the half that repeats.
 
     A prompt with no mark is sent whole and uncached: a caller that has not said which half
@@ -324,8 +361,11 @@ def _system_blocks(system_prompt: str) -> str | list[TextBlockParam]:
     stable, mark, volatile = system_prompt.partition(CACHE_BREAK)
     if not mark:
         return system_prompt
+    cache_control: CacheControlEphemeralParam = {"type": "ephemeral"}
+    if ttl:
+        cache_control["ttl"] = ttl
     blocks: list[TextBlockParam] = [
-        {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}}
+        {"type": "text", "text": stable, "cache_control": cache_control}
     ]
     if volatile.strip():
         blocks.append({"type": "text", "text": volatile})
@@ -374,11 +414,18 @@ def _report_spend(
     lifetimes = usage.cache_creation
     cache_write_5m = lifetimes.ephemeral_5m_input_tokens if lifetimes else 0
     cache_write_1h = lifetimes.ephemeral_1h_input_tokens if lifetimes else 0
+    #: What the write is priced at — an unattributed write still prices at the 5-minute rate,
+    #: the API's own default. Kept apart from `cache_write_5m` above, which is what the API
+    #: actually said and is what the line below reports: pricing a guess is not the same as
+    #: reporting it as a fact, and a write with no breakdown would otherwise read as a
+    #: confirmed 5-minute one.
+    priced_write_5m = cache_write_5m if lifetimes else cache_write
     cost = cost_of(
         model,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
-        cache_write_tokens=cache_write,
+        cache_write_5m_tokens=priced_write_5m,
+        cache_write_1h_tokens=cache_write_1h,
         cache_read_tokens=cache_read,
     )
     logger.info(

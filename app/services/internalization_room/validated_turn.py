@@ -20,6 +20,7 @@ read off it raises. The tests reach the same module the same way.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import time
 from dataclasses import dataclass, field
@@ -46,6 +47,7 @@ from app.services.internalization_room.usage import (
     report_session,
 )
 from app.services.internalization_room.validator_reply import _issues_as_dicts, _parse_verdict
+from app.services.platform.tts import warm_connection_in_background
 
 #: How many times one draft is put to the Validator before its reply is given up on.
 READINGS_OF_ONE_DRAFT = 2
@@ -331,6 +333,7 @@ async def _voiced_after_validation(
     conversation = _conversation_turns(messages)
     redraft_note = ""
     issues: list[dict[str, Any]] = []
+    warmed_connection = False
 
     for attempt in range(shim.MAX_REDRAFTS + 1):
         draft, movements = split_opening_movements(
@@ -362,6 +365,13 @@ async def _voiced_after_validation(
             FINDING=finding or NOT_THIS_TURN,
             ORDERED_CLOSING=ordered_closing or NOT_THIS_TURN,
         )
+        if not warmed_connection:
+            warm_connection_in_background(
+                api_key=settings.internalization_room_elevenlabs_api_key
+                or settings.elevenlabs_api_key,
+                settings=settings,
+            )
+            warmed_connection = True
         for _reading in range(READINGS_OF_ONE_DRAFT):
             raw_verdict = await shim.call_agent(
                 role="validator",
@@ -387,7 +397,7 @@ async def _voiced_after_validation(
         else:
             _refused(f"verdict is {verdict['verdict']!r}", raw_verdict, session_id, attempt + 1)
 
-        if speech and shim.strays_from(speech, language_code):
+        if speech and await asyncio.to_thread(shim.strays_from, speech, language_code):
             issues = [*issues, {"problem": "off_bridge_language"}]
             _draft_rejected(
                 "off_bridge_language", session_id, attempt + 1, f"{len(speech)} characters"
