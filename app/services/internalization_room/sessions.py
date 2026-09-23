@@ -484,6 +484,7 @@ async def append_opening(
     """
     await db.refresh(session, ["messages", "version"])
     if session.messages:
+        await db.refresh(session)
         logger.warning(
             "The opening of session %s landed after the team's first turn; dropped, not appended",
             session.id,
