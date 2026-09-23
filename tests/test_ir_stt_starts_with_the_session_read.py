@@ -1,11 +1,12 @@
 """ENG-991: transcription starts beside the session read, not after it.
 
-Two SELECTs to Neon — `get_session` and, on a resend, `answered_turn` — used to finish before
-the audio was even handed to the transcriber. Neon is a 20-30 ms round trip away, and nothing
-about those two reads needs to happen before the recording starts moving. Once a session's
-language has been seen once in this process, a later turn starts transcription right beside
-the reads instead of behind them, and gives it up if the reads turn out to mean a replay or a
-session that no longer exists.
+`get_session` used to finish before the audio was even handed to the transcriber, and Neon
+is a 20-30 ms round trip away. Once a session's language has been seen once in this process,
+a later turn starts transcription right beside that read instead of behind it, and cancels it
+if the session turns out to be gone. The resend check (`answered_turn`) stays in front of
+transcription rather than beside it: a resend that lands after the first request has already
+finished re-runs from scratch, and a cancel some milliseconds later is not a guarantee a real
+network call already sent to the transcriber never lands.
 """
 
 from __future__ import annotations
@@ -209,30 +210,34 @@ class _HearingThatWaitsToBeCancelled:
         return HeardSpeech(text=TEAM_ANSWER)
 
 
-async def test_a_replay_cancels_the_speculative_transcription_and_never_pays_for_it(
+async def test_a_resend_with_a_warm_memo_never_calls_the_transcriber(
     client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A resend that lands after the first request has already finished is not joined by
+    `answer_once` — it re-runs `_answer_the_turn` from scratch, so the resend check
+    (`answered_turn`) has to be read before the language memo can start the transcriber,
+    never beside it. A cancel some milliseconds later is not a guarantee a real network
+    call already sent to the transcriber never lands, so this is the one read this ticket
+    does not overlap."""
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
     session = await create_session(db_session, language="pt", pericope=P)
     first = await _a_spoken_turn(client, session.id, turn_id="turno-1")
     assert first.status_code == 200, first.text[:300]
 
-    hearing = _HearingThatWaitsToBeCancelled()
-    monkeypatch.setattr(sessions_api, "heard_speech", hearing)
+    calls = 0
+
+    async def _hearing_that_counts(*_: Any, **__: Any) -> HeardSpeech:
+        nonlocal calls
+        calls += 1
+        return HeardSpeech(text=TEAM_ANSWER)
+
+    monkeypatch.setattr(sessions_api, "heard_speech", _hearing_that_counts)
 
     second = await _a_spoken_turn(client, session.id, turn_id="turno-1")
 
     assert second.status_code == 200, second.text[:300]
     assert second.json() == first.json(), "um reenvio tem de responder com o turno já dado"
-    assert hearing.started.is_set(), (
-        "a asserção só prova cancelamento se a transcrição especulativa tiver mesmo começado"
-    )
-    assert hearing.cancelled is True, (
-        "a transcrição especulativa continuou correndo depois de o replay ser encontrado"
-    )
-    assert hearing.charged is False, (
-        "a transcrição especulativa terminou e cobrou mesmo com o replay já encontrado"
-    )
+    assert calls == 0, "a transcrição especulativa rodou para um turno já respondido"
 
 
 async def test_a_missing_session_cancels_the_speculative_transcription_and_still_answers_404(
@@ -284,3 +289,33 @@ async def test_without_a_known_language_the_session_is_still_read_before_transcr
 
     assert answered.status_code == 200, answered.text[:300]
     assert hearing.started.is_set(), "a transcrição nunca chegou a rodar"
+
+
+async def _slow_to_actually_cancel() -> None:
+    """A stand-in for the STT task: its own cancellation handling takes a moment, the way a
+    real network call's teardown would, so a test can reliably catch `_cancelled` mid-wait."""
+    try:
+        await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        await asyncio.sleep(0.2)
+        raise
+
+
+async def test_cancelling_the_request_does_not_get_swallowed_while_stopping_the_stt() -> None:
+    """`_cancelled` runs while `_answer_the_turn` itself is unwinding from a failure, so a
+    cancellation of the request landing at that exact suspension point must reach the caller,
+    never read as if it were the stopped transcription's own outcome."""
+    hung = asyncio.create_task(_slow_to_actually_cancel())
+    entered_cleanup = asyncio.Event()
+
+    async def _cleaning_up() -> None:
+        entered_cleanup.set()
+        await sessions_api._cancelled(hung)
+
+    request = asyncio.create_task(_cleaning_up())
+    await asyncio.wait_for(entered_cleanup.wait(), timeout=1)
+    await asyncio.sleep(0.05)  # _cancelled has called hung.cancel() and is now inside its wait
+    request.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request

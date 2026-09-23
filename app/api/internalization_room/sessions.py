@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import logging
 import re
 import uuid
@@ -203,15 +202,21 @@ async def _timed_stt(
 
 
 async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
-    """Stop a transcription started ahead of the session read and wait for it to unwind.
+    """Stop a transcription started ahead of the session read and read its outcome.
 
-    Its result is going nowhere either way — a replay already has its answer and a session
-    that is gone has nobody to hear it for — so this reads whatever the task ends with and
-    drops it, the only way to keep asyncio from logging it later as never retrieved.
+    A session the read could not find has nobody left to hear the transcript, so its task
+    is stopped rather than left to run to an answer nobody reads. `asyncio.wait` rather than
+    a plain `await`: this runs while unwinding from `get_session`'s own failure, and a plain
+    `await task` inside `except BaseException: pass` would also swallow a cancellation aimed
+    at this request itself, arriving at exactly this suspension point — `wait` never raises
+    the waited task's own exception into its caller, so only that task's outcome is being
+    read here, never the caller's. `task.exception()` marks a real failure as read without
+    raising it; skipped when the task ended up cancelled, since reading it then would raise.
     """
     task.cancel()
-    with contextlib.suppress(BaseException):
-        await task
+    await asyncio.wait({task})
+    if not task.cancelled():
+        task.exception()
 
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
@@ -642,6 +647,12 @@ async def _answer_the_turn(
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
 
+    if turn_id:
+        with stage("db_read"):
+            replay = await answered_turn(db, session_id, turn_id)
+        if replay is not None:
+            return TurnResponse(**replay)
+
     stt: asyncio.Task[HeardSpeech] | None = None
     if file is not None:
         known_language = _LANGUAGE_MEMO.get(session_id)
@@ -659,21 +670,11 @@ async def _answer_the_turn(
     try:
         with stage("db_read"):
             session = await room.get_session(db, session_id)
-
-        replay = None
-        if turn_id:
-            with stage("db_read"):
-                replay = await answered_turn(db, session.id, turn_id)
     except BaseException:
         if stt is not None:
             await _cancelled(stt)
         raise
     _remember_language(session_id, session.language)
-
-    if replay is not None:
-        if stt is not None:
-            await _cancelled(stt)
-        return TurnResponse(**replay)
 
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])

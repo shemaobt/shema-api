@@ -104,13 +104,6 @@ async def _post_a_turn(client, session_id: str, *, turn_id: str):
 async def test_the_same_turn_id_posted_twice_runs_the_fan_out_once_and_appends_one_exchange(
     client, db_session, test_engine, fan_out
 ) -> None:
-    """The Guide, the Validator and the voice stay once-only; the transcriber does not.
-
-    ENG-991 has a resend hand its audio to the transcriber before the resend check can be
-    read, so it can start beside that check instead of behind it — the fake here has no
-    network hop to be cancelled out of, so unlike a real one it always finishes. The turn
-    those two calls point at is still answered once, which is what `answered_turn` guards.
-    """
     session = await create_session(db_session, language="pt", pericope=P)
 
     first = await _post_a_turn(client, session.id, turn_id="turno-1")
@@ -120,9 +113,7 @@ async def test_the_same_turn_id_posted_twice_runs_the_fan_out_once_and_appends_o
     assert second.status_code == 200, second.text[:300]
 
     assert second.json() == first.json(), "a resend must answer with the turn already given"
-    assert fan_out["hearing"].calls == 2, (
-        "a resend's audio starts transcription beside the resend check"
-    )
+    assert fan_out["hearing"].calls == 1, "the audio was transcribed twice"
     assert fan_out["model"].calls == 2, "the Guide or the Validator ran a second time"
     assert fan_out["voice"].calls == 1, "the line was synthesized twice"
 
