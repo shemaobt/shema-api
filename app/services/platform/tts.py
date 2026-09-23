@@ -247,7 +247,7 @@ def _addressed(
         # ponytail: project_health uses a SECOND key (`ph_elevenlabs_api_key`), and the
         # internalization room now brings its own. A caller that passes none still falls
         # back to the shared one, so nothing that worked before needs to change.
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     voice = voice_id or resolve_voice(language)
     chosen_model = model or cfg.elevenlabs_tts_model
