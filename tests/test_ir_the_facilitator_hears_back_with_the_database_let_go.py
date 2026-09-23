@@ -1,6 +1,6 @@
 """What the facilitator plays back is signed or fetched with the database let go.
 
-The same shape ENG-1035/ENG-1049 fixed on the team's side: these two routes read the
+The same shape ENG-1035/ENG-1049 fixed on the team's side: the routes below read the
 facilitator's scope on the request's own session and then call GCS with that read's
 transaction still open. The fake standing in for GCS reads `in_transaction()` on that
 session when it is called.
