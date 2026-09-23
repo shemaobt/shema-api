@@ -34,6 +34,7 @@ them without rebuilding their fixtures a second time.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -68,7 +69,9 @@ def room_caller_session_routes() -> list[tuple[str, str]]:
     return sorted(found)
 
 
-#: The nine routes this ticket fixes, behaviourally exercised below by `SESSION_CASES`.
+#: The nine routes this ticket fixes, behaviourally exercised below by `cases()` — held to
+#: exactly this set by `test_the_exercised_cases_are_exactly_the_covered_routes`, so a route
+#: added here is a route the refusal cases run against, not only a line in a table.
 COVERED = {
     ("GET", f"{PREFIX}/sessions/{{session_id}}"),
     ("POST", f"{PREFIX}/sessions/{{session_id}}/needs-person"),
@@ -320,6 +323,28 @@ TAGS = [
 ]
 
 
+def test_the_exercised_cases_are_exactly_the_covered_routes() -> None:
+    """`COVERED` is what the sweep checks the mounted routes against; `TAGS` and `cases()` are
+    what the refusal cases run. Two hand-written lists with nothing tying them would let a
+    route be accounted for above and never exercised below. Built over template ids, so each
+    case's path comes back as the route it calls.
+    """
+    templates = Owned(
+        SimpleNamespace(id="{session_id}"),
+        SimpleNamespace(id="{take_id}"),
+        SimpleNamespace(id="{segment_id}"),
+    )
+    built = cases(templates)
+
+    assert [case["tag"] for case in built] == TAGS, (
+        "TAGS e cases() divergiram: um caso existe sem ser parametrizado, ou o contrário"
+    )
+    assert {(case["method"], f"{PREFIX}{case['path']}") for case in built} == COVERED, (
+        "as rotas exercidas por cases() não são as de COVERED: uma rota está na tabela sem ser "
+        "testada, ou é testada sem estar na tabela"
+    )
+
+
 async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
     """What a refused call must not have moved, checked against the resources it was asked
     to act on — a status code alone would not catch a route that refuses but writes anyway.
@@ -342,7 +367,9 @@ async def _verify_untouched(db: AsyncSession, tag: str, owned: Owned) -> None:
         )
     elif tag == "person-arrived":
         session = await get_session(db, owned.session.id)
-        assert session.attended_at is None, "um estranho marcou presença numa sala de outro projeto"
+        assert session.person_arrived_at is None, (
+            "um estranho marcou presença numa sala de outro projeto"
+        )
 
 
 @pytest.mark.parametrize("tag", TAGS)
