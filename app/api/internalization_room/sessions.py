@@ -607,6 +607,7 @@ async def take_turn(
     file: UploadFile | None = File(default=None),
     turn_id: str | None = Form(default=None, max_length=64),
     client_timing: str | None = Form(default=None),
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -630,7 +631,12 @@ async def take_turn(
     if client_timing is not None:
         _log_client_timing(session_id, client_timing)
     answer = partial(
-        _answer_the_turn, session_id=session_id, background=background, file=file, turn_id=turn_id
+        _answer_the_turn,
+        session_id=session_id,
+        background=background,
+        file=file,
+        turn_id=turn_id,
+        project_id=project_id,
     )
     with stopwatch("[turn-timing]", session_id) as clock:
         if turn_id:
@@ -648,6 +654,7 @@ async def _answer_the_turn(
     background: BackgroundTasks,
     file: UploadFile | None,
     turn_id: str | None,
+    project_id: str | None,
 ) -> TurnResponse:
     bound_s = get_settings().internalization_room_turn_bound_ms / 1000
     deadline = asyncio.get_running_loop().time() + bound_s
@@ -674,7 +681,7 @@ async def _answer_the_turn(
 
     try:
         with stage("db_read"):
-            session = await room.get_session(db, session_id)
+            session = await room.get_session_for_room_caller(db, session_id, project_id)
     except BaseException:
         if stt is not None:
             await _cancelled(stt)
