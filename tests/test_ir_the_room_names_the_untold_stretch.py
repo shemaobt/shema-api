@@ -39,6 +39,7 @@ from tests.clip_flight_harness import voiced_through
 from tests.room_harness import (
     a_piece_still_to_be_told,
     heard_every_part,
+    nothing_is_read_ahead,
     press_terminei,
 )
 
@@ -47,6 +48,11 @@ KEY = "sala-de-teste"
 DEVICE = "tablet-da-equipe-1"
 PASSAGE = "P01"
 LANGUAGE = "pt"
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:

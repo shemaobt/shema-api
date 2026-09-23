@@ -35,7 +35,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
 from tests.clip_flight_harness import voiced_through
-from tests.room_harness import heard_every_part, press_terminei
+from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -79,6 +79,11 @@ THE_CHECKS_ADDITION = "Jerusalém, que a história não conta"
 
 #: The retelling that answers an addition on frase 5: what the team put in is gone from it.
 THE_ADDITION_MENDED = "As duas seguiram o caminho até Belém, e Noemi soube da notícia."
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 def _names(text: str, vocabulary: tuple[str, ...]) -> set[str]:

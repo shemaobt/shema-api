@@ -35,7 +35,7 @@ from app.services import internalization_room as room
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
 from tests.clip_flight_harness import voiced_through
-from tests.room_harness import heard_every_part, press_terminei
+from tests.room_harness import heard_every_part, nothing_is_read_ahead, press_terminei
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -72,6 +72,11 @@ THE_CAUSE_STILL_THERE = "As noras pediram para voltar, e Noemi soube da notícia
 #: A retelling that answers both halves and breaks two other things doing it: Moabe is gone
 #: from this stretch, and a place the story never tells is in it.
 THE_SWAP_MENDED_BADLY = "Noemi soube da notícia do pão em Belém e foi para Jerusalém."
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 def _names(text: str, vocabulary: tuple[str, ...]) -> set[str]:

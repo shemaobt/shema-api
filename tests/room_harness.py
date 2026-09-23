@@ -144,6 +144,17 @@ def the_bucket_is_in_memory(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     return store
 
 
+def nothing_is_read_ahead(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.internalization_room import back_translation as bt_api
+    from app.api.internalization_room import segments as segments_api
+
+    async def unread(**_: Any) -> None:
+        return None
+
+    monkeypatch.setattr(bt_api, "read_ahead", unread)
+    monkeypatch.setattr(segments_api, "read_ahead", unread)
+
+
 def the_transcriber_says(monkeypatch: pytest.MonkeyPatch, said: list[str]) -> None:
     """What the transcriber will answer, one entry per capture, in the order they are sent."""
     from app.api.internalization_room import back_translation as bt_api

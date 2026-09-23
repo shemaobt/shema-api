@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import select, update
+from sqlalchemy import and_, case, literal, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -296,6 +296,7 @@ async def _land(
             IRSession.status,
             IRSession.ended_at,
             IRSession.updated_at,
+            IRSession.lifted_halt,
         )
         .execution_options(synchronize_session=False)
     )
@@ -323,7 +324,6 @@ async def append_exchange(
     told_back: str = "",
     state: ComprehensionState | None = None,
     commit: bool = True,
-    halted_at_start: bool | None = None,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -344,15 +344,21 @@ async def append_exchange(
     `attend` is the other, and is the one a facilitator controls (ENG-609). The lift itself
     is untouched by that slice: the team resuming still ends the halt, and both kinds of halt
     end this way. Only a halt already standing when the turn began is lifted: one the tablet
-    raised while the Guide was still answering is a request nobody has answered yet. A caller
-    that re-read the row since the turn began says what it saw first in ``halted_at_start``.
+    raised while the Guide was still answering is a request nobody has answered yet. The row
+    knows the halt the turn began in only by its kind, so a halt of that same kind raised
+    again after a visit, all inside one turn, is taken for it and lifted.
 
-    It does clear `lifted_halt`, which is the record of a halt an outstanding visit lifted and
-    which undoing that visit would put back. Once a turn lands there is nothing left to put
-    back — the turn is the team's own exit and would have lifted the halt with or without the
-    visit — so leaving it set lets a facilitator correcting a ten-minute-old tap stop a
-    conversation in full flow. The stamps are deliberately **not** cleared: who went and when
-    is what the history is for, and a landing turn is no evidence they did not go.
+    It clears `lifted_halt`, which is the record of a halt an outstanding visit lifted and
+    which undoing that visit would put back, when the visit is the one the row carried as the
+    turn began, or when it lifted the halt the turn began in. Either way there is nothing left
+    to put back — the turn is the team's own exit and would have lifted the halt with or
+    without the visit — so leaving it set lets a facilitator correcting a ten-minute-old tap
+    stop a conversation in full flow. A visit to a halt raised while the Guide was answering
+    keeps it: the turn would not have lifted that halt, so undoing the visit brings it back.
+    The same-kind halt above is the exception — mistaken for the one the turn began in, its
+    visit loses the record too.
+    The stamps are deliberately **not** cleared: who went and when is what the history is for,
+    and a landing turn is no evidence they did not go.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
@@ -377,11 +383,21 @@ async def append_exchange(
                 issues=outcome.issues,
             )
     messages.append(guide)
-    values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
-    if halted_at_start is None:
-        halted_at_start = session.status is IRSessionStatus.NEEDS_PERSON
-    if halted_at_start:
-        values["status"] = IRSessionStatus.IN_PROGRESS
+    values: dict[str, Any] = {"messages": messages}
+    nothing_to_put_back = IRSession.attended_at.is_not_distinct_from(session.attended_at)
+    if session.status is IRSessionStatus.NEEDS_PERSON:
+        nothing_to_put_back = or_(nothing_to_put_back, IRSession.lifted_halt == session.halt_kind)
+        values["status"] = case(
+            (
+                and_(
+                    IRSession.status == IRSessionStatus.NEEDS_PERSON,
+                    IRSession.halt_kind == session.halt_kind,
+                ),
+                literal(IRSessionStatus.IN_PROGRESS, IRSession.status.type),
+            ),
+            else_=IRSession.status,
+        )
+    values["lifted_halt"] = case((nothing_to_put_back, None), else_=IRSession.lifted_halt)
     if state is not None:
         values["comprehension"] = state.model_dump(mode="json")
     return await _land(db, session, values, commit=commit)
@@ -475,9 +491,9 @@ async def append_opening(
     read again here, and an opening that is no longer the first thing said is dropped from
     the record and logged — the tablet still hears the line it asked for.
     """
-    halted_at_start = session.status is IRSessionStatus.NEEDS_PERSON
-    await db.refresh(session)
+    await db.refresh(session, ["messages", "version"])
     if session.messages:
+        await db.refresh(session)
         logger.warning(
             "The opening of session %s landed after the team's first turn; dropped, not appended",
             session.id,
@@ -492,7 +508,6 @@ async def append_opening(
         scene=scene,
         state=state,
         commit=commit,
-        halted_at_start=halted_at_start,
     )
     return True
 
