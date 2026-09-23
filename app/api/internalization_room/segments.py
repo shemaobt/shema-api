@@ -6,7 +6,7 @@ had no door. These are the doors, and nothing else: choosing where to cut is the
 rules about where a cut may land are the service's, and neither is decided here.
 """
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import device_dep, room_caller_dep
@@ -15,6 +15,7 @@ from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
+from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import (
     divide_segment,
@@ -83,6 +84,7 @@ async def divide(
 async def replace(
     session_id: str,
     segment_id: str,
+    background: BackgroundTasks,
     take_id: str = Form(...),
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
@@ -163,6 +165,7 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
+    background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(
         session_id=session.id,
         segments=await _units(db, session.id),

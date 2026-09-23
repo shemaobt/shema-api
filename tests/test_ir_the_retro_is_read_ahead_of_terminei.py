@@ -18,8 +18,9 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import back_translation as bt_api
+from app.api.internalization_room import segments as segments_api
 from app.core.config import get_settings
-from app.db.models.internalization_room import IRTake
+from app.db.models.internalization_room import IRSegment, IRTake
 from app.services.internalization_room import back_translation as bt_service
 from app.services.internalization_room import llm, usage
 from app.services.internalization_room.segments import final_segments
@@ -71,6 +72,7 @@ def room(monkeypatch: pytest.MonkeyPatch) -> Room:
 @pytest.fixture(autouse=True)
 def bucket(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     the_transcriber_says(monkeypatch, [])
+    monkeypatch.setattr(segments_api, "heard", bt_api.heard)
     return the_bucket_is_in_memory(monkeypatch)
 
 
@@ -100,6 +102,23 @@ async def _tell(
         headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
         data=data,
         files={"file": ("trecho.m4a", b"um trecho contado", "audio/mp4")},
+    )
+    assert told.status_code == 200, told.text
+    return told
+
+
+async def _tell_again(
+    client: httpx.AsyncClient, session_id: str, stretch: IRSegment
+) -> httpx.Response:
+    told = await client.post(
+        f"{PREFIX}/sessions/{session_id}/segments/{stretch.id}/replace",
+        headers={"X-Room-Key": KEY, "X-Room-Device": TABLET},
+        data={
+            "take_id": stretch.take_id,
+            "starts_ms": str(stretch.starts_ms),
+            "ends_ms": str(stretch.ends_ms),
+        },
+        files={"file": ("de-novo.m4a", b"contado de novo", "audio/mp4")},
     )
     assert told.status_code == 200, told.text
     return told
@@ -316,6 +335,60 @@ async def test_the_closing_reading_after_a_mended_stretch_is_the_one_read_ahead(
     assert len(analyst.verifications) == 1
     assert analyst.whole_readings == read_before, (
         "a leitura de fechamento era paga no terminei com a leitura adiantada já pronta"
+    )
+    assert verdict["checked"] is True
+
+
+async def test_a_stretch_retold_over_its_own_slice_starts_the_reading_the_closing_one_uses(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [1])
+    raised = {"findings": [{"kind": "addition", "note": "Boaz não está nesta cena.", "chunk": 1}]}
+
+    async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+        analyst.readings = [raised]
+        await press_terminei(client, session.id, report=played_every_part([part.id]))
+        (stretch,) = await final_segments(db_session, session.id)
+        await _tell_again(client, session.id, stretch)
+        read_before = analyst.whole_readings
+        verdict = (await press_terminei(client, session.id)).json()
+
+    assert read_before == 2, "recontar o trecho não mandava ler o conjunto que ficou completo"
+    assert len(analyst.verifications) == 1
+    assert analyst.whole_readings == read_before, (
+        "a leitura de fechamento era paga no terminei depois de recontar o trecho"
+    )
+    assert verdict["checked"] is True
+
+
+async def test_a_stretch_retold_after_the_reading_ahead_throws_it_away_too(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+        session_id, second = await _a_second_stretch_after_the_first_terminei(
+            client, db_session, analyst
+        )
+        retold = next(
+            stretch
+            for stretch in await final_segments(db_session, session_id)
+            if stretch.id == second
+        )
+        with monkeypatch.context() as unread:
+            unread.setattr(segments_api, "read_ahead", _nothing_read_ahead)
+            await _tell_again(client, session_id, retold)
+        read_before = analyst.whole_readings
+        verdict = (await press_terminei(client, session_id)).json()
+
+    assert analyst.whole_readings == read_before + 1, (
+        "o terminei servia a leitura de antes de o trecho ser recontado"
     )
     assert verdict["checked"] is True
 
