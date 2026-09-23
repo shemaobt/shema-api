@@ -223,7 +223,11 @@ def speech_to_come(
 async def _voice_once(
     key: str, store: SpeechStore, voiced: Callable[[], Awaitable[bytes]]
 ) -> bytes:
-    audio = await fetch_clip(key, store=store)
+    try:
+        audio = await fetch_clip(key, store=store)
+    except Exception:
+        logger.warning("a clip could not be read back; voicing it: key=%s", key)
+        audio = None
     if audio is None:
         audio = await store.put_once(key, await voiced(), MIME_TYPE)
         _mark_kept(key)

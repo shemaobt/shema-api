@@ -528,3 +528,38 @@ async def test_an_opening_the_record_dropped_never_waits_on_its_voice_past_the_t
     assert answered.status_code == 502, (
         "a abertura descartada esperava a voz sem prazo, além do limite que o turno carrega"
     )
+
+
+async def test_a_bucket_that_fails_the_read_behind_a_handle_is_an_outage_not_a_crash(
+    client: httpx.AsyncClient, panorama: IRSession, bucket: WriteOnceBucket
+) -> None:
+    await asyncio.wait_for(client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1)
+    again = await asyncio.wait_for(client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1)
+    another_instance()
+    bucket.unreadable = 1
+
+    heard = await client.get(again.json()["audio_url"])
+
+    assert heard.status_code == 502, "uma leitura do GCS que falhava na rota do handle virava 500"
+
+
+async def test_a_bucket_read_that_fails_inside_the_one_re_voicing_still_serves_the_kept_clip(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    bucket: WriteOnceBucket,
+) -> None:
+    elevenlabs.renderings = [b"kept", b"made again"]
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+    await asyncio.sleep(0.05)
+    another_instance()
+    bucket.unreadable = 2
+
+    heard = await client.get(answered.json()["audio_url"])
+
+    assert heard.status_code == 200, (
+        "uma leitura do bucket que falhava dentro da re-síntese gastava a única tentativa do GET"
+    )
+    assert heard.content == b"kept"

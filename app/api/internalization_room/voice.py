@@ -138,18 +138,21 @@ async def clip(
     x_range: str | None = Header(default=None, alias="Range"),
     x_if_range: str | None = Header(default=None, alias="If-Range"),
 ) -> Response:
-    """Serve one synthesized line by the handle a turn handed out.
+    """Serve one synthesized line by its handle alone, only as the bucket already keeps it.
+
+    The lines handed out this way are made before the handle is: a prepared opening, a
+    passage's name, a line said again, an opening the record dropped. So this route voices
+    nothing and joins no flight — with no session it cannot tell whose line a handle is,
+    and a turn's own line is served by `turn_clip`. A bucket that cannot be read is a 502,
+    an outage, not a missing clip.
 
     The key behind the handle is content-addressed, so these bytes can never change: the
     app may keep them for as long as it has room, and a line it has already heard costs
-    nothing to hear again. The key names the words, though, not one rendering of them: two
-    instances missing the same clip at once can each synthesize it, and the unconditional
-    put lets the second overwrite the first while the first still serves its own copy. So
-    the ETag hashes the bytes actually served, and an `If-Range` resume that lands on the
-    other rendering gets the whole clip, never a slice spliced onto the first. A bare
-    `Range`, with no `If-Range`, is still served off whichever rendering this instance
-    holds; the app always resumes with `If-Range`, and the write-once put that leaves one
-    rendering per key is ENG-996's.
+    nothing to hear again. The key names the words, though, not one rendering of them. The
+    bucket keeps the first rendering written under a key and memory keeps only what the
+    bucket confirmed, and the ETag still hashes the bytes actually served, so an `If-Range`
+    resume that lands on another rendering gets the whole clip, never a slice spliced onto
+    the first.
 
     The device check runs beside the read, not before it — the two are independent, and a
     tablet that is still welcome pays for whichever one is slower, not their sum. But the
@@ -188,6 +191,21 @@ async def turn_clip(
     x_range: str | None = Header(default=None, alias="Range"),
     x_if_range: str | None = Header(default=None, alias="If-Range"),
 ) -> Response:
+    """Serve a line the session said, making it if nothing holds it.
+
+    The session is resolved against the caller's team, and the handle has to be one of that
+    session's lines — the Guide's words or one of the opening's two movements — before any
+    flight, memory or bucket is consulted; anything else is a 404. A line still being
+    voiced on this instance is joined, not voiced again. When no flight, memory or bucket
+    holds it, the line is made once from the session's words, and a line that cannot be
+    made is a 502, which the app treats as an outage. A bucket read that fails counts as a
+    miss.
+
+    One re-synthesis per GET, not per line: requests racing on one line join the same
+    flight. With the bucket refusing every write, nothing is ever confirmed, so each GET
+    pays one synthesis and answers 502 — bounded per request, not across a tablet's
+    retries, and accepted.
+    """
     return await _serve(
         handle,
         session_id,
@@ -252,9 +270,9 @@ async def _serve(
     else:
         try:
             audio, gcs_ms = await (read_task or _timed_fetch_clip(key, store=GcsPlatformStore(cfg)))
-        except Exception:
+        except Exception as error:
             if voice is None:
-                raise
+                raise UpstreamServiceError("o clipe não pôde ser lido") from error
             audio, gcs_ms = None, 0
     if audio is None and voice is not None:
         flying = time.monotonic()
