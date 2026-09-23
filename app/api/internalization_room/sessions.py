@@ -144,10 +144,9 @@ async def _write_the_turn(
                 outcome=outcome,
                 scene=_scene_of(session),
                 state=turn.state if turn is not None else None,
+                commit=False,
             )
             return session
-        if turn is not None:
-            session = await room.save_comprehension(db, session, turn.state)
         return await room.append_exchange(
             db,
             session,
@@ -155,6 +154,8 @@ async def _write_the_turn(
             guide_response=outcome.speech,
             outcome=outcome,
             scene=_scene_of(session, outcome.transcript),
+            state=turn.state if turn is not None else None,
+            commit=False,
         )
 
 
@@ -713,9 +714,11 @@ async def _answer_the_turn(
         turn_id=response_turn_id,
         classification_pending=pending,
     )
-    if turn_id:
-        with stage("db_write"):
+    with stage("db_write"):
+        if turn_id:
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
+        else:
+            await db.commit()
     return reply
