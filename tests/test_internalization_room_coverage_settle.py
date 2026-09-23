@@ -1,8 +1,11 @@
+import asyncio
 import json
 import logging
+import re
 import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -438,3 +441,68 @@ async def test_a_classifier_that_raises_announces_the_failure_instead_of_leaving
             "o except engolia a falha com um log, e o app esperava o timeout inteiro "
             "por um turno que nunca ia assentar"
         )
+
+
+class _SlowClassifier:
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        await asyncio.sleep(0.07)
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text='{"decisions": []}')],
+            stop_reason="end_turn",
+            model=kwargs["model"],
+            usage=SimpleNamespace(
+                input_tokens=10,
+                output_tokens=5,
+                cache_read_input_tokens=0,
+                cache_creation_input_tokens=0,
+                cache_creation=None,
+            ),
+        )
+
+
+def _coverage_timing(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if "[coverage-timing]" in r.getMessage()]
+
+
+async def test_a_settled_turn_says_how_long_the_classifier_took_and_how_many_tablets_heard(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from app.core.config import get_settings
+    from app.services.internalization_room import llm
+
+    classifier = _SlowClassifier()
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "sk-ant-fake", raising=False)
+    monkeypatch.setattr(
+        llm.anthropic, "AsyncAnthropic", lambda **_: SimpleNamespace(messages=classifier)
+    )
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await service.create_session(db_session, pericope=P)
+
+    with caplog.at_level(logging.INFO):
+        async with subscribe(session.id), subscribe(session.id):
+            await _settle(session.id, "turn-9")
+
+    lines = _coverage_timing(caplog)
+    assert len(lines) == 1, "o classificador das contas nunca tinha sido cronometrado"
+    classifier_ms = re.search(r" classifier=(\d+)ms ", lines[0])
+    assert classifier_ms is not None and int(classifier_ms.group(1)) >= 70
+    assert f"session={session.id} " in lines[0]
+    assert lines[0].endswith(" delivered=2"), "ninguém sabia se o aviso chegava ao tablet"
+
+
+async def test_a_settle_that_fails_still_says_whether_the_failure_reached_a_tablet(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def _broken(**_: Any) -> dict[str, str]:
+        raise RuntimeError("o modelo caiu")
+
+    monkeypatch.setattr(background, "classify_coverage", _broken)
+    monkeypatch.setattr(background, "AsyncSessionLocal", lambda: _handed(db_session))
+    session = await service.create_session(db_session, pericope=P)
+
+    with caplog.at_level(logging.INFO):
+        await _settle(session.id, "turn-10")
+
+    lines = _coverage_timing(caplog)
+    assert len(lines) == 1
+    assert lines[0].endswith(" delivered=0"), "o settle que falhava sumia do cronômetro"

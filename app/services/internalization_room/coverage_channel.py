@@ -22,6 +22,8 @@ async def subscribe(session_id: str) -> AsyncIterator[asyncio.Queue[CoverageFram
             del _subscribers[session_id]
 
 
-def publish(session_id: str, frame: CoverageFrame) -> None:
-    for queue in list(_subscribers.get(session_id, ())):
+def publish(session_id: str, frame: CoverageFrame) -> int:
+    subscribers = list(_subscribers.get(session_id, ()))
+    for queue in subscribers:
         queue.put_nowait(frame)
+    return len(subscribers)
