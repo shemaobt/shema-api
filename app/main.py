@@ -1,9 +1,11 @@
+import asyncio
 import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from langdetect.detector_factory import init_factory
 
 from app.api.access_requests import router as access_requests_router
 from app.api.annotation_studio import router as annotation_studio_router
@@ -90,6 +92,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 flush=True,
             )
     await init_qdrant()
+    await asyncio.to_thread(init_factory)
     threading.Thread(target=_load_bhsa_background, daemon=True).start()
     try:
         yield

@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from langdetect import detector_factory
 
 from app import main
 from app.core.config import Settings
@@ -75,4 +76,18 @@ async def test_the_model_client_a_turn_reused_is_closed_when_the_server_stops(
     assert len(closed) == 1, (
         "o cliente de modelo ficava aberto depois que o servidor parava, com as conexões "
         "que ele guardava vivas até o processo morrer"
+    )
+
+
+async def test_the_language_profiles_are_loaded_before_the_first_turn_needs_them(
+    quiet_startup: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(detector_factory, "_factory", None)
+
+    async with main.lifespan(FastAPI()):
+        loaded = detector_factory._factory
+
+    assert loaded is not None, (
+        "o langdetect carregava os perfis de língua na primeira fala do Guia, e o primeiro "
+        "turno depois de cada deploy pagava isso na espera da equipe"
     )
