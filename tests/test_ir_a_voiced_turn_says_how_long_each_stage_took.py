@@ -157,12 +157,19 @@ def _server_timing(response: httpx.Response) -> dict[str, int]:
     }
 
 
-async def _the_team_answers(client: httpx.AsyncClient, session_id: str) -> httpx.Response:
+async def _the_team_answers(
+    client: httpx.AsyncClient, session_id: str, client_timing: str | None = None
+) -> httpx.Response:
     return await client.post(
         f"{PREFIX}/sessions/{session_id}/turns",
         headers={"X-Room-Key": KEY},
         files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
+        data={} if client_timing is None else {"client_timing": client_timing},
     )
+
+
+def _client_timing_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if "[client-timing]" in r.getMessage()]
 
 
 def _timing_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
@@ -228,3 +235,51 @@ async def test_a_turn_whose_voice_breaks_still_says_how_long_it_waited_before_br
     lines = _timing_lines(caplog)
     assert len(lines) == 1, "o turno que quebrava não deixava tempo nenhum para trás"
     assert re.search(r" stt=\d+ms guide=\d+ms validator=\d+ms voice=\d+ms total=\d+ms", lines[0])
+
+
+async def test_the_tablets_timings_of_its_last_turn_reach_the_same_log_as_the_servers(
+    client: httpx.AsyncClient, waiting_room: IRSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        answered = await _the_team_answers(
+            client, waiting_room.id, client_timing="stop_tap=0;answer_in=2140;sounding=2600"
+        )
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert _client_timing_lines(caplog) == [
+        f"[client-timing] session={waiting_room.id} stop_tap=0;answer_in=2140;sounding=2600"
+    ]
+
+
+async def test_a_turn_that_sends_no_timings_leaves_no_line_for_them(
+    client: httpx.AsyncClient, waiting_room: IRSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert _client_timing_lines(caplog) == []
+
+
+@pytest.mark.parametrize(
+    "client_timing",
+    [
+        "stop_tap=0;Rute voltou=12",
+        "stop_tap=-3",
+        "stop_tap=١٢",
+        "stop_tap=0\n",
+        "a=1;" * 128 + "b=2",
+    ],
+    ids=["words", "negative", "non-ascii-digits", "trailing-newline", "longer-than-512"],
+)
+async def test_timings_the_server_cannot_read_are_dropped_unread_and_never_cost_the_turn(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    caplog: pytest.LogCaptureFixture,
+    client_timing: str,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        answered = await _the_team_answers(client, waiting_room.id, client_timing=client_timing)
+
+    assert answered.status_code == 200, "um campo de telemetria ruim custava o turno da equipe"
+    assert _client_timing_lines(caplog) == [f"[client-timing] rejected session={waiting_room.id}"]

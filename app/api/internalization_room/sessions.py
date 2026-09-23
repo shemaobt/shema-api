@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import uuid
 from functools import partial
 
@@ -115,6 +116,16 @@ async def _voice_the_turn(
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+_CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
+_CLIENT_TIMING_LONGEST = 512
+
+
+def _log_client_timing(session_id: str, client_timing: str) -> None:
+    if len(client_timing) <= _CLIENT_TIMING_LONGEST and _CLIENT_TIMING.fullmatch(client_timing):
+        logger.info("[client-timing] session=%s %s", session_id, client_timing)
+    else:
+        logger.warning("[client-timing] rejected session=%s", session_id)
 
 
 def _scene_of(session: IRSession, team_utterance: str = "") -> str | None:
@@ -488,6 +499,7 @@ async def take_turn(
     response: Response,
     file: UploadFile | None = File(default=None),
     turn_id: str | None = Form(default=None, max_length=64),
+    client_timing: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> TurnResponse:
     """One turn of the room: what the team just said goes in, the Guide's next line comes out.
@@ -508,6 +520,8 @@ async def take_turn(
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
     """
+    if client_timing is not None:
+        _log_client_timing(session_id, client_timing)
     answer = partial(
         _answer_the_turn, session_id=session_id, background=background, file=file, turn_id=turn_id
     )
