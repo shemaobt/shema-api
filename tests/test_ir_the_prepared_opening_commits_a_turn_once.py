@@ -13,13 +13,11 @@ from typing import Any
 
 import httpx
 import pytest
-from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.database import engine as app_engine
 from app.services.internalization_room.sessions import create_session, get_session
 from tests.release_harness import KEY, PREFIX
-from tests.room_harness import room_client
+from tests.room_harness import counting_commits, room_client
 
 P = "P03"
 PREPARED = "Vamos ficar nesta parte."
@@ -50,19 +48,8 @@ async def per_request_client(
 
 @pytest.fixture()
 def commits(test_engine) -> Iterator[list[object]]:
-    counted: list[object] = []
-
-    def _count(connection: object) -> None:
-        counted.append(connection)
-
-    engines = (test_engine.sync_engine, app_engine.sync_engine)
-    for each in engines:
-        event.listen(each, "commit", _count)
-    try:
+    with counting_commits(test_engine) as counted:
         yield counted
-    finally:
-        for each in engines:
-            event.remove(each, "commit", _count)
 
 
 async def _a_session_with_a_line_ready(db_session: AsyncSession) -> str:
