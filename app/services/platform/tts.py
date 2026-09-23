@@ -63,6 +63,9 @@ class SpeechKey:
     cached: bool
 
 
+Voicing = Callable[[], Coroutine[Any, Any, bytes]]
+
+
 class SpeechStore(Protocol):
     """The bucket seam: tests pass an in-memory dict, no GCS."""
 
@@ -206,7 +209,7 @@ def speech_to_come(
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
-) -> tuple[str, Callable[[], Coroutine[Any, Any, bytes]]]:
+) -> tuple[str, Voicing]:
     key, speech_store, voiced = _addressed(
         text,
         language=language,

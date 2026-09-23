@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable
 from functools import partial
-from typing import Any, TypeVar
+from typing import TypeVar
 
 import httpx
 
@@ -15,6 +15,7 @@ from app.services.platform.tts import (
     SpeechKey,
     SpeechStore,
     SynthesizedSpeech,
+    Voicing,
     speech_to_come,
     synthesize_speech,
     synthesize_speech_key,
@@ -75,9 +76,7 @@ async def synthesize_facilitator_speech(
     return speech, speech.cached
 
 
-def facilitator_speech_to_come(
-    text: str, *, language: str | None
-) -> tuple[str, Callable[[], Coroutine[Any, Any, bytes]]]:
+def facilitator_speech_to_come(text: str, *, language: str | None) -> tuple[str, Voicing]:
     key, voice = _in_the_rooms_voice(speech_to_come, text, language=language, settings=None)()
 
     async def voiced() -> bytes:

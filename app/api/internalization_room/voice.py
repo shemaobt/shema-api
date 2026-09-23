@@ -2,9 +2,7 @@ import asyncio
 import logging
 import re
 import time
-from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import Any
 
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,7 +18,7 @@ from app.services.internalization_room.questions import AUDIO_MIME
 from app.services.internalization_room.synthesize_facilitator_speech import voiced_here
 from app.services.internalization_room.voice_handles import from_handle
 from app.services.platform.storage import GcsPlatformStore
-from app.services.platform.tts import MIME_TYPE, SpeechStore, etag_of, fetch_clip
+from app.services.platform.tts import MIME_TYPE, SpeechStore, Voicing, etag_of, fetch_clip
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +237,7 @@ async def _serve(
         read_task = _speculate(key, store=GcsPlatformStore(cfg))
 
     gate_passed = False
-    voice: Callable[[], Coroutine[Any, Any, bytes]] | None = None
+    voice: Voicing | None = None
     try:
         caller = await require_room_caller(
             db, x_device_credential=x_device_credential, x_room_key=x_room_key
@@ -348,7 +346,7 @@ async def _serve(
     )
 
 
-def _voice_of(session: IRSession, key: str) -> Callable[[], Coroutine[Any, Any, bytes]] | None:
+def _voice_of(session: IRSession, key: str) -> Voicing | None:
     for message in reversed(session.messages or []):
         if message.get("role") != "guide":
             continue
