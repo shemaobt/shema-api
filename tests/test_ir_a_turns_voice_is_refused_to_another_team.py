@@ -62,7 +62,9 @@ async def test_another_teams_tablet_never_makes_this_sessions_line_speak(
 ) -> None:
     session, ours, theirs = teams
     elevenlabs.failures = 1
-    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours)
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours), timeout=1
+    )
     await asyncio.sleep(0.05)
     another_instance()
 
@@ -81,7 +83,9 @@ async def test_another_teams_tablet_is_refused_before_the_line_being_voiced_reac
 ) -> None:
     session, ours, theirs = teams
     elevenlabs.held.clear()
-    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours)
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours), timeout=1
+    )
     listening = asyncio.create_task(client.get(answered.json()["audio_url"], headers=theirs))
     await asyncio.sleep(0.05)
     elevenlabs.held.set()
@@ -99,7 +103,9 @@ async def test_another_teams_tablet_naming_its_own_session_still_never_hears_thi
     teams: tuple[IRSession, dict[str, str], dict[str, str]],
 ) -> None:
     session, ours, theirs = teams
-    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours)
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours), timeout=1
+    )
     await asyncio.sleep(0.05)
     handle = answered.json()["audio_url"].rsplit("/", 1)[-1]
     their_session = await _their_own_session(db_session, session)
@@ -120,7 +126,9 @@ async def test_the_team_that_owns_the_line_still_hears_it_from_another_instance(
 ) -> None:
     session, ours, _ = teams
     elevenlabs.failures = 1
-    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours)
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours), timeout=1
+    )
     await asyncio.sleep(0.05)
     another_instance()
 
@@ -137,7 +145,9 @@ async def test_the_handle_route_never_joins_a_turns_line_being_voiced(
 ) -> None:
     session, ours, theirs = teams
     elevenlabs.held.clear()
-    answered = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours)
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{session.id}/turns", headers=ours), timeout=1
+    )
     handle = answered.json()["audio_url"].rsplit("/", 1)[-1]
     listening = asyncio.create_task(client.get(f"{PREFIX}/voice/{handle}", headers=theirs))
     await asyncio.sleep(0.05)

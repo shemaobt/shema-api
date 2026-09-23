@@ -1,10 +1,9 @@
-"""What a turn leaves behind when the room never gets to speak it.
+"""What a turn leaves behind when its voice fails after the answer, or its write fails.
 
 Read from the endpoint and then from a second database session, because the fact under
-test is durability: a probe and a ledger event committed by a turn that failed before the
-team heard anything are still there on the next request, and the next answer is then
-assessed against a question nobody asked. Re-reading through the request's own session
-would only show its identity map, which is not what survives.
+test is durability: what the next request finds is what the turn committed. Re-reading
+through the request's own session would only show its identity map, which is not what
+survives.
 """
 
 import json
@@ -201,9 +200,6 @@ async def test_a_turn_the_room_did_speak_is_remembered_whole(
 ) -> None:
     """The counterweight. A room that speaks and forgets is worse than one that remembers
     too eagerly, so the happy path has to keep every one of the three writes.
-
-    The pair reads the comprehension write from both sides: the question nobody heard leaves
-    its probe standing, and the question the room did speak spends it.
     """
     answered = await _the_team_answers(client, waiting_room.id)
 
@@ -215,18 +211,18 @@ async def test_a_turn_the_room_did_speak_is_remembered_whole(
     assert voice.spoken == [GUIDE_LINE]
 
 
-async def test_a_turn_that_fails_after_the_voice_still_reaches_no_one(
+async def test_a_turn_whose_write_fails_hands_the_tablet_no_address(
     client: httpx.AsyncClient,
     waiting_room: IRSession,
     voice: _SynthesisThatCanBreak,
     models_agree: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Speaking first does not create a turn the team heard but the room forgot.
+    """A turn the room could not write is not a turn the team hears.
 
-    A synthesized clip reaches the team only as the handle in this response, so a request
-    that fails after synthesis hands the app nothing to play. The clip is left paid for in
-    the bucket, where the retry finds it.
+    The clip's address reaches the team only in this response, so a request whose write
+    fails hands the app nothing to play. The clip already in flight is left in the bucket,
+    where the retry finds it.
     """
     from app.api.internalization_room import sessions as sessions_api
 

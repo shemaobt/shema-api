@@ -91,7 +91,9 @@ async def test_the_voice_route_joins_the_line_being_voiced_instead_of_voicing_it
     client: httpx.AsyncClient, panorama: IRSession, elevenlabs: Elevenlabs
 ) -> None:
     elevenlabs.held.clear()
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     listening = asyncio.create_task(client.get(answered.json()["audio_url"]))
     await asyncio.sleep(0.05)
     elevenlabs.held.set()
@@ -108,7 +110,9 @@ async def test_an_instance_that_holds_nothing_voices_the_line_from_the_words_in_
     client: httpx.AsyncClient, panorama: IRSession, elevenlabs: Elevenlabs
 ) -> None:
     elevenlabs.failures = 1
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     await asyncio.sleep(0.05)
     another_instance()
 
@@ -129,7 +133,9 @@ async def test_a_line_another_session_said_is_never_voiced_through_this_one(
     db_session: AsyncSession,
 ) -> None:
     elevenlabs.failures = 1
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     handle = answered.json()["audio_url"].rsplit("/", 1)[-1]
     elsewhere = await create_session(db_session, language="pt", pericope="OV")
     await append_exchange(
@@ -151,7 +157,9 @@ async def test_a_line_whose_voice_failed_after_the_answer_is_voiced_again_when_a
 ) -> None:
     elevenlabs.held.clear()
     elevenlabs.failures = 1
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     listening = asyncio.create_task(client.get(answered.json()["audio_url"]))
     await asyncio.sleep(0.05)
     elevenlabs.held.set()
@@ -169,7 +177,9 @@ async def test_a_line_that_cannot_be_voiced_twice_is_an_outage_for_the_tablet_no
 ) -> None:
     elevenlabs.failures = 2
     elevenlabs.failure_status = 401
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     await asyncio.sleep(0.05)
 
     heard = await client.get(answered.json()["audio_url"])
@@ -192,7 +202,9 @@ async def test_two_instances_voicing_one_line_at_once_serve_the_same_bytes(
 
     elevenlabs.renderings = [b"first instance", b"second instance"]
     elevenlabs.held.clear()
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     audio_url = answered.json()["audio_url"]
     key = from_handle(audio_url.rsplit("/", 1)[-1], settings=get_settings())
     first_instance = clip_flight.in_flight(key)
@@ -227,7 +239,9 @@ async def test_a_movement_of_the_opening_is_voiced_again_from_the_words_the_sess
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
     elevenlabs.failures = 3
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     await asyncio.sleep(0.05)
     another_instance()
 
@@ -248,7 +262,9 @@ async def test_the_voice_route_says_how_long_it_waited_on_the_line_being_voiced(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     elevenlabs.held.clear()
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     with caplog.at_level(logging.INFO):
         listening = asyncio.create_task(client.get(answered.json()["audio_url"]))
         await asyncio.sleep(0.1)
@@ -265,7 +281,9 @@ async def test_the_voice_route_says_how_long_it_waited_on_the_line_being_voiced(
 async def test_the_turns_clip_answers_a_range_like_every_other_clip(
     client: httpx.AsyncClient, panorama: IRSession
 ) -> None:
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
 
     heard = await client.get(answered.json()["audio_url"], headers={"Range": "bytes=4-12"})
 
@@ -281,7 +299,9 @@ async def test_a_resume_on_another_instance_never_splices_a_second_rendering_int
 ) -> None:
     elevenlabs.renderings = [b"first instance rendering", b"second instance rendering"]
     bucket.refusals = 1
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     await asyncio.sleep(0.05)
     first = await client.get(answered.json()["audio_url"])
     another_instance()
@@ -310,7 +330,9 @@ async def test_a_clip_the_bucket_never_confirmed_is_not_served_from_memory(
     from app.core.config import get_settings
 
     elevenlabs.held.clear()
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     audio_url = answered.json()["audio_url"]
     key = from_handle(audio_url.rsplit("/", 1)[-1], settings=get_settings())
     bucket.objects[key] = b"stored by another instance"
@@ -331,7 +353,9 @@ async def test_a_bucket_that_refuses_every_write_is_an_outage_not_a_clip_nobody_
     client: httpx.AsyncClient, panorama: IRSession, bucket: WriteOnceBucket
 ) -> None:
     bucket.refusals = 2
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     await asyncio.sleep(0.05)
 
     heard = await client.get(answered.json()["audio_url"])
@@ -345,7 +369,9 @@ async def test_a_bucket_that_refuses_every_write_is_an_outage_not_a_clip_nobody_
 async def test_a_bucket_that_fails_one_read_is_a_missing_clip_not_a_broken_route(
     client: httpx.AsyncClient, panorama: IRSession, bucket: WriteOnceBucket
 ) -> None:
-    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
     await asyncio.sleep(0.05)
     another_instance()
     bucket.unreadable = 1
@@ -430,3 +456,28 @@ async def test_a_team_walking_back_in_waits_on_the_line_being_voiced_instead_of_
     assert elevenlabs.texts == [GUIDE_LINE], (
         "o diga de novo, pedido enquanto a fala ainda era feita, pagava a ElevenLabs de novo"
     )
+
+
+async def test_a_fixed_line_hands_out_no_address_and_voices_nothing(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _fail_safe(**_: Any) -> TurnOutcome:
+        return TurnOutcome(speech="Vamos tentar de novo.", transcript="", fixed_line="A1")
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _fail_safe)
+
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+    await asyncio.sleep(0.05)
+
+    assert answered.status_code == 200
+    assert answered.json()["fixed_line"] == "A1"
+    assert answered.json()["audio_url"] == ""
+    assert answered.json()["segments"] == []
+    assert elevenlabs.texts == [], "a fala fixa, que o app já tem em áudio, era sintetizada"
