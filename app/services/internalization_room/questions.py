@@ -205,6 +205,26 @@ async def get_question_for_facilitator(
     return question
 
 
+async def _question_by_audio_key(db: AsyncSession, key: str) -> IRQuestion | None:
+    """The question this key addresses — its own recording or the reply to it — or None.
+
+    Shared by every caller that names a question by key rather than by id, so the read
+    itself cannot drift between them; only the ownership rule each one puts on top of it
+    should differ.
+    """
+    return (
+        (
+            await db.execute(
+                select(IRQuestion).where(
+                    or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+
+
 async def audio_of_a_question_this_facilitator_facilitates(
     db: AsyncSession, user: User, key: str
 ) -> IRQuestion:
@@ -225,20 +245,32 @@ async def audio_of_a_question_this_facilitator_facilitates(
     the rest of this file keeps: a caller must not be able to tell "not yours" from "no
     such thing", or the refusal becomes a way to ask which handles are real.
     """
-    found = (
-        (
-            await db.execute(
-                select(IRQuestion).where(
-                    or_(IRQuestion.audio_key == key, IRQuestion.reply_audio_key == key)
-                )
-            )
-        )
-        .scalars()
-        .first()
-    )
+    found = await _question_by_audio_key(db, key)
     if found is None:
         raise NotFoundError("No such audio")
     if found.project_id is None or not await facilitates_project(db, user, found.project_id):
+        raise NotFoundError("No such audio")
+    return found
+
+
+async def question_for_room_caller(
+    db: AsyncSession, key: str, project_id: str | None
+) -> IRQuestion:
+    """The question an audio key addresses, on the room's own ownership rule.
+
+    Same rule as ``session_for_room_caller``: a device that names a project reads only
+    that project's own questions. A question naming none is reached by whoever asks —
+    unlike ``audio_of_a_question_this_facilitator_facilitates``, which refuses one — because
+    it is the common shape today: the room's app does not send its device credential yet
+    (see ``get_question_for_facilitator``'s own note on this), so refusing an unowned
+    question here would leave most of the table unreachable by the very team that raised
+    the hand. The shared key names no device and so no project, and keeps the by-id read
+    its real facilitator flow has always depended on.
+    """
+    found = await _question_by_audio_key(db, key)
+    if found is None:
+        raise NotFoundError("No such audio")
+    if project_id is not None and found.project_id is not None and found.project_id != project_id:
         raise NotFoundError("No such audio")
     return found
 
