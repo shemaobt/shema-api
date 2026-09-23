@@ -182,6 +182,9 @@ def test_a_bare_present_that_reads_like_the_past_still_defers_to_a_later_plan() 
     )
     assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Ensaiamos amanhã.")
     assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Ensaiamos em seguida.")
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Ensaiamos, primeiro queremos ouvir a história de novo."
+    )
     assert confirms_completed_mother_tongue_practice(
         INVITATION["pt"], "Ensaiamos, e entendemos que a fome levou a família para Moabe."
     )
