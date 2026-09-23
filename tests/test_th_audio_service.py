@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError, ValidationError
@@ -152,6 +153,50 @@ async def test_transcribe_audio_requires_api_key() -> None:
     client = _stub_client(_stt_response("ignored"))
     with pytest.raises(ValidationError):
         await transcribe_audio(b"abc", filename="x.wav", settings=s, client=client)
+
+
+# ---------------------------------------------------------------------------
+# the /audio/transcribe route
+# ---------------------------------------------------------------------------
+
+
+async def test_the_transcribe_route_answers_upstream_error_as_502(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import FastAPI
+
+    from app.api.translation_helper import audio as th_audio_api
+    from app.core.database import get_db
+    from app.core.exceptions import register_exception_handlers
+    from tests.baker import make_user
+    from tests.test_platform.conftest import auth_header
+
+    async def _fails(*_: object, **__: object) -> str:
+        raise UpstreamServiceError("Transcription request failed with status 503")
+
+    monkeypatch.setattr(th_audio_api.th_service, "transcribe_audio", _fails)
+
+    test_app = FastAPI()
+    test_app.include_router(th_audio_api.router, prefix="/api/translation-helper")
+    register_exception_handlers(test_app)
+
+    async def _get_db() -> Any:
+        yield db_session
+
+    test_app.dependency_overrides[get_db] = _get_db
+    user = await make_user(db_session, is_platform_admin=True)
+    headers = await auth_header(db_session, user)
+
+    transport = httpx.ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/translation-helper/audio/transcribe",
+            headers=headers,
+            files={"file": ("clip.wav", b"abc", "audio/wav")},
+        )
+
+    assert response.status_code == 502, response.text
+    assert response.json()["code"] == "UPSTREAM_ERROR"
 
 
 # ---------------------------------------------------------------------------
