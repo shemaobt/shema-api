@@ -12,6 +12,7 @@ import logging
 import re
 import threading
 import time
+from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any
 
@@ -504,3 +505,13 @@ async def test_a_full_clip_says_it_can_be_answered_by_range(
 
     assert fetched.status_code == 200
     assert fetched.headers["accept-ranges"] == "bytes"
+
+
+async def test_the_etag_comes_from_the_clips_key_not_a_hash_of_its_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert fetched.headers["etag"] == sha256(VOICED_ELSEWHERE.encode()).hexdigest()[:32]
+    assert fetched.headers["etag"] != sha256(CLIP).hexdigest()[:32]
