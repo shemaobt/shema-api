@@ -175,20 +175,37 @@ async def clip(
         audio, gcs_ms = await _timed_fetch_clip(key, store=GcsPlatformStore(cfg))
     else:
         audio, gcs_ms = await read_task
+
+    etag = sha256(key.encode()).hexdigest()[:32]
+    byte_range: ByteRange | None = None
+    unsatisfiable = False
+    if audio is not None:
+        range_header = None if x_if_range is not None and x_if_range != etag else x_range
+        try:
+            byte_range = _resolve_range(range_header, total=len(audio))
+        except RangeNotSatisfiable:
+            unsatisfiable = True
+
+    if unsatisfiable:
+        served = "none"
+    elif audio is None:
+        served = "none" if x_range is not None else "full"
+    elif byte_range is None:
+        served = "full"
+    else:
+        served = f"{byte_range.start}-{byte_range.end}"
+
     logger.info(
-        "[voice-get] auth=%sms gcs=%sms bytes=%s same_instance=%s",
+        "[voice-get] auth=%sms gcs=%sms bytes=%s same_instance=%s range=%s",
         _ms(arrived, authed),
         gcs_ms,
         len(audio or b""),
         "yes" if voiced_here(key) else "no",
+        served,
     )
     if audio is None:
         raise NotFoundError("No such clip")
-    etag = sha256(key.encode()).hexdigest()[:32]
-    range_header = None if x_if_range is not None and x_if_range != etag else x_range
-    try:
-        byte_range = _resolve_range(range_header, total=len(audio))
-    except RangeNotSatisfiable:
+    if unsatisfiable:
         return Response(
             status_code=416,
             headers={

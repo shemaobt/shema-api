@@ -126,7 +126,7 @@ async def test_a_clip_fetch_says_how_long_the_gate_and_the_bucket_each_took(
     assert spent["auth"] < AUTH_MS + BUCKET_MS, "o tempo do bucket caía na conta da porta"
     assert spent["gcs"] < AUTH_MS + BUCKET_MS, "o tempo da porta caía na conta do bucket"
     assert " bytes=1234 " in lines[0]
-    assert lines[0].endswith(" same_instance=no")
+    assert lines[0].endswith(" same_instance=no range=full")
 
 
 async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhere(
@@ -143,10 +143,10 @@ async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhe
         await _fetch(client, VOICED_ELSEWHERE)
 
     here, elsewhere = _voice_get_lines(caplog)
-    assert here.endswith(" same_instance=yes"), (
+    assert here.endswith(" same_instance=yes range=full"), (
         "ninguém sabia quantos clipes um cache em memória desta instância teria servido"
     )
-    assert elsewhere.endswith(" same_instance=no")
+    assert elsewhere.endswith(" same_instance=no range=full")
 
 
 async def test_an_instance_up_for_months_remembers_only_its_latest_clips(
@@ -176,7 +176,7 @@ async def test_a_clip_the_bucket_does_not_hold_still_says_how_long_the_miss_took
     assert fetched.status_code == 404
     lines = _voice_get_lines(caplog)
     assert len(lines) == 1, "o clipe que o bucket não tinha sumia do cronômetro"
-    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no$", lines[0])
+    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no range=full$", lines[0])
     assert missed is not None and int(missed.group(1)) >= BUCKET_MS
 
 
@@ -586,6 +586,17 @@ async def test_a_range_behind_a_stale_if_range_etag_is_ignored_not_honoured(
     assert fetched.status_code == 200, fetched.text
     assert fetched.content == CLIP
     assert "content-range" not in fetched.headers
+
+
+async def test_the_voice_get_line_names_the_slice_it_served(
+    client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-19")
+
+    assert fetched.status_code == 206, fetched.text
+    (line,) = _voice_get_lines(caplog)
+    assert line.endswith(" same_instance=no range=10-19")
 
 
 async def test_a_revoked_credential_is_still_refused_with_zero_bytes_when_a_range_is_asked(
