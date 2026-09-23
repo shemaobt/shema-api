@@ -346,12 +346,15 @@ async def append_exchange(
     end this way. Only a halt already standing when the turn began is lifted: one the tablet
     raised while the Guide was still answering is a request nobody has answered yet.
 
-    It does clear `lifted_halt`, which is the record of a halt an outstanding visit lifted and
-    which undoing that visit would put back. Once a turn lands there is nothing left to put
-    back — the turn is the team's own exit and would have lifted the halt with or without the
-    visit — so leaving it set lets a facilitator correcting a ten-minute-old tap stop a
-    conversation in full flow. The stamps are deliberately **not** cleared: who went and when
-    is what the history is for, and a landing turn is no evidence they did not go.
+    It clears `lifted_halt`, which is the record of a halt an outstanding visit lifted and
+    which undoing that visit would put back, when the visit is the one the row carried as the
+    turn began, or when it lifted the halt the turn began in. Either way there is nothing left
+    to put back — the turn is the team's own exit and would have lifted the halt with or
+    without the visit — so leaving it set lets a facilitator correcting a ten-minute-old tap
+    stop a conversation in full flow. A visit to a halt raised while the Guide was answering
+    keeps it: the turn would not have lifted that halt, so undoing the visit brings it back.
+    The stamps are deliberately **not** cleared: who went and when is what the history is for,
+    and a landing turn is no evidence they did not go.
     """
     messages: list[dict[str, Any]] = list(session.messages or [])
     if team_utterance:
