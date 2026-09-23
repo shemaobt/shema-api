@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 import uuid
@@ -209,10 +210,9 @@ async def _cancelled(task: asyncio.Task[HeardSpeech]) -> None:
     drops it, the only way to keep asyncio from logging it later as never retrieved.
     """
     task.cancel()
-    try:
+    with contextlib.suppress(BaseException):
         await task
-    except BaseException:
-        pass
+
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
 _CLIENT_TIMING_LONGEST = 512
@@ -682,7 +682,10 @@ async def _answer_the_turn(
     elif file is not None:
         audio_bytes = await _read_capped_audio(file)
         speech_heard = await _timed_stt(
-            audio_bytes, filename=file.filename, mime_type=file.content_type, language=session.language
+            audio_bytes,
+            filename=file.filename,
+            mime_type=file.content_type,
+            language=session.language,
         )
     transcript = speech_heard.text
 

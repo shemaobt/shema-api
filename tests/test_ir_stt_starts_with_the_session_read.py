@@ -47,7 +47,11 @@ class _Voice:
     async def __call__(self, text: str, **_: Any) -> tuple[SynthesizedSpeech, bool]:
         self.calls += 1
         entry = SynthesizedSpeech(
-            audio=b"audio", mime_type="audio/mpeg", etag="e", cached=False, key=f"tts/v/{self.calls}.mp3"
+            audio=b"audio",
+            mime_type="audio/mpeg",
+            etag="e",
+            cached=False,
+            key=f"tts/v/{self.calls}.mp3",
         )
         return entry, False
 
@@ -70,7 +74,9 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     from app.core.exceptions import register_exception_handlers
 
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", KEY, raising=False)
-    monkeypatch.setattr(sys.modules["app.services.internalization_room.run_turn"], "call_agent", _Model())
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", _Model()
+    )
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _Voice())
     monkeypatch.setattr(sessions_api, "heard_speech", _hearing)
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)

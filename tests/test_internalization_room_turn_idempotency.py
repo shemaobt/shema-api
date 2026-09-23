@@ -120,7 +120,9 @@ async def test_the_same_turn_id_posted_twice_runs_the_fan_out_once_and_appends_o
     assert second.status_code == 200, second.text[:300]
 
     assert second.json() == first.json(), "a resend must answer with the turn already given"
-    assert fan_out["hearing"].calls == 2, "a resend's audio starts transcription beside the resend check"
+    assert fan_out["hearing"].calls == 2, (
+        "a resend's audio starts transcription beside the resend check"
+    )
     assert fan_out["model"].calls == 2, "the Guide or the Validator ran a second time"
     assert fan_out["voice"].calls == 1, "the line was synthesized twice"
 
