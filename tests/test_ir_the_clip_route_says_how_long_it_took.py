@@ -564,3 +564,51 @@ async def test_a_range_past_the_end_of_the_clip_is_refused_not_clamped(
     assert fetched.status_code == 416, fetched.text
     assert fetched.headers["content-range"] == f"bytes */{len(CLIP)}"
     assert fetched.content == b""
+
+
+async def test_multiple_ranges_are_ignored_not_refused(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=0-10,20-30")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_a_range_behind_a_stale_if_range_etag_is_ignored_not_honoured(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(
+        client, VOICED_ELSEWHERE, "bytes=10-19", **{"If-Range": "not-the-current-etag"}
+    )
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_a_revoked_credential_is_still_refused_with_zero_bytes_when_a_range_is_asked(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=0-10")
+
+    assert fetched.status_code == 403
+    assert fetched.json()["code"] == "DEVICE_REVOKED"
+    assert CLIP not in fetched.content
+
+
+async def test_a_range_this_route_does_not_understand_is_ignored_not_refused(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "items=0-10")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers

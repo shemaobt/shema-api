@@ -127,6 +127,7 @@ async def clip(
     x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
     x_room_key: str | None = Header(default=None),
     x_range: str | None = Header(default=None, alias="Range"),
+    x_if_range: str | None = Header(default=None, alias="If-Range"),
 ) -> Response:
     """Serve one synthesized line by the handle a turn handed out.
 
@@ -184,8 +185,9 @@ async def clip(
     if audio is None:
         raise NotFoundError("No such clip")
     etag = sha256(key.encode()).hexdigest()[:32]
+    range_header = None if x_if_range is not None and x_if_range != etag else x_range
     try:
-        byte_range = _resolve_range(x_range, total=len(audio))
+        byte_range = _resolve_range(range_header, total=len(audio))
     except RangeNotSatisfiable:
         return Response(
             status_code=416,
