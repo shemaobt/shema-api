@@ -33,6 +33,11 @@ GUIDE = default_prompt(IRPromptKey.GUIDE)["prompt"]
 VALIDATOR = default_prompt(IRPromptKey.VALIDATOR)["prompt"]
 SPEAKER = default_prompt(IRPromptKey.BT_VERDICT_SPEAKER)["prompt"]
 
+INVITATION = (
+    " Now rehearse this scene together in your own language; when you have finished, come "
+    "back and tell me in English what you understood."
+)
+
 
 def settings() -> Settings:
     return Settings(database_url="sqlite+aiosqlite:///./test.db", google_api_key="fake")

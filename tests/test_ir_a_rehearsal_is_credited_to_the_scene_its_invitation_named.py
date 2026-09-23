@@ -27,10 +27,8 @@ from app.services.internalization_room.sessions import (
     create_session,
     save_comprehension,
 )
-from tests.test_ir_a_whole_passage_runs_without_a_provider import (
-    INVITATION as RUTH_INVITATION,
-)
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings
+from tests.turn_harness import INVITATION as WHOLE_PASSAGE_INVITATION
 
 INVITATION = "Agora ensaiem esta cena juntos na língua de vocês; quando terminarem, digam: pronto."
 QUESTION = "Vocês já ensaiaram esta cena na língua de vocês?"
@@ -236,7 +234,7 @@ async def test_a_question_after_a_credit_does_not_invite_the_next_scene(
 @pytest.mark.parametrize(
     "line",
     [
-        RUTH_INVITATION,
+        WHOLE_PASSAGE_INVITATION,
         INVITATION,
         "Rehearse this scene together in your own language; when you have finished, "
         "just say: done.",
