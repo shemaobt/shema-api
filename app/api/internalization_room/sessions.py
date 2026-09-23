@@ -640,7 +640,8 @@ async def take_turn(
     )
     with stopwatch("[turn-timing]", session_id) as clock:
         if turn_id:
-            await db.commit()
+            with stage("db_let_go"):
+                await db.commit()
             reply = await answer_once(session_id, turn_id, project_id, answer)
         else:
             reply = await answer(db)
@@ -689,7 +690,8 @@ async def _answer_the_turn(
             )
         opening = file is None and not (session.messages or [])
         if not opening:
-            await db.commit()
+            with stage("db_let_go"):
+                await db.commit()
     except BaseException:
         if stt is not None:
             await _cancelled(stt)
@@ -735,7 +737,9 @@ async def _answer_the_turn(
         await db.commit()
         return reply
 
-    await db.commit()
+    if opening:
+        with stage("db_let_go"):
+            await db.commit()
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
     turn: room.ComprehensionTurn | None = None
     try:
