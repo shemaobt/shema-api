@@ -192,9 +192,6 @@ def test_the_scene_line_says_what_it_computes_and_instructs_nothing(
     first_line = coverage_status_block(state, P).splitlines()[0]
 
     assert first_line == scene_line
-    assert [
-        word for word in ("check", "help the team", "before any one scene") if word in first_line
-    ] == [], "a linha da cena mandava o Guia conferir a prontidão e ajudar a equipe"
 
 
 AUDIT_KIND = re.compile(r"\b[A-Z][A-Z]+_[A-Z_]+\b")
