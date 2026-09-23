@@ -190,6 +190,22 @@ def test_a_bare_present_that_reads_like_the_past_still_defers_to_a_later_plan() 
     )
 
 
+def test_a_retelling_that_says_depois_or_queriam_still_reports_the_rehearsal() -> None:
+    """The postponement guard is anchored to the verb, not read across the whole sentence.
+
+    A team that reports and tells back in one breath narrates with "depois" and "queriam"
+    of its own; those words sit inside the telling, not ahead of a plan, and must not
+    refuse the report the telling is attached to."""
+    assert confirms_completed_mother_tongue_practice(
+        INVITATION["pt"],
+        "Ensaiamos, e entendemos que a fome chegou e depois a família saiu de Belém.",
+    )
+    assert confirms_completed_mother_tongue_practice(
+        INVITATION["pt"],
+        "Ensaiamos, e primeiro eles queriam voltar, mas a Noemi mandou as noras embora.",
+    )
+
+
 def test_a_bare_past_tense_that_does_not_open_the_reply_never_reports() -> None:
     """The verb has to be the reply's own first word, not merely present in it — sitting
     later in the same clause, or opening a clause of its own further along, is not the
