@@ -20,9 +20,16 @@ and the frontend applies that same answer in its own ``funds.ts`` and ``panel.ts
 Nothing here is real money or a real person — the fixture's ``solicitante`` names are
 invented there, deliberately, because a request carries personal data.
 
-Four things the fixture does not carry and this script decides, each named so nobody
+Five things the fixture does not carry and this script decides, each named so nobody
 reads them as ported:
 
+* **The submission itself.** A board fixture is a picture of the board, and it says
+  nothing about the act that put a card there. Every card is therefore written *submitted*
+  — the stamp, the frozen snapshot and the accepted declaration together, the way
+  ``submit_request`` writes them — because on this server a card is on the board only by
+  having been submitted. The fixture used to skip it, and the ten cards it wrote could not
+  be moved at all. What is mirrored is the **row**; the frozen document stays the board
+  card's and is not a submittable one, which ``_seed_card`` measures and explains.
 * **The request type.** The board fixture has no type field. Each card takes the type its
   own subject states, and every card that comes out ``traducao`` names a Tipo 1 category
   outright — *NT*, *Tradução oral/áudio*, *Pesquisa sociolinguística*, *Porções* and
@@ -69,6 +76,7 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -323,7 +331,52 @@ async def _require_confirmed_fund(db: AsyncSession) -> None:
         )
 
 
-async def _seed_card(db: AsyncSession, card: SeedCard, author: User) -> None:
+async def _seed_card(
+    db: AsyncSession, card: SeedCard, author: User, submitted_at: datetime
+) -> None:
+    """One board card, submitted the way the row records a submission.
+
+    **The stamp, the snapshot and the accepted declaration are written together, and for
+    every card**, because that is the only way the service knows how to produce any of
+    them: ``submit_request`` sets ``submitted_at``, writes the frozen document and refuses
+    outright a document whose ``declaration`` is false, all in one transaction. A row
+    carrying one without the others describes a state no route can reach — a card on the
+    board that was never submitted, a frozen document nobody ever froze, or a submission
+    nobody accepted.
+
+    The cost of getting it wrong was measured rather than imagined (03/set/2026). With the
+    stamp missing, ``move_request`` refused all ten — *"not on the board yet"* — so no card
+    on the board could be moved at all. Worse, the two guards that stand for the same fact
+    in production came apart: ``move_request`` reads ``submitted_at`` and
+    ``save_evaluation`` reads the snapshot, and a fixture that separates them makes a
+    refusal test pass for the wrong reason.
+
+    **What is mirrored is the row, and deliberately not the document** — the first version
+    of this docstring said *"the state ``submit_request`` would have left it in"*, and that
+    was a larger claim than the fixture makes. Measured by running each of the ten frozen
+    documents through ``RequestSubmissionIn`` exactly as ``submit_request`` does
+    (09/set/2026), the ten are refused in **five** ways, and only the fifth was a defect:
+
+    * ``fields`` — the three essays plus the category are blank, all ten;
+    * ``team`` — no team row, the nine cards whose type renders A4;
+    * ``checks`` — no A5 trained team or format, the four ``treinamento`` cards;
+    * ``budget`` — none of the twenty-six categories, all ten;
+    * ``declaration`` — false against a submitted row, all ten. **Fixed here.**
+
+    The first four are the fixture being what it is: ``_sections`` ports a *board card*,
+    and a board card carries chips, a value and a stage. It has no essays, no team and no
+    budget to port, and inventing them would be fabricating the answers of ten teams that
+    do not exist — the same reason the ``solicitante`` names are invented rather than real.
+    The declaration is different in kind: it is not content the board card lacks, it is a
+    fact about the act this script claims to reproduce, and a submitted row that never
+    accepted it is a pair ``RequestSubmissionIn._declared`` refuses by name.
+
+    So these ten exercise the board, the ledger and the evaluation, which is what the bench
+    needs them for. **They do not exercise submission**, and a test that submits one of
+    them would fail for four reasons that are the fixture's shape rather than a defect in
+    the route. Making the ten genuinely submittable is a different piece of work — it means
+    authoring sample answers, not fixing a line — and it belongs to whoever needs it.
+    """
     request_id = f"rr-seed-request-{card.n}"
     request = (
         await db.execute(select(RRRequest).where(RRRequest.id == request_id))
@@ -340,6 +393,8 @@ async def _seed_card(db: AsyncSession, card: SeedCard, author: User) -> None:
         amount_requested=card.valor,
         tpp_name=card.solicitante,
         created_by=author.id,
+        submitted_at=submitted_at,
+        declaration=True,
     )
     db.add(row)
     await db.flush()
@@ -361,12 +416,12 @@ async def _seed_card(db: AsyncSession, card: SeedCard, author: User) -> None:
             )
         )
 
-    if card.score is None:
-        return
-
     snapshot_id = f"rr-seed-snapshot-{card.n}"
     db.add(RRSnapshot(id=snapshot_id, request_id=request_id, document=document(row, sections, [])))
     await db.flush()
+
+    if card.score is None:
+        return
 
     evaluation_id = str(uuid.uuid4())
     db.add(RREvaluation(id=evaluation_id, snapshot_id=snapshot_id))
@@ -390,20 +445,37 @@ AUTHOR_ENV = "RR_SEED_AUTHOR"
 async def seed(author_email: str) -> None:
     """Write the ten sample board cards against the fund the migration already wrote.
 
+    **All ten are submitted, at one moment shared by the run.** They are board cards, and
+    a card is on the board because it was submitted — a draft is not on the board at all
+    (``move_request`` says so, and refuses one). One timestamp rather than ten says the
+    true thing about this fixture: the ten arrived in a single seeding act, and inventing
+    ten different submission dates would be sample data pretending to be a history.
+
     No evaluation carries a decision. The board column a card sits in does not imply one
     — the mesa moves cards without evaluating them — and inverting that mapping is
-    exactly the drift FE-22's contract §2.3 exists to prevent.
+    exactly the drift FE-22's contract §2.3 exists to prevent. That stays true now that
+    every card has a snapshot: what the snapshot makes possible is *recording* a decision,
+    which is the mesa's act to perform against this fixture, not one to find already done.
+
+    **No card is endorsed, and that is a state rather than a gap.** ``endorsed_by`` is a
+    Líder de Base signing for his own base (BE-16), and this script has one account and no
+    bases — writing the act would fabricate a person's signature, which is the one thing
+    this fixture never does. What it costs is written here so nobody reads it as a defect:
+    by ``guard_endorsement`` the three cards in ``triagem`` leave it **only for**
+    ``recusado``, and the seven already past triagem are not gated at all. The board's
+    money paths are exercised from those seven.
 
     Nothing here writes an attendee list or a history row, and that is not an omission:
     ``rr_evaluation_attendees`` is who was in the room and ``rr_*_field_history`` is who
     changed what, and the seed never held a meeting and never edited anything. Inventing
     either would be the fabricated data this fixture is careful not to be.
     """
+    submitted_at = datetime.now(UTC)
     async with AsyncSessionLocal() as db:
         author = await _author(db, author_email)
         await _require_confirmed_fund(db)
         for card in SEED_CARDS:
-            await _seed_card(db, card, author)
+            await _seed_card(db, card, author, submitted_at)
         await db.commit()
 
 
