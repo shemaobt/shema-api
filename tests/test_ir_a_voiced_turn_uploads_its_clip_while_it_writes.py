@@ -172,3 +172,71 @@ async def test_the_clip_uploads_while_the_turn_is_written_and_lands_before_the_a
         "o upload do clipe ao GCS esperava inteiro antes da escrita no banco começar, e a "
         "resposta só saía depois das duas coisas, uma atrás da outra"
     )
+
+
+WHOLE = "O todo da passagem.\n\nA cena e o convite."
+FIRST = "O todo da passagem."
+SECOND = "A cena e o convite."
+
+
+class _ElevenlabsThatRefusesTheWholeLine:
+    def __init__(self) -> None:
+        self.first_voiced = asyncio.Event()
+        self.whole_refused = asyncio.Event()
+
+    async def post(self, *_: Any, json: dict[str, Any], **__: Any) -> SimpleNamespace:
+        if json["text"] == FIRST:
+            self.first_voiced.set()
+            return SimpleNamespace(status_code=200, content=b"o todo", text="")
+        if json["text"] == SECOND:
+            await asyncio.wait_for(self.whole_refused.wait(), timeout=1)
+            await asyncio.sleep(0.05)
+            return SimpleNamespace(status_code=200, content=b"a cena", text="")
+        await asyncio.wait_for(self.first_voiced.wait(), timeout=1)
+        self.whole_refused.set()
+        return SimpleNamespace(status_code=503, content=b"", text="busy")
+
+
+class _Bucket:
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    async def get(self, key: str) -> bytes | None:
+        return self.objects.get(key)
+
+    async def exists(self, key: str) -> bool:
+        return key in self.objects
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.objects[key] = data
+
+
+async def test_a_movement_already_voiced_reaches_the_bucket_even_when_the_whole_line_fails(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+    from app.services.internalization_room.run_turn import TurnOutcome
+
+    async def _opening(**_: Any) -> TurnOutcome:
+        return TurnOutcome(speech=WHOLE, transcript="", movements=[FIRST, SECOND])
+
+    elevenlabs = _ElevenlabsThatRefusesTheWholeLine()
+    store = _Bucket()
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
+    monkeypatch.setattr(tts, "_make_client", lambda: elevenlabs)
+    monkeypatch.setattr(tts, "_default_store", lambda _: store)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    refused = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}
+    )
+
+    assert refused.status_code == 502
+    assert b"o todo" in store.objects.values(), (
+        "a fala inteira falhava depois de o movimento ter sido sintetizado, e o clipe já "
+        "pago à ElevenLabs nunca chegava ao bucket"
+    )
+    assert b"a cena" in store.objects.values(), (
+        "um movimento ainda em síntese quando a fala inteira falhou terminava depois, pago, "
+        "e ninguém mais o subia"
+    )

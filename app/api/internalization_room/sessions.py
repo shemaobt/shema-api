@@ -113,7 +113,11 @@ async def _voice_the_turn(
             )
         )
 
-    whole, parts = await asyncio.gather(whole_line(), movements())
+    voicing = asyncio.create_task(movements())
+    try:
+        whole = await whole_line()
+    finally:
+        parts = await voicing
     keys = [key for key in parts if key is not None]
     if len(keys) != len(_SEGMENT_ROLES):
         return whole, []
@@ -670,10 +674,15 @@ async def _answer_the_turn(
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     uploads: list[Upload] = []
-    with stage("voice"):
-        voiced, segments = await _voice_the_turn(
-            outcome, language=session.language, uploads=uploads
-        )
+    try:
+        with stage("voice"):
+            voiced, segments = await _voice_the_turn(
+                outcome, language=session.language, uploads=uploads
+            )
+    except BaseException:
+        if uploads:
+            await _upload(uploads)
+        raise
     session, _ = await asyncio.gather(
         _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening),
         _upload(uploads),
