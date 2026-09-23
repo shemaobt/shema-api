@@ -495,3 +495,12 @@ async def test_a_refused_read_keeps_its_permit_until_the_download_on_its_thread_
             break
         await asyncio.sleep(0.01)
     assert not permits.locked(), "a licença não voltou depois que o download terminou"
+
+
+async def test_a_full_clip_says_it_can_be_answered_by_range(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert fetched.headers["accept-ranges"] == "bytes"

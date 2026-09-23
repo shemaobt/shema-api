@@ -147,7 +147,11 @@ async def clip(
     return Response(
         content=audio,
         media_type=_media_type(key),
-        headers={"Cache-Control": IMMUTABLE, "ETag": sha256(audio).hexdigest()[:32]},
+        headers={
+            "Cache-Control": IMMUTABLE,
+            "ETag": sha256(audio).hexdigest()[:32],
+            "Accept-Ranges": "bytes",
+        },
     )
 
 
