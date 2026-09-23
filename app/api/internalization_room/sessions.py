@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import re
 import uuid
@@ -107,6 +108,32 @@ async def _kept_before(deadline: float, flights: list[asyncio.Task[bytes]]) -> N
     failed = next((result for result in landed if isinstance(result, BaseException)), None)
     if failed is not None:
         raise UpstreamServiceError("a voz desta fala não pôde ser feita") from failed
+
+
+async def _both_movements_kept(
+    movements: list[str], flights: list[asyncio.Task[bytes]], *, language: str, deadline: float
+) -> bool:
+    try:
+        async with asyncio.timeout_at(deadline):
+            kept = await asyncio.gather(
+                *(
+                    _kept_or_made_again(text, flight, language=language)
+                    for text, flight in zip(movements, flights, strict=True)
+                )
+            )
+    except TimeoutError:
+        return False
+    return all(kept)
+
+
+async def _kept_or_made_again(text: str, flight: asyncio.Task[bytes], *, language: str) -> bool:
+    with contextlib.suppress(Exception):
+        await asyncio.shield(flight)
+        return True
+    with contextlib.suppress(Exception):
+        await asyncio.shield(_voice_in_flight(text, language=language)[1])
+        return True
+    return False
 
 
 def _voice_in_flight(text: str, *, language: str) -> tuple[str, asyncio.Task[bytes]]:
@@ -757,13 +784,20 @@ async def _answer_the_turn(
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
     voiced = _voice_the_turn(outcome, language=session.language)
+    if len(voiced) > 1 and not await _both_movements_kept(
+        outcome.movements,
+        [flight for _, flight in voiced[1:]],
+        language=session.language,
+        deadline=deadline,
+    ):
+        voiced = voiced[:1]
     session, landed = await _write_the_turn(
         db, session, outcome=outcome, turn=turn, opening=opening
     )
     if landed:
         audio_url, segments = _addresses(voiced, partial(turn_clip_url, session.id))
     else:
-        await _kept_before(deadline, [flight for _, flight in voiced])
+        await _kept_before(deadline, [flight for _, flight in voiced[:1]])
         audio_url, segments = _addresses(voiced, clip_url)
 
     response_turn_id = turn_id or str(uuid.uuid4())

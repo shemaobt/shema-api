@@ -587,3 +587,80 @@ async def test_the_voice_route_never_waits_on_a_held_line_past_the_turns_bound(
 
     assert joined.status_code == 502, "o GET que se juntava a uma síntese presa esperava sem prazo"
     assert made.status_code == 502, "o GET que refazia a fala esperava a síntese sem prazo"
+
+
+WHOLE = "O todo da passagem.\n\nA cena e o convite."
+PANORAMA = "O todo da passagem."
+SCENE = "A cena e o convite."
+
+
+def _an_opening_in_two_movements(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _opening(**_: Any) -> TurnOutcome:
+        return TurnOutcome(speech=WHOLE, transcript="", movements=[PANORAMA, SCENE])
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
+
+
+async def test_an_opening_whose_movement_cannot_be_voiced_twice_comes_back_whole(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _an_opening_in_two_movements(monkeypatch)
+    elevenlabs.refused[SCENE] = 2
+
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+    heard = await client.get(answered.json()["audio_url"])
+
+    assert answered.status_code == 200
+    assert answered.json()["segments"] == [], (
+        "a abertura saía com um movimento que só daria 502, e o tablet chamava uma pessoa "
+        "em vez de ouvir a abertura inteira"
+    )
+    assert heard.status_code == 200
+    assert elevenlabs.texts.count(SCENE) == 2
+
+
+async def test_an_opening_whose_movement_fails_once_still_arrives_in_two_movements(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _an_opening_in_two_movements(monkeypatch)
+    elevenlabs.refused[SCENE] = 1
+
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+
+    assert [segment["role"] for segment in answered.json()["segments"]] == ["panorama", "scene"]
+
+
+async def test_an_opening_whose_movements_outlast_the_turns_bound_comes_back_whole_in_time(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import get_settings
+
+    _an_opening_in_two_movements(monkeypatch)
+    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 200)
+    elevenlabs.held.clear()
+    try:
+        answered = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+        )
+    finally:
+        elevenlabs.held.set()
+
+    assert answered.status_code == 200
+    assert answered.json()["segments"] == [], (
+        "a abertura esperava os movimentos além do prazo do turno em vez de voltar inteira"
+    )
