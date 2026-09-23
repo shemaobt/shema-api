@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.config import Settings
+from app.core.exceptions import UpstreamServiceError
 from app.services.internalization_room import synthesize_facilitator_speech
 from app.services.internalization_room.passage_lines import panorama_line_for
 from app.services.internalization_room.voices import voice_for
@@ -344,10 +345,12 @@ async def test_a_line_the_bucket_already_holds_is_neither_downloaded_nor_voiced_
 async def test_a_clip_the_bucket_refused_is_not_trusted_to_be_there() -> None:
     store = RefusingStore()
     client = _client(_ok(), _ok())
-    await _say("Quem voltou para Belém?", store=store, client=client)
+    with pytest.raises(UpstreamServiceError):
+        await _say("Quem voltou para Belém?", store=store, client=client)
     store.asked.clear()
 
-    await _say("Quem voltou para Belém?", store=store, client=client)
+    with pytest.raises(UpstreamServiceError):
+        await _say("Quem voltou para Belém?", store=store, client=client)
 
     assert store.asked[:1] == ["exists"], (
         "uma chave cujo upload falhou era lembrada como guardada, e o tablet recebia um "

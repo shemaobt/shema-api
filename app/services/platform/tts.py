@@ -189,8 +189,9 @@ async def synthesize_speech_key(
         return SpeechKey(key, cached=True)
 
     audio, kept = await _cache_quietly(speech_store, key, await voiced())
-    if kept:
-        _remember_fresh(key, audio)
+    if not kept:
+        raise UpstreamServiceError("the clip could not be kept")
+    _remember_fresh(key, audio)
     return SpeechKey(key, cached=False)
 
 

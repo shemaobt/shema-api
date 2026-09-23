@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from app.core.config import Settings
+from app.core.exceptions import UpstreamServiceError
 from app.services.platform import tts
 
 LINE = "Onde essa história acontece?"
@@ -34,11 +37,13 @@ class _RefusingBucket:
 async def test_a_line_the_bucket_refused_is_not_served_from_memory_afterwards() -> None:
     bucket = _RefusingBucket()
 
-    voiced = await tts.synthesize_speech_key(
-        LINE, language="pt-BR", settings=_settings(), client=_Elevenlabs(), store=bucket
-    )
+    with pytest.raises(UpstreamServiceError):
+        await tts.synthesize_speech_key(
+            LINE, language="pt-BR", settings=_settings(), client=_Elevenlabs(), store=bucket
+        )
+    key, _ = tts.speech_to_come(LINE, language="pt-BR", settings=_settings(), store=bucket)
 
-    assert await tts.fetch_clip(voiced.key, store=bucket) is None, (
+    assert await tts.fetch_clip(key, store=bucket) is None, (
         "a memória guardava uma renderização que o bucket recusou, e esta instância a "
         "servia enquanto qualquer outra faria e serviria outra"
     )
