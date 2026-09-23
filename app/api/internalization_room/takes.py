@@ -187,4 +187,5 @@ async def listen_to_take(
     do it — the same reason the sound necklace redirects rather than proxies.
     """
     take = await take_for_facilitator(db, user, take_id)
+    await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
