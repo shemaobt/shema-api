@@ -6,7 +6,7 @@ again on every replay, over the kind of connection a translation team actually h
 
 import pytest
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.services.internalization_room.voice_handles import (
     TEAM_AUDIO_ROUTE,
     clip_url,
@@ -90,3 +90,28 @@ def test_the_reply_prefix_does_not_open_the_rest_of_the_bucket() -> None:
 @pytest.mark.parametrize("handle", ["", "!!!", "nao-e-base64!!", "eyJ"])
 def test_a_malformed_handle_is_refused_rather_than_raised(handle: str) -> None:
     assert from_handle(handle, settings=_settings()) is None
+
+
+SHORT_KEY = "tts/RoomVoice/m/f/a.mp3"
+
+
+def test_with_a_signing_key_the_address_carries_the_rooms_hmac_of_the_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(get_settings(), "internalization_room_clip_signing_key", "chave-de-teste")
+
+    assert clip_url(SHORT_KEY) == (
+        "/api/internalization-room/voice/"
+        "dHRzL1Jvb21Wb2ljZS9tL2YvYS5tcDM.zuiUCdy6TUby_jXXqzbLVTCKmLfvZ5C4zFzx2QmI_oM"
+    ), "o handle era base64 puro, e quem recebeu um fabricava outros com a voz da sala"
+
+
+def test_without_a_signing_key_the_address_is_the_bare_handle_it_always_was(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(get_settings(), "internalization_room_clip_signing_key", "")
+
+    assert clip_url(SHORT_KEY) == "/api/internalization-room/voice/dHRzL1Jvb21Wb2ljZS9tL2YvYS5tcDM"
+    assert from_handle("dHRzL1Jvb21Wb2ljZS9tL2YvYS5tcDM", settings=_settings()) == SHORT_KEY, (
+        "sem a chave configurada, um servidor recém-implantado recusaria todo endereço já entregue"
+    )
