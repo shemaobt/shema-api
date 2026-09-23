@@ -196,8 +196,13 @@ class BackTranslationState(BaseModel):
     #:
     #: `None` for a telling-back no verdict has reached, and for every row written before this
     #: field existed: the state is a JSON column revalidated on every request, so an older row
-    #: loads with it absent and nothing was migrated (the precedent `chunk` set). The restart
-    #: builds a fresh state, which resets this with everything else.
+    #: loads with it absent and nothing was migrated (the precedent `chunk` set). No route
+    #: starts a whole telling-back over yet — `retire_every_segment` and `superseded` are
+    #: written only by tests — so nothing clears this today. Recording one part again
+    #: (`sessions.retire_the_part_recorded_again`, from the take upload) sets `checked` back
+    #: to false and leaves this standing: the analyst did last read the team then, which is
+    #: what `lastCheckAt` asks, so the packet shows `checked: false` beside that moment until
+    #: the next verdict stamps a new one.
     checked_at: datetime | None = None
     superseded: list[SupersededAttempt] = Field(default_factory=list)
     #: What the team listened to, one entry per rehearsal part, each in that part's own
