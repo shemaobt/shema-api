@@ -344,7 +344,9 @@ async def append_exchange(
     `attend` is the other, and is the one a facilitator controls (ENG-609). The lift itself
     is untouched by that slice: the team resuming still ends the halt, and both kinds of halt
     end this way. Only a halt already standing when the turn began is lifted: one the tablet
-    raised while the Guide was still answering is a request nobody has answered yet.
+    raised while the Guide was still answering is a request nobody has answered yet. The row
+    knows the halt the turn began in only by its kind, so a halt of that same kind raised
+    again after a visit, all inside one turn, is taken for it and lifted.
 
     It clears `lifted_halt`, which is the record of a halt an outstanding visit lifted and
     which undoing that visit would put back, when the visit is the one the row carried as the
@@ -353,6 +355,8 @@ async def append_exchange(
     without the visit — so leaving it set lets a facilitator correcting a ten-minute-old tap
     stop a conversation in full flow. A visit to a halt raised while the Guide was answering
     keeps it: the turn would not have lifted that halt, so undoing the visit brings it back.
+    The same-kind halt above is the exception — mistaken for the one the turn began in, its
+    visit loses the record too.
     The stamps are deliberately **not** cleared: who went and when is what the history is for,
     and a landing turn is no evidence they did not go.
     """
