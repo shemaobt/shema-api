@@ -480,6 +480,13 @@ async def append_opening(
 async def save_comprehension(
     db: AsyncSession, session: IRSession, state: ComprehensionState
 ) -> IRSession:
+    """Write the comprehension alone, in a commit of its own — for seeding a test's session.
+
+    No route writes a turn through this any more: the voiced route (ENG-1021) and the text
+    seam (ENG-1033) hand the state to `append_exchange(state=...)`, so the comprehension and
+    the exchange land in one guarded UPDATE and one commit. A turn written through this and
+    then `append_exchange` is the two-commit pattern both of them removed.
+    """
     return await _land(db, session, {"comprehension": state.model_dump(mode="json")})
 
 
