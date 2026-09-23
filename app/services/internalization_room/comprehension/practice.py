@@ -81,14 +81,18 @@ _BARE_PAST_REPORT = (
 #: rehearse" and "we rehearsed" — so the same word that opens a finished report also opens
 #: a team saying it will rehearse later, with no "vamos" or "queremos"
 #: ahead of the verb for `_FUTURE_REPORT` to catch ("ensaiamos depois, primeiro queremos
-#: ouvir a história de novo"). A forward adverb right after the verb reads it as the plan it
-#: is instead, and so does a "primeiro" the team puts ahead of what they want to do first.
-#: Both are anchored: the clause is the whole sentence (commas do not split it), and a
-#: retelling carries "depois" or "queriam" of its own ("…e depois a família saiu de Belém"),
-#: which must not refuse the report it is attached to. English "we rehearsed" carries no
-#: such ambiguity, so this guards only the Portuguese half of `_BARE_PAST_REPORT`.
+#: ouvir a história de novo"). A forward adverb reads it as the plan it is instead, with an
+#: object of up to two words allowed to sit between the verb and the adverb ("ensaiamos
+#: essa cena amanhã") — but never "e" or "que", which open a retelling's own clause instead
+#: of naming what got rehearsed. A "primeiro" the team puts ahead of what they want to do
+#: first reads the same way. Both are anchored: the clause is the whole sentence (commas do
+#: not split it), and a retelling carries "depois" or "queriam" of its own ("…e depois a
+#: família saiu de Belém"), which must not refuse the report it is attached to. English "we
+#: rehearsed" carries no such ambiguity, so this guards only the Portuguese half of
+#: `_BARE_PAST_REPORT`.
 _BARE_PAST_POSTPONED = re.compile(
-    r"^ensaiamos\s+(?:depois|mais\s+tarde|amanha|logo|daqui\s+a\s+pouco|em\s+seguida|ja\s+ja)\b"
+    r"^ensaiamos\s+(?:(?!e\s|que\s)\w+\s+){0,2}"
+    r"(?:depois|mais\s+tarde|amanha|logo|daqui\s+a\s+pouco|em\s+seguida|ja\s+ja)\b"
     r"|\bprimeiro\b.{0,32}\b(?:queremos|quero|vamos)\b"
 )
 _FUTURE_REPORT = (
