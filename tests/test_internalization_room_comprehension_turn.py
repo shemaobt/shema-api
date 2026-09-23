@@ -723,7 +723,7 @@ async def test_the_second_scene_is_opened_by_the_guide_before_it_is_probed(
     told_back = await run_comprehension_turn(
         db_session,
         session,
-        speech=HeardSpeech(text="ensaiamos e entendemos que a família volta para Belém"),
+        speech=HeardSpeech(text="entendemos que a família volta para Belém"),
         opening=False,
         guide_prompt=GUIDE,
         validator_prompt=VALIDATOR,
