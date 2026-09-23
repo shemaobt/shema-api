@@ -389,6 +389,34 @@ async def test_an_hour_of_cache_write_costs_twice_a_five_minute_one(fake_client,
     )
 
 
+async def test_a_cache_write_with_no_lifetime_breakdown_still_costs_the_five_minute_rate(
+    fake_client, caplog
+):
+    reply = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="ok")],
+        stop_reason="end_turn",
+        model="claude-fable-5-1",
+        usage=SimpleNamespace(
+            input_tokens=10,
+            output_tokens=0,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=1_000_000,
+            cache_creation=None,
+        ),
+    )
+    fake_client(reply)
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    record = next(r for r in caplog.records if getattr(r, "cost_usd", None) is not None)
+    assert record.cost_usd == pytest.approx(12.5001), (
+        "um milhão de tokens de escrita sem o detalhe de vida (uma resposta sem o "
+        "campo novo da API) virava custo zero em vez do preço de 5 minutos, e o total do "
+        "turno caía a menos da metade do que de fato custou"
+    )
+
+
 async def test_a_call_that_wrote_nothing_to_the_cache_says_zero_for_both_lifetimes(
     fake_client, caplog
 ):

@@ -418,7 +418,7 @@ def _report_spend(
     cache_read = _counted(usage.cache_read_input_tokens)
     cache_write = _counted(usage.cache_creation_input_tokens)
     lifetimes = usage.cache_creation
-    cache_write_5m = lifetimes.ephemeral_5m_input_tokens if lifetimes else 0
+    cache_write_5m = lifetimes.ephemeral_5m_input_tokens if lifetimes else cache_write
     cache_write_1h = lifetimes.ephemeral_1h_input_tokens if lifetimes else 0
     cost = cost_of(
         model,
