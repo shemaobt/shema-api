@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 import uuid
+from collections import OrderedDict
 from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
@@ -165,6 +166,22 @@ async def _upload(uploads: list[Upload]) -> None:
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+#: A session's language, once this process has read it. Neon sits in us-east-1 and every
+#: session row carries a growing `messages`/`coverage_state` JSON blob, so the read that would
+#: tell a turn its own language is the one costing 20-30 ms round trips each way; a later turn
+#: for the same session can start transcription without waiting on it. Capped like
+#: `platform/tts.py`'s `_FRESH`/`_KEPT`, so a long-lived worker serving many sessions does not
+#: grow this without bound.
+_LANGUAGE_MEMO_MAX = 1024
+_LANGUAGE_MEMO: OrderedDict[str, str] = OrderedDict()
+
+
+def _remember_language(session_id: str, language: str) -> None:
+    _LANGUAGE_MEMO[session_id] = language
+    _LANGUAGE_MEMO.move_to_end(session_id)
+    while len(_LANGUAGE_MEMO) > _LANGUAGE_MEMO_MAX:
+        _LANGUAGE_MEMO.popitem(last=False)
 
 _CLIENT_TIMING = re.compile(r"[a-z_]{1,32}=[0-9]+(?:;[a-z_]{1,32}=[0-9]+)*")
 _CLIENT_TIMING_LONGEST = 512
@@ -595,6 +612,7 @@ async def _answer_the_turn(
     deadline = asyncio.get_running_loop().time() + bound_s
     with stage("db_read"):
         session = await room.get_session(db, session_id)
+    _remember_language(session_id, session.language)
 
     if turn_id:
         with stage("db_read"):
