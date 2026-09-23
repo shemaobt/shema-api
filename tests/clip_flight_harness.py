@@ -24,6 +24,7 @@ class Elevenlabs:
         self.renderings = list(renderings) or [b"the only rendering"]
         self.failures = failures
         self.failure_status = 503
+        self.delay = 0.0
         self.held = asyncio.Event()
         self.held.set()
         self.texts: list[str] = []
@@ -31,6 +32,7 @@ class Elevenlabs:
     async def post(self, *_: Any, json: dict[str, Any], **__: Any) -> SimpleNamespace:
         self.texts.append(json["text"])
         await self.held.wait()
+        await asyncio.sleep(self.delay)
         if self.failures:
             self.failures -= 1
             return SimpleNamespace(status_code=self.failure_status, content=b"", text="no")

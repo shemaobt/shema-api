@@ -30,7 +30,7 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
-from app.services.internalization_room.voice_handles import turn_clip_url
+from app.services.internalization_room.voice_handles import clip_url
 from app.services.platform.tts import SynthesizedSpeech
 from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, P
@@ -167,7 +167,7 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
 
     late = await _ask_for_the_opening(client, session.id)
     assert late.status_code == 200, late.text[:300]
-    assert late.json()["audio_url"] == turn_clip_url(session.id, _RecordingVoice.key_of(OPENING))
+    assert late.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING))
 
     again = await _ask_for_the_opening(client, session.id)
     assert again.status_code == 200, again.text[:300]

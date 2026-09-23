@@ -354,3 +354,79 @@ async def test_a_bucket_that_fails_one_read_is_a_missing_clip_not_a_broken_route
 
     assert heard.status_code == 200, "uma leitura do GCS que falhava virava 500 na fala do turno"
     assert heard.content == b"the rendering"
+
+
+TEAM_FIRST = "Noemi voltou para Belém"
+
+
+def _the_team_speaks_before_the_opening_lands(
+    monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession, panorama: IRSession
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _opening(**_: Any) -> TurnOutcome:
+        await append_exchange(
+            db_session, panorama, team_utterance=TEAM_FIRST, guide_response="Outra fala."
+        )
+        return TurnOutcome(speech=GUIDE_LINE, transcript="")
+
+    monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
+
+
+async def test_an_opening_the_record_dropped_is_answered_only_once_its_voice_is_kept(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_team_speaks_before_the_opening_lands(monkeypatch, db_session, panorama)
+    elevenlabs.delay = 0.2
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+    another_instance()
+
+    heard = await client.get(answered.json()["audio_url"])
+
+    assert heard.status_code == 200, (
+        "a abertura descartada do registro respondia antes da voz existir, e nenhuma outra "
+        "instância tinha de onde fazê-la"
+    )
+    assert heard.content == b"the rendering"
+
+
+async def test_an_opening_the_record_dropped_whose_voice_fails_is_an_outage_at_once(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _the_team_speaks_before_the_opening_lands(monkeypatch, db_session, panorama)
+    elevenlabs.failures = 1
+
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+
+    assert answered.status_code == 502, (
+        "a abertura que ninguém pode refazer respondia com um endereço que só daria 404"
+    )
+
+
+async def test_a_team_walking_back_in_waits_on_the_line_being_voiced_instead_of_buying_it_again(
+    client: httpx.AsyncClient, panorama: IRSession, elevenlabs: Elevenlabs
+) -> None:
+    elevenlabs.held.clear()
+    await asyncio.wait_for(client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1)
+    walking_back = asyncio.create_task(client.post(f"{PREFIX}/sessions/{panorama.id}/turns"))
+    await asyncio.sleep(0.05)
+    elevenlabs.held.set()
+    again = await asyncio.wait_for(walking_back, timeout=1)
+    heard = await client.get(again.json()["audio_url"])
+
+    assert heard.content == b"the rendering"
+    assert elevenlabs.texts == [GUIDE_LINE], (
+        "o diga de novo, pedido enquanto a fala ainda era feita, pagava a ElevenLabs de novo"
+    )

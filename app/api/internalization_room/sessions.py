@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
 import logging
 import re
 import uuid
 from collections import OrderedDict
+from collections.abc import Callable
 from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile
@@ -40,7 +42,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
-from app.services.internalization_room.clip_flight import fly
+from app.services.internalization_room.clip_flight import fly, in_flight
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -72,26 +74,39 @@ _SEGMENT_ROLES = ("panorama", "scene")
 
 
 def _voice_the_turn(
-    outcome: room.TurnOutcome, *, session_id: str, language: str
-) -> tuple[str, list[SpokenSegment]]:
+    outcome: room.TurnOutcome, *, language: str
+) -> list[tuple[str, asyncio.Task[bytes]]]:
     if outcome.fixed_line:
-        return "", []
-    whole = turn_clip_url(session_id, _voice_in_flight(outcome.speech, language=language))
-    if not outcome.movements:
-        return whole, []
-    return whole, [
-        SpokenSegment(
-            role=role,
-            audio_url=turn_clip_url(session_id, _voice_in_flight(part, language=language)),
-        )
-        for role, part in zip(_SEGMENT_ROLES, outcome.movements, strict=True)
+        return []
+    return [
+        _voice_in_flight(text, language=language) for text in (outcome.speech, *outcome.movements)
     ]
 
 
-def _voice_in_flight(text: str, *, language: str) -> str:
+def _addresses(
+    voiced: list[tuple[str, asyncio.Task[bytes]]], url_of: Callable[[str], str]
+) -> tuple[str, list[SpokenSegment]]:
+    if not voiced:
+        return "", []
+    (whole, _), *parts = voiced
+    if not parts:
+        return url_of(whole), []
+    return url_of(whole), [
+        SpokenSegment(role=role, audio_url=url_of(key))
+        for role, (key, _) in zip(_SEGMENT_ROLES, parts, strict=True)
+    ]
+
+
+async def _once_in_flight_lands(text: str, *, language: str) -> None:
+    flight = in_flight(room.facilitator_speech_to_come(text, language=language)[0])
+    if flight is not None:
+        with contextlib.suppress(Exception):
+            await asyncio.shield(flight)
+
+
+def _voice_in_flight(text: str, *, language: str) -> tuple[str, asyncio.Task[bytes]]:
     key, voice = room.facilitator_speech_to_come(text, language=language)
-    fly(key, voice)
-    return key
+    return key, fly(key, voice)
 
 
 async def _write_the_turn(
@@ -101,10 +116,10 @@ async def _write_the_turn(
     outcome: room.TurnOutcome,
     turn: room.ComprehensionTurn | None,
     opening: bool,
-) -> IRSession:
+) -> tuple[IRSession, bool]:
     with stage("db_write"):
         if opening:
-            await room.append_opening(
+            landed = await room.append_opening(
                 db,
                 session,
                 guide_response=outcome.speech,
@@ -113,8 +128,8 @@ async def _write_the_turn(
                 state=turn.state if turn is not None else None,
                 commit=False,
             )
-            return session
-        return await room.append_exchange(
+            return session, landed
+        written = await room.append_exchange(
             db,
             session,
             team_utterance=outcome.transcript,
@@ -124,6 +139,7 @@ async def _write_the_turn(
             state=turn.state if turn is not None else None,
             commit=False,
         )
+        return written, True
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -540,6 +556,8 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         ),
         "",
     )
+    if last:
+        await _once_in_flight_lands(last, language=session.language)
     voiced = (
         (await room.synthesize_facilitator_speech(last, language=session.language))[0]
         if last
@@ -706,8 +724,18 @@ async def _answer_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    audio_url, segments = _voice_the_turn(outcome, session_id=session.id, language=session.language)
-    session = await _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening)
+    voiced = _voice_the_turn(outcome, language=session.language)
+    session, landed = await _write_the_turn(
+        db, session, outcome=outcome, turn=turn, opening=opening
+    )
+    if landed:
+        audio_url, segments = _addresses(voiced, partial(turn_clip_url, session.id))
+    else:
+        try:
+            await asyncio.gather(*(asyncio.shield(flight) for _, flight in voiced))
+        except Exception as error:
+            raise UpstreamServiceError("a abertura não pôde ser falada") from error
+        audio_url, segments = _addresses(voiced, clip_url)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
