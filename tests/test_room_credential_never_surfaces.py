@@ -26,6 +26,7 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.services.device import claim_device_as_facilitator, create_device
 from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.room_route_audit_harness import room_app_routes
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -59,47 +60,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     transport = ASGITransport(app=test_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
-
-
-def _dependency_calls(dependant) -> set:
-    calls = {dependant.call}
-    for sub in dependant.dependencies:
-        calls |= _dependency_calls(sub)
-    return calls
-
-
-def _direct_calls(endpoint) -> set:
-    """Gate functions the endpoint's own body calls by name, bypassing ``Depends``.
-
-    `voice.py`'s clip route awaits `require_room_caller` directly so it can run beside the
-    GCS read — a call the dependant tree above never sees. Its name still shows up in the
-    function's own bytecode, resolved against the module it was imported into.
-    """
-    names = getattr(getattr(endpoint, "__code__", None), "co_names", ())
-    scope = getattr(endpoint, "__globals__", {})
-    return {scope[name] for name in names if callable(scope.get(name))}
-
-
-def room_app_routes() -> list:
-    """Every mounted route a tablet can reach, in path order.
-
-    Identified by the room's own gates appearing in the route's dependency tree, or called
-    by the endpoint itself. Renaming a gate without updating this set would silently empty
-    it, which is what ``test_the_audit_is_not_empty`` is here to catch.
-    """
-    from app.api.internalization_room import _deps
-    from app.main import app
-
-    gates = {_deps.require_room_caller, _deps.require_device}
-    return sorted(
-        (
-            route
-            for route in app.routes
-            if getattr(route, "dependant", None) is not None
-            and gates & (_dependency_calls(route.dependant) | _direct_calls(route.endpoint))
-        ),
-        key=lambda route: (route.path, sorted(route.methods)),
-    )
 
 
 def _exercisable(route) -> list[tuple[str, str]]:
