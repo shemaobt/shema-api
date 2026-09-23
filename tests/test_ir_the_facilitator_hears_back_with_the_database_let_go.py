@@ -158,3 +158,28 @@ async def test_a_question_the_facilitator_hears_is_fetched_with_the_scope_read_l
     assert held == {"get": False}, (
         "a leitura do escopo da facilitadora ficava aberta enquanto o áudio vinha do balde"
     )
+
+
+async def test_a_questions_address_is_signed_for_the_facilitator_with_the_scope_read_let_go(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import get_settings
+    from app.services.internalization_room import questions as questions_service
+
+    project, headers = await a_facilitator(db_session)
+    question = await a_recorded_question(db_session, project.id, tag="endereco")
+    held: dict[str, bool] = {}
+
+    async def signs(bucket: str, key: str, **_: object) -> str:
+        held["sign"] = db_session.in_transaction()
+        return f"https://armazenamento.exemplo/{bucket}/{key}?assinado"
+
+    monkeypatch.setattr(get_settings(), "gcs_platform_bucket", "balde-de-teste", raising=False)
+    monkeypatch.setattr(questions_service, "generate_signed_download_url", signs)
+
+    answered = await client.get(f"{IR}/facilitator/questions/{question.id}/audio", headers=headers)
+
+    assert answered.status_code == 200, answered.text
+    assert held == {"sign": False}, (
+        "a leitura da pergunta pela facilitadora ficava aberta enquanto o endereço era assinado"
+    )
