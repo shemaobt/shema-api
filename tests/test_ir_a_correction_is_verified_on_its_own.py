@@ -33,7 +33,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.services.internalization_room import segments as service
 from app.services.platform.storage import StoredObject
-from tests.room_harness import CORRECTION_MARK, heard_every_part, press_terminei
+from tests.room_harness import (
+    CORRECTION_MARK,
+    heard_every_part,
+    nothing_is_read_ahead,
+    press_terminei,
+)
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -67,6 +72,11 @@ _NAME = re.compile(r"\b[A-ZÁÉÍÓÚÂÊÔÃÕ][\wáéíóúâêôãõç]+")
 FIRST_TELLING = "Noemi ouviu que havia pão em Belém e resolveu voltar de Moabe."
 SECOND_TELLING = "Ela disse às duas noras que voltassem para a casa de suas mães."
 THIRD_TELLING = "Rute disse que ia junto e não a deixaria."
+
+
+@pytest.fixture(autouse=True)
+def _read_only_at_terminei(monkeypatch: pytest.MonkeyPatch) -> None:
+    nothing_is_read_ahead(monkeypatch)
 
 
 class MemoryStore:

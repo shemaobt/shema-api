@@ -169,7 +169,7 @@ async def test_a_terminei_after_the_reading_ahead_asks_the_analyst_nothing_and_s
     assert room.briefs[-1] == cold_brief.replace(cold_id, session_id)
 
 
-async def test_a_stretch_told_before_any_terminei_starts_no_reading_the_listening_is_unknown(
+async def test_the_first_terminei_finds_the_reading_ready_and_the_listening_is_still_asked(
     db_session: AsyncSession,
     per_request: async_sessionmaker[AsyncSession],
     analyst: Analyst,
@@ -179,11 +179,22 @@ async def test_a_stretch_told_before_any_terminei_starts_no_reading_the_listenin
     session, (part,) = await rehearsed_in_parts_of(db_session, [1])
 
     async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+        analyst.readings = [AN_ADDITION]
         await _tell(client, session.id, part, starts_ms=1000, ends_ms=2000)
+        read_by_the_stretch = analyst.whole_readings
+        unheard = (await press_terminei(client, session.id)).json()
+        verdict = (
+            await press_terminei(client, session.id, report=played_every_part([part.id]))
+        ).json()
 
-    assert analyst.whole_readings == 0, (
-        "o trecho mandava ler antes de o tablet dizer que a equipe ouviu a parte"
+    assert unheard["unheard_take_ids"] == [part.id], (
+        "a leitura pronta fazia o terminei esquecer a parte que ninguém tinha ouvido"
     )
+    assert read_by_the_stretch == 1, "o último trecho da primeira rodada não mandava ler"
+    assert analyst.whole_readings == 1, (
+        "o primeiro terminei lia de novo o que o último trecho já tinha mandado ler"
+    )
+    assert verdict["finding_kind"] == "addition"
 
 
 async def test_a_stretch_told_while_a_part_is_still_untold_starts_no_reading(

@@ -16,7 +16,6 @@ from app.services.internalization_room.back_translation import (
     ReadAhead,
     analyse_telling_back,
     rehearsed_parts,
-    unheard_parts,
     untold_parts,
 )
 from app.services.internalization_room.classify_coverage import classify_coverage
@@ -131,11 +130,8 @@ async def read_ahead(*, session_id: str) -> None:
         session = await get_session(db, session_id)
         state = back_translation_of(session)
         final = await final_segments(db, session_id)
-        rehearsed = rehearsed_parts(final)
-        if (
-            first_untold(final) is not None
-            or untold_parts(current_parts(await takes_of(db, session_id)), rehearsed)
-            or unheard_parts(state, rehearsed)
+        if first_untold(final) is not None or untold_parts(
+            current_parts(await takes_of(db, session_id)), rehearsed_parts(final)
         ):
             return
         told = told_back(final)
