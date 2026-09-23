@@ -102,8 +102,10 @@ def _opens_in_two_movements(
     from app.api.internalization_room import sessions as sessions_api
     from app.services.internalization_room.run_turn import TurnOutcome
 
+    chosen = [FIRST, SECOND] if movements is None else movements
+
     async def _opening(**_: Any) -> TurnOutcome:
-        return TurnOutcome(speech=WHOLE, transcript="", movements=movements or [FIRST, SECOND])
+        return TurnOutcome(speech=WHOLE, transcript="", movements=chosen)
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _opening)
 
@@ -199,3 +201,51 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
     urls = [segment["audio_url"] for segment in body["segments"]]
     assert body["audio_url"] == urls[0]
     assert elevenlabs.calls == [FIRST, SECOND, WHOLE]
+
+
+async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    elevenlabs = _Elevenlabs(refuses=SECOND)
+    _opens_in_two_movements(monkeypatch)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+
+    assert opened.status_code == 200
+    assert set(elevenlabs.calls[:2]) == {FIRST, SECOND}
+    assert elevenlabs.calls[2] == WHOLE, (
+        "uma cena recusada não caiu para a fala inteira na hora, como o fallback de hoje"
+    )
+    body = opened.json()
+    assert body["segments"] == [], "o fallback ainda devolvia os movimentos parciais"
+    assert body["audio_url"], "a fala inteira deveria ter voltado como o áudio do turno"
+    assert not sessions_api._PENDING_WHOLE_LINE_TASKS, (
+        "o fallback síncrono não devia agendar outra síntese da mesma fala em segundo plano"
+    )
+
+
+async def test_a_turn_without_movements_still_speaks_only_the_whole_line(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    elevenlabs = _Elevenlabs()
+    _opens_in_two_movements(monkeypatch, movements=[])
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+
+    assert opened.status_code == 200
+    assert elevenlabs.calls == [WHOLE], (
+        "um turno sem movimentos passou a sintetizar mais do que a fala inteira"
+    )
+    assert opened.json()["segments"] == []
