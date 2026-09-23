@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.room_enums import HaltKind
@@ -252,7 +253,9 @@ async def get_session_for_room_caller(
     return session
 
 
-async def _land(db: AsyncSession, session: IRSession, values: dict[str, Any]) -> IRSession:
+async def _land(
+    db: AsyncSession, session: IRSession, values: dict[str, Any], *, commit: bool = True
+) -> IRSession:
     """Write ``values`` to this session's row, refusing the write if another turn got there
     first (ENG-643).
 
@@ -264,21 +267,30 @@ async def _land(db: AsyncSession, session: IRSession, values: dict[str, Any]) ->
     a clean-looking overwrite. Mirrors the compare-and-swap `autosave_state.py` runs for the
     sound necklace's own document, generalised to whichever columns the caller is writing.
     """
+    await db.flush()
     stmt = (
         update(IRSession)
         .where(IRSession.id == session.id, IRSession.version == session.version)
         .values(**values, version=IRSession.version + 1)
-        .returning(IRSession.version)
+        .returning(
+            IRSession.version,
+            IRSession.coverage_state,
+            IRSession.status,
+            IRSession.ended_at,
+            IRSession.updated_at,
+        )
         .execution_options(synchronize_session=False)
     )
-    landed = (await db.execute(stmt)).scalar_one_or_none()
+    landed = (await db.execute(stmt)).one_or_none()
     if landed is None:
         # Nothing matched, so nothing is pending: leave the transaction to the caller's
         # teardown rather than rolling back a session shared with the rest of the request,
         # the way autosave_state.py's own version conflict does.
         raise ConflictError("This session was written to by another turn.")
-    await db.commit()
-    await db.refresh(session)
+    for key, value in {**values, **landed._mapping}.items():
+        set_committed_value(session, key, value)
+    if commit:
+        await db.commit()
     return session
 
 
@@ -291,6 +303,9 @@ async def append_exchange(
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
     told_back: str = "",
+    state: ComprehensionState | None = None,
+    commit: bool = True,
+    halted_at_start: bool | None = None,
 ) -> IRSession:
     """Append one team/guide turn to the transcript, and what containment did to it.
 
@@ -310,7 +325,9 @@ async def append_exchange(
     `NEEDS_PERSON`. It is no longer the only writer of `IN_PROGRESS` a second time —
     `attend` is the other, and is the one a facilitator controls (ENG-609). The lift itself
     is untouched by that slice: the team resuming still ends the halt, and both kinds of halt
-    end this way.
+    end this way. Only a halt already standing when the turn began is lifted: one the tablet
+    raised while the Guide was still answering is a request nobody has answered yet. A caller
+    that re-read the row since the turn began says what it saw first in ``halted_at_start``.
 
     It does clear `lifted_halt`, which is the record of a halt an outstanding visit lifted and
     which undoing that visit would put back. Once a turn lands there is nothing left to put
@@ -341,9 +358,13 @@ async def append_exchange(
             )
     messages.append(guide)
     values: dict[str, Any] = {"messages": messages, "lifted_halt": None}
-    if session.status is IRSessionStatus.NEEDS_PERSON:
+    if halted_at_start is None:
+        halted_at_start = session.status is IRSessionStatus.NEEDS_PERSON
+    if halted_at_start:
         values["status"] = IRSessionStatus.IN_PROGRESS
-    return await _land(db, session, values)
+    if state is not None:
+        values["comprehension"] = state.model_dump(mode="json")
+    return await _land(db, session, values, commit=commit)
 
 
 def _containment_of(outcome: TurnOutcome) -> str:
@@ -422,6 +443,7 @@ async def append_opening(
     outcome: TurnOutcome | None = None,
     scene: str | None = None,
     state: ComprehensionState | None = None,
+    commit: bool = True,
 ) -> bool:
     """The opening written as the session's first line, or dropped when the team spoke first.
 
@@ -433,6 +455,7 @@ async def append_opening(
     read again here, and an opening that is no longer the first thing said is dropped from
     the record and logged — the tablet still hears the line it asked for.
     """
+    halted_at_start = session.status is IRSessionStatus.NEEDS_PERSON
     await db.refresh(session)
     if session.messages:
         logger.warning(
@@ -440,10 +463,16 @@ async def append_opening(
             session.id,
         )
         return False
-    if state is not None:
-        session = await save_comprehension(db, session, state)
     await append_exchange(
-        db, session, team_utterance="", guide_response=guide_response, outcome=outcome, scene=scene
+        db,
+        session,
+        team_utterance="",
+        guide_response=guide_response,
+        outcome=outcome,
+        scene=scene,
+        state=state,
+        commit=commit,
+        halted_at_start=halted_at_start,
     )
     return True
 

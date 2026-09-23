@@ -5,7 +5,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
@@ -61,16 +61,10 @@ async def answered_turn(db: AsyncSession, session_id: str, turn_id: str) -> dict
 async def remember_turn(
     db: AsyncSession, *, session_id: str, turn_id: str, response: dict[str, Any]
 ) -> None:
-    """Record this turn's answer, once, so a resend finds it instead of repeating the work.
-
-    Caught rather than avoided, the way ``working_time.py`` catches its own tick's race:
-    ``ON CONFLICT`` is not spelled the same on Postgres and the SQLite the suite runs
-    against, and the unique constraint is the guard that actually holds either way. A
-    genuinely simultaneous resend loses this insert; it has already been answered from
-    whatever the winner wrote, so there is nothing here worth keeping.
-    """
-    db.add(IRTurn(session_id=session_id, turn_id=turn_id, response=response))
-    try:
-        await db.commit()
-    except IntegrityError:
-        await db.rollback()
+    """Record this turn's answer, once, so a resend finds it instead of repeating the work."""
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    await db.execute(
+        insert(IRTurn)
+        .values(session_id=session_id, turn_id=turn_id, response=response)
+        .on_conflict_do_nothing(index_elements=["session_id", "turn_id"])
+    )
