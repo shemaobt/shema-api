@@ -137,22 +137,33 @@ def _in_a_transaction_while_thinking(
     monkeypatch: pytest.MonkeyPatch, db: AsyncSession, models: _Models, voice: _Voice
 ) -> dict[str, bool]:
     from app.api.internalization_room import sessions as sessions_api
+    from app.services.internalization_room import turn_dedup
 
     held: dict[str, bool] = {}
+    of_their_own: list[AsyncSession] = []
+    opens = turn_dedup.AsyncSessionLocal
+
+    def a_session_of_its_own() -> AsyncSession:
+        of_their_own.append(opens())
+        return of_their_own[-1]
+
+    def in_a_transaction() -> bool:
+        return any(each.in_transaction() for each in (db, *of_their_own))
 
     async def heard(audio: bytes, **kwargs: Any) -> HeardSpeech:
-        held["stt"] = db.in_transaction()
+        held["stt"] = in_a_transaction()
         return await _heard(audio, **kwargs)
 
     async def thinks(*, system_prompt: str, **kwargs: Any) -> str:
         role = "validator" if "corrected_response" in system_prompt else "guide"
-        held[role] = db.in_transaction()
+        held[role] = in_a_transaction()
         return await models(system_prompt=system_prompt, **kwargs)
 
     async def speaks(text: str, **kwargs: Any) -> tuple[SynthesizedSpeech, bool]:
-        held["voice"] = db.in_transaction()
+        held["voice"] = in_a_transaction()
         return await voice(text, **kwargs)
 
+    monkeypatch.setattr(turn_dedup, "AsyncSessionLocal", a_session_of_its_own)
     monkeypatch.setattr(sessions_api, "heard_speech", heard)
     monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"], "call_agent", thinks
@@ -439,4 +450,27 @@ async def test_a_line_said_again_is_voiced_with_the_database_let_go(
     assert again.status_code == 200, again.text[:300]
     assert held == {"voice": False}, (
         "o diga-de-novo sintetizava a última fala com a leitura da sessão ainda aberta"
+    )
+
+
+async def test_an_opening_the_tablet_names_is_composed_with_every_session_let_go(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    opened = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers={"X-Room-Key": KEY},
+        data={"turn_id": "abertura-1"},
+    )
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert held == {"guide": False, "validator": False, "voice": False}, (
+        "a abertura com turn_id corria numa sessão própria que ninguém olhava, com a leitura"
+        " ainda aberta nela"
     )
