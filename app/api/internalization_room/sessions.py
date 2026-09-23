@@ -552,8 +552,9 @@ async def _say_it_again(
     """Where the room already was, for a team walking back in.
 
     No model, no new line, nothing appended: the last thing the Guide said, said again.
-    The synthesiser is content-addressed, so the very same words come straight back out of
-    the bucket — this costs one lookup and no waiting.
+    The answer goes out only once that line is kept in the bucket: a line still being voiced
+    is joined, a missing one is made once, both inside the turn's own bound, and a line that
+    cannot be kept in time is a 502 rather than an address that would only 404.
     """
     last = next(
         (

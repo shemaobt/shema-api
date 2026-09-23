@@ -198,8 +198,9 @@ async def turn_clip(
     flight, memory or bucket is consulted; anything else is a 404. A line still being
     voiced on this instance is joined, not voiced again. When no flight, memory or bucket
     holds it, the line is made once from the session's words, and a line that cannot be
-    made is a 502, which the app treats as an outage. A bucket read that fails counts as a
-    miss.
+    made is a 502, which the app treats as an outage. Neither the wait on a flight nor the
+    making outlasts the turn's own bound; running out is a 502 too, and the shielded flight
+    still lands for the next request. A bucket read that fails counts as a miss.
 
     One re-synthesis per GET, not per line: requests racing on one line join the same
     flight. With the bucket refusing every write, nothing is ever confirmed, so each GET
@@ -265,9 +266,10 @@ async def _serve(
         raise NotFoundError("No such clip")
 
     authed = time.monotonic()
+    deadline = asyncio.get_running_loop().time() + cfg.internalization_room_turn_bound_ms / 1000
     flight_ms = 0
     if flight is not None:
-        audio, gcs_ms = await _landed(flight), 0
+        audio, gcs_ms = await _landed(flight, deadline), 0
         flight_ms = _ms(authed, time.monotonic())
     else:
         try:
@@ -279,7 +281,8 @@ async def _serve(
     if audio is None and voice is not None:
         flying = time.monotonic()
         try:
-            audio = await asyncio.shield(fly(key, voice))
+            async with asyncio.timeout_at(deadline):
+                audio = await asyncio.shield(fly(key, voice))
         except Exception as error:
             raise UpstreamServiceError("a voz desta fala não pôde ser feita") from error
         flight_ms += _ms(flying, time.monotonic())
@@ -358,9 +361,12 @@ def _voice_of(session: IRSession, key: str) -> Callable[[], Coroutine[Any, Any, 
     return None
 
 
-async def _landed(flight: asyncio.Task[bytes]) -> bytes | None:
+async def _landed(flight: asyncio.Task[bytes], deadline: float) -> bytes | None:
     try:
-        return await asyncio.shield(flight)
+        async with asyncio.timeout_at(deadline):
+            return await asyncio.shield(flight)
+    except TimeoutError as spent:
+        raise UpstreamServiceError("a voz desta fala não ficou pronta a tempo") from spent
     except Exception:
         return None
 

@@ -563,3 +563,27 @@ async def test_a_bucket_read_that_fails_inside_the_one_re_voicing_still_serves_t
         "uma leitura do bucket que falhava dentro da re-síntese gastava a única tentativa do GET"
     )
     assert heard.content == b"kept"
+
+
+async def test_the_voice_route_never_waits_on_a_held_line_past_the_turns_bound(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core.config import get_settings
+
+    elevenlabs.held.clear()
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{panorama.id}/turns"), timeout=1
+    )
+    monkeypatch.setattr(get_settings(), "internalization_room_turn_bound_ms", 200)
+    try:
+        joined = await asyncio.wait_for(client.get(answered.json()["audio_url"]), timeout=1)
+        another_instance()
+        made = await asyncio.wait_for(client.get(answered.json()["audio_url"]), timeout=1)
+    finally:
+        elevenlabs.held.set()
+
+    assert joined.status_code == 502, "o GET que se juntava a uma síntese presa esperava sem prazo"
+    assert made.status_code == 502, "o GET que refazia a fala esperava a síntese sem prazo"
