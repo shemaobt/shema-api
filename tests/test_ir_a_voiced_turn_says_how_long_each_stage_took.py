@@ -207,6 +207,30 @@ async def test_a_voiced_turn_answers_with_how_long_each_of_its_stages_took(
     assert TEAM_ANSWER not in line and GUIDE_LINE not in line
 
 
+async def test_letting_the_read_go_before_the_models_is_timed_on_its_own_not_hidden_in_total(
+    client: httpx.AsyncClient, waiting_room: IRSession
+) -> None:
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert "db_let_go" in _server_timing(answered), (
+        "o COMMIT que solta a leitura antes dos modelos só aparecia somado no total"
+    )
+
+
+async def test_letting_the_read_go_before_a_live_opening_is_timed_on_its_own_too(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert "db_let_go" in _server_timing(opened), (
+        "o COMMIT que solta a leitura antes da abertura ao vivo só aparecia somado no total"
+    )
+
+
 async def test_a_redrafted_turn_counts_every_draft_and_every_reading_not_only_the_last(
     client: httpx.AsyncClient, waiting_room: IRSession, models: _SlowModels
 ) -> None:

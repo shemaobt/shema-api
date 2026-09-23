@@ -88,6 +88,7 @@ async def raise_question(
         element_key = await last_bead_moved_in_session(db, session_id=session_id)
     question_id = str(uuid.uuid4())
     key = _key("pergunta", question_id, audio)
+    await db.commit()
     await (store or _store()).put(key, audio, AUDIO_MIME)
     question = IRQuestion(
         id=question_id,

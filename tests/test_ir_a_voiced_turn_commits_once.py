@@ -20,7 +20,7 @@ from app.services.internalization_room.sessions import (
 )
 from app.services.platform.tts import SynthesizedSpeech
 from tests.clip_flight_harness import voiced_through
-from tests.release_harness import KEY, PREFIX
+from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 
 P = "P03"
@@ -117,6 +117,50 @@ async def _the_team_answers(
         files={"file": ("answer.m4a", b"audio", "audio/m4a")},
         data=data,
     )
+
+
+def _in_a_transaction_while_thinking(
+    monkeypatch: pytest.MonkeyPatch, db: AsyncSession, models: _Models, voice: _Voice
+) -> dict[str, bool]:
+    from app.api.internalization_room import sessions as sessions_api
+    from app.services.internalization_room import turn_dedup
+
+    held: dict[str, bool] = {}
+    of_their_own: list[AsyncSession] = []
+    opens = turn_dedup.AsyncSessionLocal
+
+    def a_session_of_its_own() -> AsyncSession:
+        of_their_own.append(opens())
+        return of_their_own[-1]
+
+    def in_a_transaction() -> bool:
+        return any(each.in_transaction() for each in (db, *of_their_own))
+
+    async def heard(audio: bytes, **kwargs: Any) -> HeardSpeech:
+        held["stt"] = in_a_transaction()
+        return await _heard(audio, **kwargs)
+
+    async def thinks(*, system_prompt: str, **kwargs: Any) -> str:
+        role = "validator" if "corrected_response" in system_prompt else "guide"
+        held[role] = in_a_transaction()
+        return await models(system_prompt=system_prompt, **kwargs)
+
+    async def speaks(text: str, **kwargs: Any) -> tuple[SynthesizedSpeech, bool]:
+        held["voice"] = in_a_transaction()
+        return await voice(text, **kwargs)
+
+    monkeypatch.setattr(turn_dedup, "AsyncSessionLocal", a_session_of_its_own)
+    monkeypatch.setattr(sessions_api, "heard_speech", heard)
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", thinks
+    )
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", speaks)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(speaks))
+    return held
+
+
+def _the_requests_own(held: dict[str, bool]) -> dict[str, bool]:
+    return {leg: open_ for leg, open_ in held.items() if leg != "voice"}
 
 
 async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
@@ -249,3 +293,134 @@ async def test_a_resend_remembered_while_the_guide_thinks_does_not_undo_the_exch
         FIRST_QUESTION,
         GUIDE_LINE,
     ], "a resposta lembrada em duplicata voltava a transação e levava a troca junto"
+
+
+async def test_the_models_think_with_the_database_let_go_not_with_the_read_still_open(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert _the_requests_own(held) == {"stt": False, "guide": False, "validator": False}, (
+        "a leitura da sessão abria a transação e a conexão ficava presa pelo STT, pelo Guia,"
+        " pelo Validador e pela voz"
+    )
+
+
+async def test_a_tablets_turn_with_an_id_lets_go_of_the_read_its_credential_opened(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    await append_exchange(db_session, session, team_utterance="", guide_response=FIRST_QUESTION)
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    answered = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers=team_headers(credential),
+        files={"file": ("answer.m4a", b"audio", "audio/m4a")},
+        data={"turn_id": "turno-1"},
+    )
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert _the_requests_own(held) == {"stt": False, "guide": False, "validator": False}, (
+        "a credencial lia o aparelho na sessão do pedido, o turno corria noutra, e a do pedido"
+        " ficava presa na transação até o fim"
+    )
+
+
+async def test_a_turn_whose_row_moved_while_the_guide_thought_is_refused_not_written_over(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def another_turn_lands_first() -> None:
+        async with rival_factory() as rival:
+            other = await get_session(rival, waiting_room.id)
+            await append_exchange(
+                rival, other, team_utterance="Rute ficou", guide_response="E depois?"
+            )
+
+    models.while_the_guide_thinks = another_turn_lands_first
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 409, answered.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert [m["text"] for m in after.messages] == [FIRST_QUESTION, "Rute ficou", "E depois?"], (
+        "com a transação solta antes do Guia, o turno escrevia por cima da troca que chegou antes"
+    )
+
+
+async def test_an_opening_the_room_voices_live_is_composed_with_the_database_let_go(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    opened = await client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY})
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert _the_requests_own(held) == {"guide": False, "validator": False}, (
+        "a abertura ao vivo compunha e falava com a leitura da sessão ainda aberta"
+    )
+
+
+async def test_a_line_said_again_is_voiced_with_the_database_let_go(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    again = await client.post(
+        f"{PREFIX}/sessions/{waiting_room.id}/turns", headers={"X-Room-Key": KEY}
+    )
+
+    assert again.status_code == 200, again.text[:300]
+    assert held == {"voice": False}, (
+        "o diga-de-novo sintetizava a última fala com a leitura da sessão ainda aberta"
+    )
+
+
+async def test_an_opening_the_tablet_names_is_composed_with_every_session_let_go(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = await create_session(db_session, language="pt", pericope=P)
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    opened = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers={"X-Room-Key": KEY},
+        data={"turn_id": "abertura-1"},
+    )
+
+    assert opened.status_code == 200, opened.text[:300]
+    assert _the_requests_own(held) == {"guide": False, "validator": False}, (
+        "a abertura com turn_id corria numa sessão própria que ninguém olhava, com a leitura"
+        " ainda aberta nela"
+    )

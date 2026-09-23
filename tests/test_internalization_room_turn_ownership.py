@@ -14,7 +14,7 @@ import sys
 from typing import Any
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.internalization_room import sessions as sessions_api
 from app.services.internalization_room.hearing import HeardSpeech
@@ -71,8 +71,9 @@ async def _noop_settle(**_: Any) -> None:
 
 
 @pytest.fixture()
-async def client(db_session, monkeypatch):
-    async with room_client(db_session, monkeypatch) as c:
+async def client(db_session, monkeypatch, test_engine):
+    per_request = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with room_client(db_session, monkeypatch, per_request=per_request) as c:
         yield c
 
 
@@ -219,7 +220,7 @@ async def test_a_room_key_replay_still_works_on_a_project_owned_session(
 
 
 class _OwnershipCheckThatWaitsToBeReleased:
-    """The real `get_session_for_room_caller`, held open so a resend or a stranger's
+    """The real `session_for_room_caller`, held open so a resend or a stranger's
     request has a chance to arrive while the owner's own turn is still in flight.
     """
 
@@ -250,8 +251,8 @@ async def test_a_concurrent_turn_from_another_project_does_not_join_the_owners_f
     )
     session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
 
-    reads = _OwnershipCheckThatWaitsToBeReleased(sessions_api.room.get_session_for_room_caller)
-    monkeypatch.setattr(sessions_api.room, "get_session_for_room_caller", reads)
+    reads = _OwnershipCheckThatWaitsToBeReleased(sessions_api.room.session_for_room_caller)
+    monkeypatch.setattr(sessions_api.room, "session_for_room_caller", reads)
 
     async def _release_once_the_owners_turn_is_waiting() -> None:
         await asyncio.wait_for(reads.entered.wait(), timeout=1)

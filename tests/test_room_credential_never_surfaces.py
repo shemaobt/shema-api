@@ -26,6 +26,7 @@ from app.api.internalization_room._deps import DEVICE_CREDENTIAL_HEADER
 from app.core.enums import ProjectRole
 from app.services.device import claim_device_as_facilitator, create_device
 from tests.baker import make_language, make_project, make_project_user_access, make_user
+from tests.room_route_audit_harness import room_app_routes
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -61,57 +62,6 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
         yield c
 
 
-def _dependency_calls(dependant) -> set:
-    calls = {dependant.call}
-    for sub in dependant.dependencies:
-        calls |= _dependency_calls(sub)
-    return calls
-
-
-def _direct_calls(endpoint) -> set:
-    """Gate functions the endpoint's own body calls by name, bypassing ``Depends``.
-
-    `voice.py`'s clip route awaits `require_room_caller` directly so it can run beside the
-    GCS read — a call the dependant tree above never sees. Its name still shows up in the
-    function's own bytecode, resolved against the module it was imported into.
-    """
-    called = _called_by(endpoint)
-    return called | {
-        inner
-        for helper in called
-        if getattr(helper, "__module__", None) == getattr(endpoint, "__module__", None)
-        for inner in _called_by(helper)
-    }
-
-
-def _called_by(function) -> set:
-    names = getattr(getattr(function, "__code__", None), "co_names", ())
-    scope = getattr(function, "__globals__", {})
-    return {scope[name] for name in names if callable(scope.get(name))}
-
-
-def room_app_routes() -> list:
-    """Every mounted route a tablet can reach, in path order.
-
-    Identified by the room's own gates appearing in the route's dependency tree, or called
-    by the endpoint itself. Renaming a gate without updating this set would silently empty
-    it, which is what ``test_the_audit_is_not_empty`` is here to catch.
-    """
-    from app.api.internalization_room import _deps
-    from app.main import app
-
-    gates = {_deps.require_room_caller, _deps.require_device}
-    return sorted(
-        (
-            route
-            for route in app.routes
-            if getattr(route, "dependant", None) is not None
-            and gates & (_dependency_calls(route.dependant) | _direct_calls(route.endpoint))
-        ),
-        key=lambda route: (route.path, sorted(route.methods)),
-    )
-
-
 def _exercisable(route) -> list[tuple[str, str]]:
     """(method, concrete path) for each method the route answers."""
     path = route.path
@@ -136,9 +86,10 @@ async def a_credential_that_works(db: AsyncSession) -> str:
 
 def test_the_clip_route_stays_in_the_audited_set_even_though_it_calls_its_gate_by_hand() -> None:
     """ENG-993 moved the clip route's device check out of `Depends` and into its body, so
-    it can run beside the GCS read instead of ahead of it. `room_app_routes` only walks
-    `Depends` trees, so that route would otherwise vanish from the set these two audits
-    exercise, and stop being checked for the exact leak this file exists to catch."""
+    it can run beside the GCS read instead of ahead of it. A walk of `Depends` trees alone
+    would drop that route from the set both audits share, and it would stop being checked
+    for the exact leak this file exists to catch — and, in the transcript audit, for the
+    question's transcript."""
     paths = {route.path for route in room_app_routes()}
     assert {
         "/api/internalization-room/voice/{handle}",

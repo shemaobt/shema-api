@@ -155,21 +155,22 @@ class _HearingThatSignalsItStarted:
 
 
 class _SessionReadThatWaitsToBeReleased:
-    """The real `get_session`, held open until the test says the STT has had its turn.
+    """The real `session_for_room_caller`, held open until the test says the STT has had
+    its turn.
 
-    A room-key caller names no project, so `_answer_the_turn` reads this session the way
-    it always has — by id alone — and never through `get_session_for_room_caller`.
+    A room-key caller names no project, so this resolves to the by-id read it always has —
+    `session_for_room_caller` is the one entry point every caller shape now goes through.
     """
 
-    def __init__(self, real_get_session: Any) -> None:
-        self._real = real_get_session
+    def __init__(self, real_session_for_room_caller: Any) -> None:
+        self._real = real_session_for_room_caller
         self.entered = asyncio.Event()
         self.release = asyncio.Event()
 
-    async def __call__(self, db: AsyncSession, session_id: str) -> Any:
+    async def __call__(self, db: AsyncSession, session_id: str, project_id: str | None) -> Any:
         self.entered.set()
         await asyncio.wait_for(self.release.wait(), timeout=1)
-        return await self._real(db, session_id)
+        return await self._real(db, session_id, project_id)
 
 
 async def test_a_known_language_starts_transcription_before_the_session_read_finishes(
@@ -181,8 +182,8 @@ async def test_a_known_language_starts_transcription_before_the_session_read_fin
 
     hearing = _HearingThatSignalsItStarted()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
-    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session)
-    monkeypatch.setattr(sessions_api.room, "get_session", reads)
+    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.session_for_room_caller)
+    monkeypatch.setattr(sessions_api.room, "session_for_room_caller", reads)
 
     async def _release_the_read_once_stt_has_started() -> None:
         await asyncio.wait_for(hearing.started.wait(), timeout=1)
@@ -279,8 +280,8 @@ async def test_without_a_known_language_the_session_is_still_read_before_transcr
 
     hearing = _HearingThatSignalsItStarted()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
-    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.get_session)
-    monkeypatch.setattr(sessions_api.room, "get_session", reads)
+    reads = _SessionReadThatWaitsToBeReleased(sessions_api.room.session_for_room_caller)
+    monkeypatch.setattr(sessions_api.room, "session_for_room_caller", reads)
 
     async def _confirm_no_overlap_then_release() -> None:
         await asyncio.wait_for(reads.entered.wait(), timeout=1)
@@ -326,3 +327,36 @@ async def test_cancelling_the_request_does_not_get_swallowed_while_stopping_the_
 
     with pytest.raises(asyncio.CancelledError):
         await request
+
+
+async def test_a_read_that_cannot_be_let_go_still_cancels_the_speculative_transcription(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
+    session = await create_session(db_session, language="pt", pericope=P)
+    sessions_api._remember_language(session.id, session.language, None)
+    hearing = _HearingThatWaitsToBeCancelled()
+    monkeypatch.setattr(sessions_api, "heard_speech", hearing)
+    commit = db_session.commit
+
+    async def the_connection_drops() -> None:
+        monkeypatch.setattr(db_session, "commit", commit)
+        raise ConnectionResetError("a conexão caiu no COMMIT da leitura")
+
+    monkeypatch.setattr(db_session, "commit", the_connection_drops)
+
+    answered = await _a_spoken_turn(client, session.id)
+
+    assert answered.status_code >= 500, answered.text[:300]
+    assert hearing.started.is_set(), (
+        "a asserção só prova cancelamento se a transcrição especulativa tiver mesmo começado"
+    )
+    assert hearing.cancelled is True, (
+        "o COMMIT da leitura falhou fora do try e a transcrição especulativa ficou sem dono"
+    )
+    stranded = [
+        task
+        for task in asyncio.all_tasks()
+        if task.get_coro().__name__ == "_timed_stt" and not task.done()
+    ]
+    assert stranded == []

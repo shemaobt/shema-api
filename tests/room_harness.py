@@ -202,25 +202,38 @@ def the_room_speaks(monkeypatch: pytest.MonkeyPatch) -> Room:
 
 @contextmanager
 def counting_commits(test_engine: AsyncEngine) -> Iterator[list[object]]:
-    """Every COMMIT that reaches the database while the block runs, on both engines.
+    """Every COMMIT that carries a write to the database while the block runs, on both engines.
 
     Both, because a turn with a turn_id runs on `AsyncSessionLocal` (the app's engine)
     while the fixtures write through the test's own; counting only one of them would let
     a second commit hide on the other.
     """
     counted: list[object] = []
+    written: set[object] = set()
+
+    def _write(connection: object, _cursor: object, statement: str, *_: object) -> None:
+        if not statement.lstrip().upper().startswith("SELECT"):
+            written.add(connection)
 
     def _count(connection: object) -> None:
-        counted.append(connection)
+        if connection in written:
+            written.discard(connection)
+            counted.append(connection)
 
+    def _forget(connection: object) -> None:
+        written.discard(connection)
+
+    listeners = (("before_cursor_execute", _write), ("commit", _count), ("rollback", _forget))
     engines = (test_engine.sync_engine, app_engine.sync_engine)
     for each in engines:
-        event.listen(each, "commit", _count)
+        for name, listener in listeners:
+            event.listen(each, name, listener)
     try:
         yield counted
     finally:
         for each in engines:
-            event.remove(each, "commit", _count)
+            for name, listener in listeners:
+                event.remove(each, name, listener)
 
 
 @asynccontextmanager

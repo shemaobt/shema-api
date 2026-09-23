@@ -9,7 +9,7 @@ rules about where a cut may land are the service's, and neither is decided here.
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRSegment, IRTakeKind
@@ -58,6 +58,7 @@ async def divide(
     session_id: str,
     segment_id: str,
     payload: DivideSegmentRequest,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
     """The team heard two ideas where they had told one, and cuts the stretch in two.
@@ -69,7 +70,7 @@ async def divide(
     `at_ms` is counted from the start of the recording, the same as the stretch's own bounds.
     Where it may fall is `divide_segment`'s to say.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     segment = await segment_for_session(db, session.id, segment_id)
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
@@ -88,6 +89,7 @@ async def replace(
     ends_ms: int = Form(...),
     file: UploadFile = File(...),
     device_id: str = device_dep,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
     """One **Correction**: the same stretch told again, over the recording it already sits in.
@@ -117,7 +119,7 @@ async def replace(
     asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
@@ -140,6 +142,7 @@ async def replace(
         ordinal=segment.ordinal,
         content_type=file.content_type or "audio/mp4",
     )
+    await db.commit()
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
 
