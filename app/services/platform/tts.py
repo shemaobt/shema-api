@@ -158,7 +158,7 @@ async def synthesize_speech(
     if cached is not None:
         return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
-    audio, _ = await _cache_quietly(speech_store, key, await voiced())
+    audio, _ = await _try_to_keep(speech_store, key, await voiced())
     return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
 
 
@@ -188,7 +188,7 @@ async def synthesize_speech_key(
     if _is_kept(key) or await speech_store.exists(key):
         return SpeechKey(key, cached=True)
 
-    audio, kept = await _cache_quietly(speech_store, key, await voiced())
+    audio, kept = await _try_to_keep(speech_store, key, await voiced())
     if not kept:
         raise UpstreamServiceError("the clip could not be kept")
     _remember_fresh(key, audio)
@@ -321,12 +321,16 @@ async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
     return await store.get(key)
 
 
-async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> tuple[bytes, bool]:
-    """Store the clip, but never fail the request over it.
+async def _try_to_keep(store: SpeechStore, key: str, audio: bytes) -> tuple[bytes, bool]:
+    """Write the clip once, never raising, and say whether the bucket kept it.
 
-    We already paid ElevenLabs for these bytes. A missing bucket or a wrong IAM binding is
-    an infrastructure problem — throwing a 500 here would bill the synthesis and hand the
-    caller nothing.
+    The bytes that come back are the bucket's when it kept them — the first rendering
+    written under the key, which may not be the caller's — and the caller's own when the
+    write failed. What a failed write means is the caller's to decide, because it differs:
+    `synthesize_speech` hands the audio straight back, so the bytes already paid for are
+    still worth serving; `synthesize_speech_key` hands back only a key, and a key the bucket
+    never kept is an address every instance answers with a 404, so it raises and the room
+    reports an outage instead.
     """
     try:
         kept = await store.put_once(key, audio, MIME_TYPE)
