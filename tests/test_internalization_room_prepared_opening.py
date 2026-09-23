@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession, IRSessionStatus
 from app.services.internalization_room.prepare_opening import hand_over, take_prepared
+from tests.clip_flight_harness import voiced_through
 
 
 def _session(**over: object) -> IRSession:
@@ -171,6 +172,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama_turn)
     monkeypatch.setattr(sessions_api.room, "run_comprehension_turn", _comprehension_turn)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech))
     monkeypatch.setattr(sessions_api, "prepare_opening", _nothing)
     monkeypatch.setattr(sessions_api, "settle_coverage", _nothing)
 

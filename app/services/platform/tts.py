@@ -20,10 +20,10 @@ import json
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from functools import partial
-from typing import Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -34,8 +34,6 @@ from app.services.platform.voices import language_hint, resolve_voice
 logger = logging.getLogger(__name__)
 
 MIME_TYPE = "audio/mpeg"
-
-Upload = Callable[[], Awaitable[None]]
 
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
 
@@ -175,7 +173,6 @@ async def synthesize_speech_key(
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
-    uploads: list[Upload] | None = None,
 ) -> SpeechKey:
     key, speech_store, voiced = _addressed(
         text,
@@ -191,13 +188,44 @@ async def synthesize_speech_key(
     if _is_kept(key) or await speech_store.exists(key):
         return SpeechKey(key, cached=True)
 
-    audio = await voiced()
-    if uploads is None:
-        _remember_fresh(key, await _cache_quietly(speech_store, key, audio))
-    else:
-        _remember_fresh(key, audio)
-        uploads.append(partial(_upload_quietly, speech_store, key, audio))
+    _remember_fresh(key, await _cache_quietly(speech_store, key, await voiced()))
     return SpeechKey(key, cached=False)
+
+
+def speech_to_come(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None = None,
+    model: str | None = None,
+    voice_settings: Mapping[str, float | bool] | None = None,
+    api_key: str | None = None,
+    settings: Settings | None = None,
+    client: httpx.AsyncClient | None = None,
+    store: SpeechStore | None = None,
+) -> tuple[str, Callable[[], Coroutine[Any, Any, bytes]]]:
+    key, speech_store, voiced = _addressed(
+        text,
+        language=language,
+        voice_id=voice_id,
+        model=model,
+        voice_settings=voice_settings,
+        api_key=api_key,
+        settings=settings,
+        client=client,
+        store=store,
+    )
+    return key, partial(_voice_once, key, speech_store, voiced)
+
+
+async def _voice_once(
+    key: str, store: SpeechStore, voiced: Callable[[], Awaitable[bytes]]
+) -> bytes:
+    audio = await fetch_clip(key, store=store)
+    if audio is None:
+        audio = await _cache_quietly(store, key, await voiced())
+    _remember_fresh(key, audio)
+    return audio
 
 
 def warm_connection_in_background(*, api_key: str, settings: Settings | None = None) -> None:
@@ -299,10 +327,6 @@ async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> bytes:
         return audio
     _mark_kept(key)
     return kept
-
-
-async def _upload_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
-    await _cache_quietly(store, key, audio)
 
 
 async def _synthesize(

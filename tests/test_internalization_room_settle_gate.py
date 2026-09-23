@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import create_session
+from tests.clip_flight_harness import voiced_through
 
 IR = "/api/internalization-room"
 ROOM_KEY = "sala-de-teste"
@@ -90,6 +91,9 @@ async def room(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
         monkeypatch.setattr(sessions_api.room, "run_comprehension_turn", _comprehension_turn)
         monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+        monkeypatch.setattr(
+            sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech)
+        )
         monkeypatch.setattr(sessions_api, "heard_speech", _heard)
         monkeypatch.setattr(sessions_api, "settle_coverage", _record)
 

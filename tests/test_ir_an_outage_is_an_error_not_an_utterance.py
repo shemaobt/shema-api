@@ -33,6 +33,7 @@ from app.services.internalization_room import llm
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.sessions import get_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 
 MODEL = "claude-fable-5-1"
 
@@ -214,6 +215,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, spok
         return HeardSpeech(text=TEAM_ANSWER)
 
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech))
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
 
     test_app = FastAPI()

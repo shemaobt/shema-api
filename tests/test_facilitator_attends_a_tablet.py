@@ -43,6 +43,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.clip_flight_harness import voiced_through
 
 IR = "/api/internalization-room"
 DESK = "/api/facilitator/teams"
@@ -105,6 +106,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(get_settings(), "internalization_room_api_key", ROOM_KEY, raising=False)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_voice))
 
     async def _heard_speech(audio: bytes, **_: Any) -> Any:
         return HeardSpeech(text=TEAM_ANSWER)

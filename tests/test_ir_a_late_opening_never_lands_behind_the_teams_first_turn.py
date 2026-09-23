@@ -30,8 +30,9 @@ from app.services.internalization_room.sessions import (
     get_session,
     save_comprehension,
 )
-from app.services.internalization_room.voice_handles import clip_url
+from app.services.internalization_room.voice_handles import turn_clip_url
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
 
@@ -154,6 +155,11 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
     voice = _RecordingVoice()
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", voice)
     monkeypatch.setattr(
+        sessions_api.room,
+        "facilitator_speech_to_come",
+        voiced_through(voice, _RecordingVoice.key_of),
+    )
+    monkeypatch.setattr(
         sys.modules["app.services.internalization_room.run_turn"],
         "call_agent",
         _TeamSpeaksWhileTheGuideThinks(rival_factory, session.id),
@@ -161,11 +167,11 @@ async def test_a_tablet_asking_for_the_opening_again_hears_the_opening_not_the_t
 
     late = await _ask_for_the_opening(client, session.id)
     assert late.status_code == 200, late.text[:300]
-    assert late.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING))
+    assert late.json()["audio_url"] == turn_clip_url(session.id, _RecordingVoice.key_of(OPENING))
 
     again = await _ask_for_the_opening(client, session.id)
     assert again.status_code == 200, again.text[:300]
-    assert again.json()["audio_url"] == clip_url(_RecordingVoice.key_of(OPENING)), (
+    assert again.json()["audio_url"] == late.json()["audio_url"], (
         "o reenvio da abertura era respondido pelo _say_it_again com a fala do turno da equipe"
     )
     assert TEAM_TURN_LINE not in voice.spoken

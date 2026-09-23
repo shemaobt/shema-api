@@ -72,6 +72,10 @@ def clip_url(key: str) -> str:
     return f"{ROUTE}/{to_handle(key)}"
 
 
+def turn_clip_url(session_id: str, key: str) -> str:
+    return f"{ROUTE}/{session_id}/{to_handle(key)}"
+
+
 def team_audio_url(key: str) -> str:
     """The address the app is handed for a facilitator's spoken reply.
 

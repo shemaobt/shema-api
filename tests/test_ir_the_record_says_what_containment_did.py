@@ -19,6 +19,7 @@ from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.internalization_room.sessions import append_exchange, create_session, get_session
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 from tests.release_harness import KEY, PREFIX, P
 from tests.room_harness import room_client
 
@@ -65,6 +66,7 @@ async def client(db_session, monkeypatch):
 def the_room_hears(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(sessions_api, "heard_speech", _heard)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _voice)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_voice))
     monkeypatch.setattr(sessions_api, "settle_coverage", _noop_settle)
 
     def _install(verdicts: list[str]) -> None:

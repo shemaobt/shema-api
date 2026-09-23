@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.internalization_room.run_turn import TurnOutcome
 from app.services.platform.tts import SynthesizedSpeech
+from tests.clip_flight_harness import voiced_through
 
 PREFIX = "/api/internalization-room"
 KEY = "sala-de-teste"
@@ -42,18 +43,24 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch):
             used_fail_safe=False,
         )
 
+    def _key_of(text: str) -> str:
+        return f"tts/{get_settings().internalization_room_voice_id}/m/f/{abs(hash(text))}.mp3"
+
     async def _speech(_text: str, **_: object) -> tuple[SynthesizedSpeech, bool]:
         entry = SynthesizedSpeech(
             audio=b"audio",
             mime_type="audio/mpeg",
             etag="e",
             cached=False,
-            key=(f"tts/{get_settings().internalization_room_voice_id}/m/f/{abs(hash(_text))}.mp3"),
+            key=_key_of(_text),
         )
         return entry, False
 
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(
+        sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech, _key_of)
+    )
 
     test_app = FastAPI()
     test_app.include_router(router, prefix=PREFIX)
@@ -158,6 +165,6 @@ async def test_a_team_walking_back_in_hears_where_the_room_was(
     assert first.status_code == 200
     assert again.status_code == 200
     assert openings == 1, "a sala abre a passagem uma vez, não a cada volta"
-    assert again.json()["audio_url"] == first.json()["audio_url"], (
-        "voltar para a passagem devolve a última fala do Guia, a mesma de antes"
-    )
+    assert (
+        again.json()["audio_url"].rsplit("/", 1)[-1] == first.json()["audio_url"].rsplit("/", 1)[-1]
+    ), "voltar para a passagem devolve a última fala do Guia, a mesma de antes"

@@ -70,6 +70,7 @@ from app.services.internalization_room.sessions import (
     unattend,
 )
 from app.services.internalization_room.synthesize_facilitator_speech import (
+    facilitator_speech_to_come,
     synthesize_facilitator_speech,
 )
 from app.services.internalization_room.verdict_round import (
@@ -104,6 +105,7 @@ __all__ = [
     "current_stretch_at",
     "divide_segment",
     "divided_segments",
+    "facilitator_speech_to_come",
     "final_segments",
     "findings_after_correction",
     "findings_block",

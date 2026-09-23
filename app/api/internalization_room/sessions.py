@@ -40,6 +40,7 @@ from app.services.device.needs_person import clear_needs_person, devices_waiting
 from app.services.internalization_room import halt
 from app.services.internalization_room.background import settle_coverage
 from app.services.internalization_room.canon.book_material import build_book_material
+from app.services.internalization_room.clip_flight import fly
 from app.services.internalization_room.coverage import coverage_view
 from app.services.internalization_room.hearing import HeardSpeech, heard_speech
 from app.services.internalization_room.languages import LANGUAGE_NAMES
@@ -58,8 +59,7 @@ from app.services.internalization_room.turn_dedup import (
     answered_turn,
     remember_turn,
 )
-from app.services.internalization_room.voice_handles import clip_url
-from app.services.platform.tts import SpeechKey, Upload
+from app.services.internalization_room.voice_handles import clip_url, turn_clip_url
 from app.services.project.facilitated_scope import facilitated_project_ids
 from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
@@ -71,61 +71,27 @@ router = APIRouter()
 _SEGMENT_ROLES = ("panorama", "scene")
 
 
-async def _clip_or_none(text: str, *, language: str, uploads: list[Upload]) -> str | None:
-    try:
-        entry, _ = await room.synthesize_facilitator_speech(
-            text, language=language, uploads=uploads
-        )
-    except Exception:
-        logger.warning("A movement of the opening could not be voiced; sending it whole")
-        return None
-    return entry.key
-
-
-async def _voice_the_turn(
-    outcome: room.TurnOutcome,
-    *,
-    language: str,
-    uploads: list[Upload],
-) -> tuple[SpeechKey | None, list[SpokenSegment]]:
-    """The turn's audio: the whole line, and the opening's movements beside it.
-
-    All of it at once — three short syntheses in parallel cost the wall clock of the
-    slowest, where three in a row cost the sum and the room has ninety seconds before the
-    app decides the network is gone. A movement that will not synthesize is dropped rather
-    than raised: the whole line already succeeded, and one clip is the room's own fallback.
-    """
+def _voice_the_turn(
+    outcome: room.TurnOutcome, *, session_id: str, language: str
+) -> tuple[str, list[SpokenSegment]]:
     if outcome.fixed_line:
-        return None, []
-
-    async def whole_line() -> SpeechKey:
-        entry, _ = await room.synthesize_facilitator_speech(
-            outcome.speech, language=language, uploads=uploads
-        )
-        return entry
-
-    async def movements() -> list[str | None]:
-        return list(
-            await asyncio.gather(
-                *(
-                    _clip_or_none(part, language=language, uploads=uploads)
-                    for part in outcome.movements
-                )
-            )
-        )
-
-    voicing = asyncio.create_task(movements())
-    try:
-        whole = await whole_line()
-    finally:
-        parts = await voicing
-    keys = [key for key in parts if key is not None]
-    if len(keys) != len(_SEGMENT_ROLES):
+        return "", []
+    whole = turn_clip_url(session_id, _voice_in_flight(outcome.speech, language=language))
+    if not outcome.movements:
         return whole, []
     return whole, [
-        SpokenSegment(role=role, audio_url=clip_url(key))
-        for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
+        SpokenSegment(
+            role=role,
+            audio_url=turn_clip_url(session_id, _voice_in_flight(part, language=language)),
+        )
+        for role, part in zip(_SEGMENT_ROLES, outcome.movements, strict=True)
     ]
+
+
+def _voice_in_flight(text: str, *, language: str) -> str:
+    key, voice = room.facilitator_speech_to_come(text, language=language)
+    fly(key, voice)
+    return key
 
 
 async def _write_the_turn(
@@ -158,11 +124,6 @@ async def _write_the_turn(
             state=turn.state if turn is not None else None,
             commit=False,
         )
-
-
-async def _upload(uploads: list[Upload]) -> None:
-    with stage("upload"):
-        await asyncio.gather(*(upload() for upload in uploads))
 
 
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -617,13 +578,6 @@ async def take_turn(
     against a probe already waiting for a free retell, which the Validator then rejected, so
     the room answered a returning team with a canned line.
 
-    The turn is voiced before any of it is written down. A probe is the room's authorization
-    to assess the answer that comes next, so committing one for a turn whose synthesis then
-    failed points that authorization at a question the team was never asked, and leaves the
-    ledger holding evidence for an exchange that was never recorded. Speaking first costs
-    nothing in the other direction: a clip reaches the team only as the handle in this
-    response, so a request that fails after synthesis hands the app nothing to play.
-
     A turn never halts the session. The graceful pause is a spoken line like any other
     fail-safe, and the call for a person is the tablet's, on its own triggers.
     """
@@ -752,20 +706,8 @@ async def _answer_the_turn(
     except TimeoutError as spent:
         raise UpstreamServiceError(f"o turno não respondeu em {bound_s:g} s") from spent
 
-    uploads: list[Upload] = []
-    try:
-        with stage("voice"):
-            voiced, segments = await _voice_the_turn(
-                outcome, language=session.language, uploads=uploads
-            )
-    except BaseException:
-        if uploads:
-            await _upload(uploads)
-        raise
-    session, _ = await asyncio.gather(
-        _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening),
-        _upload(uploads),
-    )
+    audio_url, segments = _voice_the_turn(outcome, session_id=session.id, language=session.language)
+    session = await _write_the_turn(db, session, outcome=outcome, turn=turn, opening=opening)
 
     response_turn_id = turn_id or str(uuid.uuid4())
     pending = False
@@ -780,7 +722,7 @@ async def _answer_the_turn(
 
     reply = TurnResponse(
         session_id=session.id,
-        audio_url=clip_url(voiced.key) if voiced else "",
+        audio_url=audio_url,
         fixed_line=outcome.fixed_line,
         transcript=outcome.transcript,
         peer_cue=outcome.peer_cue,

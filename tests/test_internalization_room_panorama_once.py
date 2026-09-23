@@ -56,6 +56,7 @@ from tests.baker import (
     make_user,
     open_ir_session,
 )
+from tests.clip_flight_harness import voiced_through
 
 _codes = itertools.count(40)
 PREFIX = "/api/internalization-room"
@@ -291,6 +292,7 @@ async def client(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, prep
     monkeypatch.setattr(sessions_api, "prepare_opening", _remember)
     monkeypatch.setattr(sessions_api.room, "run_panorama_turn", _panorama)
     monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", _speech)
+    monkeypatch.setattr(sessions_api.room, "facilitator_speech_to_come", voiced_through(_speech))
 
     test_app = FastAPI()
     test_app.include_router(room_router, prefix=PREFIX)
