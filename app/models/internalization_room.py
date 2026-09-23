@@ -378,9 +378,10 @@ class SpokenSegment(BaseModel):
 class TurnResponse(BaseModel):
     session_id: str
     #: Where to fetch the line the team hears this turn, empty when `fixed_line` names it
-    #: instead. Still one voice and never a splice: `segments` below can carry the same
-    #: opening pre-cut, but each clip there is synthesized whole from its own words, and
-    #: this url always holds the entire turn, so an app that ignores them loses nothing.
+    #: instead. Never a splice: on an ordinary turn this is the whole line, the same one an
+    #: app that ignores `segments` has always heard. On a marked opening it is the first of
+    #: the two movements below, not the whole passage — an app playing only this url now
+    #: hears the opening's first half, never its second.
     audio_url: str = ""
     #: A pre-approved line the app already holds as audio. Never set together with a url.
     fixed_line: str = ""
