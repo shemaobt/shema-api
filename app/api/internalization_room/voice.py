@@ -213,22 +213,25 @@ async def _serve(
 ) -> Response:
     cfg = get_settings()
     key = from_handle(handle, settings=cfg)
-    flight = in_flight(key) if key is not None else None
+    flight = in_flight(key) if key is not None and session_id is not None else None
     read_task: asyncio.Task[tuple[bytes | None, int]] | None = None
     if key is not None and flight is None and not _SPECULATIVE_READS.locked():
         await _SPECULATIVE_READS.acquire()
         read_task = _speculate(key, store=GcsPlatformStore(cfg))
 
     gate_passed = False
-    session: IRSession | None = None
+    voice: Callable[[], Coroutine[Any, Any, bytes]] | None = None
     try:
         caller = await require_room_caller(
             db, x_device_credential=x_device_credential, x_room_key=x_room_key
         )
-        if session_id is not None:
+        if session_id is not None and key is not None:
             session = await room.get_session_for_room_caller(
                 db, session_id, caller.project_id if caller else None
             )
+            voice = _voice_of(session, key)
+            if voice is None:
+                raise NotFoundError("No such clip")
         gate_passed = True
     finally:
         if not gate_passed and read_task is not None:
@@ -246,19 +249,20 @@ async def _serve(
     if flight is not None:
         audio, gcs_ms = await _landed(flight), 0
         flight_ms = _ms(authed, time.monotonic())
-    elif read_task is None:
-        audio, gcs_ms = await _timed_fetch_clip(key, store=GcsPlatformStore(cfg))
     else:
-        audio, gcs_ms = await read_task
-    if audio is None and session is not None:
-        voice = _voice_of(session, key)
-        if voice is not None:
-            flying = time.monotonic()
-            try:
-                audio = await asyncio.shield(fly(key, voice))
-            except Exception as error:
-                raise UpstreamServiceError("a voz desta fala não pôde ser feita") from error
-            flight_ms += _ms(flying, time.monotonic())
+        try:
+            audio, gcs_ms = await (read_task or _timed_fetch_clip(key, store=GcsPlatformStore(cfg)))
+        except Exception:
+            if voice is None:
+                raise
+            audio, gcs_ms = None, 0
+    if audio is None and voice is not None:
+        flying = time.monotonic()
+        try:
+            audio = await asyncio.shield(fly(key, voice))
+        except Exception as error:
+            raise UpstreamServiceError("a voz desta fala não pôde ser feita") from error
+        flight_ms += _ms(flying, time.monotonic())
 
     etag = etag_of(audio) if audio is not None else ""
     byte_range: ByteRange | None = None

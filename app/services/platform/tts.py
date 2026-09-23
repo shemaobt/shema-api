@@ -223,7 +223,8 @@ async def _voice_once(
 ) -> bytes:
     audio = await fetch_clip(key, store=store)
     if audio is None:
-        audio = await _cache_quietly(store, key, await voiced())
+        audio = await store.put_once(key, await voiced(), MIME_TYPE)
+        _mark_kept(key)
     _remember_fresh(key, audio)
     return audio
 

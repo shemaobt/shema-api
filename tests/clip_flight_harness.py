@@ -42,8 +42,12 @@ class WriteOnceBucket:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
         self.refusals = 0
+        self.unreadable = 0
 
     async def get(self, key: str) -> bytes | None:
+        if self.unreadable:
+            self.unreadable -= 1
+            raise OSError("the bucket could not be read")
         return self.objects.get(key)
 
     async def exists(self, key: str) -> bool:

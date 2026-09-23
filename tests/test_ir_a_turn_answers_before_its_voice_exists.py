@@ -299,3 +299,58 @@ async def test_a_resume_on_another_instance_never_splices_a_second_rendering_int
         )
     else:
         assert resumed.status_code == 200
+
+
+async def test_a_clip_the_bucket_never_confirmed_is_not_served_from_memory(
+    client: httpx.AsyncClient,
+    panorama: IRSession,
+    elevenlabs: Elevenlabs,
+    bucket: WriteOnceBucket,
+) -> None:
+    from app.core.config import get_settings
+
+    elevenlabs.held.clear()
+    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    audio_url = answered.json()["audio_url"]
+    key = from_handle(audio_url.rsplit("/", 1)[-1], settings=get_settings())
+    bucket.objects[key] = b"stored by another instance"
+    bucket.refusals = 1
+    elevenlabs.held.set()
+    await asyncio.sleep(0.05)
+
+    heard = await client.get(audio_url)
+
+    assert heard.status_code == 200
+    assert heard.content == b"stored by another instance", (
+        "a put que falhou sem confirmar o que ficou no bucket deixava a instância servindo "
+        "da memória uma renderização que o bucket nunca aceitou"
+    )
+
+
+async def test_a_bucket_that_refuses_every_write_is_an_outage_not_a_clip_nobody_kept(
+    client: httpx.AsyncClient, panorama: IRSession, bucket: WriteOnceBucket
+) -> None:
+    bucket.refusals = 2
+    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    await asyncio.sleep(0.05)
+
+    heard = await client.get(answered.json()["audio_url"])
+
+    assert heard.status_code == 502, (
+        "com o bucket recusando a escrita, a instância servia uma renderização que nenhuma "
+        "outra instância acharia"
+    )
+
+
+async def test_a_bucket_that_fails_one_read_is_a_missing_clip_not_a_broken_route(
+    client: httpx.AsyncClient, panorama: IRSession, bucket: WriteOnceBucket
+) -> None:
+    answered = await client.post(f"{PREFIX}/sessions/{panorama.id}/turns")
+    await asyncio.sleep(0.05)
+    another_instance()
+    bucket.unreadable = 1
+
+    heard = await client.get(answered.json()["audio_url"])
+
+    assert heard.status_code == 200, "uma leitura do GCS que falhava virava 500 na fala do turno"
+    assert heard.content == b"the rendering"
