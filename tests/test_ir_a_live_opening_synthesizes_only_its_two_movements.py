@@ -9,6 +9,8 @@ waited for whichever of the three came back last.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 from collections.abc import AsyncIterator
 from types import SimpleNamespace
 from typing import Any
@@ -62,6 +64,34 @@ class _Elevenlabs:
         return SimpleNamespace(status_code=200, content=f"audio-for-{text}".encode(), text="")
 
 
+class _ElevenlabsWhereAMovementWaitsForTheWholeLine:
+    """Each movement answers once the whole line has been asked for, or gives up waiting.
+
+    Whether the whole line was under way by then is written down per movement, so a
+    fallback that asks for it only after both movements came back reads as two falses
+    rather than as a race the test happened to win.
+    """
+
+    def __init__(self, *, refuses: str) -> None:
+        self.calls: list[str] = []
+        self.whole_under_way: dict[str, bool] = {}
+        self._refuses = refuses
+        self._whole_started = asyncio.Event()
+
+    async def post(self, *_: Any, json: dict[str, Any], **__: Any) -> SimpleNamespace:
+        text = json["text"]
+        self.calls.append(text)
+        if text == WHOLE:
+            self._whole_started.set()
+        else:
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._whole_started.wait(), timeout=0.5)
+            self.whole_under_way[text] = self._whole_started.is_set()
+        if text == self._refuses:
+            return SimpleNamespace(status_code=503, content=b"", text="busy")
+        return SimpleNamespace(status_code=200, content=f"audio-for-{text}".encode(), text="")
+
+
 @pytest.fixture()
 def bucket() -> _Bucket:
     return _Bucket()
@@ -89,7 +119,7 @@ async def _no_whole_line_outlives_its_test() -> AsyncIterator[None]:
 async def _client(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    elevenlabs: _Elevenlabs,
+    elevenlabs: _Elevenlabs | _ElevenlabsWhereAMovementWaitsForTheWholeLine,
     bucket: _Bucket,
 ) -> httpx.AsyncClient:
     from fastapi import FastAPI
@@ -145,8 +175,7 @@ async def test_a_live_opening_synthesizes_only_its_two_movements(
 
     assert opened.status_code == 200
     assert elevenlabs.calls == [FIRST, SECOND], (
-        "a linha inteira era sintetizada junto dos dois movimentos, e a resposta esperava "
-        "por ela mesmo sem precisar de suas palavras"
+        "a resposta esperava pela linha inteira mesmo sem precisar de suas palavras"
     )
     body = opened.json()
     urls = [segment["audio_url"] for segment in body["segments"]]
@@ -196,7 +225,10 @@ async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_noth
 
 
 async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    bucket: _Bucket,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     from app.api.internalization_room import sessions as sessions_api
 
@@ -217,12 +249,18 @@ async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
         pending = sessions_api._PENDING_WHOLE_LINE_TASKS - before
         assert pending, "a linha inteira nem chegou a ser agendada em segundo plano"
         elevenlabs.may_proceed.set()
-        await asyncio.wait_for(asyncio.gather(*pending), timeout=2)
+        with caplog.at_level(logging.WARNING, logger=sessions_api.logger.name):
+            _, still = await asyncio.wait(pending, timeout=2)
+        assert not still
 
     body = opened.json()
     urls = [segment["audio_url"] for segment in body["segments"]]
     assert body["audio_url"] == urls[0]
     assert elevenlabs.calls == [FIRST, SECOND, WHOLE]
+    logged = [r.getMessage() for r in caplog.records if r.name == sessions_api.logger.name]
+    assert logged == [
+        "the opening's whole line could not be cached in the background: UpstreamServiceError"
+    ], "a falha da linha inteira que ninguém esperava sumiu sem deixar rastro no log"
 
 
 async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
@@ -243,16 +281,54 @@ async def test_a_failed_movement_falls_back_to_the_whole_line_at_once(
         left_behind = sessions_api._PENDING_WHOLE_LINE_TASKS - before
 
     assert opened.status_code == 200
-    assert set(elevenlabs.calls[:2]) == {FIRST, SECOND}
-    assert elevenlabs.calls[2] == WHOLE, (
-        "uma cena recusada não caiu para a fala inteira na hora, como o fallback de hoje"
+    assert sorted(elevenlabs.calls) == sorted([FIRST, SECOND, WHOLE]), (
+        "uma cena recusada não caiu para a fala inteira, uma vez só, como o fallback de hoje"
     )
     body = opened.json()
     assert body["segments"] == [], "o fallback ainda devolvia os movimentos parciais"
-    assert body["audio_url"], "a fala inteira deveria ter voltado como o áudio do turno"
-    assert not left_behind, (
-        "o fallback síncrono não devia agendar outra síntese da mesma fala em segundo plano"
+    assert _clip_behind(body["audio_url"], bucket) == f"audio-for-{WHOLE}".encode(), (
+        "a fala inteira deveria ter voltado como o áudio do turno, já no bucket"
     )
+    assert not left_behind, (
+        "o fallback esperou a fala inteira e ainda assim a deixou pendurada em segundo plano"
+    )
+
+
+async def test_a_refused_movement_finds_the_whole_line_already_under_way(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    elevenlabs = _ElevenlabsWhereAMovementWaitsForTheWholeLine(refuses=SECOND)
+    _opens_in_two_movements(monkeypatch)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        before = set(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+        left_behind = sessions_api._PENDING_WHOLE_LINE_TASKS - before
+
+    assert opened.status_code == 200
+    assert elevenlabs.whole_under_way == {FIRST: True, SECOND: True}, (
+        "a fala inteira só começava depois de os dois movimentos voltarem, e uma cena "
+        "recusada pagava os movimentos e a fala inteira em série"
+    )
+    assert elevenlabs.calls.count(WHOLE) == 1, (
+        "a mesma abertura sintetizou a fala inteira mais de uma vez"
+    )
+    assert not left_behind, "a fala inteira já esperada ficou pendurada em segundo plano"
+    assert opened.json()["segments"] == []
+
+
+def _clip_behind(audio_url: str, bucket: _Bucket) -> bytes | None:
+    from app.core.config import get_settings
+    from app.services.internalization_room.voice_handles import from_handle
+
+    key = from_handle(audio_url.rsplit("/", 1)[-1], settings=get_settings())
+    return bucket.objects.get(key) if key else None
 
 
 async def test_a_turn_without_movements_still_speaks_only_the_whole_line(

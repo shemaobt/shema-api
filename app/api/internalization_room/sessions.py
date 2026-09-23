@@ -87,54 +87,74 @@ async def _voice_the_turn(
     language: str,
     uploads: list[Upload],
 ) -> tuple[SpeechKey | None, list[SpokenSegment]]:
-    """The turn's audio: the opening's movements, or the whole line on its own.
+    """The turn's audio: the opening's two movements, or the whole line on its own.
 
-    A marked opening speaks only its two movements — the reply needs neither the whole
-    line's words nor its wait. The whole line is synthesized only if a movement will not
-    synthesize, standing in for it at once.
+    An opening synthesizes its whole line exactly once, always: started beside its two
+    movements, awaited on the reply's path only when a movement will not synthesize — it
+    then stands in for both, with no segments — and otherwise left to finish in the
+    background, so `_say_it_again` finds it in the bucket. A refused movement so costs the
+    slowest of the three syntheses, not the movements and then the whole line in a row. A
+    turn without movements speaks only its whole line, as it always has.
     """
     if outcome.fixed_line:
         return None, []
-
-    async def whole_line() -> SpeechKey:
+    if not outcome.movements:
         entry, _ = await room.synthesize_facilitator_speech(
             outcome.speech, language=language, uploads=uploads
         )
-        return entry
+        return entry, []
 
+    whole = _start_the_whole_line(outcome.speech, language)
     parts = await asyncio.gather(
         *(_clip_or_none(part, language=language, uploads=uploads) for part in outcome.movements)
     )
     keys = [key for key in parts if key is not None]
     if len(keys) != len(_SEGMENT_ROLES):
-        return await whole_line(), []
+        return await whole, []
 
-    task = asyncio.create_task(_voice_the_whole_line_in_the_background(outcome.speech, language))
-    _PENDING_WHOLE_LINE_TASKS.add(task)
-    task.add_done_callback(_PENDING_WHOLE_LINE_TASKS.discard)
-
+    whole.add_done_callback(_log_a_whole_line_left_uncached)
     return SpeechKey(keys[0], cached=False), [
         SpokenSegment(role=role, audio_url=clip_url(key))
         for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
     ]
 
 
-_PENDING_WHOLE_LINE_TASKS: set[asyncio.Task[None]] = set()
+_PENDING_WHOLE_LINE_TASKS: set[asyncio.Task[SpeechKey]] = set()
 
 
-async def _voice_the_whole_line_in_the_background(text: str, language: str) -> None:
-    """Cache the whole line after a two-movement opening already answered without it.
+def _start_the_whole_line(text: str, language: str) -> asyncio.Task[SpeechKey]:
+    """Voice an opening's whole line on a task of its own, beside its two movements.
 
     Held in `_PENDING_WHOLE_LINE_TASKS` so nothing collects the task mid-flight — an
     `asyncio.Task` with no other reference is fair game for the garbage collector the
-    moment the event loop looks away. No `uploads` list: the caller's has already been
-    gathered by the time this finishes, so appending to it would lose the upload rather
-    than defer it. `synthesize_facilitator_speech` uploads its own clip when it is not
-    given one, which is exactly what lets `_say_it_again` find it later.
+    moment the event loop looks away, and a reply that got both movements leaves it behind.
+    No `uploads` list: whether the reply will wait for this task is not known when it
+    starts, and the caller's list has already been gathered by the time a task left behind
+    finishes, so appending to it would lose the upload rather than defer it.
+    `synthesize_facilitator_speech` uploads its own clip when it is not given one, which is
+    exactly what lets `_say_it_again` find it later.
     """
-    try:
-        await room.synthesize_facilitator_speech(text, language=language)
-    except Exception as error:
+    task = asyncio.create_task(_the_whole_line(text, language))
+    _PENDING_WHOLE_LINE_TASKS.add(task)
+    task.add_done_callback(_PENDING_WHOLE_LINE_TASKS.discard)
+    return task
+
+
+async def _the_whole_line(text: str, language: str) -> SpeechKey:
+    entry, _ = await room.synthesize_facilitator_speech(text, language=language)
+    return entry
+
+
+def _log_a_whole_line_left_uncached(task: asyncio.Task[SpeechKey]) -> None:
+    """A whole line nobody waits for fails into the log, never into the reply.
+
+    Reading `exception()` also marks the error as retrieved, so asyncio does not report it
+    again, traceback and all, when the task is collected.
+    """
+    if task.cancelled():
+        return
+    error = task.exception()
+    if error is not None:
         logger.warning(
             "the opening's whole line could not be cached in the background: %s",
             type(error).__name__,
