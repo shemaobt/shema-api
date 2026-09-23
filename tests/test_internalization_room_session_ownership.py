@@ -34,14 +34,16 @@ them without rebuilding their fixtures a second time.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from types import SimpleNamespace
 from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.internalization_room import IRSessionStatus, IRTakeKind
+from app.db.models.internalization_room import IRSession, IRSessionStatus, IRTakeKind
 from app.services.internalization_room.segments import capture_segment, final_segments
 from app.services.internalization_room.sessions import create_session, get_session
 from app.services.internalization_room.takes import store_take, takes_of
@@ -460,6 +462,7 @@ async def test_a_hand_over_is_refused_from_another_projects_session(
     previous = await create_session(
         db_session, pericope="OV", project_id=owner.id, language="pt", after_panorama=False
     )
+    before = await _session_row_count(db_session)
 
     refused = await client.post(
         f"{PREFIX}/sessions",
@@ -467,6 +470,12 @@ async def test_a_hand_over_is_refused_from_another_projects_session(
         json={"pericope": P, "after_session": previous.id},
     )
     assert refused.status_code == 404, refused.text[:300]
+
+    after = await _session_row_count(db_session)
+    assert after == before, (
+        f"uma sessao orfa ficou para tras num hand-over recusado por dono de outro projeto: "
+        f"{before} antes, {after} depois"
+    )
 
     reread = await get_session(db_session, previous.id)
     assert reread.status is IRSessionStatus.IN_PROGRESS, (
@@ -479,3 +488,34 @@ async def test_a_hand_over_is_refused_from_another_projects_session(
         json={"pericope": P, "after_session": previous.id},
     )
     assert allowed.status_code == 200, allowed.text[:300]
+
+
+async def _session_row_count(db: AsyncSession) -> int:
+    result = await db.execute(select(func.count()).select_from(IRSession))
+    return result.scalar_one()
+
+
+async def test_a_hand_over_naming_no_such_session_leaves_no_new_session(
+    client: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    """`POST /sessions` reads `after_session` before it opens one of its own (ENG-1050).
+
+    A hand-over from a session that was never written — not somebody else's, simply absent —
+    answers the same 404 `get_session` gives any missing id. The session this request was
+    about to open must not be left behind for a hand-over that never happened.
+    """
+    _owner, owner_credential = await a_claimed_device(db_session, email="owner-orphan@example.com")
+    before = await _session_row_count(db_session)
+
+    refused = await client.post(
+        f"{PREFIX}/sessions",
+        headers=team_headers(owner_credential),
+        json={"pericope": P, "after_session": str(uuid.uuid4())},
+    )
+    assert refused.status_code == 404, refused.text[:300]
+
+    after = await _session_row_count(db_session)
+    assert after == before, (
+        f"uma sessao orfa ficou para tras num hand-over para um after_session inexistente: "
+        f"{before} antes, {after} depois"
+    )
