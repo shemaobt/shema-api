@@ -131,7 +131,7 @@ class Answers:
             ],
             stop_reason="end_turn",
             model=kwargs["model"],
-            usage=SimpleNamespace(**usage),
+            usage=SimpleNamespace(**usage, cache_creation=None),
         )
 
 

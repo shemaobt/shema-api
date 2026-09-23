@@ -301,6 +301,7 @@ class _Wire:
                 output_tokens=len(text),
                 cache_read_input_tokens=896000,
                 cache_creation_input_tokens=0,
+                cache_creation=None,
             ),
         )
 

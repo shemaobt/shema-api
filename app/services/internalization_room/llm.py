@@ -371,6 +371,9 @@ def _report_spend(
     fell_because = _fell_because(skipped)
     cache_read = _counted(usage.cache_read_input_tokens)
     cache_write = _counted(usage.cache_creation_input_tokens)
+    lifetimes = usage.cache_creation
+    cache_write_5m = lifetimes.ephemeral_5m_input_tokens if lifetimes else 0
+    cache_write_1h = lifetimes.ephemeral_1h_input_tokens if lifetimes else 0
     cost = cost_of(
         model,
         input_tokens=usage.input_tokens,
@@ -380,7 +383,7 @@ def _report_spend(
     )
     logger.info(
         "[llm-usage] %s answered on %s (rung %s of %s) at %s effort in %s ms, US$ %s: "
-        "in=%s cache_read=%s cache_write=%s out=%s%s",
+        "in=%s cache_read=%s cache_write=%s cache_write_5m=%s cache_write_1h=%s out=%s%s",
         role,
         model,
         rung_number,
@@ -391,6 +394,8 @@ def _report_spend(
         usage.input_tokens,
         cache_read,
         cache_write,
+        cache_write_5m,
+        cache_write_1h,
         usage.output_tokens,
         f" — {fell_because}" if fell_because else "",
         extra={
