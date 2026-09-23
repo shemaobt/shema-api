@@ -6,6 +6,7 @@ from typing import Any
 import anthropic
 import httpx2
 import pytest
+from pydantic import ValidationError as PydanticValidationError
 
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError
@@ -347,6 +348,14 @@ async def test_the_hour_cache_reverts_to_five_minutes_through_a_setting(fake_cli
         "um deployment que precisasse voltar aos 5 minutos não tinha como, sem esperar um "
         "novo deploy do código"
     )
+
+
+def test_a_mistyped_ttl_setting_is_refused_at_boot() -> None:
+    with pytest.raises(PydanticValidationError):
+        _settings(internalization_room_voice_cache_ttl="1H")
+
+    with pytest.raises(PydanticValidationError):
+        _settings(internalization_room_voice_cache_ttl="5m")
 
 
 async def test_the_usage_line_says_which_cache_lifetime_each_written_token_bought(

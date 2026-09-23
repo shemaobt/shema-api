@@ -344,21 +344,14 @@ def _workspace_header(settings: Settings) -> dict[str, str] | None:
 _VOICED_ROLES = frozenset({"guide", "validator"})
 
 
-def _prefix_cache_ttl(role: str, settings: Settings) -> Literal["1h", "5m"] | None:
+def _prefix_cache_ttl(role: str, settings: Settings) -> Literal["1h"] | None:
     """The cache TTL a role's prefix earns, or nothing for the API's own 5-minute default."""
     if role not in _VOICED_ROLES:
         return None
-    configured = settings.internalization_room_voice_cache_ttl
-    if configured == "1h":
-        return "1h"
-    if configured == "5m":
-        return "5m"
-    return None
+    return settings.internalization_room_voice_cache_ttl or None
 
 
-def _system_blocks(
-    system_prompt: str, *, ttl: Literal["1h", "5m"] | None
-) -> str | list[TextBlockParam]:
+def _system_blocks(system_prompt: str, *, ttl: Literal["1h"] | None) -> str | list[TextBlockParam]:
     """Split a system prompt at its cache mark, marking the half that repeats.
 
     A prompt with no mark is sent whole and uncached: a caller that has not said which half
