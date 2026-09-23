@@ -35,6 +35,9 @@ MIME_TYPE = "audio/mpeg"
 
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
 
+_FRESH_MAX_BYTES = 64 * 1024 * 1024
+_FRESH: OrderedDict[str, bytes] = OrderedDict()
+
 _KEPT_FOR_S = 3600
 _KEPT: OrderedDict[str, float] = OrderedDict()
 
@@ -62,6 +65,14 @@ class SpeechStore(Protocol):
 
 def forget_what_is_kept() -> None:
     _KEPT.clear()
+    _FRESH.clear()
+
+
+def _remember_fresh(key: str, audio: bytes) -> None:
+    _FRESH[key] = audio
+    _FRESH.move_to_end(key)
+    while sum(map(len, _FRESH.values())) > _FRESH_MAX_BYTES:
+        _FRESH.popitem(last=False)
 
 
 def _is_kept(key: str) -> bool:
@@ -161,6 +172,7 @@ async def synthesize_speech(
         client=client,
         api_key=credential,
     )
+    _remember_fresh(key, audio)
     await _cache_quietly(speech_store, key, audio)
     return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
 
@@ -171,6 +183,10 @@ async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:
     Content-addressed keys never point at different bytes, which is what lets the route
     that serves them promise an immutable cache.
     """
+    fresh = _FRESH.get(key)
+    if fresh is not None:
+        _FRESH.move_to_end(key)
+        return fresh
     return await store.get(key)
 
 
