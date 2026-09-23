@@ -91,7 +91,7 @@ def _addresses(
     (whole, _), *parts = voiced
     if not parts:
         return url_of(whole), []
-    return url_of(whole), [
+    return url_of(parts[0][0]), [
         SpokenSegment(role=role, audio_url=url_of(key))
         for role, (key, _) in zip(_SEGMENT_ROLES, parts, strict=True)
     ]

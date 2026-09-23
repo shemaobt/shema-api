@@ -93,13 +93,13 @@ async def test_the_opening_turn_carries_no_body_at_all(client: httpx.AsyncClient
     assert opened.json()["audio_url"].startswith("/api/internalization-room/voice/")
 
 
-async def test_a_marked_opening_arrives_as_two_clips_and_still_as_one(
+async def test_a_marked_opening_arrives_as_two_clips_and_now_as_the_first_of_them(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`segments` is additive: the whole opening is still under `audio_url`.
+    """`audio_url` is the first movement once both are ready, not the whole line.
 
-    An app that knows nothing about movements has to keep hearing the opening entire —
-    otherwise a backend deployed ahead of the app would drop the invitation on the floor.
+    The whole line no longer holds the reply back: an app that plays only `audio_url` and
+    ignores `segments` now hears the opening's first movement, not the opening entire.
     """
     from app.api.internalization_room import sessions as sessions_api
 
@@ -126,8 +126,8 @@ async def test_a_marked_opening_arrives_as_two_clips_and_still_as_one(
     assert [segment["role"] for segment in body["segments"]] == ["panorama", "scene"]
     urls = [segment["audio_url"] for segment in body["segments"]]
     assert len(set(urls)) == 2, "cada movimento é sintetizado das suas próprias palavras"
-    assert body["audio_url"] not in urls, (
-        "audio_url continua sendo a abertura inteira, não um dos movimentos"
+    assert body["audio_url"] == urls[0], (
+        "audio_url não era mais o primeiro movimento, com os dois já prontos"
     )
 
 
