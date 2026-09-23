@@ -10,6 +10,7 @@ import asyncio
 import importlib
 import logging
 import re
+import threading
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -304,7 +305,7 @@ async def test_a_revoked_credential_is_refused_with_zero_bytes_even_with_a_read_
     assert CLIP not in fetched.content, "os bytes do clipe chegaram numa resposta de recusa"
 
 
-async def test_a_refusal_leaves_no_read_task_still_pending(
+async def test_a_refusal_leaves_no_read_task_behind_once_the_download_on_its_thread_ends(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
@@ -319,8 +320,15 @@ async def test_a_refusal_leaves_no_read_task_still_pending(
     fetched = await _fetch(client, VOICED_ELSEWHERE)
 
     assert fetched.status_code == 403
-    leftover = asyncio.all_tasks() - before - {asyncio.current_task()}
-    assert not leftover, "a leitura ficou pendurada, ainda pendente, depois que a porta recusou"
+    for _ in range(100):
+        leftover = asyncio.all_tasks() - before - {asyncio.current_task()}
+        if not leftover:
+            break
+        await asyncio.sleep(0.01)
+    assert not leftover, (
+        "a leitura ficou pendurada depois que o download da thread terminou — a recusa "
+        "só pode deixá-la viva enquanto a thread, que nenhum cancel alcança, ainda roda"
+    )
 
 
 async def test_when_the_semaphore_is_full_the_read_waits_for_the_gate_like_before(
@@ -430,3 +438,60 @@ async def test_the_read_begins_before_a_slow_gate_lets_the_caller_through(
     assert observed_while_still_at_the_gate == [True], (
         "a leitura só começava depois que a porta liberava o pedido, e devia correr ao lado dela"
     )
+
+
+async def test_refusals_that_never_let_the_read_start_give_every_speculative_permit_back(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    permits = asyncio.Semaphore(4)
+    monkeypatch.setattr(voice_api, "_SPECULATIVE_READS", permits)
+
+    for _ in range(5):
+        refused = await client.get(f"{PREFIX}/voice/{to_handle(VOICED_ELSEWHERE)}")
+        assert refused.status_code in (400, 401), refused.text[:200]
+
+    assert permits._value == 4, (
+        "uma recusa sem await cancelava a leitura antes do primeiro passo, e a licença "
+        "que a rota tinha pego nunca voltava — quatro dessas e a leitura ao lado da porta "
+        "morria para a instância inteira"
+    )
+
+
+class _HeldOnAThreadBucket:
+    def __init__(self) -> None:
+        self.release = threading.Event()
+
+    async def get(self, key: str) -> bytes | None:
+        return await asyncio.to_thread(self._blocking_read)
+
+    def _blocking_read(self) -> bytes:
+        self.release.wait(timeout=2)
+        return CLIP
+
+
+async def test_a_refused_read_keeps_its_permit_until_the_download_on_its_thread_ends(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0.01)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    permits = asyncio.Semaphore(1)
+    monkeypatch.setattr(voice_api, "_SPECULATIVE_READS", permits)
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+    bucket = _HeldOnAThreadBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 403
+    assert permits.locked(), (
+        "a recusa devolvia a licença enquanto o download seguia na thread — o limite "
+        "contava esperas, não threads, e recusas em rajada empilhavam downloads"
+    )
+    bucket.release.set()
+    for _ in range(100):
+        if not permits.locked():
+            break
+        await asyncio.sleep(0.01)
+    assert not permits.locked(), "a licença não voltou depois que o download terminou"

@@ -45,11 +45,37 @@ async def _timed_fetch_clip(key: str, *, store: SpeechStore) -> tuple[bytes | No
     return audio, _ms(started, time.monotonic())
 
 
-async def _speculative_fetch_clip(key: str, *, store: SpeechStore) -> tuple[bytes | None, int]:
-    try:
-        return await _timed_fetch_clip(key, store=store)
-    finally:
-        _SPECULATIVE_READS.release()
+def _speculate(key: str, *, store: SpeechStore) -> asyncio.Task[tuple[bytes | None, int]]:
+    """Start the read beside the gate, holding one of the speculative permits for it.
+
+    The permit is held by the read itself, not by whoever awaits it. A refusal cancels the
+    awaiting task, but the download underneath runs on a `to_thread` worker that no cancel
+    reaches, so the permit is handed back only when that inner read has really ended; handed
+    back on the cancel, the bound would count waits instead of threads. A task cancelled
+    before its first step — a gate that refuses without awaiting anything — never starts the
+    inner read, so the permit comes back through the outer task's own callback instead.
+    """
+    started: list[asyncio.Future[tuple[bytes | None, int]]] = []
+
+    async def read() -> tuple[bytes | None, int]:
+        inner = asyncio.ensure_future(_timed_fetch_clip(key, store=store))
+        started.append(inner)
+        inner.add_done_callback(_speculation_ended)
+        return await asyncio.shield(inner)
+
+    def _never_started(_: asyncio.Task[tuple[bytes | None, int]]) -> None:
+        if not started:
+            _SPECULATIVE_READS.release()
+
+    outer = asyncio.create_task(read())
+    outer.add_done_callback(_never_started)
+    return outer
+
+
+def _speculation_ended(inner: asyncio.Future[tuple[bytes | None, int]]) -> None:
+    _SPECULATIVE_READS.release()
+    if not inner.cancelled():
+        inner.exception()
 
 
 @router.get("/voice/{handle}")
@@ -82,7 +108,7 @@ async def clip(
     read_task: asyncio.Task[tuple[bytes | None, int]] | None = None
     if key is not None and not _SPECULATIVE_READS.locked():
         await _SPECULATIVE_READS.acquire()
-        read_task = asyncio.create_task(_speculative_fetch_clip(key, store=GcsPlatformStore(cfg)))
+        read_task = _speculate(key, store=GcsPlatformStore(cfg))
 
     gate_passed = False
     try:
