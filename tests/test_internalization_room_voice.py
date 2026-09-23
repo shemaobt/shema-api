@@ -77,7 +77,7 @@ async def test_the_rooms_configured_voice_is_the_one_that_speaks() -> None:
         settings=_settings(),
     )
 
-    assert speech.audio == b"audio"
+    assert store.objects[speech.key] == b"audio"
     assert cached is False
     assert ROOM_VOICE_ID in client.post.await_args.args[0]
 
@@ -239,7 +239,7 @@ async def test_retuning_the_voice_does_not_serve_the_old_delivery() -> None:
     )
 
     assert cached is False
-    assert speech.audio == b"mais-solto"
+    assert store.objects[speech.key] == b"mais-solto"
 
 
 async def test_the_facilitators_voice_never_spells_the_divine_name_in_portuguese() -> None:

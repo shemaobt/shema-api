@@ -41,7 +41,7 @@ from app.services.internalization_room.fail_safe import (
 )
 from app.services.internalization_room.languages import ROOM_LANGUAGES
 from app.services.internalization_room.synthesize_facilitator_speech import (
-    synthesize_facilitator_speech,
+    render_facilitator_speech,
 )
 
 MANIFEST = "manifest.json"
@@ -205,9 +205,7 @@ async def render(out: Path, language_code: str, *, force: bool) -> None:
         if not force and clip.exists() and manifest.get(name) == fingerprint(text):
             print(f"  = {language_code}/{name}")
             continue
-        speech, _ = await synthesize_facilitator_speech(
-            text, language=language_code, store=_NoCache()
-        )
+        speech = await render_facilitator_speech(text, language=language_code, store=_NoCache())
         clip.write_bytes(speech.audio)
         manifest[name] = fingerprint(text)
         print(f"  + {language_code}/{name}  {len(speech.audio) // 1024} KB  {text[:48]}")

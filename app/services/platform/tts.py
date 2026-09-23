@@ -56,6 +56,12 @@ class SynthesizedSpeech:
     key: str = ""
 
 
+@dataclass(frozen=True)
+class SpeechKey:
+    key: str
+    cached: bool
+
+
 class SpeechStore(Protocol):
     """The bucket seam: tests pass an in-memory dict, no GCS."""
 
@@ -128,14 +134,81 @@ async def synthesize_speech(
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
-    key_only: bool = False,
-    uploads: list[Upload] | None = None,
 ) -> SynthesizedSpeech:
     """Speak `text` in `language` (BCP-47 locale, e.g. `pt-BR`), serving from cache when possible.
 
     `settings`, `client` and `store` are injectable — that is what makes the service testable
     without network and without GCS.
     """
+    key, speech_store, voiced = _addressed(
+        text,
+        language=language,
+        voice_id=voice_id,
+        model=model,
+        voice_settings=voice_settings,
+        api_key=api_key,
+        settings=settings,
+        client=client,
+        store=store,
+    )
+    cached = await speech_store.get(key)
+    if cached is not None:
+        return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
+
+    audio = await voiced()
+    await _cache_quietly(speech_store, key, audio)
+    return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
+
+
+async def synthesize_speech_key(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None = None,
+    model: str | None = None,
+    voice_settings: Mapping[str, float | bool] | None = None,
+    api_key: str | None = None,
+    settings: Settings | None = None,
+    client: httpx.AsyncClient | None = None,
+    store: SpeechStore | None = None,
+    uploads: list[Upload] | None = None,
+) -> SpeechKey:
+    key, speech_store, voiced = _addressed(
+        text,
+        language=language,
+        voice_id=voice_id,
+        model=model,
+        voice_settings=voice_settings,
+        api_key=api_key,
+        settings=settings,
+        client=client,
+        store=store,
+    )
+    if _is_kept(key) or await speech_store.exists(key):
+        return SpeechKey(key, cached=True)
+
+    audio = await voiced()
+    _remember_fresh(key, audio)
+    upload = partial(_cache_quietly, speech_store, key, audio)
+    if uploads is None:
+        await upload()
+    else:
+        uploads.append(upload)
+    return SpeechKey(key, cached=False)
+
+
+def _addressed(
+    text: str,
+    *,
+    language: str,
+    voice_id: str | None,
+    model: str | None,
+    voice_settings: Mapping[str, float | bool] | None,
+    api_key: str | None,
+    settings: Settings | None,
+    client: httpx.AsyncClient | None,
+    store: SpeechStore | None,
+) -> tuple[str, SpeechStore, Callable[[], Awaitable[bytes]]]:
     if not text or not text.strip():
         raise ValidationError("text must not be empty")
 
@@ -156,17 +229,8 @@ async def synthesize_speech(
         output_format=cfg.elevenlabs_output_format,
         voice_settings=voice_settings,
     )
-    speech_store = store or _default_store(cfg)
-
-    if key_only:
-        if _is_kept(key) or await speech_store.exists(key):
-            return SynthesizedSpeech(b"", MIME_TYPE, "", cached=True, key=key)
-    else:
-        cached = await speech_store.get(key)
-        if cached is not None:
-            return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
-
-    audio = await _synthesize(
+    voiced = partial(
+        _synthesize,
         text,
         voice_id=voice,
         language=language,
@@ -176,13 +240,7 @@ async def synthesize_speech(
         client=client,
         api_key=credential,
     )
-    _remember_fresh(key, audio)
-    upload = partial(_cache_quietly, speech_store, key, audio)
-    if uploads is None:
-        await upload()
-    else:
-        uploads.append(upload)
-    return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
+    return key, store or _default_store(cfg), voiced
 
 
 async def fetch_clip(key: str, *, store: SpeechStore) -> bytes | None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
+from functools import partial
+from typing import TypeVar
 
 import httpx
 
@@ -8,8 +11,16 @@ from app.core.config import Settings, get_settings
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.speakable import speakable_text
 from app.services.internalization_room.voices import voice_for
-from app.services.platform.tts import SpeechStore, SynthesizedSpeech, Upload
-from app.services.platform.tts import synthesize_speech as platform_speech
+from app.services.platform.tts import (
+    SpeechKey,
+    SpeechStore,
+    SynthesizedSpeech,
+    Upload,
+    synthesize_speech,
+    synthesize_speech_key,
+)
+
+T = TypeVar("T")
 
 _VOICED_HERE: OrderedDict[str, None] = OrderedDict()
 _VOICED_HERE_KEPT = 1024
@@ -27,7 +38,7 @@ async def synthesize_facilitator_speech(
     store: SpeechStore | None = None,
     settings: Settings | None = None,
     uploads: list[Upload] | None = None,
-) -> tuple[SynthesizedSpeech, bool]:
+) -> tuple[SpeechKey, bool]:
     """Speak one facilitator line in the internalization room's own voice.
 
     The language is the caller's, because it is the session's, because it is the tablet's.
@@ -59,11 +70,34 @@ async def synthesize_facilitator_speech(
     this used to call started cold on each worker, so a room that failed over mid-session
     paid ElevenLabs again for a sentence it had just spoken.
     """
+    speak = _in_the_rooms_voice(synthesize_speech_key, text, language=language, settings=settings)
+    speech = await speak(client=client, store=store, uploads=uploads)
+    _VOICED_HERE[speech.key] = None
+    _VOICED_HERE.move_to_end(speech.key)
+    if len(_VOICED_HERE) > _VOICED_HERE_KEPT:
+        _VOICED_HERE.popitem(last=False)
+    return speech, speech.cached
+
+
+async def render_facilitator_speech(
+    text: str, *, language: str, store: SpeechStore
+) -> SynthesizedSpeech:
+    speak = _in_the_rooms_voice(synthesize_speech, text, language=language, settings=None)
+    return await speak(store=store)
+
+
+def _in_the_rooms_voice(
+    speak: Callable[..., Awaitable[T]],
+    text: str,
+    *,
+    language: str | None,
+    settings: Settings | None,
+) -> Callable[..., Awaitable[T]]:
     cfg = settings or get_settings()
     spoken = normalize(language) or floor(cfg)
-    text = speakable_text(text, spoken)
-    speech = await platform_speech(
-        text,
+    return partial(
+        speak,
+        speakable_text(text, spoken),
         language=spoken,
         voice_id=voice_for(spoken, settings=cfg),
         model=cfg.internalization_room_tts_model,
@@ -76,13 +110,4 @@ async def synthesize_facilitator_speech(
         },
         api_key=cfg.internalization_room_elevenlabs_api_key or None,
         settings=cfg,
-        client=client,
-        store=store,
-        key_only=True,
-        uploads=uploads,
     )
-    _VOICED_HERE[speech.key] = None
-    _VOICED_HERE.move_to_end(speech.key)
-    if len(_VOICED_HERE) > _VOICED_HERE_KEPT:
-        _VOICED_HERE.popitem(last=False)
-    return speech, speech.cached

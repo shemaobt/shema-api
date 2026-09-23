@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.services.internalization_room.voice_handles import to_handle
 from app.services.platform import tts
-from app.services.platform.tts import SynthesizedSpeech
+from app.services.platform.tts import SpeechKey
 
 PREFIX = "/api/internalization-room"
 VOICED_HERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/aaa111/voiced-here.mp3"
@@ -114,12 +114,10 @@ async def test_a_clip_fetch_says_how_long_the_gate_and_the_bucket_each_took(
 async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhere(
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    async def _voiced(text: str, **_: Any) -> SynthesizedSpeech:
-        return SynthesizedSpeech(
-            audio=CLIP, mime_type="audio/mpeg", etag="e", cached=False, key=VOICED_HERE
-        )
+    async def _voiced(text: str, **_: Any) -> SpeechKey:
+        return SpeechKey(key=VOICED_HERE, cached=False)
 
-    monkeypatch.setattr(synthesis, "platform_speech", _voiced)
+    monkeypatch.setattr(synthesis, "synthesize_speech_key", _voiced)
     await synthesis.synthesize_facilitator_speech("Vamos ouvir de novo.", language="pt")
 
     with caplog.at_level(logging.INFO):
@@ -136,12 +134,10 @@ async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhe
 async def test_an_instance_up_for_months_remembers_only_its_latest_clips(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _voiced(text: str, **_: Any) -> SynthesizedSpeech:
-        return SynthesizedSpeech(
-            audio=CLIP, mime_type="audio/mpeg", etag="e", cached=False, key=f"tts/v/{text}.mp3"
-        )
+    async def _voiced(text: str, **_: Any) -> SpeechKey:
+        return SpeechKey(key=f"tts/v/{text}.mp3", cached=False)
 
-    monkeypatch.setattr(synthesis, "platform_speech", _voiced)
+    monkeypatch.setattr(synthesis, "synthesize_speech_key", _voiced)
     monkeypatch.setattr(synthesis, "_VOICED_HERE", synthesis.OrderedDict())
     monkeypatch.setattr(synthesis, "_VOICED_HERE_KEPT", 2)
 

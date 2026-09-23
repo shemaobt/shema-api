@@ -58,7 +58,7 @@ from app.services.internalization_room.turn_dedup import (
     remember_turn,
 )
 from app.services.internalization_room.voice_handles import clip_url
-from app.services.platform.tts import SynthesizedSpeech, Upload
+from app.services.platform.tts import SpeechKey, Upload
 from app.services.project.facilitated_scope import facilitated_project_ids
 from app.services.project.team_names import team_names
 from app.utils.stored_time import as_utc
@@ -86,7 +86,7 @@ async def _voice_the_turn(
     *,
     language: str,
     uploads: list[Upload],
-) -> tuple[SynthesizedSpeech | None, list[SpokenSegment]]:
+) -> tuple[SpeechKey | None, list[SpokenSegment]]:
     """The turn's audio: the whole line, and the opening's movements beside it.
 
     All of it at once — three short syntheses in parallel cost the wall clock of the
@@ -97,7 +97,7 @@ async def _voice_the_turn(
     if outcome.fixed_line:
         return None, []
 
-    async def whole_line() -> SynthesizedSpeech:
+    async def whole_line() -> SpeechKey:
         entry, _ = await room.synthesize_facilitator_speech(
             outcome.speech, language=language, uploads=uploads
         )
