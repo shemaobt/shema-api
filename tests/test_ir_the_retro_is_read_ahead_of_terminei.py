@@ -404,6 +404,92 @@ async def test_a_stretch_retold_after_the_reading_ahead_throws_it_away_too(
     assert verdict["checked"] is True
 
 
+async def test_a_stretch_told_while_an_older_reading_runs_calls_that_reading_off(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [1])
+    reading = asyncio.Event()
+    never = asyncio.Event()
+    called_off: list[str] = []
+    scripted = analyst.__call__
+
+    async def outrun(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        if not reading.is_set():
+            reading.set()
+            try:
+                await never.wait()
+            except asyncio.CancelledError:
+                called_off.append(system_prompt)
+                raise
+        return await scripted(system_prompt=system_prompt, user_content=user_content)
+
+    monkeypatch.setattr(bt_service, "call_agent", outrun)
+
+    try:
+        async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+            older = asyncio.create_task(
+                _tell(client, session.id, part, starts_ms=1000, ends_ms=2000)
+            )
+            await asyncio.wait_for(reading.wait(), timeout=5)
+            analyst.readings = [AN_ADDITION]
+            await _tell(client, session.id, part, starts_ms=2000, ends_ms=3000)
+            await asyncio.wait_for(older, timeout=2)
+            read_before = analyst.whole_readings
+            verdict = (
+                await press_terminei(client, session.id, report=played_every_part([part.id]))
+            ).json()
+    finally:
+        never.set()
+
+    assert len(called_off) == 1, "a leitura de um conjunto que já mudou seguia gastando"
+    assert analyst.whole_readings == read_before
+    assert verdict["finding_kind"] == "addition"
+
+
+async def test_a_terminei_waiting_on_a_reading_that_is_called_off_reads_for_itself(
+    db_session: AsyncSession,
+    per_request: async_sessionmaker[AsyncSession],
+    analyst: Analyst,
+    room: Room,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session, (part,) = await rehearsed_in_parts_of(db_session, [1])
+    reading = asyncio.Event()
+    never = asyncio.Event()
+    scripted = analyst.__call__
+
+    async def outrun(*, system_prompt: str, user_content: str, **_: Any) -> str:
+        if not reading.is_set():
+            reading.set()
+            await never.wait()
+        return await scripted(system_prompt=system_prompt, user_content=user_content)
+
+    monkeypatch.setattr(bt_service, "call_agent", outrun)
+
+    try:
+        async with room_client(db_session, monkeypatch, per_request=per_request) as client:
+            older = asyncio.create_task(
+                _tell(client, session.id, part, starts_ms=1000, ends_ms=2000)
+            )
+            await asyncio.wait_for(reading.wait(), timeout=5)
+            pressed = asyncio.create_task(
+                press_terminei(client, session.id, report=played_every_part([part.id]))
+            )
+            await asyncio.sleep(0.05)
+            await _tell(client, session.id, part, starts_ms=2000, ends_ms=3000)
+            await asyncio.wait_for(older, timeout=2)
+            verdict = await asyncio.wait_for(pressed, timeout=2)
+    finally:
+        never.set()
+
+    assert verdict.status_code == 200, "o terminei morria com a leitura que esperava cancelada"
+    assert analyst.whole_readings == 2
+
+
 class _Unreachable(Exception):
     pass
 
