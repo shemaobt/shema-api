@@ -177,6 +177,11 @@ _LANGUAGE_MEMO_MAX = 1024
 _LANGUAGE_MEMO: OrderedDict[str, str] = OrderedDict()
 
 
+def forget_session_languages() -> None:
+    """Empty the memo, the way `tts.forget_what_is_kept` empties the clip caches between tests."""
+    _LANGUAGE_MEMO.clear()
+
+
 def _remember_language(session_id: str, language: str) -> None:
     _LANGUAGE_MEMO[session_id] = language
     _LANGUAGE_MEMO.move_to_end(session_id)
