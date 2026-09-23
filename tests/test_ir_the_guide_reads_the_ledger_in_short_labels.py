@@ -81,7 +81,7 @@ def test_a_bead_short_of_engaged_holds_the_pointer_on_its_scene() -> None:
 #: each line (`canon/vendor/meaning-map/P01-Ruth-1-1-5.md`, §3) and the compilation log
 #: numbers each rule — never read back through `elements_for`.
 SCENE_ONE_DONE_SCENE_TWO_OPEN = """\
-CURRENT SCENE: S2
+FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: S2
 
 COVERED (engaged): S1 (v.1–2); אֱלִימֶלֶך / Elimelech @ S1; נָעֳמִי / Naomi @ S1; \
 מַחְלוֹן / Mahlon @ S1; כִלְיוֹן / Chilion @ S1; שֹּפְטִים / Judges @ S1; \
@@ -125,11 +125,12 @@ def test_the_block_is_her_three_parts_in_labels_the_guide_can_say() -> None:
 
 
 OPENING = (
-    "CURRENT SCENE: (whole-passage opening — help the team feel the shape before any one scene)"
+    "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: none yet — no bead is closed; "
+    "the whole passage is still open"
 )
 INTEGRATION = (
-    "CURRENT SCENE: (whole-passage integration — every scene has been engaged; check the "
-    "remaining whole-passage meaning and the team's readiness)"
+    "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: none — every scene's beads are closed; "
+    "the whole-passage meaning remains"
 )
 
 
@@ -173,6 +174,27 @@ def test_a_finished_passage_is_the_integration_with_nothing_remaining() -> None:
 
     assert lines[0] == INTEGRATION
     assert lines[4:] == ["REMAINING: (none — every element has been worked by the team)"]
+
+
+@pytest.mark.parametrize(
+    ("state", "scene_line"),
+    [
+        (initial_state(P), OPENING),
+        (_engaged(*_scene_keys(1), "scene:2"), "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED: S2"),
+        (_engaged(*(key for n in (1, 2, 3, 4) for key in _scene_keys(n))), INTEGRATION),
+    ],
+    ids=["nothing closed", "a scene open", "every scene closed"],
+)
+def test_the_scene_line_says_what_it_computes_and_instructs_nothing(
+    state: dict[str, str], scene_line: str
+) -> None:
+    """DOCTRINE §2.1: the ledger is information, never instruction (ADR 0035)."""
+    first_line = coverage_status_block(state, P).splitlines()[0]
+
+    assert first_line == scene_line
+    assert [
+        word for word in ("check", "help the team", "before any one scene") if word in first_line
+    ] == [], "a linha da cena mandava o Guia conferir a prontidão e ajudar a equipe"
 
 
 AUDIT_KIND = re.compile(r"\b[A-Z][A-Z]+_[A-Z_]+\b")

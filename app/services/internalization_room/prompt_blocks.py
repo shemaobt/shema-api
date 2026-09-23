@@ -33,12 +33,15 @@ def _short_label(element: Element, scenes: dict[int, str]) -> str:
     return element.label
 
 
+_SCENE_LINE = "FIRST SCENE WHOSE BEADS ARE NOT ALL CLOSED"
+
+
 def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> str:
     """Her three parts, in her order: the scene, what is behind the team, what is not.
 
-    Information only (DOCTRINE §2.1): the block says where the ledger last saw the team
-    and what they have and have not worked; it never says what to do next. No key and no
-    audit kind reaches it — the Guide speaks names, never codes, and it has no screen to
+    Information only (DOCTRINE §2.1): the block says the first scene whose beads are not
+    all closed and what the team has and has not worked; it never says what to do next. No
+    key and no audit kind reaches it — the Guide speaks names, never codes, and it has no screen to
     check a code against.
     """
     scenes = {
@@ -52,21 +55,18 @@ def coverage_status_block(coverage_state: dict[str, str], pericope_num: str) -> 
     ]
     scene = current_scene(coverage_state, pericope_num)
     if scene is not None:
-        scene_line = f"CURRENT SCENE: {scene}"
+        scene_line = f"{_SCENE_LINE}: {scene}"
     elif all(
         merged.get(element.key) == CoverageStatus.ENGAGED
         for element in elements_for(pericope_num)
         if element.scene is not None
     ):
         scene_line = (
-            "CURRENT SCENE: (whole-passage integration — every scene has been engaged; "
-            "check the remaining whole-passage meaning and the team's readiness)"
+            f"{_SCENE_LINE}: none — every scene's beads are closed; "
+            "the whole-passage meaning remains"
         )
     else:
-        scene_line = (
-            "CURRENT SCENE: (whole-passage opening — help the team feel the shape before "
-            "any one scene)"
-        )
+        scene_line = f"{_SCENE_LINE}: none yet — no bead is closed; the whole passage is still open"
     covered_line = "COVERED (engaged): " + (
         "; ".join(covered) if covered else "(nothing engaged yet — the session is just beginning)"
     )
