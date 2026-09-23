@@ -686,11 +686,13 @@ async def _answer_the_turn(
     if file is None and not opening:
         return await _say_it_again(session, turn_id=turn_id, deadline=deadline)
 
-    ready = await take_prepared(db, session) if opening else None
+    ready = await take_prepared(db, session, commit=False) if opening else None
     if ready is not None:
         speech, audio_key = ready
         outcome = TurnOutcome(speech=speech, transcript="", peer_cue=detects_peer_cue(speech))
-        session = await room.append_exchange(db, session, team_utterance="", guide_response=speech)
+        session = await room.append_exchange(
+            db, session, team_utterance="", guide_response=speech, commit=False
+        )
         reply = TurnResponse(
             session_id=session.id,
             audio_url=clip_url(audio_key),
@@ -704,7 +706,7 @@ async def _answer_the_turn(
             await remember_turn(
                 db, session_id=session.id, turn_id=turn_id, response=reply.model_dump(mode="json")
             )
-            await db.commit()
+        await db.commit()
         return reply
 
     validator_prompt = get_prompt_text(IRPromptKey.VALIDATOR)
