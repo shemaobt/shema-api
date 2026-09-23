@@ -5,6 +5,7 @@ from app.api.internalization_room._deps import device_dep, room_caller_dep
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
+from app.core.stage_clock import stage, stopwatch
 from app.db.models.internalization_room import IRSession, IRTakeKind
 from app.models.internalization_room import (
     BackTranslationChunkResponse,
@@ -263,6 +264,13 @@ async def finish(
     at all, so the press after it does the whole turn rather than serving a verdict the team
     never heard.
     """
+    with stopwatch("[bt-timing]", session_id):
+        return await _finished(session_id, payload, db)
+
+
+async def _finished(
+    session_id: str, payload: FinishBackTranslationRequest | None, db: AsyncSession
+) -> BackTranslationVerdictResponse:
     session = await room.get_session(db, session_id)
     state = room.back_translation_of(session)
     final = await room.final_segments(db, session.id)
@@ -344,20 +352,24 @@ async def finish(
         takes=takes,
         settings=get_settings(),
     )
-    voiced = (
-        None
-        if verdict.outcome.fixed_line
-        else (await room.synthesize_facilitator_speech(verdict.said, language=session.language))[0]
-    )
-    session = await room.save_the_spoken_verdict(
-        db,
-        session,
-        state,
-        said=verdict.said,
-        clip_key=voiced.key if voiced else "",
-        outcome=verdict.outcome,
-        told_back=verdict.told_back,
-    )
+    with stage("voice"):
+        voiced = (
+            None
+            if verdict.outcome.fixed_line
+            else (
+                await room.synthesize_facilitator_speech(verdict.said, language=session.language)
+            )[0]
+        )
+    with stage("db_write"):
+        session = await room.save_the_spoken_verdict(
+            db,
+            session,
+            state,
+            said=verdict.said,
+            clip_key=voiced.key if voiced else "",
+            outcome=verdict.outcome,
+            told_back=verdict.told_back,
+        )
 
     return BackTranslationVerdictResponse(
         session_id=session.id,
