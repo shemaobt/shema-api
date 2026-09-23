@@ -42,6 +42,7 @@ def patch_agent(monkeypatch: pytest.MonkeyPatch):
 
 
 LOGGER_NAME = "app.services.internalization_room.run_turn"
+BRIDGE_LANGUAGE_LOGGER_NAME = "app.services.internalization_room.bridge_language"
 TEAM_ANSWER = "Noemi voltou para Belém com Rute no tempo da colheita"
 
 
@@ -188,7 +189,10 @@ async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_w
         )
     )
 
-    with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
+    with (
+        caplog.at_level(logging.WARNING, logger=LOGGER_NAME),
+        caplog.at_level(logging.WARNING, logger=BRIDGE_LANGUAGE_LOGGER_NAME),
+    ):
         outcome = await _a_turn("sessao-5")
 
     assert outcome.used_fail_safe is True
@@ -201,6 +205,7 @@ async def test_a_draft_out_of_the_bridge_language_leaves_the_condition_not_the_w
         assert draft not in record.getMessage()
         for value in record.__dict__.values():
             assert draft not in str(value)
+    assert draft not in caplog.text
 
 
 async def test_the_teams_own_words_never_reach_this_log_on_the_recusal_path(

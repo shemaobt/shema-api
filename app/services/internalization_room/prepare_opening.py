@@ -53,6 +53,7 @@ async def prepare_opening(panorama_session_id: str, pericope: str | None = None)
             if pericope is None:
                 logger.info("Nothing left to prepare: the team has closed every passage")
                 return
+            await db.commit()
             outcome = await run_turn(
                 transcript="",
                 coverage_state={},
@@ -139,7 +140,9 @@ def hand_over(prepared: IRSession, opening: IRSession) -> bool:
     return True
 
 
-async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str] | None:
+async def take_prepared(
+    db: AsyncSession, session: IRSession, *, commit: bool = True
+) -> tuple[str, str] | None:
     """The line this session was handed, consumed once so a later turn never repeats it.
 
     A panorama is handed nothing, even when a ready line is sitting on its own row — that row
@@ -147,6 +150,11 @@ async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str]
     it. Reading it here opened the book by telling a team that had chosen no passage how the
     first one begins, and spent the line doing it, so the passage they went on to choose paid
     the wait this whole mechanism exists to spare them.
+
+    ``commit=False`` leaves the transaction open for a caller who still has to write the
+    exchange this line becomes: the two used to land in commits of their own, so a caller
+    racing another for the same line could consume it, lose the exchange to `_land`'s version
+    guard, and still leave the consumption standing.
     """
     if is_panorama(session.pericope):
         return None
@@ -156,5 +164,6 @@ async def take_prepared(db: AsyncSession, session: IRSession) -> tuple[str, str]
     session.prepared_speech = None
     session.prepared_audio_key = None
     session.prepared_pericope = None
-    await db.commit()
+    if commit:
+        await db.commit()
     return speech, key

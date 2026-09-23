@@ -6,15 +6,16 @@ had no door. These are the doors, and nothing else: choosing where to cut is the
 rules about where a cut may land are the service's, and neither is decided here.
 """
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRSegment, IRTakeKind
 from app.models.internalization_room import DivideSegmentRequest, SegmentsResponse, SegmentView
 from app.services import internalization_room as room
+from app.services.internalization_room.background import read_ahead
 from app.services.internalization_room.hearing import heard
 from app.services.internalization_room.segments import (
     divide_segment,
@@ -58,6 +59,7 @@ async def divide(
     session_id: str,
     segment_id: str,
     payload: DivideSegmentRequest,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
     """The team heard two ideas where they had told one, and cuts the stretch in two.
@@ -69,7 +71,7 @@ async def divide(
     `at_ms` is counted from the start of the recording, the same as the stretch's own bounds.
     Where it may fall is `divide_segment`'s to say.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     segment = await segment_for_session(db, session.id, segment_id)
     await divide_segment(db, session, segment, at_ms=payload.at_ms)
     return SegmentsResponse(session_id=session.id, segments=await _units(db, session.id))
@@ -83,11 +85,13 @@ async def divide(
 async def replace(
     session_id: str,
     segment_id: str,
+    background: BackgroundTasks,
     take_id: str = Form(...),
     starts_ms: int = Form(...),
     ends_ms: int = Form(...),
     file: UploadFile = File(...),
     device_id: str = device_dep,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> SegmentsResponse:
     """One **Correction**: the same stretch told again, over the recording it already sits in.
@@ -117,7 +121,7 @@ async def replace(
     asked here first, which is the argument the telling-back route already makes for the slice
     that is not a slice.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     segment = await segment_for_session(db, session.id, segment_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
 
@@ -140,6 +144,7 @@ async def replace(
         ordinal=segment.ordinal,
         content_type=file.content_type or "audio/mp4",
     )
+    await db.commit()
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
 
@@ -163,6 +168,7 @@ async def replace(
         pass_number=segment.pass_number,
         replaces=segment,
     )
+    background.add_task(read_ahead, session_id=session.id)
     return SegmentsResponse(
         session_id=session.id,
         segments=await _units(db, session.id),

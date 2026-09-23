@@ -9,12 +9,7 @@ from typing import Any
 from app.core.config import Settings, get_settings
 from app.services.internalization_room.canon.elements import Element, element_keys
 from app.services.internalization_room.canon.parse_map import load_map
-from app.services.internalization_room.coverage import (
-    CoverageStatus,
-    merge,
-    remaining,
-    remaining_in_scene,
-)
+from app.services.internalization_room.coverage import CoverageStatus, merge, remaining
 from app.services.internalization_room.languages import FLOOR, LANGUAGE_NAMES
 from app.services.internalization_room.llm import cache_break_before, call_agent, classifier_ladder
 from app.services.internalization_room.render import render
@@ -78,10 +73,10 @@ def _report_unknown_elements(verdict: dict[str, list[str]], pericope_num: str) -
 def _only_offered(verdict: dict[str, list[str]], offered: list[Element]) -> dict[str, list[str]]:
     """The decisions about beads this turn was shown; the rest are dropped, and said.
 
-    `_report_unknown_elements` makes an id the passage does not hold visible. An id the
-    passage holds but this turn did not offer — a bead from a scene nobody has opened, or
-    one already engaged — used to pass through `merge` like any other, so the model could
-    move a bead it was never asked about. It is inert now as well as visible.
+    `_report_unknown_elements` makes an id the passage does not hold visible. A key the
+    stored ledger still carries but the passage no longer holds is never offered, and
+    `merge` would promote it like any other, so the model could move a bead it was never
+    asked about. It is dropped as well as said.
     """
     keys = {element.key for element in offered}
     kept = {status: [key for key in named if key in keys] for status, named in verdict.items()}
@@ -111,20 +106,6 @@ def _shown_status(coverage_state: dict[str, str], element: Element) -> str:
     if standing == CoverageStatus.PARTIALLY_ENGAGED.value:
         return CoverageStatus.SURFACED.value
     return standing
-
-
-def _offered(
-    coverage_state: dict[str, str], pericope_num: str, scene_pointer: str | None
-) -> list[Element]:
-    """The beads this turn may move: the current scene's and the scene-less, or all of them.
-
-    With no pointer there is no scene to narrow to, and the whole unresolved set goes as it
-    always did. The pointer is `None` on a session where nobody has spoken and once every
-    scene is engaged — the second leaves only the scene-less beads on either reading.
-    """
-    if scene_pointer is None:
-        return remaining(coverage_state, pericope_num)
-    return remaining_in_scene(coverage_state, pericope_num, scene_pointer)
 
 
 def _unresolved_block(coverage_state: dict[str, str], offered: list[Element]) -> str:
@@ -212,7 +193,6 @@ async def classify_coverage(
     guide_response: str,
     classifier_prompt: str,
     pericope_num: str,
-    scene_pointer: str | None = None,
     session_language: str = LANGUAGE_NAMES[FLOOR],
     settings: Settings | None = None,
 ) -> dict[str, str]:
@@ -221,13 +201,13 @@ async def classify_coverage(
     Any failure leaves coverage untouched: under-counting delays a session, while
     over-counting lets one complete hollow.
 
-    The scene pointer is bookkeeping: it narrows what the classifier is shown to the scene
-    the team is in, and it goes nowhere else — never to the Guide as a scope on what it may
-    say, which DOCTRINE.md §3 forbids.
+    It is offered every bead still short of `engaged`, whatever scene the Scene pointer
+    names. Narrowing the offer to the pointer's scene let one bead left at `surfaced` hold
+    every later scene off the list for the rest of the session (ADR 0034).
     """
     cfg = settings or get_settings()
 
-    offered = _offered(coverage_state, pericope_num, scene_pointer)
+    offered = remaining(coverage_state, pericope_num)
     system = render(
         cache_break_before(classifier_prompt, "{{COVERAGE_ELEMENTS}}"),
         SESSION_LANGUAGE=session_language,
@@ -277,7 +257,6 @@ async def classify_coverage_by_keywords(
     team_utterance: str,
     guide_response: str,
     pericope_num: str,
-    scene_pointer: str | None = None,
     **_: object,
 ) -> dict[str, str]:
     """The classifier with no model in it: her keyword heuristic over the labels.
@@ -289,7 +268,7 @@ async def classify_coverage_by_keywords(
     `classify_coverage` wherever a whole room has to run without a provider; the extra
     keywords the settle passes the real one are taken and ignored.
     """
-    offered = _offered(coverage_state, pericope_num, scene_pointer)
+    offered = remaining(coverage_state, pericope_num)
     team, guide = _words(team_utterance), _words(guide_response)
     engaged = [e.key for e in offered if _words(_shown_label(e)) & team]
     surfaced = [e.key for e in offered if e.key not in engaged and _words(_shown_label(e)) & guide]

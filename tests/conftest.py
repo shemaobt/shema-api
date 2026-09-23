@@ -42,11 +42,15 @@ TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
 @pytest.fixture(autouse=True)
 def _nothing_kept_outlives_its_test():
+    from app.api.internalization_room.sessions import forget_session_languages
+
     llm._CLIENTS.clear()
     tts.forget_what_is_kept()
+    forget_session_languages()
     yield
     llm._CLIENTS.clear()
     tts.forget_what_is_kept()
+    forget_session_languages()
 
 
 @pytest.fixture(scope="session")

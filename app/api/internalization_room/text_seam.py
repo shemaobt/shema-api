@@ -213,6 +213,7 @@ async def take_text_turn(
         raise ConflictError("session already open")
     if not payload.kickoff and payload.text is None:
         raise ValidationError("no text or kickoff")
+    await db.commit()
 
     heard = _heard(payload, language=session.language)
     started = time.monotonic()
@@ -227,14 +228,14 @@ async def take_text_turn(
             settings=get_settings(),
         )
         outcome = turn.outcome
-        session = await room.save_comprehension(db, session, turn.state)
         session = await room.append_exchange(
             db,
             session,
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
             outcome=outcome,
-            scene=_scene_of(session),
+            scene=_scene_of(session, outcome.transcript),
+            state=turn.state,
         )
         if _worth_settling(outcome, heard):
             await settle_coverage(

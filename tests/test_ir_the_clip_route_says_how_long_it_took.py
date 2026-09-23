@@ -10,6 +10,9 @@ import asyncio
 import importlib
 import logging
 import re
+import threading
+import time
+from hashlib import sha256
 from types import SimpleNamespace
 from typing import Any
 
@@ -18,7 +21,10 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import _deps
+from app.api.internalization_room import voice as voice_api
 from app.core.config import get_settings
+from app.core.exceptions import DeviceRevoked
 from app.services.internalization_room.voice_handles import to_handle
 from app.services.platform import tts
 from app.services.platform.tts import SpeechKey
@@ -27,6 +33,9 @@ PREFIX = "/api/internalization-room"
 VOICED_HERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/aaa111/voiced-here.mp3"
 VOICED_ELSEWHERE = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/bbb222/voiced-elsewhere.mp3"
 NEVER_STORED = "tts/RoomVoice/eleven_turbo_v2_5/mp3_44100_128/ccc333/never-stored.mp3"
+#: Well-formed base64, but not this room's own voice namespace — `from_handle` refuses it
+#: the same way it refuses garbage, and neither should be answered before the gate.
+FOREIGN_HANDLE = to_handle("tts/AnotherApp/m/f/x.mp3")
 CLIP = b"x" * 1234
 AUTH_MS = 100
 BUCKET_MS = 100
@@ -89,6 +98,15 @@ async def _fetch(client: httpx.AsyncClient, key: str) -> httpx.Response:
     )
 
 
+async def _fetch_range(
+    client: httpx.AsyncClient, key: str, range_header: str, **extra_headers: str
+) -> httpx.Response:
+    return await client.get(
+        f"{PREFIX}/voice/{to_handle(key)}",
+        headers={"X-Device-Credential": "tablet", "Range": range_header, **extra_headers},
+    )
+
+
 def _voice_get_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [r.getMessage() for r in caplog.records if "[voice-get]" in r.getMessage()]
 
@@ -108,7 +126,7 @@ async def test_a_clip_fetch_says_how_long_the_gate_and_the_bucket_each_took(
     assert spent["auth"] < AUTH_MS + BUCKET_MS, "o tempo do bucket caía na conta da porta"
     assert spent["gcs"] < AUTH_MS + BUCKET_MS, "o tempo da porta caía na conta do bucket"
     assert " bytes=1234 " in lines[0]
-    assert lines[0].endswith(" same_instance=no")
+    assert lines[0].endswith(" same_instance=no range=full")
 
 
 async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhere(
@@ -125,10 +143,10 @@ async def test_a_clip_this_instance_voiced_is_told_apart_from_one_voiced_elsewhe
         await _fetch(client, VOICED_ELSEWHERE)
 
     here, elsewhere = _voice_get_lines(caplog)
-    assert here.endswith(" same_instance=yes"), (
+    assert here.endswith(" same_instance=yes range=full"), (
         "ninguém sabia quantos clipes um cache em memória desta instância teria servido"
     )
-    assert elsewhere.endswith(" same_instance=no")
+    assert elsewhere.endswith(" same_instance=no range=full")
 
 
 async def test_an_instance_up_for_months_remembers_only_its_latest_clips(
@@ -158,7 +176,7 @@ async def test_a_clip_the_bucket_does_not_hold_still_says_how_long_the_miss_took
     assert fetched.status_code == 404
     lines = _voice_get_lines(caplog)
     assert len(lines) == 1, "o clipe que o bucket não tinha sumia do cronômetro"
-    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no$", lines[0])
+    missed = re.search(r" gcs=(\d+)ms bytes=0 same_instance=no range=none$", lines[0])
     assert missed is not None and int(missed.group(1)) >= BUCKET_MS
 
 
@@ -257,3 +275,419 @@ async def test_a_clip_the_tablet_just_played_outlives_one_nobody_asked_for(
         "a memória esquecia pela ordem de gravação, e o clipe que o tablet acabara de "
         "tocar saía antes de um que ninguém pediu"
     )
+
+
+class _RealisticSlowBucket:
+    """Shaped like `GcsPlatformStore`: the blocking read runs on a thread via
+    `asyncio.to_thread`, the same primitive production uses — so, exactly like
+    production, cancelling the coroutine that awaits it does not stop the thread. This
+    file cannot claim the read was stopped, only that its bytes never reached the client.
+    """
+
+    def __init__(self) -> None:
+        self.entered = False
+
+    async def get(self, key: str) -> bytes | None:
+        self.entered = True
+        return await asyncio.to_thread(self._blocking_read)
+
+    def _blocking_read(self) -> bytes:
+        time.sleep(0.05)
+        return CLIP
+
+
+async def test_a_revoked_credential_is_refused_with_zero_bytes_even_with_a_read_already_on_a_thread(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)  # a real device check awaits the database at least once
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+    bucket = _RealisticSlowBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 403
+    assert fetched.json()["code"] == "DEVICE_REVOKED"
+    assert bucket.entered, "a leitura nem chegava a começar ao lado da porta"
+    assert CLIP not in fetched.content, "os bytes do clipe chegaram numa resposta de recusa"
+
+
+async def test_a_refusal_leaves_no_read_task_behind_once_the_download_on_its_thread_ends(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+    bucket = _RealisticSlowBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+    before = asyncio.all_tasks()
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 403
+    for _ in range(100):
+        leftover = asyncio.all_tasks() - before - {asyncio.current_task()}
+        if not leftover:
+            break
+        await asyncio.sleep(0.01)
+    assert not leftover, (
+        "a leitura ficou pendurada depois que o download da thread terminou — a recusa "
+        "só pode deixá-la viva enquanto a thread, que nenhum cancel alcança, ainda roda"
+    )
+
+
+async def test_when_the_semaphore_is_full_the_read_waits_for_the_gate_like_before(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(voice_api, "_SPECULATIVE_READS", asyncio.Semaphore(0))
+    bucket = _EventGatedBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+    observed_while_still_at_the_gate = []
+
+    async def _gate_that_peeks(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(AUTH_MS / 1000)
+        observed_while_still_at_the_gate.append(bucket.entered.is_set())
+        return SimpleNamespace(project_id=None)
+
+    monkeypatch.setattr(_deps, "authenticate_device", _gate_that_peeks)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert observed_while_still_at_the_gate == [False], (
+        "a leitura começava mesmo com o semáforo cheio, disputando threads com o upload "
+        "da voz por um pedido que talvez nem passasse na porta"
+    )
+
+
+async def test_a_revoked_credential_refuses_a_foreign_handle_before_the_bucket_gets_a_say(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+
+    fetched = await client.get(
+        f"{PREFIX}/voice/{FOREIGN_HANDLE}", headers={"X-Device-Credential": "tablet"}
+    )
+
+    assert fetched.status_code == 403, (
+        "um handle que não decodifica respondia antes da porta, e a recusa virava um 404 "
+        "que não diz nada sobre a credencial"
+    )
+    assert fetched.json()["code"] == "DEVICE_REVOKED"
+
+
+async def test_no_credential_gets_401_not_404_on_a_foreign_handle(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        get_settings(), "internalization_room_api_key", "the-room-key", raising=False
+    )
+
+    fetched = await client.get(f"{PREFIX}/voice/{FOREIGN_HANDLE}")
+
+    assert fetched.status_code == 401, (
+        "sem nenhuma credencial, um handle que não decodifica ainda assim virava 404 antes "
+        "da porta, o que diz a quem não tem credencial nenhuma se o handle é nosso"
+    )
+
+
+async def test_an_unrecognised_credential_gets_401_not_404_on_a_foreign_handle(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _unrecognised_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        return None
+
+    monkeypatch.setattr(_deps, "authenticate_device", _unrecognised_gate)
+
+    fetched = await client.get(
+        f"{PREFIX}/voice/{FOREIGN_HANDLE}", headers={"X-Device-Credential": "unknown"}
+    )
+
+    assert fetched.status_code == 401, (
+        "uma credencial desconhecida também virava 404 antes da porta, num handle que "
+        "não decodifica"
+    )
+
+
+class _EventGatedBucket:
+    def __init__(self) -> None:
+        self.entered = asyncio.Event()
+
+    async def get(self, key: str) -> bytes | None:
+        self.entered.set()
+        return CLIP
+
+
+async def test_the_read_begins_before_a_slow_gate_lets_the_caller_through(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bucket = _EventGatedBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+    observed_while_still_at_the_gate = []
+
+    async def _gate_that_peeks(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(AUTH_MS / 1000)
+        observed_while_still_at_the_gate.append(bucket.entered.is_set())
+        return SimpleNamespace(project_id=None)
+
+    monkeypatch.setattr(_deps, "authenticate_device", _gate_that_peeks)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert observed_while_still_at_the_gate == [True], (
+        "a leitura só começava depois que a porta liberava o pedido, e devia correr ao lado dela"
+    )
+
+
+async def test_refusals_that_never_let_the_read_start_give_every_speculative_permit_back(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    permits = asyncio.Semaphore(4)
+    monkeypatch.setattr(voice_api, "_SPECULATIVE_READS", permits)
+
+    for _ in range(5):
+        refused = await client.get(f"{PREFIX}/voice/{to_handle(VOICED_ELSEWHERE)}")
+        assert refused.status_code in (400, 401), refused.text[:200]
+
+    assert permits._value == 4, (
+        "uma recusa sem await cancelava a leitura antes do primeiro passo, e a licença "
+        "que a rota tinha pego nunca voltava — quatro dessas e a leitura ao lado da porta "
+        "morria para a instância inteira"
+    )
+
+
+class _HeldOnAThreadBucket:
+    def __init__(self) -> None:
+        self.release = threading.Event()
+
+    async def get(self, key: str) -> bytes | None:
+        return await asyncio.to_thread(self._blocking_read)
+
+    def _blocking_read(self) -> bytes:
+        self.release.wait(timeout=2)
+        return CLIP
+
+
+async def test_a_refused_read_keeps_its_permit_until_the_download_on_its_thread_ends(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0.01)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    permits = asyncio.Semaphore(1)
+    monkeypatch.setattr(voice_api, "_SPECULATIVE_READS", permits)
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+    bucket = _HeldOnAThreadBucket()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 403
+    assert permits.locked(), (
+        "a recusa devolvia a licença enquanto o download seguia na thread — o limite "
+        "contava esperas, não threads, e recusas em rajada empilhavam downloads"
+    )
+    bucket.release.set()
+    for _ in range(100):
+        if not permits.locked():
+            break
+        await asyncio.sleep(0.01)
+    assert not permits.locked(), "a licença não voltou depois que o download terminou"
+
+
+async def test_a_full_clip_says_it_can_be_answered_by_range(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch(client, VOICED_ELSEWHERE)
+
+    assert fetched.status_code == 200
+    assert fetched.headers["accept-ranges"] == "bytes"
+
+
+class _TwoRenderings:
+    """One key, two renderings: what two instances missing the same clip at once can leave.
+
+    The GCS put has no precondition, so the second synthesis overwrites the first, and the
+    instance that made the first still serves its own bytes from memory in the meantime.
+    """
+
+    def __init__(self) -> None:
+        self.renderings = [b"a" * 64, b"b" * 64]
+
+    async def get(self, key: str) -> bytes | None:
+        return self.renderings.pop(0) if len(self.renderings) > 1 else self.renderings[0]
+
+
+async def test_two_renderings_of_one_clip_never_share_an_etag_so_a_resume_cannot_splice_them(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bucket = _TwoRenderings()
+    monkeypatch.setattr(voice_api, "GcsPlatformStore", lambda _: bucket)
+
+    first = await _fetch(client, VOICED_ELSEWHERE)
+    resumed = await _fetch_range(
+        client, VOICED_ELSEWHERE, "bytes=10-19", **{"If-Range": first.headers["etag"]}
+    )
+
+    assert first.headers["etag"] == sha256(b"a" * 64).hexdigest()[:32]
+    assert resumed.status_code == 200, (
+        "a resume that named the first rendering was answered with a slice of the second: "
+        "the ETag named the key, not the bytes, so If-Range could not see the difference, and "
+        "the tablet would splice two renderings of one line"
+    )
+    assert resumed.content == b"b" * 64
+
+
+async def test_a_range_inside_the_clip_returns_only_those_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-19")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[10:20]
+    assert fetched.headers["content-range"] == f"bytes 10-19/{len(CLIP)}"
+
+
+async def test_an_open_range_returns_everything_from_its_start_to_the_end(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=1200-")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[1200:]
+    assert fetched.headers["content-range"] == f"bytes 1200-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_suffix_range_returns_only_the_last_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=-34")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[-34:]
+    assert fetched.headers["content-range"] == f"bytes {len(CLIP) - 34}-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_range_past_the_end_of_the_clip_is_refused_not_clamped(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, f"bytes={len(CLIP)}-{len(CLIP) + 10}")
+
+    assert fetched.status_code == 416, fetched.text
+    assert fetched.headers["content-range"] == f"bytes */{len(CLIP)}"
+    assert fetched.content == b""
+    assert fetched.headers["cache-control"] == "no-store", (
+        "a 416 decided by the Range header was stored under the handle alone as immutable, "
+        "so a tablet that once asked past the end kept refusing a clip it can play"
+    )
+
+
+async def test_multiple_ranges_are_ignored_not_refused(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=0-10,20-30")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_a_range_behind_a_stale_if_range_etag_is_ignored_not_honoured(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(
+        client, VOICED_ELSEWHERE, "bytes=10-19", **{"If-Range": "not-the-current-etag"}
+    )
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_the_voice_get_line_names_the_slice_it_served(
+    client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-19")
+
+    assert fetched.status_code == 206, fetched.text
+    (line,) = _voice_get_lines(caplog)
+    assert line.endswith(" same_instance=no range=10-19")
+
+
+async def test_a_revoked_credential_is_still_refused_with_zero_bytes_when_a_range_is_asked(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _revoked_gate(db: AsyncSession, credential: str) -> Any:
+        await asyncio.sleep(0)
+        raise DeviceRevoked("This device is no longer linked.")
+
+    monkeypatch.setattr(_deps, "authenticate_device", _revoked_gate)
+
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=0-10")
+
+    assert fetched.status_code == 403
+    assert fetched.json()["code"] == "DEVICE_REVOKED"
+    assert CLIP not in fetched.content
+
+
+async def test_a_range_whose_end_reaches_past_the_clip_is_clamped_to_its_last_byte(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=1200-9999")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[1200:]
+    assert fetched.headers["content-range"] == f"bytes 1200-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_zero_length_suffix_range_is_refused_not_served_inverted(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=-0")
+
+    assert fetched.status_code == 416, fetched.text
+    assert fetched.headers["content-range"] == f"bytes */{len(CLIP)}"
+    assert fetched.content == b""
+
+
+async def test_a_suffix_range_longer_than_the_clip_serves_the_whole_clip(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, f"bytes=-{len(CLIP) + 9999}")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP
+    assert fetched.headers["content-range"] == f"bytes 0-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_an_inverted_range_is_ignored_not_served_as_an_empty_slice(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-5")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
+async def test_a_range_this_route_does_not_understand_is_ignored_not_refused(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "items=0-10")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers

@@ -67,12 +67,18 @@ async def transcribe_speech(
         raise ValidationError("ELEVENLABS_API_KEY is not configured")
 
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
-        headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
-        files={"file": ("answer.webm", audio, mime_type)},
-        data={"model_id": cfg.elevenlabs_stt_model, "language_code": language_hint(language)},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/speech-to-text",
+            headers={"xi-api-key": cfg.elevenlabs_api_key, "accept": "application/json"},
+            files={"file": ("answer.webm", audio, mime_type)},
+            data={"model_id": cfg.elevenlabs_stt_model, "language_code": language_hint(language)},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs STT unreachable: %s", error)
+        raise UpstreamServiceError(
+            f"Transcription request could not reach ElevenLabs: {error}"
+        ) from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs STT failed: status=%s body=%s", response.status_code, response.text[:500]

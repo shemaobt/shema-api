@@ -14,6 +14,7 @@ that evaporates on every deploy.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -37,6 +38,8 @@ MIME_TYPE = "audio/mpeg"
 Upload = Callable[[], Awaitable[None]]
 
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
+
+_PENDING_WARMUPS: set[asyncio.Task[None]] = set()
 
 _FRESH_MAX_BYTES = 64 * 1024 * 1024
 _FRESH: OrderedDict[str, bytes] = OrderedDict()
@@ -153,11 +156,11 @@ async def synthesize_speech(
     )
     cached = await speech_store.get(key)
     if cached is not None:
-        return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
+        return SynthesizedSpeech(cached, MIME_TYPE, etag_of(cached), cached=True, key=key)
 
     audio = await voiced()
     await _cache_quietly(speech_store, key, audio)
-    return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
+    return SynthesizedSpeech(audio, MIME_TYPE, etag_of(audio), cached=False, key=key)
 
 
 async def synthesize_speech_key(
@@ -197,6 +200,32 @@ async def synthesize_speech_key(
     return SpeechKey(key, cached=False)
 
 
+def warm_connection_in_background(*, api_key: str, settings: Settings | None = None) -> None:
+    """Open a no-cost connection to ElevenLabs ahead of the synthesis call that will need it.
+
+    Fire-and-forget: the caller does not await this, so a slow or failing warm-up never
+    delays or breaks the turn it is meant to speed up. The task is kept in `_PENDING_WARMUPS`
+    until it finishes, because an unreferenced `asyncio.Task` can be garbage-collected
+    mid-flight, silently cancelling it before the connection ever opens.
+    """
+    if not api_key:
+        # The synthesis refuses before the network when no key is configured
+        # (`_addressed`); a warm-up with nothing to authenticate with has nothing to open.
+        return
+    task = asyncio.create_task(_warm_connection(api_key=api_key, settings=settings))
+    _PENDING_WARMUPS.add(task)
+    task.add_done_callback(_PENDING_WARMUPS.discard)
+
+
+async def _warm_connection(*, api_key: str, settings: Settings | None) -> None:
+    cfg = settings or get_settings()
+    http = _make_client()
+    try:
+        await http.get(f"{cfg.elevenlabs_base_url}/v1/models", headers={"xi-api-key": api_key})
+    except Exception as exc:
+        logger.warning("ElevenLabs warm-up failed: %s", type(exc).__name__)
+
+
 def _addressed(
     text: str,
     *,
@@ -218,7 +247,7 @@ def _addressed(
         # ponytail: project_health uses a SECOND key (`ph_elevenlabs_api_key`), and the
         # internalization room now brings its own. A caller that passes none still falls
         # back to the shared one, so nothing that worked before needs to change.
-        raise ValidationError("ELEVENLABS_API_KEY is not configured")
+        raise UpstreamServiceError("ELEVENLABS_API_KEY is not configured")
 
     voice = voice_id or resolve_voice(language)
     chosen_model = model or cfg.elevenlabs_tts_model
@@ -291,12 +320,16 @@ async def _synthesize(
         body["voice_settings"] = dict(voice_settings)
 
     http = client or _make_client()
-    response = await http.post(
-        f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
-        json=body,
-        params={"output_format": cfg.elevenlabs_output_format},
-        headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
-    )
+    try:
+        response = await http.post(
+            f"{cfg.elevenlabs_base_url}/v1/text-to-speech/{voice_id}",
+            json=body,
+            params={"output_format": cfg.elevenlabs_output_format},
+            headers={"xi-api-key": api_key or cfg.elevenlabs_api_key, "accept": MIME_TYPE},
+        )
+    except httpx.HTTPError as error:
+        logger.warning("ElevenLabs TTS unreachable: %s", error)
+        raise UpstreamServiceError(f"Speech request could not reach ElevenLabs: {error}") from error
     if response.status_code >= 400:
         logger.warning(
             "ElevenLabs TTS failed: status=%s body=%s",
@@ -321,7 +354,7 @@ def _upstream_or_validation_error(status_code: int) -> Exception:
     return ValidationError(message)
 
 
-def _etag(audio: bytes) -> str:
+def etag_of(audio: bytes) -> str:
     return hashlib.sha256(audio).hexdigest()[:32]
 
 
@@ -334,5 +367,8 @@ def _default_store(cfg: Settings) -> SpeechStore:
 def _make_client() -> httpx.AsyncClient:
     global _DEFAULT_CLIENT
     if _DEFAULT_CLIENT is None:
-        _DEFAULT_CLIENT = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
+        _DEFAULT_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            limits=httpx.Limits(keepalive_expiry=60.0),
+        )
     return _DEFAULT_CLIENT

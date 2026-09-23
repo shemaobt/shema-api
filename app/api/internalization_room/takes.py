@@ -11,7 +11,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.facilitator._deps import FacilitatorUser
-from app.api.internalization_room._deps import device_dep, room_caller_dep
+from app.api.internalization_room._deps import device_dep, device_project_dep, room_caller_dep
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.db.models.internalization_room import IRTake, IRTakeKind
@@ -65,6 +65,7 @@ async def keep_take(
     chunk_index: int | None = Form(default=None),
     file: UploadFile = File(...),
     device_id: str = device_dep,
+    project_id: str | None = device_project_dep,
     db: AsyncSession = Depends(get_db),
 ) -> TakeResponse:
     """Store one take and answer with where it landed.
@@ -86,7 +87,7 @@ async def keep_take(
     primitive knows nothing of parts — the routes that keep a telling of a stretch store through
     it as well — and what follows from a part arriving is the room's question, not storage's.
     """
-    session = await room.get_session(db, session_id)
+    session = await room.session_for_room_caller(db, session_id, project_id)
     take_kind = _kind(kind)
     take = await store_take(
         db,
@@ -110,8 +111,12 @@ async def keep_take(
     response_model=TakesResponse,
     dependencies=[room_caller_dep],
 )
-async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> TakesResponse:
-    session = await room.get_session(db, session_id)
+async def list_takes(
+    session_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
+) -> TakesResponse:
+    session = await room.session_for_room_caller(db, session_id, project_id)
     return TakesResponse(
         session_id=session.id,
         takes=[_view(take) for take in await takes_of(db, session.id)],
@@ -126,7 +131,10 @@ async def list_takes(session_id: str, db: AsyncSession = Depends(get_db)) -> Tak
     dependencies=[room_caller_dep],
 )
 async def room_listens_to_take(
-    session_id: str, take_id: str, db: AsyncSession = Depends(get_db)
+    session_id: str,
+    take_id: str,
+    project_id: str | None = device_project_dep,
+    db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
     """Give the team back the telling it just recorded, by the same signed redirect.
 
@@ -137,9 +145,13 @@ async def room_listens_to_take(
 
     The take is named inside its session rather than on its own, because the credential
     at this door is the same string on every tablet — `take_in_session` is where that
-    argument is written out.
+    argument is written out. The session is resolved through `session_for_room_caller`
+    first, for the same reason every other room route now does: naming a take inside
+    another project's session is still naming that project's session.
     """
+    await room.session_for_room_caller(db, session_id, project_id)
     take = await take_in_session(db, session_id, take_id)
+    await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
@@ -175,4 +187,5 @@ async def listen_to_take(
     do it — the same reason the sound necklace redirects rather than proxies.
     """
     take = await take_for_facilitator(db, user, take_id)
+    await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
