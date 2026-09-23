@@ -158,3 +158,21 @@ async def test_the_handle_route_never_joins_a_turns_line_being_voiced(
         "a rota sem sessão se juntava à síntese em voo e entregava a fala do turno a quem "
         "tivesse o handle, sem saber de que sessão ela era"
     )
+
+
+async def test_a_tablet_on_the_room_key_still_hears_the_line_of_a_session_it_continues(
+    client: httpx.AsyncClient,
+    teams: tuple[IRSession, dict[str, str], dict[str, str]],
+) -> None:
+    session, _, _ = teams
+    answered = await asyncio.wait_for(
+        client.post(f"{PREFIX}/sessions/{session.id}/turns"), timeout=1
+    )
+    await asyncio.sleep(0.05)
+
+    heard = await client.get(answered.json()["audio_url"])
+
+    assert answered.status_code == 200
+    assert heard.status_code == 200, (
+        "o tablet na chave da sala continuava a sessão com dono, mas a voz dela lhe era recusada"
+    )

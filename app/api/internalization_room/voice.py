@@ -244,8 +244,10 @@ async def _serve(
             db, x_device_credential=x_device_credential, x_room_key=x_room_key
         )
         if session_id is not None and key is not None:
-            session = await room.get_session_for_room_caller(
-                db, session_id, caller.project_id if caller else None
+            session = (
+                await room.get_session_for_room_caller(db, session_id, caller.project_id)
+                if caller is not None and caller.project_id is not None
+                else await room.get_session(db, session_id)
             )
             voice = _voice_of(session, key)
             if voice is None:

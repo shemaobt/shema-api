@@ -124,7 +124,7 @@ async def test_the_session_language_is_remembered_once_the_session_has_been_read
     opened = await _an_opening_turn(client, session.id)
 
     assert opened.status_code == 200, opened.text[:300]
-    assert sessions_api._LANGUAGE_MEMO.get(session.id) == "pt", (
+    assert sessions_api._LANGUAGE_MEMO.get(session.id) == ("pt", None), (
         "a sessão foi lida e a língua dela não ficou guardada para o próximo turno"
     )
 
@@ -135,7 +135,7 @@ def test_the_memo_holds_at_most_a_thousand_and_twenty_four_sessions(
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
 
     for n in range(sessions_api._LANGUAGE_MEMO_MAX + 5):
-        sessions_api._remember_language(f"session-{n}", "pt")
+        sessions_api._remember_language(f"session-{n}", "pt", None)
 
     assert len(sessions_api._LANGUAGE_MEMO) == sessions_api._LANGUAGE_MEMO_MAX
     assert "session-0" not in sessions_api._LANGUAGE_MEMO, (
@@ -155,7 +155,11 @@ class _HearingThatSignalsItStarted:
 
 
 class _SessionReadThatWaitsToBeReleased:
-    """The real `get_session`, held open until the test says the STT has had its turn."""
+    """The real `get_session`, held open until the test says the STT has had its turn.
+
+    A room-key caller names no project, so `_answer_the_turn` reads this session the way
+    it always has — by id alone — and never through `get_session_for_room_caller`.
+    """
 
     def __init__(self, real_get_session: Any) -> None:
         self._real = real_get_session
@@ -173,7 +177,7 @@ async def test_a_known_language_starts_transcription_before_the_session_read_fin
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
     session = await create_session(db_session, language="pt", pericope=P)
-    sessions_api._remember_language(session.id, session.language)
+    sessions_api._remember_language(session.id, session.language, None)
 
     hearing = _HearingThatSignalsItStarted()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
@@ -247,7 +251,7 @@ async def test_a_missing_session_cancels_the_speculative_transcription_and_still
     client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
-    sessions_api._remember_language("sessao-fantasma", "pt")
+    sessions_api._remember_language("sessao-fantasma", "pt", None)
     hearing = _HearingThatWaitsToBeCancelled()
     monkeypatch.setattr(sessions_api, "heard_speech", hearing)
 
