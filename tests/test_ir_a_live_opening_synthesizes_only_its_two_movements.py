@@ -131,3 +131,42 @@ async def test_a_live_opening_synthesizes_only_its_two_movements(
     assert body["audio_url"] == urls[0], (
         "audio_url continuava sendo a fala inteira mesmo com os dois movimentos prontos"
     )
+
+
+async def test_the_whole_line_is_cached_in_the_background_so_a_repeat_costs_nothing(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, bucket: _Bucket
+) -> None:
+    from app.api.internalization_room import sessions as sessions_api
+
+    elevenlabs = _Elevenlabs(holds=WHOLE)
+    _opens_in_two_movements(monkeypatch)
+    session = await create_session(db_session, language="pt", pericope="OV")
+
+    async with await _client(db_session, monkeypatch, elevenlabs, bucket) as client:
+        opened = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+        assert opened.status_code == 200
+
+        pending = list(sessions_api._PENDING_WHOLE_LINE_TASKS)
+        assert pending, (
+            "a linha inteira só era sintetizada quando alguém pedia, nunca sozinha depois "
+            "da abertura já ter respondido"
+        )
+        elevenlabs.may_proceed.set()
+        await asyncio.wait_for(asyncio.gather(*pending), timeout=2)
+        assert elevenlabs.calls == [FIRST, SECOND, WHOLE], (
+            "a linha inteira não chegou a ser cacheada em segundo plano"
+        )
+
+        again = await asyncio.wait_for(
+            client.post(f"{PREFIX}/sessions/{session.id}/turns", headers={"X-Room-Key": KEY}),
+            timeout=2,
+        )
+
+    assert again.status_code == 200
+    assert elevenlabs.calls == [FIRST, SECOND, WHOLE], (
+        "o diga de novo pagou a ElevenLabs outra vez por uma linha que o segundo plano já "
+        "tinha posto no bucket"
+    )

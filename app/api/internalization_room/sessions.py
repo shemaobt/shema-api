@@ -109,10 +109,36 @@ async def _voice_the_turn(
     if len(keys) != len(_SEGMENT_ROLES):
         return await whole_line(), []
 
+    task = asyncio.create_task(_voice_the_whole_line_in_the_background(outcome.speech, language))
+    _PENDING_WHOLE_LINE_TASKS.add(task)
+    task.add_done_callback(_PENDING_WHOLE_LINE_TASKS.discard)
+
     return SpeechKey(keys[0], cached=False), [
         SpokenSegment(role=role, audio_url=clip_url(key))
         for role, key in zip(_SEGMENT_ROLES, keys, strict=True)
     ]
+
+
+_PENDING_WHOLE_LINE_TASKS: set[asyncio.Task[None]] = set()
+
+
+async def _voice_the_whole_line_in_the_background(text: str, language: str) -> None:
+    """Cache the whole line after a two-movement opening already answered without it.
+
+    Held in `_PENDING_WHOLE_LINE_TASKS` so nothing collects the task mid-flight — an
+    `asyncio.Task` with no other reference is fair game for the garbage collector the
+    moment the event loop looks away. No `uploads` list: the caller's has already been
+    gathered by the time this finishes, so appending to it would lose the upload rather
+    than defer it. `synthesize_facilitator_speech` uploads its own clip when it is not
+    given one, which is exactly what lets `_say_it_again` find it later.
+    """
+    try:
+        await room.synthesize_facilitator_speech(text, language=language)
+    except Exception as error:
+        logger.warning(
+            "the opening's whole line could not be cached in the background: %s",
+            type(error).__name__,
+        )
 
 
 async def _write_the_turn(
