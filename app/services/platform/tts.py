@@ -216,7 +216,10 @@ def warm_connection_in_background(*, api_key: str, settings: Settings | None = N
 async def _warm_connection(*, api_key: str, settings: Settings | None) -> None:
     cfg = settings or get_settings()
     http = _make_client()
-    await http.get(f"{cfg.elevenlabs_base_url}/v1/models", headers={"xi-api-key": api_key})
+    try:
+        await http.get(f"{cfg.elevenlabs_base_url}/v1/models", headers={"xi-api-key": api_key})
+    except Exception as exc:
+        logger.warning("ElevenLabs warm-up failed: %s", type(exc).__name__)
 
 
 def _addressed(

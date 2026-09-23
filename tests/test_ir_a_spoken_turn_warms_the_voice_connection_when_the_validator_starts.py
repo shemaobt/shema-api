@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import time
 from types import SimpleNamespace
 from typing import Any
@@ -150,3 +152,44 @@ async def test_a_spoken_turn_warms_the_elevenlabs_connection_once_when_the_valid
     args, kwargs = elevenlabs.get.await_args
     assert "/v1/models" in args[0], "o aquecimento deveria bater num endpoint sem custo"
     assert "json" not in kwargs, "um GET de aquecimento não carrega o texto a sintetizar"
+
+
+async def _slow_failure(*_: Any, **__: Any) -> SimpleNamespace:
+    await asyncio.sleep(0.2)
+    raise RuntimeError("connection refused")
+
+
+async def test_a_warm_up_that_fails_never_slows_the_turn_and_logs_only_the_exceptions_name(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    elevenlabs: SimpleNamespace,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app.services.platform import tts
+
+    elevenlabs.get = AsyncMock(side_effect=_slow_failure)
+
+    with caplog.at_level(logging.WARNING):
+        started = time.monotonic()
+        answered = await client.post(
+            f"{PREFIX}/sessions/{waiting_room.id}/turns",
+            headers={"X-Room-Key": KEY},
+            files={"file": ("answer.m4a", b"sixteen bytes!!!", "audio/m4a")},
+        )
+        elapsed = time.monotonic() - started
+
+        assert answered.status_code == 200, "uma falha do aquecimento não pode derrubar o turno"
+        assert elapsed < 0.15, "o turno não pode esperar pelo aquecimento em segundo plano"
+
+        await asyncio.gather(*tts._PENDING_WARMUPS, return_exceptions=True)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("RuntimeError" in message for message in warnings), (
+        "a falha do aquecimento devia deixar um aviso nomeando a exceção"
+    )
+    assert not any("connection refused" in message for message in warnings), (
+        "o aviso não pode carregar o corpo/mensagem da exceção, só o nome da classe"
+    )
+    assert not any("fake-elevenlabs" in message for message in warnings), (
+        "o aviso não pode carregar a chave da ElevenLabs"
+    )
