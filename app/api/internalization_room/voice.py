@@ -42,7 +42,7 @@ class ByteRange:
     end: int  # inclusive
 
 
-_RANGE_RE = re.compile(r"^bytes=(\d+)-(\d+)$")
+_RANGE_RE = re.compile(r"^bytes=(\d+)-(\d*)$")
 
 
 def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
@@ -52,7 +52,9 @@ def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
     match = _RANGE_RE.match(range_header.strip())
     if match is None:
         return None
-    return ByteRange(start=int(match.group(1)), end=int(match.group(2)))
+    start = int(match.group(1))
+    end = int(match.group(2)) if match.group(2) else total - 1
+    return ByteRange(start=start, end=end)
 
 
 async def _arrived() -> float:
