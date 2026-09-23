@@ -1,4 +1,4 @@
-"""A rehearsal is credited to the scene the Guide's invitation named (ADR 0035).
+"""A rehearsal is credited to the scene the Guide's invitation named (ADR 0036).
 
 Between the invitation and the team's report the team keeps talking, beads close in later
 scenes, and the Scene pointer moves on. The report used to be credited to wherever the
@@ -15,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.internalization_room import IRSession
 from app.services.internalization_room.canon.elements import elements_for
+from app.services.internalization_room.comprehension.practice import (
+    guide_invited_mother_tongue_practice,
+)
 from app.services.internalization_room.comprehension.probe import ActiveProbe, ProbePurpose
 from app.services.internalization_room.hearing import HeardSpeech
 from app.services.internalization_room.live_turn import run_comprehension_turn
@@ -23,6 +26,9 @@ from app.services.internalization_room.sessions import (
     comprehension_of,
     create_session,
     save_comprehension,
+)
+from tests.test_ir_a_whole_passage_runs_without_a_provider import (
+    INVITATION as RUTH_INVITATION,
 )
 from tests.turn_harness import GUIDE, VALIDATOR, P, settings
 
@@ -51,8 +57,8 @@ def guide(monkeypatch: pytest.MonkeyPatch) -> ScriptedGuide:
     return scripted
 
 
-async def _opened(db_session: AsyncSession) -> IRSession:
-    session = await create_session(db_session, language="pt", pericope=P)
+async def _opened(db_session: AsyncSession, language: str = "pt") -> IRSession:
+    session = await create_session(db_session, language=language, pericope=P)
     return await append_exchange(db_session, session, team_utterance="", guide_response="abertura")
 
 
@@ -100,6 +106,21 @@ async def test_a_report_after_the_pointer_moved_on_credits_the_scene_invited(
     assert _practiced(session) == ["S1"], (
         "o ensaio da cena 1 era creditado à cena 3, onde o ponteiro estava quando o time "
         "avisou que tinha terminado"
+    )
+
+
+async def test_an_invitation_after_beads_closed_ahead_credits_the_first_scene_owed(
+    db_session: AsyncSession, guide: ScriptedGuide
+) -> None:
+    session = await _opened(db_session)
+    await _turn(db_session, session, guide, "podemos começar", CONVERSATION)
+    await _close_the_beads_of(db_session, session, 1, 2)
+
+    await _turn(db_session, session, guide, "Rute e Noemi em Moabe", INVITATION)
+    await _turn(db_session, session, guide, "pronto", CONVERSATION)
+
+    assert _practiced(session) == ["S1"], (
+        "o convite era gravado na cena do ponteiro, a 3, com a cena 1 ainda sem ensaio"
     )
 
 
@@ -175,3 +196,70 @@ async def test_a_session_saved_before_invitations_were_recorded_still_runs(
     await _turn(db_session, session, guide, "pronto", CONVERSATION)
 
     assert _practiced(session) == ["S1"]
+
+
+async def test_a_question_whether_the_team_rehearsed_is_not_an_invitation(
+    db_session: AsyncSession, guide: ScriptedGuide
+) -> None:
+    session = await _opened(db_session, language="en")
+    await _turn(db_session, session, guide, "we can start", "Tell me more about these people.")
+    await _turn(
+        db_session, session, guide, "a woman goes back", "Did you rehearse it in your own language?"
+    )
+    await _turn(db_session, session, guide, "yes", "Tell me more about these people.")
+
+    assert _practiced(session) == [], (
+        "a pergunta 'did you rehearse?' era lida como convite e o 'yes' marcava a cena 1"
+    )
+
+
+async def test_a_question_after_a_credit_does_not_invite_the_next_scene(
+    db_session: AsyncSession, guide: ScriptedGuide
+) -> None:
+    session = await _opened(db_session)
+    await _turn(db_session, session, guide, "podemos começar", CONVERSATION)
+    await _turn(db_session, session, guide, "uma mulher volta para o seu povo", INVITATION)
+    await _turn(
+        db_session,
+        session,
+        guide,
+        "pronto",
+        "Conseguiram ensaiar esta cena na língua de vocês?",
+    )
+    await _turn(db_session, session, guide, "sim", CONVERSATION)
+
+    assert _practiced(session) == ["S1"], (
+        "a pergunta 'conseguiram ensaiar?' gravava a cena 2 e o 'sim' a marcava sem ensaio"
+    )
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        RUTH_INVITATION,
+        INVITATION,
+        "Rehearse this scene together in your own language; when you have finished, "
+        "just say: done.",
+        "Agora ensaiem esta cena juntos na língua de vocês; quando terminarem, "
+        "venham me contar em português o que vocês entenderam.",
+        "Ensayen juntos esta escena en su lengua; cuando terminen, digan listo.",
+        "Could you all rehearse this together in your own language and tell me what you got?",
+    ],
+)
+def test_an_invitation_that_says_when_to_come_back_is_still_an_invitation(line: str) -> None:
+    assert guide_invited_mother_tongue_practice(line)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Did you rehearse it in your own language?",
+        "Were you able to rehearse it in your own language?",
+        "Conseguiram ensaiar esta cena na língua de vocês?",
+        "Vocês tentaram ensaiar na língua de vocês?",
+        "¿Pudieron ensayar esta escena en su lengua?",
+        "¿Lograron ensayar en su lengua?",
+    ],
+)
+def test_a_question_whether_the_rehearsal_happened_is_not_an_invitation(line: str) -> None:
+    assert not guide_invited_mother_tongue_practice(line)

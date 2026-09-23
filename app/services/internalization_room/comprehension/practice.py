@@ -95,6 +95,11 @@ _PRACTICE_AS_A_VERB = re.compile(
     r"|retell|retells)\b"
 )
 
+_ASKED_ABOUT = re.compile(
+    r"\b(?:did\s+you|have\s+you|were\s+you\s+able|conseguiram|tentaram|fizeram"
+    r"|pudieron|lograron|intentaron|hicieron)\b"
+)
+
 
 def guide_invited_mother_tongue_practice(guide_utterance: str) -> bool:
     """Whether a line the room said sent the team to rehearse in its own language.
@@ -114,6 +119,11 @@ def guide_invited_mother_tongue_practice(guide_utterance: str) -> bool:
     English `practice` is left out for the same reason from the other side — it is verb and
     noun at once, and only the determiner in front tells which, a list with no end.
 
+    A question can still carry the verb — "did you rehearse it in your own language?",
+    "conseguiram ensaiar?", "¿pudieron ensayar?" — so a line in the asking form is never an
+    invitation. Only the asking forms are looked for: `terminarem`, `finished` and `terminen`
+    tell the team when to come back and belong to the invitation itself.
+
     An invitation that names the rehearsal instead of asking for it — "comecem o ensaio na
     língua de vocês" — is not read as one. That is the direction to be wrong in: a missed
     invitation costs a fixed line the room says anyway and a telling that goes uncredited,
@@ -121,6 +131,8 @@ def guide_invited_mother_tongue_practice(guide_utterance: str) -> bool:
     module opens with.
     """
     text = _normalize(guide_utterance)
+    if _ASKED_ABOUT.search(text):
+        return False
     return bool(_PRACTICE_AS_A_VERB.search(text) and _MOTHER_TONGUE.search(text))
 
 
@@ -210,7 +222,7 @@ def scenes_practiced_by_the_report_the_guide_invited(
     The scope is the scene recorded on the turn the invitation was spoken: the first scene
     still owed a rehearsal. Never the pointer — on the invite turn it has not yet seen what
     the team just told, and by the report beads may have closed in later scenes and moved it
-    on (ADR 0035). The Guide never chooses a scene itself. Nothing is marked when no
+    on (ADR 0036). The Guide never chooses a scene itself. Nothing is marked when no
     invitation was recorded, and nothing is marked when the last line was not an
     invitation, which is what keeps an ordinary answer to an ordinary question from
     counting as a rehearsal.
