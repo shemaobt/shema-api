@@ -38,6 +38,7 @@ from app.services.internalization_room.back_translation import (
     verify_correction,
     with_the_whole_stretch_asked_for,
 )
+from app.services.internalization_room.background import the_reading_ahead
 from app.services.internalization_room.languages import LANGUAGE_NAMES
 from app.services.internalization_room.part_names import addresses_for, scene_titles
 from app.services.internalization_room.prompts import get_prompt_text
@@ -132,7 +133,7 @@ async def check_the_telling_back(
         state.analysed_segment_ids = [segment.id for segment in told]
         state.verified_since_whole_reading = True
     elif not state.already_analysed(told):
-        read = await analyse_telling_back(
+        read = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
@@ -150,7 +151,7 @@ async def check_the_telling_back(
         state.verified_since_whole_reading = False
 
     if not state.findings and state.verified_since_whole_reading:
-        closing = await analyse_telling_back(
+        closing = await the_reading_ahead(session.id, state, told) or await analyse_telling_back(
             segments=told,
             scope=state.scope or session.pericope,
             pericope_num=session.pericope,
