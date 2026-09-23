@@ -55,6 +55,16 @@ def stage(name: str) -> Iterator[None]:
             clock.stages[name] = clock.stages.get(name, 0) + _since(started)
 
 
+def current_clock() -> StageClock | None:
+    return _OPEN.get()
+
+
+def adopt(clock: StageClock | None) -> None:
+    mine = _OPEN.get()
+    if clock is not None and mine is not None:
+        mine.stages.update(clock.stages)
+
+
 def count(name: str, value: int) -> None:
     clock = _OPEN.get()
     if clock is not None:
