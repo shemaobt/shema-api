@@ -377,3 +377,28 @@ async def test_a_tablets_turn_with_an_id_lets_go_of_the_read_its_credential_open
         "a credencial lia o aparelho na sessão do pedido, o turno corria noutra, e a do pedido"
         " ficava presa na transação até o fim"
     )
+
+
+async def test_a_turn_whose_row_moved_while_the_guide_thought_is_refused_not_written_over(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    models: _Models,
+    rival_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def another_turn_lands_first() -> None:
+        async with rival_factory() as rival:
+            other = await get_session(rival, waiting_room.id)
+            await append_exchange(
+                rival, other, team_utterance="Rute ficou", guide_response="E depois?"
+            )
+
+    models.while_the_guide_thinks = another_turn_lands_first
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 409, answered.text[:300]
+    async with rival_factory() as fresh:
+        after = await get_session(fresh, waiting_room.id)
+    assert [m["text"] for m in after.messages] == [FIRST_QUESTION, "Rute ficou", "E depois?"], (
+        "com a transação solta antes do Guia, o turno escrevia por cima da troca que chegou antes"
+    )
