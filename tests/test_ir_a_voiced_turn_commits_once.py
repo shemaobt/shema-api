@@ -133,6 +133,34 @@ async def _the_team_answers(
     )
 
 
+def _in_a_transaction_while_thinking(
+    monkeypatch: pytest.MonkeyPatch, db: AsyncSession, models: _Models, voice: _Voice
+) -> dict[str, bool]:
+    from app.api.internalization_room import sessions as sessions_api
+
+    held: dict[str, bool] = {}
+
+    async def heard(audio: bytes, **kwargs: Any) -> HeardSpeech:
+        held["stt"] = db.in_transaction()
+        return await _heard(audio, **kwargs)
+
+    async def thinks(*, system_prompt: str, **kwargs: Any) -> str:
+        role = "validator" if "corrected_response" in system_prompt else "guide"
+        held[role] = db.in_transaction()
+        return await models(system_prompt=system_prompt, **kwargs)
+
+    async def speaks(text: str, **kwargs: Any) -> tuple[SynthesizedSpeech, bool]:
+        held["voice"] = db.in_transaction()
+        return await voice(text, **kwargs)
+
+    monkeypatch.setattr(sessions_api, "heard_speech", heard)
+    monkeypatch.setattr(
+        sys.modules["app.services.internalization_room.run_turn"], "call_agent", thinks
+    )
+    monkeypatch.setattr(sessions_api.room, "synthesize_facilitator_speech", speaks)
+    return held
+
+
 async def test_a_voiced_turn_reaches_the_database_in_one_commit_not_two(
     client: httpx.AsyncClient, waiting_room: IRSession, commits: list[object]
 ) -> None:
@@ -304,3 +332,22 @@ async def test_a_turn_whose_clip_never_reached_the_bucket_is_not_written_and_its
         FIRST_QUESTION,
         GUIDE_LINE,
     ], "o reenvio repetia o turno e gravava a troca duas vezes"
+
+
+async def test_the_models_think_with_the_database_let_go_not_with_the_read_still_open(
+    client: httpx.AsyncClient,
+    waiting_room: IRSession,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    answered = await _the_team_answers(client, waiting_room.id)
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert held == {"stt": False, "guide": False, "validator": False, "voice": False}, (
+        "a leitura da sessão abria a transação e a conexão ficava presa pelo STT, pelo Guia,"
+        " pelo Validador e pela voz"
+    )

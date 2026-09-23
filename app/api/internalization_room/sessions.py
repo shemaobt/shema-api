@@ -694,6 +694,8 @@ async def _answer_the_turn(
 
     speech_heard = HeardSpeech()
     opening = file is None and not (session.messages or [])
+    if not opening:
+        await db.commit()
     if stt is not None:
         speech_heard = await stt
     elif file is not None:
