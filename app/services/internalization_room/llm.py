@@ -9,6 +9,7 @@ from weakref import WeakKeyDictionary
 
 import anthropic
 from anthropic.types import (
+    CacheControlEphemeralParam,
     Message,
     MessageParam,
     OutputConfigParam,
@@ -193,7 +194,7 @@ async def call_agent(
                         max_tokens=max_output_tokens,
                         thinking=thinking,
                         output_config=output_config,
-                        system=_system_blocks(system_prompt),
+                        system=_system_blocks(system_prompt, ttl=_prefix_cache_ttl(role, settings)),
                         messages=messages,
                         timeout=bound_s,
                     )
@@ -334,7 +335,29 @@ def _workspace_header(settings: Settings) -> dict[str, str] | None:
     return {"anthropic-workspace-id": workspace}
 
 
-def _system_blocks(system_prompt: str) -> str | list[TextBlockParam]:
+#: The two roles a team hears — Guide and Validator — plus whoever speaks through them:
+#: panorama and the retro verdict speaker both draft and validate on these same two role
+#: strings (see `_draft`/`_validate` in validated_turn.py), so gating on the string is gating
+#: on every voiced surface at once. The judge, the analyst, the correction check and the
+#: classifier are not on the voice path and stay off.
+_VOICED_ROLES = frozenset({"guide", "validator"})
+
+
+def _prefix_cache_ttl(role: str, settings: Settings) -> Literal["1h", "5m"] | None:
+    """The cache TTL a role's prefix earns, or nothing for the API's own 5-minute default."""
+    if role not in _VOICED_ROLES:
+        return None
+    configured = settings.internalization_room_voice_cache_ttl
+    if configured == "1h":
+        return "1h"
+    if configured == "5m":
+        return "5m"
+    return None
+
+
+def _system_blocks(
+    system_prompt: str, *, ttl: Literal["1h", "5m"] | None
+) -> str | list[TextBlockParam]:
     """Split a system prompt at its cache mark, marking the half that repeats.
 
     A prompt with no mark is sent whole and uncached: a caller that has not said which half
@@ -344,8 +367,11 @@ def _system_blocks(system_prompt: str) -> str | list[TextBlockParam]:
     stable, mark, volatile = system_prompt.partition(CACHE_BREAK)
     if not mark:
         return system_prompt
+    cache_control: CacheControlEphemeralParam = {"type": "ephemeral"}
+    if ttl:
+        cache_control["ttl"] = ttl
     blocks: list[TextBlockParam] = [
-        {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}}
+        {"type": "text", "text": stable, "cache_control": cache_control}
     ]
     if volatile.strip():
         blocks.append({"type": "text", "text": volatile})

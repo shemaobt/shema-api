@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     #: ``--timeout=300``, her route's ``maxDuration = 300``). Every model call and the turn
     #: route carry this same bound and nothing shorter — a turn legitimately runs to 56 s.
     internalization_room_turn_bound_ms: int = 300_000
+    #: How long the Guide's and the Validator's prefix survives a rehearsal pause. Anthropic's
+    #: default cache entry is 5 minutes; a team that steps away for the ensaio comes back to a
+    #: cold prefix and pays its ~16k/~14k tokens again on the first turn back. Empty reverts to
+    #: that default without a code change — a deployment sets this blank if the 1-hour write
+    #: (2x the 5-minute write) turns out not to pay for itself.
+    internalization_room_voice_cache_ttl: str = "1h"
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 200
     rag_top_k: int = 5

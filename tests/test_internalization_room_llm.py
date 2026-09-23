@@ -294,6 +294,61 @@ async def test_a_caller_that_names_no_conversation_still_sends_one_user_message(
     assert holder["client"].messages.kwargs["messages"] == [{"role": "user", "content": "u"}]
 
 
+async def test_the_guide_and_the_validator_prefix_cache_for_an_hour_by_default(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("guide", "validator"):
+        await llm.call_agent(
+            system_prompt=f"map{llm.CACHE_BREAK}turn",
+            user_content="u",
+            role=role,
+            settings=_settings(),
+        )
+
+        assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+            "type": "ephemeral",
+            "ttl": "1h",
+        }, (
+            f"o prefixo do {role} caía a cada 5 minutos e a pausa de ensaio da equipe relia "
+            f"~16k/14k tokens do zero na volta"
+        )
+
+
+async def test_the_judge_and_the_classifier_stay_on_the_five_minute_cache(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    for role in ("judge", "analyst", "correction check", "classifier", "?"):
+        await llm.call_agent(
+            system_prompt=f"map{llm.CACHE_BREAK}turn",
+            user_content="u",
+            role=role,
+            settings=_settings(),
+        )
+
+        assert "ttl" not in holder["client"].messages.kwargs["system"][0]["cache_control"], (
+            f"o {role} não fica no caminho da voz, e uma escrita de 1h custa o dobro de uma "
+            f"de 5 min sem nenhum ganho — a doutrina só cobre a voz"
+        )
+
+
+async def test_the_hour_cache_reverts_to_five_minutes_through_a_setting(fake_client):
+    holder = fake_client(_reply("ok"))
+
+    await llm.call_agent(
+        system_prompt=f"map{llm.CACHE_BREAK}turn",
+        user_content="u",
+        role="guide",
+        settings=_settings(internalization_room_voice_cache_ttl=""),
+    )
+
+    assert holder["client"].messages.kwargs["system"][0]["cache_control"] == {
+        "type": "ephemeral"
+    }, (
+        "um deployment que precisasse voltar aos 5 minutos não tinha como, sem esperar um "
+        "novo deploy do código"
+    )
+
+
 async def test_the_usage_line_says_which_cache_lifetime_each_written_token_bought(
     fake_client, caplog
 ):
