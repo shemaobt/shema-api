@@ -25,6 +25,7 @@ import pytest
 from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.internalization_room import sessions as sessions_api
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError
 from app.db.models.internalization_room import IRSessionStatus
@@ -342,6 +343,43 @@ async def test_a_session_at_done_still_takes_a_turn_because_the_circle_is_alive(
         f"uma sessão em done recusava o turno — estado terminal no servidor: {answered.text[:300]}"
     )
     assert spoken == [GUIDE_LINE, GUIDE_LINE]
+
+
+async def test_a_broken_microphone_is_answered_the_same_way_as_a_broken_model(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+    spoken: list[str],
+) -> None:
+    """The Guide and the Validator are not the only provider on this turn: ElevenLabs is
+    heard through the same door, so an outage there gets the same 502 and the same intact
+    session, never a turn that could not make itself safe rendered as an utterance."""
+    _the_models_answer(monkeypatch, GUIDE_LINE)
+    session_id = await _a_room_opening_a_passage(client)
+    assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
+    before = await get_session(db_session, session_id)
+    status_before, messages_before = before.status, list(before.messages or [])
+    spoken_before = list(spoken)
+
+    async def _heard_speech_fails(*_: object, **__: object) -> HeardSpeech:
+        raise UpstreamServiceError("Transcription request failed with status 503")
+
+    monkeypatch.setattr(sessions_api, "heard_speech", _heard_speech_fails)
+
+    answered = await _the_team_answers(client, session_id)
+
+    assert answered.status_code == 502, (
+        f"uma queda no ElevenLabs virava a fala enlatada de novo, em vez de um 502: "
+        f"{answered.text[:300]}"
+    )
+    body = answered.json()
+    assert body["code"] == "UPSTREAM_ERROR"
+    assert spoken == spoken_before, "um turno que não ouviu nada não tem fala nova para sintetizar"
+    after = await get_session(db_session, session_id)
+    assert after.status == status_before, "a queda do STT não muda o estado da sessão"
+    assert list(after.messages or []) == messages_before, (
+        "um turno que não ouviu nada não grava exchange nenhuma"
+    )
 
 
 async def test_a_failed_turn_logs_its_cause_and_never_what_the_team_said(
