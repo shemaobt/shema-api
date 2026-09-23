@@ -107,6 +107,62 @@ async def test_a_stretch_replaced_is_kept_and_heard_with_the_database_let_go(
     )
 
 
+async def test_a_telling_sent_again_is_heard_with_the_database_let_go_not_under_its_lookup(
+    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
+) -> None:
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    again = {
+        "take_id": part.id,
+        "starts_ms": "0",
+        "ends_ms": str(PART_MS),
+        "retelling": "true",
+    }
+    audio = {"file": ("trecho.m4a", b"a equipe contou de novo", "audio/mp4")}
+    route = f"{PREFIX}/sessions/{session.id}/back-translation/chunks"
+    headers = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
+    first = await client.post(route, headers=headers, data=again, files=audio)
+    assert first.status_code == 200, first.text
+    held.clear()
+
+    resent = await client.post(route, headers=headers, data=again, files=audio)
+
+    assert resent.status_code == 200, resent.text
+    assert held == {"stt": False}, (
+        "o reenvio achava o take já guardado e transcrevia com a busca pela chave ainda aberta"
+    )
+
+
+async def test_a_replacement_sent_again_is_heard_with_the_database_let_go_not_under_its_lookup(
+    client: httpx.AsyncClient, db_session: AsyncSession, held: dict[str, bool]
+) -> None:
+    session, (part,) = await rehearsed_in_parts(db_session, 1)
+    stretch = await stretch_on(db_session, session, part)
+    headers = {"X-Room-Key": KEY, "X-Room-Device": TABLET}
+    slice_ = {"take_id": part.id, "starts_ms": "0", "ends_ms": str(PART_MS)}
+    audio = {"file": ("trecho.m4a", b"a equipe contou outra vez", "audio/mp4")}
+    first = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{stretch.id}/replace",
+        headers=headers,
+        data=slice_,
+        files=audio,
+    )
+    assert first.status_code == 200, first.text
+    standing = await stretch_on(db_session, session, part)
+    held.clear()
+
+    resent = await client.post(
+        f"{PREFIX}/sessions/{session.id}/segments/{standing.id}/replace",
+        headers=headers,
+        data=slice_,
+        files=audio,
+    )
+
+    assert resent.status_code == 200, resent.text
+    assert held == {"stt": False}, (
+        "a troca reenviada achava o take já guardado e transcrevia com a busca ainda aberta"
+    )
+
+
 @contextmanager
 def _checkouts(test_engine: AsyncEngine) -> Iterator[list[object]]:
     counted: list[object] = []
