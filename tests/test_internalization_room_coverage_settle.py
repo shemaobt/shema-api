@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
@@ -506,3 +506,72 @@ async def test_a_settle_that_fails_still_says_whether_the_failure_reached_a_tabl
     lines = _coverage_timing(caplog)
     assert len(lines) == 1
     assert lines[0].endswith(" delivered=0"), "o settle que falhava sumia do cronômetro"
+
+
+@pytest.fixture
+def connections_out() -> Iterator[list[int]]:
+    from sqlalchemy import event
+
+    from app.core.database import engine
+
+    out = [0]
+
+    def _checked_out(*_: Any) -> None:
+        out[0] += 1
+
+    def _checked_in(*_: Any) -> None:
+        out[0] -= 1
+
+    event.listen(engine.sync_engine, "checkout", _checked_out)
+    event.listen(engine.sync_engine, "checkin", _checked_in)
+    yield out
+    event.remove(engine.sync_engine, "checkout", _checked_out)
+    event.remove(engine.sync_engine, "checkin", _checked_in)
+
+
+async def test_a_settle_lets_go_of_its_database_connection_while_the_classifier_thinks(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, connections_out: list[int]
+) -> None:
+    held_while_classifying: list[int] = []
+
+    async def _classified(*, coverage_state: dict[str, str], **_: Any) -> dict[str, str]:
+        held_while_classifying.append(connections_out[0])
+        return coverage_state
+
+    monkeypatch.setattr(background, "classify_coverage", _classified)
+    session = await service.create_session(db_session, pericope=P)
+
+    await _settle(session.id, "turn-9")
+
+    assert held_while_classifying == [0], (
+        "o settle segurava uma conexão do banco durante os ~21 s do classificador, e cada "
+        "turno em reflexão tirava uma conexão do pool de todos os outros"
+    )
+
+
+async def test_a_bead_another_settle_lit_during_the_classifier_survives_this_one(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.database import AsyncSessionLocal
+
+    first, second = element_keys(P)[:2]
+    session = await service.create_session(db_session, pericope=P)
+    engaged = CoverageStatus.ENGAGED.value
+
+    async def _classified(*, coverage_state: dict[str, str], **_: Any) -> dict[str, str]:
+        async with AsyncSessionLocal() as elsewhere:
+            lit = (await service.get_session(elsewhere, session.id)).coverage_state or {}
+            await service.apply_coverage(elsewhere, session.id, {**lit, first: engaged})
+        return {**coverage_state, second: engaged}
+
+    monkeypatch.setattr(background, "classify_coverage", _classified)
+
+    await _settle(session.id, "turn-10")
+
+    async with AsyncSessionLocal() as reading:
+        stored = (await service.get_session(reading, session.id)).coverage_state or {}
+    assert stored.get(second) == engaged
+    assert stored.get(first) == engaged, (
+        "o apply_coverage relia a sessão pelo identity map do próprio settle, com o estado "
+        "de antes do classificador, e apagava a conta que outro settle acendera nesse meio"
+    )
