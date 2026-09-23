@@ -14,7 +14,8 @@ from httpx import ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import ProjectRole
-from app.db.models.internalization_room import IRTake, IRTakeKind
+from app.db.models.internalization_room import IRQuestion, IRQuestionStatus, IRTake, IRTakeKind
+from app.services.internalization_room.voice_handles import facilitator_audio_url
 from tests.baker import (
     grant_facilitator_app_role,
     make_language,
@@ -22,6 +23,7 @@ from tests.baker import (
     make_project_user_access,
     make_user,
 )
+from tests.hard_stretch_harness import MemoryStore
 
 IR = "/api/internalization-room"
 
@@ -109,4 +111,50 @@ async def test_a_take_the_facilitator_plays_back_is_signed_with_the_database_let
     assert played.status_code == 307, played.text
     assert held == {"sign": False}, (
         "a leitura do take pela facilitadora ficava aberta enquanto o endereço era assinado"
+    )
+
+
+async def a_recorded_question(db: AsyncSession, project_id: str, *, tag: str) -> IRQuestion:
+    from app.db.models.internalization_room import IRSession
+
+    session = IRSession(id=f"sessao-{tag}", pericope="P03", project_id=project_id)
+    db.add(session)
+    await db.flush()
+    question = IRQuestion(
+        id=f"pergunta-{tag}",
+        session_id=session.id,
+        device_id=f"tablet-{tag}",
+        project_id=project_id,
+        pericope="P03",
+        status=IRQuestionStatus.OPEN,
+        audio_key=f"internalization-room/questions/{tag}.m4a",
+    )
+    db.add(question)
+    await db.commit()
+    return question
+
+
+async def test_a_question_the_facilitator_hears_is_fetched_with_the_scope_read_let_go(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services.internalization_room import questions as questions_service
+
+    project, headers = await a_facilitator(db_session)
+    question = await a_recorded_question(db_session, project.id, tag="ouvida")
+    held: dict[str, bool] = {}
+
+    class WatchedBucket(MemoryStore):
+        async def get(self, key: str) -> bytes | None:
+            held["get"] = db_session.in_transaction()
+            return await super().get(key)
+
+    bucket = WatchedBucket()
+    bucket.objects[question.audio_key] = b"a equipe perguntou"
+    monkeypatch.setattr(questions_service, "_store", lambda *_, **__: bucket)
+
+    heard = await client.get(facilitator_audio_url(question.audio_key), headers=headers)
+
+    assert heard.status_code == 200, heard.text
+    assert held == {"get": False}, (
+        "a leitura do escopo da facilitadora ficava aberta enquanto o áudio vinha do balde"
     )

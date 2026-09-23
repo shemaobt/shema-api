@@ -201,6 +201,7 @@ async def facilitator_audio(
     if key is None:
         raise NotFoundError("No such audio")
     await service.audio_of_a_question_this_facilitator_facilitates(db, user, key)
+    await db.commit()
     return await _audio(handle)
 
 
