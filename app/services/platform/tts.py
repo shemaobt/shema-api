@@ -19,8 +19,9 @@ import json
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from functools import partial
 from typing import Protocol
 
 import httpx
@@ -32,6 +33,8 @@ from app.services.platform.voices import language_hint, resolve_voice
 logger = logging.getLogger(__name__)
 
 MIME_TYPE = "audio/mpeg"
+
+Upload = Callable[[], Awaitable[None]]
 
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
 
@@ -126,6 +129,7 @@ async def synthesize_speech(
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
     key_only: bool = False,
+    uploads: list[Upload] | None = None,
 ) -> SynthesizedSpeech:
     """Speak `text` in `language` (BCP-47 locale, e.g. `pt-BR`), serving from cache when possible.
 
@@ -173,7 +177,11 @@ async def synthesize_speech(
         api_key=credential,
     )
     _remember_fresh(key, audio)
-    await _cache_quietly(speech_store, key, audio)
+    upload = partial(_cache_quietly, speech_store, key, audio)
+    if uploads is None:
+        await upload()
+    else:
+        uploads.append(upload)
     return SynthesizedSpeech(audio, MIME_TYPE, _etag(audio), cached=False, key=key)
 
 

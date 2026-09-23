@@ -8,7 +8,7 @@ from app.core.config import Settings, get_settings
 from app.services.internalization_room.languages import floor, normalize
 from app.services.internalization_room.speakable import speakable_text
 from app.services.internalization_room.voices import voice_for
-from app.services.platform.tts import SpeechStore, SynthesizedSpeech
+from app.services.platform.tts import SpeechStore, SynthesizedSpeech, Upload
 from app.services.platform.tts import synthesize_speech as platform_speech
 
 _VOICED_HERE: OrderedDict[str, None] = OrderedDict()
@@ -26,6 +26,7 @@ async def synthesize_facilitator_speech(
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
     settings: Settings | None = None,
+    uploads: list[Upload] | None = None,
 ) -> tuple[SynthesizedSpeech, bool]:
     """Speak one facilitator line in the internalization room's own voice.
 
@@ -78,6 +79,7 @@ async def synthesize_facilitator_speech(
         client=client,
         store=store,
         key_only=True,
+        uploads=uploads,
     )
     _VOICED_HERE[speech.key] = None
     _VOICED_HERE.move_to_end(speech.key)
