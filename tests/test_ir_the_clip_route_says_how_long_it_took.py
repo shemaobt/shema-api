@@ -544,3 +544,13 @@ async def test_an_open_range_returns_everything_from_its_start_to_the_end(
     assert fetched.status_code == 206, fetched.text
     assert fetched.content == CLIP[1200:]
     assert fetched.headers["content-range"] == f"bytes 1200-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_a_suffix_range_returns_only_the_last_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=-34")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[-34:]
+    assert fetched.headers["content-range"] == f"bytes {len(CLIP) - 34}-{len(CLIP) - 1}/{len(CLIP)}"
