@@ -369,6 +369,26 @@ async def test_the_usage_line_says_which_cache_lifetime_each_written_token_bough
     )
 
 
+async def test_an_hour_of_cache_write_costs_twice_a_five_minute_one(fake_client, caplog):
+    fake_client(
+        _reply(
+            "ok",
+            cache_creation=SimpleNamespace(
+                ephemeral_5m_input_tokens=0, ephemeral_1h_input_tokens=1_000_000
+            ),
+        )
+    )
+
+    with caplog.at_level(logging.INFO):
+        await llm.call_agent(system_prompt="s", user_content="u", settings=_settings())
+
+    record = next(r for r in caplog.records if getattr(r, "cost_usd", None) is not None)
+    assert record.cost_usd == pytest.approx(20.0001), (
+        "o milhão de tokens de escrita de 1h era cobrado ao preço de 5 min (US$ 12,50 no "
+        "Fable 5.1), e o total do turno saía US$ 7,50 abaixo do que ele de fato custou"
+    )
+
+
 async def test_a_call_that_wrote_nothing_to_the_cache_says_zero_for_both_lifetimes(
     fake_client, caplog
 ):

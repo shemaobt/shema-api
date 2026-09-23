@@ -424,7 +424,8 @@ def _report_spend(
         model,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
-        cache_write_tokens=cache_write,
+        cache_write_5m_tokens=cache_write_5m,
+        cache_write_1h_tokens=cache_write_1h,
         cache_read_tokens=cache_read,
     )
     logger.info(
