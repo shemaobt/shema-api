@@ -77,6 +77,17 @@ _BARE_PAST_REPORT = (
     re.compile(r"^ensaiamos\b"),
     re.compile(r"^we\s+rehearsed\b"),
 )
+#: "Ensaiamos" is Portuguese present and preterite at once — "nós ensaiamos" is both "we
+#: rehearse" and "we rehearsed" — so the same word that opens a finished report also opens
+#: a team saying it will rehearse later, with no "vamos" or "queremos"
+#: ahead of the verb for `_FUTURE_REPORT` to catch ("ensaiamos depois, primeiro queremos
+#: ouvir a história de novo"). A forward adverb anywhere in the same clause reads it as the
+#: plan it is instead. English "we rehearsed" carries no such ambiguity, so this guards only
+#: the Portuguese half of `_BARE_PAST_REPORT`.
+_BARE_PAST_POSTPONED = re.compile(
+    r"\b(?:depois|mais\s+tarde|amanha|logo|daqui\s+a\s+pouco|em\s+seguida|ja\s+ja)\b"
+    r"|\bprimeiro\b.{0,32}\b(?:quer\w*|vamos)\b"
+)
 _FUTURE_REPORT = (
     re.compile(
         r"\b(vamos|iremos|queremos|pretendemos|podemos)\b.{0,32}"
@@ -164,7 +175,11 @@ def _explicit_completed_practice_report(team_utterance: str) -> bool:
             continue
         if any(pattern.search(clause) for pattern in _COMPLETED_REPORT):
             return True
-        if index == 0 and any(pattern.search(clause) for pattern in _BARE_PAST_REPORT):
+        if (
+            index == 0
+            and any(pattern.search(clause) for pattern in _BARE_PAST_REPORT)
+            and not _BARE_PAST_POSTPONED.search(clause)
+        ):
             return True
     return False
 

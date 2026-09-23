@@ -171,6 +171,22 @@ def test_a_bare_past_tense_still_obeys_every_refusal_guard() -> None:
     )
 
 
+def test_a_bare_present_that_reads_like_the_past_still_defers_to_a_later_plan() -> None:
+    """ "Ensaiamos" is Portuguese present and preterite at once — "nós ensaiamos" is both "we
+    rehearse" and "we rehearsed" — so the same word that opens a finished report also opens
+    a team saying it will rehearse later. A forward adverb in the same clause reads it as
+    the plan it is, exactly like every other postponement, even with no "vamos" or "queremos"
+    ahead of the verb for `_FUTURE_REPORT` to catch."""
+    assert not confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Ensaiamos depois, primeiro queremos ouvir a história de novo."
+    )
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Ensaiamos amanhã.")
+    assert not confirms_completed_mother_tongue_practice(INVITATION["pt"], "Ensaiamos em seguida.")
+    assert confirms_completed_mother_tongue_practice(
+        INVITATION["pt"], "Ensaiamos, e entendemos que a fome levou a família para Moabe."
+    )
+
+
 def test_a_bare_past_tense_that_does_not_open_the_reply_never_reports() -> None:
     """The verb has to be the reply's own first word, not merely present in it — sitting
     later in the same clause, or opening a clause of its own further along, is not the
