@@ -631,7 +631,10 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
     out of the bucket — except for an opening whose whole line is still being voiced in the
     background (`_start_the_whole_line`), where the bucket is empty and a plain lookup would
     pay ElevenLabs a second time for a clip already on its way. That case joins the pending
-    task in `_PENDING_WHOLE_LINE_BY_TEXT` instead of asking again.
+    task in `_PENDING_WHOLE_LINE_BY_TEXT` instead of asking again — shielded, because an
+    `await` on another task ties this task's own cancellation to it: a team that gives up
+    on "say it again" must not reach back and cancel the opening's background synthesis,
+    which belongs to a different request and is still wanted there.
     """
     last = next(
         (
@@ -646,7 +649,7 @@ async def _say_it_again(session: IRSession, *, turn_id: str | None) -> TurnRespo
         joining = _PENDING_WHOLE_LINE_BY_TEXT.get((last, session.language))
         if joining is not None:
             try:
-                voiced = await joining
+                voiced = await asyncio.shield(joining)
             except Exception:
                 voiced = None
         if voiced is None:
