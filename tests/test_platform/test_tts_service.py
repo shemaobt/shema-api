@@ -6,6 +6,7 @@ import pytest
 
 from app.core.config import Settings
 from app.core.exceptions import UpstreamServiceError, ValidationError
+from app.services.platform import stt, tts
 from app.services.platform.tts import cache_key, synthesize_speech
 from app.services.platform.voices import VOICES, resolve_voice
 
@@ -398,3 +399,16 @@ async def test_an_own_key_stands_in_for_a_missing_shared_one() -> None:
     )
 
     assert client.post.await_count == 1
+
+
+async def test_the_tts_client_holds_its_connection_a_minute_the_stt_client_still_lets_go_at_five(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tts, "_DEFAULT_CLIENT", None)
+    monkeypatch.setattr(stt, "_DEFAULT_CLIENT", None)
+
+    tts_client = tts._make_client()
+    stt_client = stt._make_client()
+
+    assert tts_client._transport._pool._keepalive_expiry == 60.0
+    assert stt_client._transport._pool._keepalive_expiry == 5.0

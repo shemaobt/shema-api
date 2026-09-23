@@ -334,5 +334,8 @@ def _default_store(cfg: Settings) -> SpeechStore:
 def _make_client() -> httpx.AsyncClient:
     global _DEFAULT_CLIENT
     if _DEFAULT_CLIENT is None:
-        _DEFAULT_CLIENT = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
+        _DEFAULT_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=10.0),
+            limits=httpx.Limits(keepalive_expiry=60.0),
+        )
     return _DEFAULT_CLIENT
