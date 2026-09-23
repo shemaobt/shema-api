@@ -323,3 +323,36 @@ async def test_cancelling_the_request_does_not_get_swallowed_while_stopping_the_
 
     with pytest.raises(asyncio.CancelledError):
         await request
+
+
+async def test_a_read_that_cannot_be_let_go_still_cancels_the_speculative_transcription(
+    client: httpx.AsyncClient, db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sessions_api, "_LANGUAGE_MEMO", OrderedDict())
+    session = await create_session(db_session, language="pt", pericope=P)
+    sessions_api._remember_language(session.id, session.language, None)
+    hearing = _HearingThatWaitsToBeCancelled()
+    monkeypatch.setattr(sessions_api, "heard_speech", hearing)
+    commit = db_session.commit
+
+    async def the_connection_drops() -> None:
+        monkeypatch.setattr(db_session, "commit", commit)
+        raise ConnectionResetError("a conexão caiu no COMMIT da leitura")
+
+    monkeypatch.setattr(db_session, "commit", the_connection_drops)
+
+    answered = await _a_spoken_turn(client, session.id)
+
+    assert answered.status_code >= 500, answered.text[:300]
+    assert hearing.started.is_set(), (
+        "a asserção só prova cancelamento se a transcrição especulativa tiver mesmo começado"
+    )
+    assert hearing.cancelled is True, (
+        "o COMMIT da leitura falhou fora do try e a transcrição especulativa ficou sem dono"
+    )
+    stranded = [
+        task
+        for task in asyncio.all_tasks()
+        if task.get_coro().__name__ == "_timed_stt" and not task.done()
+    ]
+    assert stranded == []
