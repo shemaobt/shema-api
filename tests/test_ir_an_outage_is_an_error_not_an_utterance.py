@@ -18,6 +18,7 @@ import logging
 import sys
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import anthropic
 import httpx
@@ -379,6 +380,67 @@ async def test_a_broken_microphone_is_answered_the_same_way_as_a_broken_model(
     assert after.status == status_before, "a queda do STT não muda o estado da sessão"
     assert list(after.messages or []) == messages_before, (
         "um turno que não ouviu nada não grava exchange nenhuma"
+    )
+
+
+class _EmptyBucket:
+    """A bucket that never has the clip, so a request that reaches it always calls out."""
+
+    async def get(self, key: str) -> bytes | None:
+        return None
+
+    async def exists(self, key: str) -> bool:
+        return False
+
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        return None
+
+
+async def test_a_broken_voice_is_answered_the_same_way_as_a_broken_microphone(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
+    spoken: list[str],
+) -> None:
+    """ElevenLabs speaks the turn as well as it hears one: a dropped connection on the way
+    out gets the same 502 and the same intact session as an outage on the way in, never the
+    turn rendered as an utterance nobody heard finish."""
+    from app.core.config import get_settings
+    from app.services.internalization_room.synthesize_facilitator_speech import (
+        synthesize_facilitator_speech as real_synthesize_facilitator_speech,
+    )
+    from app.services.platform import tts as tts_module
+
+    _the_models_answer(monkeypatch, GUIDE_LINE)
+    session_id = await _a_room_opening_a_passage(client)
+    assert (await _the_room_takes_a_turn(client, session_id)).status_code == 200
+    before = await get_session(db_session, session_id)
+    status_before, messages_before = before.status, list(before.messages or [])
+    spoken_before = list(spoken)
+
+    monkeypatch.setattr(get_settings(), "elevenlabs_api_key", "fake-elevenlabs", raising=False)
+    monkeypatch.setattr(
+        sessions_api.room, "synthesize_facilitator_speech", real_synthesize_facilitator_speech
+    )
+    monkeypatch.setattr(tts_module, "_default_store", lambda _cfg: _EmptyBucket())
+    monkeypatch.setattr(
+        tts_module,
+        "_make_client",
+        lambda: SimpleNamespace(post=AsyncMock(side_effect=httpx.ConnectError("boom"))),
+    )
+
+    answered = await _the_team_answers(client, session_id)
+
+    assert answered.status_code == 502, (
+        f"uma queda no ElevenLabs ao falar virava 500, não 502: {answered.text[:300]}"
+    )
+    body = answered.json()
+    assert body["code"] == "UPSTREAM_ERROR"
+    assert spoken == spoken_before, "uma fala que falhou não entra na lista do que foi dito"
+    after = await get_session(db_session, session_id)
+    assert after.status == status_before, "a queda do TTS não muda o estado da sessão"
+    assert list(after.messages or []) == messages_before, (
+        "um turno que não terminou de falar não grava exchange nenhuma"
     )
 
 
