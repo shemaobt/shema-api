@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
+import hmac
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.services.internalization_room.voices import room_voices
 
 _PREFIX = "tts/"
@@ -21,6 +23,11 @@ def to_handle(key: str) -> str:
     path, so the route stays a single segment.
     """
     return base64.urlsafe_b64encode(key.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _signature(handle: str, signing_key: str) -> str:
+    digest = hmac.new(signing_key.encode("utf-8"), handle.encode("utf-8"), hashlib.sha256)
+    return base64.urlsafe_b64encode(digest.digest()).decode("ascii").rstrip("=")
 
 
 def _decode(handle: str) -> str | None:
@@ -42,6 +49,12 @@ def from_handle(handle: str, *, settings: Settings) -> str | None:
     that covers them all would reach the whole bucket; the set stays exact, so a language the
     room does not speak addresses nothing.
     """
+    signing_key = settings.internalization_room_clip_signing_key
+    if signing_key:
+        handle, _, signature = handle.rpartition(".")
+        expected = _signature(handle, signing_key)
+        if not hmac.compare_digest(signature.encode("utf-8"), expected.encode("ascii")):
+            return None
     key = _decode(handle)
     if key is None:
         return None
@@ -69,7 +82,11 @@ def from_question_handle(handle: str) -> str | None:
 
 def clip_url(key: str) -> str:
     """The address a turn hands the app for the line it must speak."""
-    return f"{ROUTE}/{to_handle(key)}"
+    handle = to_handle(key)
+    signing_key = get_settings().internalization_room_clip_signing_key
+    if signing_key:
+        handle = f"{handle}.{_signature(handle, signing_key)}"
+    return f"{ROUTE}/{handle}"
 
 
 def team_audio_url(key: str) -> str:
