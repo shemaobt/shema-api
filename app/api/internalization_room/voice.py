@@ -64,8 +64,10 @@ def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
     if first == "":
         if last == "":
             return None
-        return ByteRange(start=total - int(last), end=total - 1)
+        return ByteRange(start=max(total - int(last), 0), end=total - 1)
     start = int(first)
+    if last and int(last) < start:
+        return None
     if start >= total:
         raise RangeNotSatisfiable()
     end = int(last) if last else total - 1

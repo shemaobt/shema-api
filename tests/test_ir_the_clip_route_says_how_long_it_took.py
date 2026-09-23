@@ -615,6 +615,26 @@ async def test_a_revoked_credential_is_still_refused_with_zero_bytes_when_a_rang
     assert CLIP not in fetched.content
 
 
+async def test_a_suffix_range_longer_than_the_clip_serves_the_whole_clip(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, f"bytes=-{len(CLIP) + 9999}")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP
+    assert fetched.headers["content-range"] == f"bytes 0-{len(CLIP) - 1}/{len(CLIP)}"
+
+
+async def test_an_inverted_range_is_ignored_not_served_as_an_empty_slice(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-5")
+
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.content == CLIP
+    assert "content-range" not in fetched.headers
+
+
 async def test_a_range_this_route_does_not_understand_is_ignored_not_refused(
     client: httpx.AsyncClient,
 ) -> None:
