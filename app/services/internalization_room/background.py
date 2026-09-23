@@ -126,27 +126,30 @@ async def transcribe_question(*, question_id: str, audio: bytes) -> None:
 
 
 async def read_ahead(*, session_id: str) -> None:
-    async with AsyncSessionLocal() as db:
-        session = await get_session(db, session_id)
-        state = back_translation_of(session)
-        final = await final_segments(db, session_id)
-        told = told_back(final)
-        key = [segment.id for segment in told]
-        outrun = _reading.get(session_id)
-        if outrun is not None and outrun[0] != key:
-            outrun[1].cancel()
-        if first_untold(final) is not None or untold_parts(
-            current_parts(await takes_of(db, session_id)), rehearsed_parts(final)
-        ):
-            return
-        with counted_for(session_id):
-            running = asyncio.create_task(_read_and_keep(db, session, state, told))
-            _reading[session_id] = (key, running)
-            try:
-                await asyncio.wait([running])
-            finally:
-                if _reading.get(session_id) == (key, running):
-                    del _reading[session_id]
+    try:
+        async with AsyncSessionLocal() as db:
+            session = await get_session(db, session_id)
+            state = back_translation_of(session)
+            final = await final_segments(db, session_id)
+            told = told_back(final)
+            key = [segment.id for segment in told]
+            outrun = _reading.get(session_id)
+            if outrun is not None and outrun[0] != key:
+                outrun[1].cancel()
+            if first_untold(final) is not None or untold_parts(
+                current_parts(await takes_of(db, session_id)), rehearsed_parts(final)
+            ):
+                return
+            with counted_for(session_id):
+                running = asyncio.create_task(_read_and_keep(db, session, state, told))
+                _reading[session_id] = (key, running)
+                try:
+                    await asyncio.wait([running])
+                finally:
+                    if _reading.get(session_id) == (key, running):
+                        del _reading[session_id]
+    except Exception:
+        logger.exception("Reading ahead failed for session %s", session_id)
 
 
 async def _read_and_keep(

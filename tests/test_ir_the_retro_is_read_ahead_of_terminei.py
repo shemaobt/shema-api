@@ -624,3 +624,24 @@ async def test_the_reading_ahead_is_the_sessions_money_and_adds_no_turn(
     assert [(line.session_turns, line.session_calls) for line in lines] == [(1, 3)], (
         "a leitura adiantada rodava fora de qualquer total da sessão"
     )
+
+
+class _NoConnection:
+    async def __aenter__(self) -> AsyncSession:
+        raise TimeoutError("the pool had no connection to give")
+
+    async def __aexit__(self, *_: object) -> bool:
+        return False
+
+
+async def test_a_reading_ahead_that_cannot_reach_the_database_is_logged_and_dropped(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from app.services.internalization_room import background
+
+    monkeypatch.setattr(background, "AsyncSessionLocal", _NoConnection)
+
+    with caplog.at_level(logging.ERROR, logger=background.__name__):
+        await background.read_ahead(session_id="a-session-the-stretch-already-answered")
+
+    assert "Reading ahead failed for session a-session-the-stretch-already-answered" in caplog.text
