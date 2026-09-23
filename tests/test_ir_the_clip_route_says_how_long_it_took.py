@@ -98,6 +98,15 @@ async def _fetch(client: httpx.AsyncClient, key: str) -> httpx.Response:
     )
 
 
+async def _fetch_range(
+    client: httpx.AsyncClient, key: str, range_header: str, **extra_headers: str
+) -> httpx.Response:
+    return await client.get(
+        f"{PREFIX}/voice/{to_handle(key)}",
+        headers={"X-Device-Credential": "tablet", "Range": range_header, **extra_headers},
+    )
+
+
 def _voice_get_lines(caplog: pytest.LogCaptureFixture) -> list[str]:
     return [r.getMessage() for r in caplog.records if "[voice-get]" in r.getMessage()]
 
@@ -515,3 +524,13 @@ async def test_the_etag_comes_from_the_clips_key_not_a_hash_of_its_bytes(
     assert fetched.status_code == 200
     assert fetched.headers["etag"] == sha256(VOICED_ELSEWHERE.encode()).hexdigest()[:32]
     assert fetched.headers["etag"] != sha256(CLIP).hexdigest()[:32]
+
+
+async def test_a_range_inside_the_clip_returns_only_those_bytes(
+    client: httpx.AsyncClient,
+) -> None:
+    fetched = await _fetch_range(client, VOICED_ELSEWHERE, "bytes=10-19")
+
+    assert fetched.status_code == 206, fetched.text
+    assert fetched.content == CLIP[10:20]
+    assert fetched.headers["content-range"] == f"bytes 10-19/{len(CLIP)}"

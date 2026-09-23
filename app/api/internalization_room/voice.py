@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import re
 import time
+from dataclasses import dataclass
 from hashlib import sha256
 
 from fastapi import APIRouter, Depends, Header, Response
@@ -32,6 +34,25 @@ IMMUTABLE = "private, max-age=31536000, immutable"
 #: mint another under the room's voice, so a junk credential can still buy a read that the
 #: gate then refuses. At most two of those at once leaves the uploads their threads.
 _SPECULATIVE_READS = asyncio.Semaphore(2)
+
+
+@dataclass(frozen=True)
+class ByteRange:
+    start: int
+    end: int  # inclusive
+
+
+_RANGE_RE = re.compile(r"^bytes=(\d+)-(\d+)$")
+
+
+def _resolve_range(range_header: str | None, *, total: int) -> ByteRange | None:
+    """The single byte range this request asks for, or `None` to serve the whole clip."""
+    if range_header is None:
+        return None
+    match = _RANGE_RE.match(range_header.strip())
+    if match is None:
+        return None
+    return ByteRange(start=int(match.group(1)), end=int(match.group(2)))
 
 
 async def _arrived() -> float:
@@ -88,6 +109,7 @@ async def clip(
     db: AsyncSession = Depends(get_db),
     x_device_credential: str | None = Header(default=None, alias=DEVICE_CREDENTIAL_HEADER),
     x_room_key: str | None = Header(default=None),
+    x_range: str | None = Header(default=None, alias="Range"),
 ) -> Response:
     """Serve one synthesized line by the handle a turn handed out.
 
@@ -144,12 +166,26 @@ async def clip(
     )
     if audio is None:
         raise NotFoundError("No such clip")
+    etag = sha256(key.encode()).hexdigest()[:32]
+    byte_range = _resolve_range(x_range, total=len(audio))
+    if byte_range is not None:
+        return Response(
+            content=audio[byte_range.start : byte_range.end + 1],
+            media_type=_media_type(key),
+            status_code=206,
+            headers={
+                "Cache-Control": IMMUTABLE,
+                "ETag": etag,
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes {byte_range.start}-{byte_range.end}/{len(audio)}",
+            },
+        )
     return Response(
         content=audio,
         media_type=_media_type(key),
         headers={
             "Cache-Control": IMMUTABLE,
-            "ETag": sha256(key.encode()).hexdigest()[:32],
+            "ETag": etag,
             "Accept-Ranges": "bytes",
         },
     )
