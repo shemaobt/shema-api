@@ -82,11 +82,7 @@ async def add_chunk(
     it were one recording, which is what made re-recording one stretch move every stretch after
     it; a slice with no file to be a slice of would be the same defect under another name.
     """
-    session = (
-        await room.get_session_for_room_caller(db, session_id, project_id)
-        if project_id is not None
-        else await room.get_session(db, session_id)
-    )
+    session = await room.session_for_room_caller(db, session_id, project_id)
     rehearsal = await rehearsal_take_of(db, session.id, take_id)
     refuse_a_slice_that_is_not_one(starts_ms, ends_ms)
     audio_bytes = await file.read()
@@ -280,11 +276,7 @@ async def _finished(
     project_id: str | None,
     db: AsyncSession,
 ) -> BackTranslationVerdictResponse:
-    session = (
-        await room.get_session_for_room_caller(db, session_id, project_id)
-        if project_id is not None
-        else await room.get_session(db, session_id)
-    )
+    session = await room.session_for_room_caller(db, session_id, project_id)
     state = room.back_translation_of(session)
     final = await room.final_segments(db, session.id)
     told = room.told_back(final)

@@ -217,7 +217,7 @@ async def test_a_room_key_replay_still_works_on_a_project_owned_session(
 
 
 class _OwnershipCheckThatWaitsToBeReleased:
-    """The real `get_session_for_room_caller`, held open so a resend or a stranger's
+    """The real `session_for_room_caller`, held open so a resend or a stranger's
     request has a chance to arrive while the owner's own turn is still in flight.
     """
 
@@ -248,8 +248,8 @@ async def test_a_concurrent_turn_from_another_project_does_not_join_the_owners_f
     )
     session = await create_session(db_session, language="pt", pericope=P, project_id=owner.id)
 
-    reads = _OwnershipCheckThatWaitsToBeReleased(sessions_api.room.get_session_for_room_caller)
-    monkeypatch.setattr(sessions_api.room, "get_session_for_room_caller", reads)
+    reads = _OwnershipCheckThatWaitsToBeReleased(sessions_api.room.session_for_room_caller)
+    monkeypatch.setattr(sessions_api.room, "session_for_room_caller", reads)
 
     async def _release_once_the_owners_turn_is_waiting() -> None:
         await asyncio.wait_for(reads.entered.wait(), timeout=1)

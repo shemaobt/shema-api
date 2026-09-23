@@ -253,6 +253,24 @@ async def get_session_for_room_caller(
     return session
 
 
+async def session_for_room_caller(
+    db: AsyncSession, session_id: str, project_id: str | None
+) -> IRSession:
+    """The session a team's own routes should read, whether or not the caller names a project.
+
+    Every route the team's tablet calls used to resolve a session by id alone, which is safe
+    while everything it does is about a session the tablet already holds — until a device
+    names a project, at which point the same read let it act on a passage that was never its
+    team's. `get_session_for_room_caller` closed that for a caller who names one; the shared
+    key still names no device and so no project, and a caller on it keeps the by-id read its
+    real facilitator flow has always depended on (`_deps.py`'s own "dated compromise, not a
+    design").
+    """
+    if project_id is not None:
+        return await get_session_for_room_caller(db, session_id, project_id)
+    return await get_session(db, session_id)
+
+
 async def _land(
     db: AsyncSession, session: IRSession, values: dict[str, Any], *, commit: bool = True
 ) -> IRSession:
