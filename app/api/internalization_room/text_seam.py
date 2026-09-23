@@ -213,6 +213,7 @@ async def take_text_turn(
         raise ConflictError("session already open")
     if not payload.kickoff and payload.text is None:
         raise ValidationError("no text or kickoff")
+    await db.commit()
 
     heard = _heard(payload, language=session.language)
     started = time.monotonic()
