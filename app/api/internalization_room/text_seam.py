@@ -233,7 +233,7 @@ async def take_text_turn(
             team_utterance=outcome.transcript,
             guide_response=outcome.speech,
             outcome=outcome,
-            scene=_scene_of(session),
+            scene=_scene_of(session, outcome.transcript),
             state=turn.state,
         )
         if _worth_settling(outcome, heard):
