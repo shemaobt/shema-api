@@ -40,8 +40,9 @@ async def synthesize_speech(
 ) -> tuple[CachedAudio, bool]:
     """Synthesize MP3 speech via ElevenLabs.
 
-    Returns (cached entry, was cached?). Caches by (language, voice, text)
-    so repeated facilitator turns or replays don't re-bill the API.
+    Returns (cached entry, was cached?). Caches by (language, voice, output
+    format, text) so repeated facilitator turns or replays don't re-bill the
+    API, and a changed format never serves the old clip.
     """
     if not text or not text.strip():
         raise ValidationError("text must not be empty")
@@ -49,7 +50,9 @@ async def synthesize_speech(
     cfg = settings or get_settings()
     api_key = _require_api_key(cfg)
 
-    cache_key = audio_cache.make_key(text, language, MULTILINGUAL_VOICE_ID)
+    cache_key = audio_cache.make_key(
+        text, language, MULTILINGUAL_VOICE_ID, cfg.elevenlabs_output_format
+    )
     cached = audio_cache.get(cache_key)
     if cached is not None:
         return cached, True

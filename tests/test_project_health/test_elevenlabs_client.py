@@ -36,3 +36,15 @@ async def test_the_output_format_reaches_elevenlabs_in_the_query_not_the_body() 
     _, kwargs = client.post.await_args
     assert kwargs["params"]["output_format"] == "mp3_44100_128"
     assert "output_format" not in kwargs["json"]
+
+
+async def test_a_clip_cached_in_one_format_is_not_served_for_another() -> None:
+    client = _stub_client()
+    text = "a phrase this test alone asks for in two formats"
+    low = _settings().model_copy(update={"elevenlabs_output_format": "mp3_22050_32"})
+
+    await synthesize_speech(text, language="en-US", settings=_settings(), client=client)
+    _, was_cached = await synthesize_speech(text, language="en-US", settings=low, client=client)
+
+    assert was_cached is False
+    assert client.post.await_count == 2
