@@ -17,6 +17,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
+from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
@@ -32,6 +34,9 @@ logger = logging.getLogger(__name__)
 MIME_TYPE = "audio/mpeg"
 
 _DEFAULT_CLIENT: httpx.AsyncClient | None = None
+
+_KEPT_FOR_S = 3600
+_KEPT: OrderedDict[str, float] = OrderedDict()
 
 
 @dataclass(frozen=True)
@@ -50,7 +55,26 @@ class SpeechStore(Protocol):
 
     async def get(self, key: str) -> bytes | None: ...
 
+    async def exists(self, key: str) -> bool: ...
+
     async def put(self, key: str, data: bytes, content_type: str) -> None: ...
+
+
+def forget_what_is_kept() -> None:
+    _KEPT.clear()
+
+
+def _is_kept(key: str) -> bool:
+    kept_at = _KEPT.get(key)
+    return kept_at is not None and time.monotonic() - kept_at < _KEPT_FOR_S
+
+
+def _mark_kept(key: str) -> None:
+    now = time.monotonic()
+    while _KEPT and now - next(iter(_KEPT.values())) >= _KEPT_FOR_S:
+        _KEPT.popitem(last=False)
+    _KEPT[key] = now
+    _KEPT.move_to_end(key)
 
 
 def cache_key(
@@ -90,6 +114,7 @@ async def synthesize_speech(
     settings: Settings | None = None,
     client: httpx.AsyncClient | None = None,
     store: SpeechStore | None = None,
+    key_only: bool = False,
 ) -> SynthesizedSpeech:
     """Speak `text` in `language` (BCP-47 locale, e.g. `pt-BR`), serving from cache when possible.
 
@@ -118,9 +143,13 @@ async def synthesize_speech(
     )
     speech_store = store or _default_store(cfg)
 
-    cached = await speech_store.get(key)
-    if cached is not None:
-        return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
+    if key_only:
+        if _is_kept(key) or await speech_store.exists(key):
+            return SynthesizedSpeech(b"", MIME_TYPE, "", cached=True, key=key)
+    else:
+        cached = await speech_store.get(key)
+        if cached is not None:
+            return SynthesizedSpeech(cached, MIME_TYPE, _etag(cached), cached=True, key=key)
 
     audio = await _synthesize(
         text,
@@ -156,6 +185,8 @@ async def _cache_quietly(store: SpeechStore, key: str, audio: bytes) -> None:
         await store.put(key, audio, MIME_TYPE)
     except Exception:
         logger.exception("failed to cache TTS clip key=%s", key)
+        return
+    _mark_kept(key)
 
 
 async def _synthesize(

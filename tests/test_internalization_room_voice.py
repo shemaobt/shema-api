@@ -15,6 +15,7 @@ from app.core.config import Settings
 from app.services.internalization_room import synthesize_facilitator_speech
 from app.services.internalization_room.passage_lines import panorama_line_for
 from app.services.internalization_room.voices import voice_for
+from app.services.platform import tts
 
 ROOM_VOICE_ID = "83Nae6GFQiNslSbuzmE7"
 ROOM_VOICE_ID_EN = "x52Gqgso2pdbdr7KngsJ"
@@ -43,12 +44,25 @@ def _client(*responses: SimpleNamespace) -> SimpleNamespace:
 class MemoryStore:
     def __init__(self) -> None:
         self.objects: dict[str, bytes] = {}
+        self.asked: list[str] = []
 
     async def get(self, key: str) -> bytes | None:
+        self.asked.append("get")
         return self.objects.get(key)
 
+    async def exists(self, key: str) -> bool:
+        self.asked.append("exists")
+        return key in self.objects
+
     async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.asked.append("put")
         self.objects[key] = data
+
+
+class RefusingStore(MemoryStore):
+    async def put(self, key: str, data: bytes, content_type: str) -> None:
+        self.asked.append("put")
+        raise OSError("the bucket refused the write")
 
 
 async def test_the_rooms_configured_voice_is_the_one_that_speaks() -> None:
@@ -283,3 +297,80 @@ def test_voice_for_still_answers_es_directly_because_the_floor_is_the_caller_s_j
     fail differently but still fail, and the fix belongs one layer up, not here.
     """
     assert voice_for("es", settings=_settings()) == ROOM_VOICE_ID_ES
+
+
+async def _say(line: str, *, store: MemoryStore, client: SimpleNamespace) -> str:
+    speech, _ = await synthesize_facilitator_speech(
+        line, client=client, store=store, settings=_settings(), language="pt"
+    )
+    return speech.key
+
+
+async def test_a_line_voiced_here_is_found_again_by_its_key_without_asking_the_bucket() -> None:
+    store = MemoryStore()
+    client = _client(_ok(), _ok())
+    first = await _say("Vocês lembram o que Noemi disse?", store=store, client=client)
+    store.asked.clear()
+
+    again = await _say("Vocês lembram o que Noemi disse?", store=store, client=client)
+
+    assert again == first
+    assert store.asked == [], (
+        "repetir a fala do Guia ou abrir a roda baixava o MP3 inteiro do bucket só para "
+        "descobrir a chave que o servidor já tinha acabado de gravar"
+    )
+    assert client.post.await_count == 1
+
+
+async def test_a_line_the_bucket_already_holds_is_neither_downloaded_nor_voiced_again() -> None:
+    warm = MemoryStore()
+    line = "Contem de novo a parte da colheita."
+    key = await _say(line, store=warm, client=_client())
+    tts.forget_what_is_kept()
+    cold = MemoryStore()
+    cold.objects = dict(warm.objects)
+    client = _client()
+
+    again = await _say(line, store=cold, client=client)
+
+    assert again == key
+    assert cold.asked == ["exists"], (
+        "uma instância nova baixava o arquivo inteiro para saber que ele existia"
+    )
+    assert client.post.await_count == 0, "a mesma linha ganhava uma segunda gravação no bucket"
+
+
+async def test_a_clip_the_bucket_refused_is_not_trusted_to_be_there() -> None:
+    store = RefusingStore()
+    client = _client(_ok(), _ok())
+    await _say("Quem voltou para Belém?", store=store, client=client)
+    store.asked.clear()
+
+    await _say("Quem voltou para Belém?", store=store, client=client)
+
+    assert store.asked[:1] == ["exists"], (
+        "uma chave cujo upload falhou era lembrada como guardada, e o tablet recebia um "
+        "endereço para um clipe que nenhuma outra instância achava"
+    )
+
+
+async def test_after_an_hour_a_known_line_is_asked_of_the_bucket_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(tts, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    store = MemoryStore()
+    client = _client(_ok(), _ok())
+    await _say("E depois, o que aconteceu?", store=store, client=client)
+    now[0] += 3599
+    store.asked.clear()
+    await _say("E depois, o que aconteceu?", store=store, client=client)
+    assert store.asked == []
+
+    now[0] += 2
+    await _say("E depois, o que aconteceu?", store=store, client=client)
+
+    assert store.asked == ["exists"], (
+        "uma chave lembrada para sempre continuava sendo entregue mesmo que o objeto "
+        "tivesse saído do bucket"
+    )

@@ -77,6 +77,7 @@ async def synthesize_facilitator_speech(
         settings=cfg,
         client=client,
         store=store,
+        key_only=True,
     )
     _VOICED_HERE[speech.key] = None
     _VOICED_HERE.move_to_end(speech.key)
