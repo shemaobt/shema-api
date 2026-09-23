@@ -640,6 +640,7 @@ async def take_turn(
     )
     with stopwatch("[turn-timing]", session_id) as clock:
         if turn_id:
+            await db.commit()
             reply = await answer_once(session_id, turn_id, project_id, answer)
         else:
             reply = await answer(db)

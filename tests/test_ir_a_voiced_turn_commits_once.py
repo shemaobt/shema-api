@@ -22,7 +22,7 @@ from app.services.internalization_room.sessions import (
     mark_needs_person,
 )
 from app.services.platform.tts import SynthesizedSpeech, Upload
-from tests.release_harness import KEY, PREFIX
+from tests.release_harness import KEY, PREFIX, a_claimed_device, team_headers
 from tests.room_harness import counting_commits, room_client
 
 P = "P03"
@@ -350,4 +350,30 @@ async def test_the_models_think_with_the_database_let_go_not_with_the_read_still
     assert held == {"stt": False, "guide": False, "validator": False, "voice": False}, (
         "a leitura da sessão abria a transação e a conexão ficava presa pelo STT, pelo Guia,"
         " pelo Validador e pela voz"
+    )
+
+
+async def test_a_tablets_turn_with_an_id_lets_go_of_the_read_its_credential_opened(
+    client: httpx.AsyncClient,
+    db_session: AsyncSession,
+    models: _Models,
+    voice: _Voice,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, credential = await a_claimed_device(db_session)
+    session = await create_session(db_session, language="pt", pericope=P, project_id=project.id)
+    await append_exchange(db_session, session, team_utterance="", guide_response=FIRST_QUESTION)
+    held = _in_a_transaction_while_thinking(monkeypatch, db_session, models, voice)
+
+    answered = await client.post(
+        f"{PREFIX}/sessions/{session.id}/turns",
+        headers=team_headers(credential),
+        files={"file": ("answer.m4a", b"audio", "audio/m4a")},
+        data={"turn_id": "turno-1"},
+    )
+
+    assert answered.status_code == 200, answered.text[:300]
+    assert held == {"stt": False, "guide": False, "validator": False, "voice": False}, (
+        "a credencial lia o aparelho na sessão do pedido, o turno corria noutra, e a do pedido"
+        " ficava presa na transação até o fim"
     )
