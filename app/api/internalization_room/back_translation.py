@@ -118,6 +118,7 @@ async def add_chunk(
         ordinal=None,
         content_type=file.content_type or "audio/mp4",
     )
+    await db.commit()
 
     text = await heard(audio_bytes, filename=file.filename, mime_type=file.content_type)
     if not text.strip():
@@ -170,6 +171,8 @@ async def _the_untold_errand(
     by the field and never by what is missing from the body.
     """
     waiting, _ = choose(FailSafe.UNTOLD_STRETCH, session.language, turn=state.waited)
+    with stage("db_let_go"):
+        await db.commit()
     spoken = (await room.synthesize_facilitator_speech(waiting, language=session.language))[0]
     state.waited += 1
     await room.save_back_translation(db, session, state)
@@ -307,6 +310,8 @@ async def _finished(
     unheard = room.unheard_parts(state, rehearsed)
     if unheard:
         line, _ = process_line("P", "unheard", session.language)
+        with stage("db_let_go"):
+            await db.commit()
         spoken = (await room.synthesize_facilitator_speech(line, language=session.language))[0]
         return BackTranslationVerdictResponse(
             session_id=session.id,
@@ -349,11 +354,14 @@ async def _finished(
             used_fail_safe=state.verdict.used_fail_safe,
         )
 
+    retired = await room.retired_segments(db, session.id)
+    with stage("db_let_go"):
+        await db.commit()
     verdict = await room.check_the_telling_back(
         session,
         state=state,
         told=told,
-        retired=await room.retired_segments(db, session.id),
+        retired=retired,
         takes=takes,
         settings=get_settings(),
     )

@@ -151,6 +151,7 @@ async def room_listens_to_take(
     """
     await room.session_for_room_caller(db, session_id, project_id)
     take = await take_in_session(db, session_id, take_id)
+    await db.commit()
     return RedirectResponse(await listen_url(take), status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 

@@ -159,12 +159,15 @@ async def play_a_round(
             state = await _capture(db, session, state, frase, number=number, parts=parts)
 
         told = room.told_back(await room.final_segments(db, session.id))
+        retired = await room.retired_segments(db, session.id)
+        takes = await takes_of(db, session.id)
+        await db.commit()
         verdict = await room.check_the_telling_back(
             session,
             state=state,
             told=told,
-            retired=await room.retired_segments(db, session.id),
-            takes=await takes_of(db, session.id),
+            retired=retired,
+            takes=takes,
             settings=get_settings(),
         )
         await room.save_the_spoken_verdict(
