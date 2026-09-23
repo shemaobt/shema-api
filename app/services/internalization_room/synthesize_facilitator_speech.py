@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import httpx
 
 from app.core.config import Settings, get_settings
@@ -8,6 +10,13 @@ from app.services.internalization_room.speakable import speakable_text
 from app.services.internalization_room.voices import voice_for
 from app.services.platform.tts import SpeechStore, SynthesizedSpeech
 from app.services.platform.tts import synthesize_speech as platform_speech
+
+_VOICED_HERE: OrderedDict[str, None] = OrderedDict()
+_VOICED_HERE_KEPT = 1024
+
+
+def voiced_here(key: str) -> bool:
+    return key in _VOICED_HERE
 
 
 async def synthesize_facilitator_speech(
@@ -69,4 +78,8 @@ async def synthesize_facilitator_speech(
         client=client,
         store=store,
     )
+    _VOICED_HERE[speech.key] = None
+    _VOICED_HERE.move_to_end(speech.key)
+    if len(_VOICED_HERE) > _VOICED_HERE_KEPT:
+        _VOICED_HERE.popitem(last=False)
     return speech, speech.cached
