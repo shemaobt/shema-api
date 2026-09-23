@@ -1,10 +1,12 @@
 import asyncio
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.internalization_room._deps import room_caller_dep
 from app.core.config import Settings, get_settings
+from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.models.internalization_room import BookPassagesResponse, PassageView
 from app.services import internalization_room as room
@@ -66,6 +68,7 @@ async def _voiced_panorama(
 async def passages(
     book: str,
     language: Annotated[str | None, Query(max_length=8)] = None,
+    db: AsyncSession = Depends(get_db),
 ) -> BookPassagesResponse:
     """The passages of a book, each with the line the room says to name it out loud.
 
@@ -102,6 +105,7 @@ async def passages(
     spoken = floor(settings) if language is None else normalize(language)
     if spoken is None:
         raise ValidationError(f"The room does not speak {language!r}")
+    await db.commit()
     in_flight = asyncio.Semaphore(MAX_LINES_IN_FLIGHT)
     speakable = [
         (meaning_map.pericope_num, line)
