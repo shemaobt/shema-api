@@ -48,9 +48,13 @@ def _guess_mime_type(filename: str | None, fallback: str | None) -> str:
 
 
 def _upstream_or_validation_error(status_code: int) -> Exception:
-    """Their outage is not our client's bad request - same split as the TTS service."""
+    """Their outage is not our client's bad request.
+
+    A revoked key or an exhausted quota (401, 403) is not silence any more than a rate
+    limit is: both mean ElevenLabs refused the request, not that the room said nothing.
+    """
     message = f"Transcription request failed with status {status_code}"
-    if status_code == 429 or status_code >= 500:
+    if status_code in (401, 403, 429) or status_code >= 500:
         return UpstreamServiceError(message)
     return ValidationError(message)
 

@@ -120,7 +120,7 @@ async def test_transcribe_audio_raises_when_empty_response() -> None:
         await transcribe_audio(b"abc", filename="x.wav", settings=_settings(), client=client)
 
 
-@pytest.mark.parametrize("status", [429, 500, 503])
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 503])
 async def test_transcribe_audio_treats_a_rate_limit_or_outage_as_upstream_not_ours(
     status: int,
 ) -> None:
