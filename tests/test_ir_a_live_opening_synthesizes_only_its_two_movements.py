@@ -262,6 +262,39 @@ async def test_a_say_it_again_asked_while_the_whole_line_is_still_in_flight_join
     assert again_resp.json()["audio_url"], "o diga de novo voltou sem áudio nenhum"
 
 
+async def test_a_stale_whole_line_callback_does_not_evict_a_newer_tasks_entry() -> None:
+    """Two openings landing on the same whole line share one key; only one may hold it.
+
+    Two sessions on the same pericope and language can produce the very same whole line,
+    so the second `_start_the_whole_line` overwrites the first's entry in
+    `_PENDING_WHOLE_LINE_BY_TEXT` under the same key. The first task's own done-callback
+    still fires after that overwrite — it must forget only the entry it put there, never
+    whatever the second task left behind, or a `_say_it_again` for the second session
+    finds nothing to join and pays ElevenLabs again, the exact bug this file guards
+    against, reached from two sessions instead of one.
+    """
+    from app.api.internalization_room import sessions as sessions_api
+
+    async def _done() -> tts.SpeechKey:
+        return tts.SpeechKey(key="tts/whatever", cached=False)
+
+    key = ("mesma linha", "pt")
+    stale_task = asyncio.create_task(_done())
+    current_task = asyncio.create_task(_done())
+    await stale_task
+    await current_task
+    sessions_api._PENDING_WHOLE_LINE_BY_TEXT[key] = current_task
+
+    sessions_api._forget_the_whole_line(key, stale_task)
+
+    assert sessions_api._PENDING_WHOLE_LINE_BY_TEXT.get(key) is current_task, (
+        "o callback de uma tarefa antiga apagou a entrada da tarefa atual para a mesma chave"
+    )
+
+    sessions_api._forget_the_whole_line(key, current_task)
+    assert key not in sessions_api._PENDING_WHOLE_LINE_BY_TEXT
+
+
 async def test_a_background_synthesis_failure_does_not_change_the_turns_answer(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

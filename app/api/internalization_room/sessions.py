@@ -151,8 +151,9 @@ def _start_the_whole_line(text: str, language: str) -> asyncio.Task[SpeechKey]:
     return task
 
 
-def _forget_the_whole_line(key: tuple[str, str], _task: asyncio.Task[SpeechKey]) -> None:
-    _PENDING_WHOLE_LINE_BY_TEXT.pop(key, None)
+def _forget_the_whole_line(key: tuple[str, str], task: asyncio.Task[SpeechKey]) -> None:
+    if _PENDING_WHOLE_LINE_BY_TEXT.get(key) is task:
+        del _PENDING_WHOLE_LINE_BY_TEXT[key]
 
 
 async def _the_whole_line(text: str, language: str) -> SpeechKey:
